@@ -135,7 +135,6 @@ th.col-seq,td.col-seq{width:40px;text-align:center;color:#8b8986}
 .money{font-size:14.25px;font-weight:780;letter-spacing:-.1px;direction:ltr;text-align:left;white-space:nowrap}
 .money b{font-weight:820}
 td.money.badtext b{color:#aa4844}td.money.goodtext b{color:#337453}
-td.col-balance b{font-size:14.5px}
 .badtext{color:var(--bad)!important}.goodtext{color:var(--good)!important}.warntext{color:var(--warn)!important}
 .source{font-size:11px;color:#8b8b88;white-space:nowrap}
 .badge{padding:4px 8px;font-size:10.5px;background:#f2efec;color:#67625e;border:1px solid rgba(100,82,69,.06)}
