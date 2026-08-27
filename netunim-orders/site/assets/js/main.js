@@ -106,7 +106,8 @@ const domainsSuppliersNavigation=createDomainsSuppliersNavigation({
 });
 
 const uiStatus=createUiStatus({
-
+  session,
+  checksSession,
 });
 
 const uiFolderStatus=createUiFolderStatus({
@@ -560,6 +561,7 @@ const syncChecks=createSyncChecks({
   rpcSaveSharedChecks:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
   checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
   readSharedChecksCloudMeta:(...args)=>cloudTransport.readSharedChecksCloudMeta(...args),
+  refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
 });
 
 const syncDocument=createSyncDocument({
@@ -590,6 +592,7 @@ const syncDocument=createSyncDocument({
   readCloudMeta:(...args)=>cloudTransport.readCloudMeta(...args),
   refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
+  refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
 });
 
 const uiCloud=createUiCloud({
@@ -597,6 +600,7 @@ const uiCloud=createUiCloud({
   files,
   tab,
   session,
+  checksSession,
   ui,
   modal:(...args)=>uiModal.modal(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),

@@ -10,7 +10,7 @@ return {
     saveQueue:Promise.resolve(),
     localGeneration:0,
     connectionMode:'directory',
-    serverInfo:{schemaVersion:6,backups:[]},
+    serverInfo:{schemaVersion:6,lastSavedAt:null,backups:[]},
     lastSavedSnapshot:'',
     supaSession:null,
     cloudDocumentName:'main',
@@ -50,6 +50,7 @@ return {
   },
   checksSession:{
     sharedChecksRevision:0,
+    sharedChecksUpdatedAt:null,
     sharedChecksBase:null,
     sharedChecksBankEvents:[],
     sharedChecksBusy:false,

@@ -73,6 +73,7 @@ return {
   session:{
     lastCloudState:null,
     cloudRevision:0,
+    cloudUpdatedAt:null,
     cloudBusy:false,
     cloudPollTimer:null,
     saveTimer:null,
@@ -85,6 +86,7 @@ return {
   checksSession:{
     checksGeneration:0,
     checksCloudRevision:0,
+    checksCloudUpdatedAt:null,
     checksCloudBase:null,
     checksBankEvents:null,
     checksCloudBusy:false,

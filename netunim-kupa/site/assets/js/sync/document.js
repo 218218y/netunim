@@ -32,7 +32,7 @@ async function reconcileCloudPending(remoteRow=null){
     model.state=applyKupaCloudState(pending.snapshot,model.state.checks);persistImmediateBrowserSnapshot(model.state,pending.baseRevision||session.dbRevision);
     if(pending.conflict){session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();return false}
     if(!navigator.onLine){session.cloudConflictPending=false;setSaveStatus('אופליין — שינוי שמור מקומית וממתין','saving');setCloudHeaderStatus('offline','ענן: אופליין');return false}
-    let row=remoteRow||await readSupabaseDocument();if(!row)throw new Error('מסמך הענן לא נמצא');
+    let row=remoteRow||await readSupabaseDocument();if(!row)throw new Error('מסמך הענן לא נמצא');session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;
     for(let attempt=0;attempt<3;attempt++){
       pending=await getCloudPending();if(!pending)return true;if(pending.conflict){session.cloudConflictPending=true;return false}
       let candidate=prepareKupaCloudState(pending.snapshot),expected=Number(row.revision||0);
@@ -42,8 +42,8 @@ async function reconcileCloudPending(remoteRow=null){
         candidate=merged.state
       }
       session.cloudWriteBusy=true;const res=await rpcSaveCloud(candidate,expected);session.cloudWriteBusy=false;
-      if(!res.r.ok){const em=res.j?.message||res.body||'שמירה לענן נכשלה';if(String(em).includes('revision_conflict')){row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');continue}throw new Error(em)}
-      const completedGeneration=Number(pending.generation||0),newRev=Number(res.row?.revision||expected+1),authoritative=prepareKupaCloudState(res.row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||new Date().toISOString();session.cloudConflictPending=false;
+      if(!res.r.ok){const em=res.j?.message||res.body||'שמירה לענן נכשלה';if(String(em).includes('revision_conflict')){row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;continue}throw new Error(em)}
+      const completedGeneration=Number(pending.generation||0),newRev=Number(res.row?.revision||expected+1),authoritative=prepareKupaCloudState(res.row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
       const newer=await rebaseNewerPending(completedGeneration,authoritative,newRev);
       if(!newer){await clearCloudPending(completedGeneration);model.state=applyKupaCloudState(authoritative,model.state.checks);setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן')}else{const newest=await getCloudPending();model.state=applyKupaCloudState(newest?.snapshot||model.state,model.state.checks);setSaveStatus(newest?.conflict?'התנגשות שמורה מקומית':'ממתין לשינוי הבא…',newest?.conflict?'error':'saving');setCloudHeaderStatus(newest?.conflict?'conflict':'syncing',newest?.conflict?'ענן: התנגשות':'ענן: מסנכרן…')}
       persistImmediateBrowserSnapshot(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);render();if(newer&&!session.cloudConflictPending)setTimeout(cloudPoll,0);return !session.cloudConflictPending
@@ -74,7 +74,7 @@ async function persistSupabaseState(snapshot,msg,generation=session.localGenerat
       candidate=merged.state;baseRevision=Number(remote.revision||0);baseState=prepareKupaCloudState(remote.state);res=null
     }
     if(!res?.r?.ok)throw new Error('הענן השתנה שוב בזמן השמירה; השינוי נשמר מקומית וינוסה שוב');
-    const row=res.row,newRev=Number(row?.revision||baseRevision+1),authoritative=prepareKupaCloudState(row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=row?.updated_at||new Date().toISOString();session.cloudConflictPending=false;
+    const row=res.row,newRev=Number(row?.revision||baseRevision+1),authoritative=prepareKupaCloudState(row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
     const newer=await rebaseNewerPending(generation,authoritative,newRev);
     if(!newer){await clearCloudPending(generation);if(generation===session.localGeneration)model.state=applyKupaCloudState(authoritative,model.state.checks);setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');toast(msg)}else{const newest=await getCloudPending();if(newest){model.state=applyKupaCloudState(newest.snapshot,model.state.checks);session.cloudConflictPending=!!newest.conflict}setSaveStatus(session.cloudConflictPending?'התנגשות שמורה מקומית':'שומר שינוי נוסף…',session.cloudConflictPending?'error':'saving');setCloudHeaderStatus(session.cloudConflictPending?'conflict':'syncing',session.cloudConflictPending?'ענן: התנגשות':'ענן: מסנכרן…')}
     persistImmediateBrowserSnapshot(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);if(generation===session.localGeneration||newer)render();if(newer&&!session.cloudConflictPending)setTimeout(cloudPoll,0);return !session.cloudConflictPending

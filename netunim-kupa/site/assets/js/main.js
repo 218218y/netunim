@@ -81,6 +81,7 @@ const stateNormalization=createStateNormalization({
 
 const uiStatus=createUiStatus({
   session,
+  checksSession,
 });
 
 const storageIndexedDb=createStorageIndexedDb({
@@ -233,6 +234,7 @@ const syncChecks=createSyncChecks({
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
   sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
   readSharedChecksMeta:(...args)=>cloudTransport.readSharedChecksMeta(...args),
+  refreshCloudHeaderTimestamp:(...args)=>uiStatus.refreshCloudHeaderTimestamp(...args),
 });
 
 const syncMerge=createSyncMerge({
@@ -440,6 +442,7 @@ const domainsBankView=createDomainsBankView({
 const uiSettings=createUiSettings({
   model,
   session,
+  checksSession,
   files,
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
