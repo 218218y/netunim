@@ -33,10 +33,11 @@ function storeSupplierViewport(supplierId,wrap){if(!supplierId||!wrap)return;sup
 
 function supplierTransactionsEndTop(wrap){
   if(!wrap)return 0;
-  const maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight),table=wrap.querySelector('table');
-  if(!table)return maxTop;
-  const afterLastRow=24;
-  return Math.min(maxTop,Math.max(0,table.offsetTop+table.offsetHeight-wrap.clientHeight+afterLastRow));
+  const maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight),summary=wrap.querySelector(':scope > .supplier-bottom-summary');
+  if(!summary)return maxTop;
+  const style=getComputedStyle(summary),marginTop=Number.parseFloat(style.marginTop)||0,marginBottom=Number.parseFloat(style.marginBottom)||0;
+  const summaryTail=Math.max(0,summary.offsetHeight+marginTop+marginBottom),afterLastRow=24;
+  return Math.max(0,maxTop-Math.max(0,summaryTail-afterLastRow));
 }
 
 function scrollSupplierTransactionsEnd(wrap){if(wrap)wrap.scrollTop=supplierTransactionsEndTop(wrap)}
