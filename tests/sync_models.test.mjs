@@ -7,6 +7,9 @@ import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/s
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 import {createSyncChecks as orderChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createCloudTransport as orderTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
+import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
+import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
+import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 
 const k=kupaNormalizer({model:{}}),o=ordersNormalizer({});
@@ -56,4 +59,28 @@ test('shared check transport validates revisions and preserves RPC request contr
  assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_state.version,1);
  await assert.rejects(api.rpcSaveSharedChecks([check],-1));
  assert.equal(calls.length,1);
+});
+
+
+test('Orders Kupa readout refresh invalidates the visible dependent view only when the Kupa revision changes',async()=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const checksSession={kupaReadRevision:0,kupaCloudReadState:null,kupaNetReadout:null},ui={currentView:'summary'};let fullReads=0,summaryRenders=0,metaRevision=1;
+ const api=orderBankCache({checksSession,ui,computeKupaNetReadout:kupa=>({net:kupa.bank.currentBalance}),renderChecks:()=>{},renderSummary:()=>{summaryRenders++},loadSession:()=>({access_token:'x'}),readKupaReadOnlyMeta:async()=>({revision:metaRevision}),readKupaReadOnlyCloud:async()=>{fullReads++;return {revision:metaRevision,state:{bank:{currentBalance:400+metaRevision}}}}});
+ assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(checksSession.kupaNetReadout.net,401);assert.equal(summaryRenders,1);assert.equal(fullReads,1);
+ assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(summaryRenders,1);assert.equal(fullReads,1);
+ metaRevision=2;assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(checksSession.kupaNetReadout.net,402);assert.equal(summaryRenders,2);assert.equal(fullReads,2);
+});
+
+test('Orders cloud open loads shared checks and Kupa readout before the first requested render',async()=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(k,v)=>store.set(k,String(v)),getItem:k=>store.get(k)??null,removeItem:k=>store.delete(k)},configurable:true});
+ const order=[];const model={state:{checks:[]}},session={cloudRevision:0,cloudUpdatedAt:null,lastCloudState:null,cloudConflictBlocked:false},checksSession={},ui={};
+ const api=orderUiCloud({model,files:{dirHandle:null},tab:{primaryTab:true},session,checksSession,ui,modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>{},authPassword:async()=>{},localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},setCloud:()=>{},showSecondaryTabGuard:()=>{},prepareCloudState:()=>({suppliers:[]}),render:()=>order.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,updated_at:'2026-08-27T10:00:00Z',state:{suppliers:[]}}),applyOrderCloudState:()=>{},refreshKupaReadout:async opts=>{order.push('kupa');assert.deepEqual(opts,{force:true});return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:()=>order.push('poll'),saveSession:()=>{},renderSettings:()=>{}});
+ await api.openCloud();assert.deepEqual(order,['checks','kupa','render','poll']);
+});
+
+test('Orders polling asks Kupa refresh to invalidate a visible balance when a new Kupa revision arrives',async()=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const refreshArgs=[];const api=orderDocumentSync({model:{state:{}},files:{},session:{cloudBusy:false,cloudRevision:7},ui:{},tab:{primaryTab:true},normalizeState:x=>x,localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},toast:()=>{},setCloud:()=>{},prepareCloudState:()=>({}),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>{},merge3:()=>({}),applyOrderCloudState:()=>{},cloudPendingExists:()=>false,setSave:()=>{},cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:()=>true,cloudHasLocalWork:()=>false,render:()=>{},readCloudMeta:async()=>({revision:7,updated_at:'2026-08-27T10:00:00Z'}),refreshKupaReadout:async opts=>{refreshArgs.push(opts);return true},pollSharedChecks:async()=>{},refreshCloudTimestamp:()=>{}});
+ await api.cloudPoll();assert.deepEqual(refreshArgs,[{renderIfChanged:true}]);
 });

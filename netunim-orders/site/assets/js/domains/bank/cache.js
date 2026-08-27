@@ -8,7 +8,7 @@ function recomputeKupaNetFromCache(){if(checksSession.kupaCloudReadState)checksS
 
 function renderKupaDependentView(){recomputeKupaNetFromCache();if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='summary')renderSummary()}
 
-async function refreshKupaReadout({force=false}={}){if(!loadSession()||!navigator.onLine)return false;try{if(!force){const meta=await readKupaReadOnlyMeta();if(!meta)return false;const rev=Number(meta.revision||0);if(rev>0&&rev<=checksSession.kupaReadRevision){recomputeKupaNetFromCache();return true}}const row=await readKupaReadOnlyCloud();if(!row)return false;checksSession.kupaReadRevision=Number(row.revision||0);rememberKupaNetState(row.state||{});return true}catch(e){console.error('kupa read-only refresh',e);return false}}
+async function refreshKupaReadout({force=false,renderIfChanged=false}={}){if(!loadSession()||!navigator.onLine)return false;try{if(!force){const meta=await readKupaReadOnlyMeta();if(!meta)return false;const rev=Number(meta.revision||0);if(rev>0&&rev<=checksSession.kupaReadRevision){recomputeKupaNetFromCache();return true}}const row=await readKupaReadOnlyCloud();if(!row)return false;const previousRevision=Number(checksSession.kupaReadRevision||0),hadState=!!checksSession.kupaCloudReadState,nextRevision=Number(row.revision||0);checksSession.kupaReadRevision=nextRevision;rememberKupaNetState(row.state||{});if(renderIfChanged&&(!hadState||nextRevision!==previousRevision))renderKupaDependentView();return true}catch(e){console.error('kupa read-only refresh',e);return false}}
 
 return { rememberKupaNetState, recomputeKupaNetFromCache, renderKupaDependentView, refreshKupaReadout };
 }
