@@ -102,6 +102,7 @@ const domainsSuppliersNavigation=createDomainsSuppliersNavigation({
   ui,
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
+  render:(...args)=>uiNavigation.render(...args),
 });
 
 const uiStatus=createUiStatus({
@@ -246,9 +247,12 @@ const syncChecksPersistence=createSyncChecksPersistence({
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
+  ui,
   checksSession,
-  supplierTx:(...args)=>domainsSuppliersSelectors.supplierTx(...args),
   supplierBalance:(...args)=>domainsSuppliersSelectors.supplierBalance(...args),
+  supplierArchiveYears:(...args)=>domainsSuppliersSelectors.supplierArchiveYears(...args),
+  supplierPeriodTx:(...args)=>domainsSuppliersSelectors.supplierPeriodTx(...args),
+  supplierFinancialStats:(...args)=>domainsSuppliersSelectors.supplierFinancialStats(...args),
   totalStats:(...args)=>domainsSuppliersSelectors.totalStats(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   customerStats:(...args)=>domainsCustomersSelectors.customerStats(...args),
@@ -285,6 +289,7 @@ const domainsSuppliersView=createDomainsSuppliersView({
   supplierUi,
   balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
+  supplierFinancialStats:(...args)=>domainsSuppliersSelectors.supplierFinancialStats(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   captureSupplierViewport:(...args)=>uiLayout.captureSupplierViewport(...args),
@@ -681,6 +686,7 @@ const uiActions=createUiActions({
   warehouseUi,
   ui,
   setSupplierYearView:(...args)=>domainsSuppliersNavigation.setSupplierYearView(...args),
+  setSummarySupplierYearView:(...args)=>domainsDashboardView.setSummarySupplierYearView(...args),
   handleCheckDatePartInput:(...args)=>uiDateEditor.handleCheckDatePartInput(...args),
   handleCheckDatePartBlur:(...args)=>uiDateEditor.handleCheckDatePartBlur(...args),
   handleCheckDatePartKeydown:(...args)=>uiDateEditor.handleCheckDatePartKeydown(...args),
