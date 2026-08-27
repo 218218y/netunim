@@ -1,0 +1,67 @@
+בדיקות ואימות לפני פריסה
+========================
+
+מטרת המבנה
+-----------
+כל הבדיקות הקבועות של שתי המערכות מרוכזות כעת בתיקייה tests/ ומופעלות דרך verify.bat אחד בשורש netunim.
+הקופה וההזמנות נבדקות יחד משום שהן חולקות את מאגר הצ'קים ואת חוזי החישוב/סנכרון. deploy_site.bat של כל אחת מהמערכות מפעיל את verify.bat לפני Wrangler ועוצר את הפריסה אם בדיקה כלשהי נכשלת.
+
+דרישות חד-פעמיות
+----------------
+1. Python 3.10 ומעלה.
+2. Node.js זמין ב-PATH (לבדיקת תחביר JavaScript).
+3. Chrome, Edge או Chromium.
+4. להתקין פעם אחת את תלות Python הקטנה של בדיקות הדפדפן:
+
+   py -3 -m pip install -r tests\requirements.txt
+
+   אם הפקודה py אינה קיימת:
+   python -m pip install -r tests\requirements.txt
+
+הרצה ידנית
+-----------
+להפעיל משורש netunim:
+
+  verify.bat
+
+הסוויטות שרצות
+---------------
+1. static_contracts.py
+   - בדיקת תחביר כל JavaScript inline בשתי האפליקציות באמצעות node --check.
+   - חוזי חלוקת האחריות בין קופה / הזמנות / מאגר הצ'קים.
+   - חוזי SQL, RPC, cutover ו-revision.
+   - בדיקה ששני deploy_site.bat מחוברים לשער האימות לפני Wrangler.
+
+2. service_worker_contracts.py
+   - מעטפת PWA מדויקת בלבד, ללא data/backups/SQL/exports.
+   - כל קובץ שמוצהר ב-cache באמת קיים.
+   - מחיקת caches ישנים, same-origin בלבד, GET בלבד ו-fallback ל-index באופליין.
+   - network-first בשתי המערכות כדי למנוע PWA תקוע על קובץ סטטי ישן לאחר פריסה.
+   - בנוסף לבדיקה הסטטית, כל Service Worker מורץ בתוך runtime מבודד של Node עם Cache/Fetch מדומים, ונבדקים בפועל install, activate, online refresh, offline asset fallback ו-offline navigation fallback.
+
+3. runtime_smoke.py
+   - מעדיף להעלות כל אתר ב-Chrome/Edge headless דרך שרת localhost זמני ואמיתי.
+   - מוודא טעינה מלאה וללא JavaScript exceptions.
+   - אם Chrome ארגוני חוסם loopback במדיניות מערכת, ה-harness עובר אוטומטית למסמך מבודד עם מימושי localStorage, sessionStorage ו-IndexedDB בזיכרון; כך הבדיקות נשארות ניידות ולא מדלגות על חוזי האחסון.
+
+4. runtime_data_integrity.py
+   - round-trip של גיבוי/שחזור קופה והזמנות.
+   - דחיית JSON שגוי, פורמט זר וגרסת נתונים עתידית.
+   - דחיית payload ענן שמחזיר בעלות שגויה על checks.
+   - מיזוג שינויים בלתי תלויים וזיהוי conflict באותה רשומה.
+
+5. runtime_sync_recovery.py
+   - שינוי בזמן offline נשמר כ-pending ובעותק התאוששות מקומי.
+   - חזרה online עם RPC מדומה ומאומת מנקה pending רק לאחר הצלחה ומתקדמת revision.
+   - revision_conflict אמיתי בסבב הראשון גורם לקריאת remote, מיזוג של שינוי בלתי תלוי וניסיון RPC שני; נבדק שה-revision והנתונים משני הצדדים נשמרים.
+   - merge/rebase של שינויים מקבילים וזיהוי conflicts.
+   - אותם חוזי conflict גם למאגר הצ'קים המשותף.
+
+6. runtime_financial.py
+   - הפקדה, החזרה, שינוי סכום/מחיקה ו-bankEvents.
+   - חישוב pending של הפקדה/החזרה לפני שהענן אישר.
+   - bootstrap/repair של הצ'קים המשותפים.
+
+הערה על קבצי validation הישנים
+------------------------------
+שלושת הקבצים תחת netunim-orders\supabase\shared\validation נשארו כ-entry points דקים בלבד כדי שפקודות ישנות לא יישברו. אין בהם עוד עותק של לוגיקת הבדיקות; מקור האמת היחיד הוא tests/.

@@ -1,0 +1,195 @@
+from __future__ import annotations
+
+from collections import Counter
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+ROOT = Path(__file__).resolve().parents[1]
+K = ROOT / "netunim-kupa"
+O = ROOT / "netunim-orders"
+S = O / "supabase/shared"
+errors: list[str] = []
+
+
+def ok(condition, message: str):
+    if condition:
+        print("PASS", message)
+    else:
+        print("FAIL", message)
+        errors.append(message)
+
+
+def extract_js(html: Path) -> str:
+    text = html.read_text(encoding="utf-8")
+    out = []
+    pattern = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
+    for match in pattern.finditer(text):
+        attrs = match.group("attrs") or ""
+        script_type = re.search(r"\btype\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
+        typ = script_type.group(1).strip().lower() if script_type else ""
+        if typ and typ not in ("text/javascript", "application/javascript", "module"):
+            continue
+        if re.search(r"\bsrc\s*=", attrs, re.I):
+            continue
+        out.append(match.group("body"))
+    return "\n;\n".join(out)
+
+
+def dollar_balanced(text: str):
+    tags = re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", text)
+    counts = Counter(tags)
+    return all(value % 2 == 0 for value in counts.values())
+
+
+def funcdef(text: str, name: str):
+    pattern = re.compile(
+        r"create\s+(?:or\s+replace\s+)?function\s+public\."
+        + re.escape(name)
+        + r"\b.*?\n\$\$\s*;",
+        re.I | re.S,
+    )
+    match = pattern.search(text)
+    return match.group(0) if match else None
+
+
+def norm(text: str | None):
+    return re.sub(r"\s+", " ", text or "").strip().lower()
+
+
+# 1. Both browser bundles must remain syntactically valid JavaScript.
+for label, path in [("kupa", K / "site/index.html"), ("orders", O / "site/index.html")]:
+    js = extract_js(path)
+    with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+        handle.write(js)
+        temp_name = handle.name
+    result = subprocess.run(["node", "--check", temp_name], capture_output=True, text=True)
+    Path(temp_name).unlink(missing_ok=True)
+    ok(result.returncode == 0, f"{label}: all inline JavaScript parses")
+    if result.returncode:
+        print(result.stderr)
+
+# 2. Current post-cutover ownership/contracts.
+ks = (K / "site/index.html").read_text(encoding="utf-8")
+os = (O / "site/index.html").read_text(encoding="utf-8")
+ok("KUPA_CHECKS_TABLE" not in os and "saveChecksToKupaCloud" not in os and "reconcileKupaBankForChecks" not in os,
+   "orders: legacy Kupa-as-check-owner code removed")
+ok("delete x.checks" in ks, "kupa: cloud payload removes checks")
+ok("delete x.checks" in os, "orders: cloud payload removes checks")
+ok("shared_checks_documents" in ks and "save_shared_checks_document" in ks,
+   "kupa: shared checks endpoint configured")
+ok("shared_checks_documents" in os and "save_shared_checks_document" in os,
+   "orders: shared checks endpoint configured")
+ok("ensureSharedChecksForNewCloud" in ks, "kupa: explicit greenfield shared-checks onboarding exists")
+ok("sharedChecksBootstrapActive&&!l.length&&r.length>0&&b.length>0&&jsonEq(b,r)" in ks and "repairEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
+   "kupa: shared bootstrap protection is state-based, not stale-marker based")
+ok("אין ליצור אותו אוטומטית" in ks and "אין ליצור אותו אוטומטית" in os,
+   "clients: missing shared store fails safe outside greenfield setup")
+ok("Array.isArray(d.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
+ok("!Array.isArray(d)" in os, "orders: cloud state rejects arrays")
+
+# 3. Repository verifier and deployment gates.
+verify_text = (ROOT / "verify.bat").read_text(encoding="utf-8")
+ok("tests\\run_all.py" in verify_text, "verify.bat: invokes the canonical test runner")
+ok('if errorlevel 1 set "VERIFY_EXIT=1"' in verify_text, "verify.bat: captures Python failure at runtime inside batch blocks")
+ok('set "VERIFY_EXIT=%ERRORLEVEL%"' not in verify_text, "verify.bat: avoids parse-time ERRORLEVEL expansion inside parenthesized blocks")
+
+# Deployment must be gated by the repository-wide verifier before Wrangler.
+for label, path in [("kupa", K / "deploy_site.bat"), ("orders", O / "deploy_site.bat")]:
+    text = path.read_text(encoding="utf-8")
+    verify_pos = text.lower().find("verify.bat")
+    wrangler_pos = text.lower().find("pages deploy")
+    ok(verify_pos >= 0, f"{label}: deploy invokes repository verify gate")
+    ok(wrangler_pos >= 0 and verify_pos < wrangler_pos, f"{label}: verify gate runs before Wrangler deployment")
+    ok("if errorlevel 1" in text[verify_pos:wrangler_pos] if verify_pos >= 0 and wrangler_pos > verify_pos else False,
+       f"{label}: failed verification stops deployment")
+
+# 4. SQL and migration contracts.
+sqls = {
+    "preflight": (S / "preflight.sql").read_text(encoding="utf-8"),
+    "shared_setup": (S / "setup.sql").read_text(encoding="utf-8"),
+    "cutover": (S / "cutover.sql").read_text(encoding="utf-8"),
+    "postflight": (S / "postflight.sql").read_text(encoding="utf-8"),
+    "kupa_setup": (K / "supabase/setup.sql").read_text(encoding="utf-8"),
+    "orders_setup": (O / "supabase/setup.sql").read_text(encoding="utf-8"),
+}
+for name, text in sqls.items():
+    ok(dollar_balanced(text), f"{name}: dollar-quote delimiters balanced")
+    ok("security definer" not in text.lower(), f"{name}: no SECURITY DEFINER")
+
+cut = sqls["cutover"]
+ok(re.match(r"(?s)^\s*--.*?\nbegin;", cut) is not None, "cutover: begins with transaction")
+ok(re.search(r"\bcommit\s*;", cut, re.I) is not None and cut.lower().rfind("commit;") > cut.lower().rfind("create function"),
+   "cutover: final COMMIT is after DDL/RPC installation")
+ok("lock table public.kupa_documents" in cut and "lock table public.order_management_documents" in cut,
+   "cutover: locks both source documents")
+ok("preflight_duplicate_backup_revision" in cut and "preflight_missing_backup_tables" in cut,
+   "cutover: validates backup infrastructure before writes")
+first_snapshot = cut.find("Snapshot בלתי-תלוי")
+for index_name in [
+    "kupa_document_backups_owner_doc_revision_uidx",
+    "kupa_periodic_backups_owner_doc_revision_uidx",
+    "order_management_backups_owner_doc_revision_uidx",
+    "order_management_periodic_backups_owner_doc_revision_uidx",
+]:
+    ok(0 <= cut.find(index_name) < first_snapshot, f"cutover: {index_name} exists before first source snapshot")
+ok("preflight_checks_not_identical_between_sources" in cut, "cutover: refuses divergent old check copies")
+ok("preflight_legacy_check_deposit_adjustment_exists" in cut, "cutover: refuses legacy duplicated bank effects")
+ok("preflight_bank_snapshot_not_fresh" in cut, "cutover: requires fresh bank baseline")
+ok("state = o.state - 'checks'" in cut, "cutover: removes checks from live Orders document")
+ok("k.state - 'checks' - 'bank'" in cut, "cutover: removes checks from live Kupa document")
+ok("'bankEvents','[]'::jsonb" in cut, "cutover: initializes empty post-baseline bank event log")
+
+pre = sqls["preflight"]
+post = sqls["postflight"]
+for label, text in [("preflight", pre), ("postflight", post)]:
+    without_comments = re.sub(r"--.*", "", text)
+    ok(not re.search(r"\b(insert|update|delete|alter|create|drop|truncate|grant|revoke)\b", without_comments, re.I),
+       f"{label}: read-only (no DML/DDL keywords)")
+ok("preflight_duplicate_backup_revision" in pre, "preflight: backup revision uniqueness checked")
+
+comparisons = [
+    ("save_kupa_document", sqls["kupa_setup"]),
+    ("kupa_guard_document_write", sqls["kupa_setup"]),
+    ("save_order_management_document", sqls["orders_setup"]),
+    ("order_management_guard_document_write", sqls["orders_setup"]),
+    ("save_shared_checks_document", sqls["shared_setup"]),
+    ("shared_checks_guard_document_write", sqls["shared_setup"]),
+]
+for name, standalone in comparisons:
+    in_cutover = funcdef(cut, name)
+    in_setup = funcdef(standalone, name)
+    ok(bool(in_cutover and in_setup), f"{name}: function exists in cutover and standalone setup")
+    if in_cutover and in_setup:
+        ok(norm(in_cutover) == norm(in_setup), f"{name}: cutover and standalone definitions are identical")
+    if name.startswith("save_") and in_cutover:
+        ok(not re.search(r"on\s+conflict\s*\(\s*owner_id\s*,\s*document_name\s*,\s*revision\s*\)", in_cutover, re.I),
+           f"{name}: ON CONFLICT does not collide with revision output parameter")
+
+shared = sqls["shared_setup"]
+for token, message in [
+    ("v_effect_delta := v_new_effect - v_old_effect", "amount/status changes become deltas"),
+    ("'delta', -v_old_effect", "deleting a deposited check creates reversal"),
+    ("nextval('public.shared_financial_event_seq')", "server allocates monotonic financial sequence"),
+    ("v_check := v_check - 'depositSeq' - 'depositedAt'", "client cannot forge deposit sequencing metadata"),
+]:
+    ok(token in shared, "shared RPC: " + message)
+ok("bulk_delete_all_shared_checks_forbidden" in shared,
+   "shared RPC: stale empty bootstrap cannot delete the complete shared list")
+
+ksetup = sqls["kupa_setup"]
+ok("bank_snapshot_watermark_ahead_of_server" in ksetup and "stale_bank_snapshot_watermark" in ksetup,
+   "kupa RPC: bank snapshot watermark validated against server")
+ok("jsonb_typeof(p_state->'checks') is not null" in ksetup or "p_state ? 'checks'" in ksetup,
+   "kupa RPC: post-cutover payload containing checks is rejected")
+osetup = sqls["orders_setup"]
+ok("jsonb_typeof(p_state->'checks') is not null" in osetup or "p_state ? 'checks'" in osetup,
+   "orders RPC: post-cutover payload containing checks is rejected")
+
+print("\nERRORS", len(errors))
+if errors:
+    for item in errors:
+        print("-", item)
+    sys.exit(1)

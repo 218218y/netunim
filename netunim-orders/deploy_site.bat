@@ -16,6 +16,23 @@ if not exist "%SITE_DIR%\index.html" (
   exit /b 1
 )
 
+rem Repository-wide verification is a hard deployment gate. Both applications
+rem share financial/checks contracts, so every deployment validates the pair together.
+if not exist "%~dp0..\verify.bat" (
+  echo ERROR: repository verifier was not found: %~dp0..\verify.bat
+  echo Keep both applications inside the netunim repository root.
+  pause
+  exit /b 2
+)
+echo Running full repository verification before deployment...
+call "%~dp0..\verify.bat" --no-pause
+if errorlevel 1 (
+  echo.
+  echo ERROR: verification failed. Deployment was cancelled before Wrangler started.
+  pause
+  exit /b 2
+)
+
 where node >nul 2>&1
 if errorlevel 1 (
   echo ERROR: Node.js was not found. Install a supported Node.js version or fix PATH.

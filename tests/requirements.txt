@@ -1,0 +1,2 @@
+# Browser runtime tests communicate with Chrome/Edge through the DevTools protocol.
+websocket-client>=1.8,<2
