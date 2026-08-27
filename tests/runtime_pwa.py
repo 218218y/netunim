@@ -5,6 +5,7 @@ are used. All data and cloud endpoints live in a disposable local test origin.
 """
 from browser_harness import BrowserSession, ROOT
 import json
+from pwa_upgrade import test_worker_upgrade
 
 
 def ready(browser):
@@ -89,3 +90,4 @@ for label, fixture in fixtures.items():
         errors=[e for e in errors if not e.startswith("Blocked attempt to show a 'beforeunload' confirmation panel")]
         assert not errors,errors
         print('PASS',label,'native ESM,',len(assets),'cached modules, offline reload/recovery, pending, second-tab guard')
+    test_worker_upgrade(label, fixture)

@@ -5,6 +5,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 for command in (
     [sys.executable, 'tools/sync-assets.py', '--check'],
+    [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],
     ['node', 'node_modules/eslint/bin/eslint.js', 'netunim-kupa/site', 'netunim-orders/site'],
     ['node', '--test', 'tests/business_models.test.mjs'],
