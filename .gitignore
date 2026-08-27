@@ -1,0 +1,90 @@
+# -----------------------------------------------------------------------------
+# Business/runtime data — never commit local working copies or backups.
+# These paths cover selecting either the repository root or an app root as the
+# local folder in the browser File System Access flow.
+# -----------------------------------------------------------------------------
+/data/
+/backups/
+/netunim-kupa/data/
+/netunim-kupa/backups/
+/netunim-orders/data/
+/netunim-orders/backups/
+
+# Legacy/current local data files if a working file is ever written directly
+# into one of the repository roots rather than its data/ directory.
+/kupa-data.json
+/orders-data.json
+/netunim-kupa/kupa-data.json
+/netunim-orders/orders-data.json
+
+# User-created backup/export files. Keep source/config JSON files trackable by
+# matching only the application's generated filename conventions.
+/kupa-backup*.json
+/orders-backup*.json
+/orders-before-restore_*.json
+/orders-export_*.csv
+/checks_*.csv
+/credits_*.csv
+/netunim-kupa/**/kupa-backup*.json
+/netunim-kupa/**/checks_*.csv
+/netunim-kupa/**/credits_*.csv
+/netunim-orders/**/orders-backup*.json
+/netunim-orders/**/orders-before-restore_*.json
+/netunim-orders/**/orders-export_*.csv
+
+# -----------------------------------------------------------------------------
+# Local secrets and provider-specific development credentials.
+# Public example/template files remain allowed so documented setup can be
+# committed safely when needed.
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.sample
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+!.dev.vars.sample
+
+# Private key/certificate containers should never enter this repository.
+*.key
+*.pem
+*.p12
+*.pfx
+
+# -----------------------------------------------------------------------------
+# Generated tooling state and dependency caches.
+# -----------------------------------------------------------------------------
+.wrangler/
+node_modules/
+.npm/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Supabase CLI local state.
+**/supabase/.temp/
+
+# Python validation/test artifacts.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.venv/
+
+# -----------------------------------------------------------------------------
+# Editor, OS and temporary files.
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.swp
+*.swo
+*~
+*.tmp
+*.temp
+*.log
