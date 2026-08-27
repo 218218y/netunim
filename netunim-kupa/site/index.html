@@ -16,7 +16,7 @@
 <body>
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <div class="brand"><h1>ניהול קופה</h1><small>מערכת קובץ נתונים ניידת</small></div>
+    <div class="brand"><h1>ניהול קופה</h1></div>
     <nav class="nav" id="nav">
       <button data-page="dashboard"><span class="ico">⌂</span> לוח בקרה</button>
       <button data-page="checks" class="active"><span class="ico">✓</span> צקים</button>
@@ -25,13 +25,12 @@
       <button data-page="bank"><span class="ico">▤</span> בנק</button>
       <button data-page="settings"><span class="ico">⚙</span> הגדרות וגיבוי</button>
     </nav>
-    <div class="sidebar-foot">הנתונים נשמרים בתיקייה מקומית או בענן Supabase לבחירתך.<br>אין שרת מקומי ואין Python.</div>
   </aside>
   <main class="main">
     <header class="topbar">
       <div style="display:flex;align-items:center;gap:10px">
         <button class="btn mobile-menu" id="mobileMenu">☰</button>
-        <div><h2 id="pageTitle">צקים</h2><div class="sub" id="pageSub">ניהול, הפקדה ומעקב לפי חודשים</div></div>
+        <div><h2 id="pageTitle">צקים</h2><div class="sub" id="pageSub"></div></div>
       </div>
       <div class="top-actions">
         <span class="cloud-head-status hide-mobile" id="cloudHeaderStatus" title="מצב סנכרון ענן"><i></i> ענן: לא מחובר</span><span class="file-status off hide-mobile" id="dbStatus"><i></i> קובץ לא נבחר</span><span class="save-indicator hide-mobile" id="saveIndicator"></span><button class="btn hide-mobile" id="backupTop">גיבוי עכשיו</button>

@@ -35,16 +35,16 @@ function renderDashboard(){
    ${kpiDisplay('מאזן כולל נטו',long.net,'#edf3ef','#557a68',long.net===null?'יש להזין יתרת עו״ש':`עו״ש − כל האשראי העתידי − חודש הוצאות + קופה`,{page:'bank',tab:''})}
   </div>
   <div class="grid two" style="margin-top:16px">
-   <section class="section"><div class="section-head"><div><h3>פעולות מהירות</h3><div class="muted">העבודה השוטפת בלי להיכנס לטבלאות</div></div></div><div class="section-body"><div class="quick">
+   <section class="section"><div class="section-head"><div><h3>פעולות מהירות</h3></div></div><div class="section-body"><div class="quick">
     <button data-action="open-check-modal"><b>+ צק חדש</b><span>שם, סכום ותאריך פירעון</span></button>
     <button data-action="open-credit-modal"><b>+ עסקת אשראי</b><span>סכום, כרטיס ומספר תשלומים</span></button>
     <button data-action="set-page"><b>בנק ועו״ש</b><span>יתרה, מחזור קרוב ומאזן כולל</span></button>
    </div></div></section>
-   <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3><div class="muted">חריגים מוצגים במלואם; פירעונות קרובים מסומנים בנפרד</div></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
+   <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
   </div>
   <div class="grid two" style="margin-top:16px">
-   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — צקים</h3><div class="muted">צקים שנמצאים בקופה לפי חודש פירעון</div></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.checks,max,'#76929a')).join('')}</div></div></section>
-   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — אשראי והוצאות</h3><div class="muted">רק התחייבויות שטרם הגיע מועדן</div></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.credit,max,'#638f87')).join('')}</div></div></section>
+   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — צקים</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.checks,max,'#76929a')).join('')}</div></div></section>
+   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — אשראי והוצאות</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.credit,max,'#638f87')).join('')}</div></div></section>
   </div>`}
 
 function kpiAttrs(action){

@@ -1,4 +1,4 @@
-export const TITLES={dashboard:['לוח בקרה','תמונת מצב ופעולות שוטפות'],checks:['צקים','ניהול, הפקדה ומעקב לפי חודשים'],credit:['אשראי','עסקאות ותשלומים עתידיים'],cash:['מזומן','תנועות ויתרה מחושבת'],bank:['בנק','עובר ושב, אשראי והוצאות קבועות'],settings:['הגדרות וגיבוי','כרטיסים, גיבוי ושחזור נתונים']};
+export const TITLES={dashboard:['לוח בקרה',''],checks:['צקים',''],credit:['אשראי',''],cash:['מזומן',''],bank:['בנק',''],settings:['הגדרות וגיבוי','']};
 export const SUPA_SESSION_KEY='kupa.supabase.session.v1';
 export const SUPA_SESSION_IDB_KEY='supabase-session-v2';
 export const SUPA_EMAIL_KEY='kupa.supabase.email.v1';
