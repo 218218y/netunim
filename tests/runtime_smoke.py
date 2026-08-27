@@ -49,8 +49,7 @@ for label, site in apps:
                       filterMode='all';searchText='';renderSupplier({scrollMode:'auto'});await frame();
                       let supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
                       if(!supplierWrap)return {ok:false,reason:'missing supplier scroll container'};
-                      const supplierSummary=document.querySelector('.supplier-bottom-summary');
-                      const supplierInitial={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight,summaryInScroller:supplierSummary?.parentElement===supplierWrap};
+                      const supplierInitial={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight};
 
                       filterSupplierSearch('פעולה 1');await frame();
                       filterSupplierSearch('');await frame();
@@ -103,14 +102,8 @@ for label, site in apps:
                       warehouseWrap=document.querySelector('.warehouse-view-shell .view-scroll');
                       const warehouseAfter=warehouseWrap?.scrollTop??-1;
 
-                      switchView('summary');await frame();
-                      const summaryWasActive=document.querySelector('[data-view="summary"]')?.classList.contains('active')===true;
-                      openSupplier('SMOKE-SUP');await frame();
-                      const supplierNavActive=document.querySelector('[data-view="supplier"]')?.classList.contains('active')===true;
-                      const summaryNavInactive=document.querySelector('[data-view="summary"]')?.classList.contains('active')===false;
-
                       return {
-                        ok:near(supplierInitial.top,supplierInitial.max)&&supplierInitial.max>0&&supplierInitial.summaryInScroller&&
+                        ok:near(supplierInitial.top,supplierInitial.max)&&supplierInitial.max>0&&
                            near(supplierCleared.top,supplierCleared.max)&&
                            near(supplierReturned,supplierManual)&&
                            customerLayout.outerScroll<=customerLayout.outerClient+1&&customerLayout.outerTop===0&&
@@ -118,12 +111,10 @@ for label, site in apps:
                            bottomScroll>0&&raisedTop>bottomTop+80&&near(customerAfter,customerBefore)&&
                            customerPadding==='2px'&&
                            serviceBefore>0&&near(serviceAfter,serviceBefore)&&
-                           warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
-                           summaryWasActive&&supplierNavActive&&summaryNavInactive,
+                           warehouseBefore>0&&near(warehouseAfter,warehouseBefore),
                         supplierInitial,supplierCleared,supplierManual,supplierReturned,customerLayout,
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
-                        serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
-                        summaryWasActive,supplierNavActive,summaryNavInactive
+                        serviceBefore,serviceAfter,warehouseBefore,warehouseAfter
                       };
                     })()"""
                 )

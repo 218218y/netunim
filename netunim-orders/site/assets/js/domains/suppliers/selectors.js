@@ -1,4 +1,4 @@
-import {supplierTxData, balanceRowsData, supplierBalanceData, supplierYearContextData, supplierArchiveYearsData, supplierPeriodTxData, supplierFinancialStatsData, totalStatsData, orderedSuppliersData} from './model.js';
+import {supplierTxData, balanceRowsData, supplierBalanceData, supplierYearContextData, totalStatsData, orderedSuppliersData} from './model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsSuppliersSelectors({model}){
@@ -10,15 +10,9 @@ function supplierBalance(...args){return supplierBalanceData(model.state,...args
 
 function supplierYearContext(...args){return supplierYearContextData(model.state,...args)}
 
-function supplierArchiveYears(...args){return supplierArchiveYearsData(model.state,...args)}
-
-function supplierPeriodTx(...args){return supplierPeriodTxData(model.state,...args)}
-
-function supplierFinancialStats(...args){return supplierFinancialStatsData(model.state,...args)}
-
 function totalStats(...args){return totalStatsData(model.state,...args)}
 
 function orderedSuppliers(...args){return orderedSuppliersData(model.state,...args)}
 
-return { supplierTx, balanceRows, supplierBalance, supplierYearContext, supplierArchiveYears, supplierPeriodTx, supplierFinancialStats, totalStats, orderedSuppliers };
+return { supplierTx, balanceRows, supplierBalance, supplierYearContext, totalStats, orderedSuppliers };
 }

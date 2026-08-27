@@ -8,7 +8,6 @@ return {
     checkTab:'open',
     checkYear:'all',
     checkSearchValue:'',
-    summarySupplierYearView:'current',
     scrollViewportMemory:new Map(),
     checksBulkMode:false,
     checksBulkSelected:new Set(),
