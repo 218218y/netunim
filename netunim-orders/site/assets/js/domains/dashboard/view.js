@@ -24,7 +24,7 @@ function renderSummary(){
   const suppliers=model.state.suppliers.map(s=>{const tx=supplierPeriodTx(s.id,yearView),financial=supplierFinancialStats(s.id,yearView),b=supplierBalance(s.id);return{id:s.id,name:s.name,b,financial,txCount:tx.length,pending:tx.filter(t=>t.supplied===false).length,missing:tx.filter(t=>t.invoiceReceived===false).length,hm:tx.filter(t=>t.hmIssued).length,unsigned:tx.filter(t=>t.signed===false).length}}).sort((a,b)=>Math.abs(b.financial.net)-Math.abs(a.financial.net)||a.name.localeCompare(b.name,'he'));
   const periodTotals=suppliers.reduce((acc,s)=>{acc.debit+=s.financial.debit;acc.credit+=s.financial.credit;return acc},{debit:0,credit:0});periodTotals.net=periodTotals.credit-periodTotals.debit;
   const yearLabel=yearView==='current'?'שנה שוטפת':yearView==='all'?'כל השנים':`שנת ${yearView}`,yearOptions=years.map(year=>`<option value="${esc(year)}" ${String(year)===yearView?'selected':''}>${esc(year)}</option>`).join('');
-  $('#main').innerHTML=`<section class="hero summary-hero"><div><h1>מאזן</h1><p>תמונה מרוכזת של ספקים, חובות לקוחות ומאזן הקופה, עם תחזית תזרימית לאחר גבייה ותשלום.</p></div></section>
+  $('#main').innerHTML=`<section class="hero summary-hero"><div><h1>מאזן</h1></div></section>
 <section class="finance-overview">
   <article class="forecast-card">
     <div class="forecast-label">מאזן תזרימי צפוי לאחר גביית הלקוחות ותשלום לספקים</div>
