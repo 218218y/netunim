@@ -119,9 +119,10 @@ self.addEventListener('fetch',event=>{
       }
       return response;
     }).catch(async()=>{
-      const cached=await caches.match(event.request);
+      const cache=await caches.open(CACHE);
+      const cached=await cache.match(event.request);
       if(cached)return cached;
-      if(event.request.mode==='navigate')return caches.match('./index.html');
+      if(event.request.mode==='navigate')return cache.match('./index.html');
       throw new Error('offline_and_not_cached');
     })
   );

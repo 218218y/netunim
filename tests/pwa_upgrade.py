@@ -123,6 +123,9 @@ def check_http_headers(browser):
 
 
 def test_worker_upgrade(label, fixture):
+    fake_app = "globalThis.__UNRELATED_CACHE_APP_JS_EXECUTED=true;"
+    fake_index = ('<!doctype html><title>Unrelated cache</title>'
+                  '<body>UNRELATED_CACHE_INDEX</body><script type="module" src="./assets/app.js"></script>')
     with UpgradeBrowser(label, fixture) as browser:
         browser.ws.settimeout(25)
         old = browser.evaluate("""(async()=>{
@@ -134,7 +137,12 @@ def test_worker_upgrade(label, fixture):
         assert 'external-assets' in old['name'], old
         assert not any('/assets/js/' in p for p in old['paths']), old
         before = browser.evaluate('JSON.stringify({...localStorage})')
-        browser.evaluate("caches.open('unrelated-cache').then(()=>true)")
+        browser.evaluate("""(async()=>{
+          const cache=await caches.open('unrelated-cache');
+          await cache.put('./assets/app.js',new Response("""+json.dumps(fake_app)+""",{headers:{'Content-Type':'text/javascript'}}));
+          await cache.put('./index.html',new Response("""+json.dumps(fake_index)+""",{headers:{'Content-Type':'text/html'}}));
+          return true;
+        })()""")
         browser.publish_upgrade()
         check_http_headers(browser)
         upgraded = browser.evaluate("""(async()=>{
@@ -147,29 +155,39 @@ def test_worker_upgrade(label, fixture):
           await changed;
           const active=(await navigator.serviceWorker.ready).active;
           if(active.state!=='activated')await new Promise(resolve=>active.addEventListener('statechange',()=>{if(active.state==='activated')resolve()}));
-          const names=await caches.keys(),cache=await caches.open(names.find(n=>n.includes('app-shell-esm-')));
+          const names=await caches.keys(),cacheName=names.find(n=>n.includes('app-shell-esm-')),cache=await caches.open(cacheName);
           const sha=async path=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await (await cache.match(path)).arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
           return {changed:navigator.serviceWorker.controller!==previous,names,
+            cacheName,globalEntry:await (await caches.match('./assets/app.js')).text(),
+            globalIndex:await (await caches.match('./index.html')).text(),
             paths:(await cache.keys()).map(r=>new URL(r.url).pathname),
             entryHash:await sha('./assets/app.js'),mainHash:await sha('./assets/js/main.js')};
         })()""")
         assert upgraded['changed'] and old['name'] not in upgraded['names'], upgraded
         assert 'unrelated-cache' in upgraded['names'], upgraded
+        assert upgraded['names'].index('unrelated-cache') < upgraded['names'].index(upgraded['cacheName']), upgraded
+        assert upgraded['globalEntry'] == fake_app and 'UNRELATED_CACHE_INDEX' in upgraded['globalIndex'], upgraded
         expected = ['/'+p.relative_to(browser.release).as_posix() for p in (browser.release/'assets').rglob('*.js')]
         assert set(expected).issubset(upgraded['paths']), upgraded
-        assert upgraded['entryHash'] == hashlib.sha256((browser.release/'assets/app.js').read_bytes()).hexdigest()
+        expected_entry_hash = hashlib.sha256((browser.release/'assets/app.js').read_bytes()).hexdigest()
+        assert upgraded['entryHash'] == expected_entry_hash
         assert upgraded['mainHash'] == hashlib.sha256((browser.release/'assets/js/main.js').read_bytes()).hexdigest()
         assert browser.evaluate('JSON.stringify({...localStorage})') == before
         browser.restart_offline()
         browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
-        recovered = browser.evaluate("""(()=>{
+        recovered = browser.evaluate("""(async()=>{
           const kupa="""+json.dumps(label=='kupa')+""";
+          const app=await fetch('./assets/app.js');
+          const appHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await app.arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
           if(kupa)document.querySelector('[data-page="cash"]').click();
           return {offline:!navigator.onLine,worker:!!navigator.serviceWorker.controller,
+            currentAsset:appHash==="""+json.dumps(expected_entry_hash)+""",
+            currentIndex:!document.body.textContent.includes('UNRELATED_CACHE_INDEX'),
+            unrelatedScript:!globalThis.__UNRELATED_CACHE_APP_JS_EXECUTED,
             data:document.body.textContent.includes(kupa?'PWA cash recovery':'PWA supplier recovery'),
             pending:!!localStorage.getItem(kupa?'kupa.cloud.pending.local.v1':'orders.supabase.pending.v1')};
         })()""")
         assert all(recovered.values()), recovered
         errors=browser.drain_serious_errors()
         assert not errors, errors
-        print('PASS',label,'legacy SW upgrade, full module cache, real HTTP headers/MIME, browser restart offline in',browser.offline_restart_ms,'ms and pending recovery')
+        print('PASS',label,'legacy SW upgrade, cache-scoped offline fallback, real HTTP headers/MIME, browser restart offline in',browser.offline_restart_ms,'ms and pending recovery')

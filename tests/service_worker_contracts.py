@@ -30,10 +30,19 @@ def runtime_probe(sw_path: Path):
 const fs=require('fs'),vm=require('vm');
 const source=fs.readFileSync(process.argv[1],'utf8');
 (async()=>{
-  const handlers={},calls={open:[],addAll:[],put:[],deleted:[],claim:0,skip:0,network:0};
+  const handlers={},calls={open:[],addAll:[],put:[],deleted:[],currentMatch:[],globalMatch:[],claim:0,skip:0,network:0};
+  let currentAssetRequest=null;
+  const currentAsset={tag:'current-app-js'},currentIndex={tag:'current-index'};
+  const unrelatedAsset={tag:'unrelated-app-js'},unrelatedIndex={tag:'unrelated-index'};
   const cache={
     addAll:async items=>{calls.addAll.push([...items])},
-    put:async(req,res)=>{calls.put.push(typeof req==='string'?req:req.url||'request')}
+    put:async(req,res)=>{calls.put.push(typeof req==='string'?req:req.url||'request')},
+    match:async key=>{
+      calls.currentMatch.push(typeof key==='string'?key:key.url||'request');
+      if(key===currentAssetRequest)return currentAsset;
+      if(key==='./index.html')return currentIndex;
+      return null;
+    }
   };
   const context={
     console,URL,Promise,Error,setTimeout,clearTimeout,
@@ -42,7 +51,12 @@ const source=fs.readFileSync(process.argv[1],'utf8');
       open:async name=>{calls.open.push(name);return cache},
       keys:async()=>['old-cache','current-placeholder'],
       delete:async key=>{calls.deleted.push(key);return true},
-      match:async()=>null
+      match:async key=>{
+        calls.globalMatch.push(typeof key==='string'?key:key.url||'request');
+        if(key===currentAssetRequest)return unrelatedAsset;
+        if(key==='./index.html')return unrelatedIndex;
+        return null;
+      }
     },
     fetch:async request=>{calls.network++;return {ok:true,tag:'network',clone(){return {ok:true,tag:'clone'}}}}
   };
@@ -54,11 +68,9 @@ const source=fs.readFileSync(process.argv[1],'utf8');
   const onlineReq={method:'GET',url:'https://app.test/index.html',mode:'navigate'};
   const online=event({request:onlineReq});handlers.fetch(online);const onlineRes=await online._response();await Promise.all(online._waits);
   context.fetch=async()=>{calls.network++;throw new Error('offline')};
-  const cached={tag:'cached'};const cachedReq={method:'GET',url:'https://app.test/assets/app.css',mode:'no-cors'};
-  context.caches.match=async key=>key===cachedReq?cached:null;
+  const cachedReq={method:'GET',url:'https://app.test/assets/app.js',mode:'no-cors'};currentAssetRequest=cachedReq;
   const offlineCached=event({request:cachedReq});handlers.fetch(offlineCached);const cachedRes=await offlineCached._response();
-  const navReq={method:'GET',url:'https://app.test/other',mode:'navigate'};const fallback={tag:'fallback'};
-  context.caches.match=async key=>key==='./index.html'?fallback:null;
+  const navReq={method:'GET',url:'https://app.test/other',mode:'navigate'};
   const offlineNav=event({request:navReq});handlers.fetch(offlineNav);const fallbackRes=await offlineNav._response();
   const cross=event({request:{method:'GET',url:'https://other.test/a',mode:'no-cors'}});handlers.fetch(cross);
   const post=event({request:{method:'POST',url:'https://app.test/a',mode:'same-origin'}});handlers.fetch(post);
@@ -67,6 +79,7 @@ const source=fs.readFileSync(process.argv[1],'utf8');
     installShell:calls.addAll[0]||[],skip:calls.skip,claim:calls.claim,
     deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
     cached:cachedRes&&cachedRes.tag,fallback:fallbackRes&&fallbackRes.tag,
+    currentMatches:calls.currentMatch,globalMatches:calls.globalMatch,
     crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
   }));
 })().catch(e=>{console.error(e);process.exit(1)});
@@ -123,15 +136,15 @@ for label, site in APPS.items():
        f"{label}: non-GET requests bypass cache handling")
     ok("url.origin!==self.location.origin" in text,
        f"{label}: cross-origin requests bypass cache handling")
-    ok("event.request.mode==='navigate'" in text and "caches.match('./index.html')" in text,
-       f"{label}: offline navigation falls back to cached index.html")
+    ok("event.request.mode==='navigate'" in text and "cache.match('./index.html')" in text,
+       f"{label}: offline navigation fallback is scoped to the current app cache")
     ok("keys.filter" in text and "caches.delete" in text,
        f"{label}: activation removes obsolete caches")
     # Both apps deliberately use network-first for same-origin GETs. This means a
     # deployment can refresh static files even if the cache name is not manually bumped.
     fetch_pos = text.find("event.respondWith")
     network_pos = text.find("fetch(event.request)", fetch_pos)
-    cache_pos = text.find("caches.match(event.request)", fetch_pos)
+    cache_pos = text.find("cache.match(event.request)", fetch_pos)
     ok(fetch_pos >= 0 and network_pos >= 0 and (cache_pos < 0 or network_pos < cache_pos),
        f"{label}: normal same-origin GET path is network-first")
 
@@ -144,8 +157,9 @@ for label, site in APPS.items():
         ok(probe.get("skip") == 1 and probe.get("claim") == 1, f"{label}: install/activate take control immediately")
         ok(probe.get("deleted") == [probe.get('oldCache')], f"{label}: activate deletes only this app's obsolete caches")
         ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
-        ok(probe.get("cached") == "cached", f"{label}: offline cached asset is returned")
-        ok(probe.get("fallback") == "fallback", f"{label}: offline uncached navigation returns index fallback")
+        ok(probe.get("cached") == "current-app-js", f"{label}: offline asset ignores a conflicting unrelated cache")
+        ok(probe.get("fallback") == "current-index", f"{label}: navigation fallback ignores a conflicting unrelated cache")
+        ok(not probe.get("globalMatches"), f"{label}: offline fallback never searches all origin caches")
         ok(not probe.get("crossResponded") and not probe.get("postResponded"), f"{label}: cross-origin and non-GET requests are untouched")
         ok(not probe.get('businessResponded'),f'{label}: same-origin business data is never intercepted or cached')
 

@@ -60,7 +60,9 @@ complete shell list and content-derived cache version. Text hashing normalizes L
 commit produces the same cache name on every checkout; binary image bytes remain exact. A real asset-content
 change still requires regeneration. --check is read-only and fails on drift. There is no cross-site runtime import.
 Both workers are network-first, precache every module, keep offline navigation fallback and only cache allowlisted
-public shell assets. Cross-origin, non-GET and business-data requests bypass interception. Cleanup is app-scoped.
+public shell assets. Offline reads are scoped explicitly to the current CACHE; unrelated origin caches are retained
+but can never supply application assets or navigation fallback. Cross-origin, non-GET and business-data requests
+bypass interception. Cleanup is app-scoped.
 
 Development contract
 --------------------

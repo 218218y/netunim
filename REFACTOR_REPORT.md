@@ -43,6 +43,10 @@ still invalidate the cache and require an explicit sync. The generator uses stab
 - The performance suite sampled eight renders in one CDP request but retained the five-second socket timeout meant
   for one render. Its transport deadline now derives from sample count and the unchanged per-render limit, so slow
   valid samples reach the assertions while a pathological render still fails the five-second performance contract.
+- Offline fallback used CacheStorage.match, whose search spans every cache on the origin, while cleanup correctly
+  preserves caches the app does not own. Both workers now open their exact current cache before asset or navigation
+  lookup. VM and real-Chromium regressions place fake app.js/index.html responses in an older unrelated cache and
+  prove that a browser restart without any HTTP response still receives only the current application's shell.
 
 The no-op Excel catchup wrapper, obsolete alias entrypoints and redundant strict-mode expression were removed
 only after checking actual callers, action bindings and tests. Legacy backup metadata/migrations remain intact.
@@ -52,7 +56,7 @@ Legacy validation command wrappers are intentionally retained and forward to the
 
 The gate runs 14 suites: static, asset, deploy safety, Service Worker, modules/lint/direct tests,
 smoke, events, security, workflows, native PWA, performance, data integrity, sync/recovery and financial invariants.
-The direct Node suites contain 24 tests. Existing SQL/RPC/financial checks were retained.
+The direct Node suites contain 27 tests. Existing SQL/RPC/financial checks were retained.
 
 New browser coverage exercises creation, editing, deletion, check deposit/clear, credit, cash, expenses,
 supplier transactions, customer debts, service, inventory partial receipts/reservations, warehouse, notes,
@@ -284,7 +288,7 @@ The former app.js files are now tiny entrypoints. A later release-hardening pass
 ## Final local results
 
 - verify.bat --no-pause: PASS, all 14 suites; process exit code 0.
-- Direct Node tests: 24/24 PASS; pinned ESLint and acyclic module graph PASS.
+- Direct Node tests: 27/27 PASS; pinned ESLint and acyclic module graph PASS.
 - Kupa deploy_site.bat --preflight-only: PASS, process exit code 0, no Wrangler/upload.
 - Orders deploy_site.bat --preflight-only: PASS, process exit code 0, no Wrangler/upload.
 - git diff --check: PASS (only normal Windows line-ending notices).

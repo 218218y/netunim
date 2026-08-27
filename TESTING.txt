@@ -35,7 +35,8 @@ Suites
 static_contracts.py: syntax, SQL/RPC, ownership, financial sequencing and deployment gates.
 asset_contracts.py: ESM entry, inert/empty seed, CSP and zero inline executable event attributes.
 deploy_preflight.py: read-only public file allowlist, blocked directories, size and secret scans.
-service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and offline fallback.
+service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and cache-scoped
+  offline fallback that rejects conflicting assets from unrelated origin caches.
 module_contracts.py: deterministic shared copies/cache manifest, normalized cross-platform text hashing,
   byte-exact binary hashing, read-only/idempotent generation, acyclic local module graph, layer boundaries,
   no runtime globals/test APIs, pinned ESLint rules and direct Node tests.
@@ -45,7 +46,8 @@ runtime_security.py: hostile business fields and IDs in lists, selectors and mod
 runtime_workflows.py: create/edit/delete, financial/check flows, inventory/reservations, notes and file restore.
 runtime_pwa.py: uninstrumented ESM, real SW installation, all cached modules, offline reload/recovery,
   preserved pending and actual second-tab Web Locks protection; upgrades each historical worker fixture in place,
-  verifies current cached bytes and local HTTP security headers/MIME, then restarts Chromium with no HTTP response.
+  verifies current cached bytes and local HTTP security headers/MIME, poisons an older unrelated cache with fake
+  app.js/index.html responses, then restarts Chromium with no HTTP response and proves the current cache wins.
 runtime_performance.py: eight renders of 1,000 records; bounded time, stable listeners and no render-time writes/RPC.
 runtime_data_integrity.py: backup round-trip, wrong formats/future schemas, cloud ownership and merge.
 runtime_sync_recovery.py: offline persistence, resume, independent edits, same-record conflicts and revision retry.
