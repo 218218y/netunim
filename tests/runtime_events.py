@@ -49,6 +49,10 @@ expressions = {
  state.suppliers=[{id:'S1',name:'Supplier',active:true,sortOrder:0},{id:'S2',name:'Second',active:true,sortOrder:1}];
  state.transactions=[{id:'T1',supplierId:'S1',sequence:1,action:'Action',debit:10,credit:0,invoiceReceived:null,signed:null,supplied:null,note:'',supplyInfo:''}];
  currentSupplierId='S1';switchView('supplier');await frame();
+ openTransactionModal('T1');
+ if(document.getElementById('fInvoice').value!=='null'||document.getElementById('fSigned').value!=='null'||document.getElementById('fSupplied').value!=='null')throw new Error('Tri-state modal did not preserve not-applicable values');
+ document.getElementById('fNote').value='Edited note';clickText('#modal','שמור');await frame();
+ if(state.transactions[0].invoiceReceived!==null||state.transactions[0].signed!==null||state.transactions[0].supplied!==null)throw new Error('Editing another field changed not-applicable tri-state values');
  const yes=document.querySelector('.status-toggle .yes');yes.click();
  if(state.transactions[0].invoiceReceived!==true)throw new Error('Tri-state yes failed');
  document.querySelector('.status-toggle .yes').click();
