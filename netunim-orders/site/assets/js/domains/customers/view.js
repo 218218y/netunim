@@ -18,7 +18,7 @@ function renderCustomers({resultsOnly=false}={}){
       if(q&&!`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(q))return false;
       return true;
     }).sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
-    table=`<table class="customer-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th>לקוח</th><th>סכום</th><th>הזמנה</th><th>שולם</th><th>חשבונית יצאה</th><th>מצב</th><th>הערה</th><th></th></tr></thead><tbody>${rows.map(debtRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?9:8)}" class="empty">אין חובות המתאימים לסינון.</td></tr>`}</tbody></table>`;
+    table=`<table class="customer-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th>לקוח</th><th class="table-head-center">סכום</th><th>הזמנה</th><th class="table-head-center">שולם</th><th class="table-head-center">חשבונית יצאה</th><th class="table-head-badge-text">מצב</th><th class="table-head-input-text">הערה</th><th></th></tr></thead><tbody>${rows.map(debtRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?9:8)}" class="empty">אין חובות המתאימים לסינון.</td></tr>`}</tbody></table>`;
   }else{
     const rows=(model.state.customerOrders||[]).filter(o=>{
       if(customerUi.customerOrderFilter==='mattress'&&!o.mattressMarked)return false;

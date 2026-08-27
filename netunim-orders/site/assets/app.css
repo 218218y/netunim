@@ -125,6 +125,10 @@ button,input,select,textarea{font-family:inherit;color:inherit}
 table{min-width:1300px;font-size:14px;border-collapse:separate;border-spacing:0;background:#fff}
 th,td{padding:9px 10px;border-left:0;border-bottom:1px solid #eeeae6;text-align:right;vertical-align:middle}
 th{position:sticky;top:0;z-index:3;background:#f8f5f2;color:#65605c;font-size:12px;font-weight:750;letter-spacing:0;white-space:nowrap;box-shadow:0 1px 0 #e3ddd7}
+/* יישור כותרות לפי מרכז השדה או לפי תחילת הטקסט הפנימי (10px תא + border + padding). */
+th.table-head-center{text-align:center}
+th.table-head-input-text{text-align:right;padding-inline-start:calc(10px + 1px + 7px)}
+th.table-head-badge-text{text-align:right;padding-inline-start:calc(10px + 1px + 8px)}
 tbody tr{transition:background .12s ease,box-shadow .12s ease}
 tbody tr:hover td{background:#fcfaf8}
 tbody tr:last-child td{border-bottom:0}
