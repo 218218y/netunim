@@ -31,7 +31,17 @@ function captureSupplierViewport(){const main=$('#main'),wrap=main?.querySelecto
 
 function storeSupplierViewport(supplierId,wrap){if(!supplierId||!wrap)return;supplierUi.supplierViewportMemory.set(supplierId,{...scrollViewportSnapshot(wrap),windowY:window.scrollY})}
 
-function restoreSupplierViewport(viewport,supplierId,scrollMode='auto'){const wrap=$('#main')?.querySelector('.table-wrap');if(!wrap)return;wrap.addEventListener('scroll',()=>storeSupplierViewport(supplierId,wrap),{passive:true});requestAnimationFrame(()=>{const same=viewport?.supplierId===supplierId,saved=same?viewport:supplierUi.supplierViewportMemory.get(supplierId),maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight);if(scrollMode==='end')wrap.scrollTop=maxTop;else if(scrollMode==='start')wrap.scrollTop=0;else if(saved){wrap.scrollTop=saved.atEnd?maxTop:Math.min(saved.top,maxTop);wrap.scrollLeft=saved.left;if(Number.isFinite(saved.windowY))window.scrollTo({top:saved.windowY,left:window.scrollX,behavior:'auto'})}else wrap.scrollTop=maxTop;storeSupplierViewport(supplierId,wrap)})}
+function supplierTransactionsEndTop(wrap){
+  if(!wrap)return 0;
+  const maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight),table=wrap.querySelector('table');
+  if(!table)return maxTop;
+  const afterLastRow=24;
+  return Math.min(maxTop,Math.max(0,table.offsetTop+table.offsetHeight-wrap.clientHeight+afterLastRow));
+}
 
-return { scrollViewportSnapshot, storeScrollViewport, restoreScrollViewport, bindScrollViewport, mountViewLayout, captureSupplierViewport, storeSupplierViewport, restoreSupplierViewport };
+function scrollSupplierTransactionsEnd(wrap){if(wrap)wrap.scrollTop=supplierTransactionsEndTop(wrap)}
+
+function restoreSupplierViewport(viewport,supplierId,scrollMode='auto'){const wrap=$('#main')?.querySelector('.table-wrap');if(!wrap)return;wrap.addEventListener('scroll',()=>storeSupplierViewport(supplierId,wrap),{passive:true});requestAnimationFrame(()=>{const same=viewport?.supplierId===supplierId,saved=same?viewport:supplierUi.supplierViewportMemory.get(supplierId),maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight);if(scrollMode==='end')scrollSupplierTransactionsEnd(wrap);else if(scrollMode==='start')wrap.scrollTop=0;else if(saved){wrap.scrollTop=saved.atEnd?maxTop:Math.min(saved.top,maxTop);wrap.scrollLeft=saved.left;if(Number.isFinite(saved.windowY))window.scrollTo({top:saved.windowY,left:window.scrollX,behavior:'auto'})}else scrollSupplierTransactionsEnd(wrap);storeSupplierViewport(supplierId,wrap)})}
+
+return { scrollViewportSnapshot, storeScrollViewport, restoreScrollViewport, bindScrollViewport, mountViewLayout, captureSupplierViewport, storeSupplierViewport, supplierTransactionsEndTop, scrollSupplierTransactionsEnd, restoreSupplierViewport };
 }

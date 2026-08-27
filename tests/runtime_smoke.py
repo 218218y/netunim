@@ -27,8 +27,8 @@ for label, site in apps:
                       state.suppliers=[{id:'SMOKE-SUP',name:'ספק בדיקה',active:true,sortOrder:0}];
                       state.transactions=Array.from({length:90},(_,i)=>({
                         id:'SMOKE-TR-'+i,supplierId:'SMOKE-SUP',sequence:i+1,kind:'הערה',
-                        action:'פעולה '+i,debit:0,credit:0,invoiceReceived:null,signed:null,supplied:null,
-                        supplyInfo:'',hmIssued:false,note:'',updatedAt:''
+                        action:'פעולה '+i,debit:(i+1)*10,credit:i%3===0?5:0,invoiceReceived:i%5===0?false:true,signed:true,supplied:i%4===0?false:true,
+                        supplyInfo:'',hmIssued:i%6===0,note:'',updatedAt:''
                       }));
                       state.customerDebts=Array.from({length:70},(_,i)=>({
                         id:'SMOKE-DEBT-'+i,customerName:'לקוח '+i,amount:1000+i,orderNumber:String(1000+i),
@@ -50,11 +50,26 @@ for label, site in apps:
                       let supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
                       if(!supplierWrap)return {ok:false,reason:'missing supplier scroll container'};
                       const supplierSummary=document.querySelector('.supplier-bottom-summary');
-                      const supplierInitial={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight,summaryInScroller:supplierSummary?.parentElement===supplierWrap};
+                      const initialTarget=supplierTransactionsEndTop(supplierWrap),supplierInitial={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight,target:initialTarget,summaryInScroller:supplierSummary?.parentElement===supplierWrap};
+                      const summaryValues=()=>({
+                        debit:document.querySelector('[data-supplier-summary="debit"]')?.textContent||'',
+                        credit:document.querySelector('[data-supplier-summary="credit"]')?.textContent||'',
+                        net:document.querySelector('[data-supplier-summary="net"]')?.textContent||'',
+                        meta:document.querySelector('[data-supplier-summary="meta"]')?.textContent||''
+                      });
+                      const statsFor=rows=>transactionFinancialStatsData(rows),matchesStats=(actual,stats)=>actual.debit===money(stats.debit)&&actual.credit===money(stats.credit)&&actual.net===money(stats.net)&&actual.meta.includes(`${stats.txCount} תנועות מוצגות`);
+                      const initialStats=statsFor(state.transactions),supplierInitialSummary=summaryValues();
 
                       filterSupplierSearch('פעולה 1');await frame();
+                      const searchRows=state.transactions.filter(t=>t.action.includes('פעולה 1')),supplierSearchSummary=summaryValues();
                       filterSupplierSearch('');await frame();
-                      const supplierCleared={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight};
+                      const clearedTarget=supplierTransactionsEndTop(supplierWrap),supplierCleared={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight,target:clearedTarget},supplierClearedSummary=summaryValues();
+
+                      filterMode='pending';renderSupplier({scrollMode:'end'});await frame();
+                      supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
+                      const pendingStats=statsFor(state.transactions.filter(t=>t.supplied===false)),supplierPendingSummary=summaryValues();
+                      filterMode='all';renderSupplier({scrollMode:'end'});await frame();
+                      supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
 
                       supplierWrap.scrollTop=Math.round((supplierWrap.scrollHeight-supplierWrap.clientHeight)*0.42);await frame();
                       const supplierManual=supplierWrap.scrollTop;
@@ -110,8 +125,10 @@ for label, site in apps:
                       const summaryNavInactive=document.querySelector('[data-view="summary"]')?.classList.contains('active')===false;
 
                       return {
-                        ok:near(supplierInitial.top,supplierInitial.max)&&supplierInitial.max>0&&supplierInitial.summaryInScroller&&
-                           near(supplierCleared.top,supplierCleared.max)&&
+                        ok:near(supplierInitial.top,supplierInitial.target)&&supplierInitial.max>supplierInitial.target+20&&supplierInitial.summaryInScroller&&
+                           matchesStats(supplierInitialSummary,initialStats)&&matchesStats(supplierSearchSummary,statsFor(searchRows))&&
+                           near(supplierCleared.top,supplierCleared.target)&&supplierCleared.max>supplierCleared.target+20&&matchesStats(supplierClearedSummary,initialStats)&&
+                           matchesStats(supplierPendingSummary,pendingStats)&&
                            near(supplierReturned,supplierManual)&&
                            customerLayout.outerScroll<=customerLayout.outerClient+1&&customerLayout.outerTop===0&&
                            customerLayout.innerScroll>customerLayout.innerClient&&customerLayout.summaryInScroller&&
@@ -120,7 +137,7 @@ for label, site in apps:
                            serviceBefore>0&&near(serviceAfter,serviceBefore)&&
                            warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
                            summaryWasActive&&supplierNavActive&&summaryNavInactive,
-                        supplierInitial,supplierCleared,supplierManual,supplierReturned,customerLayout,
+                        supplierInitial,supplierCleared,supplierInitialSummary,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierManual,supplierReturned,customerLayout,
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
                         serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
                         summaryWasActive,supplierNavActive,summaryNavInactive

@@ -4,7 +4,7 @@ import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netun
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
-import {supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
+import {supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
 import {inventoryStatsData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/model.js';
@@ -78,6 +78,11 @@ test('supplier financial summaries respect year boundaries without recounting ar
  assert.deepEqual(supplierFinancialStatsData(state,'S','2025'),{debit:100,credit:0,net:-100,txCount:1});
  assert.deepEqual(supplierFinancialStatsData(state,'S','all'),{debit:100,credit:30,net:-70,txCount:2});
  assert.deepEqual(supplierFinancialStatsData(state,'T','2025'),{debit:0,credit:0,net:0,txCount:0});
+});
+test('transaction financial summary can be derived from the exact displayed subset',()=>{
+ const rows=[{debit:120,credit:0},{debit:0,credit:35.5},{debit:10,credit:5.25}];
+ assert.deepEqual(transactionFinancialStatsData(rows),{debit:130,credit:40.75,net:-89.25,txCount:3});
+ assert.deepEqual(transactionFinancialStatsData([rows[1]]),{debit:0,credit:35.5,net:35.5,txCount:1});
 });
 test('opening a supplier from another view re-renders through central navigation',()=>{
  const supplierUi={currentSupplierId:null,supplierMoveTargetId:'X',supplierBulkSelected:new Set(['A']),supplierYearView:'all',filterMode:'pending',searchText:'abc'};

@@ -20,12 +20,16 @@ export function supplierPeriodTxData(state,id,yearView='current'){
   return year===null?ctx.rows.filter(t=>!ctx.yearById.has(t.id)):ctx.rows.filter(t=>ctx.yearById.get(t.id)===year);
 }
 
-export function supplierFinancialStatsData(state,id,yearView='current'){
-  let debit=0,credit=0;const rows=supplierPeriodTxData(state,id,yearView);
-  for(const t of rows){debit+=Number(t.debit||0);credit+=Number(t.credit||0)}
+export function transactionFinancialStatsData(transactions=[]){
+  let debit=0,credit=0;
+  for(const t of transactions){debit+=Number(t?.debit||0);credit+=Number(t?.credit||0)}
   const round=value=>Math.round((value+Number.EPSILON)*100)/100;
   debit=round(debit);credit=round(credit);
-  return{debit,credit,net:round(credit-debit),txCount:rows.length};
+  return{debit,credit,net:round(credit-debit),txCount:transactions.length};
+}
+
+export function supplierFinancialStatsData(state,id,yearView='current'){
+  return transactionFinancialStatsData(supplierPeriodTxData(state,id,yearView));
 }
 
 export function totalStatsData(state){let debt=0,credit=0,pending=0,missing=0,hm=0;for(const s of state.suppliers){const b=supplierBalanceData(state,s.id);if(b<0)debt+=-b;else credit+=b}for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++;if(t.hmIssued)hm++}return{debt,credit,pending,missing,hm,net:credit-debt}}

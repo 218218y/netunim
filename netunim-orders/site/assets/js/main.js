@@ -289,7 +289,6 @@ const domainsSuppliersView=createDomainsSuppliersView({
   supplierUi,
   balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-  supplierFinancialStats:(...args)=>domainsSuppliersSelectors.supplierFinancialStats(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   captureSupplierViewport:(...args)=>uiLayout.captureSupplierViewport(...args),
@@ -297,6 +296,7 @@ const domainsSuppliersView=createDomainsSuppliersView({
   syncSupplierBulkUi:(...args)=>domainsSuppliersBulk.syncSupplierBulkUi(...args),
   supplierMoveTargetRow:(...args)=>domainsSuppliersBulk.supplierMoveTargetRow(...args),
   storeSupplierViewport:(...args)=>uiLayout.storeSupplierViewport(...args),
+  scrollSupplierTransactionsEnd:(...args)=>uiLayout.scrollSupplierTransactionsEnd(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
 });
 
