@@ -4,7 +4,8 @@ import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netun
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
-import {supplierBalanceData, supplierYearContextData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
+import {supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
+import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
 import {inventoryStatsData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/model.js';
 import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
@@ -65,6 +66,27 @@ test('supplier totals and intermediate balances retain transaction sequence',()=
  const state={transactions:[{id:'B',supplierId:'S',sequence:2,debit:0,credit:50},{id:'A',supplierId:'S',sequence:1,debit:100,credit:0}]};
  assert.equal(supplierBalanceData(state,'S'),-50);
  const ctx=supplierYearContextData(state,'S');assert.deepEqual(ctx.rows.map(r=>r.id),['A','B']);
+});
+test('supplier financial summaries respect year boundaries without recounting archived carry rows',()=>{
+ const state={suppliers:[{id:'S'},{id:'T'}],transactions:[
+  {id:'A',supplierId:'S',sequence:1,debit:100,credit:0,yearEnd:2025,invoiceReceived:false,signed:false,supplied:false},
+  {id:'B',supplierId:'S',sequence:2,debit:0,credit:30},
+  {id:'C',supplierId:'T',sequence:1,debit:20,credit:0,yearEnd:2024}
+ ]};
+ assert.deepEqual(supplierArchiveYearsData(state),[2025,2024]);
+ assert.deepEqual(supplierFinancialStatsData(state,'S','current'),{debit:0,credit:30,net:30,txCount:1});
+ assert.deepEqual(supplierFinancialStatsData(state,'S','2025'),{debit:100,credit:0,net:-100,txCount:1});
+ assert.deepEqual(supplierFinancialStatsData(state,'S','all'),{debit:100,credit:30,net:-70,txCount:2});
+ assert.deepEqual(supplierFinancialStatsData(state,'T','2025'),{debit:0,credit:0,net:0,txCount:0});
+});
+test('opening a supplier from another view re-renders through central navigation',()=>{
+ const supplierUi={currentSupplierId:null,supplierMoveTargetId:'X',supplierBulkSelected:new Set(['A']),supplierYearView:'all',filterMode:'pending',searchText:'abc'};
+ const ui={currentView:'summary'};let renderArgs=null,directSupplierRenders=0;
+ const nav=createDomainsSuppliersNavigation({supplierUi,ui,supplierYearContext:()=>({years:[]}),renderSupplier:()=>{directSupplierRenders++},render:args=>{renderArgs=args}});
+ nav.openSupplier('S');
+ assert.equal(ui.currentView,'supplier');assert.equal(supplierUi.currentSupplierId,'S');assert.equal(supplierUi.supplierYearView,'current');
+ assert.equal(supplierUi.filterMode,'all');assert.equal(supplierUi.searchText,'');assert.equal(supplierUi.supplierBulkSelected.size,0);
+ assert.deepEqual(renderArgs,{supplierScrollMode:'end'});assert.equal(directSupplierRenders,0);
 });
 test('pending freshness favors generation before timestamp',()=>{
  assert.ok(comparePendingFreshness({generation:4,savedAt:'2026-01-01'},{generation:3,savedAt:'2027-01-01'})>0);

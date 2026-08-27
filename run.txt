@@ -1,0 +1,6 @@
+cd netunim-kupa\site
+npx serve .
+
+cd netunim-orders\site
+npx serve .
+
