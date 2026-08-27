@@ -1,0 +1,51 @@
+ניהול הזמנות — Supabase / ארכיטקטורת ענן לאחר הפרדת הצ׳קים
+============================================================
+
+מבנה הנתונים
+-------------
+- נתוני ספקים, לקוחות, הזמנות, שירות ומלאי: order_management_documents דרך save_order_management_document.
+- הצ׳קים: מקור אמת יחיד ונפרד shared_checks_documents/main דרך save_shared_checks_document.
+- נתוני קופה/בנק/אשראי/מזומן: kupa_documents/main. ניהול ההזמנות קורא אותם רק לצורך כרטיס הסיכום ואינו כותב אותם.
+- אין יותר עותק פעיל של checks בתוך order_management_documents או kupa_documents.
+
+מיקום קובצי SQL
+----------------
+- ניהול הזמנות: netunim-orders/supabase/setup.sql
+- דומיין הצ׳קים המשותף: netunim-orders/supabase/shared/setup.sql
+- מיגרציית מעבר היסטורית בלבד: netunim-orders/supabase/shared/cutover.sql
+- בדיקות המעבר: preflight.sql / postflight.sql באותה תיקיית shared.
+
+התקנה חדשה
+-----------
+1. הרץ netunim-orders/supabase/setup.sql.
+2. הרץ netunim-kupa/supabase/setup.sql.
+3. הרץ netunim-orders/supabase/shared/setup.sql.
+4. ודא שקיים משתמש Email/Password ב-Supabase Authentication.
+5. פתח את netunim-orders/site/index.html דרך האתר או דרך localhost, עבור להגדרות והתחבר לענן.
+
+מערכת שכבר עברה Cutover
+------------------------
+- אין להריץ שוב cutover.sql לצורך עבודה שוטפת.
+- setup.sql של כל דומיין הוא קובץ התחזוקה/הקמה של המבנה הקיים.
+- cutover.sql נשמר לתיעוד ושחזור תהליך המעבר בלבד.
+
+סנכרון ובטיחות
+---------------
+- לכל דומיין Revision עצמאי. שינוי בצ׳ק אינו גורר שמירת מסמך קופה שלם, ושינוי בקופה אינו גורר שמירת צ׳קים.
+- שינויי צ׳קים מקבילים עוברים מיזוג לפי בסיס/מקומי/ענן; התנגשות אמיתית באותה רשומה נעצרת במקום לדרוס.
+- שינוי Offline נשמר מקומית עד לסנכרון. אין למחוק Site Data לפני שהסטטוס חזר למסונכרן.
+- השפעת הפקדה/החזרה על הבנק נשמרת באמצעות bankEvents וסדר אירועים שרתי, ולא באמצעות רשומת check_deposit כפולה בתוך מסמך הקופה.
+- נשמרות גרסאות קודמות וגיבויים תקופתיים לפי חוזי ה-SQL.
+
+שמירה מקומית
+-------------
+- site/index.html כולל את מנגנון התיקייה המקומית המלא.
+- ניתן לחבר תיקייה, ואז קובץ העבודה נכתב ל-data/orders-data.json וגיבויים ל-backups/. שמות הקבצים החדשים נוצרים באנגלית בלבד.
+- לפיתוח מקומי מומלץ להגיש את תיקיית site דרך http://localhost (למשל VS Code Live Server או שרת סטטי אחר) ולא להסתמך על file://. כך File System Access, Service Worker ו-PWA עובדים בתנאים הדומים לאתר.
+
+אבטחה
+------
+- קובץ תצורת הדפדפן הפעיל הוא netunim-orders/site/supabase/config.js. העותק netunim-orders/supabase/config.js אינו נדרש וניתן למחיקה.
+- בדפדפן נמצא Publishable Key בלבד; אין לשים service_role/secret.
+- RLS פעיל והכתיבה למסמכים הראשיים עוברת דרך RPC עם Revision ו-write guard.
+- לפריסה ציבורית מעלים רק את תיקיית site/.

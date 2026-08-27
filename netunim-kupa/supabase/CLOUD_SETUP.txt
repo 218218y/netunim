@@ -1,0 +1,50 @@
+ניהול קופה — Supabase / ארכיטקטורת ענן לאחר הפרדת הצ׳קים
+========================================================
+
+מבנה הנתונים
+-------------
+- קופה, בנק, אשראי, מזומן והוצאות: kupa_documents/main דרך save_kupa_document.
+- הצ׳קים: מקור אמת יחיד ונפרד shared_checks_documents/main דרך save_shared_checks_document.
+- נתוני ניהול הזמנות: order_management_documents במסלול נפרד.
+- אין יותר שדה checks פעיל בתוך מסמך הקופה.
+
+מיקום קובצי SQL
+----------------
+- קופה: netunim-kupa/supabase/setup.sql
+- ניהול הזמנות: netunim-orders/supabase/setup.sql
+- דומיין הצ׳קים המשותף: netunim-orders/supabase/shared/setup.sql
+- cutover/preflight/postflight נמצאים ב-netunim-orders/supabase/shared/ ונועדו לתהליך המעבר/בדיקה, לא לעבודה יומיומית.
+
+התקנה חדשה
+-----------
+1. הרץ netunim-kupa/supabase/setup.sql.
+2. הרץ netunim-orders/supabase/setup.sql.
+3. הרץ netunim-orders/supabase/shared/setup.sql.
+4. צור/ודא משתמש Email/Password ב-Supabase Authentication.
+5. פתח את netunim-kupa/site/index.html דרך האתר או דרך localhost והתחבר.
+
+מערכת שכבר עברה Cutover
+------------------------
+- אין להריץ שוב cutover.sql לצורך עבודה שוטפת.
+- הצ׳קים נקראים ונשמרים ישירות במאגר המשותף.
+- צילום יתרת בנק משתמש ב-watermark של רצף האירועים שנצפה; אירועי הפקדה/החזרה מאוחרים יותר מחושבים מעל צילום היתרה ואינם נבלעים בו בטעות.
+
+סנכרון ובטיחות
+---------------
+- לכל דומיין Revision עצמאי.
+- כתיבה ישירה למסמך הראשי נחסמת; האפליקציה משתמשת ב-RPC שמבצע Revision check וגיבוי.
+- שינוי Offline נשמר מקומית עד לסנכרון. אין למחוק Site Data לפני שהסטטוס חזר למסונכרן.
+- אין רשומת check_deposit כפולה בתוך bank.adjustments; השפעות הצ׳קים על הבנק נגזרות מ-bankEvents של דומיין הצ׳קים.
+
+שמירה מקומית
+-------------
+- netunim-kupa/site/index.html מכיל את כל מנגנון העבודה המקומית: בחירת תיקייה, זכירת handle, אישור גישה מחדש, data/kupa-data.json ו-backups/. שמות קובצי הנתונים, הגיבויים והייצוא נוצרים באנגלית בלבד.
+- קובץ ניהול_קופה.html הישן שבשורש אינו נדרש יותר לפיתוח או לגיבוי.
+- לפיתוח מקומי מומלץ להגיש את תיקיית site דרך http://localhost ב-Chrome/Edge. פתיחה ישירה ב-file:// אינה יעד הפיתוח המומלץ, ובפרט Service Worker/PWA דורשים HTTP(S)/localhost.
+
+אבטחה
+------
+- קובץ תצורת הדפדפן הפעיל הוא netunim-kupa/site/supabase/config.js. העותק netunim-kupa/supabase/config.js אינו נדרש וניתן למחיקה.
+- קובץ הלקוח הפעיל הוא netunim-kupa/site/supabase/config.js ומכיל Project URL + Publishable Key בלבד. אין לשים service_role/secret בדפדפן.
+- RLS מגביל את המשתמש למסמכים שלו.
+- לפריסה ציבורית מעלים רק את תיקיית site/.
