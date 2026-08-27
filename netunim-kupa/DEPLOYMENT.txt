@@ -4,18 +4,18 @@
 1. לפריסה ציבורית משתמשים אך ורק בתיקיית site. קובץ ההפעלה הוא site/index.html. אין להעלות data, backups, SQL או קבצי מקור אחרים.
 2. site/index.html הוא build נקי מנתוני עסק ומסומן kupa-public-data-free-v1.
 3. בהתקנה חדשה של הענן יש להריץ את netunim-kupa/supabase/setup.sql ואת netunim-orders/supabase/shared/setup.sql. מערכת ייצור שכבר עברה cutover אינה צריכה להריץ cutover.sql שוב לצורך פריסה רגילה.
-4. deploy_site.bat מריץ Wrangler מתיקיית עבודה מבודדת ומסרב לפרוס אם נמצאו בתוך site קובצי נתונים, SQL, ארכיונים, מפתחות, .env, .wrangler, functions, data או backups.
-5. שם פרויקט Cloudflare Pages המוגדר בסקריפט: bargig-kupa. אם בחרת שם אחר ב-Cloudflare, שנה רק את PROJECT_NAME בסקריפט. אם הפרויקט עדיין לא קיים בחשבון Cloudflare, צור אותו פעם אחת באמצעות: npx wrangler pages project create bargig-kupa
+4. deploy_site.bat מריץ Wrangler מתיקיית עבודה זמנית ומבודדת שנוצרת מחדש בכל פריסה, ומסרב לפרוס אם נמצאו בתוך site קובצי נתונים, SQL, ארכיונים, מפתחות, .env, .wrangler, functions, data או backups. הבידוד מונע מ-Wrangler לצרף בטעות Pages Functions או תצורה מקומית שאינה חלק מהאתר הסטטי.
+5. שם פרויקט Cloudflare Pages המוגדר בסקריפט: bargig-kupa. גרסת Wrangler מקובעת בסקריפט ל-4.125.0 כדי שפריסה לא תשתנה בלי שינוי יזום בקוד. אם בחרת שם אחר ב-Cloudflare, שנה רק את PROJECT_NAME בסקריפט. אם הפרויקט עדיין לא קיים בחשבון Cloudflare, צור אותו פעם אחת באמצעות: npx wrangler@4.125.0 pages project create bargig-kupa
 6. favicon וכל אייקוני PWA הועתקו כרגע מאתר ניהול ההזמנות. אפשר להחליף בעתיד רק את קבצי התמונה באותם שמות, ללא שינוי קוד.
 7. _headers מונע אינדוקס, iframe, MIME sniffing ומגביל חיבורי רשת לפרויקט Supabase המוגדר.
 8. service-worker שומר את מעטפת האתר לעבודה Offline. נתוני העסק עצמם אינם נארזים ב-cache של האתר; השינויים נשמרים במנגנון התאוששות מקומי וב-Supabase.
 
 יצירת פרויקט בפעם הראשונה בלבד (אם עדיין אינו קיים):
-  npx wrangler pages project create bargig-kupa
+  npx wrangler@4.125.0 pages project create bargig-kupa
 
 פריסה:
   deploy_site.bat
 או ידנית, אם נדרש:
-  npx wrangler pages deploy site --project-name=bargig-kupa
+  npx --yes wrangler@4.125.0 pages deploy site --project-name=bargig-kupa
 
 לפני כל פריסה ודא שהתיקייה site אינה מכילה נתוני משתמש.
