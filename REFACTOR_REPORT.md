@@ -20,6 +20,11 @@ The worker uses network-first, allowlisted shell caching and app-scoped cache cl
 Cache versions derive from asset content. script-src no longer permits unsafe-inline or unsafe-eval.
 Escaping and selector safety were audited and checked with hostile values under the actual CSP.
 
+Release generation is cross-platform deterministic. Text assets are normalized to LF only while hashing, so
+LF, CRLF and lone-CR checkouts produce the same cache version; PNG/ICO bytes remain exact. Real content changes
+still invalidate the cache and require an explicit sync. The generator uses stable POSIX path ordering, and its
+`--check` mode is read-only.
+
 ## Root causes corrected with regression coverage
 
 - Async boot/recovery could race the old fixed-delay test harness; tests now await appReady.
@@ -30,6 +35,14 @@ Escaping and selector safety were audited and checked with hostile values under 
 - Kupa offline cloud-mode saves persisted data without refreshing the visible list; the offline path now renders.
 - Delegated drag start initially used the container as currentTarget; the actual row is now passed explicitly.
 - Deployment self-check still searched the old monolith/global API; it now checks the lifecycle module.
+- Cache names were derived from checkout-specific newline bytes, making an unchanged commit differ on Windows
+  and Linux. Text hashing is normalized and covered for LF, CRLF and lone CR without weakening content invalidation.
+- A PWA restart test relied on closed-loopback timeout behavior, which can take over 20 seconds on Windows.
+  Its offline origin now accepts and drops connections without returning HTTP bytes, producing a deterministic
+  network failure while still proving that a restarted browser loads exclusively from the Service Worker cache.
+- The performance suite sampled eight renders in one CDP request but retained the five-second socket timeout meant
+  for one render. Its transport deadline now derives from sample count and the unchanged per-render limit, so slow
+  valid samples reach the assertions while a pathological render still fails the five-second performance contract.
 
 The no-op Excel catchup wrapper, obsolete alias entrypoints and redundant strict-mode expression were removed
 only after checking actual callers, action bindings and tests. Legacy backup metadata/migrations remain intact.
@@ -44,7 +57,10 @@ The direct Node suites contain 24 tests. Existing SQL/RPC/financial checks were 
 New browser coverage exercises creation, editing, deletion, check deposit/clear, credit, cash, expenses,
 supplier transactions, customer debts, service, inventory partial receipts/reservations, warehouse, notes,
 file restore, draft guards, bulk controls and drag/drop. Native PWA tests run without module instrumentation,
-verify every module is cached and recover real browser snapshots/pending after offline reload.
+verify every module is cached and recover real browser snapshots/pending after offline reload. Each site is also
+installed with its historical classic worker, upgraded in place to the current ESM worker on the same origin,
+checked for old-cache cleanup/current cached SHA-256 bytes, and restarted offline with the release server removed.
+Local HTTP responses are checked for JavaScript MIME, CSP, framing, nosniff and no-cache headers.
 Two tabs in one browser profile verify the actual writer lock and unchanged storage in the secondary tab.
 
 In-memory File System Access tests check verified writes, corruption, revision retention, permission denial,
@@ -260,7 +276,10 @@ A	tests/sync_models.test.mjs
 A	tools/sync-assets.py
 ```
 
-No existing source files were removed; the former app.js files are now tiny entrypoints.
+The former app.js files are now tiny entrypoints. A later release-hardening pass added
+`tests/sync_assets_contracts.py`, `tests/pwa_upgrade.py` and real legacy worker fixtures under
+`tests/fixtures/legacy-workers/`, modified both workers deterministically, and removed the empty stray root file
+`npx serve ..txt`.
 
 ## Final local results
 
@@ -273,9 +292,3 @@ No existing source files were removed; the former app.js files are now tiny entr
 
 Assessment: the architectural migration is complete under the verified local contracts.
 Live infrastructure/device rollout checks remain explicitly separate; they were not performed or authorized.
-
-## Workspace housekeeping
-
-The executor refused recursive deletion of the temporary .work directory. It remains locally,
-ignored by Git and outside both public site roots. It contains audit scripts, source snapshots, logs
-and synthetic screenshots; no application imports it. This is the sole unfinished cleanup item.

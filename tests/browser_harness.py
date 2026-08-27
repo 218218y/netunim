@@ -236,15 +236,22 @@ class BrowserSession:
             self.ws, self.seq, self.events = original
             self.call('Target.closeTarget', {'targetId':target})
 
-    def call(self, method: str, params: dict | None = None):
+    def call(self, method: str, params: dict | None = None, *, timeout: float | None = None):
         self.seq += 1
         ident = self.seq
-        self.ws.send(json.dumps({"id": ident, "method": method, "params": params or {}}))
-        while True:
-            message = json.loads(self.ws.recv())
-            if message.get("id") == ident:
-                return message
-            self.events.append(message)
+        previous_timeout = self.ws.gettimeout()
+        if timeout is not None:
+            self.ws.settimeout(timeout)
+        try:
+            self.ws.send(json.dumps({"id": ident, "method": method, "params": params or {}}))
+            while True:
+                message = json.loads(self.ws.recv())
+                if message.get("id") == ident:
+                    return message
+                self.events.append(message)
+        finally:
+            if timeout is not None:
+                self.ws.settimeout(previous_timeout)
 
     def _navigate(self):
         result = self.call("Page.navigate", {"url": self.url})
@@ -262,7 +269,7 @@ class BrowserSession:
             time.sleep(0.05)
         raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}")
 
-    def evaluate(self, expression: str, *, await_promise: bool = True):
+    def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None):
         if self.instrument:
             expression = self._module_probe({'mode':'expression','expression':expression,'names':self.probe_names})
         if '__netunimProbe.' in expression:
@@ -274,6 +281,7 @@ class BrowserSession:
                 "returnByValue": True,
                 "awaitPromise": await_promise,
             },
+            timeout=timeout,
         )
         payload = response.get("result", {})
         if "exceptionDetails" in payload:

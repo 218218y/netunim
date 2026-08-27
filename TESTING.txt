@@ -24,7 +24,8 @@ After changing a public asset or canonical shared source:
   python tools/sync-assets.py
   verify.bat --no-pause
 
-Verification checks drift without modifying files. Both deployment scripts run this complete gate first.
+The cache name intentionally changes for real public-content changes. Checkout-only LF/CRLF differences do not
+change it. Verification checks drift without modifying files. Both deployment scripts run this complete gate first.
 For safe deployment-path verification without Wrangler or upload:
   netunim-kupa\deploy_site.bat --preflight-only
   netunim-orders\deploy_site.bat --preflight-only
@@ -35,14 +36,16 @@ static_contracts.py: syntax, SQL/RPC, ownership, financial sequencing and deploy
 asset_contracts.py: ESM entry, inert/empty seed, CSP and zero inline executable event attributes.
 deploy_preflight.py: read-only public file allowlist, blocked directories, size and secret scans.
 service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and offline fallback.
-module_contracts.py: deterministic shared copies/cache manifest, acyclic local module graph, layer boundaries,
+module_contracts.py: deterministic shared copies/cache manifest, normalized cross-platform text hashing,
+  byte-exact binary hashing, read-only/idempotent generation, acyclic local module graph, layer boundaries,
   no runtime globals/test APIs, pinned ESLint rules and direct Node tests.
 runtime_smoke.py: boot, tabs, lists and scroll restoration in real Chromium.
 runtime_events.py: delegated actions, keyboard, focus/blur dates, series, draft guard, bulk and drag/drop.
 runtime_security.py: hostile business fields and IDs in lists, selectors and modal HTML under production CSP.
 runtime_workflows.py: create/edit/delete, financial/check flows, inventory/reservations, notes and file restore.
 runtime_pwa.py: uninstrumented ESM, real SW installation, all cached modules, offline reload/recovery,
-  preserved pending and actual second-tab Web Locks protection.
+  preserved pending and actual second-tab Web Locks protection; upgrades each historical worker fixture in place,
+  verifies current cached bytes and local HTTP security headers/MIME, then restarts Chromium with no HTTP response.
 runtime_performance.py: eight renders of 1,000 records; bounded time, stable listeners and no render-time writes/RPC.
 runtime_data_integrity.py: backup round-trip, wrong formats/future schemas, cloud ownership and merge.
 runtime_sync_recovery.py: offline persistence, resume, independent edits, same-record conflicts and revision retry.

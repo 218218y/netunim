@@ -2,6 +2,12 @@
 from browser_harness import BrowserSession, ROOT
 import json
 
+RENDER_SAMPLES = 8
+MAX_RENDER_MS = 5000
+# Runtime.evaluate is one synchronous CDP request containing every sample.
+# Its transport deadline must cover the allowed per-render contract plus setup.
+MEASUREMENT_TIMEOUT_SECONDS = RENDER_SAMPLES * MAX_RENDER_MS / 1000 + 5
+
 
 def root_listeners(browser, selector):
     response=browser.call('Runtime.evaluate',{'expression':f'document.querySelector({json.dumps(selector)})'})
@@ -28,19 +34,20 @@ for label,setup in fixtures.items():
         browser.evaluate('(()=>{'+setup+'return true})()')
         selector='#content' if label=='kupa' else '#main'
         listeners=root_listeners(browser,selector)
-        measurements=browser.evaluate("""(()=>{
+        measurement_script="""(()=>{
           const times=[],originalWrite=Storage.prototype.setItem,originalFetch=window.fetch;
           let writes=0,requests=0;
           Storage.prototype.setItem=function(...args){writes++;return originalWrite.apply(this,args)};
           window.fetch=(...args)=>{requests++;return originalFetch(...args)};
-          try{for(let i=0;i<8;i++){const start=performance.now();render();times.push(performance.now()-start)}}
+          try{for(let i=0;i<RENDER_SAMPLES;i++){const start=performance.now();render();times.push(performance.now()-start)}}
           finally{Storage.prototype.setItem=originalWrite;window.fetch=originalFetch}
           return {maxMs:Math.round(Math.max(...times)),meanMs:Math.round(times.reduce((a,b)=>a+b)/times.length),writes,requests,rows:document.querySelectorAll('tbody tr').length};
-        })()""")
+        })()""".replace('RENDER_SAMPLES',str(RENDER_SAMPLES))
+        measurements=browser.evaluate(measurement_script,timeout=MEASUREMENT_TIMEOUT_SECONDS)
         assert root_listeners(browser,selector)==listeners, label+' accumulated delegated listeners'
         assert measurements['writes']==0 and measurements['requests']==0, measurements
         assert measurements['rows']>=1000,measurements
         # Deliberately generous: catch a pathological algorithm, not CI noise.
-        assert measurements['maxMs']<5000,measurements
+        assert measurements['maxMs']<MAX_RENDER_MS,measurements
         assert not browser.drain_serious_errors()
-        print('PASS',label,'1000-row render x8; stable listeners; no storage/RPC writes;',json.dumps(measurements))
+        print('PASS',label,f'1000-row render x{RENDER_SAMPLES}; stable listeners; no storage/RPC writes;',json.dumps(measurements))

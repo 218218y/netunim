@@ -1,11 +1,26 @@
 """Upgrade a real legacy worker on the same origin; restart Chromium offline."""
 import contextlib
+import hashlib
 import json
 import os
 import shutil
+import socketserver
+import threading
+import time
+import urllib.parse
 import urllib.request
 
 from browser_harness import BrowserSession, ROOT
+
+
+class _DropConnection(socketserver.BaseRequestHandler):
+    def handle(self):
+        self.request.close()
+
+
+class _OfflineOrigin(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 class UpgradeBrowser(BrowserSession):
@@ -47,6 +62,13 @@ class UpgradeBrowser(BrowserSession):
         self.httpd.server_close()
         self.http_thread.join(timeout=2)
         self.httpd = self.http_thread = None
+        # A closed localhost port can take tens of seconds to fail on some
+        # Windows/Chrome combinations. Accepting and dropping TCP immediately
+        # supplies no HTTP bytes but makes the offline failure deterministic.
+        port = urllib.parse.urlsplit(self.url).port
+        self.httpd = _OfflineOrigin(('127.0.0.1', port), _DropConnection)
+        self.http_thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.http_thread.start()
         with contextlib.suppress(Exception):
             self.call('Browser.close')
         self.ws.close()
@@ -54,14 +76,33 @@ class UpgradeBrowser(BrowserSession):
         self.events = []
         self._start_browser()
         self.call('Network.enable')
-        offline = {'offline':True, 'latency':0, 'downloadThroughput':-1, 'uploadThroughput':-1, 'connectionType':'none'}
+        offline = {
+            'offline': True,
+            'latency': 0,
+            'downloadThroughput': -1,
+            'uploadThroughput': -1,
+            'connectionType': 'none',
+        }
         assert 'error' not in self.call('Network.emulateNetworkConditions', offline)
-        try:
-            self._navigate()
-        except Exception:
-            print('Restart diagnostic', json.dumps(self.evaluate("({ready:document.readyState,url:location.href,text:document.body?.textContent?.slice(0,500)})")))
-            print('Restart errors', self.drain_serious_errors())
-            raise
+        started = time.monotonic()
+        navigation = self.call('Page.navigate', {'url': self.url}).get('result', {})
+        if navigation.get('errorText'):
+            raise RuntimeError('offline navigation failed before Service Worker fallback: '+navigation['errorText'])
+        deadline = started + 30
+        state = None
+        while time.monotonic() < deadline:
+            state=self.evaluate("({ready:document.readyState,url:location.href,resources:performance.getEntriesByType('resource').map(x=>x.name)})")
+            if state['url'].startswith(self.url) and state['ready']=='complete':
+                self.offline_restart_ms = round((time.monotonic() - started) * 1000)
+                break
+            time.sleep(.1)
+        else:
+            diagnostics = {
+                'page': state,
+                'cacheNames': self.evaluate('caches.keys()'),
+                'errors': self.drain_serious_errors(),
+            }
+            raise RuntimeError('offline restart did not complete: '+json.dumps(diagnostics))
         assert 'error' not in self.call('Network.overrideNetworkState', offline)
 
 
@@ -75,7 +116,8 @@ def check_http_headers(browser):
             csp = response.headers['Content-Security-Policy']
             script = next(part.strip() for part in csp.split(';') if part.strip().startswith('script-src '))
             assert "'unsafe-inline'" not in script and "'unsafe-eval'" not in script
-            assert "object-src 'none'" in csp and "frame-ancestors 'none'" in csp
+            assert "object-src 'none'" in csp and "base-uri 'none'" in csp and "frame-ancestors 'none'" in csp
+            assert response.headers['Cache-Control'] == 'no-cache'
             if relative.endswith('.js'):
                 assert response.headers.get_content_type() in ('text/javascript', 'application/javascript')
 
@@ -106,13 +148,17 @@ def test_worker_upgrade(label, fixture):
           const active=(await navigator.serviceWorker.ready).active;
           if(active.state!=='activated')await new Promise(resolve=>active.addEventListener('statechange',()=>{if(active.state==='activated')resolve()}));
           const names=await caches.keys(),cache=await caches.open(names.find(n=>n.includes('app-shell-esm-')));
+          const sha=async path=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await (await cache.match(path)).arrayBuffer()))).map(x=>x.toString(16).padStart(2,'0')).join('');
           return {changed:navigator.serviceWorker.controller!==previous,names,
-            paths:(await cache.keys()).map(r=>new URL(r.url).pathname)};
+            paths:(await cache.keys()).map(r=>new URL(r.url).pathname),
+            entryHash:await sha('./assets/app.js'),mainHash:await sha('./assets/js/main.js')};
         })()""")
         assert upgraded['changed'] and old['name'] not in upgraded['names'], upgraded
         assert 'unrelated-cache' in upgraded['names'], upgraded
         expected = ['/'+p.relative_to(browser.release).as_posix() for p in (browser.release/'assets').rglob('*.js')]
         assert set(expected).issubset(upgraded['paths']), upgraded
+        assert upgraded['entryHash'] == hashlib.sha256((browser.release/'assets/app.js').read_bytes()).hexdigest()
+        assert upgraded['mainHash'] == hashlib.sha256((browser.release/'assets/js/main.js').read_bytes()).hexdigest()
         assert browser.evaluate('JSON.stringify({...localStorage})') == before
         browser.restart_offline()
         browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
@@ -126,4 +172,4 @@ def test_worker_upgrade(label, fixture):
         assert all(recovered.values()), recovered
         errors=browser.drain_serious_errors()
         assert not errors, errors
-        print('PASS',label,'legacy SW upgrade, full module cache, real HTTP headers/MIME, browser restart offline and pending recovery')
+        print('PASS',label,'legacy SW upgrade, full module cache, real HTTP headers/MIME, browser restart offline in',browser.offline_restart_ms,'ms and pending recovery')

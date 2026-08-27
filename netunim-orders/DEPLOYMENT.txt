@@ -49,6 +49,8 @@ Never run migration SQL on production merely to publish frontend changes.
 Offline and rollout checks
 --------------------------
 The worker precaches the full ESM dependency tree with a deterministic content-based cache version.
+Text newlines are normalized for hashing across Windows/Linux checkouts; binary assets remain byte-exact.
+Real public-content changes intentionally require running sync-assets.py so installed PWAs receive a new cache.
 Only public shell assets are cached. Business snapshots and pending live in browser storage, not SW cache.
 After release, check authorized login, a representative workflow, offline reload, recovery, folder permissions
 and installed-PWA startup. Tests never contact production and do not replace this release check.

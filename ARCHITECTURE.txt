@@ -56,7 +56,9 @@ Shared source and PWA assets
 shared/ is the canonical source only for proven common calendar, HTML escaping, series numbering and delegation.
 Do not merge app helpers by name: cloning, invalid money and date behavior intentionally differ.
 python tools/sync-assets.py copies these files byte-for-byte to each site's assets/js/shared and refreshes the
-complete shell list and content-derived cache version. --check fails on drift. There is no cross-site runtime import.
+complete shell list and content-derived cache version. Text hashing normalizes LF, CRLF and lone CR so the same
+commit produces the same cache name on every checkout; binary image bytes remain exact. A real asset-content
+change still requires regeneration. --check is read-only and fails on drift. There is no cross-site runtime import.
 Both workers are network-first, precache every module, keep offline navigation fallback and only cache allowlisted
 public shell assets. Cross-origin, non-GET and business-data requests bypass interception. Cleanup is app-scoped.
 
