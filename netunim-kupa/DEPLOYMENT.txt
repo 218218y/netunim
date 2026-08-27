@@ -13,6 +13,8 @@
 יצירת פרויקט בפעם הראשונה בלבד (אם עדיין אינו קיים):
   npx wrangler@4.125.0 pages project create bargig-kupa
 
+מבנה קבצי האתר הפעיל: index.html הוא מעטפת ה-HTML בלבד; העיצוב נמצא ב-site/assets/app.css וה-JavaScript הפעיל נמצא ב-site/assets/app.js. שני הקבצים הם חלק חובה ממעטפת ה-PWA, נבדקים לפני פריסה ונשמרים ב-cache לאופליין.
+
 לפני הפריסה הראשונה במחשב יש להתקין את תלות הבדיקות כמפורט ב-..\TESTING.txt.
 אפשר להריץ בדיקה מלאה ידנית משורש netunim באמצעות verify.bat.
 

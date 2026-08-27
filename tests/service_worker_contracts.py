@@ -97,6 +97,8 @@ for label, site in APPS.items():
     required = {
         "./",
         "./index.html",
+        "./assets/app.css",
+        "./assets/app.js",
         "./manifest.webmanifest",
         "./supabase/config.js",
         "./favicon.ico",

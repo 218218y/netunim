@@ -1,0 +1,28 @@
+מבנה קוד הדפדפן
+=================
+
+מצב נוכחי
+----------
+שתי האפליקציות נשארות Vanilla JavaScript ללא build tool וללא תלות runtime ב-npm.
+index.html משמש מעטפת DOM ונתוני seed אינרטיים בלבד. קוד executable ועיצוב אינם מוטמעים בו:
+
+  netunim-kupa/site/assets/app.js
+  netunim-kupa/site/assets/app.css
+  netunim-orders/site/assets/app.js
+  netunim-orders/site/assets/app.css
+
+למה השלב הזה קודם ל-ESM
+-----------------------
+היישומים עדיין משתמשים ב-inline DOM event attributes רבים ובפונקציות גלובליות. מעבר ישיר ל-type=module היה משנה את חשיפת הפונקציות ל-window ועלול לשבור handlers. לכן ההפרדה הפיזית בוצעה קודם בלי לשנות את מודל ההרצה: app.js נטען כ-classic script ונשמרה אותה התנהגות.
+
+חוזי יציבות
+-----------
+1. tests/asset_contracts.py מונע החזרה של executable JavaScript או style blocks אל index.html.
+2. tests/static_contracts.py בודק את קובצי ה-JavaScript שהדפדפן באמת טוען, ולא מניח שהקוד נמצא inline.
+3. tests/browser_harness.py טוען assets אמיתיים דרך localhost; במצב fallback הוא מטמיע עותק של אותם assets למסמך המבודד.
+4. Service Worker של כל אפליקציה pre-cache את app.js ואת app.css, ועובד network-first כדי לקבל פריסה חדשה כשיש רשת.
+5. deploy_site.bat דורש את שני קובצי assets וסורק את כל JavaScript הציבורי נגד eval ו-Function constructor לפני Wrangler.
+
+השלב המבני הבא
+---------------
+רק לאחר שהפיצול הזה יציב אפשר להתחיל לפצל את app.js לפי תחומי אחריות. אין לבצע מעבר Big-Bang ל-ESM. יש להעביר תחילה פונקציות טהורות/ללא DOM למודולים, להוסיף להן בדיקות ישירות, ורק לאחר מכן לטפל בשכבת UI וב-inline event handlers. כאשר לא יישארו inline handlers ניתן יהיה להסיר 'unsafe-inline' מ-script-src ב-CSP.

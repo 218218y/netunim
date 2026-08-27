@@ -22,21 +22,34 @@ def ok(condition, message: str):
         errors.append(message)
 
 
-def extract_js(html: Path) -> str:
+def browser_js_units(html: Path) -> list[tuple[str, str]]:
+    """Return executable classic/module scripts in document order, including local src files."""
     text = html.read_text(encoding="utf-8")
-    out = []
+    units: list[tuple[str, str]] = []
     pattern = re.compile(r"<script(?P<attrs>[^>]*)>(?P<body>.*?)</script>", re.I | re.S)
-    for match in pattern.finditer(text):
+    for index, match in enumerate(pattern.finditer(text), 1):
         attrs = match.group("attrs") or ""
         script_type = re.search(r"\btype\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
         typ = script_type.group(1).strip().lower() if script_type else ""
         if typ and typ not in ("text/javascript", "application/javascript", "module"):
             continue
-        if re.search(r"\bsrc\s*=", attrs, re.I):
-            continue
-        out.append(match.group("body"))
-    return "\n;\n".join(out)
+        src_match = re.search(r"\bsrc\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
+        if src_match:
+            src = src_match.group(1).split("?", 1)[0].split("#", 1)[0]
+            if re.match(r"^[a-z][a-z0-9+.-]*:", src, re.I) or src.startswith("//"):
+                continue
+            target = html.parent / src.lstrip("/")
+            if not target.is_file():
+                units.append((f"missing:{src}", ""))
+                continue
+            units.append((str(target.relative_to(ROOT)), target.read_text(encoding="utf-8")))
+        elif match.group("body").strip():
+            units.append((f"{html.relative_to(ROOT)}:inline-{index}", match.group("body")))
+    return units
 
+
+def browser_code(site: Path) -> str:
+    return "\n;\n".join(code for _name, code in browser_js_units(site / "index.html"))
 
 def dollar_balanced(text: str):
     tags = re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", text)
@@ -59,21 +72,30 @@ def norm(text: str | None):
     return re.sub(r"\s+", " ", text or "").strip().lower()
 
 
-# 1. Both browser bundles must remain syntactically valid JavaScript.
-for label, path in [("kupa", K / "site/index.html"), ("orders", O / "site/index.html")]:
-    js = extract_js(path)
-    with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
-        handle.write(js)
-        temp_name = handle.name
-    result = subprocess.run(["node", "--check", temp_name], capture_output=True, text=True)
-    Path(temp_name).unlink(missing_ok=True)
-    ok(result.returncode == 0, f"{label}: all inline JavaScript parses")
-    if result.returncode:
-        print(result.stderr)
+# 1. Both browser bundles must remain syntactically valid JavaScript, regardless
+# of whether code is inline or stored in local script assets.
+for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
+    units = browser_js_units(site / "index.html")
+    parse_ok = bool(units)
+    for unit_name, js in units:
+        if unit_name.startswith("missing:"):
+            print("MISSING", unit_name)
+            parse_ok = False
+            continue
+        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+            handle.write(js)
+            temp_name = handle.name
+        result = subprocess.run(["node", "--check", temp_name], capture_output=True, text=True)
+        Path(temp_name).unlink(missing_ok=True)
+        if result.returncode:
+            parse_ok = False
+            print(unit_name)
+            print(result.stderr)
+    ok(parse_ok, f"{label}: all browser JavaScript assets parse")
 
 # 2. Current post-cutover ownership/contracts.
-ks = (K / "site/index.html").read_text(encoding="utf-8")
-os = (O / "site/index.html").read_text(encoding="utf-8")
+ks = browser_code(K / "site")
+os = browser_code(O / "site")
 ok("KUPA_CHECKS_TABLE" not in os and "saveChecksToKupaCloud" not in os and "reconcileKupaBankForChecks" not in os,
    "orders: legacy Kupa-as-check-owner code removed")
 ok("delete x.checks" in ks, "kupa: cloud payload removes checks")

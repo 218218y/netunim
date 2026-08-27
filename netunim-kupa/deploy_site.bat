@@ -57,7 +57,7 @@ if errorlevel 1 (
 )
 
 rem Required public shell files: fail before Wrangler if the site directory is incomplete.
-for %%F in (index.html _headers service-worker.js manifest.webmanifest favicon.ico favicon-16x16.png favicon-32x32.png apple-touch-icon.png android-chrome-192x192.png android-chrome-512x512.png) do if not exist "%SITE_DIR%\%%F" (
+for %%F in (index.html _headers service-worker.js manifest.webmanifest assets\app.css assets\app.js favicon.ico favicon-16x16.png favicon-32x32.png apple-touch-icon.png android-chrome-192x192.png android-chrome-512x512.png) do if not exist "%SITE_DIR%\%%F" (
   echo ERROR: required public file is missing: site\%%F
   pause
   exit /b 2
@@ -68,17 +68,31 @@ if not exist "%SITE_DIR%\supabase\config.js" (
   exit /b 2
 )
 
-rem CSP intentionally does not allow eval(). Reject a public build that reintroduces it.
-findstr /C:"eval(" "%SITE_DIR%\index.html" >nul 2>&1
-if not errorlevel 1 (
-  echo ERROR: site\index.html contains eval^(^), which is blocked by the production CSP.
+rem Executable browser code is kept in explicit JavaScript assets. The CSP does not
+rem allow dynamic code execution, so reject eval/Function-constructor regressions anywhere
+rem in the published JavaScript tree rather than checking index.html only.
+set "FOUND_DYNAMIC_CODE="
+for /R "%SITE_DIR%" %%F in (*.js) do (
+  findstr /C:"eval(" "%%F" >nul 2>&1
+  if not errorlevel 1 (
+    echo ERROR: public JavaScript contains eval^(^): %%F
+    set "FOUND_DYNAMIC_CODE=1"
+  )
+  findstr /C:"new Function(" "%%F" >nul 2>&1
+  if not errorlevel 1 (
+    echo ERROR: public JavaScript contains a Function constructor: %%F
+    set "FOUND_DYNAMIC_CODE=1"
+  )
+)
+if defined FOUND_DYNAMIC_CODE (
+  echo Remove dynamic-code execution before deployment.
   pause
   exit /b 2
 )
 if defined RUNTIME_SELF_CHECK_MARKER (
-  findstr /C:"%RUNTIME_SELF_CHECK_MARKER%" "%SITE_DIR%\index.html" >nul 2>&1
+  findstr /C:"%RUNTIME_SELF_CHECK_MARKER%" "%SITE_DIR%\assets\app.js" >nul 2>&1
   if errorlevel 1 (
-    echo ERROR: site\index.html does not contain the expected CSP-safe runtime self-check.
+    echo ERROR: site\assets\app.js does not contain the expected CSP-safe runtime self-check.
     pause
     exit /b 2
   )

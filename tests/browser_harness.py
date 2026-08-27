@@ -4,6 +4,7 @@ import contextlib
 import http.server
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import socket
@@ -132,15 +133,15 @@ class BrowserSession:
             "window.ORDER_SUPABASE_CONFIG={url:'https://example.invalid',publishableKey:'test'};\n",
             encoding="utf-8",
         )
-        index = prepared / "index.html"
-        html = index.read_text(encoding="utf-8")
         # Service Worker behavior has its own contract tests. Runtime tests disable
-        # registration so an old worker from a previous local run cannot affect results.
-        html = html.replace(
-            "navigator.serviceWorker.register('./service-worker.js')",
-            "Promise.resolve({scope:'runtime-test'})",
-        )
-        index.write_text(html, encoding="utf-8")
+        # registration inside JavaScript assets so an old worker from a previous local
+        # run cannot affect results after the browser code was externalized from HTML.
+        needle = "navigator.serviceWorker.register('./service-worker.js')"
+        replacement = "Promise.resolve({scope:'runtime-test'})"
+        for js_path in prepared.rglob("*.js"):
+            source = js_path.read_text(encoding="utf-8")
+            if needle in source:
+                js_path.write_text(source.replace(needle, replacement), encoding="utf-8")
 
     def _start_server(self):
         port = _free_port()
@@ -222,12 +223,55 @@ class BrowserSession:
         })()"""
 
     def _prepared_html(self) -> str:
-        html = (self.tmp / "site/index.html").read_text(encoding="utf-8")
-        stub = (
-            "<script>window.KUPA_SUPABASE_CONFIG={url:'https://example.invalid',publishableKey:'test'};"
-            "window.ORDER_SUPABASE_CONFIG={url:'https://example.invalid',publishableKey:'test'};</script>"
+        """Inline local CSS/JS only for the isolated-DOM fallback.
+
+        Normal runtime tests load the real files over localhost. Managed browsers can
+        block loopback navigation; in that case Page.setDocumentContent has an
+        about:blank origin and cannot resolve our external app assets. Inlining the
+        already-prepared local files preserves document order and keeps the fallback
+        semantically equivalent without weakening the production site structure.
+        """
+        site = self.tmp / "site"
+        html = (site / "index.html").read_text(encoding="utf-8")
+
+        def local_file(url: str) -> Path | None:
+            clean = url.split("?", 1)[0].split("#", 1)[0]
+            if re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.I) or clean.startswith("//"):
+                return None
+            relative = clean[2:] if clean.startswith("./") else clean.lstrip("/")
+            target = site / relative
+            try:
+                target.resolve().relative_to(site.resolve())
+            except Exception:
+                return None
+            return target if target.is_file() else None
+
+        link_re = re.compile(r"<link\b(?P<attrs>[^>]*)>", re.I)
+        def inline_stylesheet(match):
+            attrs = match.group("attrs") or ""
+            rel = re.search(r"\brel\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
+            href = re.search(r"\bhref\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
+            if not rel or "stylesheet" not in rel.group(1).lower().split() or not href:
+                return match.group(0)
+            target = local_file(href.group(1))
+            if not target:
+                return match.group(0)
+            css = target.read_text(encoding="utf-8").replace("</style", "<\\/style")
+            return f'<style data-runtime-source="{href.group(1)}">{css}</style>'
+        html = link_re.sub(inline_stylesheet, html)
+
+        script_re = re.compile(
+            r"<script(?P<before>[^>]*)\bsrc\s*=\s*[\"'](?P<src>[^\"']+)[\"'](?P<after>[^>]*)>\s*</script>",
+            re.I | re.S,
         )
-        return html.replace('<script src="supabase/config.js"></script>', stub)
+        def inline_script(match):
+            target = local_file(match.group("src"))
+            if not target:
+                return match.group(0)
+            source = target.read_text(encoding="utf-8").replace("</script", "<\\/script")
+            attrs = (match.group("before") or "") + (match.group("after") or "")
+            return f"<script{attrs}>{source}</script>"
+        return script_re.sub(inline_script, html)
 
     def _navigate(self):
         result = self.call("Page.navigate", {"url": self.url})

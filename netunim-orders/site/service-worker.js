@@ -1,6 +1,6 @@
 'use strict';
-const CACHE='orders-app-shell-v7-network-first';
-const SHELL=['./','./index.html','./manifest.webmanifest','./supabase/config.js','./favicon.ico','./favicon-16x16.png','./favicon-32x32.png','./apple-touch-icon.png','./android-chrome-192x192.png','./android-chrome-512x512.png'];
+const CACHE='orders-app-shell-v8-external-assets';
+const SHELL=['./','./index.html','./assets/app.css','./assets/app.js','./manifest.webmanifest','./supabase/config.js','./favicon.ico','./favicon-16x16.png','./favicon-32x32.png','./apple-touch-icon.png','./android-chrome-192x192.png','./android-chrome-512x512.png'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));

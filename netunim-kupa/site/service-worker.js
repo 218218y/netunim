@@ -1,6 +1,6 @@
 'use strict';
-const CACHE='kupa-app-shell-v8-ascii-local-files';
-const SHELL=['./','./index.html','./manifest.webmanifest','./supabase/config.js','./favicon.ico','./favicon-16x16.png','./favicon-32x32.png','./apple-touch-icon.png','./android-chrome-192x192.png','./android-chrome-512x512.png'];
+const CACHE='kupa-app-shell-v9-external-assets';
+const SHELL=['./','./index.html','./assets/app.css','./assets/app.js','./manifest.webmanifest','./supabase/config.js','./favicon.ico','./favicon-16x16.png','./favicon-32x32.png','./apple-touch-icon.png','./android-chrome-192x192.png','./android-chrome-512x512.png'];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
