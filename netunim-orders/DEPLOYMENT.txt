@@ -1,112 +1,54 @@
-ניהול הזמנות — תכנית פריסה מאובטחת וגיבויים
-=============================================
+NETUNIM ORDERS DEPLOYMENT
+================================
 
-חשוב מאוד
----------
-אין להעלות לאתר את התיקייה המלאה של התוכנה כפי שהיא.
-בקבצים המקומיים יש נתוני עסק מלאים (JSON), ובגרסה הישנה הנתונים היו גם מוטמעים בתוך ה-HTML.
-מי שיודע כתובת ישירה של קובץ סטטי יכול לעקוף מסך כניסה פנימי אם השרת מגיש את הקובץ.
-
-מה כן מעלים
+Public root
 -----------
-להעלות אך ורק את התוכן של התיקייה site/ כ-root של האתר/ה-subdomain.
-קובץ ההפעלה היחיד הוא site/index.html; קובץ ניהול_הזמנות.html הישן שבשורש אינו נדרש יותר וניתן למחיקה לאחר אימות הגרסה החדשה.
-אין צורך להעתיק את site/ לתיקיית פריסה נפרדת: Wrangler מקבל את תיקיית המקור במפורש ומעלה רק אותה.
+Publish only netunim-orders/site. Never serve the repository root, data/, backups/, SQL,
+node_modules, credentials or source-only operational files. The public seed contains no business data.
+index.html loads assets/app.js as native ESM; assets/js/main.js composes the application.
+All assets/js modules, CSS, icons, manifest, service-worker.js, _headers and supabase/config.js are required.
+Each site remains independently deployable and independently usable offline.
 
-פריסה ישירה מתוך תיקיית הפיתוח:
-הפקודה המומלצת והמאומתת בפרויקט הזה היא:
-  npx --yes wrangler@4.125.0 pages deploy site --project-name=bargig-orders
+Preparation (repository root)
+-----------------------------
+Install the development dependencies described in TESTING.txt:
+  python -m pip install -r tests/requirements.txt
+  npm ci
+After changing public/shared assets:
+  python tools/sync-assets.py
+  verify.bat --no-pause
+Review all changes and preserve current operational backups before release.
 
-לפריסה רגילה אין מוסיפים --branch: בפרויקט Direct Upload זו פריסת ה-Production. deploy_site.bat הוא הדרך המומלצת ואינו מריץ את Wrangler משורש הפרויקט; הוא מעביר ל-Wrangler נתיב מוחלט של site ואת --project-name, אבל מריץ אותו מתיקיית TEMP חדשה ומבודדת בכל פעם.
+Read-only preflight, no upload:
+  netunim-orders\deploy_site.bat --preflight-only
+This runs the full repository verification and local deployment guards, then exits before
+creating a Wrangler work directory or contacting Cloudflare. It does not clean public files automatically.
+Unexpected files must be reviewed and removed explicitly.
 
-הבידוד מכוון: לפי Cloudflare, תיקיית functions שקיימת במקום שממנו Wrangler רץ יכולה להיכלל בפריסה, ו-Wrangler עשוי גם לגלות תצורה שנוצרה בתיקיות האב. לכן הסקריפט מונע משני הדברים להשפיע בטעות על האתר הסטטי, ומנקה את תיקיית העבודה בסיום.
+Deployment (only when intentionally authorized):
+  netunim-orders\deploy_site.bat
+The script re-runs the complete verifier, checks required modules/CSP/public-root safety,
+then runs pinned Wrangler 4.125.0 in a fresh isolated temporary directory. Only the absolute
+site/ path is uploaded. The configured Pages project is bargig-orders.
+Do not bypass the verification gate with a direct Wrangler upload.
+No JavaScript build step or npm runtime dependencies are required.
 
-לנוחות ובטיחות נוסף בשורש הפרויקט הקובץ deploy_site.bat.
-אפשר להפעיל אותו בלחיצה כפולה או משורת הפקודה. לפני כל גישה ל-Wrangler הוא מפעיל את ..\verify.bat של מאגר netunim כולו; לכן כשל בתחביר, חוזי נתונים/SQL, בדיקות runtime, התאוששות אופליין, חישובים כספיים או Service Worker מבטל את הפריסה. לאחר שהבדיקות עברו הוא מוודא שקיימת site/index.html עם סימון build ציבורי מפורש, בודק את קבצי המעטפת וה-Headers, חוסם קובצי נתונים/DB/גיבוי/סודות נפוצים וקבצים גדולים מהמגבלה של Pages, ואז מריץ מתיקיית עבודה מבודדת את Wrangler v4.125.0 המקובע בסקריפט עם נתיב מוחלט ל-site ועם --project-name=bargig-orders.
+Cloud and security
+------------------
+supabase/config.js exports frozen public configuration. Only a publishable key belongs there;
+never use a secret/service-role key. Keep its URL consistent with connect-src in _headers.
+Supabase Auth and RLS control business-data access. A site access policy (for example Cloudflare
+Access) is a separate layer controlling delivery of public application files. noindex is not authorization.
+script-src forbids inline scripts/eval. Inline styles remain allowed only in style-src-attr;
+style-src-elem is self-only. Existing object/base/frame, MIME, referrer and permission protections remain.
 
-מבנה קבצי האתר הפעיל: index.html הוא מעטפת ה-HTML בלבד; העיצוב נמצא ב-site/assets/app.css וה-JavaScript הפעיל נמצא ב-site/assets/app.js. שני הקבצים הם חלק חובה ממעטפת ה-PWA, נבדקים לפני פריסה ונשמרים ב-cache לאופליין.
+Ordinary frontend deployment requires no SQL/schema changes and must not rerun cutover.
+For a genuinely new database, follow the existing setup and shared-check SQL documentation.
+Never run migration SQL on production merely to publish frontend changes.
 
-לפני הפריסה הראשונה במחשב יש להתקין את תלות הבדיקות כמפורט ב-..\TESTING.txt. אפשר להריץ את אותה חבילת בדיקות ידנית משורש netunim באמצעות verify.bat.
-
-כך מתקיימים תנאי הבטיחות יחד:
-1. רק site נמסרת ל-Wrangler כתיקיית הנכסים הסטטיים להעלאה.
-2. Wrangler עצמו רץ מחוץ לעץ הפרויקט, ולכן functions או תצורת Wrangler מקומית אינן יכולות להיצמד לפריסה בשקט.
-3. אם בכל זאת מופיעים בשורש הפרויקט functions או קובצי Wrangler, ה-BAT עוצר כדי לחייב בדיקה יזומה של שינוי הארכיטקטורה.
-4. גרסת Wrangler מקובעת ל-4.125.0, כך שעדכון CLI לא משנה את תהליך הפריסה בלי שינוי מפורש בקוד.
-
-תיקון למנגנון הפריסה הישן:
-הגרסה הקודמת של deploy_site.bat הריצה את Wrangler מתוך site. כתוצאה מכך Wrangler יצר site/.wrangler/cache ובו קובצי מטא-דאטה כגון pages.json ו-wrangler-account.json. אלה קובצי עבודה של Wrangler ולא נתוני המערכת, אך אין סיבה שיהיו בתוך התיקייה הציבורית. ה-BAT המעודכן מוחק אוטומטית את site/.wrangler הישן לפני בדיקת הבטיחות ומונע את יצירתו שם מחדש.
-
-אין להעלות לאתר:
-- data/
-- backups/
-- orders-data.json
-- קובצי JSON של גיבויים
-- supabase/setup.sql
-- הוראות פנימיות או קבצי מקור אחרים שאינם בתוך site/
-
-הגרסה שבתיקייה site/
---------------------
-- אינה מכילה נתוני עסק התחלתיים.
-- הנתונים נטענים מ-Supabase רק לאחר התחברות תקפה.
-- נשמר עותק מקומי בדפדפן אחרי טעינה, ולכן לאחר כניסה מוצלחת אחת ניתן לצפות בעותק האחרון גם כשהמחשב אופליין.
-- מוגדרת כ-PWA וניתן להתקין אותה ב-Windows כאפליקציה בחלון נפרד, בלי חלון שרת/קונסולה שחור.
-- meta noindex + X-Robots-Tag מונעים אינדוקס במנועי חיפוש תומכים. אלה אינם מנגנון אבטחה; שער Access הוא מנגנון האבטחה.
-
-חסימת גישה אמיתית לאתר
-----------------------
-מומלץ ליצור subdomain פרטי (למשל management בדומיין העסק) ולהגן עליו ברמת השרת/Edge באמצעות Cloudflare Access או מנגנון Access מקביל של ספק האחסון.
-הכלל צריך להיות: רק כתובת/כתובות המייל המורשות יכולות לעבור את שער האתר.
-כך גם מי שיודע את ה-URL המדויק לא מקבל אפילו את קובץ ה-HTML בלי אימות.
-
-בנוסף נשארת התחברות Supabase בתוך האפליקציה. אלה שתי שכבות שונות:
-1. Access של האתר — מי בכלל רשאי לקבל את קבצי האפליקציה.
-2. Supabase Auth + RLS — מי רשאי לקרוא/לשנות את נתוני העסק.
-
-Supabase
---------
-בצד הדפדפן נמצא Publishable Key בלבד. זה תקין רק כאשר RLS מוגדר נכון.
-אסור לשים service_role/secret key בקבצי site/.
-בהתקנה חדשה יש להריץ את netunim-orders/supabase/setup.sql וכן את netunim-orders/supabase/shared/setup.sql (ובנוסף setup של הקופה אם דומיין הקופה נדרש).
-מערכת שכבר עברה cutover אינה צריכה להריץ cutover.sql שוב בפריסה רגילה.
-הסקריפטים שומרים Revision history ו-periodic snapshots בהתאם לחוזי הנתונים.
-
-גיבויים
--------
-1. שכבה מיידית: localStorage בדפדפן/באפליקציית PWA.
-2. מראה מקומית: כאשר מחוברת תיקייה, קובץ העבודה נכתב ל-data/orders-data.json.
-3. גיבוי מחשב: backups/ — אוטומטי לכל היותר פעם ב-12 שעות ורק אם הנתונים השתנו.
-4. Supabase revision history: עד 30 גרסאות קודמות.
-5. Supabase periodic snapshots: snapshot לכל היותר פעם ב-12 שעות בעקבות שינוי, 60 יום.
-6. גיבוי תשתיתי נפרד: מומלץ להפעיל גם את אפשרות Database Backups/PITR של תכנית Supabase המתאימה. שכבה זו היא החשובה במקרה של תקלה בפרויקט כולו.
-
-למה לא גיבוי אוטומטי למייל
+Offline and rollout checks
 --------------------------
-מייל אינו יעד אידיאלי לגיבוי נתוני לקוחות/עסק: הוא יוצר עותקים נוספים של מידע רגיש, דורש שירות שליחת מייל וסודות שרת, ומקשה על ניהול הצפנה ומחיקה. עדיף גיבוי מסד נתונים + snapshots + עותק מקומי מוצפן/מוגן.
-
-תיקון באג התיקייה המקומית
---------------------------
-הגרסה הישנה שמרה את ה-handle של התיקייה ב-IndexedDB, אך בפתיחה הבאה אם ההרשאה חזרה למצב שבו נדרש אישור מחדש היא מחקה את ה-handle מהזיכרון והתנהגה כאילו התיקייה נשכחה.
-בנוסף היא כתבה את קובץ העבודה בשורש התיקייה במקום בתוך data/.
-
-התיקון:
-- ה-handle נשמר גם כאשר Windows/Chrome דורשים אישור מחדש.
-- בהגדרות מופיע "אשר גישה מחדש" במקום לאבד את התיקייה.
-- קובץ העבודה נכתב מעכשיו ל-data/orders-data.json.
-- לפני כתיבה ראשונה לתיקייה לאחר חיבור/אישור, אם נמצא קובץ נתונים שונה קיים הוא נשמר קודם בגיבוי "לפני_חיבור" כדי שלא ייעלם בשקט.
-- נעשית בקשה ל-Persistent Storage של הדפדפן כאשר המשתמש מחבר/מאשר תיקייה.
-
-PWA לעומת EXE
--------------
-למצב הנוכחי PWA היא שלב ראשון טוב: חלון עצמאי ב-Windows, בלי שרת שחור, עדכונים דרך האתר, ויכולת צפייה אופליין בעותק האחרון.
-אם הדרישה היא שגיבוי לקובץ מקומי יעבוד תמיד ללא שום בקשת הרשאה של הדפדפן, אפליקציה native (למשל Tauri) עדיפה על אתר/PWA, כי היא יכולה לכתוב לתיקיית גיבוי קבועה בהרשאת מערכת רגילה.
-
-לפני פרסום
-----------
-- להריץ setup.sql המעודכן בפרויקט Supabase הנכון.
-- לוודא שה-RLS פעיל ושמשתמש שאינו מחובר אינו יכול לקרוא order_management_* או kupa_*.
-- להעלות רק site/.
-- להפעיל Access ברמת ה-host/subdomain.
-- לבדוק בחלון גלישה בסתר: URL מפורש צריך להיעצר בשער Access לפני שהאפליקציה נטענת.
-- אחרי מעבר Access, בלי Supabase login לא אמורים להיטען נתוני עסק.
-- אחרי התחברות, לבצע שינוי ניסוי, לרענן, לבדוק שהוא נשמר, ואז לבדוק אופליין.
+The worker precaches the full ESM dependency tree with a deterministic content-based cache version.
+Only public shell assets are cached. Business snapshots and pending live in browser storage, not SW cache.
+After release, check authorized login, a representative workflow, offline reload, recovery, folder permissions
+and installed-PWA startup. Tests never contact production and do not replace this release check.

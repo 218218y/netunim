@@ -1,0 +1,64 @@
+export function createContexts(){
+return {
+  model:{
+    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],cash:[],expenses:[],cards:[],bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[]}},
+    lastNormalizeRemovedCredits:0
+  },
+  session:{
+    dbRevision:0,
+    backendReady:false,
+    saveQueue:Promise.resolve(),
+    localGeneration:0,
+    connectionMode:'directory',
+    serverInfo:{schemaVersion:6,backups:[]},
+    lastSavedSnapshot:'',
+    supaSession:null,
+    cloudDocumentName:'main',
+    cloudSyncBusy:false,
+    cloudWriteBusy:false,
+    cloudPollTimer:null,
+    cloudConflictPending:false,
+    cloudAuthNoDocument:false,
+    localFileConflictPending:false,
+    cloudConnectAction:'open'
+  },
+  ui:{
+    currentPage:'checks',
+    checkTab:'open',
+    checkYear:'all',
+    checkFocus:'all',
+    creditView:'rolling12',
+    bulkCollection:null,
+    bulkSelected:new Set(),
+    modalDraftGuard:null,
+    checkSearchValue:''
+  },
+  files:{
+    rootDirHandle:null,
+    backupRootDirHandle:null,
+    dataFileHandle:null,
+    backupsDirHandle:null,
+    autoBackupTimer:null,
+    pendingAutoBackupPayload:null,
+    browserStatePendingRecord:null,
+    browserStateWritePromise:null
+  },
+  tab:{
+    primaryTab:true,
+    primaryTabReady:false,
+    primaryLockRelease:null
+  },
+  checksSession:{
+    sharedChecksRevision:0,
+    sharedChecksBase:null,
+    sharedChecksBankEvents:[],
+    sharedChecksBusy:false,
+    sharedChecksSavePromise:null,
+    sharedChecksSaveRequested:false,
+    sharedChecksGeneration:0,
+    sharedChecksSaveTimer:null,
+    sharedChecksLastError:'',
+    sharedChecksBootstrapActive:true
+  }
+};
+}

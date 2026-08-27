@@ -1,73 +1,71 @@
-בדיקות ואימות לפני פריסה
-========================
+﻿NETUNIM TESTING
+===============
 
-מטרת המבנה
------------
-כל הבדיקות הקבועות של שתי המערכות מרוכזות כעת בתיקייה tests/ ומופעלות דרך verify.bat אחד בשורש netunim.
-הקופה וההזמנות נבדקות יחד משום שהן חולקות את מאגר הצ'קים ואת חוזי החישוב/סנכרון. deploy_site.bat של כל אחת מהמערכות מפעיל את verify.bat לפני Wrangler ועוצר את הפריסה אם בדיקה כלשהי נכשלת.
+One-time setup (repository root)
+-------------------------------
+Python 3.10+, Node 20.19+/22.13+/24+, and Chrome, Edge or Chromium are required.
+This refactor was checked with Node 24 and Python 3.14 on Windows.
 
-דרישות חד-פעמיות
-----------------
-1. Python 3.10 ומעלה.
-2. Node.js זמין ב-PATH (לבדיקת תחביר JavaScript).
-3. Chrome, Edge או Chromium.
-4. להתקין פעם אחת את תלות Python הקטנה של בדיקות הדפדפן:
+  python -m pip install -r tests/requirements.txt
+  npm ci
 
-   py -3 -m pip install -r tests\requirements.txt
+npm packages are pinned development tools only; none are deployed or imported at runtime.
+No bundler is required. Native ESM requires localhost/HTTPS; file:// and isolated-document fallbacks are unsupported.
 
-   אם הפקודה py אינה קיימת:
-   python -m pip install -r tests\requirements.txt
-
-הרצה ידנית
------------
-להפעיל משורש netunim:
-
+Commands
+--------
   verify.bat
+  verify.bat --no-pause
+  python tests/run_all.py
+  npm run lint
+  node --test tests/business_models.test.mjs tests/shared_contracts.test.mjs tests/sync_models.test.mjs tests/storage_models.test.mjs
 
-הסוויטות שרצות
----------------
-1. static_contracts.py
-   - בדיקת תחביר כל קובצי ה-JavaScript שהדפדפן טוען, כולל assets חיצוניים, באמצעות node --check.
-   - חוזי חלוקת האחריות בין קופה / הזמנות / מאגר הצ'קים.
-   - חוזי SQL, RPC, cutover ו-revision.
-   - בדיקה ששני deploy_site.bat מחוברים לשער האימות לפני Wrangler.
+After changing a public asset or canonical shared source:
+  python tools/sync-assets.py
+  verify.bat --no-pause
 
-2. asset_contracts.py
-   - מוודא שה-HTML נשאר מעטפת בלבד: אין style block ואין script executable inline.
-   - מוודא שכל אפליקציה טוענת supabase/config.js ואז assets/app.js ואת assets/app.css.
-   - מוודא ש-deploy_site.bat דורש את הנכסים החדשים וסורק את כל עץ ה-JavaScript נגד eval/Function constructor.
-   - מוודא ש-initialState של ההזמנות נשאר JSON אינרטי, תקין וריק מנתוני עסק.
+Verification checks drift without modifying files. Both deployment scripts run this complete gate first.
+For safe deployment-path verification without Wrangler or upload:
+  netunim-kupa\deploy_site.bat --preflight-only
+  netunim-orders\deploy_site.bat --preflight-only
 
-3. service_worker_contracts.py
-   - מעטפת PWA מדויקת בלבד, ללא data/backups/SQL/exports.
-   - כל קובץ שמוצהר ב-cache באמת קיים.
-   - מחיקת caches ישנים, same-origin בלבד, GET בלבד ו-fallback ל-index באופליין.
-   - network-first בשתי המערכות כדי למנוע PWA תקוע על קובץ סטטי ישן לאחר פריסה.
-   - בנוסף לבדיקה הסטטית, כל Service Worker מורץ בתוך runtime מבודד של Node עם Cache/Fetch מדומים, ונבדקים בפועל install, activate, online refresh, offline asset fallback ו-offline navigation fallback.
+Suites
+------
+static_contracts.py: syntax, SQL/RPC, ownership, financial sequencing and deployment gates.
+asset_contracts.py: ESM entry, inert/empty seed, CSP and zero inline executable event attributes.
+deploy_preflight.py: read-only public file allowlist, blocked directories, size and secret scans.
+service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and offline fallback.
+module_contracts.py: deterministic shared copies/cache manifest, acyclic local module graph, layer boundaries,
+  no runtime globals/test APIs, pinned ESLint rules and direct Node tests.
+runtime_smoke.py: boot, tabs, lists and scroll restoration in real Chromium.
+runtime_events.py: delegated actions, keyboard, focus/blur dates, series, draft guard, bulk and drag/drop.
+runtime_security.py: hostile business fields and IDs in lists, selectors and modal HTML under production CSP.
+runtime_workflows.py: create/edit/delete, financial/check flows, inventory/reservations, notes and file restore.
+runtime_pwa.py: uninstrumented ESM, real SW installation, all cached modules, offline reload/recovery,
+  preserved pending and actual second-tab Web Locks protection.
+runtime_performance.py: eight renders of 1,000 records; bounded time, stable listeners and no render-time writes/RPC.
+runtime_data_integrity.py: backup round-trip, wrong formats/future schemas, cloud ownership and merge.
+runtime_sync_recovery.py: offline persistence, resume, independent edits, same-record conflicts and revision retry.
+runtime_financial.py: deposit/return/delete deltas, watermarks, pending effects and shared-check bootstrap repair.
 
-4. runtime_smoke.py
-   - מעדיף להעלות כל אתר ב-Chrome/Edge headless דרך שרת localhost זמני ואמיתי.
-   - מוודא טעינה מלאה וללא JavaScript exceptions.
-   - אם Chrome ארגוני חוסם loopback במדיניות מערכת, ה-harness עובר אוטומטית למסמך מבודד עם מימושי localStorage, sessionStorage ו-IndexedDB בזיכרון; כך הבדיקות נשארות ניידות ולא מדלגות על חוזי האחסון.
+Direct module tests
+-------------------
+Business models cover credit cents/dates, recurrence, bank effects, supplier/customer balances, service precedence,
+inventory receipts/reservations, normalization and portable restore validation. Merge tests cover optional fields,
+independent edits, delete/edit conflicts, in-flight rebase, pending freshness and shared RPC request/revision validation.
+Storage tests use in-memory File System Access handles to exercise verified writes, corruption, permission denial,
+serialized writes and preservation of pre-existing folder data. They do not write user folders.
 
-5. runtime_data_integrity.py
-   - round-trip של גיבוי/שחזור קופה והזמנות.
-   - דחיית JSON שגוי, פורמט זר וגרסת נתונים עתידית.
-   - דחיית payload ענן שמחזיר בעלות שגויה על checks.
-   - מיזוג שינויים בלתי תלויים וזיהוי conflict באותה רשומה.
+Isolation and limits
+--------------------
+Browser tests copy site/ into temporary directories, use disposable Chromium profiles and replace public cloud
+configuration with fake endpoints. Production data, credentials, database and deployment are never contacted.
+Most integration suites instrument ONLY these temporary copies with lexical test access via module_probe.cjs.
+The shipped modules contain no test hooks or global compatibility bridge. runtime_pwa.py uses no module instrumentation.
+Actual localhost navigation and asynchronous appReady completion are required; a failed startup does not fall back
+to a simulated DOM. Real CSP headers are served by the harness. Browser tests require an available loopback port.
 
-6. runtime_sync_recovery.py
-   - שינוי בזמן offline נשמר כ-pending ובעותק התאוששות מקומי.
-   - חזרה online עם RPC מדומה ומאומת מנקה pending רק לאחר הצלחה ומתקדמת revision.
-   - revision_conflict אמיתי בסבב הראשון גורם לקריאת remote, מיזוג של שינוי בלתי תלוי וניסיון RPC שני; נבדק שה-revision והנתונים משני הצדדים נשמרים.
-   - merge/rebase של שינויים מקבילים וזיהוי conflicts.
-   - אותם חוזי conflict גם למאגר הצ'קים המשותף.
-
-7. runtime_financial.py
-   - הפקדה, החזרה, שינוי סכום/מחיקה ו-bankEvents.
-   - חישוב pending של הפקדה/החזרה לפני שהענן אישר.
-   - bootstrap/repair של הצ'קים המשותפים.
-
-הערה על קבצי validation הישנים
-------------------------------
-שלושת הקבצים תחת netunim-orders\supabase\shared\validation נשארו כ-entry points דקים בלבד כדי שפקודות ישנות לא יישברו. אין בהם עוד עותק של לוגיקת הבדיקות; מקור האמת היחיד הוא tests/.
+Performance limits catch pathological regressions, not small machine-dependent timing differences. Headless tests
+and fake file handles cannot certify native folder-picker UI, installation on every OS, live Supabase/RLS, Access
+policies or a production rollout. Check those separately with authorized accounts and data before release.
+The compatibility scripts under netunim-orders/supabase/shared/validation remain thin forwarding entrypoints.

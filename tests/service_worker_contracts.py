@@ -49,12 +49,12 @@ const source=fs.readFileSync(process.argv[1],'utf8');
   vm.createContext(context);vm.runInContext(source,context,{filename:process.argv[1]});
   const event=extra=>{const waits=[];let response=null;return Object.assign({waitUntil:p=>waits.push(Promise.resolve(p)),respondWith:p=>{response=Promise.resolve(p)},_waits:waits,_response:()=>response},extra)};
   const install=event({});handlers.install(install);await Promise.all(install._waits);
-  const currentCache=calls.open[0];context.caches.keys=async()=>['old-cache',currentCache];
+  const currentCache=calls.open[0],prefix=currentCache.split('app-shell-')[0]+'app-shell-';context.caches.keys=async()=>[prefix+'old',currentCache,'unrelated-cache'];
   const activate=event({});handlers.activate(activate);await Promise.all(activate._waits);
   const onlineReq={method:'GET',url:'https://app.test/index.html',mode:'navigate'};
   const online=event({request:onlineReq});handlers.fetch(online);const onlineRes=await online._response();await Promise.all(online._waits);
   context.fetch=async()=>{calls.network++;throw new Error('offline')};
-  const cached={tag:'cached'};const cachedReq={method:'GET',url:'https://app.test/icon.png',mode:'no-cors'};
+  const cached={tag:'cached'};const cachedReq={method:'GET',url:'https://app.test/assets/app.css',mode:'no-cors'};
   context.caches.match=async key=>key===cachedReq?cached:null;
   const offlineCached=event({request:cachedReq});handlers.fetch(offlineCached);const cachedRes=await offlineCached._response();
   const navReq={method:'GET',url:'https://app.test/other',mode:'navigate'};const fallback={tag:'fallback'};
@@ -62,11 +62,12 @@ const source=fs.readFileSync(process.argv[1],'utf8');
   const offlineNav=event({request:navReq});handlers.fetch(offlineNav);const fallbackRes=await offlineNav._response();
   const cross=event({request:{method:'GET',url:'https://other.test/a',mode:'no-cors'}});handlers.fetch(cross);
   const post=event({request:{method:'POST',url:'https://app.test/a',mode:'same-origin'}});handlers.fetch(post);
+  const business=event({request:{method:'GET',url:'https://app.test/data/private.json',mode:'same-origin'}});handlers.fetch(business);
   process.stdout.write(JSON.stringify({
     installShell:calls.addAll[0]||[],skip:calls.skip,claim:calls.claim,
-    deleted:calls.deleted,online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
+    deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
     cached:cachedRes&&cachedRes.tag,fallback:fallbackRes&&fallbackRes.tag,
-    crossResponded:!!cross._response(),postResponded:!!post._response()
+    crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
   }));
 })().catch(e=>{console.error(e);process.exit(1)});
 """
@@ -108,7 +109,8 @@ for label, site in APPS.items():
         "./android-chrome-192x192.png",
         "./android-chrome-512x512.png",
     }
-    ok(set(shell) == required, f"{label}: shell contains exactly the expected public app files")
+    required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets').rglob('*.js'))
+    ok(set(shell) == required and len(shell)==len(required), f"{label}: shell contains exactly the expected public app files")
     for item in shell:
         if item == "./":
             continue
@@ -140,11 +142,12 @@ for label, site in APPS.items():
     else:
         ok(probe.get("installShell") == shell, f"{label}: install actually pre-caches the declared shell")
         ok(probe.get("skip") == 1 and probe.get("claim") == 1, f"{label}: install/activate take control immediately")
-        ok(probe.get("deleted") == ["old-cache"], f"{label}: activate deletes only obsolete caches")
+        ok(probe.get("deleted") == [probe.get('oldCache')], f"{label}: activate deletes only this app's obsolete caches")
         ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
         ok(probe.get("cached") == "cached", f"{label}: offline cached asset is returned")
         ok(probe.get("fallback") == "fallback", f"{label}: offline uncached navigation returns index fallback")
         ok(not probe.get("crossResponded") and not probe.get("postResponded"), f"{label}: cross-origin and non-GET requests are untouched")
+        ok(not probe.get('businessResponded'),f'{label}: same-origin business data is never intercepted or cached')
 
 if errors:
     print("\nERRORS", len(errors))

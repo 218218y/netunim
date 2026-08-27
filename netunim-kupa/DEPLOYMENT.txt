@@ -1,26 +1,54 @@
-ניהול קופה — פריסה מאובטחת לאתר
-=================================
+NETUNIM KUPA DEPLOYMENT
+================================
 
-1. לפריסה ציבורית משתמשים אך ורק בתיקיית site. קובץ ההפעלה הוא site/index.html. אין להעלות data, backups, SQL או קבצי מקור אחרים.
-2. site/index.html הוא build נקי מנתוני עסק ומסומן kupa-public-data-free-v1.
-3. בהתקנה חדשה של הענן יש להריץ את netunim-kupa/supabase/setup.sql ואת netunim-orders/supabase/shared/setup.sql. מערכת ייצור שכבר עברה cutover אינה צריכה להריץ cutover.sql שוב לצורך פריסה רגילה.
-4. deploy_site.bat מפעיל תחילה את ..\verify.bat של מאגר netunim כולו. הפריסה נעצרת לפני Wrangler אם בדיקת תחביר, חוזי נתונים/SQL, runtime, סנכרון אופליין, חישובים כספיים או Service Worker נכשלת. לאחר מכן Wrangler רץ מתיקיית עבודה זמנית ומבודדת שנוצרת מחדש בכל פריסה, והסקריפט מסרב לפרוס אם נמצאו בתוך site קובצי נתונים, SQL, ארכיונים, מפתחות, .env, .wrangler, functions, data או backups.
-5. שם פרויקט Cloudflare Pages המוגדר בסקריפט: bargig-kupa. גרסת Wrangler מקובעת בסקריפט ל-4.125.0 כדי שפריסה לא תשתנה בלי שינוי יזום בקוד. אם בחרת שם אחר ב-Cloudflare, שנה רק את PROJECT_NAME בסקריפט. אם הפרויקט עדיין לא קיים בחשבון Cloudflare, צור אותו פעם אחת באמצעות: npx wrangler@4.125.0 pages project create bargig-kupa
-6. favicon וכל אייקוני PWA הועתקו כרגע מאתר ניהול ההזמנות. אפשר להחליף בעתיד רק את קבצי התמונה באותם שמות, ללא שינוי קוד.
-7. _headers מונע אינדוקס, iframe, MIME sniffing ומגביל חיבורי רשת לפרויקט Supabase המוגדר.
-8. service-worker שומר את מעטפת האתר לעבודה Offline. נתוני העסק עצמם אינם נארזים ב-cache של האתר; השינויים נשמרים במנגנון התאוששות מקומי וב-Supabase.
+Public root
+-----------
+Publish only netunim-kupa/site. Never serve the repository root, data/, backups/, SQL,
+node_modules, credentials or source-only operational files. The public seed contains no business data.
+index.html loads assets/app.js as native ESM; assets/js/main.js composes the application.
+All assets/js modules, CSS, icons, manifest, service-worker.js, _headers and supabase/config.js are required.
+Each site remains independently deployable and independently usable offline.
 
-יצירת פרויקט בפעם הראשונה בלבד (אם עדיין אינו קיים):
-  npx wrangler@4.125.0 pages project create bargig-kupa
+Preparation (repository root)
+-----------------------------
+Install the development dependencies described in TESTING.txt:
+  python -m pip install -r tests/requirements.txt
+  npm ci
+After changing public/shared assets:
+  python tools/sync-assets.py
+  verify.bat --no-pause
+Review all changes and preserve current operational backups before release.
 
-מבנה קבצי האתר הפעיל: index.html הוא מעטפת ה-HTML בלבד; העיצוב נמצא ב-site/assets/app.css וה-JavaScript הפעיל נמצא ב-site/assets/app.js. שני הקבצים הם חלק חובה ממעטפת ה-PWA, נבדקים לפני פריסה ונשמרים ב-cache לאופליין.
+Read-only preflight, no upload:
+  netunim-kupa\deploy_site.bat --preflight-only
+This runs the full repository verification and local deployment guards, then exits before
+creating a Wrangler work directory or contacting Cloudflare. It does not clean public files automatically.
+Unexpected files must be reviewed and removed explicitly.
 
-לפני הפריסה הראשונה במחשב יש להתקין את תלות הבדיקות כמפורט ב-..\TESTING.txt.
-אפשר להריץ בדיקה מלאה ידנית משורש netunim באמצעות verify.bat.
+Deployment (only when intentionally authorized):
+  netunim-kupa\deploy_site.bat
+The script re-runs the complete verifier, checks required modules/CSP/public-root safety,
+then runs pinned Wrangler 4.125.0 in a fresh isolated temporary directory. Only the absolute
+site/ path is uploaded. The configured Pages project is bargig-kupa.
+Do not bypass the verification gate with a direct Wrangler upload.
+No JavaScript build step or npm runtime dependencies are required.
 
-פריסה:
-  deploy_site.bat
-או ידנית, אם נדרש:
-  npx --yes wrangler@4.125.0 pages deploy site --project-name=bargig-kupa
+Cloud and security
+------------------
+supabase/config.js exports frozen public configuration. Only a publishable key belongs there;
+never use a secret/service-role key. Keep its URL consistent with connect-src in _headers.
+Supabase Auth and RLS control business-data access. A site access policy (for example Cloudflare
+Access) is a separate layer controlling delivery of public application files. noindex is not authorization.
+script-src forbids inline scripts/eval. Inline styles remain allowed only in style-src-attr;
+style-src-elem is self-only. Existing object/base/frame, MIME, referrer and permission protections remain.
 
-לפני כל פריסה ודא שהתיקייה site אינה מכילה נתוני משתמש.
+Ordinary frontend deployment requires no SQL/schema changes and must not rerun cutover.
+For a genuinely new database, follow the existing setup and shared-check SQL documentation.
+Never run migration SQL on production merely to publish frontend changes.
+
+Offline and rollout checks
+--------------------------
+The worker precaches the full ESM dependency tree with a deterministic content-based cache version.
+Only public shell assets are cached. Business snapshots and pending live in browser storage, not SW cache.
+After release, check authorized login, a representative workflow, offline reload, recovery, folder permissions
+and installed-PWA startup. Tests never contact production and do not replace this release check.

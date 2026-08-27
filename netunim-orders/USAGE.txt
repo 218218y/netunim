@@ -18,7 +18,9 @@
 -----------
 - משתמשים באותו site/index.html, אין גרסת HTML מקומית נפרדת.
 - מומלץ להגיש את תיקיית site דרך http://localhost (VS Code Live Server, שרת סטטי של סביבת הפיתוח וכדומה).
-- פתיחה ישירה ב-file:// אינה סביבת הפיתוח המומלצת, משום ש-Service Worker/PWA וחלק מיכולות הדפדפן תלויות ב-HTTP(S)/localhost.
+- פתיחה ישירה ב-file:// אינה נתמכת: מודולי ESM ו-Service Worker דורשים HTTP(S)/localhost.
+- משורש המאגר: python -m http.server 8082 --directory netunim-orders/site
+- לאחר מכן פתח http://localhost:8082. אין להגיש את שורש המאגר, המכיל קבצים שאינם מיועדים לפרסום.
 
 תיקייה מקומית וגיבויים
 ----------------------

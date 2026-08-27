@@ -20,6 +20,8 @@ def preflight() -> int:
         return fail(f"Python 3.10+ is required; found {sys.version.split()[0]}")
     if not shutil.which("node"):
         return fail("Node.js was not found in PATH (required for JavaScript syntax checks)")
+    if not (ROOT / 'node_modules/eslint/bin/eslint.js').is_file():
+        return fail('Development tools are missing. Run npm ci in the repository root.')
     if importlib.util.find_spec("websocket") is None:
         return fail(
             "Python package 'websocket-client' is missing. Install it once with: "
@@ -38,8 +40,15 @@ def main() -> int:
     suites = [
         "static_contracts.py",
         "asset_contracts.py",
+        "deploy_preflight.py",
         "service_worker_contracts.py",
+        "module_contracts.py",
         "runtime_smoke.py",
+        "runtime_events.py",
+        "runtime_security.py",
+        "runtime_workflows.py",
+        "runtime_pwa.py",
+        "runtime_performance.py",
         "runtime_data_integrity.py",
         "runtime_sync_recovery.py",
         "runtime_financial.py",

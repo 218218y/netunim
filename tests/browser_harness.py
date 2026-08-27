@@ -5,6 +5,7 @@ import http.server
 import json
 import os
 import re
+import secrets
 from pathlib import Path
 import shutil
 import socket
@@ -54,9 +55,17 @@ def find_browser() -> str | None:
 
 
 def _free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+    # Some Windows hosts allocate low ephemeral ports, including Chromium's
+    # forbidden service ports (ERR_UNSAFE_PORT). Use the dynamic/private range.
+    for _ in range(100):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            port = 49152 + secrets.randbelow(16384)
+            try:
+                sock.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise RuntimeError('No free localhost port in the dynamic range')
 
 
 def _wait_json(url: str, timeout: float = 10.0):
@@ -76,11 +85,21 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format, *_args):
         pass
 
+    def end_headers(self):
+        # Exercise the same security headers as the static deployment.
+        headers = Path(self.directory) / '_headers'
+        if headers.is_file():
+            for line in headers.read_text(encoding='utf-8').splitlines():
+                if line.startswith('  ') and ':' in line:
+                    name, value = line.strip().split(':', 1)
+                    self.send_header(name, value.strip())
+        super().end_headers()
+
 
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
-    def __init__(self, site: Path, label: str):
+    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False):
         self.site = Path(site)
         self.label = label
         self.browser = find_browser()
@@ -95,13 +114,22 @@ class BrowserSession:
         self.seq = 0
         self.events: list[dict] = []
         self.mode = "localhost"
+        self.instrument = instrument
+        self.service_worker = service_worker
 
     def __enter__(self):
-        self._prepare_site()
-        self._start_server()
-        self._start_browser()
-        self._navigate()
-        return self
+        try:
+            self._prepare_site()
+            self._start_server()
+            self._start_browser()
+            self._navigate()
+            # HTML completion does not imply completion of asynchronous recovery.
+            if self.instrument:
+                self.evaluate("appReady.then(()=>true)")
+            return self
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
 
     def __exit__(self, exc_type, exc, tb):
         with contextlib.suppress(Exception):
@@ -128,9 +156,11 @@ class BrowserSession:
         prepared = self.tmp / "site"
         config = prepared / "supabase/config.js"
         config.parent.mkdir(parents=True, exist_ok=True)
+        # Native PWA recovery exercises real failed requests. Keep these on the
+        # test origin (allowed by the unchanged production CSP), never production.
+        config_url = 'location.origin' if self.service_worker else "'https://example.invalid'"
         config.write_text(
-            "window.KUPA_SUPABASE_CONFIG={url:'https://example.invalid',publishableKey:'test'};"
-            "window.ORDER_SUPABASE_CONFIG={url:'https://example.invalid',publishableKey:'test'};\n",
+            "export const supabaseConfig=Object.freeze({url:"+config_url+",publishableKey:'test'});\n",
             encoding="utf-8",
         )
         # Service Worker behavior has its own contract tests. Runtime tests disable
@@ -140,8 +170,17 @@ class BrowserSession:
         replacement = "Promise.resolve({scope:'runtime-test'})"
         for js_path in prepared.rglob("*.js"):
             source = js_path.read_text(encoding="utf-8")
-            if needle in source:
+            if needle in source and not self.service_worker:
                 js_path.write_text(source.replace(needle, replacement), encoding="utf-8")
+        self.probe_names = self._module_probe({'mode':'instrument','site':str(prepared)}) if self.instrument else []
+
+    def _module_probe(self, payload):
+        result = subprocess.run(
+            ['node', str(ROOT / 'tests/module_probe.cjs')],
+            input=json.dumps(payload), capture_output=True, text=True, encoding='utf-8',
+            cwd=ROOT, check=True,
+        )
+        return json.loads(result.stdout)
 
     def _start_server(self):
         port = _free_port()
@@ -168,6 +207,7 @@ class BrowserSession:
         ]
         self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         pages = _wait_json(f"http://127.0.0.1:{devtools_port}/json/list")
+        self.devtools_url = f'http://127.0.0.1:{devtools_port}'
         page = next((item for item in pages if item.get("type") == "page"), None)
         if not page:
             raise RuntimeError("Chrome DevTools did not expose a page target")
@@ -175,6 +215,26 @@ class BrowserSession:
         self.call("Runtime.enable")
         self.call("Page.enable")
         self.call("Log.enable")
+
+    @contextlib.contextmanager
+    def second_tab(self):
+        target = self.call('Target.createTarget', {'url':'about:blank'})['result']['targetId']
+        pages = _wait_json(self.devtools_url+'/json/list')
+        page = next(p for p in pages if p['id']==target)
+        original = self.ws, self.seq, self.events
+        self.ws = websocket.create_connection(page['webSocketDebuggerUrl'], timeout=10)
+        self.seq, self.events = 0, []
+        try:
+            self.call('Runtime.enable')
+            self.call('Page.enable')
+            self.call('Log.enable')
+            self._navigate()
+            self.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
+            yield self
+        finally:
+            self.ws.close()
+            self.ws, self.seq, self.events = original
+            self.call('Target.closeTarget', {'targetId':target})
 
     def call(self, method: str, params: dict | None = None):
         self.seq += 1
@@ -186,125 +246,16 @@ class BrowserSession:
                 return message
             self.events.append(message)
 
-    def _storage_shim(self) -> str:
-        return r"""(()=>{
-          const makeStorage=()=>{const m=new Map();return {
-            getItem:k=>m.has(String(k))?m.get(String(k)):null,
-            setItem:(k,v)=>m.set(String(k),String(v)),
-            removeItem:k=>m.delete(String(k)),clear:()=>m.clear(),
-            key:i=>[...m.keys()][i]??null,get length(){return m.size}
-          }};
-          try{Object.defineProperty(window,'localStorage',{value:makeStorage(),configurable:true})}catch(e){}
-          try{Object.defineProperty(window,'sessionStorage',{value:makeStorage(),configurable:true})}catch(e){}
-          const dbs=new Map();
-          const asyncCall=fn=>setTimeout(fn,0);
-          const ensureDb=name=>{if(!dbs.has(name))dbs.set(name,{stores:new Map()});return dbs.get(name)};
-          const request=()=>({result:undefined,error:null,onsuccess:null,onerror:null,onupgradeneeded:null});
-          const objectStoreNames=db=>({contains:name=>db.stores.has(String(name))});
-          const makeStore=(store,tx=null)=>{
-            const run=fn=>{const q=request();if(tx)tx._pending++;asyncCall(()=>{try{fn(q);q.onsuccess&&q.onsuccess({target:q})}catch(e){q.error=e;q.onerror&&q.onerror({target:q})}finally{if(tx){tx._pending--;tx._finish()}}});return q};
-            return {
-              put(value,key){return run(q=>{store.set(String(key),structuredClone(value));q.result=key})},
-              get(key){return run(q=>{q.result=store.has(String(key))?structuredClone(store.get(String(key))):undefined})},
-              delete(key){return run(q=>{store.delete(String(key));q.result=undefined})}
-            }
-          };
-          const makeDb=(name,raw)=>({
-            name,close(){},get objectStoreNames(){return objectStoreNames(raw)},
-            createObjectStore(storeName){const n=String(storeName);if(!raw.stores.has(n))raw.stores.set(n,new Map());return makeStore(raw.stores.get(n))},
-            transaction(storeName){const n=String(storeName),tx={oncomplete:null,onerror:null,onabort:null,error:null,_pending:0,_scheduled:false};
-              if(!raw.stores.has(n))raw.stores.set(n,new Map());
-              tx._finish=()=>{if(tx._pending===0&&!tx._scheduled){tx._scheduled=true;asyncCall(()=>{tx._scheduled=false;if(tx._pending===0)tx.oncomplete&&tx.oncomplete({target:tx})})}};
-              tx.objectStore=()=>makeStore(raw.stores.get(n),tx);
-              asyncCall(()=>tx._finish());return tx}
-          });
-          const indexed={open(name){const q=request();asyncCall(()=>{const existed=dbs.has(String(name)),raw=ensureDb(String(name)),db=makeDb(String(name),raw);q.result=db;if(!existed&&q.onupgradeneeded)q.onupgradeneeded({target:q});asyncCall(()=>q.onsuccess&&q.onsuccess({target:q}))});return q}};
-          try{Object.defineProperty(window,'indexedDB',{value:indexed,configurable:true})}catch(e){}
-        })()"""
-
-    def _prepared_html(self) -> str:
-        """Inline local CSS/JS only for the isolated-DOM fallback.
-
-        Normal runtime tests load the real files over localhost. Managed browsers can
-        block loopback navigation; in that case Page.setDocumentContent has an
-        about:blank origin and cannot resolve our external app assets. Inlining the
-        already-prepared local files preserves document order and keeps the fallback
-        semantically equivalent without weakening the production site structure.
-        """
-        site = self.tmp / "site"
-        html = (site / "index.html").read_text(encoding="utf-8")
-
-        def local_file(url: str) -> Path | None:
-            clean = url.split("?", 1)[0].split("#", 1)[0]
-            if re.match(r"^[a-z][a-z0-9+.-]*:", clean, re.I) or clean.startswith("//"):
-                return None
-            relative = clean[2:] if clean.startswith("./") else clean.lstrip("/")
-            target = site / relative
-            try:
-                target.resolve().relative_to(site.resolve())
-            except Exception:
-                return None
-            return target if target.is_file() else None
-
-        link_re = re.compile(r"<link\b(?P<attrs>[^>]*)>", re.I)
-        def inline_stylesheet(match):
-            attrs = match.group("attrs") or ""
-            rel = re.search(r"\brel\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
-            href = re.search(r"\bhref\s*=\s*[\"']([^\"']+)[\"']", attrs, re.I)
-            if not rel or "stylesheet" not in rel.group(1).lower().split() or not href:
-                return match.group(0)
-            target = local_file(href.group(1))
-            if not target:
-                return match.group(0)
-            css = target.read_text(encoding="utf-8").replace("</style", "<\\/style")
-            return f'<style data-runtime-source="{href.group(1)}">{css}</style>'
-        html = link_re.sub(inline_stylesheet, html)
-
-        script_re = re.compile(
-            r"<script(?P<before>[^>]*)\bsrc\s*=\s*[\"'](?P<src>[^\"']+)[\"'](?P<after>[^>]*)>\s*</script>",
-            re.I | re.S,
-        )
-        def inline_script(match):
-            target = local_file(match.group("src"))
-            if not target:
-                return match.group(0)
-            source = target.read_text(encoding="utf-8").replace("</script", "<\\/script")
-            attrs = (match.group("before") or "") + (match.group("after") or "")
-            return f"<script{attrs}>{source}</script>"
-        return script_re.sub(inline_script, html)
-
     def _navigate(self):
         result = self.call("Page.navigate", {"url": self.url})
         nav = result.get("result", {})
         if nav.get("errorText"):
-            # Managed Chrome installations can block loopback/file navigation. Keep
-            # the suite portable by falling back to an isolated about:blank document
-            # with complete in-memory localStorage/sessionStorage/IndexedDB shims.
-            self.mode = "isolated-dom"
-            self.call("Page.navigate", {"url": "about:blank"})
-            time.sleep(0.05)
-            self.call("Runtime.evaluate", {"expression": self._storage_shim()})
-            tree = self.call("Page.getFrameTree")["result"]["frameTree"]
-            frame_id = tree["frame"]["id"]
-            self.events.clear()
-            self.call("Page.setDocumentContent", {"frameId": frame_id, "html": self._prepared_html()})
-            end = time.time() + 10
-            while time.time() < end:
-                try:
-                    state = self.evaluate("document.readyState")
-                    if state == "complete":
-                        time.sleep(0.25)
-                        return
-                except Exception:
-                    pass
-                time.sleep(0.05)
-            raise RuntimeError(f"{self.label}: isolated document did not finish loading")
+            raise RuntimeError('Native ESM runtime requires localhost navigation: '+nav['errorText'])
         end = time.time() + 10
         while time.time() < end:
             try:
                 state = self.evaluate("({ready:document.readyState,href:location.href})")
                 if state and state.get("href", "").startswith(self.url) and state.get("ready") == "complete":
-                    time.sleep(0.25)
                     return
             except Exception:
                 pass
@@ -312,6 +263,10 @@ class BrowserSession:
         raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}")
 
     def evaluate(self, expression: str, *, await_promise: bool = True):
+        if self.instrument:
+            expression = self._module_probe({'mode':'expression','expression':expression,'names':self.probe_names})
+        if '__netunimProbe.' in expression:
+            expression = "(async()=>{const {bindings:__netunimProbe}=await import('./test-access.js');return ("+expression+")})()"
         response = self.call(
             "Runtime.evaluate",
             {

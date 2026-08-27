@@ -1,0 +1,23 @@
+import {esc} from '../../core/values.js';
+import {$} from '../../state/constants.js';
+
+// Dependencies are supplied by the composition root; this module has no startup side effects.
+export function createDomainsWarehouseBulk({warehouseUi, model, renderWarehouse, toast, scheduleSave, inventoryStats}){
+function setWarehouseTab(tab){if(!['stock','incoming','reservations','orders','locations','history'].includes(tab)||tab===warehouseUi.warehouseTab)return;warehouseUi.warehouseTab=tab;warehouseUi.warehouseBulkMode=false;warehouseUi.warehouseBulkSelected.clear();renderWarehouse()}
+
+function warehouseVisibleBulkIds(){return [...document.querySelectorAll('[data-stock-bulk-id]')].map(el=>el.dataset.stockBulkId).filter(Boolean)}
+
+function toggleWarehouseBulkMode(){if(warehouseUi.warehouseTab!=='stock'){warehouseUi.warehouseTab='stock'}warehouseUi.warehouseBulkMode=!warehouseUi.warehouseBulkMode;warehouseUi.warehouseBulkSelected.clear();renderWarehouse()}
+
+function toggleWarehouseBulkRow(id,checked){if(!warehouseUi.warehouseBulkMode||warehouseUi.warehouseTab!=='stock'||!model.state.inventoryItems.some(x=>x.id===id&&x.active!==false))return;if(checked)warehouseUi.warehouseBulkSelected.add(id);else warehouseUi.warehouseBulkSelected.delete(id);syncWarehouseBulkUi()}
+
+function toggleWarehouseBulkVisible(){if(!warehouseUi.warehouseBulkMode)return;const ids=warehouseVisibleBulkIds(),allSelected=ids.length>0&&ids.every(id=>warehouseUi.warehouseBulkSelected.has(id));ids.forEach(id=>allSelected?warehouseUi.warehouseBulkSelected.delete(id):warehouseUi.warehouseBulkSelected.add(id));syncWarehouseBulkUi()}
+
+function warehouseBulkControls(){if(warehouseUi.warehouseTab!=='stock')return'';return `<div class="warehouse-bulk-actions"><button class="btn small bulk-select-toggle ${esc(warehouseUi.warehouseBulkMode?'active':'')}" data-action="toggle-warehouse-bulk-mode">${warehouseUi.warehouseBulkMode?'סיום בחירה':'בחירה'}</button>${warehouseUi.warehouseBulkMode?`<button id="warehouseBulkAll" class="btn small bulk-select-all-btn" data-action="toggle-warehouse-bulk-visible">בחר הכל</button><button id="warehouseBulkDelete" class="btn danger small bulk-delete-btn" data-action="archive-selected-inventory-items" disabled>הסר נבחרים</button>`:''}</div>`}
+
+function syncWarehouseBulkUi(){if(!warehouseUi.warehouseBulkMode||warehouseUi.warehouseTab!=='stock')return;const valid=new Set(model.state.inventoryItems.filter(x=>x.active!==false).map(x=>x.id));[...warehouseUi.warehouseBulkSelected].forEach(id=>{if(!valid.has(id))warehouseUi.warehouseBulkSelected.delete(id)});const del=$('#warehouseBulkDelete');if(del){del.disabled=!warehouseUi.warehouseBulkSelected.size;del.textContent=warehouseUi.warehouseBulkSelected.size?`הסר ${warehouseUi.warehouseBulkSelected.size}`:'הסר נבחרים'}const visible=warehouseVisibleBulkIds(),all=visible.length>0&&visible.every(id=>warehouseUi.warehouseBulkSelected.has(id)),allBtn=$('#warehouseBulkAll');if(allBtn)allBtn.textContent=all?'בטל הכל':'בחר הכל';document.querySelectorAll('[data-stock-bulk-id]').forEach(card=>{const selected=warehouseUi.warehouseBulkSelected.has(card.dataset.stockBulkId);card.classList.toggle('bulk-selected-card',selected);const cb=card.querySelector('[data-stock-bulk-check]');if(cb)cb.checked=selected})}
+
+function archiveSelectedInventoryItems(){const items=[...warehouseUi.warehouseBulkSelected].map(id=>model.state.inventoryItems.find(x=>x.id===id&&x.active!==false)).filter(Boolean);if(!items.length)return toast('לא נבחרו פריטי מלאי להסרה');const blocked=items.filter(i=>{const st=inventoryStats(i.id);return Math.abs(st.onHand)>=1e-9||Math.abs(st.incoming)>=1e-9||Math.abs(st.reserved)>=1e-9});if(blocked.length){const names=blocked.slice(0,4).map(i=>i.name).join(' · ');return alert(`לא ניתן להסיר ${blocked.length} מהפריטים שנבחרו, כי יש עליהם מלאי, מלאי בדרך או שמירה פעילה.\n\n${names}${blocked.length>4?' · …':''}\n\nלא הוסר אף פריט.`)}if(!confirm(`להסיר ${items.length} פריטים מרשימת המלאי הפעילה?\n\nיומן התנועות ההיסטורי של כל פריט יישמר, בדיוק כמו בהסרת פריט יחיד.`))return;const now=new Date().toISOString();items.forEach(i=>{i.active=false;i.archivedAt=now;i.updatedAt=now});warehouseUi.warehouseBulkSelected.clear();warehouseUi.warehouseBulkMode=false;scheduleSave(`${items.length} פריטי מלאי הוסרו מהקטלוג הפעיל`);renderWarehouse()}
+
+return { setWarehouseTab, warehouseVisibleBulkIds, toggleWarehouseBulkMode, toggleWarehouseBulkRow, toggleWarehouseBulkVisible, warehouseBulkControls, syncWarehouseBulkUi, archiveSelectedInventoryItems };
+}

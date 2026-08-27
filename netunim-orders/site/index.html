@@ -14,7 +14,6 @@
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png">
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="theme-color" content="#f6f3f0">
-<script src="supabase/config.js"></script>
 <link rel="stylesheet" href="./assets/app.css" />
 </head>
 <body>
@@ -33,16 +32,16 @@
   <div class="topspacer"></div>
   <div class="save-pill" id="savePill">מקומי: שמור</div>
   <div class="cloud-pill" id="cloudPill">ענן: לא פעיל</div>
-  <button class="top-settings-btn" id="saveNowButton" type="button" onclick="manualSaveNow()">שמור עכשיו</button>
-  <button class="top-settings-btn" id="folderAccessButton" type="button" onclick="handleTopFolderAccess()" hidden>אשר תיקייה</button>
+  <button class="top-settings-btn" id="saveNowButton" type="button">שמור עכשיו</button>
+  <button class="top-settings-btn" id="folderAccessButton" type="button" hidden>אשר תיקייה</button>
   <button class="top-settings-btn" id="settingsTopButton" data-view="settings">הגדרות</button>
 </header>
 <main class="main" id="main"></main>
 </div>
 <div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
-<div class="tab-writer-guard" id="tabWriterGuard" hidden><div class="tab-writer-card"><h2>המערכת פתוחה בלשונית אחרת</h2><p>כדי למנוע שתי כתיבות מקבילות ודריסת נתונים, רק לשונית אחת יכולה לערוך ולסנכרן. סגור את הלשונית האחרת ואז לחץ כאן.</p><button class="btn primary" type="button" onclick="retryPrimaryTabLock()">בדוק שוב</button></div></div>
+<div class="tab-writer-guard" id="tabWriterGuard" hidden><div class="tab-writer-card"><h2>המערכת פתוחה בלשונית אחרת</h2><p>כדי למנוע שתי כתיבות מקבילות ודריסת נתונים, רק לשונית אחת יכולה לערוך ולסנכרן. סגור את הלשונית האחרת ואז לחץ כאן.</p><button class="btn primary" type="button" id="retryPrimaryTab">בדוק שוב</button></div></div>
 <script id="initialState" type="application/json">{"_meta":{"format":"order-management-portable","schemaVersion":4,"app":"ניהול הזמנות · אתר מאובטח","excelCatchup20260825":{"siteSeed":"empty"}},"version":4,"businessName":"ניהול הזמנות","suppliers":[],"transactions":[],"customerDebts":[],"customerOrders":[],"serviceCalls":[],"inventoryItems":[],"inventoryCategoryOrder":[],"inventoryEvents":[],"warehouseOrders":[],"checks":[],"notes":[],"importAudit":{},"stage2Audit":{}}</script>
-<script src="./assets/app.js"></script>
+<script type="module" src="./assets/app.js"></script>
 
 </body></html>

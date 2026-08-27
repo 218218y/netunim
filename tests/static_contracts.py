@@ -49,7 +49,7 @@ def browser_js_units(html: Path) -> list[tuple[str, str]]:
 
 
 def browser_code(site: Path) -> str:
-    return "\n;\n".join(code for _name, code in browser_js_units(site / "index.html"))
+    return "\n;\n".join(p.read_text(encoding='utf-8') for p in sorted(site.rglob('*.js')))
 
 def dollar_balanced(text: str):
     tags = re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", text)
@@ -75,14 +75,14 @@ def norm(text: str | None):
 # 1. Both browser bundles must remain syntactically valid JavaScript, regardless
 # of whether code is inline or stored in local script assets.
 for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
-    units = browser_js_units(site / "index.html")
+    units = [(str(p.relative_to(ROOT)), p.read_text(encoding='utf-8')) for p in sorted(site.rglob('*.js'))]
     parse_ok = bool(units)
     for unit_name, js in units:
         if unit_name.startswith("missing:"):
             print("MISSING", unit_name)
             parse_ok = False
             continue
-        with tempfile.NamedTemporaryFile("w", suffix=".js", encoding="utf-8", delete=False) as handle:
+        with tempfile.NamedTemporaryFile("w", suffix=".mjs", encoding="utf-8", delete=False) as handle:
             handle.write(js)
             temp_name = handle.name
         result = subprocess.run(["node", "--check", temp_name], capture_output=True, text=True)
@@ -125,6 +125,9 @@ for label, path in [("kupa", K / "deploy_site.bat"), ("orders", O / "deploy_site
     wrangler_pos = text.lower().find("pages deploy")
     ok(verify_pos >= 0, f"{label}: deploy invokes repository verify gate")
     ok(wrangler_pos >= 0 and verify_pos < wrangler_pos, f"{label}: verify gate runs before Wrangler deployment")
+    dry_run=text.find('if /I "%~1"=="--preflight-only" (')
+    ok(verify_pos < dry_run < text.find('mkdir "%DEPLOY_WORK_DIR%"'), f'{label}: read-only preflight exits before deployment setup')
+    ok('exit /b 0' in text[dry_run:text.find('mkdir "%DEPLOY_WORK_DIR%"')], f'{label}: preflight does not fall through to Wrangler')
     ok("if errorlevel 1" in text[verify_pos:wrangler_pos] if verify_pos >= 0 and wrangler_pos > verify_pos else False,
        f"{label}: failed verification stops deployment")
 

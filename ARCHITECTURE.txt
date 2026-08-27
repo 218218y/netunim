@@ -1,28 +1,67 @@
-מבנה קוד הדפדפן
-=================
+﻿NETUNIM ARCHITECTURE
+===================
 
-מצב נוכחי
-----------
-שתי האפליקציות נשארות Vanilla JavaScript ללא build tool וללא תלות runtime ב-npm.
-index.html משמש מעטפת DOM ונתוני seed אינרטיים בלבד. קוד executable ועיצוב אינם מוטמעים בו:
-
-  netunim-kupa/site/assets/app.js
-  netunim-kupa/site/assets/app.css
-  netunim-orders/site/assets/app.js
-  netunim-orders/site/assets/app.css
-
-למה השלב הזה קודם ל-ESM
+Runtime and composition
 -----------------------
-היישומים עדיין משתמשים ב-inline DOM event attributes רבים ובפונקציות גלובליות. מעבר ישיר ל-type=module היה משנה את חשיפת הפונקציות ל-window ועלול לשבור handlers. לכן ההפרדה הפיזית בוצעה קודם בלי לשנות את מודל ההרצה: app.js נטען כ-classic script ונשמרה אותה התנהגות.
+Each site is an independent static Vanilla JavaScript PWA, served over HTTPS or localhost.
+index.html loads assets/app.js as native ESM. This tiny entry imports assets/js/main.js.
+main.js creates state contexts, wires explicit factory dependencies, binds events and starts lifecycle.boot().
+appReady is the exported startup promise. There is no window compatibility API, bundler or runtime npm dependency.
+supabase/config.js exports a frozen public configuration object imported by cloud modules.
 
-חוזי יציבות
------------
-1. tests/asset_contracts.py מונע החזרה של executable JavaScript או style blocks אל index.html.
-2. tests/static_contracts.py בודק את קובצי ה-JavaScript שהדפדפן באמת טוען, ולא מניח שהקוד נמצא inline.
-3. tests/browser_harness.py טוען assets אמיתיים דרך localhost; במצב fallback הוא מטמיע עותק של אותם assets למסמך המבודד.
-4. Service Worker של כל אפליקציה pre-cache את app.js ואת app.css, ועובד network-first כדי לקבל פריסה חדשה כשיש רשת.
-5. deploy_site.bat דורש את שני קובצי assets וסורק את כל JavaScript הציבורי נגד eval ו-Function constructor לפני Wrangler.
+Module boundaries (under assets/js)
+----------------------------------
+core: numbers, money, dates and IDs; no DOM or persistence.
+state: initial schema, context ownership, normalization, portable serialization and validation.
+storage: browser snapshots, IndexedDB, pending mirrors, File System Access, verified backups and writer locks.
+cloud: authentication and HTTP/RPC contracts; no DOM.
+sync: document/check queues, three-way merge, revision retries, rebase, pending recovery and polling.
+ui: modal lifecycle, notifications, navigation, folders, connection controls and action dispatch.
+domains: calculation models, state selectors, views and editor/controllers for each business area.
+Kupa domains: checks, bank, cash, credit, expenses, dashboard and records.
+Orders domains: checks, suppliers, customers, service, inventory, warehouse, notes, bank and dashboard.
 
-השלב המבני הבא
----------------
-רק לאחר שהפיצול הזה יציב אפשר להתחיל לפצל את app.js לפי תחומי אחריות. אין לבצע מעבר Big-Bang ל-ESM. יש להעביר תחילה פונקציות טהורות/ללא DOM למודולים, להוסיף להן בדיקות ישירות, ורק לאחר מכן לטפל בשכבת UI וב-inline event handlers. כאשר לא יישארו inline handlers ניתן יהיה להסיר 'unsafe-inline' מ-script-src ב-CSP.
+Factories receive named contexts and callbacks. Calculation models receive explicit data and can run in Node.
+Editor/controllers read forms and coordinate mutations and persistence. Views never call RPC directly.
+Callbacks from the composition root connect layers without circular imports or a global service locator.
+The model context owns business state; session/checksSession own synchronization state; files owns handles/queues;
+UI contexts own filters, selections and modal drafts. Orders lastCloudState belongs to session.
+
+Data ownership and recovery
+---------------------------
+kupa_documents owns cash, credit, expenses, cards and bank snapshots. order_management_documents owns Orders data.
+shared_checks_documents is the authoritative shared check list and financial bank-event log.
+Neither app writes checks into its own cloud document. Bank watermarks and pending check deltas prevent double counting.
+Portable backups still contain checks and retain the existing schema versions and file names.
+Orders restore preserves live shared checks by default unless the user explicitly selects check restoration.
+
+Local changes are mirrored before cloud acknowledgement. Pending generations, base revisions and base snapshots
+survive reload through localStorage and IndexedDB. Independent record edits merge; same-record conflicts keep local
+work and block unsafe overwrites. Revision conflicts re-read remote data and retry; edits made during a request rebase.
+Web Locks allow one writer per app/origin. Secondary tabs show a guard. Browser recovery is separate from SW caching.
+File writes are read back and verified. Connecting a folder preserves differing existing data before replacement.
+Permission prompts remain user initiated; cancellation/revocation does not silently discard pending state.
+
+Events and security
+-------------------
+Static DOM uses addEventListener. Dynamic content uses explicit action maps and delegated data-* attributes.
+Actions are JavaScript functions, never executable strings. Focus/blur use capture; keyboard and propagation
+behavior are characterized in browser tests. Business values in HTML and attributes pass through esc;
+selector values use CSS.escape. Trusted template fragments remain HTML intentionally.
+script-src forbids unsafe-inline and unsafe-eval. style-src-elem is self-only; style-src-attr retains unsafe-inline
+for existing layout and dynamic styles. Object, frame, base URI, MIME and network restrictions remain enforced.
+
+Shared source and PWA assets
+---------------------------
+shared/ is the canonical source only for proven common calendar, HTML escaping, series numbering and delegation.
+Do not merge app helpers by name: cloning, invalid money and date behavior intentionally differ.
+python tools/sync-assets.py copies these files byte-for-byte to each site's assets/js/shared and refreshes the
+complete shell list and content-derived cache version. --check fails on drift. There is no cross-site runtime import.
+Both workers are network-first, precache every module, keep offline navigation fallback and only cache allowlisted
+public shell assets. Cross-origin, non-GET and business-data requests bypass interception. Cleanup is app-scoped.
+
+Development contract
+--------------------
+Run verify.bat before and after changes. ESLint, module-graph, security, public-root, direct unit, UI, recovery,
+financial and real offline PWA tests are mandatory. See TESTING.txt and each application's DEPLOYMENT.txt.
+Legacy supabase/shared/validation entrypoints intentionally forward to tests/ for existing commands.
