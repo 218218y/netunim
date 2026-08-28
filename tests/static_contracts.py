@@ -186,6 +186,23 @@ ok(combined.lower().count("deploy_site_core.bat") == 2,
 ok("--skip-verify" not in combined.lower() and "--skip-verify" not in deploy_core.lower(),
    "deployment: no public skip-verification switch was introduced")
 
+# Header geometry: the folder permission control has a deliberately reserved desktop slot
+# so async IndexedDB permission discovery cannot move the centered navigation. In RTL the
+# slot must live immediately to the visual right of the local-save pill, never between the
+# two persistent action buttons where its hidden state would look like a missing button.
+orders_html = (O / "site/index.html").read_text(encoding="utf-8")
+folder_slot_pos = orders_html.find('class="folder-access-slot"')
+save_pill_pos = orders_html.find('id="savePill"')
+cloud_pill_pos = orders_html.find('id="cloudPill"')
+save_now_pos = orders_html.find('id="saveNowButton"')
+settings_pos = orders_html.find('id="settingsTopButton"')
+ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, settings_pos)
+   and folder_slot_pos < save_pill_pos < cloud_pill_pos < save_now_pos < settings_pos,
+   "orders: reserved folder-access slot is beside local-save status, not between action buttons")
+orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
+ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
+   "orders: desktop folder-access slot keeps stable header geometry")
+
 # 4. SQL and migration contracts.
 sqls = {
     "preflight": (S / "preflight.sql").read_text(encoding="utf-8"),

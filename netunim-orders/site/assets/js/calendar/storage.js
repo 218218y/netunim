@@ -3,11 +3,15 @@ const DB_VERSION=1;
 const QUEUE_STORE='pending-operations';
 const CACHE_STORE='range-cache';
 const META_STORE='meta';
+const CONNECTION_PREF_KEY='orders.google-calendar.connection.v1';
 
 // Calendar business data remains owned by Google. IndexedDB holds only a display cache
 // and durable outbound operations that have not yet been acknowledged by Google.
 export function createCalendarStorage(){
 let dbPromise=null;
+function connectionPreference(){try{const raw=localStorage.getItem(CONNECTION_PREF_KEY);if(raw===null)return{known:false,autoConnect:false,accountId:''};const value=JSON.parse(raw);return{known:true,autoConnect:value?.autoConnect===true,accountId:String(value?.accountId||'')}}catch(e){return{known:false,autoConnect:false,accountId:''}}}
+function saveConnectionPreference({autoConnect=false,accountId=''}={}){try{localStorage.setItem(CONNECTION_PREF_KEY,JSON.stringify({autoConnect:autoConnect===true,accountId:String(accountId||'').trim()}));return true}catch(e){return false}}
+
 function requestResult(request){return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
 function transactionDone(tx){return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('calendar_storage_aborted'))})}
 function openDb(){if(dbPromise)return dbPromise;dbPromise=new Promise((resolve,reject)=>{const request=indexedDB.open(DB_NAME,DB_VERSION);request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(QUEUE_STORE))db.createObjectStore(QUEUE_STORE,{keyPath:'seq',autoIncrement:true});if(!db.objectStoreNames.contains(CACHE_STORE))db.createObjectStore(CACHE_STORE,{keyPath:'key'});if(!db.objectStoreNames.contains(META_STORE))db.createObjectStore(META_STORE,{keyPath:'key'})};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});return dbPromise}
@@ -25,5 +29,5 @@ async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE
 async function getMeta(key){const db=await openDb(),tx=db.transaction(META_STORE,'readonly');const row=await requestResult(tx.objectStore(META_STORE).get(String(key)));await transactionDone(tx);return row?.value??null}
 async function putMeta(key,value){const db=await openDb(),tx=db.transaction(META_STORE,'readwrite');tx.objectStore(META_STORE).put({key:String(key),value:structuredClone(value)});await transactionDone(tx)}
 
-return {openDb,addOperation,listOperations,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,clearRangeCache,getMeta,putMeta};
+return {openDb,addOperation,listOperations,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
 }

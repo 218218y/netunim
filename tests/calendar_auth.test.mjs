@@ -3,12 +3,14 @@ import {createCalendarAuth} from '../netunim-orders/site/assets/js/calendar/auth
 
 const session={accessToken:'',tokenExpiresAt:0,connected:false,accountVerified:false};
 let oauthConfig=null;
+let lastRequest=null;
 let behavior='access_denied';
 
 globalThis.google={accounts:{oauth2:{
   initTokenClient(config){
     oauthConfig=config;
-    return {requestAccessToken(){
+    return {requestAccessToken(override={}){
+      lastRequest=override;
       if(behavior==='access_denied')queueMicrotask(()=>config.callback({error:'access_denied',error_description:'Access denied'}));
       else if(behavior==='popup_closed')queueMicrotask(()=>config.error_callback({type:'popup_closed'}));
       else if(behavior==='success')queueMicrotask(()=>config.callback({access_token:'token',expires_in:3600,scope:config.scope}));
@@ -39,7 +41,14 @@ await assert.rejects(auth.connect(),error=>{
 });
 
 behavior='success';
-assert.equal(await auth.connect(),'token');
+assert.equal(auth.ready(),true);
+assert.equal(await auth.connect({loginHint:'owner@example.com'}),'token');
+assert.equal(lastRequest.prompt,'');
+assert.equal(lastRequest.login_hint,'owner@example.com');
 assert.equal(session.connected,true);
 assert.equal(session.accessToken,'token');
+auth.clearToken();
+assert.equal(await auth.connect({loginHint:'owner@example.com',prompt:'none'}),'token');
+assert.equal(lastRequest.prompt,'none');
+assert.equal(lastRequest.login_hint,'owner@example.com');
 console.log('CALENDAR AUTH TESTS PASSED');
