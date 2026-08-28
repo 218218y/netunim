@@ -38,11 +38,10 @@ function renderSummary(){
     <div class="kpi kupa-net-kpi"><div class="label">מאזן קופה נטו</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש − כל האשראי העתידי − חודש הוצאות + קופה מזומן וצ'קים${kupaNet===null?' · ממתין לקריאה מהענן':''}</div></div>
   </div>
 </section>
-<section class="summary-section customer-summary-section"><div class="summary-section-head"><div><h2>סיכום חובות לקוחות</h2><p>מצב הגבייה והחשבוניות לפי הנתונים הפעילים.</p></div></div><div class="customer-summary-grid">
-  <div class="customer-summary-stat"><span>חוב פתוח</span><b class="badtext">${money(cst.openTotal)}</b><small>${esc(cst.open)} לקוחות</small></div>
-  <div class="customer-summary-stat"><span>שולם · חסרה חשבונית</span><b class="warntext">${esc(cst.missingInvoice)}</b><small>דורש השלמת חשבונית</small></div>
-  <div class="customer-summary-stat"><span>נסגרו</span><b class="goodtext">${esc(cst.closed)}</b><small>שולם + חשבונית יצאה</small></div>
-  <div class="customer-summary-stat"><span>מעקב הזמנות</span><b>${esc(cst.trackedOrders)}</b><small>רשומות פעילות במעקב</small></div>
+<section class="summary-section customer-summary-section"><div class="summary-section-head"><div><h2>סיכום חובות לקוחות</h2><p>הסיכום כולל רק חובות שטרם שולמו; חוב שסומן כשולם יוצא מהחישוב.</p></div></div><div class="customer-summary-grid">
+  <div class="customer-summary-stat"><span>חוב שסופק</span><b class="badtext">${money(cst.openSuppliedTotal)}</b><small>${esc(cst.openSupplied)} חובות פתוחים שסופקו</small></div>
+  <div class="customer-summary-stat"><span>חוב שלא סופק</span><b class="warntext">${money(cst.openUnsuppliedTotal)}</b><small>${esc(cst.openUnsupplied)} חובות פתוחים שטרם סופקו</small></div>
+  <div class="customer-summary-stat"><span>סה״כ חוב פתוח</span><b class="badtext">${money(cst.openTotal)}</b><small>${esc(cst.open)} חובות שטרם שולמו</small></div>
 </div></section>
 <section class="summary-section supplier-summary-section"><div class="summary-section-head supplier-summary-section-head"><div><h2>סיכום לפי ספק</h2><p>סיכום כספי ותפעולי לפי התקופה שנבחרה, עם מעבר ישיר לכרטיס הספק.</p></div><div class="supplier-summary-year-picker"><span>תקופה</span><select aria-label="תקופת סיכום ספקים" data-change="set-summary-supplier-year-view"><option value="current" ${yearView==='current'?'selected':''}>שנה שוטפת</option><option value="all" ${yearView==='all'?'selected':''}>כל השנים</option>${yearOptions}</select></div></div>
 <div class="supplier-period-totals" aria-label="סיכום כל הספקים לתקופה"><span><small>סה״כ חובה</small><b class="badtext">${money(periodTotals.debit)}</b></span><span><small>סה״כ זכות</small><b class="goodtext">${money(periodTotals.credit)}</b></span><span><small>סה״כ יתרה</small><b class="${esc(periodTotals.net<0?'badtext':'goodtext')}">${money(periodTotals.net)}</b></span><em>${esc(yearLabel)}</em></div>

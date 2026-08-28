@@ -9,6 +9,8 @@ import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js
 import {inventoryStatsData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/model.js';
 import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
+import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
+import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
 import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {createStateNormalization as createOrderNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 
@@ -97,9 +99,29 @@ test('pending freshness favors generation before timestamp',()=>{
  assert.ok(comparePendingFreshness({generation:4,savedAt:'2026-01-01'},{generation:3,savedAt:'2027-01-01'})>0);
 });
 
-test('customer balances distinguish paid debt from missing invoices',()=>{
- const state={customerDebts:[{amount:100},{amount:70,paid:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
- assert.deepEqual(customerStatsData(state),{openTotal:100,allTotal:210,open:1,missingInvoice:1,closed:1,trackedOrders:1});
+test('customer debt summary excludes paid rows and splits open debt by supplied status',()=>{
+ const state={customerDebts:[{amount:100,supplied:true},{amount:60,supplied:false},{amount:25},{amount:70,paid:true,supplied:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
+ assert.deepEqual(customerStatsData(state),{openTotal:185,openSuppliedTotal:100,openUnsuppliedTotal:85,allTotal:295,open:3,openSupplied:1,openUnsupplied:2,missingInvoice:1,closed:1,trackedOrders:1});
+});
+test('customer debt editor preserves zero amounts and exposes supplied state',()=>{
+ const debt={id:'D0',customerName:'Zero',amount:0,paid:false,supplied:true,invoiceIssued:false,note:''},model={state:{customerDebts:[debt]}};
+ let body='',saved=0,closed=0,rendered=0;
+ const editor=createDomainsCustomersEditor({model,modal:(_title,html)=>{body=html},toast:msg=>{throw new Error(msg)},scheduleSave:()=>{saved++},closeModal:()=>{closed++},renderCustomers:()=>{rendered++}});
+ editor.openDebtModal('D0');
+ assert.match(body,/id="dAmount"[^>]*value="0"/);
+ assert.match(body,/id="dSupplied"/);
+ const before=globalThis.document,fields={'#dName':{value:'Zero'},'#dAmount':{value:'0'},'#dOrder':{value:''},'#dPhone':{value:''},'#dPaid':{value:'false'},'#dSupplied':{value:'true'},'#dInvoice':{value:'false'},'#dNote':{value:''}};
+ globalThis.document={querySelector:selector=>fields[selector]||null};
+ try{editor.saveDebt('D0')}finally{if(before===undefined)delete globalThis.document;else globalThis.document=before}
+ assert.equal(debt.amount,0);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,1);assert.equal(closed,1);assert.equal(rendered,1);
+});
+
+test('customer debt row marks supplied amount and provides supplied toggle',()=>{
+ const customerUi={customerBulkSelected:new Set(),customerBulkMode:false};
+ const view=createDomainsCustomersView({model:{state:{customerDebts:[],customerOrders:[]}},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
+ const html=view.debtRow({id:'D1',customerName:'Customer',amount:50,paid:false,supplied:true,invoiceIssued:false,note:''});
+ assert.match(html,/customer-debt-amount is-supplied/);
+ assert.match(html,/data-click-arg1="supplied"/);
 });
 
 test('service status has explicit precedence when several flags are set',()=>{

@@ -43,7 +43,8 @@ flows={
  switchView('settings');click('open-supplier-modal');fill({sName:'Flow supplier',sNote:'test'});saveModal();await saved();assert(state.suppliers.length===1,'supplier create');
  switchView('supplier');click('open-transaction-modal');fill({fAction:'Order',fDebit:'100'});saveModal();await saved();assert(state.transactions.length===1&&supplierBalance(state.suppliers[0].id)===-100,'supplier transaction');
  openTransactionModal(state.transactions[0].id);fill({fDebit:'80'});saveModal();await saved();assert(supplierBalance(state.suppliers[0].id)===-80,'transaction edit');
- switchView('customers');click('open-debt-modal');fill({dName:'Flow customer',dAmount:'90'});saveModal();await saved();assert(state.customerDebts.length===1,'debt create');
+ switchView('customers');click('open-debt-modal');fill({dName:'Flow customer',dAmount:'0',dSupplied:'true'});saveModal();await saved();assert(state.customerDebts.length===1&&state.customerDebts[0].amount===0&&state.customerDebts[0].supplied===true,'zero debt create and supplied state');
+ const debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-supplied'),'supplied debt amount marker');
  openDebtModal(state.customerDebts[0].id);fill({dPaid:'true',dInvoice:'true'});saveModal();await saved();assert(!!state.customerDebts[0].closedAt,'debt closed state');
  switchView('service');click('open-service-modal');fill({svcName:'Service customer',svcDesc:'Repair',svcOpened:'2026-08-27'});saveModal();await saved();assert(state.serviceCalls.length===1,'service create');
  const flag=element('[data-action="toggle-service-flag"]');flag.click();await saved();assert(state.serviceCalls[0].followUp,'service flag');

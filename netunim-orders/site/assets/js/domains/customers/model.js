@@ -2,4 +2,7 @@
 
 export function customerDebtStatus(d){if(d.paid&&d.invoiceIssued)return{key:'closed',text:'נסגר',cls:'green'};if(d.paid&&!d.invoiceIssued)return{key:'invoice',text:'שולם · חסרה חשבונית',cls:'red'};if(!d.paid&&d.invoiceIssued)return{key:'open',text:'חשבונית יצאה · טרם שולם',cls:'yellow'};return{key:'open',text:'חוב פתוח',cls:'yellow'}}
 
-export function customerStatsData(state){const rows=state.customerDebts||[];return{openTotal:rows.filter(d=>!d.paid).reduce((s,d)=>s+Number(d.amount||0),0),allTotal:rows.reduce((s,d)=>s+Number(d.amount||0),0),open:rows.filter(d=>!d.paid).length,missingInvoice:rows.filter(d=>d.paid&&!d.invoiceIssued).length,closed:rows.filter(d=>d.paid&&d.invoiceIssued).length,trackedOrders:(state.customerOrders||[]).length}}
+export function customerStatsData(state){
+  const rows=state.customerDebts||[],openRows=rows.filter(d=>!d.paid),openSuppliedRows=openRows.filter(d=>d.supplied===true),openUnsuppliedRows=openRows.filter(d=>d.supplied!==true),sum=items=>items.reduce((total,d)=>total+Number(d.amount||0),0);
+  return{openTotal:sum(openRows),openSuppliedTotal:sum(openSuppliedRows),openUnsuppliedTotal:sum(openUnsuppliedRows),allTotal:sum(rows),open:openRows.length,openSupplied:openSuppliedRows.length,openUnsupplied:openUnsuppliedRows.length,missingInvoice:rows.filter(d=>d.paid&&!d.invoiceIssued).length,closed:rows.filter(d=>d.paid&&d.invoiceIssued).length,trackedOrders:(state.customerOrders||[]).length}
+}
