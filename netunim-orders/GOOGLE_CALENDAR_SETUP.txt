@@ -15,9 +15,17 @@ Google Calendar הוא מקור האמת היחיד ליומן. המערכת א�
 ------------------------------
 1. פתח Google Cloud Console ובחר/צור Project ייעודי.
 2. הפעל את Google Calendar API.
-3. הגדר OAuth consent screen. אם האפליקציה נשארת במצב Testing, הוסף את חשבון Google שמפעיל את היומן כ-Test user.
-4. צור OAuth Client ID מסוג Web application.
-5. תחת Authorized JavaScript origins הוסף את כל ה-origins שמהם המערכת מופעלת, לדוגמה:
+3. הגדר OAuth consent screen. אם האפליקציה נשארת במצב Testing, Google מאפשרת התחברות רק לחשבונות שהוגדרו כבודקים:
+   - פתח Google Auth Platform > Audience.
+   - ודא ש-Publishing status הוא Testing.
+   - תחת Test users לחץ Add users והוסף את כתובת ה-Google המדויקת שממנה מתחברים ליומן.
+   - שמור, סגור חלון OAuth ישן אם הוא פתוח ונסה להתחבר מחדש.
+   שגיאה 403 access_denied עם הודעה שהאפליקציה בבדיקה אינה תקלה בקוד או ב-COOP; היא אומרת שהחשבון שנבחר אינו מורשה כ-Test user (או שמדיניות החשבון/הארגון חוסמת אותו). לשימוש פרטי/במספר קטן של חשבונות אפשר להשאיר את האפליקציה ב-Testing ולהוסיף אותם כ-Test users; אין צורך לעקוף את מנגנון ההרשאה בקוד.
+4. ב-Google Auth Platform > Data Access ודא ששני ה-scopes שהקוד מבקש מופיעים בהגדרת האפליקציה:
+   - https://www.googleapis.com/auth/calendar.events
+   - https://www.googleapis.com/auth/calendar.calendarlist.readonly
+5. צור OAuth Client ID מסוג Web application.
+6. תחת Authorized JavaScript origins הוסף את כל ה-origins שמהם המערכת מופעלת, לדוגמה:
    - כתובת האתר האמיתית של ניהול ההזמנות, בלי נתיב בסוף.
    - http://localhost:8082 לפיתוח מקומי אם משתמשים בפקודה שמופיעה ב-USAGE.txt.
    אם קיימים דומיין מותאם וגם כתובת pages.dev, הוסף את שניהם רק אם שניהם משמשים בפועל.
@@ -40,7 +48,7 @@ Google Calendar הוא מקור האמת היחיד ליומן. המערכת א�
 שימוש
 -----
 1. פתח את ניהול ההזמנות ועבור לטאב "יומן".
-2. לחץ "התחבר ל-Google" ואשר גישה ליומן.
+2. לחץ "התחבר ל-Google" ואשר גישה ליומן. אם Google מציגה 403 access_denied בנוסח "האפליקציה נמצאת כרגע בבדיקה", חזור ל-Google Auth Platform > Audience והוסף את החשבון שמופיע בחלון כ-Test user. אזהרות console מסוג Cross-Origin-Opener-Policy על window.closed אינן הסיבה ל-403 הזה; כותרת האתר צריכה להישאר Cross-Origin-Opener-Policy: same-origin-allow-popups.
 3. המערכת קוראת את כל רשימת היומנים בחשבון, כולל יומנים מוסתרים, ואת האירועים בטווח המוצג. בלי סינון eventTypes, Google מחזיר גם אירועי יום הולדת וסוגי אירועים נוספים שה-API מציג. יומן שנותן רק הרשאת free/busy נשאר ברשימה אך אינו נקרא כאילו יש הרשאה לפרטי אירועים.
 4. אירועים רגילים ביומן עם הרשאת owner/writer ניתנים לעריכה.
 5. אירועי יום הולדת, אירועים נעולים, יומנים לקריאה בלבד ואירועים עם מוזמנים מוצגים אך לא נערכים במסך הזה, כדי למנוע שינוי לא בטוח של מידע ש-Google מנהל או של התראות למוזמנים.
