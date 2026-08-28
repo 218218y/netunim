@@ -99,29 +99,41 @@ test('pending freshness favors generation before timestamp',()=>{
  assert.ok(comparePendingFreshness({generation:4,savedAt:'2026-01-01'},{generation:3,savedAt:'2027-01-01'})>0);
 });
 
-test('customer debt summary excludes paid rows and splits open debt by supplied status',()=>{
- const state={customerDebts:[{amount:100,supplied:true},{amount:60,supplied:false},{amount:25},{amount:70,paid:true,supplied:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
- assert.deepEqual(customerStatsData(state),{openTotal:185,openSuppliedTotal:100,openUnsuppliedTotal:85,allTotal:295,open:3,openSupplied:1,openUnsupplied:2,missingInvoice:1,closed:1,trackedOrders:1});
+test('customer debt summary excludes paid rows and treats negative open amounts as reverse debt',()=>{
+ const state={customerDebts:[{amount:100,supplied:true},{amount:60,supplied:false},{amount:25},{amount:-40,supplied:false},{amount:70,paid:true,supplied:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
+ assert.deepEqual(customerStatsData(state),{openTotal:145,openSuppliedTotal:100,openUnsuppliedTotal:45,allTotal:255,open:4,openSupplied:1,openUnsupplied:3,missingInvoice:1,closed:1,trackedOrders:1});
 });
-test('customer debt editor preserves zero amounts and exposes supplied state',()=>{
- const debt={id:'D0',customerName:'Zero',amount:0,paid:false,supplied:true,invoiceIssued:false,note:''},model={state:{customerDebts:[debt]}};
+test('customer debt editor treats blank as zero and accepts negative reverse debt',()=>{
+ const model={state:{customerDebts:[]}};
  let body='',saved=0,closed=0,rendered=0;
  const editor=createDomainsCustomersEditor({model,modal:(_title,html)=>{body=html},toast:msg=>{throw new Error(msg)},scheduleSave:()=>{saved++},closeModal:()=>{closed++},renderCustomers:()=>{rendered++}});
- editor.openDebtModal('D0');
- assert.match(body,/id="dAmount"[^>]*value="0"/);
+ editor.openDebtModal();
+ assert.match(body,/id="dAmount"/);
+ assert.doesNotMatch(body,/id="dAmount"[^>]*\bmin="0"/);
  assert.match(body,/id="dSupplied"/);
- const before=globalThis.document,fields={'#dName':{value:'Zero'},'#dAmount':{value:'0'},'#dOrder':{value:''},'#dPhone':{value:''},'#dPaid':{value:'false'},'#dSupplied':{value:'true'},'#dInvoice':{value:'false'},'#dNote':{value:''}};
+ const before=globalThis.document,fields={'#dName':{value:'Reverse'},'#dAmount':{value:''},'#dOrder':{value:''},'#dPhone':{value:''},'#dPaid':{value:'false'},'#dSupplied':{value:'true'},'#dInvoice':{value:'false'},'#dNote':{value:''}};
  globalThis.document={querySelector:selector=>fields[selector]||null};
- try{editor.saveDebt('D0')}finally{if(before===undefined)delete globalThis.document;else globalThis.document=before}
- assert.equal(debt.amount,0);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,1);assert.equal(closed,1);assert.equal(rendered,1);
+ try{
+   editor.saveDebt();
+   assert.equal(model.state.customerDebts.length,1);assert.equal(model.state.customerDebts[0].amount,0);
+   fields['#dAmount'].value='-125';editor.saveDebt(model.state.customerDebts[0].id);
+ }finally{if(before===undefined)delete globalThis.document;else globalThis.document=before}
+ const debt=model.state.customerDebts[0];
+ assert.equal(debt.amount,-125);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,2);assert.equal(closed,2);assert.equal(rendered,2);
+ editor.openDebtModal(debt.id);assert.match(body,/id="dAmount"[^>]*value="-125"/);
 });
 
-test('customer debt row marks supplied amount and provides supplied toggle',()=>{
+test('customer debt amount background gives paid precedence over supplied',()=>{
  const customerUi={customerBulkSelected:new Set(),customerBulkMode:false};
  const view=createDomainsCustomersView({model:{state:{customerDebts:[],customerOrders:[]}},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
- const html=view.debtRow({id:'D1',customerName:'Customer',amount:50,paid:false,supplied:true,invoiceIssued:false,note:''});
- assert.match(html,/customer-debt-amount is-supplied/);
- assert.match(html,/data-click-arg1="supplied"/);
+ const suppliedOpen=view.debtRow({id:'D1',customerName:'Customer',amount:50,paid:false,supplied:true,invoiceIssued:false,note:''});
+ const paidSupplied=view.debtRow({id:'D2',customerName:'Customer',amount:50,paid:true,supplied:true,invoiceIssued:false,note:''});
+ const paidOnly=view.debtRow({id:'D3',customerName:'Customer',amount:50,paid:true,supplied:false,invoiceIssued:false,note:''});
+ const plainOpen=view.debtRow({id:'D4',customerName:'Customer',amount:50,paid:false,supplied:false,invoiceIssued:false,note:''});
+ assert.match(suppliedOpen,/customer-debt-amount is-supplied/);assert.doesNotMatch(suppliedOpen,/customer-debt-amount is-paid/);
+ assert.match(paidSupplied,/customer-debt-amount is-paid/);assert.doesNotMatch(paidSupplied,/customer-debt-amount is-supplied/);
+ assert.match(paidOnly,/customer-debt-amount is-paid/);assert.match(plainOpen,/customer-debt-amount "/);
+ assert.match(suppliedOpen,/data-click-arg1="supplied"/);
 });
 
 test('service status has explicit precedence when several flags are set',()=>{
