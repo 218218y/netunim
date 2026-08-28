@@ -94,8 +94,15 @@ const storageChecks=createStorageChecks({
   checksSession,
 });
 
+const cloudAuth=createCloudAuth({
+
+});
+
 const calendarStorage=createCalendarStorage();
-const calendarAuth=createCalendarAuth({calendarSession});
+const calendarAuth=createCalendarAuth({
+  calendarSession,
+  supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+});
 const calendarApi=createCalendarApi({calendarAuth});
 const calendarJournal=createCalendarJournal({calendarStorage,calendarApi});
 
@@ -552,10 +559,6 @@ const uiFolders=createUiFolders({
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   saveDirHandle:(...args)=>storageIndexedDb.saveDirHandle(...args),
-});
-
-const cloudAuth=createCloudAuth({
-
 });
 
 const cloudTransport=createCloudTransport({

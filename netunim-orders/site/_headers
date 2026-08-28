@@ -3,7 +3,7 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
-  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Cross-Origin-Opener-Policy: same-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://accounts.google.com/gsi/client; style-src 'self' https://accounts.google.com/gsi/style; style-src-elem 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; style-src-attr 'unsafe-inline'; connect-src 'self' https://bupoidcurcxuypfrjqio.supabase.co https://accounts.google.com/gsi/ https://www.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; frame-src https://accounts.google.com/gsi/; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; connect-src 'self' https://bupoidcurcxuypfrjqio.supabase.co https://www.googleapis.com; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'
   Cache-Control: no-cache

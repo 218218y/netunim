@@ -1,54 +1,48 @@
 import assert from 'node:assert/strict';
 import {createCalendarAuth} from '../netunim-orders/site/assets/js/calendar/auth.js';
 
-const session={accessToken:'',tokenExpiresAt:0,connected:false,accountVerified:false};
-let oauthConfig=null;
-let lastRequest=null;
-let behavior='access_denied';
+const session={accessToken:'',tokenExpiresAt:0,connected:false,accountVerified:false,accountId:'',expectedAccountId:''};
+const calls=[];
+let mode='token';
+let assigned='';
+globalThis.location={href:'https://orders.example.test/?x=1',assign(url){assigned=url}};
 
-globalThis.google={accounts:{oauth2:{
-  initTokenClient(config){
-    oauthConfig=config;
-    return {requestAccessToken(override={}){
-      lastRequest=override;
-      if(behavior==='access_denied')queueMicrotask(()=>config.callback({error:'access_denied',error_description:'Access denied'}));
-      else if(behavior==='popup_closed')queueMicrotask(()=>config.error_callback({type:'popup_closed'}));
-      else if(behavior==='success')queueMicrotask(()=>config.callback({access_token:'token',expires_in:3600,scope:config.scope}));
-    }};
-  },
-  hasGrantedAllScopes(){return true},
-  revoke(token,callback){callback();},
-}}};
+async function supaFetch(path,opt={}){
+  const body=JSON.parse(opt.body||'{}');
+  calls.push({path,body});
+  if(mode==='not_connected')return new Response(JSON.stringify({code:'calendar_not_connected'}),{status:404,headers:{'Content-Type':'application/json'}});
+  if(mode==='start')return new Response(JSON.stringify({authorize_url:'https://accounts.google.com/o/oauth2/v2/auth?state=test'}),{status:200,headers:{'Content-Type':'application/json'}});
+  if(mode==='disconnect')return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json'}});
+  return new Response(JSON.stringify({access_token:'server-token',expires_in:3600,account_id:'owner@example.com'}),{status:200,headers:{'Content-Type':'application/json'}});
+}
 
-globalThis.document={querySelector(){return null}};
-
-const auth=createCalendarAuth({calendarSession:session});
-await assert.rejects(auth.connect(),error=>{
-  assert.equal(error.code,'access_denied');
-  assert.match(error.message,/Audience/);
-  assert.match(error.message,/Test users/);
-  return true;
-});
-assert.equal(session.connected,false);
-assert.equal(session.accessToken,'');
-
-behavior='popup_closed';
-await assert.rejects(auth.connect(),error=>{
-  assert.equal(error.code,'popup_closed');
-  assert.match(error.message,/403 access_denied/);
-  assert.match(error.message,/Test users/);
-  return true;
-});
-
-behavior='success';
+const auth=createCalendarAuth({calendarSession:session,supaFetch});
+assert.equal(auth.configured(),true);
 assert.equal(auth.ready(),true);
-assert.equal(await auth.connect({loginHint:'owner@example.com'}),'token');
-assert.equal(lastRequest.prompt,'');
-assert.equal(lastRequest.login_hint,'owner@example.com');
+assert.equal(await auth.restore(),'server-token');
+assert.equal(calls.at(-1).body.action,'token');
 assert.equal(session.connected,true);
-assert.equal(session.accessToken,'token');
+assert.equal(session.accountId,'owner@example.com');
+assert.equal(session.expectedAccountId,'owner@example.com');
+assert.equal(auth.hasUsableToken(),true);
+
 auth.clearToken();
-assert.equal(await auth.connect({loginHint:'owner@example.com',prompt:'none'}),'token');
-assert.equal(lastRequest.prompt,'none');
-assert.equal(lastRequest.login_hint,'owner@example.com');
+mode='not_connected';
+await assert.rejects(auth.restore(),error=>error.code==='calendar_not_connected');
+assert.equal(session.connected,false);
+
+mode='start';
+await auth.beginConnect({returnUrl:'https://orders.example.test/'});
+assert.equal(calls.at(-1).body.action,'start');
+assert.equal(calls.at(-1).body.return_url,'https://orders.example.test/');
+assert.match(assigned,/^https:\/\/accounts\.google\.com\//);
+
+session.accessToken='short';
+session.tokenExpiresAt=Date.now()+3600000;
+session.connected=true;
+mode='disconnect';
+await auth.disconnect();
+assert.equal(calls.at(-1).body.action,'disconnect');
+assert.equal(session.accessToken,'');
+assert.equal(session.connected,false);
 console.log('CALENDAR AUTH TESTS PASSED');

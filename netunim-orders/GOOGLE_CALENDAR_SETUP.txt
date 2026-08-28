@@ -1,76 +1,108 @@
-ניהול הזמנות — חיבור Google Calendar
-=====================================
+ניהול הזמנות — חיבור Google Calendar ללא חלון קופץ
+====================================================
 
 עקרון העבודה
 ------------
 Google Calendar הוא מקור האמת היחיד ליומן. המערכת אינה מעתיקה את היומן למסמך Supabase ואינה מנהלת יומן עסקי שני.
 בדפדפן נשמרים רק:
+- Access Token קצר-חיים בזיכרון בלבד, כדי לקרוא ולכתוב ל-Google Calendar API.
 - מטמון תצוגה של טווחי תאריכים שכבר נטענו, כדי שאפשר יהיה לראות אותם גם באופליין.
-- תור פעולות שלא קיבלו עדיין אישור מ-Google. התור נשמר ב-IndexedDB לפני שהחלון נסגר ולפני ניסיון השליחה.
+- תור פעולות שלא קיבלו עדיין אישור מ-Google. התור נשמר ב-IndexedDB לפני ניסיון השליחה.
+- סימון לא-סודי שהיומן אמור להתחבר אוטומטית ומזהה החשבון שאומת לאחרונה.
 
-יצירת אירוע מקבלת מזהה Google תקין מראש. אם Google שמר אירוע אבל תשובת הרשת אבדה, ניסיון חוזר משתמש באותו מזהה ולכן אינו יוצר תור כפול.
-עדכון חוזר הוא idempotent מבחינת השדות שהמערכת מנהלת, ומחיקה שכבר בוצעה נחשבת הצלחה גם אם Google מחזיר 404 בניסיון חוזר.
+Refresh Token של Google אינו נשמר בדפדפן. הוא נשמר רק בטבלה שאינה נגישה ל-anon/authenticated, ונקרא רק על-ידי Supabase Edge Function עם הרשאת שרת.
+Client Secret של Google נשמר רק ב-Supabase Edge Function Secrets ואסור להכניס אותו ל-site, ל-localStorage או לקובץ config ציבורי.
+
+למה המבנה הזה נדרש
+-------------------
+Google Identity Services במסלול browser Token Model תומך ב-Dialog UX בלבד. לכן גם requestAccessToken עם prompt=none יכול לפתוח לזמן קצר חלון Google.
+כדי שלא יהיה חלון קופץ בכלל בפתיחה מחדש, החיבור הועבר ל-Authorization Code Flow בצד שרת:
+- חיבור ראשוני/חיבור מחדש: ניווט מלא לעמוד Google וחזרה לאתר — לא popup.
+- פתיחות הבאות: ה-Edge Function משתמש ב-Refresh Token ומחזיר Access Token חדש בלי לפתוח שום חלון Google.
+
+הכנה חד-פעמית ב-Supabase
+-------------------------
+1. פתח SQL Editor בפרויקט Supabase של netunim והריץ רק את הקובץ:
+   netunim-orders/supabase/google_calendar_oauth.sql
+
+   הסקריפט יוצר שתי טבלאות חדשות בלבד:
+   - google_calendar_connections
+   - google_calendar_oauth_states
+
+   הוא אינו משנה או מוחק נתוני הזמנות, קופה, צ'קים או גיבויים קיימים.
+   לשתי הטבלאות מופעל RLS, וכל הרשאות anon/authenticated מבוטלות. רק service_role של ה-Edge Function מקבל הרשאת קריאה/כתיבה.
+
+2. צור/פרוס Supabase Edge Function בשם המדויק:
+   google-calendar-oauth
+
+   קובץ המקור נמצא כאן:
+   netunim-orders/supabase/functions/google-calendar-oauth/index.ts
+
+   חשוב: לפונקציה הזאת יש callback שמגיע ישירות מ-Google ולכן אימות JWT של שער Supabase חייב להיות כבוי עבור הפונקציה עצמה (verify_jwt=false).
+   ההגדרה כבר כלולה בקובץ netunim-orders/supabase/config.toml, כדי שלא תהיה תלויה בדגל ידני בזמן פריסה.
+   זה אינו הופך את פעולות המשתמש לציבוריות: הקוד של הפונקציה עצמו דורש ומאמת Supabase User JWT עבור start/token/disconnect; רק נתיב /callback מתקבל ללא JWT והוא מוגן ב-state חד-פעמי אקראי, שמור כ-hash ותוקפו 10 דקות.
+
+3. ב-Supabase Dashboard > Edge Functions > Secrets הוסף Secret אחד:
+   GOOGLE_CALENDAR_CLIENT_SECRET
+
+   הערך הוא Client Secret של אותו OAuth Web Client שבו משתמש Client ID:
+   113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com
+
+   בשום אופן אין להעתיק את ה-Client Secret לקוד האתר.
 
 הגדרה חד-פעמית ב-Google Cloud
 ------------------------------
-1. פתח Google Cloud Console ובחר/צור Project ייעודי.
-2. הפעל את Google Calendar API.
-3. הגדר OAuth consent screen. אם האפליקציה נשארת במצב Testing, Google מאפשרת התחברות רק לחשבונות שהוגדרו כבודקים:
-   - פתח Google Auth Platform > Audience.
-   - ודא ש-Publishing status הוא Testing.
-   - תחת Test users לחץ Add users והוסף את כתובת ה-Google המדויקת שממנה מתחברים ליומן.
-   - שמור, סגור חלון OAuth ישן אם הוא פתוח ונסה להתחבר מחדש.
-   שגיאה 403 access_denied עם הודעה שהאפליקציה בבדיקה אינה תקלה בקוד או ב-COOP; היא אומרת שהחשבון שנבחר אינו מורשה כ-Test user (או שמדיניות החשבון/הארגון חוסמת אותו). לשימוש פרטי/במספר קטן של חשבונות אפשר להשאיר את האפליקציה ב-Testing ולהוסיף אותם כ-Test users; אין צורך לעקוף את מנגנון ההרשאה בקוד.
-4. ב-Google Auth Platform > Data Access ודא ששני ה-scopes שהקוד מבקש מופיעים בהגדרת האפליקציה:
+1. ודא ש-Google Calendar API מופעל בפרויקט.
+2. ב-Google Auth Platform > Data Access ודא ששני ה-scopes הבאים מוגדרים:
    - https://www.googleapis.com/auth/calendar.events
    - https://www.googleapis.com/auth/calendar.calendarlist.readonly
-5. צור OAuth Client ID מסוג Web application.
-6. תחת Authorized JavaScript origins הוסף את כל ה-origins שמהם המערכת מופעלת, לדוגמה:
-   - כתובת האתר האמיתית של ניהול ההזמנות, בלי נתיב בסוף.
-   - http://localhost:8082 לפיתוח מקומי אם משתמשים בפקודה שמופיעה ב-USAGE.txt.
-   אם קיימים דומיין מותאם וגם כתובת pages.dev, הוסף את שניהם רק אם שניהם משמשים בפועל.
-6. אין צורך ב-Client Secret בדפדפן, ואין להכניס Client Secret לקוד.
+3. פתח את OAuth Client ID מסוג Web application הקיים.
+4. תחת Authorized redirect URIs הוסף בדיוק:
+   https://bupoidcurcxuypfrjqio.supabase.co/functions/v1/google-calendar-oauth/callback
+5. שמור את ההגדרה.
 
-חיבור הקוד
-----------
-פתח:
-  netunim-orders/site/assets/js/calendar/config.js
+Publishing status של Google
+---------------------------
+במצב Testing אפשר לבדוק את המערכת עם Test users, אבל Refresh Token של אפליקציה במצב Testing מוגבל בזמן ועלול לפוג אחרי 7 ימים.
+אם רוצים שהחיבור יישאר לאורך זמן בלי חיבור מחדש שבועי, יש להעביר את OAuth consent screen ל-In production בהתאם לכללי Google ולשימוש של האפליקציה.
 
-החלף את:
-  PASTE_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com
+מעבר מהגרסה הקודמת
+------------------
+הגרסה הקודמת השתמשה ב-browser Token Model ולא קיבלה Refresh Token שניתן להעביר לשרת.
+לכן אחרי התקנת התיקון נדרש חיבור חד-פעמי מחדש לכל משתמש Supabase שכבר חיבר Google Calendar:
+1. התחבר למשתמש הרגיל של ניהול ההזמנות/Supabase.
+2. עבור לטאב "יומן" ולחץ "התחבר ל-Google".
+3. הדף יעבור ל-Google באותו חלון דפדפן, בלי popup.
+4. בחר את חשבון Google הרצוי ואשר.
+5. Google תחזיר אותך לאתר, לטאב "יומן".
+6. מכאן ואילך פתיחה מחדש וחידוש Access Token נעשים דרך Supabase Edge Function בלי חלון Google.
 
-ב-OAuth Client ID שקיבלת מ-Google, והשאר את scope כפי שהוא. ה-scope מוגבל לעריכת אירועים בכל היומנים ולקריאת רשימת היומנים; הוא אינו מעניק למערכת הרשאות לשתף או למחוק יומנים עצמם.
-
-לאחר שינוי הקובץ הרץ משורש המאגר:
-  python tools/sync-assets.py
-  verify.bat --no-pause
-
-שימוש
------
-1. פתח את ניהול ההזמנות ועבור לטאב "יומן".
-2. לחץ "התחבר ל-Google" ואשר גישה ליומן. אם Google מציגה 403 access_denied בנוסח "האפליקציה נמצאת כרגע בבדיקה", חזור ל-Google Auth Platform > Audience והוסף את החשבון שמופיע בחלון כ-Test user. אזהרות console מסוג Cross-Origin-Opener-Policy על window.closed אינן הסיבה ל-403 הזה; כותרת האתר צריכה להישאר Cross-Origin-Opener-Policy: same-origin-allow-popups.
-3. המערכת קוראת את כל רשימת היומנים בחשבון, כולל יומנים מוסתרים, ואת האירועים בטווח המוצג. בלי סינון eventTypes, Google מחזיר גם אירועי יום הולדת וסוגי אירועים נוספים שה-API מציג. יומן שנותן רק הרשאת free/busy נשאר ברשימה אך אינו נקרא כאילו יש הרשאה לפרטי אירועים.
-4. אירועים רגילים ביומן עם הרשאת owner/writer ניתנים לעריכה.
-5. אירועי יום הולדת, אירועים נעולים, יומנים לקריאה בלבד ואירועים עם מוזמנים מוצגים אך לא נערכים במסך הזה, כדי למנוע שינוי לא בטוח של מידע ש-Google מנהל או של התראות למוזמנים.
-6. "תור חדש" נוצר ביומן הראשי/הראשון עם הרשאת כתיבה.
+מיפוי משתמשים
+--------------
+Refresh Token נשמר לפי owner_id של משתמש Supabase.
+לכן שני משתמשי ניהול שונים יכולים להיות מחוברים לשני חשבונות Google שונים, גם אם משתמשים באותו מחשב/דפדפן.
+ה-Edge Function מחזיר גם את מזהה חשבון Google שנשמר, והלקוח מאמת מול היומן הראשי לפני קריאה/שליחה. אם יש חוסר התאמה, הסנכרון נעצר לפני כתיבה כדי לא לערבב יומנים.
 
 אופליין והתאוששות
 -----------------
 - שמירה/עריכה/מחיקה נכתבות קודם לתור IndexedDB המקומי ורק אחר כך נשלחות לרשת.
-- אם אין רשת, השינוי נשאר מסומן כממתין ולא נעלם אחרי רענון/סגירת הדפדפן.
-- כשחוזרת רשת, המערכת מנסה לשלוח שוב אוטומטית כל עוד קיים Access Token תקף.
-- Access Token של Google אינו נשמר ב-localStorage או IndexedDB. במקום זאת נשמרים רק סימון לא-סודי שהיומן אמור להתחבר אוטומטית ומזהה החשבון הראשי שכבר אומת.
-- אחרי רענון מלא/פתיחה חדשה, המערכת מנסה מיד ובאופן שקט לקבל Access Token חדש עם prompt=none ו-login_hint של החשבון שנשמר. אם אותו חשבון עדיין מחובר ל-Google וההרשאה קיימת, היומן מתחבר ומתרענן לבד בלי לחיצה על "רענן", "התחבר ל-Google" או בחירת חשבון.
-- אם Google או הדפדפן אינם מאפשרים את החידוש השקט ודורשים אינטראקציה, המערכת לא מציגה חלון בכוח בזמן טעינת האתר: הלחיצה הרגילה הבאה על טאב "יומן" משמשת כגיבוי ומבקשת את הטוקן לאותו חשבון עם login_hint. אם נדרשת כניסה מחדש או הסכמה חדשה, Google עדיין רשאית להציג אותן.
-- זהו חיבור אוטומטי best-effort במודל Token של דפדפן. גישה מובטחת גם כשהמשתמש כלל אינו נוכח, או רענון Access Token ללא שום אפשרות למחוות משתמש לאחר פקיעתו, דורשים Authorization Code Flow עם Refresh Token שמור בצורה מאובטחת בצד שרת.
-- בחיבור אוטומטי המערכת בודקת שהחשבון ש-Google החזירה הוא בדיוק החשבון שנשמר. אם Google מחזירה חשבון אחר, הסנכרון נעצר לפני טעינה/שליחה כדי לא לערבב בין יומנים.
-- אם מנסים להתחבר ידנית לחשבון Google אחר בזמן שקיימים שינויים ממתינים לחשבון הקודם, הסנכרון נעצר ולא שולח אותם לחשבון הלא נכון.
-- לחיצה מפורשת על "נתק Google" מבטלת גם את החיבור האוטומטי; התחברות ידנית חדשה יכולה לבחור חשבון אחר.
+- אם אין רשת, השינוי נשאר ממתין ולא נעלם אחרי רענון או סגירת הדפדפן.
+- כשהרשת חוזרת, המערכת מקבלת Access Token חדש מהשרת ומנסה לסנכרן אוטומטית.
+- אם Access Token פג בזמן שהאתר נשאר פתוח, ה-poll הבא/חזרה לטאב/לחיצה על רענן מקבלים Token חדש מהשרת ללא popup.
+- אם Google מבטלת את ה-Refresh Token או שהוא פג, המערכת מפסיקה ניסיונות אוטומטיים ומבקשת חיבור חד-פעמי מחדש; גם החיבור הזה נעשה בניווט מלא ולא בחלון קופץ.
 - אין לנקות Site Data כאשר בטאב היומן מופיעים שינויים ממתינים.
+
+ניתוק
+-----
+לחיצה על "נתק Google" שולחת בקשה ל-Edge Function. השרת מבטל את ה-Refresh Token מול Google ומוחק אותו מהטבלה, ורק לאחר הצלחה מנקה את החיבור המקומי.
 
 אבטחה
 ------
-- OAuth Client ID הוא מזהה ציבורי ומותר בדפדפן; Client Secret אסור בפרויקט הציבורי.
-- Access Token נשמר בזיכרון בלבד. ב-localStorage נשמרים רק דגל החיבור האוטומטי ומזהה החשבון שכבר אומת, כדי לספק login_hint; אין שם OAuth token.
-- _headers מאפשר את נתיבי Google Identity Services הנדרשים, את www.googleapis.com ואת COOP המתאים לחלון OAuth, בנוסף ליעדים שכבר היו מותרים.
-- Service Worker אינו מיירט או מטמין בקשות Google; בקשות cross-origin עוקפות אותו.
+- אין Client Secret באתר הציבורי.
+- אין Refresh Token ב-localStorage, IndexedDB או JavaScript הציבורי.
+- Access Token קיים בזיכרון הדפדפן בלבד ובעל תוקף קצר.
+- טבלאות OAuth אינן זמינות ל-anon/authenticated.
+- callback של Google משתמש ב-state אקראי חד-פעמי, נשמר בשרת רק כ-SHA-256 hash ונמחק לפני החלפת הקוד בטוקנים.
+- return_url נבדק מול Origin של הבקשה שפתחה את החיבור כדי למנוע open redirect.
+- ה-CSP באתר אינו טוען יותר את ספריית Google Identity Services ואינו מאפשר iframe של Google; אין עוד צורך ב-popup/COOP מיוחד.
+- Service Worker אינו מיירט או מטמין בקשות Google או Supabase עסקיות.

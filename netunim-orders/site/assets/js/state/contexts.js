@@ -70,7 +70,6 @@ return {
     accountId:'',
     autoConnect:false,
     expectedAccountId:'',
-    autoReconnectAttempted:false,
     authResumePromise:null,
     syncing:false,
     syncPromise:null,

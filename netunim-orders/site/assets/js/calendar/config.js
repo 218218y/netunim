@@ -1,7 +1,6 @@
-// Google Calendar browser OAuth configuration.
-// The OAuth client ID is public by design. Never place a client secret in the site.
+// Google Calendar uses a server-side OAuth authorization-code flow.
+// The Google client secret and refresh tokens must never be placed in this public file.
 export const googleCalendarConfig=Object.freeze({
-  clientId:'113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com',
-  scope:'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.calendarlist.readonly',
+  backendPath:'/functions/v1/google-calendar-oauth',
   pollIntervalMs:60_000,
 });
