@@ -43,7 +43,7 @@ for label, project in APPS.items():
     app_js = site / "assets/app.js"
     app_css = site / "assets/app.css"
     headers = (site / "_headers").read_text(encoding="utf-8")
-    deploy = (project / "deploy_site.bat").read_text(encoding="utf-8")
+    deploy = (ROOT / "tools/deploy_site_core.bat").read_text(encoding="utf-8")
     script_policy = re.search(r'\bscript-src\s+([^;\n]+)', headers)
     ok(bool(script_policy) and "'unsafe-inline'" not in script_policy[1] and "'unsafe-eval'" not in script_policy[1],
        f'{label}: script CSP forbids inline execution and dynamic code')

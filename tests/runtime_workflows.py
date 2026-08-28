@@ -1,6 +1,7 @@
 """Representative workflows through real controls, with actual offline persistence."""
 from browser_harness import BrowserSession, ROOT
 import json
+import time
 
 helpers=r"""
  const element=s=>{const e=document.querySelector(s);if(!e)throw new Error('Missing control '+s);return e};
@@ -64,8 +65,21 @@ flows={
 """
 }
 for label,flow in flows.items():
+    isolated_download_dir=None
     with BrowserSession(ROOT/f'netunim-{label}/site',label+'-workflow') as browser:
         result=browser.evaluate('(async()=>{'+helpers+flow+'})()')
         print(label,json.dumps(result))
         assert result and all(result.values())
+        if label=='orders':
+            isolated_download_dir=browser.downloads
+            safety_backups=[]
+            for _ in range(40):
+                safety_backups=list(isolated_download_dir.glob('orders-before-restore_*.json'))
+                if safety_backups:
+                    break
+                time.sleep(0.05)
+            assert safety_backups, 'restore safety backup was not captured in the isolated test download directory'
+            assert all(path.parent==isolated_download_dir for path in safety_backups)
         assert not browser.drain_serious_errors()
+    if isolated_download_dir is not None:
+        assert not isolated_download_dir.exists(), 'browser test download directory was not cleaned after the session'

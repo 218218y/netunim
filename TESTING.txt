@@ -29,6 +29,12 @@ change it. Verification checks drift without modifying files. Both deployment sc
 For safe deployment-path verification without Wrangler or upload:
   netunim-kupa\deploy_site.bat --preflight-only
   netunim-orders\deploy_site.bat --preflight-only
+  deploy_all.bat --preflight-only
+
+For a paired production release, use deploy_all.bat. It runs the complete repository verifier once,
+then applies the site-specific deployment guards and upload for both applications. Running each
+individual deploy_site.bat separately remains supported, but each standalone deployment correctly
+runs the repository verifier for itself.
 
 Suites
 ------
@@ -68,7 +74,9 @@ configuration with fake endpoints. Production data, credentials, database and de
 Most integration suites instrument ONLY these temporary copies with lexical test access via module_probe.cjs.
 The shipped modules contain no test hooks or global compatibility bridge. runtime_pwa.py uses no module instrumentation.
 Actual localhost navigation and asynchronous appReady completion are required; a failed startup does not fall back
-to a simulated DOM. Real CSP headers are served by the harness. Browser tests require an available loopback port.
+to a simulated DOM. Real CSP headers are served by the harness. Browser-initiated downloads exercised by workflows
+are redirected into each disposable runtime directory and deleted with that session; tests must never write the user's
+real Downloads folder. Browser tests require an available loopback port.
 
 Performance limits catch pathological regressions, not small machine-dependent timing differences. Headless tests
 and fake file handles cannot certify native folder-picker UI, installation on every OS, live Supabase/RLS, Access

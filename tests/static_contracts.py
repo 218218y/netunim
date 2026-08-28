@@ -118,18 +118,48 @@ ok("tests\\run_all.py" in verify_text, "verify.bat: invokes the canonical test r
 ok('if errorlevel 1 set "VERIFY_EXIT=1"' in verify_text, "verify.bat: captures Python failure at runtime inside batch blocks")
 ok('set "VERIFY_EXIT=%ERRORLEVEL%"' not in verify_text, "verify.bat: avoids parse-time ERRORLEVEL expansion inside parenthesized blocks")
 
-# Deployment must be gated by the repository-wide verifier before Wrangler.
+# Deployment architecture: one shared per-site engine, with verification owned by
+# the public entrypoints. A standalone site verifies once; deploy_all verifies once
+# for the pair and then invokes the engine twice without a verification bypass flag.
+deploy_core_path = ROOT / "tools/deploy_site_core.bat"
+deploy_core = deploy_core_path.read_text(encoding="utf-8")
+wrangler_pos = deploy_core.lower().find("pages deploy")
+ok(wrangler_pos >= 0, "deploy core: contains the only Wrangler Pages upload command")
+ok("verify.bat" not in deploy_core.lower(), "deploy core: does not own or bypass the repository verification gate")
+ok('if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" (' in deploy_core,
+   "deploy core: refuses accidental direct invocation without a verified parent entrypoint")
+dry_run = deploy_core.find('if /I "%~7"=="--preflight-only" (')
+mkdir_pos = deploy_core.find('mkdir "%DEPLOY_WORK_DIR%"')
+ok(0 <= dry_run < mkdir_pos < wrangler_pos, "deploy core: read-only preflight exits before deployment setup and Wrangler")
+ok('exit /b 0' in deploy_core[dry_run:mkdir_pos], "deploy core: preflight cannot fall through to upload")
+
 for label, path in [("kupa", K / "deploy_site.bat"), ("orders", O / "deploy_site.bat")]:
     text = path.read_text(encoding="utf-8")
     verify_pos = text.lower().find("verify.bat")
-    wrangler_pos = text.lower().find("pages deploy")
-    ok(verify_pos >= 0, f"{label}: deploy invokes repository verify gate")
-    ok(wrangler_pos >= 0 and verify_pos < wrangler_pos, f"{label}: verify gate runs before Wrangler deployment")
-    dry_run=text.find('if /I "%~1"=="--preflight-only" (')
-    ok(verify_pos < dry_run < text.find('mkdir "%DEPLOY_WORK_DIR%"'), f'{label}: read-only preflight exits before deployment setup')
-    ok('exit /b 0' in text[dry_run:text.find('mkdir "%DEPLOY_WORK_DIR%"')], f'{label}: preflight does not fall through to Wrangler')
-    ok("if errorlevel 1" in text[verify_pos:wrangler_pos] if verify_pos >= 0 and wrangler_pos > verify_pos else False,
-       f"{label}: failed verification stops deployment")
+    core_pos = text.lower().find("deploy_site_core.bat")
+    ok(verify_pos >= 0, f"{label}: standalone deploy invokes repository verify gate")
+    ok(core_pos >= 0 and verify_pos < core_pos, f"{label}: verification runs before the shared deploy core")
+    ok('call "%~dp0..\\verify.bat" --no-pause' in text, f"{label}: standalone deploy runs the canonical verifier exactly once")
+    ok("pages deploy" not in text.lower(), f"{label}: Wrangler implementation is centralized in the shared deploy core")
+    ok("if errorlevel 1" in text[verify_pos:core_pos], f"{label}: failed verification stops deployment before the core")
+    gate_pos = text.find('set "NETUNIM_DEPLOY_VERIFIED=1"')
+    ok(verify_pos < gate_pos < core_pos, f"{label}: internal deploy authorization is set only after verification")
+
+combined = (ROOT / "deploy_all.bat").read_text(encoding="utf-8")
+combined_verify = combined.find('call "%~dp0verify.bat" --no-pause')
+combined_orders = combined.find('bargig-orders')
+combined_kupa = combined.find('bargig-kupa')
+ok(combined_verify >= 0 and combined.count('call "%~dp0verify.bat" --no-pause') == 1,
+   "deploy_all: repository verifier is invoked exactly once")
+ok(combined_orders > combined_verify and combined_kupa > combined_orders,
+   "deploy_all: both site deployments start only after the single verification gate")
+combined_gate = combined.find('set "NETUNIM_DEPLOY_VERIFIED=1"')
+ok(combined_verify < combined_gate < combined_orders,
+   "deploy_all: shared deploy authorization is established only after the single verification succeeds")
+ok(combined.lower().count("deploy_site_core.bat") == 2,
+   "deploy_all: invokes the shared per-site deployment engine once for each site")
+ok("--skip-verify" not in combined.lower() and "--skip-verify" not in deploy_core.lower(),
+   "deployment: no public skip-verification switch was introduced")
 
 # 4. SQL and migration contracts.
 sqls = {

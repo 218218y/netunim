@@ -106,6 +106,8 @@ class BrowserSession:
         if not self.browser:
             raise RuntimeError("Chrome/Edge/Chromium was not found")
         self.tmp = Path(tempfile.mkdtemp(prefix=f"netunim-{label}-runtime-"))
+        self.downloads = self.tmp / 'downloads'
+        self.downloads.mkdir(parents=True, exist_ok=True)
         self.profile = Path(tempfile.mkdtemp(prefix=f"netunim-{label}-chrome-"))
         self.httpd = None
         self.http_thread = None
@@ -215,6 +217,19 @@ class BrowserSession:
         self.call("Runtime.enable")
         self.call("Page.enable")
         self.call("Log.enable")
+        # Runtime workflows intentionally exercise production download actions (for
+        # example, the safety JSON created before a restore). Keep every browser
+        # download inside this disposable session so tests can never pollute the
+        # user's real Downloads folder; __exit__ removes it with self.tmp.
+        download_behavior = self.call(
+            "Browser.setDownloadBehavior",
+            {"behavior": "allow", "downloadPath": str(self.downloads.resolve())},
+        )
+        if download_behavior.get("error"):
+            raise RuntimeError(
+                f"{self.label}: Chromium refused isolated download directory: "
+                + str(download_behavior["error"])
+            )
 
     @contextlib.contextmanager
     def second_tab(self):
