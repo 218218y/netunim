@@ -52,6 +52,27 @@ return {
     notesBulkMode:false,
     notesBulkSelected:new Set()
   },
+  calendarUi:{
+    currentMonth:'',
+    calendars:[],
+    events:[],
+    displayEvents:[],
+    pending:[],
+    eventMap:new Map(),
+    cacheFetchedAt:null
+  },
+  calendarSession:{
+    accessToken:'',
+    tokenExpiresAt:0,
+    connected:false,
+    accountVerified:false,
+    accountId:'',
+    syncing:false,
+    syncPromise:null,
+    lastSyncAt:null,
+    lastError:'',
+    pollTimer:null
+  },
   files:{
     dirHandle:null,
     dirPermission:'unknown',

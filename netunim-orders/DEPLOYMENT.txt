@@ -6,7 +6,7 @@ Public root
 Publish only netunim-orders/site. Never serve the repository root, data/, backups/, SQL,
 node_modules, credentials or source-only operational files. The public seed contains no business data.
 index.html loads assets/app.js as native ESM; assets/js/main.js composes the application.
-All assets/js modules, CSS, icons, manifest, service-worker.js, _headers and supabase/config.js are required.
+All assets/js modules (including calendar/config.js), CSS, icons, manifest, service-worker.js, _headers and supabase/config.js are required.
 Each site remains independently deployable and independently usable offline.
 
 Preparation (repository root)
@@ -53,8 +53,10 @@ supabase/config.js exports frozen public configuration. Only a publishable key b
 never use a secret/service-role key. Keep its URL consistent with connect-src in _headers.
 Supabase Auth and RLS control business-data access. A site access policy (for example Cloudflare
 Access) is a separate layer controlling delivery of public application files. noindex is not authorization.
-script-src forbids inline scripts/eval. Inline styles remain allowed only in style-src-attr;
-style-src-elem is self-only. Existing object/base/frame, MIME, referrer and permission protections remain.
+script-src forbids inline scripts/eval. Google Calendar adds only accounts.google.com for the reviewed OAuth browser client
+and www.googleapis.com for Calendar REST calls; access tokens remain memory-only and no Google client secret is public.
+Inline styles remain allowed only in style-src-attr; style-src-elem is self-only. Existing object/base/frame, MIME, referrer
+and permission protections remain. See GOOGLE_CALENDAR_SETUP.txt before enabling the Calendar connection.
 
 Ordinary frontend deployment requires no SQL/schema changes and must not rerun cutover.
 For a genuinely new database, follow the existing setup and shared-check SQL documentation.

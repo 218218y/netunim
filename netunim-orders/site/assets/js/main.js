@@ -51,6 +51,11 @@ import {createSyncChecks} from './sync/checks.js';
 import {createSyncDocument} from './sync/document.js';
 import {createUiCloud} from './ui/cloud.js';
 import {createDomainsNotesController} from './domains/notes/controller.js';
+import {createCalendarStorage} from './calendar/storage.js';
+import {createCalendarAuth} from './calendar/auth.js';
+import {createCalendarApi} from './calendar/api.js';
+import {createCalendarJournal} from './calendar/journal.js';
+import {createDomainsCalendarController} from './domains/calendar/controller.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
@@ -72,7 +77,7 @@ import {INITIAL_STATE, $} from "./state/constants.js";
 
 
 
-const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, files, tab, session, checksSession}=createContexts();
+const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
 
 const stateNormalization=createStateNormalization({
 
@@ -88,6 +93,11 @@ const storageBrowser=createStorageBrowser({
 const storageChecks=createStorageChecks({
   checksSession,
 });
+
+const calendarStorage=createCalendarStorage();
+const calendarAuth=createCalendarAuth({calendarSession});
+const calendarApi=createCalendarApi({calendarAuth});
+const calendarJournal=createCalendarJournal({calendarStorage,calendarApi});
 
 const domainsSuppliersSelectors=createDomainsSuppliersSelectors({
   model,
@@ -185,6 +195,7 @@ const uiNavigation=createUiNavigation({
   renderService:(...args)=>domainsServiceView.renderService(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
+  renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
 });
 
@@ -303,6 +314,20 @@ const domainsSuppliersView=createDomainsSuppliersView({
 
 const uiModal=createUiModal({
 
+});
+
+const domainsCalendarController=createDomainsCalendarController({
+  ui,
+  calendarUi,
+  calendarSession,
+  calendarStorage,
+  calendarAuth,
+  calendarApi,
+  calendarJournal,
+  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  toast:(...args)=>uiStatus.toast(...args),
 });
 
 const domainsSuppliersEditor=createDomainsSuppliersEditor({
@@ -812,6 +837,16 @@ const uiActions=createUiActions({
   toggleNotesBulkRow:(...args)=>domainsNotesController.toggleNotesBulkRow(...args),
   toggleNotesBulkVisible:(...args)=>domainsNotesController.toggleNotesBulkVisible(...args),
   deleteSelectedStickyNotes:(...args)=>domainsNotesController.deleteSelectedStickyNotes(...args),
+  calendarPrevMonth:()=>domainsCalendarController.changeMonth(-1),
+  calendarNextMonth:()=>domainsCalendarController.changeMonth(1),
+  calendarToday:(...args)=>domainsCalendarController.goToday(...args),
+  calendarRefresh:(...args)=>domainsCalendarController.refreshCalendar(...args),
+  calendarAuthAction:(...args)=>domainsCalendarController.calendarAuthAction(...args),
+  calendarNewEvent:(...args)=>domainsCalendarController.newEvent(...args),
+  calendarOpenEvent:(...args)=>domainsCalendarController.openCalendarEvent(...args),
+  calendarToggleAllDay:(...args)=>domainsCalendarController.toggleCalendarAllDay(...args),
+  calendarSaveEvent:(...args)=>domainsCalendarController.saveCalendarEvent(...args),
+  calendarDeleteEvent:(...args)=>domainsCalendarController.deleteCalendarEvent(...args),
 });
 
 model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||structuredClone(INITIAL_STATE));
@@ -832,4 +867,5 @@ document.getElementById('folderAccessButton').addEventListener('click',uiFolders
 document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);
 uiEvents.bindActionEvents(document.getElementById('main'),uiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
+domainsCalendarController.start();
 export const appReady=lifecycle.boot();
