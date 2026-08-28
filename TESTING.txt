@@ -1,4 +1,6 @@
-﻿NETUNIM TESTING
+﻿python tools/sync-assets.py
+
+NETUNIM TESTING
 ===============
 
 One-time setup (repository root)

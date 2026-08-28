@@ -187,7 +187,7 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .customers-view{gap:8px}.customer-command{top:62px;padding:6px 7px}.customer-work-panel{border-radius:14px}
 .customer-work-table{max-height:calc(100vh - 122px);min-height:min(660px,calc(100vh - 122px))}
 .customer-table{min-width:1100px!important;table-layout:fixed}
-.customer-table .customer-col-name{width:160px}.customer-table .customer-col-amount{width:100px}.customer-table .customer-col-order{width:90px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied{width:100px}.customer-table .customer-col-invoice{width:124px}.customer-table .customer-col-state{width:190px}.customer-table .customer-col-note{width:auto}.customer-table .customer-col-actions{width:48px}
+.customer-table .customer-col-name{width:160px}.customer-table .customer-col-amount{width:78px}.customer-table .customer-col-order{width:90px}.customer-table .customer-col-paid,.customer-table .customer-col-supplied{width:100px}.customer-table .customer-col-invoice{width:124px}.customer-table .customer-col-state{width:190px}.customer-table .customer-col-note{width:auto}.customer-table .customer-col-actions{width:48px}
 .customer-table td.customer-col-name b,.customer-orders-table td:nth-child(2) b{font-size:14px;font-weight:780}.customer-table td.customer-col-amount{font-weight:790;font-variant-numeric:tabular-nums}
 .customer-table td.customer-col-amount,.customer-table td.customer-col-order,.customer-table td.customer-col-state{white-space:nowrap}.customer-table td.customer-col-state .badge{white-space:nowrap}
 .customer-phone{margin-top:2px;font-size:10.5px}.customer-orders-table{min-width:760px!important;table-layout:fixed}
