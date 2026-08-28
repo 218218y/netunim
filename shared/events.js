@@ -19,3 +19,22 @@ export function bindActionEvents(root,actions){
     },type==='focus'||type==='blur');
   }
 }
+
+// A backdrop dismissal is a pointer gesture that both starts and ends on the
+// backdrop itself. Tracking the pointer origin prevents a text-selection drag
+// that begins inside a modal and is released outside from being mistaken for
+// an outside click.
+export function bindBackdropDismissal(backdrop,onDismiss){
+  let backdropPointerId=null;
+  backdrop.addEventListener('pointerdown',event=>{
+    backdropPointerId=event.target===backdrop?event.pointerId:null;
+  });
+  backdrop.addEventListener('pointerup',event=>{
+    const shouldDismiss=backdropPointerId===event.pointerId&&event.target===backdrop;
+    backdropPointerId=null;
+    if(shouldDismiss)onDismiss(event);
+  });
+  backdrop.addEventListener('pointercancel',event=>{
+    if(backdropPointerId===event.pointerId)backdropPointerId=null;
+  });
+}

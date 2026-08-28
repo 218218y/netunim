@@ -53,7 +53,7 @@ import {createUiCloud} from './ui/cloud.js';
 import {createDomainsNotesController} from './domains/notes/controller.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents} from './shared/events.js';
+import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {INITIAL_STATE, $} from "./state/constants.js";
@@ -818,7 +818,7 @@ model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||struct
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-$('#modalBackdrop').addEventListener('click',e=>{if(e.target.id==='modalBackdrop')uiModal.closeModal()});
+bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.closeModal());
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>uiNavigation.switchView(b.dataset.view)));
 document.addEventListener('click',e=>{const menu=$('#supplierMenu');if(menu&&!menu.contains(e.target))domainsSuppliersNavigation.closeSupplierMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavigation.closeSupplierMenu()});

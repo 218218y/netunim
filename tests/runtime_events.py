@@ -9,6 +9,20 @@ common = r"""
  };
  const fire=(el,type)=>el.dispatchEvent(new Event(type,{bubbles:true}));
  const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ const assertBackdropGestureContract=(openModal)=>{
+   openModal();
+   const backdrop=document.getElementById('modalBackdrop');
+   const field=document.querySelector('#modal input, #modal textarea, #modal select');
+   if(!field)throw new Error('Backdrop contract test needs a modal field');
+   const pointer=(target,type,pointerId)=>target.dispatchEvent(new PointerEvent(type,{bubbles:true,pointerId,pointerType:'mouse',isPrimary:true,button:0,buttons:type==='pointerdown'?1:0}));
+   pointer(field,'pointerdown',71);
+   pointer(backdrop,'pointerup',71);
+   backdrop.dispatchEvent(new MouseEvent('click',{bubbles:true,button:0}));
+   if(!backdrop.classList.contains('open'))throw new Error('Release outside after selection closed modal');
+   pointer(backdrop,'pointerdown',72);
+   pointer(backdrop,'pointerup',72);
+   if(backdrop.classList.contains('open'))throw new Error('Genuine backdrop gesture did not close modal');
+ };
  window.confirm=()=>true;
 """
 
@@ -19,6 +33,7 @@ expressions = {
  state=normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[{name:'VISA',active:true,chargeDay:10}]});
  backendReady=false;connectionMode='';
  setPage('dashboard');
+ assertBackdropGestureContract(()=>openCheckModal());
  const tile=document.querySelector('.kpi.clickable');
  tile.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
  if(currentPage!=='cash')throw new Error('KPI keyboard navigation failed');
@@ -49,6 +64,7 @@ expressions = {
  state.suppliers=[{id:'S1',name:'Supplier',active:true,sortOrder:0},{id:'S2',name:'Second',active:true,sortOrder:1}];
  state.transactions=[{id:'T1',supplierId:'S1',sequence:1,action:'Action',debit:10,credit:0,invoiceReceived:null,signed:null,supplied:null,note:'',supplyInfo:''}];
  currentSupplierId='S1';switchView('supplier');await frame();
+ assertBackdropGestureContract(()=>openTransactionModal('T1'));
  openTransactionModal('T1');
  if(document.getElementById('fInvoice').value!=='null'||document.getElementById('fSigned').value!=='null'||document.getElementById('fSupplied').value!=='null')throw new Error('Tri-state modal did not preserve not-applicable values');
  document.getElementById('fNote').value='Edited note';clickText('#modal','שמור');await frame();
