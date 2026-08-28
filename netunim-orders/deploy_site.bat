@@ -22,7 +22,7 @@ if errorlevel 1 (
 )
 
 set "NETUNIM_DEPLOY_VERIFIED=1"
-call "%~dp0..\tools\deploy_site_core.bat" "%~dp0" "bargig-orders" "orders-public-data-free-v1" "" "4.125.0" "assets\app.js" "%MODE%"
+call "%~dp0..\tools\deploy_site_core.bat" "%~dp0" "bargig-orders" "orders-public-data-free-v1" "" "assets\app.js" "%MODE%"
 set "DEPLOY_EXIT=%ERRORLEVEL%"
 if /I not "%MODE%"=="--preflight-only" pause
 exit /b %DEPLOY_EXIT%

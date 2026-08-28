@@ -13,14 +13,30 @@ if "%~1"=="" exit /b 2
 if "%~2"=="" exit /b 2
 if "%~3"=="" exit /b 2
 if "%~5"=="" exit /b 2
-if not "%~7"=="" if /I not "%~7"=="--preflight-only" exit /b 2
+if not "%~6"=="" if /I not "%~6"=="--preflight-only" exit /b 2
 
 set "PROJECT_DIR=%~f1"
 set "PROJECT_NAME=%~2"
 set "BUILD_MARKER=%~3"
 set "RUNTIME_SELF_CHECK_MARKER=%~4"
-set "WRANGLER_VERSION=%~5"
-set "RUNTIME_SELF_CHECK_FILE=%~6"
+set "RUNTIME_SELF_CHECK_FILE=%~5"
+set "WRANGLER_VERSION_FILE=%~dp0wrangler-version.txt"
+if not exist "%WRANGLER_VERSION_FILE%" (
+  echo ERROR: Wrangler version file was not found:
+  echo   %WRANGLER_VERSION_FILE%
+  exit /b 2
+)
+set "WRANGLER_VERSION="
+set /p "WRANGLER_VERSION="<"%WRANGLER_VERSION_FILE%"
+if not defined WRANGLER_VERSION (
+  echo ERROR: Wrangler version file is empty.
+  exit /b 2
+)
+echo(%WRANGLER_VERSION%| findstr /R /X "[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*" >nul
+if errorlevel 1 (
+  echo ERROR: invalid Wrangler version in tools\wrangler-version.txt: %WRANGLER_VERSION%
+  exit /b 2
+)
 cd /d "%PROJECT_DIR%"
 if errorlevel 1 (
   echo ERROR: project directory was not found or could not be opened:
@@ -188,7 +204,7 @@ for %%F in (_worker.js _routes.json wrangler.toml wrangler.json wrangler.jsonc) 
   exit /b 2
 )
 
-if /I "%~7"=="--preflight-only" (
+if /I "%~6"=="--preflight-only" (
   echo Deployment preflight passed. No deployment requested.
   exit /b 0
 )
@@ -218,7 +234,7 @@ echo Isolated Wrangler working directory:
 echo Node.js:
  echo   %NODE_VERSION%
 echo Wrangler:
- echo   %WRANGLER_VERSION% ^(pinned for reproducible deployments^)
+ echo   %WRANGLER_VERSION% ^(managed in tools\wrangler-version.txt^)
 echo.
 echo Deploying the verified static site to Cloudflare Pages production...
 echo.

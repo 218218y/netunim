@@ -3,14 +3,14 @@
 
 One-time setup (repository root)
 -------------------------------
-Python 3.10+, Node 20.19+/22.13+/24+, and Chrome, Edge or Chromium are required.
+Python 3.10+, Node 22.13+/24+, and Chrome, Edge or Chromium are required.
 This refactor was checked with Node 24 and Python 3.14 on Windows.
 
   python -m pip install -r tests/requirements.txt
   npm ci
 
-npm packages are pinned development tools only; none are deployed or imported at runtime.
-No bundler is required. Native ESM requires localhost/HTTPS; file:// and isolated-document fallbacks are unsupported.
+npm development tools use semver ranges in package.json and exact resolved versions in package-lock.json;
+none are deployed or imported at runtime. Use npm ci for reproducible setup. No bundler is required. Native ESM requires localhost/HTTPS; file:// and isolated-document fallbacks are unsupported.
 
 Commands
 --------
@@ -18,6 +18,10 @@ Commands
   verify.bat --no-pause
   python tests/run_all.py
   npm run lint
+  npm run updates:check
+  npm run deps:update
+  npm run wrangler:check
+  npm run wrangler:update
   node --test tests/business_models.test.mjs tests/shared_contracts.test.mjs tests/sync_models.test.mjs tests/storage_models.test.mjs
 
 After changing a public asset or canonical shared source:
@@ -35,6 +39,21 @@ For a paired production release, use deploy_all.bat. It runs the complete reposi
 then applies the site-specific deployment guards and upload for both applications. Running each
 individual deploy_site.bat separately remains supported, but each standalone deployment correctly
 runs the repository verifier for itself.
+
+
+Dependency updates
+------------------
+Run npm run updates:check to check both package.json development dependencies and Wrangler.
+For normal npm minor/patch updates within the declared major ranges, run npm run deps:update, then
+verify.bat --no-pause. Major npm upgrades remain deliberate: install the reviewed @latest version explicitly,
+then run the full verifier before keeping the lockfile change.
+
+Wrangler is intentionally not a package.json dependency because deployment executes it only inside a fresh,
+isolated temporary directory. Its single reproducible deployment version lives in tools/wrangler-version.txt.
+Use npm run wrangler:check to compare it with npm, and npm run wrangler:update to update within the current
+major. A future Wrangler major version requires the explicit npm run wrangler:update-major command after
+reviewing the migration/release notes. Never replace the deployment pin with wrangler@latest: a new CLI release
+must not silently change production deployment behavior before verification.
 
 Suites
 ------

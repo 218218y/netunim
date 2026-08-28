@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from pathlib import Path
+import json
 import re
 import subprocess
 import sys
@@ -128,10 +129,30 @@ ok(wrangler_pos >= 0, "deploy core: contains the only Wrangler Pages upload comm
 ok("verify.bat" not in deploy_core.lower(), "deploy core: does not own or bypass the repository verification gate")
 ok('if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" (' in deploy_core,
    "deploy core: refuses accidental direct invocation without a verified parent entrypoint")
-dry_run = deploy_core.find('if /I "%~7"=="--preflight-only" (')
+dry_run = deploy_core.find('if /I "%~6"=="--preflight-only" (')
 mkdir_pos = deploy_core.find('mkdir "%DEPLOY_WORK_DIR%"')
 ok(0 <= dry_run < mkdir_pos < wrangler_pos, "deploy core: read-only preflight exits before deployment setup and Wrangler")
 ok('exit /b 0' in deploy_core[dry_run:mkdir_pos], "deploy core: preflight cannot fall through to upload")
+wrangler_version_path = ROOT / "tools/wrangler-version.txt"
+wrangler_version = wrangler_version_path.read_text(encoding="utf-8").strip()
+ok(bool(re.fullmatch(r"\d+\.\d+\.\d+", wrangler_version)),
+   "deploy core: Wrangler version is centralized as a valid stable semver")
+ok('set "WRANGLER_VERSION_FILE=%~dp0wrangler-version.txt"' in deploy_core,
+   "deploy core: reads the centralized Wrangler version file")
+ok('wrangler@%WRANGLER_VERSION%' in deploy_core and 'wrangler@latest' not in deploy_core.lower(),
+   "deploy core: uses the reviewed Wrangler pin instead of silently following latest")
+
+package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+ok(package_json.get("scripts", {}).get("wrangler:check") == "node tools/wrangler-version.mjs --check",
+   "package scripts: Wrangler update check is explicit and discoverable")
+ok(package_json.get("scripts", {}).get("wrangler:update") == "node tools/wrangler-version.mjs --update",
+   "package scripts: Wrangler same-major update is explicit and discoverable")
+for dependency in ("acorn", "eslint", "eslint-scope", "globals"):
+    value = package_json.get("devDependencies", {}).get(dependency, "")
+    ok(value.startswith("^"), f"package.json: {dependency} allows reviewed minor/patch npm updates")
+
+ok(package_json.get("engines", {}).get("node") == "^22.13.0 || >=24",
+   "package.json: Node requirement matches current ESLint/Wrangler tooling")
 
 for label, path in [("kupa", K / "deploy_site.bat"), ("orders", O / "deploy_site.bat")]:
     text = path.read_text(encoding="utf-8")
@@ -142,6 +163,8 @@ for label, path in [("kupa", K / "deploy_site.bat"), ("orders", O / "deploy_site
     ok('call "%~dp0..\\verify.bat" --no-pause' in text, f"{label}: standalone deploy runs the canonical verifier exactly once")
     ok("pages deploy" not in text.lower(), f"{label}: Wrangler implementation is centralized in the shared deploy core")
     ok("if errorlevel 1" in text[verify_pos:core_pos], f"{label}: failed verification stops deployment before the core")
+    ok(not re.search(r'"\d+\.\d+\.\d+"', text),
+       f"{label}: standalone deploy does not duplicate a hard-coded Wrangler version")
     gate_pos = text.find('set "NETUNIM_DEPLOY_VERIFIED=1"')
     ok(verify_pos < gate_pos < core_pos, f"{label}: internal deploy authorization is set only after verification")
 
@@ -153,6 +176,8 @@ ok(combined_verify >= 0 and combined.count('call "%~dp0verify.bat" --no-pause') 
    "deploy_all: repository verifier is invoked exactly once")
 ok(combined_orders > combined_verify and combined_kupa > combined_orders,
    "deploy_all: both site deployments start only after the single verification gate")
+ok(not re.search(r'"\d+\.\d+\.\d+"', combined),
+   "deploy_all: combined deploy does not duplicate a hard-coded Wrangler version")
 combined_gate = combined.find('set "NETUNIM_DEPLOY_VERIFIED=1"')
 ok(combined_verify < combined_gate < combined_orders,
    "deploy_all: shared deploy authorization is established only after the single verification succeeds")

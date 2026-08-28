@@ -4,12 +4,20 @@
   "type": "module",
   "scripts": {
     "lint": "eslint .",
-    "test": "python tests/run_all.py"
+    "test": "python tests/run_all.py",
+    "updates:check": "node tools/check-updates.mjs",
+    "deps:update": "npm update",
+    "wrangler:check": "node tools/wrangler-version.mjs --check",
+    "wrangler:update": "node tools/wrangler-version.mjs --update",
+    "wrangler:update-major": "node tools/wrangler-version.mjs --update --allow-major"
   },
   "devDependencies": {
-    "acorn": "8.15.0",
-    "eslint": "10.9.1",
-    "eslint-scope": "8.4.0",
-    "globals": "16.5.0"
+    "acorn": "^8.18.0",
+    "eslint": "^10.9.1",
+    "eslint-scope": "^9.1.2",
+    "globals": "^17.11.0"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24"
   }
 }

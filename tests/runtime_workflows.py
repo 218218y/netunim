@@ -48,7 +48,7 @@ flows={
  let debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-supplied')&&!debtAmountCell.classList.contains('is-paid'),'open supplied debt amount is red state');
  openDebtModal(state.customerDebts[0].id);fill({dAmount:'-35'});saveModal();await saved();assert(state.customerDebts[0].amount===-35,'negative reverse debt edit');
  openDebtModal(state.customerDebts[0].id);fill({dPaid:'true',dInvoice:'true'});saveModal();await saved();assert(!!state.customerDebts[0].closedAt,'debt closed state');
- debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-paid')&&!debtAmountCell.classList.contains('is-supplied'),'paid debt amount overrides supplied state');
+ click('customer-filter-4');debtAmountCell=element('[data-customer-bulk-id="'+state.customerDebts[0].id+'"] .customer-debt-amount');assert(debtAmountCell.classList.contains('is-paid')&&!debtAmountCell.classList.contains('is-supplied'),'paid debt amount overrides supplied state in closed debts view');
  switchView('service');click('open-service-modal');fill({svcName:'Service customer',svcDesc:'Repair',svcOpened:'2026-08-27'});saveModal();await saved();assert(state.serviceCalls.length===1,'service create');
  const flag=element('[data-action="toggle-service-flag"]');flag.click();await saved();assert(state.serviceCalls[0].followUp,'service flag');
  switchView('warehouse');click('open-inventory-item-modal-2');fill({invName:'Chair',invCategory:'Furniture',invOpening:'10'});saveModal();await saved();const item=state.inventoryItems[0];assert(inventoryStats(item.id).onHand===10,'inventory opening');

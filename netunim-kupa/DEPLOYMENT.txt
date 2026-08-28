@@ -28,15 +28,19 @@ Unexpected files must be reviewed and removed explicitly.
 Deployment (only when intentionally authorized):
   netunim-kupa\deploy_site.bat
 The script re-runs the complete verifier, checks required modules/CSP/public-root safety,
-then runs pinned Wrangler 4.125.0 in a fresh isolated temporary directory. Only the absolute
-site/ path is uploaded. The configured Pages project is bargig-kupa.
+then runs the Wrangler version managed in ..\tools\wrangler-version.txt in a fresh isolated temporary
+directory. Only the absolute site/ path is uploaded. The configured Pages project is bargig-kupa.
 Do not bypass the verification gate with a direct Wrangler upload.
+From the repository root, check/update the deployment CLI deliberately with:
+  npm run wrangler:check
+  npm run wrangler:update
+After changing the Wrangler version, run verify.bat --no-pause before deployment.
 
 Deploy both applications together from the repository root:
   deploy_all.bat
 This is the preferred paired release path: it runs the complete repository verifier exactly once,
-then runs the full site-specific security/deployment guards and pinned Wrangler upload for Orders
-and Kupa in sequence. If verification fails, neither upload starts; if an upload fails, the script
+then runs the full site-specific security/deployment guards and the centrally managed Wrangler version for
+Orders and Kupa in sequence. If verification fails, neither upload starts; if an upload fails, the script
 stops and does not start the next site. For a no-upload combined check use:
   deploy_all.bat --preflight-only
 The individual deploy_site.bat files remain safe standalone entrypoints and still run verification

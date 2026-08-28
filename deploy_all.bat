@@ -26,7 +26,7 @@ echo.
 echo ============================================================
 echo Orders deployment
 echo ============================================================
-call "%~dp0tools\deploy_site_core.bat" "%~dp0netunim-orders" "bargig-orders" "orders-public-data-free-v1" "" "4.125.0" "assets\app.js" "%MODE%"
+call "%~dp0tools\deploy_site_core.bat" "%~dp0netunim-orders" "bargig-orders" "orders-public-data-free-v1" "" "assets\app.js" "%MODE%"
 set "DEPLOY_EXIT=%ERRORLEVEL%"
 if not "%DEPLOY_EXIT%"=="0" (
   echo.
@@ -39,7 +39,7 @@ echo.
 echo ============================================================
 echo Kupa deployment
 echo ============================================================
-call "%~dp0tools\deploy_site_core.bat" "%~dp0netunim-kupa" "bargig-kupa" "kupa-public-data-free-v1" "runtimeSelfCheck" "4.125.0" "assets\js\lifecycle.js" "%MODE%"
+call "%~dp0tools\deploy_site_core.bat" "%~dp0netunim-kupa" "bargig-kupa" "kupa-public-data-free-v1" "runtimeSelfCheck" "assets\js\lifecycle.js" "%MODE%"
 set "DEPLOY_EXIT=%ERRORLEVEL%"
 if not "%DEPLOY_EXIT%"=="0" (
   echo.
