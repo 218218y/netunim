@@ -60,7 +60,9 @@ return {
     displayEvents:[],
     pending:[],
     eventMap:new Map(),
-    cacheFetchedAt:null
+    cacheFetchedAt:null,
+    cacheRangeStart:'',
+    cacheRangeEnd:''
   },
   calendarSession:{
     accessToken:'',

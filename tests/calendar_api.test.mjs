@@ -35,4 +35,20 @@ assert.deepEqual(events.map(item=>item.id),['event-primary','event-hidden-reader
 assert.ok(events.every(item=>item._calendarId!=='busy-only'));
 assert.ok(!calls.some(call=>call.url.pathname.includes('/busy-only/events')));
 
+let activeRequests=0,maxActiveRequests=0;
+globalThis.fetch=async(url)=>{
+  const parsed=new URL(url),match=/\/calendars\/([^/]+)\/events$/.exec(parsed.pathname);
+  if(!match)throw new Error('Unexpected concurrent request: '+parsed.pathname);
+  activeRequests+=1;maxActiveRequests=Math.max(maxActiveRequests,activeRequests);
+  await new Promise(resolve=>setTimeout(resolve,8));
+  activeRequests-=1;
+  const calendarId=decodeURIComponent(match[1]);
+  return jsonResponse({items:[{id:`parallel-${calendarId}`,summary:calendarId,start:{date:'2026-08-20'},end:{date:'2026-08-21'}}]});
+};
+const parallelCalendars=Array.from({length:7},(_,index)=>({id:`calendar-${index}`,summary:`יומן ${index}`,accessRole:'reader'}));
+const parallelEvents=await api.fetchEvents(parallelCalendars,range);
+assert.equal(parallelEvents.length,7);
+assert.ok(maxActiveRequests>1,'calendar event fetch should overlap independent calendar requests');
+assert.ok(maxActiveRequests<=4,'calendar event fetch concurrency must remain bounded');
+
 console.log('CALENDAR API TESTS PASSED');

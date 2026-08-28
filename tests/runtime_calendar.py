@@ -38,11 +38,13 @@ try:
             todayVisible:focusVisible(),
           };
           document.querySelector('[data-action="calendar-set-view"][data-click-arg0="week"]').click();
+          const weekImmediate=!!document.querySelector('.calendar-board.mode-week')&&!document.querySelector('.calendar-loading');
           for(let i=0;i<40&&!document.querySelector('.calendar-board.mode-week');i++)await new Promise(r=>setTimeout(r,25));
-          const week={active:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="week"]')?.classList.contains('active')===true,days:document.querySelectorAll('.calendar-grid-week [data-calendar-day]').length};
+          const week={active:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="week"]')?.classList.contains('active')===true,days:document.querySelectorAll('.calendar-grid-week [data-calendar-day]').length,immediate:weekImmediate};
           document.querySelector('[data-action="calendar-set-view"][data-click-arg0="day"]').click();
+          const dayImmediate=!!document.querySelector('.calendar-board.mode-day')&&!document.querySelector('.calendar-loading');
           for(let i=0;i<40&&!document.querySelector('.calendar-board.mode-day');i++)await new Promise(r=>setTimeout(r,25));
-          const day={active:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="day"]')?.classList.contains('active')===true,days:document.querySelectorAll('.calendar-grid-day [data-calendar-day]').length};
+          const day={active:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="day"]')?.classList.contains('active')===true,days:document.querySelectorAll('.calendar-grid-day [data-calendar-day]').length,immediate:dayImmediate};
           document.querySelector('[data-action="calendar-set-view"][data-click-arg0="month"]').click();
           for(let i=0;i<40&&!document.querySelector('.calendar-board.mode-month');i++)await new Promise(r=>setTimeout(r,25));
           const scroller=document.querySelector('.calendar-view .view-scroll');if(scroller)scroller.scrollTop=0;
@@ -89,7 +91,7 @@ try:
         expected=bool(
             result['initial']['active'] and result['initial']['normal'] and result['initial']['birthday'] and
             result['initial']['newEnabled'] and result['initial']['offline'] and result['initial']['monthActive'] and result['initial']['todayVisible'] and
-            result['week']['active'] and result['week']['days']==7 and result['day']['active'] and result['day']['days']==1 and
+            result['week']['active'] and result['week']['days']==7 and result['week']['immediate'] and result['day']['active'] and result['day']['days']==1 and result['day']['immediate'] and
             result['todayButton']['visible'] and result['todayButton']['monthActive'] and
             result['beforeReload']['count']==1 and result['beforeReload']['type']=='insert' and
             result['beforeReload']['idValid'] and result['beforeReload']['optimistic'] and

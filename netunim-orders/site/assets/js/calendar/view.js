@@ -72,3 +72,25 @@ export function calendarRangeFor(value,mode){
     timeMax:end.toISOString(),
   };
 }
+
+function rangeStartKey(range){return String(range?.startKey||range?.rangeStart||'')}
+function rangeEndKey(range){return String(range?.endKey||range?.rangeEnd||'')}
+
+export function calendarRangeContains(outer,inner){
+  const outerStart=rangeStartKey(outer),outerEnd=rangeEndKey(outer),innerStart=rangeStartKey(inner),innerEnd=rangeEndKey(inner);
+  return !!outerStart&&!!outerEnd&&!!innerStart&&!!innerEnd&&outerStart<=innerStart&&outerEnd>=innerEnd;
+}
+
+export function calendarPrefetchRangeFor(value){
+  const focusDate=normalizeFocusDate(value),previousFocus=moveFocusDate(focusDate,'month',-1),nextFocus=moveFocusDate(focusDate,'month',1);
+  const previous=calendarRangeFor(previousFocus,'month'),next=calendarRangeFor(nextFocus,'month');
+  const start=parseDateKey(previous.startKey),end=parseDateKey(next.endKey),startKey=previous.startKey,endKey=next.endKey;
+  return{
+    focusDate,
+    startKey,
+    endKey,
+    key:`${startKey}__${endKey}`,
+    timeMin:start.toISOString(),
+    timeMax:end.toISOString(),
+  };
+}

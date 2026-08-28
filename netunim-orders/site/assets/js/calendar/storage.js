@@ -5,6 +5,21 @@ const CACHE_STORE='range-cache';
 const META_STORE='meta';
 const CONNECTION_PREF_KEY='orders.google-calendar.connection.v1';
 
+export function selectCoveringRangeSnapshot(rows,{startKey='',endKey='',accountId=''}={}){
+  const wantedStart=String(startKey||''),wantedEnd=String(endKey||''),wantedAccount=String(accountId||'').trim();
+  if(!wantedStart||!wantedEnd)return null;
+  const candidates=(Array.isArray(rows)?rows:[]).filter(row=>{
+    const rangeStart=String(row?.rangeStart||''),rangeEnd=String(row?.rangeEnd||''),rowAccount=String(row?.accountId||'').trim();
+    return rangeStart&&rangeEnd&&rangeStart<=wantedStart&&rangeEnd>=wantedEnd&&(!wantedAccount||rowAccount===wantedAccount);
+  });
+  candidates.sort((a,b)=>{
+    const aFetched=Date.parse(String(a?.fetchedAt||'')),bFetched=Date.parse(String(b?.fetchedAt||''));
+    if(Number.isFinite(aFetched)&&Number.isFinite(bFetched)&&aFetched!==bFetched)return bFetched-aFetched;
+    return String(a?.key||'').localeCompare(String(b?.key||''));
+  });
+  return candidates[0]||null;
+}
+
 // Calendar business data remains owned by Google. IndexedDB holds only a display cache
 // and durable outbound operations that have not yet been acknowledged by Google.
 export function createCalendarStorage(){
@@ -24,10 +39,11 @@ async function pendingCount(){const db=await openDb(),tx=db.transaction(QUEUE_ST
 
 async function putRangeCache(snapshot){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).put(structuredClone(snapshot));await transactionDone(tx)}
 async function getRangeCache(key){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const value=await requestResult(tx.objectStore(CACHE_STORE).get(String(key)));await transactionDone(tx);return value||null}
+async function getRangeCacheCovering(startKey,endKey,accountId=''){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readonly');const rows=await requestResult(tx.objectStore(CACHE_STORE).getAll());await transactionDone(tx);return selectCoveringRangeSnapshot(rows,{startKey,endKey,accountId})}
 async function clearRangeCache(){const db=await openDb(),tx=db.transaction(CACHE_STORE,'readwrite');tx.objectStore(CACHE_STORE).clear();await transactionDone(tx)}
 
 async function getMeta(key){const db=await openDb(),tx=db.transaction(META_STORE,'readonly');const row=await requestResult(tx.objectStore(META_STORE).get(String(key)));await transactionDone(tx);return row?.value??null}
 async function putMeta(key,value){const db=await openDb(),tx=db.transaction(META_STORE,'readwrite');tx.objectStore(META_STORE).put({key:String(key),value:structuredClone(value)});await transactionDone(tx)}
 
-return {openDb,addOperation,listOperations,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
+return {openDb,addOperation,listOperations,updateOperation,deleteOperation,pendingCount,putRangeCache,getRangeCache,getRangeCacheCovering,clearRangeCache,getMeta,putMeta,connectionPreference,saveConnectionPreference};
 }

@@ -323,20 +323,6 @@ const uiModal=createUiModal({
 
 });
 
-const domainsCalendarController=createDomainsCalendarController({
-  ui,
-  calendarUi,
-  calendarSession,
-  calendarStorage,
-  calendarAuth,
-  calendarApi,
-  calendarJournal,
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-});
-
 const domainsSuppliersEditor=createDomainsSuppliersEditor({
   model,
   supplierUi,
@@ -653,6 +639,22 @@ const uiCloud=createUiCloud({
   startPolling:(...args)=>syncDocument.startPolling(...args),
   saveSession:(...args)=>cloudAuth.saveSession(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
+  resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
+});
+
+const domainsCalendarController=createDomainsCalendarController({
+  ui,
+  calendarUi,
+  calendarSession,
+  calendarStorage,
+  calendarAuth,
+  calendarApi,
+  calendarJournal,
+  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+  requestCloudLogin:()=>uiCloud.loginModal('calendar'),
 });
 
 const domainsNotesController=createDomainsNotesController({
