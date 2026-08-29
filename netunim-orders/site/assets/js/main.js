@@ -60,6 +60,7 @@ import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
+import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
 import {INITIAL_STATE, $} from "./state/constants.js";
 
@@ -869,6 +870,18 @@ const uiActions=createUiActions({
   calendarDeleteEvent:(...args)=>domainsCalendarController.deleteCalendarEvent(...args),
 });
 
+const uiGlobalSearch=createUiGlobalSearch({
+  model,
+  ui,
+  supplierUi,
+  customerUi,
+  serviceUi,
+  warehouseUi,
+  prepareView:(...args)=>uiNavigation.prepareView(...args),
+  render:(...args)=>uiNavigation.render(...args),
+  openInventoryItemModal:(...args)=>domainsInventoryEditor.openInventoryItemModal(...args),
+});
+
 model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||structuredClone(INITIAL_STATE));
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
@@ -887,5 +900,6 @@ document.getElementById('folderAccessButton').addEventListener('click',uiFolders
 document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);
 uiEvents.bindActionEvents(document.getElementById('main'),uiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
+uiGlobalSearch.bind();
 domainsCalendarController.start();
 export const appReady=lifecycle.boot();

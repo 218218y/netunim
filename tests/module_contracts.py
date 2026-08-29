@@ -9,6 +9,8 @@ for command in (
     ['node', 'tests/module_graph.cjs'],
     ['node', 'node_modules/eslint/bin/eslint.js', 'netunim-kupa/site', 'netunim-orders/site'],
     ['node', '--test', 'tests/business_models.test.mjs'],
+    ['node', '--test', 'tests/global_search.test.mjs'],
+    ['node', '--test', 'tests/global_search_navigation.test.mjs'],
     ['node', '--test', 'tests/shared_contracts.test.mjs'],
     ['node', '--test', 'tests/sync_models.test.mjs'],
     ['node', '--test', 'tests/storage_models.test.mjs'],

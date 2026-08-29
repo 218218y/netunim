@@ -6,7 +6,9 @@ function render({supplierScrollMode='auto'}={}){document.querySelectorAll('[data
 
 function renderDashboard(){ui.currentView='supplier';renderSupplier({scrollMode:'end'})}
 
-function switchView(view){ui.currentView=view;supplierUi.supplierBulkMode=false;supplierUi.supplierMoveTargetId=null;supplierUi.supplierBulkSelected.clear();customerUi.customerBulkMode=false;customerUi.customerBulkSelected.clear();serviceUi.serviceBulkMode=false;serviceUi.serviceBulkSelected.clear();warehouseUi.warehouseBulkMode=false;warehouseUi.warehouseBulkSelected.clear();notesUi.notesBulkMode=false;notesUi.notesBulkSelected.clear();if(ui.currentView==='supplier'){if(!supplierUi.currentSupplierId)supplierUi.currentSupplierId=model.state.suppliers[0]?.id;supplierUi.supplierYearView='current'}supplierUi.searchText='';render()}
+function prepareView(view){ui.currentView=view;supplierUi.supplierBulkMode=false;supplierUi.supplierMoveTargetId=null;supplierUi.supplierBulkSelected.clear();customerUi.customerBulkMode=false;customerUi.customerBulkSelected.clear();serviceUi.serviceBulkMode=false;serviceUi.serviceBulkSelected.clear();warehouseUi.warehouseBulkMode=false;warehouseUi.warehouseBulkSelected.clear();notesUi.notesBulkMode=false;notesUi.notesBulkSelected.clear();if(ui.currentView==='supplier'){if(!supplierUi.currentSupplierId)supplierUi.currentSupplierId=model.state.suppliers[0]?.id;supplierUi.supplierYearView='current'}supplierUi.searchText=''}
 
-return { render, renderDashboard, switchView };
+function switchView(view){prepareView(view);render()}
+
+return { render, renderDashboard, prepareView, switchView };
 }
