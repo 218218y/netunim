@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {calendarPrefetchRangeFor,calendarRangeContains,calendarRangeFor,moveFocusDate,normalizeFocusDate,normalizeViewMode} from '../netunim-orders/site/assets/js/calendar/view.js';
 
-assert.equal(normalizeViewMode('garbage'),'month');
+assert.equal(normalizeViewMode('garbage'),'week');
 assert.equal(normalizeFocusDate('2026-02-30',new Date(2026,7,28)),'2026-08-28');
 assert.equal(moveFocusDate('2026-01-31','month',1),'2026-02-28');
 assert.equal(moveFocusDate('2024-01-31','month',1),'2024-02-29');

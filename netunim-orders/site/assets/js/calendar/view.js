@@ -13,7 +13,7 @@ export function parseDateKey(value){
   return date;
 }
 
-export function normalizeViewMode(value){return CALENDAR_VIEW_MODES.includes(String(value||''))?String(value):'month'}
+export function normalizeViewMode(value){return CALENDAR_VIEW_MODES.includes(String(value||''))?String(value):'week'}
 
 export function normalizeFocusDate(value,now=new Date()){
   const parsed=parseDateKey(value);

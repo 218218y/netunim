@@ -53,7 +53,7 @@ return {
     notesBulkSelected:new Set()
   },
   calendarUi:{
-    viewMode:'month',
+    viewMode:'week',
     focusDate:'',
     calendars:[],
     events:[],
