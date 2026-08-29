@@ -9,7 +9,6 @@ for label in ('kupa','orders'):
    if(document.querySelector('[data-injection-probe]'))throw new Error('Business data became markup');
    for(const el of document.querySelectorAll('*'))for(const attr of el.attributes)if(/^on/i.test(attr.name))throw new Error('Executable event attribute: '+attr.name);
  };
- window.confirm=()=>true;
  """
         flow = r"""
  state=normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[]});

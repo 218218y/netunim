@@ -9,6 +9,14 @@ common = r"""
  };
  const fire=(el,type)=>el.dispatchEvent(new Event(type,{bubbles:true}));
  const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ const respondConfirm=async accept=>{
+   const backdrop=document.getElementById('confirmBackdrop');
+   if(!backdrop?.classList.contains('open'))throw new Error('Expected styled confirmation dialog');
+   const button=document.getElementById(accept?'confirmAccept':'confirmCancel');
+   if(!button)throw new Error('Missing confirmation response button');
+   button.click();
+   await frame();
+ };
  const assertBackdropGestureContract=(openModal)=>{
    openModal();
    const backdrop=document.getElementById('modalBackdrop');
@@ -23,7 +31,6 @@ common = r"""
    pointer(backdrop,'pointerup',72);
    if(backdrop.classList.contains('open'))throw new Error('Genuine backdrop gesture did not close modal');
  };
- window.confirm=()=>true;
 """
 
 # Open through the public UI and exercise the same modal actions before and after
@@ -48,9 +55,12 @@ expressions = {
  rows[1].querySelector('[data-series-field="amount"]').value='77';fire(rows[1].querySelector('[data-series-field="amount"]'),'input');
  rows[0].querySelector('[data-series-field="amount"]').value='200';fire(rows[0].querySelector('[data-series-field="amount"]'),'input');
  if(rows[1].querySelector('[data-series-field="amount"]').value!=='77'||rows[2].querySelector('[data-series-field="amount"]').value!=='200')throw new Error('Manual series override lost');
- window.confirm=()=>false;clickText('#modal','ביטול');
+ clickText('#modal','ביטול');
+ if(!document.getElementById('confirmBackdrop').classList.contains('open'))throw new Error('Draft protection confirmation did not open');
+ await respondConfirm(false);
  if(!document.getElementById('modalBackdrop').classList.contains('open'))throw new Error('Draft protection lost');
- window.confirm=()=>true;clickText('#modal','ביטול');
+ clickText('#modal','ביטול');
+ await respondConfirm(true);
  if(document.getElementById('modalBackdrop').classList.contains('open'))throw new Error('Modal cancellation failed');
  const strangeId=`check'\"<&`;
  state.checks=[{id:strangeId,name:'quote test',amount:25,dueDate:'2026-09-01',status:'בקופה'}];
@@ -78,7 +88,7 @@ expressions = {
  search.value='';fire(search,'input');
  toggleSupplierBulkMode();const cb=document.querySelector('tbody .bulk-check');cb.checked=true;fire(cb,'change');
  if(!supplierBulkSelected.has('T1'))throw new Error('Bulk selection failed');
- openSupplierOrderModal();clickText('#modal','↓');
+ openSupplierOrderModal();await frame();clickText('#modal','↓');
  if(supplierOrderDraft[0]!=='S2')throw new Error('Supplier order action failed');
  const dragRow=document.querySelector('.supplier-order-row'),dataTransfer=new DataTransfer();
  dragRow.dispatchEvent(new DragEvent('dragstart',{bubbles:true,dataTransfer}));
@@ -88,7 +98,9 @@ expressions = {
  if(!over.defaultPrevented)throw new Error('Drop not enabled');
  dropRow.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer}));
  if(supplierOrderDraft[0]!=='S1')throw new Error('Drag reorder failed');
- clickText('#modal','ביטול');
+ clickText('#modal','ביטול');await frame();
+ if(document.getElementById('modalBackdrop').classList.contains('open'))throw new Error('Supplier order cancellation failed after restoring the original order');
+ if(document.getElementById('confirmBackdrop').classList.contains('open'))throw new Error('Unchanged supplier order incorrectly triggered draft confirmation');
  return {triState:true,search:true,bulk:true,supplierOrder:true,dragDrop:true};
  """
 }

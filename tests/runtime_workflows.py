@@ -9,9 +9,16 @@ helpers=r"""
  const click=name=>action(name).click();
  const fill=values=>{for(const [id,value]of Object.entries(values)){const e=element('#'+id);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}))}};
  const saved=()=>new Promise(r=>setTimeout(r,60));
+ const waitFor=async(predicate,message)=>{for(let i=0;i<80;i++){if(predicate())return;await new Promise(r=>setTimeout(r,10))}throw new Error(message)};
+ const acceptStyledConfirm=async()=>{
+   const backdrop=document.getElementById('confirmBackdrop');
+   await waitFor(()=>backdrop?.classList.contains('open'),'Styled confirmation did not open');
+   const accept=document.getElementById('confirmAccept');if(!accept)throw new Error('Missing styled confirmation accept button');
+   accept.click();
+   await waitFor(()=>!backdrop.classList.contains('open'),'Styled confirmation did not settle');
+ };
  const assert=(v,m)=>{if(!v)throw new Error(m)};
  const saveModal=()=>{const b=document.querySelector('#modal [data-modal-save],#modal .btn.primary');if(!b)throw new Error('Missing save');b.click()};
- window.confirm=()=>true;
  Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
 """
 flows={
@@ -31,9 +38,9 @@ flows={
  saveModal();await saved();assert(state.checks.length===1&&state.checks[0].dueDate==='2026-09-10','check create/date controls');
  click('mark-deposited');await saved();assert(state.checks[0].status==='הופקד - במעקב'&&bankCurrentBalance()===1200,'deposit bank effect');
  checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1200,'cleared is not double-deposited');
- setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await saved();assert(state.cash.length===0,'cash delete');
+ setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
  const backup=payloadFromState(state,dbRevision);state.expenses=[];
- setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await saved();
+ setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await saved();
  assert(state.expenses.length===1&&state.credits.length===1,'file restore');
  assert(!!loadBrowserStateSync(),'actual offline browser snapshot');
  assert(cloudPendingExistsSync(),'actual pending marker');
@@ -60,8 +67,8 @@ flows={
  switchView('checks');click('open-check-modal');fill({fName:'Shared customer'});const row=element('#checkSeriesRows .check-series-row');row.querySelector('[data-series-field="amount"]').value='110';
  for(const [part,value]of [['day','10'],['month','09'],['year','26']]){const e=row.querySelector('[data-date-part="'+part+'"]');e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new FocusEvent('blur'))}saveModal();await saved();assert(state.checks.length===1,'shared check create');
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
- const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await saved();click('apply-json-restore');await saved();assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
- switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await saved();assert(state.transactions.length===0,'delete transaction');
+ const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await saved();click('apply-json-restore');await acceptStyledConfirm();await saved();assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
+ switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');
  assert(!!loadLocal(),'actual browser snapshot');
  return {suppliers:true,transactions:true,debts:true,service:true,inventory:true,partialReceipt:true,reservation:true,warehouse:true,checks:true,notes:true,backupRestore:true,delete:true};
 """
