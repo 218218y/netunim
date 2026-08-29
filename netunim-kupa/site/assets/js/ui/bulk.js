@@ -1,7 +1,7 @@
 import {esc} from '../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBulk({ui, model, render, saveState, saveChecksState, toast}){
+export function createUiBulk({ui, model, render, saveState, saveChecksState, toast, confirmDialog}){
 function bulkModeFor(collection){return ui.bulkCollection===collection}
 
 function toggleBulkMode(collection){if(ui.bulkCollection===collection){ui.bulkCollection=null;ui.bulkSelected.clear()}else{ui.bulkCollection=collection;ui.bulkSelected.clear()}render()}
@@ -30,12 +30,12 @@ function bulkHeader(collection){return bulkModeFor(collection)?`<th class="bulk-
 
 function bulkCell(collection,id){return bulkModeFor(collection)?`<td class="bulk-check-col"><input class="bulk-check" type="checkbox" ${ui.bulkSelected.has(id)?'checked':''} aria-label="בחר רשומה" data-change="toggle-bulk-row" data-change-arg0="${esc(collection)}" data-change-arg1="${esc(id)}"></td>`:''}
 
-function deleteBulkSelected(collection){
+async function deleteBulkSelected(collection){
   if(!['checks','credits','cash'].includes(collection))return;
   const ids=[...ui.bulkSelected].filter(id=>(model.state[collection]||[]).some(x=>x.id===id));
   if(!ids.length)return toast('לא נבחרו רשומות למחיקה');
   const labels={checks:'צקים',credits:'עסקאות אשראי',cash:'תנועות מזומן'};
-  if(!confirm(`למחוק ${ids.length} ${labels[collection]} שנבחרו?\n\nהמחיקה תישמר במקור הנתונים ולא ניתן לבטל אותה מתוך המסך.`))return;
+  if(!await confirmDialog('מחיקת רשומות',`למחוק ${ids.length} ${labels[collection]} שנבחרו?\n\nהמחיקה תישמר במקור הנתונים ולא ניתן לבטל אותה מתוך המסך.`,{confirmText:`מחק ${ids.length}`,cancelText:'ביטול',tone:'danger'}))return;
   const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));ui.bulkSelected.clear();if(collection==='checks')saveChecksState(`${ids.length} רשומות נמחקו`);else saveState(`${ids.length} רשומות נמחקו`);render()
 }
 

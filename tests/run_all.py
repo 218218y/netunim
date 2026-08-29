@@ -39,6 +39,7 @@ def main() -> int:
         return rc
     suites = [
         "static_contracts.py",
+        "confirmation_contracts.py",
         "asset_contracts.py",
         "deploy_preflight.py",
         "service_worker_contracts.py",

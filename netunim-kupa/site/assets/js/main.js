@@ -328,6 +328,7 @@ const uiCloud=createUiCloud({
   supaAuthPassword:(...args)=>cloudAuth.supaAuthPassword(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const uiDateEditor=createUiDateEditor({
@@ -399,6 +400,7 @@ const uiBulk=createUiBulk({
   saveState:(...args)=>storagePersistence.saveState(...args),
   saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
   toast:(...args)=>uiStatus.toast(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsCreditView=createDomainsCreditView({
@@ -504,6 +506,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
   saveState:(...args)=>storagePersistence.saveState(...args),
   saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const uiBackup=createUiBackup({
@@ -524,6 +527,7 @@ const uiBackup=createUiBackup({
   saveState:(...args)=>storagePersistence.saveState(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const lifecycle=createLifecycle({

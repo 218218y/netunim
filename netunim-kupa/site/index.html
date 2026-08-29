@@ -55,7 +55,8 @@
     <div class="connect-note" id="connectNote">הנתונים נשמרים בקובץ שבתיקיית הקופה, לא בזיכרון הדפדפן.</div>
   </div>
 </div>
-<div class="modal-backdrop" id="modalBackdrop"><div class="modal" id="modal"></div></div>
+<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+<div class="confirm-backdrop" id="confirmBackdrop" aria-hidden="true"><div class="confirm-dialog" id="confirmDialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage"><div class="confirm-icon" id="confirmIcon" aria-hidden="true">!</div><h3 class="confirm-title" id="confirmTitle">אישור פעולה</h3><p class="confirm-message" id="confirmMessage"></p><div class="confirm-actions"><button class="btn danger" id="confirmAccept" type="button">אישור</button><button class="btn" id="confirmCancel" type="button">ביטול</button></div></div></div>
 <div class="toast" id="toast"></div><input id="legacyFileInput" type="file" accept="application/json,.json" hidden>
 <script type="module" src="./assets/app.js"></script>
 

@@ -3,7 +3,7 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave}){
+export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave, confirmDialog}){
 function setCustomerTab(tab){if(!['debts','orders'].includes(tab)||tab===customerUi.customerTab)return;customerUi.customerTab=tab;customerUi.customerBulkSelected.clear();renderCustomers()}
 
 function customerBulkSource(){return customerUi.customerTab==='debts'?(model.state.customerDebts||[]):(model.state.customerOrders||[])}
@@ -24,7 +24,7 @@ function customerBulkControls(){return `<div class="module-bulk-controls"><butto
 
 function syncCustomerBulkUi(){if(!customerUi.customerBulkMode)return;const valid=new Set(customerBulkSource().map(x=>x.id));[...customerUi.customerBulkSelected].forEach(id=>{if(!valid.has(id))customerUi.customerBulkSelected.delete(id)});const del=$('#customerBulkDelete');if(del){del.disabled=!customerUi.customerBulkSelected.size;del.textContent=customerUi.customerBulkSelected.size?`מחק ${customerUi.customerBulkSelected.size}`:'מחק נבחרים'}const visible=customerVisibleBulkIds(),selectedVisible=visible.filter(id=>customerUi.customerBulkSelected.has(id)).length,all=$('#customerBulkAll');if(all){all.checked=visible.length>0&&selectedVisible===visible.length;all.indeterminate=selectedVisible>0&&selectedVisible<visible.length}document.querySelectorAll('[data-customer-bulk-id]').forEach(row=>row.classList.toggle('bulk-selected-row',customerUi.customerBulkSelected.has(row.dataset.customerBulkId)))}
 
-function deleteSelectedCustomerRows(){const source=customerBulkSource(),valid=new Set(source.map(x=>x.id)),ids=[...customerUi.customerBulkSelected].filter(id=>valid.has(id));if(!ids.length)return toast('לא נבחרו שורות למחיקה');const label=customerUi.customerTab==='debts'?'חובות לקוחות':'רשומות מעקב הזמנות';if(!confirm(`למחוק ${ids.length} ${label} שנבחרו?\n\nהמחיקה תישמר בגיבוי ובסנכרון כמו כל שינוי אחר.`))return;const set=new Set(ids);if(customerUi.customerTab==='debts')model.state.customerDebts=model.state.customerDebts.filter(x=>!set.has(x.id));else model.state.customerOrders=model.state.customerOrders.filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();scheduleSave(`${ids.length} ${label} נמחקו`);renderCustomers()}
+async function deleteSelectedCustomerRows(){const source=customerBulkSource(),valid=new Set(source.map(x=>x.id)),ids=[...customerUi.customerBulkSelected].filter(id=>valid.has(id));if(!ids.length)return toast('לא נבחרו שורות למחיקה');const label=customerUi.customerTab==='debts'?'חובות לקוחות':'רשומות מעקב הזמנות';if(!await confirmDialog('מחיקת רשומות',`למחוק ${ids.length} ${label} שנבחרו?\n\nהמחיקה תישמר בגיבוי ובסנכרון כמו כל שינוי אחר.`,{confirmText:'מחק נבחרים'}))return;const set=new Set(ids);if(customerUi.customerTab==='debts')model.state.customerDebts=model.state.customerDebts.filter(x=>!set.has(x.id));else model.state.customerOrders=model.state.customerOrders.filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();scheduleSave(`${ids.length} ${label} נמחקו`);renderCustomers()}
 
 function customerBottomSummary(st){
   const sourceNote=customerUi.customerTab==='orders'?`<div class="customer-summary-note">סימוני V / VV / VVV נשמרים כפי שהתקבלו, בלי להמציא להם משמעות עסקית שלא הוגדרה.</div>`:'';

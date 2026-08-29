@@ -246,6 +246,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
   scheduleCheckSave:(...args)=>syncChecksPersistence.scheduleCheckSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const syncChecksPersistence=createSyncChecksPersistence({
@@ -301,6 +302,7 @@ const domainsSuppliersBulk=createDomainsSuppliersBulk({
   supplierBalance:(...args)=>domainsSuppliersSelectors.supplierBalance(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsSuppliersView=createDomainsSuppliersView({
@@ -337,6 +339,7 @@ const domainsSuppliersEditor=createDomainsSuppliersEditor({
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   parseTri:(...args)=>uiModal.parseTri(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsCustomersSelectors=createDomainsCustomersSelectors({
@@ -349,6 +352,7 @@ const domainsCustomersBulk=createDomainsCustomersBulk({
   renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsCustomersView=createDomainsCustomersView({
@@ -372,6 +376,7 @@ const domainsCustomersEditor=createDomainsCustomersEditor({
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsServiceBulk=createDomainsServiceBulk({
@@ -380,6 +385,7 @@ const domainsServiceBulk=createDomainsServiceBulk({
   renderService:(...args)=>domainsServiceView.renderService(...args),
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsServiceView=createDomainsServiceView({
@@ -399,6 +405,7 @@ const domainsServiceEditor=createDomainsServiceEditor({
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderService:(...args)=>domainsServiceView.renderService(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsInventorySelectors=createDomainsInventorySelectors({
@@ -438,6 +445,7 @@ const domainsWarehouseBulk=createDomainsWarehouseBulk({
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsWarehouseView=createDomainsWarehouseView({
@@ -463,6 +471,7 @@ const domainsInventoryEditor=createDomainsInventoryEditor({
   closeModal:(...args)=>uiModal.closeModal(...args),
   ensureInventoryCategoryOrder:(...args)=>domainsInventoryOrder.ensureInventoryCategoryOrder(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsWarehouseEditor=createDomainsWarehouseEditor({
@@ -472,6 +481,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const uiBackup=createUiBackup({
@@ -507,6 +517,7 @@ const uiBackup=createUiBackup({
   balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
   boolText:(...args)=>domainsSuppliersView.boolText(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const stateSelectors=createStateSelectors({
@@ -655,6 +666,7 @@ const domainsCalendarController=createDomainsCalendarController({
   closeModal:(...args)=>uiModal.closeModal(...args),
   toast:(...args)=>uiStatus.toast(...args),
   requestCloudLogin:()=>uiCloud.loginModal('calendar'),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsNotesController=createDomainsNotesController({
@@ -663,6 +675,7 @@ const domainsNotesController=createDomainsNotesController({
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   toast:(...args)=>uiStatus.toast(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const uiSettings=createUiSettings({
@@ -766,6 +779,7 @@ const uiActions=createUiActions({
   setInlineBool:(...args)=>domainsSuppliersView.setInlineBool(...args),
   saveInlineText:(...args)=>domainsSuppliersView.saveInlineText(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  dismissModal:(...args)=>uiModal.dismissModal(...args),
   openTransactionModal:(...args)=>domainsSuppliersEditor.openTransactionModal(...args),
   saveTransaction:(...args)=>domainsSuppliersEditor.saveTransaction(...args),
   deleteTransaction:(...args)=>domainsSuppliersEditor.deleteTransaction(...args),
@@ -859,7 +873,7 @@ model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||struct
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.closeModal());
+bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.dismissModal());
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>uiNavigation.switchView(b.dataset.view)));
 document.addEventListener('click',e=>{const menu=$('#supplierMenu');if(menu&&!menu.contains(e.target))domainsSuppliersNavigation.closeSupplierMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavigation.closeSupplierMenu()});

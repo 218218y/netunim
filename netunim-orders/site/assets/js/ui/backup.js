@@ -5,7 +5,7 @@ import {normalizeSharedBankEvents, normalizeSharedChecks} from '../domains/check
 import {CLOUD_BASE_KEY, $} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({tab, ui, model, session, checksSession, prepareState, normalizeState, validateRestoreJson, toast, showSecondaryTabGuard, modal, localSnapshot, markCloudPending, persistChecksBase, markChecksPending, setSave, folderBackupAvailable, folderSaveTitle, prepareCloudState, render, closeModal, writeStateSnapshotToFolder, writeStateToFolder, loadSession, readCloud, cloudEnabled, readSharedChecksCloud, saveSharedChecksToCloud, requestCloudSave, balanceRows, supplierYearContext, boolText}){
+export function createUiBackup({tab, ui, model, session, checksSession, prepareState, normalizeState, validateRestoreJson, toast, showSecondaryTabGuard, modal, localSnapshot, markCloudPending, persistChecksBase, markChecksPending, setSave, folderBackupAvailable, folderSaveTitle, prepareCloudState, render, closeModal, writeStateSnapshotToFolder, writeStateToFolder, loadSession, readCloud, cloudEnabled, readSharedChecksCloud, saveSharedChecksToCloud, requestCloudSave, balanceRows, supplierYearContext, boolText, confirmDialog}){
 function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
 function exportJson(){const payload=prepareState();downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-backup_${stamp()}.json`)}
@@ -19,7 +19,7 @@ function beginJsonRestore(){
 async function applyJsonRestore(){
   if(!ui.pendingJsonRestore||!tab.primaryTab)return;
   const restoreChecks=!!$('#restoreJsonChecks')?.checked,imported=normalizeState(clone(ui.pendingJsonRestore.payload)),current=prepareState(),currentChecks=clone(model.state.checks||[]),fileName=ui.pendingJsonRestore.fileName||'JSON';
-  if(!confirm(`לשחזר את הנתונים מהקובץ ${fileName}?\n\nלפני השחזור ייווצר אוטומטית גיבוי של המצב הנוכחי. ${restoreChecks?'גם הצ׳קים ישוחזרו ויסונכרנו לקופה.':'הצ׳קים הנוכחיים יישארו ללא שינוי.'}`))return;
+  if(!await confirmDialog('אישור שחזור גיבוי',`לשחזר את הנתונים מהקובץ ${fileName}?\n\nלפני השחזור ייווצר אוטומטית גיבוי של המצב הנוכחי. ${restoreChecks?'גם הצ׳קים ישוחזרו ויסונכרנו לקופה.':'הצ׳קים הנוכחיים יישארו ללא שינוי.'}`,{confirmText:'שחזר גיבוי'}))return;
   try{
     downloadBlob(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}),`orders-before-restore_${stamp()}.json`);
     if(folderBackupAvailable())await writeStateSnapshotToFolder(current,true);

@@ -362,3 +362,20 @@ html,body{height:100%;overflow:hidden}
 .calendar-event-form textarea{min-height:90px}
 @media(max-width:1050px){.calendar-toolbar{flex-wrap:wrap}.calendar-toolbar-spacer{display:none}.calendar-status{order:4;flex:1 1 100%;max-width:none}.calendar-body-month{min-width:820px}.calendar-body-week{min-width:820px}.calendar-grid-month{min-height:700px}.calendar-grid-week{min-height:560px}}
 @media(max-width:780px){.calendar-title-block{flex:1}.calendar-toolbar>.btn.primary{margin-right:auto}.calendar-view-modes{order:2}.calendar-body-month,.calendar-body-week{min-width:760px}.calendar-weekdays,.calendar-grid-month,.calendar-grid-week{grid-template-columns:repeat(7,minmax(108px,1fr))}}
+
+/* ===== אישורים מעוצבים + הגנת יציאה מטפסים ===== */
+.confirm-backdrop{position:fixed;inset:0;z-index:170;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(255,255,255,.62);backdrop-filter:blur(6px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility .18s ease}
+.confirm-backdrop.open{opacity:1;visibility:visible;pointer-events:auto}
+.confirm-dialog{width:min(370px,100%);padding:25px 24px 22px;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:0 28px 85px rgba(70,50,36,.24);text-align:center;transform:scale(.92) translateY(5px);transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
+.confirm-backdrop.open .confirm-dialog{transform:scale(1) translateY(0)}
+.confirm-icon{display:grid;place-items:center;width:42px;height:42px;margin:0 auto 12px;border-radius:50%;background:var(--bad-soft);border:1px solid #efcdcb;color:var(--bad);font-size:22px;font-weight:900;line-height:1}
+.confirm-dialog[data-tone="primary"] .confirm-icon{background:var(--primary-soft);border-color:#dec9ba;color:var(--primary-strong)}
+.confirm-title{margin:0 0 9px;color:var(--text);font-size:18px;line-height:1.3;letter-spacing:-.2px}
+.confirm-message{margin:0 0 20px;color:var(--muted);font-size:13.5px;line-height:1.65;white-space:pre-line}
+.confirm-actions{display:flex;gap:9px}
+.confirm-actions .btn{flex:1;min-height:40px}
+.confirm-actions .btn.danger{background:var(--bad);border-color:var(--bad);color:#fff}
+.confirm-actions .btn.danger:hover{background:#98433f;border-color:#98433f;color:#fff}
+.confirm-actions .btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.confirm-actions .btn.primary:hover{background:var(--primary-strong);border-color:var(--primary-strong)}
+@media(max-width:480px){.confirm-backdrop{padding:14px}.confirm-dialog{padding:22px 18px 18px}.confirm-actions{flex-direction:column}.confirm-actions .btn{width:100%}}

@@ -3,7 +3,7 @@ import {validSupplierYear, supplierSortValue} from './model.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsSuppliersEditor({model, supplierUi, ui, modal, triSelect, resequenceSupplier, insertTransactionAfter, toast, scheduleSave, render, renderSupplier, closeModal, parseTri}){
+export function createDomainsSuppliersEditor({model, supplierUi, ui, modal, triSelect, resequenceSupplier, insertTransactionAfter, toast, scheduleSave, render, renderSupplier, closeModal, parseTri, confirmDialog}){
 function openTransactionModal(id=null,supplierId=null,insertAfterId=null){
   const t=id?model.state.transactions.find(x=>x.id===id):null;
   const anchor=insertAfterId?model.state.transactions.find(x=>x.id===insertAfterId):null;
@@ -14,13 +14,13 @@ function openTransactionModal(id=null,supplierId=null,insertAfterId=null){
   modal(t?'עריכת תנועה':anchor?'הוספת תנועה באמצע הכרטיס':'תנועה חדשה',`<div class="form-grid"><div class="field full"><label>ספק</label><select id="fSupplier" ${anchor||validSupplierYear(t?.yearEnd)!==null?'disabled':''}>${opts}</select></div>${positionNotice}${yearNotice}<div class="field full"><label>פעולה</label><input id="fAction" value="${esc(t?.action||'')}" placeholder="לדוגמה: הזמנה 1234 / תשלום"></div><div class="field"><label>סכום חובה</label><input id="fDebit" class="number-input" type="number" step="1" value="${esc(Number(t?.debit||0)||'')}"></div><div class="field"><label>סכום זכות</label><input id="fCredit" class="number-input" type="number" step="1" value="${esc(Number(t?.credit||0)||'')}"></div>${triSelect('fInvoice','חשבונית התקבלה',triValue('invoiceReceived'),true)}${triSelect('fSigned','חתום',triValue('signed'),true)}${triSelect('fSupplied','סופק',triValue('supplied'),true)}<div class="field"><label>זמן / פרטי אספקה</label><input id="fSupplyInfo" value="${esc(t?.supplyInfo||'')}" placeholder="תאריך, שבוע, הערה…"></div><div class="field"><label>ח״מ יצא</label><select id="fHm"><option value="false" ${!t?.hmIssued?'selected':''}>לא</option><option value="true" ${t?.hmIssued?'selected':''}>כן</option></select></div><div class="field full"><label>הערה</label><textarea id="fNote">${esc(t?.note||'')}</textarea></div>${t?.source?`<div class="field full"><div class="notice">מקור: ${esc(t.source.sheet)} · שורה ${esc(t.source.row)}. עריכה כאן אינה משנה את קובץ האקסל המקורי.</div></div>`:''}</div>`,`<button class="btn primary" data-action="save-transaction" data-click-arg0="${esc(id||'')}" data-click-arg1="${esc(insertAfterId||'')}">שמור</button>${t?`<button class="btn danger" data-action="delete-transaction" data-click-arg0="${esc(t.id)}">מחק תנועה</button>`:''}<button class="btn" data-action="close-modal">ביטול</button>`)
 }
 
-function saveTransaction(id,insertAfterId=''){
+async function saveTransaction(id,insertAfterId=''){
   const existing=id?model.state.transactions.find(x=>x.id===id):null;
   const oldSupplierId=existing?.supplierId||null;
   const supplierId=$('#fSupplier').value,action=$('#fAction').value.trim(),debit=Math.max(0,Number($('#fDebit').value||0)),credit=Math.max(0,Number($('#fCredit').value||0));
   if(!supplierId)return toast('יש לבחור ספק');
   if(!action&&!debit&&!credit)return toast('יש להזין פעולה או סכום');
-  if(debit&&credit&&!confirm('הוזנו גם חובה וגם זכות באותה תנועה. לשמור כך?'))return;
+  if(debit&&credit&&!await confirmDialog('חובה וזכות באותה תנועה','הוזנו גם חובה וגם זכות באותה תנועה. לשמור כך?',{confirmText:'שמור כך',tone:'primary'}))return;
   const row={...(existing||{}),id:existing?.id||uid(),supplierId,sequence:existing?.sequence||0,kind:debit?'חיוב':credit?'זיכוי/תשלום':'הערה',action,debit,credit,invoiceReceived:parseTri('fInvoice'),signed:parseTri('fSigned'),supplied:parseTri('fSupplied'),supplyInfo:$('#fSupplyInfo').value.trim(),hmIssued:$('#fHm').value==='true',note:$('#fNote').value.trim(),updatedAt:new Date().toISOString()};
   if(existing){
     Object.assign(existing,row);
@@ -32,7 +32,7 @@ function saveTransaction(id,insertAfterId=''){
   supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה');if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
 }
 
-function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!confirm('למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.'))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה');if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
+async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה');if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
 
 function openSelectedSupplierEditor(){const id=$('#settingsSupplierEdit')?.value;if(!id)return toast('יש לבחור ספק לעריכה');openSupplierModal(id)}
 
