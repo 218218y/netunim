@@ -39,7 +39,7 @@ for %%F in (server.mjs lib.mjs package.json package-lock.json start_bank_bridge.
 )
 
 pushd "%STAGING%"
-echo Installing the pinned Bank Hapoalim scraper dependency...
+echo Installing the pinned bank and credit-card scraper dependency...
 rem The bridge uses Chrome/Edge already installed on Windows. Puppeteer must not download its own browser.
 set "PUPPETEER_SKIP_DOWNLOAD=true"
 call npm ci --omit=dev --no-audit --no-fund
@@ -105,7 +105,7 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=10))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=11))process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   echo ERROR: Bank Bridge did not start correctly.
   echo See: %APPROOT%\bridge.log
@@ -117,7 +117,7 @@ if exist "%APPROOT%\bridge-token.txt" type "%APPROOT%\bridge-token.txt" | clip
 echo.
 echo Bank Bridge was installed successfully in a stable local folder and added to Windows startup.
 echo The Bank Bridge key was copied to the clipboard. Paste it into Kupa on THIS computer.
-echo Install the Bridge separately on every other computer that should refresh the bank balance.
-echo Hapoalim credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
+echo Install the Bridge separately on every other computer that should refresh bank or credit-card data.
+echo Hapoalim and credit-card credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
 echo.
 pause

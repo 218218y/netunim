@@ -2,34 +2,67 @@ import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
 import {creditProgress} from './model.js';
+import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditSyncSummary,syncedInstallmentsData} from './sync-feed.js';
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCreditView({model, ui, pendingInstallments, syncBulkUi, bulkControls, bulkHeader, bulkCell}){
+function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
+
+export function createDomainsCreditView({model, ui, pendingInstallments, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus}){
 function renderCredit(){
-  const future=pendingInstallments();
+  const future=pendingInstallments(),summary=creditSyncSummary(model.state),syncUi=creditSyncUiState(),sourceSynced=summary.sync.mode==='synced',syncedFuture=syncedInstallmentsData(model.state).filter(x=>x.date>=todayISO());
   const currentMonth=monthKey(todayISO()),currentYear=Number(currentMonth.slice(0,4));
   const futureYears=[...new Set(future.map(x=>x.date.slice(0,4)))].map(Number).filter(y=>Number.isFinite(y)&&y>=currentYear);
-  const maxYear=Math.max(currentYear+1,...futureYears,currentYear);
-  const years=Array.from({length:maxYear-currentYear+1},(_,i)=>String(currentYear+i));
+  const maxYear=Math.max(currentYear+1,...futureYears,currentYear),years=Array.from({length:maxYear-currentYear+1},(_,i)=>String(currentYear+i));
   if(!['rolling12','all',...years].includes(String(ui.creditView)))ui.creditView='rolling12';
   let monthKeys=[],forecastTitle='';
-  if(ui.creditView==='rolling12'){
-    monthKeys=Array.from({length:12},(_,i)=>monthKey(addMonthsISO(`${currentMonth}-01`,i)));
-    forecastTitle='תחזית 12 חודשים קדימה';
-  }else if(ui.creditView==='all'){
-    monthKeys=[...new Set(future.map(x=>monthKey(x.date)).filter(Boolean))].sort();
-    forecastTitle='כל חיובי האשראי העתידיים';
-  }else{
-    monthKeys=Array.from({length:12},(_,i)=>`${ui.creditView}-${String(i+1).padStart(2,'0')}`);
-    forecastTitle=`תחזית ${ui.creditView}`;
-  }
+  if(ui.creditView==='rolling12'){monthKeys=Array.from({length:12},(_,i)=>monthKey(addMonthsISO(`${currentMonth}-01`,i)));forecastTitle='תחזית 12 חודשים קדימה'}
+  else if(ui.creditView==='all'){monthKeys=[...new Set(future.map(x=>monthKey(x.date)).filter(Boolean))].sort();forecastTitle='כל חיובי האשראי העתידיים'}
+  else{monthKeys=Array.from({length:12},(_,i)=>`${ui.creditView}-${String(i+1).padStart(2,'0')}`);forecastTitle=`תחזית ${ui.creditView}`}
   const months=monthKeys.map(k=>{const inst=future.filter(x=>monthKey(x.date)===k);return {k,inst,total:inst.reduce((a,x)=>a+x.amount,0)}});
   const monthCards=months.length?months.map(m=>creditMonthCard(m)).join(''):'<div class="empty">אין חיובי אשראי עתידיים.</div>';
-  document.getElementById('content').innerHTML=`<div class="toolbar"><select aria-label="טווח תחזית אשראי" data-change="credit-view"><option value="rolling12" ${ui.creditView==='rolling12'?'selected':''}>12 חודשים קדימה</option><option value="all" ${ui.creditView==='all'?'selected':''}>כל השנים</option><optgroup label="לפי שנה">${years.map(y=>`<option value="${esc(y)}" ${ui.creditView===y?'selected':''}>${esc(y)}</option>`).join('')}</optgroup></select><span class="stat-pill">עסקאות עם יתרה: ${model.state.credits.filter(x=>x.active&&creditProgress(x).remainingCount>0).length}</span><span class="stat-pill">סה״כ עתידי: ${money(future.reduce((a,x)=>a+x.amount,0))}</span><span class="stat-pill">ניקוי אוטומטי: לא פעיל + 60 יום</span><span style="flex:1"></span>${bulkControls('credits')}<button class="btn primary" data-action="open-credit-modal">+ עסקת אשראי</button></div><section class="section"><div class="section-head"><div><h3>${esc(forecastTitle)}</h3></div></div><div class="section-body"><div class="month-cards">${monthCards}</div></div></section><section class="section" style="margin-top:16px"><div class="section-head"><div><h3>עסקאות אשראי</h3></div></div><div style="overflow:auto"><table><thead><tr>${bulkHeader('credits')}<th>כרטיס</th><th>תיאור</th><th>סכום כולל</th><th>התקדמות</th><th>תשלום הבא</th><th>יתרה עתידית</th><th>מצב</th><th></th></tr></thead><tbody>${model.state.credits.map(cr=>{const p=creditProgress(cr),pct=cr.installments?Math.min(100,(p.completedCount/cr.installments)*100):0;const status=!cr.active?'לא פעיל':p.complete?'הסתיים':'פעיל';return `<tr data-bulk-collection="credits" data-bulk-id="${esc(cr.id)}" class="${esc(ui.bulkSelected.has(cr.id)?'bulk-selected-row':'')}">${bulkCell('credits',cr.id)}<td><b>${esc(cr.card)}</b><div class="muted">${esc(cr.account)}</div></td><td>${esc(cr.description)||'—'}</td><td class="amount">${money(cr.totalAmount)}</td><td><div class="credit-progress"><b>נותרו ${esc(p.remainingCount)} מתוך ${esc(cr.installments)}</b><div class="progress-mini"><div class="progress-track"><i style="width:${esc(pct)}%"></i></div><div class="muted" style="margin-top:4px">בוצעו ${esc(p.completedCount)}</div></div></div></td><td>${p.next?`${dateFmt(p.next.date)}<div class="muted">תשלום ${esc(p.next.part)}/${esc(p.next.totalParts)} · ${money(p.next.amount)}</div>`:'—'}</td><td class="amount">${money(p.remainingAmount)}</td><td><span class="badge ${esc(status==='פעיל'?'green':status==='הסתיים'?'blue':'')}">${esc(status)}</span></td><td><button class="iconbtn" data-action="open-credit-modal-2" data-click-arg0="${esc(cr.id)}">עריכה</button></td></tr>`}).join('')}</tbody></table></div></section>`;
-  syncBulkUi('credits')
+  const statusClass=syncUi.busy?'busy':syncUi.error?'error':summary.sync.errors.length?'warn':summary.hasData?'ok':'';
+  const statusTitle=syncUi.busy?'מסנכרן חברות אשראי…':syncUi.error?'סנכרון האשראי נכשל':summary.sync.errors.length?'הסנכרון האחרון הושלם חלקית':summary.hasData?'נתוני חברות האשראי זמינים':'חיבור אוטומטי לחברות האשראי';
+  const statusSub=syncUi.error?syncUi.error:summary.sync.errors.length?summary.sync.errors.map(e=>`${e.label||e.provider}: ${e.message}`).join(' · '):`עדכון אחרון: ${syncDate(summary.sync.syncedAt)}`;
+  const localProfiles=Array.isArray(syncUi.status?.profiles)?syncUi.status.profiles:[];
+  const localIds=new Set(localProfiles.map(p=>p.profileId));
+  const cloudOnly=summary.sync.profiles.filter(p=>!localIds.has(p.profileId));
+  const mappingRows=summary.sync.profiles.flatMap(profile=>profile.accounts.map(account=>creditMappingRow(profile,account,summary.sync.cardMappings)));
+  document.getElementById('content').innerHTML=`
+    <section class="section credit-sync-section">
+      <details class="credit-sync-settings">
+        <summary class="credit-sync-toolbar">
+          <div class="credit-sync-headline ${statusClass}"><span class="credit-sync-state-icon">${syncUi.busy?'↻':syncUi.error?'!':summary.sync.errors.length?'!':summary.hasData?'✓':'◌'}</span><span class="credit-sync-state-copy"><b>${esc(statusTitle)}</b><small>${esc(statusSub)}</small></span></div>
+          <div class="credit-sync-head-actions"><button class="btn primary" type="button" data-action="refresh-credit-sync">רענן אשראי עכשיו</button><button class="btn" type="button" data-action="refresh-credit-sync-interactive">רענן עם חלון</button></div><span class="credit-sync-chevron">⌄</span>
+        </summary>
+        <div class="credit-sync-settings-body">
+          <div class="credit-sync-mode-card"><div><b>מקור החישוב הפעיל: ${sourceSynced?'חברות האשראי':'הזנה ידנית'}</b><small>${sourceSynced?'העסקאות הידניות נשמרות כגיבוי ואינן נספרות.':'הסנכרון נשמר במקביל ואינו משנה עדיין את התחזיות.'}</small></div><button class="btn ${sourceSynced?'':'primary'}" type="button" data-action="set-credit-sync-mode" data-click-arg0="${sourceSynced?'manual':'synced'}" ${!sourceSynced&&!summary.hasData?'disabled':''}>${sourceSynced?'חזור לנתונים הידניים':'השתמש בנתונים המסונכרנים'}</button></div>
+          <div class="credit-sync-settings-grid">
+            <div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><button class="btn" type="button" data-action="open-credit-connection">+ חיבור</button></div>
+              ${localProfiles.length?localProfiles.map(p=>creditLocalProfileRow(p)).join(''):'<div class="empty compact">עדיין לא הוגדר חיבור אשראי במחשב זה.</div>'}
+              ${cloudOnly.length?`<div class="credit-cloud-only"><b>חיבורים שסונכרנו ממחשב אחר</b>${cloudOnly.map(p=>`<div class="credit-profile-row"><span><b>${esc(p.label)}</b><small>${esc(CREDIT_PROVIDER_LABELS[p.provider]||p.provider)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''}</small></span><button class="btn" type="button" data-action="open-credit-connection" data-click-arg0="${esc(p.profileId)}">הגדר גם במחשב זה</button></div>`).join('')}</div>`:''}
+            </div>
+            <div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>שיוך כרטיסים</b><label class="credit-auto-toggle"><input type="checkbox" data-change="set-credit-auto-refresh" ${syncUi.autoEnabled?'checked':''}> עדכון אוטומטי פעם ביום</label></div>
+              ${mappingRows.length?mappingRows.join(''):'<div class="empty compact">לא התקבלו עדיין כרטיסים. בצע סנכרון ראשון.</div>'}
+            </div>
+          </div>
+          <div class="soft-note">פרטי הכניסה נשמרים מוצפנים רק ב‑Windows של כל מחשב. נתוני העסקאות המסונכרנים והשיוכים עסקי/ביתי נשמרים בקופה ולכן זמינים גם במחשבים האחרים.</div>
+        </div>
+      </details>
+    </section>
+    <div class="toolbar"><select aria-label="טווח תחזית אשראי" data-change="credit-view"><option value="rolling12" ${ui.creditView==='rolling12'?'selected':''}>12 חודשים קדימה</option><option value="all" ${ui.creditView==='all'?'selected':''}>כל השנים</option><optgroup label="לפי שנה">${years.map(y=>`<option value="${esc(y)}" ${ui.creditView===y?'selected':''}>${esc(y)}</option>`).join('')}</optgroup></select><span class="stat-pill">מקור: ${sourceSynced?'מסונכרן':'ידני'}</span><span class="stat-pill">סה״כ עתידי: ${money(future.reduce((a,x)=>a+x.amount,0))}</span><span style="flex:1"></span>${bulkControls('credits')}<button class="btn primary" data-action="open-credit-modal">+ עסקה ידנית</button></div>
+    <section class="section"><div class="section-head"><div><h3>${esc(forecastTitle)}</h3><p>${sourceSynced?`${summary.accountCount} כרטיסים · ${summary.transactionCount} תנועות התקבלו מהחברות`:'מבוסס על העסקאות הידניות שהוזנו בקופה'}</p></div></div><div class="section-body"><div class="month-cards">${monthCards}</div></div></section>
+    ${summary.hasData?renderSyncedAccounts(summary,syncedFuture,sourceSynced):''}
+    <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>${sourceSynced?'עסקאות ידניות שמורות — אינן נספרות כרגע':'עסקאות אשראי ידניות'}</h3>${sourceSynced?'<p>נשמרות ללא שינוי כדי שאפשר יהיה לחזור למצב הידני בכל עת.</p>':''}</div></div><div style="overflow:auto"><table><thead><tr>${bulkHeader('credits')}<th>כרטיס</th><th>תיאור</th><th>סכום כולל</th><th>התקדמות</th><th>תשלום הבא</th><th>יתרה עתידית</th><th>מצב</th><th></th></tr></thead><tbody>${model.state.credits.map(cr=>manualCreditRow(cr)).join('')}</tbody></table></div></section>`;
+  syncBulkUi('credits');
+  if(!syncUi.status&&!syncUi.busy)refreshCreditBridgeStatus({quiet:true}).then(status=>{if(ui.currentPage==='credit'&&status)renderCredit()}).catch(()=>{});
 }
 
+function creditLocalProfileRow(p){return `<div class="credit-profile-row"><span><b>${esc(p.label)}</b><small>${esc(CREDIT_PROVIDER_LABELS[p.provider]||p.provider)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''} · ברירת מחדל ${esc(p.defaultAccount)}</small></span><span class="credit-profile-actions"><button class="btn" type="button" data-action="open-credit-connection" data-click-arg0="${esc(p.profileId)}">עריכה</button><button class="btn danger-soft" type="button" data-action="delete-credit-connection" data-click-arg0="${esc(p.profileId)}">מחיקה מהמחשב</button></span></div>`}
+function creditMappingRow(profile,account,mappings){const key=creditCardMappingKey(profile.profileId,account.accountNumber),mapping=mappings[key]||{},accountClass=mapping.account||profile.defaultAccount||'עסקי',cardName=mapping.cardName||'';return `<div class="credit-mapping-row"><span><b>${esc(CREDIT_PROVIDER_LABELS[profile.provider]||profile.provider)} • ${esc(account.accountNumber||'כרטיס')}</b><small>${esc(profile.label)}${profile.ownerLabel?` · ${esc(profile.ownerLabel)}`:''}</small></span><select aria-label="שיוך חשבון" data-change="set-credit-card-account" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}"><option ${accountClass==='עסקי'?'selected':''}>עסקי</option><option ${accountClass==='ביתי'?'selected':''}>ביתי</option></select><input aria-label="שם הכרטיס" data-change="set-credit-card-name" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(cardName)}" placeholder="שם תצוגה (רשות)"></div>`}
+function renderSyncedAccounts(summary,syncedFuture,sourceSynced){
+  const total=syncedFuture.reduce((sum,row)=>sum+row.amount,0),preview=syncedFuture.slice(0,200);
+  return `<section class="section credit-live-section" style="margin-top:16px"><div class="section-head"><div><h3>${sourceSynced?'נתונים חיים מחברות האשראי':'תצוגת בדיקה של הנתונים המסונכרנים'}</h3><p>${sourceSynced?'החיובים המסונכרנים הם מקור החישוב הפעיל.':'הנתונים מוצגים לבקרה בלבד ועדיין אינם משפיעים על תחזיות הקופה.'} · ${syncedFuture.length} חיובים עתידיים · ${money(total)}</p></div></div><div class="credit-live-grid">${summary.sync.profiles.flatMap(p=>p.accounts.map(a=>{const mapping=summary.sync.cardMappings[creditCardMappingKey(p.profileId,a.accountNumber)]||{},name=mapping.cardName||`${CREDIT_PROVIDER_LABELS[p.provider]||p.label} ••${String(a.accountNumber||'').slice(-4)}`,pending=a.txns.filter(tx=>tx.status==='pending').length;return `<article class="credit-live-card"><div><b>${esc(name)}</b><small>${esc(p.label)} · ${esc(mapping.account||p.defaultAccount)}</small></div><div class="credit-live-balance"><span>${a.balance===null?'יתרה/חיוב קרוב לא זמין':'חיוב/יתרה שהחברה החזירה'}</span><b>${a.balance===null?'—':money(Math.abs(a.balance))}</b></div><small>${a.txns.length} תנועות${pending?` · ${pending} ממתינות (לא נכנסות לתחזית עד שיש תאריך חיוב)`:''}${a.balanceDate?` · נכון ל־${dateFmt(String(a.balanceDate).slice(0,10))}`:''}</small></article>`})).join('')}</div>${preview.length?`<details class="credit-live-preview"><summary>הצג חיובים מסונכרנים לבקרה</summary><div class="credit-live-preview-table"><table><thead><tr><th>תאריך חיוב</th><th>כרטיס</th><th>תיאור</th><th>חשבון</th><th>סכום</th></tr></thead><tbody>${preview.map(row=>`<tr><td>${dateFmt(row.date)}</td><td>${esc(row.card)}</td><td>${esc(row.description)||'—'}</td><td>${esc(row.account)}</td><td class="amount">${money(row.amount)}</td></tr>`).join('')}</tbody></table>${syncedFuture.length>preview.length?`<div class="soft-note">מוצגות ${preview.length} מתוך ${syncedFuture.length} שורות. התחזית עצמה כוללת את כולן.</div>`:''}</div></details>`:'<div class="soft-note">אין כרגע חיובים מסונכרנים עם תאריך חיוב אמין. עסקאות ממתינות נשארות בנתונים החיים ואינן מקבלות תאריך חיוב מנוחש.</div>'}</section>`
+}
+function manualCreditRow(cr){const p=creditProgress(cr),pct=cr.installments?Math.min(100,(p.completedCount/cr.installments)*100):0,status=!cr.active?'לא פעיל':p.complete?'הסתיים':'פעיל';return `<tr data-bulk-collection="credits" data-bulk-id="${esc(cr.id)}" class="${esc(ui.bulkSelected.has(cr.id)?'bulk-selected-row':'')}">${bulkCell('credits',cr.id)}<td><b>${esc(cr.card)}</b><div class="muted">${esc(cr.account)}</div></td><td>${esc(cr.description)||'—'}</td><td class="amount">${money(cr.totalAmount)}</td><td><div class="credit-progress"><b>נותרו ${esc(p.remainingCount)} מתוך ${esc(cr.installments)}</b><div class="progress-mini"><div class="progress-track"><i style="width:${esc(pct)}%"></i></div><div class="muted" style="margin-top:4px">בוצעו ${esc(p.completedCount)}</div></div></div></td><td>${p.next?`${dateFmt(p.next.date)}<div class="muted">תשלום ${esc(p.next.part)}/${esc(p.next.totalParts)} · ${money(p.next.amount)}</div>`:'—'}</td><td class="amount">${money(p.remainingAmount)}</td><td><span class="badge ${esc(status==='פעיל'?'green':status==='הסתיים'?'blue':'')}">${esc(status)}</span></td><td><button class="iconbtn" data-action="open-credit-modal-2" data-click-arg0="${esc(cr.id)}">עריכה</button></td></tr>`}
 function creditMonthCard(m){const cur=monthKey(todayISO())===m.k,past=m.k<monthKey(todayISO());const by={};m.inst.forEach(x=>by[x.card]=(by[x.card]||0)+x.amount);return `<div class="month-card ${esc(cur?'current':'')}"><h4>${monthLabel(m.k)} ${cur?'<span class="badge blue">החודש</span>':past?'<span class="badge">עבר</span>':''}</h4>${Object.entries(by).length?Object.entries(by).map(([card,v])=>`<div class="metric"><span>${esc(card)}</span><b>${money(v)}</b></div>`).join(''):`<div class="muted">${past?'אין חיובים עתידיים':'אין חיובים'}</div>`}<div class="total">סה״כ ${money(m.total)}</div></div>`}
-
-return { renderCredit, creditMonthCard };
+return {renderCredit,creditMonthCard};
 }

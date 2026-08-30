@@ -1,5 +1,6 @@
 import {num} from '../../core/money.js';
 import {addMonthsISO, todayISO, dObj, monthKey, localISO} from '../../core/dates.js';
+import {syncedInstallmentsData} from './sync-feed.js';
 
 export function rawCreditSchedule(cr){if(!cr.firstChargeDate||num(cr.installments)<1)return[];const total=num(cr.totalAmount),n=Number(cr.installments);const base=Math.round((total/n)*100)/100;let rows=[];let used=0;for(let i=0;i<n;i++){let amt=i===n-1?Math.round((total-used)*100)/100:base;used+=amt;rows.push({creditId:cr.id,date:addMonthsISO(cr.firstChargeDate,i),amount:amt,part:i+1,totalParts:n,card:cr.card,account:cr.account,description:cr.description})}return rows}
 
@@ -11,7 +12,7 @@ export function creditProgress(cr,asOf=todayISO()){const schedule=creditSchedule
 
 export function pendingInstallmentsData(state){return allInstallmentsData(state).filter(x=>x.date>=todayISO())}
 
-export function allInstallmentsData(state){return state.credits.flatMap(creditSchedule)}
+export function allInstallmentsData(state){return state.creditSync?.mode==='synced'?syncedInstallmentsData(state):state.credits.flatMap(creditSchedule)}
 
 export function monthSumInstallmentsData(state,key,pendingOnly=false){const rows=pendingOnly?pendingInstallmentsData(state):allInstallmentsData(state);return rows.filter(x=>monthKey(x.date)===key).reduce((a,x)=>a+x.amount,0)}
 

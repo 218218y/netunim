@@ -15,6 +15,7 @@ function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){
   const e=new Error(message);e.code=code;e.stage=stage;
   e.httpStatus=Number(extra?.httpStatus)||0;
   e.availableAccounts=Array.isArray(extra?.availableAccounts)?extra.availableAccounts:[];
+  e.creditErrors=Array.isArray(extra?.creditErrors)?extra.creditErrors:[];
   return e;
 }
 
@@ -35,7 +36,7 @@ async function request(path,{method='GET',body=null,timeoutMs=5000}={}){
     const r=await fetch(BRIDGE_URL+path,{method,headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});
     const text=await r.text();let data={};
     try{data=text?JSON.parse(text):{}}catch{}
-    if(!r.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${r.status})`,data.code||`HTTP_${r.status}`,data.stage||'',{httpStatus:data.httpStatus,availableAccounts:data.availableAccounts});
+    if(!r.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${r.status})`,data.code||`HTTP_${r.status}`,data.stage||'',{httpStatus:data.httpStatus,availableAccounts:data.availableAccounts,creditErrors:data.creditErrors});
     return data;
   }catch(e){
     if(e?.name==='AbortError')throw bridgeError('Bank Bridge לא הגיב בזמן. ודא שהוא פועל במחשב ונסה שוב.','BRIDGE_TIMEOUT');
@@ -53,5 +54,10 @@ async function selectAccount({branchNumber,accountNumber}){return request('/acco
 async function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
 async function fetchBalance({interactive=false}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:180000})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance};
+async function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
+async function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
+async function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
+async function syncCreditCards({interactive=false}={}){return request('/credit/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
+
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,syncCreditCards};
 }

@@ -22,4 +22,4 @@ export function assertValidCloudState(d,context='נתוני הקופה'){
   return d
 }
 
-export function hasMeaningfulState(s){return ['checks','credits','cash','expenses','cards'].some(k=>Array.isArray(s?.[k])&&s[k].length)||s?.bank?.currentBalance!==null&&s?.bank?.currentBalance!==undefined||Array.isArray(s?.bank?.adjustments)&&s.bank.adjustments.length}
+export function hasMeaningfulState(s){return ['checks','credits','cash','expenses','cards'].some(k=>Array.isArray(s?.[k])&&s[k].length)||s?.bank?.currentBalance!==null&&s?.bank?.currentBalance!==undefined||Array.isArray(s?.bank?.adjustments)&&s.bank.adjustments.length||Array.isArray(s?.creditSync?.profiles)&&s.creditSync.profiles.length}

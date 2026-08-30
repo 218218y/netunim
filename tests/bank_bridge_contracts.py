@@ -15,7 +15,7 @@ for rel in ['server.mjs','lib.mjs']:
     r=subprocess.run(['node','--check',str(BRIDGE/rel)],capture_output=True,text=True)
     ok(r.returncode==0,f'bank bridge: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
-for rel in ['assets/js/domains/bank/bridge.js','assets/js/domains/bank/feed.js','assets/js/domains/bank/controller.js','assets/js/domains/bank/view.js','assets/js/ui/actions.js','assets/js/main.js','assets/js/state/normalization.js']:
+for rel in ['assets/js/domains/bank/bridge.js','assets/js/domains/bank/feed.js','assets/js/domains/bank/controller.js','assets/js/domains/bank/view.js','assets/js/domains/credit/sync-feed.js','assets/js/domains/credit/controller.js','assets/js/domains/credit/model.js','assets/js/domains/credit/view.js','assets/js/ui/actions.js','assets/js/main.js','assets/js/state/normalization.js']:
     r=subprocess.run(['node','--check',str(SITE/rel)],capture_output=True,text=True)
     ok(r.returncode==0,f'bank site: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
@@ -24,6 +24,11 @@ r=subprocess.run(['node',str(ROOT/'tests/bank_bridge_models.test.mjs')],cwd=ROOT
 if r.stdout: print(r.stdout.strip())
 if r.stderr: print(r.stderr.strip())
 ok(r.returncode==0,'bank bridge models: staged data/feed/MFA model tests pass')
+
+r=subprocess.run(['node',str(ROOT/'tests/credit_sync_models.test.mjs')],cwd=ROOT,capture_output=True,text=True)
+if r.stdout: print(r.stdout.strip())
+if r.stderr: print(r.stderr.strip())
+ok(r.returncode==0,'credit sync models: multi-profile, cutover/rollback and forecast semantics pass')
 
 server=(BRIDGE/'server.mjs').read_text(encoding='utf-8')
 lib=(BRIDGE/'lib.mjs').read_text(encoding='utf-8')
@@ -34,6 +39,13 @@ view=(SITE/'assets/js/domains/bank/view.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 normalization=(SITE/'assets/js/state/normalization.js').read_text(encoding='utf-8')
+credit_controller=(SITE/'assets/js/domains/credit/controller.js').read_text(encoding='utf-8')
+credit_client=(SITE/'assets/js/domains/bank/bridge.js').read_text(encoding='utf-8')
+credit_feed=(SITE/'assets/js/domains/credit/sync-feed.js').read_text(encoding='utf-8')
+credit_model=(SITE/'assets/js/domains/credit/model.js').read_text(encoding='utf-8')
+credit_view=(SITE/'assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+contexts=(SITE/'assets/js/state/contexts.js').read_text(encoding='utf-8')
+navigation=(SITE/'assets/js/ui/navigation.js').read_text(encoding='utf-8')
 headers=(SITE/'_headers').read_text(encoding='utf-8')
 worker=(SITE/'service-worker.js').read_text(encoding='utf-8')
 installer=(BRIDGE/'install_bank_bridge.bat').read_text(encoding='utf-8')
@@ -57,7 +69,7 @@ ok('enableHapoalimSessionAwareLogin(scraper,{interactive})' in server and 'SILEN
 ok('tryReuseSavedHapoalimSession' in server and 'sessionUrl' in server and 'safeHapoalimSessionUrl' in server and "`${url.origin}${url.pathname}`" in server, 'bank session reuse: successful profile session path is reused before a new credential login and query/hash tokens are never persisted')
 
 # Root cause guard: do not reintroduce the monolithic library scrape that couples every account, balance and transaction fetch.
-ok('scraper.scrape(' not in server and 'scraper.login(' in server and 'scraper.initialize(' in server, 'bank data adapter: bridge owns staged login/data flow instead of monolithic scraper.scrape()')
+ok('scraper.login(' in server and 'scraper.initialize(' in server and 'fetchSelectedHapoalimSnapshot' in server and 'scraper.scrape(profile.credentials)' in server, 'financial adapters: Hapoalim keeps its staged login/data flow while supported credit issuers use their native complete scraper flow')
 ok('waitForHapoalimSessionReady' in server and 'window.bnhpApp?.restContext' in server and '/ServerServices/general/accounts' in server and 'HAPOALIM_POST_LOGIN_TIMEOUT_MS' in server and 'HAPOALIM_NAVIGATION_STABLE_MS' in server, 'bank post-login readiness: visible homepage is not treated as data-ready until authenticated SPA/API state remains stable across navigation')
 ok('balanceAndCreditLimit' in server and "runStage('balance'" in server and 'currentBalance' in server, 'bank balance: selected account balance is fetched independently as the authoritative required result')
 ok('retryTransientNavigation' in server and 'pageFetchJsonOnce' in server and 'HAPOALIM_DATA_RETRY_LIMIT' in server and 'isTransientNavigationError' in server, 'bank navigation recovery: balance/transaction reads retry only transient destroyed execution contexts after re-establishing a stable authenticated page')
@@ -72,7 +84,7 @@ ok('ExpandEnvironmentStrings("%LOCALAPPDATA%")' in launcher and '%~dp0' not in l
 ok('%APPROOT%\\app' in installer and 'app-staging' in installer and 'npm ci' in installer and '--doctor' in installer, 'bank bridge install: runtime is staged and validated in a stable per-user location before activation')
 ok('--stop-existing' in installer and "req.url==='/shutdown'" in server and 'stopVerifiedListener' in server, 'bank bridge upgrade: an existing verified bridge is stopped before replacing its runtime')
 ok('node "%STAGING%\\server.mjs" --stop-existing' in installer and 'if exist "%APPDIR%" (' in installer and 'The previous Bank Bridge runtime could not be removed.' in installer, 'bank bridge upgrade: validated staging code performs shutdown and activation fails closed if old runtime remains locked')
-ok('const BRIDGE_VERSION=10' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=10' in installer and '/health' in installer, 'bank bridge install: installer verifies structured cheque-deposit bridge v10 after hidden startup')
+ok('const BRIDGE_VERSION=11' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=11' in installer and '/health' in installer, 'financial bridge install: installer verifies multi-profile bank/credit bridge v11 after hidden startup')
 ok('>> "%LOCALAPPDATA%\\NetunimKupaBankBridge\\bridge.log" 2>&1' in start_script, 'bank bridge startup: background output goes to a log instead of popup error windows')
 
 ok('syncSharedChecksFromCloud({quiet:true,required:true})' in controller and 'sharedChecksObservedSequence()' in controller and 'snapshotSeq:observedSeq' in controller, 'bank snapshot integrity: remote balance uses existing synchronized check watermark before saving')
@@ -99,6 +111,27 @@ ok('id="bankPasswordInput"' in view and 'autocomplete="current-password"' in vie
 ok('localStorage.setItem(TOKEN_KEY' in client and 'localStorage.setItem(AUTO_KEY' in client and 'localStorage.setItem(AUTO_ATTEMPT_KEY' in client and 'localStorage.setItem(userCode' not in client and 'localStorage.setItem(password' not in client, 'bank credentials security: browser persistence is limited to local bridge token/refresh preferences, never Hapoalim credentials')
 ok('http://127.0.0.1:8765' in headers and "connect-src 'self'" in headers, 'bank CSP: only intended loopback bridge is added to connect-src')
 ok('./assets/js/domains/bank/bridge.js' in worker and './assets/js/domains/bank/controller.js' in worker and './assets/js/domains/bank/feed.js' in worker, 'bank PWA: bridge/controller/canonical feed modules are part of deterministic app shell')
+
+# Credit-card sync contracts: credentials remain local/encrypted, multiple identities per issuer are supported,
+# manual credit records remain an explicit rollback source, and only normalized transaction data enters Kupa state/cloud.
+ok("const CREDIT_PROFILES_FILE=path.join(APP_DIR,'credit-card-profiles.dpapi')" in server and 'protectText(JSON.stringify' in server and 'readCreditProfiles' in server and 'writeCreditProfiles' in server, 'credit security: issuer credentials are stored only in the local DPAPI vault')
+ok("req.url==='/credit/status'" in server and "req.url==='/credit/profiles'" in server and "req.url==='/credit/sync'" in server, 'credit bridge API: local profile management/status/sync routes are authenticated loopback endpoints')
+ok("const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard}" in server and 'CompanyTypes?.visaCal' in server and 'CompanyTypes?.max' in server and 'CompanyTypes?.isracard' in server, 'credit providers: pinned scraper integration is explicit for Cal, MAX and Isracard')
+ok("mastercard" not in lib.lower() or "creditprovidersupported('mastercard')" not in lib.lower(), 'credit providers: Mastercard is not invented as a separate issuer login')
+ok("visaCal:{label:'כאל',credentialFields:['username','password']}" in lib and "max:{label:'MAX',credentialFields:['username','password']}" in lib and "isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']}" in lib, 'credit credentials: issuer-specific required login fields match the pinned scraper contract')
+ok('futureMonthsToScrape:CREDIT_FUTURE_MONTHS' in server and 'combineInstallments:false' in server and 'additionalTransactionInformation:false' in server and 'includeRawTransaction:false' in server, 'credit scraping: future issuer charge dates are requested without raw/sensitive transaction payloads')
+ok('for(const profile of enabled)' in server and 'await scrapeCreditProfile(profile,{interactive})' in server, 'credit multi-profile: same-issuer identities run sequentially to avoid cross-login races')
+ok('profileId:requestedId||randomUUID()' in server and 'normalizeCreditProfileInput({...body' in server, 'credit multi-computer: a cloud profile id can be bound to local credentials on another computer')
+ok('creditErrors:Array.isArray(error?.creditErrors)' in server and 'if(!result.profiles.length&&result.errors.length)' in server, 'credit diagnostics: per-profile failures survive the loopback error envelope')
+ok('mergeCreditSyncResult' in credit_controller and 'Array.isArray(e?.creditErrors)' in credit_controller and "profiles:[],errors:e.creditErrors" in credit_controller, 'credit partial failure: failed refreshes preserve prior successful profile data and persist actionable diagnostics')
+ok("mode:source.mode==='synced'?'synced':'manual'" in credit_feed and "state.creditSync?.mode==='synced'?syncedInstallmentsData(state):state.credits.flatMap(creditSchedule)" in credit_model, 'credit cutover: manual entries and synchronized issuer data are mutually exclusive calculation sources')
+ok('העסקאות הידניות נשמרות כגיבוי ואינן נספרות' in credit_view and 'חזור לנתונים הידניים' in credit_view, 'credit rollback UI: manual credit records are retained and can be reactivated without JSON restore')
+ok('creditCardMappingKey(profile.profileId,account.accountNumber)' in credit_view and "option ${accountClass==='עסקי'" in credit_view, 'credit classification: every returned card can be mapped independently to business/home even within one login')
+ok("CREDIT_AUTO_INTERVAL_MS=24*60*60*1000" in credit_controller and 'maybeAutoRefreshCreditSync' in credit_controller and 'maybeAutoRefreshCreditSync()' in navigation, 'credit auto refresh: synchronized issuer data can refresh once per shared successful day while browsing Kupa')
+ok("localStorage.setItem(CREDIT_AUTO_KEY" in credit_controller and 'username' not in credit_feed and 'password' not in credit_feed, 'credit credentials boundary: browser/cloud feed contains preferences and normalized finance data, never issuer usernames/passwords')
+ok("creditSync:{version:1,mode:'manual'" in contexts and 'n.creditSync=normalizeCreditSync(n.creditSync)' in normalization, 'credit state: first deployment defaults to non-destructive manual mode and normalizes the synchronized feed')
+ok('isShekelTransaction' in credit_feed and 'foreign-currency rows' in credit_feed.lower(), 'credit forecast safety: non-ILS charged amounts do not silently enter shekel cash-flow totals')
+ok('./assets/js/domains/credit/sync-feed.js' in worker and './assets/js/domains/credit/controller.js' in worker, 'credit PWA: synchronization modules are part of the deterministic app shell')
 
 if errors:
     print('\nERRORS',len(errors))

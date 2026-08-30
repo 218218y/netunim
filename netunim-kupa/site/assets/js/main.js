@@ -37,6 +37,7 @@ import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createDomainsCreditEditor} from './domains/credit/editor.js';
+import {createDomainsCreditController} from './domains/credit/controller.js';
 import {createDomainsCashEditor} from './domains/cash/editor.js';
 import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
@@ -378,6 +379,7 @@ const uiNavigation=createUiNavigation({
   renderBank:(...args)=>domainsBankView.renderBank(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
+  maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -414,6 +416,8 @@ const domainsCreditView=createDomainsCreditView({
   bulkControls:(...args)=>uiBulk.bulkControls(...args),
   bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
+  creditSyncUiState:(...args)=>domainsCreditController.creditSyncUiState(...args),
+  refreshCreditBridgeStatus:(...args)=>domainsCreditController.refreshCreditBridgeStatus(...args),
 });
 
 const domainsCashView=createDomainsCashView({
@@ -428,6 +432,18 @@ const domainsCashView=createDomainsCashView({
 });
 
 const domainsBankBridge=createDomainsBankBridge();
+
+const domainsCreditController=createDomainsCreditController({
+  model,
+  saveState:(...args)=>storagePersistence.saveState(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+  render:(...args)=>uiNavigation.render(...args),
+  bridge:domainsBankBridge,
+  modal:(...args)=>uiModal.modal(...args),
+  armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+});
 
 const domainsBankController=createDomainsBankController({
   model,
@@ -637,6 +653,12 @@ const uiActions=createUiActions({
   refreshBankBalance:(...args)=>domainsBankController.refreshBankBalance(...args),
   deleteBankBridgeCredentials:(...args)=>domainsBankController.deleteBankBridgeCredentials(...args),
   setBankAutoRefresh:(...args)=>domainsBankController.setBankAutoRefresh(...args),
+  openCreditConnectionModal:(...args)=>domainsCreditController.openCreditConnectionModal(...args),
+  deleteCreditConnection:(...args)=>domainsCreditController.deleteCreditConnection(...args),
+  refreshCreditSync:(...args)=>domainsCreditController.refreshCreditSync(...args),
+  setCreditSyncMode:(...args)=>domainsCreditController.setCreditSyncMode(...args),
+  setCreditCardMapping:(...args)=>domainsCreditController.setCreditCardMapping(...args),
+  setCreditAutoRefresh:(...args)=>domainsCreditController.setCreditAutoRefresh(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   openCheckModal:(...args)=>domainsChecksEditor.openCheckModal(...args),
   markCheckSeriesManual:(...args)=>domainsChecksEditor.markCheckSeriesManual(...args),

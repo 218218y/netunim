@@ -342,3 +342,41 @@ export function scraperFailureMessage(result){
   if(type==='TIMEOUT')return ['הכניסה לבנק הפועלים לא הסתיימה בזמן. ברענון ידני נסה להשלים אימות בחלון הבנק','TIMEOUT'];
   return [raw?`החיבור לבנק הפועלים נכשל: ${raw}`:'החיבור לבנק הפועלים נכשל','SCRAPE_FAILED'];
 }
+
+export const CREDIT_PROVIDER_CONFIG={
+  visaCal:{label:'כאל',credentialFields:['username','password']},
+  max:{label:'MAX',credentialFields:['username','password']},
+  isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']},
+};
+export const CREDIT_HISTORY_DAYS=120;
+export const CREDIT_FUTURE_MONTHS=12;
+
+function creditText(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
+function creditNumber(value){const n=Number(value);return Number.isFinite(n)?n:null}
+export function creditProviderSupported(value){return Object.prototype.hasOwnProperty.call(CREDIT_PROVIDER_CONFIG,String(value||''))}
+export function creditProfilePublic(profile){return {profileId:creditText(profile?.profileId,80),provider:creditText(profile?.provider,30),label:creditText(profile?.label,100),ownerLabel:creditText(profile?.ownerLabel,100),defaultAccount:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',active:profile?.active!==false,configured:true}}
+export function normalizeCreditProfileInput(value={},existing=null){
+  const provider=creditText(value.provider||existing?.provider,30);
+  if(!creditProviderSupported(provider)){const e=new Error('חברת האשראי שנבחרה אינה נתמכת');e.code='UNSUPPORTED_CREDIT_PROVIDER';throw e}
+  const profileId=creditText(value.profileId||existing?.profileId,80);
+  const label=creditText(value.label||existing?.label||CREDIT_PROVIDER_CONFIG[provider].label,100)||CREDIT_PROVIDER_CONFIG[provider].label;
+  const ownerLabel=creditText(value.ownerLabel||existing?.ownerLabel||'',100);
+  const defaultAccount=value.defaultAccount==='ביתי'?'ביתי':value.defaultAccount==='עסקי'?'עסקי':existing?.defaultAccount==='ביתי'?'ביתי':'עסקי';
+  const credentials={...(existing?.credentials||{})};
+  for(const field of CREDIT_PROVIDER_CONFIG[provider].credentialFields){const incoming=String(value[field]??'');if(incoming)credentials[field]=incoming}
+  for(const field of CREDIT_PROVIDER_CONFIG[provider].credentialFields){if(!String(credentials[field]||'').trim()){const e=new Error(`חסר שדה התחברות נדרש: ${field}`);e.code='MISSING_CREDIT_CREDENTIALS';throw e}}
+  if(provider==='isracard'){credentials.card6Digits=String(credentials.card6Digits||'').replace(/\D/g,'');if(credentials.card6Digits.length!==6){const e=new Error('בישראכרט יש להזין 6 ספרות אחרונות של הכרטיס');e.code='INVALID_CARD6';throw e}}
+  return {profileId,provider,label,ownerLabel,defaultAccount,active:value.active===undefined?(existing?.active!==false):!!value.active,credentials};
+}
+export function normalizeCreditScrapeTransaction(tx={}){
+  const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
+  return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
+}
+export function normalizeCreditScrapeAccount(account={}){
+  return {accountNumber:creditText(account.accountNumber||'',80),balance:creditNumber(account.balance),balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame:creditText(account.cardFrame||'',80),txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
+}
+export function creditScrapeFailure(result,profile){
+  const type=String(result?.errorType||'SCRAPE_FAILED').toUpperCase(),raw=creditText(result?.errorMessage||'',260),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100);
+  const messages={INVALID_PASSWORD:'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:'החברה החזירה מסך או תשובה שלא זוהו'};
+  const e=new Error(`${label}: ${messages[type]||raw||'סנכרון האשראי נכשל'}`);e.code=`CREDIT_${type}`;return e;
+}

@@ -98,3 +98,14 @@ Transaction storage and retention (Bridge v10)
 ---------------------------------------------
 Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful bank refresh is also copied to the browser recovery snapshot (localStorage + IndexedDB). In Supabase mode the same feed is saved in the shared Kupa cloud document; in file/directory mode it is saved in the Kupa JSON file.
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.
+
+
+Credit-card sync (Bridge v11)
+-----------------------------
+Bridge v11 adds encrypted multi-profile credit-card connections for Visa Cal, Max and Isracard. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
+
+Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard uses id/card6Digits/password. Multiple profiles for the same provider are intentionally supported. Profiles are scraped sequentially to avoid cookie/session collisions between different identities.
+
+Each scrape requests 120 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, and transaction dates, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
+
+The web app stores these normalized results in state.creditSync. Manual state.credits are never deleted automatically. A pre-cutover review of synchronized charges is available while manual mode is still active. Switching to synced mode only changes the selectors used by forecasts/bank projections; the manual dataset remains available as an immediate rollback.

@@ -23,15 +23,25 @@ import {
   selectAccountDescriptor,
   waitForTerminalLoginResult,
   ymdDate,
+  CREDIT_PROVIDER_CONFIG,
+  CREDIT_HISTORY_DAYS,
+  CREDIT_FUTURE_MONTHS,
+  creditProviderSupported,
+  creditProfilePublic,
+  normalizeCreditProfileInput,
+  normalizeCreditScrapeAccount,
+  creditScrapeFailure,
 } from './lib.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=10;
+const BRIDGE_VERSION=11;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
 const CREDENTIALS_FILE=path.join(APP_DIR,'hapoalim-credentials.dpapi');
+const CREDIT_PROFILES_FILE=path.join(APP_DIR,'credit-card-profiles.dpapi');
+const CREDIT_META_FILE=path.join(APP_DIR,'credit-card-status.json');
 const META_FILE=path.join(APP_DIR,'status.json');
 const BROWSER_PROFILE_DIR=path.join(APP_DIR,'browser-profile');
 let scrapeBusy=false;
@@ -87,6 +97,17 @@ function normalizeStoredCredentials(value){
 async function readCredentials(){try{const encrypted=(await fs.readFile(CREDENTIALS_FILE,'utf8')).trim();if(!encrypted)return null;return normalizeStoredCredentials(JSON.parse(await unprotectText(encrypted)))}catch(e){if(e?.code==='ENOENT')return null;throw e}}
 async function deleteCredentials(){await fs.rm(CREDENTIALS_FILE,{force:true})}
 
+async function readCreditProfiles(){
+  try{
+    const encrypted=(await fs.readFile(CREDIT_PROFILES_FILE,'utf8')).trim();if(!encrypted)return [];
+    const parsed=JSON.parse(await unprotectText(encrypted));return Array.isArray(parsed)?parsed.filter(x=>x&&typeof x==='object'):[];
+  }catch(e){if(e?.code==='ENOENT')return [];throw e}
+}
+async function writeCreditProfiles(profiles){await ensureAppDir();const encrypted=await protectText(JSON.stringify(Array.isArray(profiles)?profiles:[]));await fs.writeFile(CREDIT_PROFILES_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
+async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
+async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
+function publicCreditProfiles(profiles){return (Array.isArray(profiles)?profiles:[]).map(creditProfilePublic).filter(x=>x.profileId&&creditProviderSupported(x.provider))}
+
 function browserCandidates(){
   const pf=process.env.PROGRAMFILES||'C:\\Program Files';
   const pfx86=process.env['PROGRAMFILES(X86)']||'C:\\Program Files (x86)';
@@ -121,7 +142,7 @@ async function readJson(req){
   if(!chunks.length)return {};try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Object.assign(new Error('JSON לא תקין'),{code:'INVALID_JSON'})}
 }
 function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
-function safeError(error){return {ok:false,code:error?.code||'BRIDGE_ERROR',stage:error?.stage||'',message:error?.message||'שגיאת Bank Bridge',httpStatus:Number(error?.httpStatus)||0,availableAccounts:Array.isArray(error?.availableAccounts)?error.availableAccounts:[]}}
+function safeError(error){return {ok:false,code:error?.code||'BRIDGE_ERROR',stage:error?.stage||'',message:error?.message||'שגיאת Bank Bridge',httpStatus:Number(error?.httpStatus)||0,availableAccounts:Array.isArray(error?.availableAccounts)?error.availableAccounts:[],creditErrors:Array.isArray(error?.creditErrors)?error.creditErrors:[]}}
 function stageError(stage,error,code='BANK_DATA_ERROR'){
   const e=error instanceof Error?error:new Error(String(error||'שגיאה לא ידועה'));
   if(!e.stage)e.stage=stage;if(!e.code)e.code=code;return e;
@@ -329,6 +350,41 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
   }
 }
 
+function creditStartDate(){const d=new Date();d.setDate(d.getDate()-CREDIT_HISTORY_DAYS);return d}
+function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard};return map[provider]}
+async function scrapeCreditProfile(profile,{interactive=false}={}){
+  const browserPath=await findInstalledBrowser();
+  const {CompanyTypes,createScraper}=await import('israeli-bank-scrapers');
+  const companyId=scraperCompanyId(CompanyTypes,profile.provider);
+  if(!companyId)throw Object.assign(new Error('גרסת israeli-bank-scrapers המותקנת אינה תומכת בחברת האשראי שנבחרה'),{code:'CREDIT_PROVIDER_UNAVAILABLE'});
+  const scraper=createScraper({
+    companyId,startDate:creditStartDate(),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,combineInstallments:false,
+    showBrowser:!!interactive,executablePath:browserPath,navigationRetryCount:2,defaultTimeout:45000,timeout:90000,
+    additionalTransactionInformation:false,includeRawTransaction:false,
+  });
+  try{
+    const result=await scraper.scrape(profile.credentials);
+    if(!result?.success)throw creditScrapeFailure(result,profile);
+    return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
+  }catch(e){if(e?.code)throw e;throw Object.assign(new Error(`${profile.label}: ${e?.message||e}`),{code:'CREDIT_SCRAPE_FAILED'})}
+}
+async function scrapeAllCreditProfiles(profiles,{interactive=false}={}){
+  if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
+  scrapeBusy=true;
+  try{
+    const enabled=(Array.isArray(profiles)?profiles:[]).filter(p=>p?.active!==false&&creditProviderSupported(p?.provider));
+    if(!enabled.length)throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'),{code:'CREDIT_NOT_CONFIGURED'});
+    const success=[],errors=[];
+    // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
+    for(const profile of enabled){
+      try{success.push(await scrapeCreditProfile(profile,{interactive}))}
+      catch(error){errors.push({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',message:error?.message||String(error),at:new Date().toISOString()})}
+    }
+    const syncedAt=success.length?new Date().toISOString():null;
+    return {profiles:success,errors,syncedAt};
+  }finally{scrapeBusy=false}
+}
+
 async function handler(req,res,token){
   if(req.method==='OPTIONS'){res.writeHead(204,corsHeaders(req));res.end();return}
   if(req.method==='GET'&&req.url==='/health'){sendJson(req,res,200,{ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION});return}
@@ -337,6 +393,29 @@ async function handler(req,res,token){
     if(req.method==='GET'&&req.url==='/status'){
       const credentials=await readCredentials(),meta=await readMeta();
       sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.branchNumber||'',accountNumber:credentials?.accountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
+    }
+    if(req.method==='GET'&&req.url==='/credit/status'){
+      const profiles=await readCreditProfiles(),meta=await readCreditMeta();
+      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[]});return;
+    }
+    if(req.method==='POST'&&req.url==='/credit/profiles'){
+      const body=await readJson(req),profiles=await readCreditProfiles(),requestedId=String(body.profileId||'').trim();
+      const existing=requestedId?profiles.find(p=>p.profileId===requestedId):null;
+      const normalized=normalizeCreditProfileInput({...body,profileId:requestedId||randomUUID()},existing||null);
+      const next=existing?profiles.map(p=>p.profileId===existing.profileId?normalized:p):[...profiles,normalized];
+      await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
+    }
+    if(req.method==='DELETE'&&req.url==='/credit/profiles'){
+      const body=await readJson(req),profileId=String(body.profileId||'').trim(),profiles=await readCreditProfiles();
+      if(!profileId)throw Object.assign(new Error('חסר מזהה חיבור אשראי למחיקה'),{code:'MISSING_PROFILE_ID'});
+      const next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profiles:publicCreditProfiles(next)});return;
+    }
+    if(req.method==='POST'&&req.url==='/credit/sync'){
+      const body=await readJson(req),profiles=await readCreditProfiles();
+      const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive});
+      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors});
+      if(!result.profiles.length&&result.errors.length){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
+      sendJson(req,res,200,{ok:true,...result});return;
     }
     if(req.method==='POST'&&req.url==='/credentials'){
       const body=await readJson(req),userCode=String(body.userCode||'').trim(),password=String(body.password||''),branchNumber=String(body.branchNumber||'').replace(/\D/g,''),accountNumber=String(body.accountNumber||'').replace(/\D/g,'');
@@ -400,12 +479,12 @@ if(args.has('--doctor')){
   try{
     const browserPath=await findInstalledBrowser();
     const pkg=await import('israeli-bank-scrapers');
-    if(!pkg?.createScraper||!pkg?.CompanyTypes?.hapoalim)throw new Error('israeli-bank-scrapers did not expose Hapoalim support');
+    if(!pkg?.createScraper||!pkg?.CompanyTypes?.hapoalim||!pkg?.CompanyTypes?.visaCal||!pkg?.CompanyTypes?.max||!pkg?.CompanyTypes?.isracard)throw new Error('israeli-bank-scrapers did not expose required Hapoalim/Cal/Max/Isracard support');
     const probe=pkg.createScraper({companyId:pkg.CompanyTypes.hapoalim,startDate:new Date(),showBrowser:false,executablePath:browserPath});
     enableHapoalimSessionAwareLogin(probe,{interactive:true});
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
     console.log(`Browser: ${browserPath}`);
-    console.log('Scraper: Hapoalim session-aware login + navigation-stable data reads + structured cheque-deposit enrichment + persistent-session reuse + MFA + exact branch/account selector OK');
+    console.log('Scraper: Hapoalim + Cal + Max + Isracard support, secure multi-profile credit sync, session-aware bank reads OK');
     process.exit(0);
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }

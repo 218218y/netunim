@@ -3,6 +3,7 @@ import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {wholeMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
+import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
 import {assertPortablePayload} from './validation.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -29,6 +30,7 @@ function normalizeState(d){
   n.checks=normalizeSharedChecks(n.checks);
   n.cash=(n.cash||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
   n.expenses=(n.expenses||[]).map(x=>({...x,amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
+  n.creditSync=normalizeCreditSync(n.creditSync);
   const before=(n.credits||[]).length;
   n.credits=(n.credits||[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount)})).filter(cr=>!inactiveCreditExpired(cr));
   model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);
