@@ -35,7 +35,7 @@ import {
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=11;
+const BRIDGE_VERSION=12;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -351,7 +351,7 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
 }
 
 function creditStartDate(){const d=new Date();d.setDate(d.getDate()-CREDIT_HISTORY_DAYS);return d}
-function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard};return map[provider]}
+function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard,amex:CompanyTypes.amex};return map[provider]}
 async function scrapeCreditProfile(profile,{interactive=false}={}){
   const browserPath=await findInstalledBrowser();
   const {CompanyTypes,createScraper}=await import('israeli-bank-scrapers');
@@ -479,12 +479,12 @@ if(args.has('--doctor')){
   try{
     const browserPath=await findInstalledBrowser();
     const pkg=await import('israeli-bank-scrapers');
-    if(!pkg?.createScraper||!pkg?.CompanyTypes?.hapoalim||!pkg?.CompanyTypes?.visaCal||!pkg?.CompanyTypes?.max||!pkg?.CompanyTypes?.isracard)throw new Error('israeli-bank-scrapers did not expose required Hapoalim/Cal/Max/Isracard support');
+    if(!pkg?.createScraper||!pkg?.CompanyTypes?.hapoalim||!pkg?.CompanyTypes?.visaCal||!pkg?.CompanyTypes?.max||!pkg?.CompanyTypes?.isracard||!pkg?.CompanyTypes?.amex)throw new Error('israeli-bank-scrapers did not expose required Hapoalim/Cal/Max/Isracard/Amex support');
     const probe=pkg.createScraper({companyId:pkg.CompanyTypes.hapoalim,startDate:new Date(),showBrowser:false,executablePath:browserPath});
     enableHapoalimSessionAwareLogin(probe,{interactive:true});
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
     console.log(`Browser: ${browserPath}`);
-    console.log('Scraper: Hapoalim + Cal + Max + Isracard support, secure multi-profile credit sync, session-aware bank reads OK');
+    console.log('Scraper: Hapoalim + Cal + Max + Isracard + Amex support, secure multi-profile credit sync, session-aware bank reads OK');
     process.exit(0);
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }

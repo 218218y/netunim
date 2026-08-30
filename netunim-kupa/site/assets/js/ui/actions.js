@@ -45,6 +45,7 @@ return {
   'refresh-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false})},
   'refresh-credit-sync-interactive':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:true,auto:false})},
   'set-credit-sync-mode':(element,event)=>{setCreditSyncMode(element.dataset.clickArg0||'manual')},
+  'set-credit-card-included':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'included',element.checked)},
   'set-credit-card-account':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'account',element.value)},
   'set-credit-card-name':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'cardName',element.value)},
   'set-credit-auto-refresh':(element,event)=>{setCreditAutoRefresh(element.checked)},

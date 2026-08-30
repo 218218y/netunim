@@ -1,7 +1,7 @@
 import {todayISO} from '../../core/dates.js';
 
-export const CREDIT_SYNC_VERSION=1;
-export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישראכרט'};
+export const CREDIT_SYNC_VERSION=2;
+export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישראכרט',amex:'American Express'};
 
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function finite(value){const n=Number(value);return Number.isFinite(n)?n:null}
@@ -52,18 +52,35 @@ export function normalizeCreditProfile(profile={}){
   };
 }
 
+function normalizedMapping(raw={},legacy=false){
+  return {
+    included:typeof raw.included==='boolean'?raw.included:legacy,
+    account:raw.account==='ביתי'?'ביתי':'עסקי',
+    cardName:text(raw.cardName||'',100),
+  };
+}
+
 export function normalizeCreditSync(value={}){
-  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},sourceVersion=Math.trunc(Number(source.version)||1),legacy=sourceVersion<CREDIT_SYNC_VERSION;
+  const profiles=(Array.isArray(source.profiles)?source.profiles:[]).map(normalizeCreditProfile).filter(x=>x.profileId);
   const mappings={};
   for(const [key,raw] of Object.entries(source.cardMappings&&typeof source.cardMappings==='object'&&!Array.isArray(source.cardMappings)?source.cardMappings:{})){
     if(!key||!raw||typeof raw!=='object'||Array.isArray(raw))continue;
-    mappings[text(key,180)]={account:raw.account==='ביתי'?'ביתי':'עסקי',cardName:text(raw.cardName||'',100)};
+    mappings[text(key,180)]=normalizedMapping(raw,legacy);
+  }
+  // v1 treated every discovered card as active. Preserve that behavior exactly once during migration,
+  // then make future newly discovered cards opt-in so a login cannot silently add household/old cards to Kupa totals.
+  if(legacy){
+    for(const profile of profiles)for(const account of profile.accounts){
+      const key=creditCardMappingKey(profile.profileId,account.accountNumber);
+      if(!mappings[key])mappings[key]={included:true,account:profile.defaultAccount,cardName:''};
+    }
   }
   return {
     version:CREDIT_SYNC_VERSION,
     mode:source.mode==='synced'?'synced':'manual',
     syncedAt:iso(source.syncedAt),
-    profiles:(Array.isArray(source.profiles)?source.profiles:[]).map(normalizeCreditProfile).filter(x=>x.profileId),
+    profiles,
     errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,20).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:text(e?.message||'סנכרון האשראי נכשל',260),at:iso(e?.at)||new Date().toISOString()})),
     cardMappings:mappings,
   };
@@ -73,19 +90,27 @@ export function mergeCreditSyncResult(current,payload={}){
   const base=normalizeCreditSync(current),successes=(Array.isArray(payload.profiles)?payload.profiles:[]).map(normalizeCreditProfile).filter(x=>x.profileId);
   const byId=new Map(base.profiles.map(p=>[p.profileId,p]));
   successes.forEach(p=>byId.set(p.profileId,p));
+  const mappings={...base.cardMappings};
+  // Only cards first seen after v2 are opt-in. Previously known cards keep their explicit migration state.
+  for(const profile of successes)for(const account of profile.accounts){
+    const key=creditCardMappingKey(profile.profileId,account.accountNumber);
+    if(!mappings[key])mappings[key]={included:false,account:profile.defaultAccount,cardName:''};
+  }
   const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:text(e?.message||'סנכרון האשראי נכשל',260),at:iso(e?.at)||new Date().toISOString()}));
   const syncedAt=successes.length?(iso(payload.syncedAt)||new Date().toISOString()):base.syncedAt;
-  return normalizeCreditSync({...base,syncedAt,profiles:[...byId.values()],errors});
+  return normalizeCreditSync({...base,syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 
 export function creditSyncHasData(state){return !!normalizeCreditSync(state?.creditSync).profiles.some(p=>p.accounts.some(a=>a.txns.length||a.balance!==null))}
+export function creditSyncHasIncludedCards(state){const sync=normalizeCreditSync(state?.creditSync);return sync.profiles.some(p=>p.accounts.some(a=>sync.cardMappings[creditCardMappingKey(p.profileId,a.accountNumber)]?.included===true))}
+export function creditCardIncluded(sync,profileId,accountNumber){return normalizeCreditSync(sync).cardMappings[creditCardMappingKey(profileId,accountNumber)]?.included===true}
 
 function transactionForecastAmount(tx){
   const amount=tx.chargedAmount!==null?tx.chargedAmount:tx.originalAmount;
   if(amount===null||!Number.isFinite(amount)||amount===0)return 0;
-  // Credit-card scrapers use negative charged amounts for purchases/debits and positive for refunds/credits.
   return -amount;
 }
+// Foreign-currency rows stay visible in issuer data but never silently enter ILS Kupa totals.
 function isShekelTransaction(tx){
   const currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12).toUpperCase().replace(/\s+/g,'');
   return !currency||['ILS','NIS','₪','ש״ח','שח'].includes(currency);
@@ -96,15 +121,12 @@ export function syncedInstallmentsData(state){
   for(const profile of sync.profiles){
     for(const account of profile.accounts){
       const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
+      if(mapping.included!==true)continue;
       const accountClass=mapping.account==='ביתי'?'ביתי':mapping.account==='עסקי'?'עסקי':profile.defaultAccount;
       const cardName=mapping.cardName||[CREDIT_PROVIDER_LABELS[profile.provider]||profile.label,account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' ');
       for(const [txIndex,tx] of account.txns.entries()){
-        // MAX/CAL pending rows do not carry a trustworthy billing date: their processedDate is the purchase date.
-        // Keep them in the live issuer feed, but do not pretend they are a dated bank obligation until the issuer posts them.
         if(tx.status==='pending')continue;
         const date=String(tx.processedDate||tx.date||'').slice(0,10),amount=transactionForecastAmount(tx);
-        // The Kupa forecast is denominated in ILS. Foreign-currency rows are shown in the live card data,
-        // but they must not silently enter shekel cash-flow totals unless the issuer supplied an ILS charged amount.
         if(!date||!amount||!isShekelTransaction(tx))continue;
         const part=tx.installments?.number||1,totalParts=tx.installments?.total||1;
         const stableId=tx.id?`${tx.id}|${date}|${amount}|${tx.description}|${part}`:`idless-${txIndex}|${date}|${amount}|${tx.description}|${part}`;
@@ -119,5 +141,6 @@ export function syncedInstallmentsData(state){
 
 export function creditSyncSummary(state){
   const sync=normalizeCreditSync(state?.creditSync),accounts=sync.profiles.flatMap(p=>p.accounts.map(a=>({profile:p,account:a}))),txns=accounts.reduce((n,x)=>n+x.account.txns.length,0);
-  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,transactionCount:txns,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null),today:todayISO()};
+  const includedAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.included===true).length;
+  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount,transactionCount:txns,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null),today:todayISO()};
 }

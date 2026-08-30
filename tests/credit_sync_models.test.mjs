@@ -12,6 +12,7 @@ import {
   CREDIT_PROVIDER_LABELS,
   creditCardMappingKey,
   creditSyncHasData,
+  creditSyncHasIncludedCards,
   mergeCreditSyncResult,
   normalizeCreditSync,
   syncedInstallmentsData,
@@ -20,14 +21,16 @@ import {allInstallmentsData} from '../netunim-kupa/site/assets/js/domains/credit
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 
-assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['isracard','max','visaCal'],'bridge exposes exactly the supported issuer connections; Mastercard is not a separate login provider');
+assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['amex','isracard','max','visaCal'],'bridge exposes Cal, MAX, Isracard and Amex issuer connections; Mastercard is not a separate login provider');
 assert.equal(creditProviderSupported('visaCal'),true);
 assert.equal(creditProviderSupported('max'),true);
 assert.equal(creditProviderSupported('isracard'),true);
+assert.equal(creditProviderSupported('amex'),true);
 assert.equal(creditProviderSupported('mastercard'),false,'Mastercard must be connected through its issuer rather than invented as a scraper company');
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.visaCal.credentialFields,['username','password']);
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.max.credentialFields,['username','password']);
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.isracard.credentialFields,['id','card6Digits','password']);
+assert.deepEqual(CREDIT_PROVIDER_CONFIG.amex.credentialFields,['id','card6Digits','password']);
 assert.equal(CREDIT_HISTORY_DAYS,120,'credit synchronization uses a bounded historical window');
 assert.equal(CREDIT_FUTURE_MONTHS,12,'credit synchronization requests a full future year for installment/charge forecasting');
 
@@ -41,7 +44,9 @@ assert.equal(edited.credentials.username,'user-a','editing local metadata with b
 assert.equal(edited.credentials.password,'secret-a');
 assert.throws(()=>normalizeCreditProfileInput({profileId:'bad',provider:'isracard',id:'123456789',card6Digits:'12345',password:'x'}),e=>e?.code==='INVALID_CARD6','Isracard requires exactly six card digits');
 const isracard=normalizeCreditProfileInput({profileId:'p-isra',provider:'isracard',id:'123456789',card6Digits:'123456',password:'x',defaultAccount:'עסקי'});
+const amex=normalizeCreditProfileInput({profileId:'p-amex',provider:'amex',id:'123456789',card6Digits:'654321',password:'x',defaultAccount:'ביתי'});
 assert.equal(isracard.credentials.card6Digits,'123456');
+assert.equal(amex.credentials.card6Digits,'654321');
 
 const normalizedAccount=normalizeCreditScrapeAccount({
   accountNumber:'4321',balance:-1250.75,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:15000,
@@ -61,6 +66,7 @@ const previous=normalizeCreditSync({
     {profileId:'p-max-b',provider:'max',label:'MAX ב',defaultAccount:'ביתי',syncedAt:'2026-08-29T09:00:00.000Z',accounts:[{accountNumber:'4321',balance:-500,txns:[{id:'keep',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-50,chargedCurrency:'ILS',description:'יישאר'}]}]},
   ],
 });
+const keyA=creditCardMappingKey('p-max-a','4321'),keyB=creditCardMappingKey('p-max-b','4321');
 const merged=mergeCreditSyncResult(previous,{
   syncedAt:'2026-08-30T10:00:00.000Z',
   profiles:[{profileId:'p-max-a',provider:'max',label:'MAX א',defaultAccount:'עסקי',syncedAt:'2026-08-30T10:00:00.000Z',accounts:[normalizedAccount]}],
@@ -72,24 +78,28 @@ assert.equal(merged.syncedAt,'2026-08-30T10:00:00.000Z','shared credit sync time
 assert.equal(merged.errors.length,1);
 assert.equal(merged.mode,'manual','first/partial synchronization never switches calculations away from the manual source by itself');
 assert.equal(creditSyncHasData({creditSync:merged}),true);
+assert.equal(merged.cardMappings[keyA]?.included,true,'v1 discovered cards migrate as included so an upgrade never silently removes existing forecast amounts');
+assert.equal(merged.cardMappings[keyB]?.included,true);
 
 const allFailed=mergeCreditSyncResult(merged,{profiles:[],errors:[{profileId:'p-max-a',provider:'max',code:'CREDIT_TIMEOUT',message:'כשל'}]});
 assert.equal(allFailed.syncedAt,merged.syncedAt,'all-failed refresh preserves last successful sync timestamp');
 assert.equal(allFailed.profiles.length,2,'all-failed refresh preserves every last successful profile slice');
+const discoveredLater=mergeCreditSyncResult(merged,{syncedAt:'2026-08-30T11:00:00.000Z',profiles:[{profileId:'p-max-a',provider:'max',label:'MAX א',defaultAccount:'עסקי',accounts:[normalizedAccount,{accountNumber:'7777',txns:[{id:'new',processedDate:'2026-10-10T00:00:00.000Z',chargedAmount:-77,chargedCurrency:'ILS',description:'חדש'}]}]}],errors:[]});
+assert.equal(discoveredLater.cardMappings[creditCardMappingKey('p-max-a','7777')]?.included,false,'cards first discovered after v2 are opt-in and cannot silently enter Kupa totals');
 
-const keyA=creditCardMappingKey('p-max-a','4321'),keyB=creditCardMappingKey('p-max-b','4321');
 assert.notEqual(keyA,keyB,'same card suffix under two login identities has independent business/home mapping');
 const syncedState={
   credits:[{id:'manual-1',active:true,firstChargeDate:'2026-09-10',totalAmount:999,installments:1,card:'ידני',account:'עסקי',description:'ידני'}],
   creditSync:{...merged,mode:'synced',cardMappings:{
-    [keyA]:{account:'עסקי',cardName:'MAX עסקי'},
-    [keyB]:{account:'ביתי',cardName:'MAX ביתי'},
+    [keyA]:{included:true,account:'עסקי',cardName:'MAX עסקי'},
+    [keyB]:{included:true,account:'ביתי',cardName:'MAX ביתי'},
   }},
 };
 const rows=syncedInstallmentsData(syncedState);
 assert(rows.some(r=>r.profileId==='p-max-a'&&r.card==='MAX עסקי'&&r.account==='עסקי'&&r.amount===100),'issuer debit sign becomes a positive Kupa obligation using the issuer processed date');
 assert(rows.some(r=>r.profileId==='p-max-a'&&r.amount===-50),'issuer refund/credit becomes a negative Kupa obligation rather than being double-counted as spending');
 assert(rows.some(r=>r.profileId==='p-max-b'&&r.card==='MAX ביתי'&&r.account==='ביתי'),'same issuer/account suffix can be classified differently for another owner profile');
+assert.equal(creditSyncHasIncludedCards(syncedState),true,'synced cutover has at least one explicitly included card');
 assert.equal(allInstallmentsData(syncedState).some(r=>r.creditId==='manual-1'),false,'synced mode does not double-count preserved manual records');
 const manualState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(allInstallmentsData(manualState).some(r=>r.creditId==='manual-1'),true,'manual mode remains an immediate rollback path');
@@ -118,7 +128,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:11,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:12,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','refreshCreditSync','setCreditSyncMode','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){

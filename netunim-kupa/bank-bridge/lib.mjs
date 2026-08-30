@@ -347,6 +347,7 @@ export const CREDIT_PROVIDER_CONFIG={
   visaCal:{label:'כאל',credentialFields:['username','password']},
   max:{label:'MAX',credentialFields:['username','password']},
   isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']},
+  amex:{label:'American Express',credentialFields:['id','card6Digits','password']},
 };
 export const CREDIT_HISTORY_DAYS=120;
 export const CREDIT_FUTURE_MONTHS=12;
@@ -365,7 +366,7 @@ export function normalizeCreditProfileInput(value={},existing=null){
   const credentials={...(existing?.credentials||{})};
   for(const field of CREDIT_PROVIDER_CONFIG[provider].credentialFields){const incoming=String(value[field]??'');if(incoming)credentials[field]=incoming}
   for(const field of CREDIT_PROVIDER_CONFIG[provider].credentialFields){if(!String(credentials[field]||'').trim()){const e=new Error(`חסר שדה התחברות נדרש: ${field}`);e.code='MISSING_CREDIT_CREDENTIALS';throw e}}
-  if(provider==='isracard'){credentials.card6Digits=String(credentials.card6Digits||'').replace(/\D/g,'');if(credentials.card6Digits.length!==6){const e=new Error('בישראכרט יש להזין 6 ספרות אחרונות של הכרטיס');e.code='INVALID_CARD6';throw e}}
+  if(provider==='isracard'||provider==='amex'){credentials.id=String(credentials.id||'').replace(/\D/g,'');credentials.card6Digits=String(credentials.card6Digits||'').replace(/\D/g,'');if(credentials.card6Digits.length!==6){const e=new Error('בישראכרט/American Express יש להזין 6 ספרות אחרונות של הכרטיס');e.code='INVALID_CARD6';throw e}}
   return {profileId,provider,label,ownerLabel,defaultAccount,active:value.active===undefined?(existing?.active!==false):!!value.active,credentials};
 }
 export function normalizeCreditScrapeTransaction(tx={}){
@@ -376,7 +377,7 @@ export function normalizeCreditScrapeAccount(account={}){
   return {accountNumber:creditText(account.accountNumber||'',80),balance:creditNumber(account.balance),balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame:creditText(account.cardFrame||'',80),txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
 }
 export function creditScrapeFailure(result,profile){
-  const type=String(result?.errorType||'SCRAPE_FAILED').toUpperCase(),raw=creditText(result?.errorMessage||'',260),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100);
-  const messages={INVALID_PASSWORD:'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:'החברה החזירה מסך או תשובה שלא זוהו'};
+  const type=String(result?.errorType||'SCRAPE_FAILED').toUpperCase(),raw=creditText(result?.errorMessage||'',260),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
+  const messages={INVALID_PASSWORD:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:isIsracardGroup?'שירות הסיסמה הקבועה החזיר תשובה שלא זוהתה. מסך ה-SMS שנשאר פתוח בחלון אינו מדד להצלחת החיבור':'החברה החזירה מסך או תשובה שלא זוהו'};
   const e=new Error(`${label}: ${messages[type]||raw||'סנכרון האשראי נכשל'}`);e.code=`CREDIT_${type}`;return e;
 }
