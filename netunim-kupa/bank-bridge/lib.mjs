@@ -4,7 +4,7 @@ export const HAPOALIM_POST_LOGIN_TIMEOUT_MS=60*1000;
 export const HAPOALIM_NAVIGATION_STABLE_MS=1500;
 export const HAPOALIM_DATA_RETRY_LIMIT=3;
 export const HAPOALIM_TRANSACTION_LOOKBACK_DAYS=30;
-export const HAPOALIM_TRANSACTION_LIMIT=20;
+export const HAPOALIM_TRANSACTION_LIMIT=1000;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 
@@ -165,6 +165,7 @@ export function normalizeHapoalimTransaction(txn){
     description:compactText(txn?.activityDescription,180)||'תנועת בנק',
     memo:compactText(memo,260),
     status:Number(txn?.serialNumber)===0?'pending':'completed',
+    balanceAfter:txn?.currentBalance===null||txn?.currentBalance===undefined||txn?.currentBalance===''?null:(Number.isFinite(Number(txn.currentBalance))?Number(txn.currentBalance):null),
   };
 }
 

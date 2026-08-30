@@ -78,7 +78,7 @@ function bankBridgeDiagnosticsMarkup(s){
 function bankTransactionsMarkup(feed){
   const rows=feed?.transactions||[];
   const balance=Number(feed?.balance);
-  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}עד 20 תנועות מה־30 ימים האחרונים</small></div>${Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרה נוכחית</span><b>${money(balance)}</b></div>`:''}</div>`;
+  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${rows.length} תנועות · 30 הימים האחרונים</small></div>${Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרה נוכחית</span><b>${money(balance)}</b></div>`:''}</div>`;
   if(!feed)return `${caption}<div class="empty bank-feed-empty">לא בוצע עדיין סנכרון בנק שמכיל תנועות.</div>`;
   if(!rows.length)return `${caption}<div class="empty bank-feed-empty">לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
   const body=rows.map(row=>{
@@ -89,9 +89,10 @@ function bankTransactionsMarkup(feed){
       <td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}</td>
       <td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td>
       <td class="bank-transaction-money credit">${amount>0?money(amount):''}</td>
+      <td class="bank-transaction-money balance-after">${row.balanceAfter!==null&&row.balanceAfter!==undefined&&row.balanceAfter!==''&&Number.isFinite(Number(row.balanceAfter))?money(Number(row.balanceAfter)):'—'}</td>
     </tr>`;
   }).join('');
-  return `${caption}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th></tr></thead><tbody>${body}</tbody></table></div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
+  return `${caption}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th><th>יתרה לאחר תנועה</th></tr></thead><tbody>${body}</tbody></table></div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
 }
 
 function updateBridgePanel(){

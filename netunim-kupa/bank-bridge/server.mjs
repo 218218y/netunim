@@ -24,7 +24,7 @@ import {
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=7;
+const BRIDGE_VERSION=8;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -255,7 +255,7 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
       const xsrf=String(cookies.find(cookie=>cookie.name==='XSRF-TOKEN')?.value||'');
       const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};
       if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
-      return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=100&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
+      return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
     },{initialReady:balanceReady});
     transactions=normalizeRecentTransactions(txResult.data?.transactions,HAPOALIM_TRANSACTION_LIMIT);
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}

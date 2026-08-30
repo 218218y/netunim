@@ -66,17 +66,19 @@ assert.equal(navAttempts,3,'navigation retry preserves a strict attempt bound');
 assert.equal(navRecoveries,2,'navigation recovery callback runs only between transient attempts');
 await assert.rejects(()=>retryTransientNavigation(async()=>{throw new Error('bank rejected request')},{attempts:3}),/bank rejected request/,'non-navigation failures are never retried as if they were transient');
 assert.equal(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,30,'recent transaction fetch is intentionally bounded to thirty days');
-assert.equal(HAPOALIM_TRANSACTION_LIMIT,20,'bridge exposes at most twenty recent transactions');
-assert.equal(BANK_FEED_TRANSACTION_LIMIT,20,'shared Kupa bank feed uses the same twenty-row cap');
+assert.equal(HAPOALIM_TRANSACTION_LIMIT,1000,'bridge requests the full thirty-day window with a 1000-row bank page size');
+assert.equal(BANK_FEED_TRANSACTION_LIMIT,1000,'shared Kupa bank feed preserves the full thirty-day bank page instead of trimming it to twenty rows');
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 
-const rawInbound={referenceNumber:101,eventDate:'20260830',valueDate:'20260830',eventAmount:250,eventActivityTypeCode:1,activityDescription:'העברה נכנסת',serialNumber:9,beneficiaryDetailsData:{partyName:'לקוח'}};
-const rawOutbound={referenceNumber:102,eventDate:'20260829',valueDate:'20260829',eventAmount:80,eventActivityTypeCode:2,activityDescription:'הוראת קבע',serialNumber:0,beneficiaryDetailsData:{messageDetail:'בדיקה'}};
+const rawInbound={referenceNumber:101,eventDate:'20260830',valueDate:'20260830',eventAmount:250,eventActivityTypeCode:1,activityDescription:'העברה נכנסת',serialNumber:9,currentBalance:4321.5,beneficiaryDetailsData:{partyName:'לקוח'}};
+const rawOutbound={referenceNumber:102,eventDate:'20260829',valueDate:'20260829',eventAmount:80,eventActivityTypeCode:2,activityDescription:'הוראת קבע',serialNumber:0,currentBalance:4071.5,beneficiaryDetailsData:{messageDetail:'בדיקה'}};
 const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoalimTransaction(rawOutbound);
 assert.equal(inbound.amount,250,'incoming Hapoalim transaction is positive');
 assert.equal(outbound.amount,-80,'outgoing Hapoalim transaction is negative');
 assert.equal(outbound.status,'pending','serial number zero maps to pending like the pinned scraper');
 assert.match(inbound.memo,/לקוח/,'beneficiary details are normalized into a compact memo');
+assert.equal(inbound.balanceAfter,4321.5,'raw Hapoalim currentBalance is preserved as the authoritative balance after the transaction');
+assert.equal(normalizeHapoalimTransaction({...rawInbound,currentBalance:null}).balanceAfter,null,'missing bank row balance stays unknown instead of being coerced to zero');
 const repeated=normalizeRecentTransactions([rawOutbound,rawInbound,rawInbound],20);
 assert.equal(repeated.length,2,'duplicate recent bank transactions are removed deterministically');
 assert.equal(repeated[0].id,'101','recent transactions are sorted newest first');
@@ -86,7 +88,8 @@ const feed=normalizeBankFeed({
   transactions:[inbound,outbound],transactionWarning:'',
 });
 assert.equal(feed.balance,4321.5,'shared bank feed preserves the authoritative bank balance');
-assert.equal(feed.transactions.length,2,'shared bank feed carries recent transactions');
+assert.equal(feed.transactions.length,2,'shared bank feed carries the complete fetched rolling-window transaction set');
+assert.equal(feed.transactions[0].balanceAfter,4321.5,'shared bank feed preserves the bank-provided per-transaction balance');
 assert.equal(feed.accountNumber,'12-345-678901','shared bank feed carries the selected account identity');
 assert.equal(feed.syncedAt,'2026-08-30T06:15:00.000Z','shared bank feed carries the successful bank-sync timestamp');
 assert.equal(normalizeBankFeed({balance:4,syncedAt:'bad'}),null,'invalid feed timestamps are rejected instead of becoming shared success markers');

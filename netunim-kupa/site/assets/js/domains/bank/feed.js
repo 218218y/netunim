@@ -1,5 +1,5 @@
-export const BANK_FEED_VERSION=1;
-export const BANK_FEED_TRANSACTION_LIMIT=20;
+export const BANK_FEED_VERSION=2;
+export const BANK_FEED_TRANSACTION_LIMIT=1000;
 
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function cleanText(value,max=260){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
@@ -16,6 +16,7 @@ export function normalizeBankFeedTransaction(value){
     description:cleanText(row.description,180)||'תנועת בנק',
     memo:cleanText(row.memo,260),
     status:row.status==='pending'?'pending':'completed',
+    balanceAfter:row.balanceAfter===null||row.balanceAfter===undefined||row.balanceAfter===''?null:(Number.isFinite(Number(row.balanceAfter))?Number(row.balanceAfter):null),
   };
 }
 
