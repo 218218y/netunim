@@ -45,6 +45,7 @@ def main() -> int:
         "service_worker_contracts.py",
         "module_contracts.py",
         "calendar_contracts.py",
+        "bank_bridge_contracts.py",
         "runtime_smoke.py",
         "runtime_calendar.py",
         "runtime_events.py",

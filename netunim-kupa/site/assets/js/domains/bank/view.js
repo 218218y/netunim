@@ -1,42 +1,139 @@
-import {esc, uid} from '../../core/values.js';
-import {num, money, formatNullableMoney, wholeMoney} from '../../core/money.js';
-import {dateFmt, monthLabel, todayISO} from '../../core/dates.js';
+import {esc} from '../../core/values.js';
+import {num, money, formatNullableMoney} from '../../core/money.js';
+import {dateFmt, monthLabel} from '../../core/dates.js';
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsBankView({model, session, checksSession, bankAsOfDate, bankDerivedCheckDeposits, bankCurrentBalance, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, sharedChecksHaveLocalWork, saveState, syncSharedChecksFromCloud, sharedChecksObservedSequence, toast}){
+export function createDomainsBankView({model, bankAsOfDate, bankDerivedCheckDeposits, bankCurrentBalance, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, bankBridgeUiState, refreshBankBridgeStatus}){
+function bankSnapshotLabel(){
+  if(!model.state.bank?.updatedAt)return 'היתרה טרם הוזנה.';
+  const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
+  const account=model.state.bank.sourceAccount?` · חשבון ${model.state.bank.sourceAccount}`:'';
+  return `${source} · ${dateFmt(bankAsOfDate())} · ${new Date(model.state.bank.updatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
+}
+
+function bridgeStatusText(s){
+  if(s.busy)return s.message||'מתבצע עדכון מול Bank Bridge…';
+  if(!s.tokenConfigured)return 'החיבור המקומי עדיין לא הותאם למחשב זה.';
+  if(s.upgradeRequired)return s.message||'נדרש לשדרג את Bank Bridge במחשב זה.';
+  if(s.available===false)return s.lastError||'Bank Bridge המקומי אינו זמין.';
+  if(s.available===true&&s.configured)return `Bank Bridge מחובר${s.branchNumber&&s.accountNumber?` · סניף ${s.branchNumber} · חשבון ${s.accountNumber}`:s.accountNumber?` · חשבון ${s.accountNumber}`:''}`;
+  if(s.available===true)return 'Bank Bridge פעיל, אך עדיין לא נשמרו בו פרטי בנק הפועלים.';
+  return s.message||'בודק את החיבור המקומי…';
+}
+
+function syncTimeLabel(value){
+  if(!value)return 'טרם בוצע עדכון מוצלח מהבנק';
+  const d=new Date(value);if(!Number.isFinite(d.getTime()))return 'זמן עדכון לא זמין';
+  return `עודכן לאחרונה מהבנק: ${d.toLocaleDateString('he-IL')} · ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`;
+}
+
+function errorStageLabel(stage){
+  return ({browser:'פתיחת דפדפן',login:'התחברות',session:'הכנת שירותי הבנק',account:'בחירת חשבון',data:'קריאת נתוני החשבון',balance:'קריאת יתרה',transactions:'קריאת תנועות'}[stage]||'');
+}
+
+function bankAccountChoicesMarkup(accounts){
+  const rows=Array.isArray(accounts)?accounts:[];
+  if(!rows.length)return '';
+  return `<div class="bank-account-choices"><div class="bank-account-choices-title"><b>החשבונות הפעילים שהבנק החזיר</b><small>בחר את החשבון הרצוי. הבחירה נשמרת רק ב-Bridge המקומי.</small></div><div class="bank-account-choice-list">${rows.map(row=>{
+    const branch=String(row?.branchNumber||''),account=String(row?.accountNumber||''),bank=String(row?.bankNumber||'12');
+    if(!branch||!account)return '';
+    return `<button type="button" class="bank-account-choice" data-action="select-bank-bridge-account" data-click-arg0="${esc(branch)}" data-click-arg1="${esc(account)}"><span>סניף <b>${esc(branch)}</b></span><span>חשבון <b>${esc(account)}</b></span><small>מזהה API: ${esc(bank)}-${esc(branch)}-${esc(account)}</small></button>`;
+  }).join('')}</div></div>`;
+}
+
+function bankTransactionsMarkup(feed){
+  const rows=feed?.transactions||[];
+  if(!feed)return '<div class="empty bank-feed-empty">לא בוצע עדיין סנכרון בנק שמכיל תנועות.</div>';
+  if(!rows.length)return `<div class="empty bank-feed-empty">לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
+  return `<div class="bank-transactions-list">${rows.map(row=>{
+    const amount=Number(row.amount)||0,positive=amount>0,when=row.date||row.processedDate;
+    return `<article class="bank-transaction-row">
+      <div class="bank-transaction-main"><b>${esc(row.description||'תנועת בנק')}</b>${row.memo?`<small>${esc(row.memo)}</small>`:''}<span>${when?esc(new Date(when).toLocaleDateString('he-IL')):'ללא תאריך'}${row.status==='pending'?' · ממתינה':''}</span></div>
+      <div class="bank-transaction-amount ${positive?'positive':amount<0?'negative':''}">${positive?'+ ':''}${money(amount)}</div>
+    </article>`;
+  }).join('')}</div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
+}
+
+function updateBridgePanel(){
+  const s=bankBridgeUiState(),status=document.getElementById('bankBridgeStatus');
+  if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||s.lastError?'error':s.configured?'ok':''}`}
+  const refresh=document.querySelector('[data-action="refresh-bank-from-hapoalim"]');if(refresh)refresh.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
+  const auth=document.querySelector('[data-action="open-bank-auth"]');if(auth)auth.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
+  const remove=document.querySelector('[data-action="delete-bank-bridge-credentials"]');if(remove)remove.disabled=!!s.busy||!s.configured;
+  const save=document.querySelector('[data-action="configure-bank-bridge"]');if(save)save.disabled=!!s.busy;
+  const pair=document.querySelector('[data-action="save-bank-bridge-token"]');if(pair)pair.disabled=!!s.busy;
+}
+
 function renderBank(){
   const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth);
   const targetExpenseRows=cycle.targetExpenseRows.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const allRows=[...model.state.expenses].sort((a,b)=>(a.description||'').localeCompare(b.description||''));
-  const autoDeposits=bankDerivedCheckDeposits();
+  const autoDeposits=bankDerivedCheckDeposits(),bridgeUi=bankBridgeUiState(),feed=bridgeUi.feed;
   const staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses;
+  const lastSync=bridgeUi.sharedLastSyncAt;
+  const lastErrorStage=errorStageLabel(bridgeUi.lastErrorStage);
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
     <div class="bank-entry">
       <label>עובר ושב בבנק — יתרה מעודכנת</label>
-      <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש" value="${esc(bank===null?'':bank)}"><button class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
-      <small>${model.state.bank?.updatedAt?`צילום ידני אחרון: ${dateFmt(bankAsOfDate())} · ${new Date(model.state.bank.updatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'היתרה טרם הוזנה.'}${autoDeposits.length?` · נוספו מאז אוטומטית ${autoDeposits.length} הפקדות צקים (${money(autoDeposits.reduce((a,x)=>a+x.amount,0))})`:''}</small>
+      <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש" value="${esc(bank===null?'':bank)}"><button type="button" class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
+      <small>${esc(bankSnapshotLabel())}${autoDeposits.length?` · נוספו מאז אוטומטית ${autoDeposits.length} הפקדות צקים (${money(autoDeposits.reduce((a,x)=>a+x.amount,0))})`:''}</small>
     </div>
     <div class="bank-mini"><div class="bank-label">אשראי במחזור הקרוב</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${cycleLabel}`:'אין חיובי אשראי עתידיים'}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות למחזור הקרוב</div><div class="bank-value">${money(targetExpenseRows.reduce((a,x)=>a+num(x.amount),0))}</div><div class="muted">הוצאות של ${esc(cycleLabel)} בלבד</div></div>
     <div class="bank-mini ${esc(after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">צילום יתרה פחות חיובים שעברו מאז + מחזור האשראי הבא</div></div>
   </div>
-  ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>הצילום הידני של העו״ש ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לעדכן מדי פעם את היתרה לפי הבנק.</div>`:''}
+  <section class="section bank-sync-section">
+    <div class="section-head bank-sync-head"><div><h3>סנכרון בנק הפועלים</h3><div class="muted">ה-Bridge המקומי קורא קודם את היתרה של החשבון שנבחר ורק אחר כך תנועות אחרונות. פרטי ההתחברות נשארים מוצפנים במחשב.</div></div><div class="bank-sync-head-actions"><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן עכשיו'}</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>פתח אימות בבנק</button></div></div>
+    <div class="bank-sync-success ${lastSync?'ok':'idle'}"><span class="bank-sync-dot"></span><div><b>${lastSync?'עדכון הבנק האחרון הצליח':'אין עדיין עדכון בנק מוצלח'}</b><small>${esc(syncTimeLabel(lastSync))}${feed?.accountNumber?` · חשבון ${esc(feed.accountNumber)}`:''}</small></div></div>
+    <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
+    ${bridgeUi.lastError?`<div class="bank-sync-detail error"><b>העדכון האחרון נכשל${lastErrorStage?` בשלב: ${esc(lastErrorStage)}`:''}</b><span>${esc(bridgeUi.lastError)}</span>${bridgeUi.lastErrorCode||bridgeUi.lastErrorHttpStatus?`<small>${bridgeUi.lastErrorCode?`קוד: ${esc(bridgeUi.lastErrorCode)}`:''}${bridgeUi.lastErrorCode&&bridgeUi.lastErrorHttpStatus?' · ':''}${bridgeUi.lastErrorHttpStatus?`HTTP מהבנק: ${esc(bridgeUi.lastErrorHttpStatus)}`:''}</small>`:''}</div>`:''}
+    ${bankAccountChoicesMarkup(bridgeUi.availableAccounts)}
+    ${bridgeUi.lastWarning?`<div class="bank-sync-detail warn"><b>היתרה נשמרה, אך קיימת אזהרת תנועות</b><span>${esc(bridgeUi.lastWarning)}</span></div>`:''}
+    <div class="bank-connection-forms">
+      <form id="bankBridgePairForm" class="bank-sync-form bank-sync-pair-form" autocomplete="off">
+        <div class="bank-sync-form-title">חיבור הדפדפן ל-Bridge במחשב הזה</div>
+        <label><span>מפתח Bank Bridge</span><input id="bankBridgeTokenInput" name="bankBridgeToken" type="password" autocomplete="off" placeholder="הדבק את המפתח שהעתיקה ההתקנה"></label>
+        <button type="button" class="btn" data-action="save-bank-bridge-token" ${bridgeUi.busy?'disabled':''}>שמור מפתח למחשב זה</button>
+        <small>${bridgeUi.tokenConfigured?'מפתח מקומי כבר שמור בדפדפן הזה. אפשר להחליף אותו בהדבקת מפתח חדש.':'יש לבצע פעם אחת בכל מחשב/דפדפן.'}</small>
+      </form>
+      <form id="bankBridgeCredentialsForm" class="bank-sync-form bank-sync-credentials-form" autocomplete="off">
+        <div class="bank-sync-form-title">פרטי בנק הפועלים — נשמרים רק ב-Windows</div>
+        <div class="bank-sync-credential-grid">
+          <label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label>
+          <label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label>
+          <label><span>סניף</span><input id="bankBranchNumberInput" name="branchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.branchNumber||'')}"></label>
+          <label><span>מספר חשבון</span><input id="bankAccountNumberInput" name="accountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.accountNumber||'')}"></label>
+        </div>
+        <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים במחשב</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
+        <small>כאשר יש כמה חשבונות, יש להזין גם סניף וגם חשבון. Bank Bridge בונה מזהה מדויק בפורמט 12-סניף-חשבון ולא מנחש לפי סיומת.</small>
+      </form>
+    </div>
+    <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי פעם ב־24 שעות</span></label></div>
+    <div class="soft-note">„רענן עכשיו” מנסה סנכרון שקט. אם הפועלים דורש אימות נוסף לחץ „פתח אימות בבנק”. לאחר שהחשבון נפתח, ה-Bridge מחכה עד ששירותי הנתונים של הבנק באמת מוכנים ורק אז קורא את היתרה. התנועות הן שכבה נפרדת: כשל בהן אינו מבטל יתרה שכבר נקראה בהצלחה.</div>
+  </section>
+  <section class="section bank-transactions-section">
+    <div class="section-head bank-transactions-head"><div><h3>תנועות אחרונות מהבנק</h3><div class="muted">עד 20 תנועות מה־30 ימים האחרונים · הנתונים נשמרים יחד עם זמן הסנכרון האחרון כדי שיופיעו גם במחשב אחר.</div></div>${lastSync?`<span class="bank-transactions-updated">${esc(new Date(lastSync).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}))}</span>`:''}</div>
+    ${bankTransactionsMarkup(feed)}
+  </section>
+  ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
   <div class="grid two">
-    <section class="section"><div class="section-head"><div><h3>הוצאות מחזור ${esc(cycleLabel)}</h3></div><button class="btn primary" data-action="open-expense-modal">+ הוצאה חדשה</button></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>סכום</th><th>מועד</th><th>סוג</th><th>חוזרת</th><th></th></tr></thead><tbody>${targetExpenseRows.length?targetExpenseRows.map(r=>`<tr><td><b>${esc(r.description)}</b><div class="muted">${esc(r.account)}</div></td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.dueDate)}</td><td>${esc(r.type)}</td><td><span class="badge ${esc(r.recurring!==false?'green':'')}">${r.recurring!==false?'כל חודש':'חד־פעמית'}</span></td><td><button class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">אין הוצאות במחזור הזה.</div></td></tr>'}</tbody></table></div></section>
+    <section class="section"><div class="section-head"><div><h3>הוצאות מחזור ${esc(cycleLabel)}</h3></div><button type="button" class="btn primary" data-action="open-expense-modal">+ הוצאה חדשה</button></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>סכום</th><th>מועד</th><th>סוג</th><th>חוזרת</th><th></th></tr></thead><tbody>${targetExpenseRows.length?targetExpenseRows.map(r=>`<tr><td><b>${esc(r.description)}</b><div class="muted">${esc(r.account)}</div></td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.dueDate)}</td><td>${esc(r.type)}</td><td><span class="badge ${esc(r.recurring!==false?'green':'')}">${r.recurring!==false?'כל חודש':'חד־פעמית'}</span></td><td><button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">אין הוצאות במחזור הזה.</div></td></tr>'}</tbody></table></div></section>
     <section class="section"><div class="section-head"><div><h3>חיובי האשראי הקרובים</h3></div></div><div class="section-body"><div class="alert-list">${cycle.nextCreditRows.length?cycle.nextCreditRows.map(x=>`<div class="alert" style="--c:#638f87"><div><b>${esc(x.card)} — ${money(x.amount)}</b><small>${dateFmt(x.date)} · תשלום ${esc(x.part)}/${esc(x.totalParts)} · ${esc(x.description)||'עסקת אשראי'}</small></div></div>`).join(''):'<div class="empty">אין חיובי אשראי עתידיים.</div>'}</div></div></section>
   </div>
-  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>הגדרת הוצאות קבועות ונוספות</h3></div></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>חשבון</th><th>סכום</th><th>יום / תאריך בסיס</th><th>סוג</th><th>חוזרת</th><th>פעיל</th><th></th></tr></thead><tbody>${allRows.map(r=>`<tr><td><b>${esc(r.description)}</b></td><td>${esc(r.account)}</td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.date)}</td><td>${esc(r.type)}</td><td>${r.recurring!==false?'כן':'לא'}</td><td>${r.active?'כן':'לא'}</td><td><button class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join('')}</tbody></table></div></section>
+  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>הגדרת הוצאות קבועות ונוספות</h3></div></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>חשבון</th><th>סכום</th><th>יום / תאריך בסיס</th><th>סוג</th><th>חוזרת</th><th>פעיל</th><th></th></tr></thead><tbody>${allRows.map(r=>`<tr><td><b>${esc(r.description)}</b></td><td>${esc(r.account)}</td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.date)}</td><td>${esc(r.type)}</td><td>${r.recurring!==false?'כן':'לא'}</td><td>${r.active?'כן':'לא'}</td><td><button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join('')}</tbody></table></div></section>
   <div class="net-summary">
     <div class="net-mini"><span>עו״ש מעודכן</span><b>${formatNullableMoney(long.bank)}</b></div>
     <div class="net-mini"><span>כל האשראי שנותר</span><b>− ${money(long.credit)}</b></div>
     <div class="net-mini"><span>הוצאות חודש אחד</span><b>− ${money(long.expenses)}</b><small>${monthLabel(long.targetMonth)}</small></div>
     <div class="net-mini"><span>סה״כ קופה</span><b>+ ${money(long.kupa)}</b><small>מזומן + צקים שטרם הופקדו</small></div>
     <div class="net-total"><span>מאזן כולל נטו</span><b>${formatNullableMoney(long.net)}</b><small>עו״ש − כל האשראים העתידיים − חודש הוצאות + קופה</small></div>
-  </div>`}
+  </div>`;
+  updateBridgePanel();
+  for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm']){
+    document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
+  }
+  refreshBankBridgeStatus().then(updateBridgePanel).catch(()=>updateBridgePanel());
+}
 
-async function saveBankBalance(){const el=document.getElementById('bankBalanceInput');if(!el||el.value==='')return toast('יש להזין יתרת עו״ש');if(session.connectionMode==='supabase'){if(checksSession.sharedChecksBusy||sharedChecksHaveLocalWork())return toast('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש');const synced=await syncSharedChecksFromCloud({quiet:true,required:true});if(!synced||checksSession.sharedChecksBusy||sharedChecksHaveLocalWork())return toast('צילום היתרה נעצר: לא ניתן לאמת שהצקים מסונכרנים כרגע. נסה שוב לאחר שהענן מסונכרן.')}const observedSeq=sharedChecksObservedSequence();model.state.bank={...model.state.bank,currentBalance:wholeMoney(el.value),updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedSeq,adjustments:[]};saveState('יתרת העו״ש נשמרה כצילום מצב חדש')}
-
-
-return { renderBank, saveBankBalance };
+return {renderBank};
 }

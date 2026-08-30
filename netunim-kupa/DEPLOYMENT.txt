@@ -47,6 +47,18 @@ The individual deploy_site.bat files remain safe standalone entrypoints and stil
 themselves. The shared tools/deploy_site_core.bat is an internal deployment engine, not the manual entrypoint.
 No JavaScript build step or npm runtime dependencies are required.
 
+Bank Hapoalim Bridge (local only)
+--------------------------------
+netunim-kupa/bank-bridge is a Windows-local companion and MUST NOT be uploaded to Cloudflare Pages.
+The public site talks to it only through http://127.0.0.1:8765; Chrome can require Local Network Access permission.
+Each workstation that may refresh Hapoalim installs its own bridge. The installer stages and validates a new runtime first,
+then places it under %LOCALAPPDATA%\NetunimKupaBankBridge\app and installs an ASCII-only hidden Startup launcher.
+The launcher resolves %LOCALAPPDATA% at runtime, so it is independent of the extracted repository path and safe when the Windows user/path contains Hebrew or other non-ASCII characters.
+The bridge uses the workstation's installed Chrome/Edge with a dedicated local browser profile; Puppeteer's browser download is disabled.
+Hapoalim credentials remain outside the repository and are encrypted with Windows DPAPI CurrentUser on each workstation.
+The browser keeps only that workstation's random Bridge key and auto-refresh preference. Kupa/Supabase stores the resulting bank snapshot and shared successful bank-sync timestamp, never the Hapoalim password.
+Deploying Kupa does not require installing the bridge on the deployment machine.
+
 Cloud and security
 ------------------
 supabase/config.js exports frozen public configuration. Only a publishable key belongs there;

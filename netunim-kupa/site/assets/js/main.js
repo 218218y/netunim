@@ -31,6 +31,8 @@ import {createUiBulk} from './ui/bulk.js';
 import {createDomainsCreditView} from './domains/credit/view.js';
 import {createDomainsCashView} from './domains/cash/view.js';
 import {createDomainsBankView} from './domains/bank/view.js';
+import {createDomainsBankBridge} from './domains/bank/bridge.js';
+import {createDomainsBankController} from './domains/bank/controller.js';
 import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
@@ -375,6 +377,7 @@ const uiNavigation=createUiNavigation({
   renderCash:(...args)=>domainsCashView.renderCash(...args),
   renderBank:(...args)=>domainsBankView.renderBank(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
+  maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -424,21 +427,31 @@ const domainsCashView=createDomainsCashView({
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
 });
 
-const domainsBankView=createDomainsBankView({
+const domainsBankBridge=createDomainsBankBridge();
+
+const domainsBankController=createDomainsBankController({
   model,
   session,
   checksSession,
+  sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
+  saveState:(...args)=>storagePersistence.saveState(...args),
+  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
+  sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+  render:(...args)=>uiNavigation.render(...args),
+  bridge:domainsBankBridge,
+});
+
+const domainsBankView=createDomainsBankView({
+  model,
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
   bankDerivedCheckDeposits:(...args)=>domainsBankSelectors.bankDerivedCheckDeposits(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
   bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
-  sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-  sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
-  toast:(...args)=>uiStatus.toast(...args),
+  bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
+  refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
 });
 
 const uiSettings=createUiSettings({
@@ -617,7 +630,13 @@ const uiActions=createUiActions({
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderChecksSearch:(...args)=>domainsChecksView.renderChecksSearch(...args),
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
-  saveBankBalance:(...args)=>domainsBankView.saveBankBalance(...args),
+  saveBankBalance:(...args)=>domainsBankController.saveBankBalance(...args),
+  saveBankBridgeToken:(...args)=>domainsBankController.saveBankBridgeToken(...args),
+  configureBankBridge:(...args)=>domainsBankController.configureBankBridge(...args),
+  selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
+  refreshBankBalance:(...args)=>domainsBankController.refreshBankBalance(...args),
+  deleteBankBridgeCredentials:(...args)=>domainsBankController.deleteBankBridgeCredentials(...args),
+  setBankAutoRefresh:(...args)=>domainsBankController.setBankAutoRefresh(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   openCheckModal:(...args)=>domainsChecksEditor.openCheckModal(...args),
   markCheckSeriesManual:(...args)=>domainsChecksEditor.markCheckSeriesManual(...args),

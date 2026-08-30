@@ -2,6 +2,7 @@ import {clone} from '../core/values.js';
 import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {wholeMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
+import {normalizeBankFeed} from '../domains/bank/feed.js';
 import {assertPortablePayload} from './validation.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -17,6 +18,10 @@ function normalizeState(d){
   if(n.bank.currentBalance===''||n.bank.currentBalance===undefined)n.bank.currentBalance=null;
   if(n.bank.currentBalance!==null)n.bank.currentBalance=wholeMoney(n.bank.currentBalance);
   n.bank.updatedAt=n.bank.updatedAt||null;
+  n.bank.source=n.bank.source?String(n.bank.source):null;
+  n.bank.sourceAccount=n.bank.sourceAccount?String(n.bank.sourceAccount):null;
+  n.bank.feed=normalizeBankFeed(n.bank.feed);
+  n.bank.bankSyncAt=n.bank.feed?.syncedAt||n.bank.bankSyncAt||(n.bank.source==='hapoalim'?n.bank.updatedAt:null);
   n.bank.asOfDate=n.bank.asOfDate||(n.bank.updatedAt?String(n.bank.updatedAt).slice(0,10):null);
   n.bank.snapshotToken=n.bank.snapshotToken?String(n.bank.snapshotToken):null;
   {const seq=Number(n.bank.snapshotSeq);n.bank.snapshotSeq=Number.isSafeInteger(seq)&&seq>=0?seq:null}
