@@ -4,8 +4,9 @@ import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netun
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
-import {supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
+import {ALL_SUPPLIERS_ID, balanceRowsData, orderedSuppliersData, supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, supplierViewRowsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
+import {createDomainsSuppliersView} from '../netunim-orders/site/assets/js/domains/suppliers/view.js';
 import {inventoryStatsData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/model.js';
 import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
@@ -86,6 +87,22 @@ test('transaction financial summary can be derived from the exact displayed subs
  assert.deepEqual(transactionFinancialStatsData(rows),{debit:130,credit:40.75,net:-89.25,txCount:3});
  assert.deepEqual(transactionFinancialStatsData([rows[1]]),{debit:0,credit:35.5,net:35.5,txCount:1});
 });
+test('all-suppliers rows preserve requested supplier order and apply year and workflow filters per supplier',()=>{
+ const state={suppliers:[{id:'FIRST',name:'ראשון'},{id:'MIDDLE',name:'אמצעי'},{id:'LAST',name:'אחרון'}],transactions:[
+  {id:'F1',supplierId:'FIRST',sequence:1,debit:100,credit:0,yearEnd:2025,invoiceReceived:true,signed:true,supplied:true},
+  {id:'F2',supplierId:'FIRST',sequence:2,debit:0,credit:25,invoiceReceived:false,signed:false,supplied:false},
+  {id:'M1',supplierId:'MIDDLE',sequence:1,debit:40,credit:0,yearEnd:2024,invoiceReceived:false,signed:false,supplied:false},
+  {id:'M2',supplierId:'MIDDLE',sequence:2,debit:0,credit:10,invoiceReceived:true,signed:true,supplied:true},
+  {id:'L1',supplierId:'LAST',sequence:1,debit:30,credit:0,yearEnd:2025,invoiceReceived:true,signed:true,supplied:true},
+  {id:'L2',supplierId:'LAST',sequence:2,debit:0,credit:15,invoiceReceived:false,signed:true,supplied:false}
+ ]};
+ const reversed=['LAST','MIDDLE','FIRST'];
+ assert.deepEqual(supplierViewRowsData(state,reversed,'all','all').map(r=>r.supplier.id),['LAST','LAST','MIDDLE','MIDDLE','FIRST','FIRST']);
+ assert.deepEqual(supplierViewRowsData(state,reversed,'2025','all').map(r=>r.t.id),['L1','F1']);
+ assert.deepEqual(supplierViewRowsData(state,reversed,'current','all').map(r=>r.t.id),['L2','M1','M2','F2']);
+ assert.deepEqual(supplierViewRowsData(state,reversed,'current','pending').map(r=>r.t.id),['L2','M1','F2']);
+ assert.deepEqual(supplierViewRowsData(state,reversed,'all','invoice').map(r=>r.t.id),['L2','M1','F2']);
+});
 test('opening a supplier from another view re-renders through central navigation',()=>{
  const supplierUi={currentSupplierId:null,supplierMoveTargetId:'X',supplierBulkSelected:new Set(['A']),supplierYearView:'all',filterMode:'pending',searchText:'abc'};
  const ui={currentView:'summary'};let renderArgs=null,directSupplierRenders=0;
@@ -94,6 +111,37 @@ test('opening a supplier from another view re-renders through central navigation
  assert.equal(ui.currentView,'supplier');assert.equal(supplierUi.currentSupplierId,'S');assert.equal(supplierUi.supplierYearView,'current');
  assert.equal(supplierUi.filterMode,'all');assert.equal(supplierUi.searchText,'');assert.equal(supplierUi.supplierBulkSelected.size,0);
  assert.deepEqual(renderArgs,{supplierScrollMode:'end'});assert.equal(directSupplierRenders,0);
+});
+test('all-suppliers navigation accepts archive years without pretending they belong to one supplier',()=>{
+ const supplierUi={currentSupplierId:ALL_SUPPLIERS_ID,supplierMoveTargetId:'X',supplierBulkMode:true,supplierBulkSelected:new Set(['A']),supplierYearView:'current',filterMode:'pending',searchText:'abc'};
+ const ui={currentView:'supplier'};let renders=0;
+ const nav=createDomainsSuppliersNavigation({supplierUi,ui,supplierYearContext:()=>{throw new Error('single supplier context must not be requested in all-suppliers mode')},renderSupplier:()=>{renders++},render:()=>{}});
+ nav.setSupplierYearView('2025');assert.equal(supplierUi.supplierYearView,'2025');assert.equal(renders,1);
+ nav.switchSupplier('S');assert.equal(supplierUi.currentSupplierId,'S');
+ nav.switchSupplier(ALL_SUPPLIERS_ID);assert.equal(supplierUi.currentSupplierId,ALL_SUPPLIERS_ID);assert.equal(supplierUi.supplierBulkMode,false);
+});
+test('all-suppliers view renders supplier groups in reverse configured order and exposes shared year filters',()=>{
+ const state={suppliers:[{id:'FIRST',name:'ראשון',sortOrder:0},{id:'MIDDLE',name:'אמצעי',sortOrder:1},{id:'LAST',name:'אחרון',sortOrder:2}],transactions:[
+  {id:'F1',supplierId:'FIRST',sequence:1,debit:10,credit:0,yearEnd:2025,invoiceReceived:true,signed:true,supplied:true},
+  {id:'F2',supplierId:'FIRST',sequence:2,debit:0,credit:1,invoiceReceived:false,signed:false,supplied:false},
+  {id:'M1',supplierId:'MIDDLE',sequence:1,debit:20,credit:0,yearEnd:2024,invoiceReceived:true,signed:true,supplied:true},
+  {id:'M2',supplierId:'MIDDLE',sequence:2,debit:0,credit:2,invoiceReceived:true,signed:true,supplied:true},
+  {id:'L1',supplierId:'LAST',sequence:1,debit:30,credit:0,yearEnd:2025,invoiceReceived:true,signed:true,supplied:true},
+  {id:'L2',supplierId:'LAST',sequence:2,debit:0,credit:3,invoiceReceived:false,signed:true,supplied:false}
+ ]};
+ const supplierUi={currentSupplierId:ALL_SUPPLIERS_ID,filterMode:'all',searchText:'',supplierYearView:'all',supplierBulkMode:true,supplierBulkSelected:new Set(['F1']),supplierMoveTargetId:null};
+ const main={dataset:{},innerHTML:'',querySelector:()=>null};
+ const previousDocument=globalThis.document;
+ globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
+ try{
+  const view=createDomainsSuppliersView({model:{state},supplierUi,balanceRows:id=>balanceRowsData(state,id),supplierYearContext:id=>supplierYearContextData(state,id),supplierViewRows:(ids,year,filter)=>supplierViewRowsData(state,ids,year,filter),orderedSuppliers:()=>orderedSuppliersData(state),mountViewLayout:()=>{},captureSupplierViewport:()=>null,restoreSupplierViewport:()=>{},syncSupplierBulkUi:()=>{},supplierMoveTargetRow:()=>'',storeSupplierViewport:()=>{},scrollSupplierTransactionsEnd:()=>{},scheduleSave:()=>{}});
+  view.renderSupplier({scrollMode:'end'});
+ }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+ const tbody=main.innerHTML.match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1]||'';
+ assert.ok(tbody.indexOf('data-supplier-id="LAST"')<tbody.indexOf('data-supplier-id="MIDDLE"'));
+ assert.ok(tbody.indexOf('data-supplier-id="MIDDLE"')<tbody.indexOf('data-supplier-id="FIRST"'));
+ assert.match(main.innerHTML,/supplier-menu-all[^>]*active/);assert.match(main.innerHTML,/ארכיון 2025/);assert.match(main.innerHTML,/ארכיון 2024/);
+ assert.doesNotMatch(main.innerHTML,/toggle-supplier-bulk-mode/);assert.equal(supplierUi.supplierBulkMode,false);assert.equal(supplierUi.supplierBulkSelected.size,0);
 });
 test('pending freshness favors generation before timestamp',()=>{
  assert.ok(comparePendingFreshness({generation:4,savedAt:'2026-01-01'},{generation:3,savedAt:'2027-01-01'})>0);

@@ -1,5 +1,5 @@
 import {esc, uid} from '../../core/values.js';
-import {validSupplierYear, supplierSortValue} from './model.js';
+import {ALL_SUPPLIERS_ID, validSupplierYear, supplierSortValue} from './model.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -16,6 +16,7 @@ function openTransactionModal(id=null,supplierId=null,insertAfterId=null){
 
 async function saveTransaction(id,insertAfterId=''){
   const existing=id?model.state.transactions.find(x=>x.id===id):null;
+  const keepAllSuppliers=supplierUi.currentSupplierId===ALL_SUPPLIERS_ID&&!!(existing||insertAfterId);
   const oldSupplierId=existing?.supplierId||null;
   const supplierId=$('#fSupplier').value,action=$('#fAction').value.trim(),debit=Math.max(0,Number($('#fDebit').value||0)),credit=Math.max(0,Number($('#fCredit').value||0));
   if(!supplierId)return toast('יש לבחור ספק');
@@ -29,7 +30,7 @@ async function saveTransaction(id,insertAfterId=''){
     model.state.transactions.push(row);
     insertTransactionAfter(row,supplierId,insertAfterId||null)
   }
-  supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה');if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
+  if(!keepAllSuppliers)supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה');if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
 }
 
 async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה');if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}

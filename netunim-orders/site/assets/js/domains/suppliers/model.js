@@ -1,3 +1,5 @@
+export const ALL_SUPPLIERS_ID='__all_suppliers__';
+
 export function supplierTxData(state,id){return state.transactions.filter(t=>t.supplierId===id).sort((a,b)=>Number(a.sequence||0)-Number(b.sequence||0))}
 
 export function balanceRowsData(state,id){let bal=0;return supplierTxData(state,id).map(t=>{bal+=Number(t.credit||0)-Number(t.debit||0);return {t,balance:Math.round((bal+Number.EPSILON)*100)/100}})}
@@ -30,6 +32,24 @@ export function transactionFinancialStatsData(transactions=[]){
 
 export function supplierFinancialStatsData(state,id,yearView='current'){
   return transactionFinancialStatsData(supplierPeriodTxData(state,id,yearView));
+}
+
+export function supplierViewRowsData(state,supplierIds=[],yearView='current',filterMode='all'){
+  const rows=[];
+  for(const supplierId of supplierIds){
+    const supplier=state.suppliers.find(s=>s.id===supplierId);if(!supplier)continue;
+    const ctx=supplierYearContextData(state,supplierId);
+    for(const {t,balance} of balanceRowsData(state,supplierId)){
+      const assignedYear=ctx.yearById.get(t.id)??null;
+      if(yearView==='current'){if(assignedYear!==null&&transactionWorkflowComplete(t))continue}
+      else if(yearView!=='all'&&assignedYear!==validSupplierYear(yearView))continue;
+      if(filterMode==='pending'&&t.supplied!==false)continue;
+      if(filterMode==='invoice'&&t.invoiceReceived!==false)continue;
+      if(filterMode==='hm'&&!t.hmIssued)continue;
+      rows.push({supplier,t,balance,assignedYear});
+    }
+  }
+  return rows;
 }
 
 export function totalStatsData(state){let debt=0,credit=0,pending=0,missing=0,hm=0;for(const s of state.suppliers){const b=supplierBalanceData(state,s.id);if(b<0)debt+=-b;else credit+=b}for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++;if(t.hmIssued)hm++}return{debt,credit,pending,missing,hm,net:credit-debt}}

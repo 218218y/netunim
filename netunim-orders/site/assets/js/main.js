@@ -311,6 +311,7 @@ const domainsSuppliersView=createDomainsSuppliersView({
   supplierUi,
   balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
+  supplierViewRows:(...args)=>domainsSuppliersSelectors.supplierViewRows(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   captureSupplierViewport:(...args)=>uiLayout.captureSupplierViewport(...args),
