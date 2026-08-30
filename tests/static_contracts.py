@@ -202,6 +202,9 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, sett
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
+ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css
+   and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
+   "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
 
 # 4. SQL and migration contracts.
 sqls = {

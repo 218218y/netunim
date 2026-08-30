@@ -1,4 +1,5 @@
 @echo off
+setlocal
 title orders - Debug Mode
 echo ==========================================
 echo           DIAGNOSTIC START
@@ -20,6 +21,11 @@ echo Node.js is found.
 echo.
 
 echo [STEP 4] Starting the server...
+
+REM serve performs a network update check on every launch unless disabled.
+REM Keep local startup deterministic; this variable exists only inside this launcher.
+set "NO_UPDATE_CHECK=1"
+set "npm_config_update_notifier=false"
 
 cd netunim-orders\site
 npx serve .

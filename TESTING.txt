@@ -15,6 +15,12 @@ Normal local setup:
   python -m pip install -r tests/requirements.txt
   npm ci
 
+The ChatGPT offline installer is isolated under `.offline/`; it never uses or replaces the normal root `node_modules`.
+The Windows launchers also suppress `serve`'s nonessential network update notification so a registry/network problem
+does not delay local startup. For the equivalent manual PowerShell debug launch use:
+  $env:NO_UPDATE_CHECK='1'; npx serve . --debug
+This setting is process-local; the launchers use `setlocal` and do not change the user's global Windows/npm settings.
+
 ChatGPT/Linux offline setup (preferred for repair sessions):
   npm run offline:download
 

@@ -88,7 +88,7 @@ for label, site in apps:
                       currentView='customers';customerTab='debts';customerFilter='all';customerSearch='';renderCustomers();await frame();
                       const customerVisibleTotal=()=>document.querySelector('[data-customer-visible-total]')?.textContent||'';
                       const debtTotal=rows=>money(rows.reduce((sum,d)=>sum+Number(d.amount||0),0));
-                      const customerAllRows=state.customerDebts.filter(d=>!(d.paid&&d.invoiceIssued)),customerAllExpected=debtTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
+                      const customerAllRows=state.customerDebts.filter(d=>!d.paid),customerAllExpected=debtTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
                       customerFilter='open';renderCustomers();await frame();const customerOpenExpected=debtTotal(state.customerDebts.filter(d=>!d.paid)),customerOpenTotal=customerVisibleTotal();
                       customerFilter='invoice';renderCustomers();await frame();const customerInvoiceExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&!d.invoiceIssued)),customerInvoiceTotal=customerVisibleTotal();
                       customerFilter='closed';renderCustomers();await frame();const customerClosedExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&d.invoiceIssued)),customerClosedTotal=customerVisibleTotal();

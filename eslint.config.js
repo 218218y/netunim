@@ -1,7 +1,19 @@
-import globals from 'globals';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+async function loadGlobals() {
+  const offlineNodeModules = process.env.NETUNIM_OFFLINE_NODE_MODULES;
+  if (offlineNodeModules) {
+    const offlineGlobals = pathToFileURL(path.resolve(offlineNodeModules, 'globals', 'index.js')).href;
+    return (await import(offlineGlobals)).default;
+  }
+  return (await import('globals')).default;
+}
+
+const globals = await loadGlobals();
 
 export default [
-  {ignores:['.work/**','node_modules/**','**/data/**','**/backups/**']},
+  {ignores:['.work/**','.offline/**','node_modules/**','**/data/**','**/backups/**']},
   {
     files:['netunim-*/site/**/*.js','shared/**/*.js'],
     languageOptions:{ecmaVersion:'latest',sourceType:'module',globals:{...globals.browser,...globals.serviceworker}},

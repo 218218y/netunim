@@ -36,8 +36,9 @@ only the deterministic non-browser suites and prints that the runtime suites wer
 `offline:download` and `offline:update` may be executed on Windows before uploading the repository to ChatGPT.
 `offline:install`, `offline:doctor`, `test:offline`, `test:chat` and `lint:offline` intentionally target Linux
 x86_64/glibc, because the vendor is a repair-environment artifact rather than a production/runtime dependency set.
-The installer never overwrites an ordinary npm-created `node_modules`; it only replaces/removes a `node_modules`
-tree carrying its own offline-management marker.
+Generated npm packages are installed only into `.offline/node_modules`. The offline tool never creates, replaces,
+reads as its package store, or removes the repository root `node_modules`, so the normal Windows/npm workflow is
+fully independent from ChatGPT repair state.
 
 The refresh process stages the entire next vendor first. Existing verified files are reused, missing/changed files
 are downloaded, every npm archive is checked against `package-lock.json`, Node/Python archives are hash-checked,

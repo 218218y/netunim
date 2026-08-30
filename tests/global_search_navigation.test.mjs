@@ -35,17 +35,19 @@ test('global result navigation reveals historical supplier transactions across y
   }finally{h.restore()}
 });
 
-test('global result navigation selects filters that keep closed customer and service records visible',()=>{
-  const h=harness({customerDebts:[{id:'debt-1',paid:true,invoiceIssued:true}],serviceCalls:[{id:'service-1',closed:true}]});
+test('global result navigation selects filters that keep paid and closed customer records visible',()=>{
+  const h=harness({customerDebts:[{id:'debt-paid',paid:true,invoiceIssued:false},{id:'debt-closed',paid:true,invoiceIssued:true}],serviceCalls:[{id:'service-1',closed:true}]});
   try{
-    h.search.navigateItem({group:'customers',kind:'customer-debt',id:'debt-1'});
+    h.search.navigateItem({group:'customers',kind:'customer-debt',id:'debt-paid'});
     assert.equal(h.customerUi.customerTab,'debts');
-    assert.equal(h.customerUi.customerFilter,'closed');
+    assert.equal(h.customerUi.customerFilter,'invoice');
     assert.equal(h.customerUi.customerSearch,'');
+    h.search.navigateItem({group:'customers',kind:'customer-debt',id:'debt-closed'});
+    assert.equal(h.customerUi.customerFilter,'closed');
     h.search.navigateItem({group:'service',kind:'service-call',id:'service-1'});
     assert.equal(h.serviceUi.serviceFilter,'closed');
     assert.equal(h.serviceUi.serviceSearch,'');
-    assert.deepEqual(h.calls.views,['customers','service']);
+    assert.deepEqual(h.calls.views,['customers','customers','service']);
   }finally{h.restore()}
 });
 

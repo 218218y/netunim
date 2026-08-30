@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = Path(__file__).resolve().parent
+DEV_NODE_MODULES = Path(os.environ.get("NETUNIM_OFFLINE_NODE_MODULES", ROOT / "node_modules"))
 
 CORE_SUITES = [
     "static_contracts.py",
@@ -46,7 +48,7 @@ def preflight(*, require_browser: bool) -> int:
         return fail(f"Python 3.10+ is required; found {sys.version.split()[0]}")
     if not shutil.which("node"):
         return fail("Node.js was not found in PATH (required for JavaScript syntax checks)")
-    if not (ROOT / "node_modules/eslint/bin/eslint.js").is_file():
+    if not (DEV_NODE_MODULES / "eslint/bin/eslint.js").is_file():
         return fail("Development tools are missing. Run npm ci in the repository root.")
     if not require_browser:
         return 0

@@ -9,7 +9,7 @@ function filteredCustomerDebtRows(){
   const q=(customerUi.customerSearch||'').trim();
   return (model.state.customerDebts||[]).filter(d=>{
     const ds=customerDebtStatus(d);
-    if(customerUi.customerFilter==='all'&&ds.key==='closed')return false;
+    if(customerUi.customerFilter==='all'&&d.paid)return false;
     if(customerUi.customerFilter==='open'&&d.paid)return false;
     if(customerUi.customerFilter==='invoice'&&!(d.paid&&!d.invoiceIssued))return false;
     if(customerUi.customerFilter==='closed'&&ds.key!=='closed')return false;

@@ -205,8 +205,9 @@ test('customer header total uses the exact debt rows shown by filters and partia
  try{
   const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
   const renderedTotal=()=>main.innerHTML.match(/data-customer-visible-total[^>]*>([^<]*)<\/b>/)?.[1]||'';
-  const expected={all:140,open:90,invoice:50,closed:25};
+  const expected={all:90,open:90,invoice:50,closed:25};
   for(const mode of Object.keys(expected)){customerUi.customerFilter=mode;customerUi.customerSearch='';view.renderCustomers();assert.equal(renderedTotal(),money(expected[mode]),mode)}
+  customerUi.customerFilter='all';customerUi.customerSearch='';view.renderCustomers();assert.match(main.innerHTML,/>Open</);assert.match(main.innerHTML,/>Reverse</);assert.doesNotMatch(main.innerHTML,/>Invoice</);assert.doesNotMatch(main.innerHTML,/>Closed</);assert.match(main.innerHTML,/customer-add-btn[\s\S]*customer-visible-total/);
   customerUi.customerFilter='all';customerUi.customerSearch='Reverse';view.renderCustomers({resultsOnly:true});
   assert.equal(headerNode.textContent,money(-10));assert.match(results.innerHTML,/Reverse/);assert.doesNotMatch(results.innerHTML,/>Open</);
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}

@@ -29,8 +29,7 @@ LOCK_PATH = ROOT / "package-lock.json"
 VENDOR = ROOT / "vendor" / "offline"
 MANIFEST_PATH = VENDOR / "manifest.json"
 INSTALL_ROOT = ROOT / ".offline"
-NODE_MODULES = ROOT / "node_modules"
-NODE_MODULES_MARKER = NODE_MODULES / ".netunim-offline-managed.json"
+OFFLINE_NODE_MODULES = INSTALL_ROOT / "node_modules"
 USER_AGENT = "netunim-offline-deps/1"
 
 
@@ -328,14 +327,10 @@ def extract_wheel(archive: Path, destination: Path) -> None:
                     shutil.copyfileobj(src, out)
 
 
-def offline_managed_node_modules() -> bool:
-    return NODE_MODULES_MARKER.is_file()
-
-
 def remove_generated_install() -> None:
+    # ChatGPT/Linux generated state is fully isolated under .offline.
+    # Never inspect, replace or remove the repository's normal node_modules.
     shutil.rmtree(INSTALL_ROOT, ignore_errors=True)
-    if offline_managed_node_modules():
-        shutil.rmtree(NODE_MODULES, ignore_errors=True)
 
 
 def install() -> dict:
@@ -343,21 +338,15 @@ def install() -> dict:
     manifest = check_vendor(quiet=True)
     stamp_value = hashlib.sha256(MANIFEST_PATH.read_bytes()).hexdigest()
     stamp_path = INSTALL_ROOT / "stamp.json"
-    if stamp_path.is_file() and NODE_MODULES_MARKER.is_file():
+    if stamp_path.is_file():
         try:
             stamp = read_json(stamp_path)
-            marker = read_json(NODE_MODULES_MARKER)
-            if (stamp.get("manifestSha256") == stamp_value and marker.get("manifestSha256") == stamp_value
+            if (stamp.get("manifestSha256") == stamp_value
                     and (INSTALL_ROOT / "node" / "bin" / "node").is_file()
-                    and (NODE_MODULES / "eslint" / "bin" / "eslint.js").is_file()):
+                    and (OFFLINE_NODE_MODULES / "eslint" / "bin" / "eslint.js").is_file()):
                 return manifest
         except Exception:
             pass
-    if NODE_MODULES.exists() and not offline_managed_node_modules():
-        raise OfflineDepsError(
-            "node_modules exists and is not managed by the offline toolchain; remove/rename it first, "
-            "or keep using the normal npm workflow"
-        )
 
     shutil.rmtree(INSTALL_ROOT, ignore_errors=True)
     INSTALL_ROOT.mkdir(parents=True, exist_ok=True)
@@ -379,21 +368,19 @@ def install() -> dict:
         target = node_stage.joinpath(*lock_path.parts[1:])
         target.mkdir(parents=True, exist_ok=True)
         extract_tar(VENDOR / item["file"], target, strip_first=True)
-    write_json(node_stage / ".netunim-offline-managed.json", {"manifestSha256": stamp_value})
-
     python_site = INSTALL_ROOT / "python"
     python_site.mkdir(parents=True, exist_ok=True)
     for item in manifest["python"]:
         extract_wheel(VENDOR / item["file"], python_site)
 
     old_modules = INSTALL_ROOT / "node_modules-old"
-    if NODE_MODULES.exists():
-        os.replace(NODE_MODULES, old_modules)
+    if OFFLINE_NODE_MODULES.exists():
+        os.replace(OFFLINE_NODE_MODULES, old_modules)
     try:
-        os.replace(node_stage, NODE_MODULES)
+        os.replace(node_stage, OFFLINE_NODE_MODULES)
     except BaseException:
-        if old_modules.exists() and not NODE_MODULES.exists():
-            os.replace(old_modules, NODE_MODULES)
+        if old_modules.exists() and not OFFLINE_NODE_MODULES.exists():
+            os.replace(old_modules, OFFLINE_NODE_MODULES)
         raise
     shutil.rmtree(old_modules, ignore_errors=True)
     write_json(stamp_path, {"manifestSha256": stamp_value})
@@ -407,6 +394,9 @@ def offline_env() -> dict[str, str]:
     env["PATH"] = node_bin + os.pathsep + env.get("PATH", "")
     python_site = str(INSTALL_ROOT / "python")
     env["PYTHONPATH"] = python_site + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    offline_modules = str(OFFLINE_NODE_MODULES)
+    env["NODE_PATH"] = offline_modules + (os.pathsep + env["NODE_PATH"] if env.get("NODE_PATH") else "")
+    env["NETUNIM_OFFLINE_NODE_MODULES"] = offline_modules
     env["NETUNIM_OFFLINE"] = "1"
     return env
 
@@ -498,7 +488,7 @@ def update() -> None:
 
 def clean() -> None:
     remove_generated_install()
-    print("OK: generated offline installations removed; regular npm node_modules (if any) was left untouched")
+    print("OK: generated .offline installation removed; normal npm node_modules was never touched")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -531,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "lint":
             node = INSTALL_ROOT / "node" / "bin" / "node"
             install()
-            return subprocess.run([str(node), str(NODE_MODULES / "eslint" / "bin" / "eslint.js"), "."], cwd=ROOT, env=offline_env()).returncode
+            return subprocess.run([str(node), str(OFFLINE_NODE_MODULES / "eslint" / "bin" / "eslint.js"), "."], cwd=ROOT, env=offline_env()).returncode
         elif args.command == "update":
             update()
         elif args.command == "clean":
