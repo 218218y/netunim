@@ -9,7 +9,14 @@
     "deps:update": "npm update",
     "wrangler:check": "node tools/wrangler-version.mjs --check",
     "wrangler:update": "node tools/wrangler-version.mjs --update",
-    "wrangler:update-major": "node tools/wrangler-version.mjs --update --allow-major"
+    "wrangler:update-major": "node tools/wrangler-version.mjs --update --allow-major",
+    "offline:download": "python tools/offline_deps.py download",
+    "offline:check": "python tools/offline_deps.py check",
+    "offline:install": "python tools/offline_deps.py install",
+    "offline:update": "python tools/offline_deps.py update",
+    "offline:clean": "python tools/offline_deps.py clean",
+    "test:offline": "python tools/offline_deps.py test",
+    "lint:offline": "python tools/offline_deps.py lint"
   },
   "devDependencies": {
     "acorn": "^8.18.0",

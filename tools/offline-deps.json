@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "profile": "chat-linux-x64-glibc",
+  "platform": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "libc": "glibc"
+  },
+  "node": {
+    "version": "24.18.0",
+    "file": "node-v24.18.0-linux-x64.tar.xz",
+    "url": "https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz",
+    "sha256": "55aa7153f9d88f28d765fcdad5ae6945b5c0f98a36881703817e4c450fa76742"
+  },
+  "python": [
+    {
+      "project": "websocket-client",
+      "import": "websocket",
+      "specifier": ">=1.8,<2",
+      "version": "1.9.1",
+      "wheel": "websocket_client-1.9.1-py3-none-any.whl"
+    }
+  ]
+}

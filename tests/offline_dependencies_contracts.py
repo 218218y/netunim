@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+errors: list[str] = []
+
+
+def ok(condition, message: str):
+    if condition:
+        print('PASS', message)
+    else:
+        print('FAIL', message)
+        errors.append(message)
+
+
+package = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))
+config = json.loads((ROOT / 'tools/offline-deps.json').read_text(encoding='utf-8'))
+lock = json.loads((ROOT / 'package-lock.json').read_text(encoding='utf-8'))
+source = (ROOT / 'tools/offline_deps.py').read_text(encoding='utf-8')
+readme = (ROOT / 'vendor/offline/README.md').read_text(encoding='utf-8')
+requirements = (ROOT / 'tests/requirements.txt').read_text(encoding='utf-8')
+
+scripts = package.get('scripts', {})
+expected_scripts = {
+    'offline:download': 'python tools/offline_deps.py download',
+    'offline:check': 'python tools/offline_deps.py check',
+    'offline:install': 'python tools/offline_deps.py install',
+    'offline:update': 'python tools/offline_deps.py update',
+    'offline:clean': 'python tools/offline_deps.py clean',
+    'test:offline': 'python tools/offline_deps.py test',
+    'lint:offline': 'python tools/offline_deps.py lint',
+}
+for name, command in expected_scripts.items():
+    ok(scripts.get(name) == command, f'offline deps: package script {name} is stable and discoverable')
+
+ok(config.get('profile') == 'chat-linux-x64-glibc', 'offline deps: profile is explicitly scoped to the ChatGPT Linux environment')
+ok(config.get('platform') == {'system': 'Linux', 'machine': 'x86_64', 'libc': 'glibc'}, 'offline deps: native platform fails closed instead of pretending to be cross-platform')
+node = config.get('node', {})
+ok(node.get('version') == '24.18.0' and node.get('file') == 'node-v24.18.0-linux-x64.tar.xz', 'offline deps: repository-pinned Linux Node runtime is explicit')
+ok(len(node.get('sha256', '')) == 64 and node.get('url', '').startswith('https://nodejs.org/dist/'), 'offline deps: Node archive has an HTTPS source and pinned SHA256')
+
+py = config.get('python', [])
+ok(len(py) == 1 and py[0].get('project') == 'websocket-client', 'offline deps: only the browser harness Python dependency is vendored')
+ok(py and py[0].get('specifier') == '>=1.8,<2' and 'websocket-client>=1.8,<2' in requirements.replace(' ', ''), 'offline deps: Python offline policy matches tests/requirements.txt')
+
+spec = importlib.util.spec_from_file_location('netunim_offline_deps', ROOT / 'tools/offline_deps.py')
+module = importlib.util.module_from_spec(spec)
+assert spec and spec.loader
+spec.loader.exec_module(module)
+targets = module.npm_targets(lock)
+lock_paths = {item['lockPath'] for item in targets}
+expected_roots = {f'node_modules/{name}' for name in package.get('devDependencies', {})}
+ok(expected_roots <= lock_paths, 'offline deps: every declared npm development dependency is in the lock-derived offline closure')
+ok(all(item['url'].startswith('https://registry.npmjs.org/') and item['integrity'].startswith('sha') for item in targets), 'offline deps: npm archives are sourced from lockfile URLs with integrity metadata')
+ok(len(targets) < 100, f'offline deps: focused npm closure stays small ({len(targets)} archives; no Vite/React/TypeScript toolchain copied)')
+
+ok('tempfile.mkdtemp(prefix=".offline-stage-"' in source and 'os.replace(stage, VENDOR)' in source, 'offline deps: vendor refresh is staged before atomic replacement')
+ok('shutil.rmtree(backup, ignore_errors=True)' in source and 'refresh_vendor()' in source, 'offline deps: superseded archives are removed only after a complete refresh')
+ok('original_lock = LOCK_PATH.read_bytes()' in source and 'LOCK_PATH.write_bytes(original_lock)' in source, 'offline deps: failed online update rolls back dependency metadata')
+ok('npm", "update", "--package-lock-only"' in source or '"update", "--package-lock-only"' in source, 'offline deps: update refreshes the lockfile without lifecycle-script installation')
+ok('Chrome/Chromium itself is **not** vendored' in readme, 'offline deps: system browser boundary is documented explicitly')
+ok('Wrangler is also excluded' in readme, 'offline deps: deployment-only Wrangler is excluded from the verification vendor')
+ok('NODE_MODULES_MARKER' in source and 'not offline_managed_node_modules()' in source, 'offline deps: installer cannot silently overwrite a normal npm node_modules tree')
+ok('remove_generated_install()' in source and 'offline_managed_node_modules()' in source, 'offline deps: update/clean remove only toolchain-owned installed dependencies')
+ok('npm install' not in source and 'npm ci' not in source, 'offline deps: offline installer never resolves packages from npm')
+
+help_result = subprocess.run([sys.executable, str(ROOT / 'tools/offline_deps.py'), '--help'], cwd=ROOT, capture_output=True, text=True)
+ok(help_result.returncode == 0 and all(word in help_result.stdout for word in ('download', 'install', 'test', 'update')), 'offline deps: maintenance CLI is runnable with the system Python only')
+
+if errors:
+    print(f'\n{len(errors)} offline dependency contract(s) failed')
+    raise SystemExit(1)
+print('\nALL OFFLINE DEPENDENCY CONTRACTS PASSED')

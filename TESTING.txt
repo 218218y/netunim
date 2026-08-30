@@ -1,18 +1,33 @@
-﻿python tools/sync-assets.py
+﻿npm run offline:download
+npm run offline:update
+
+python tools/sync-assets.py
 
 NETUNIM TESTING
 ===============
 
 One-time setup (repository root)
 -------------------------------
-Python 3.10+, Node 22.13+/24+, and Chrome, Edge or Chromium are required.
+Python 3.10+, Node 22.13+/24+, and Chrome, Edge or Chromium are required for the normal local workflow.
 This refactor was checked with Node 24 and Python 3.14 on Windows.
 
+Normal local setup:
   python -m pip install -r tests/requirements.txt
   npm ci
 
+ChatGPT/Linux offline setup (preferred for repair sessions):
+  npm run offline:download
+
+Run `offline:download` once on an internet-connected machine before uploading the repository. It stores only
+the Linux x86_64/glibc Node runtime, the exact npm verification closure from package-lock.json, and the
+websocket-client wheel required by the browser harness. Chromium is supplied by the ChatGPT host and is not
+copied into the repository. After that, installation and tests require no package-network access:
+  npm run offline:check
+  npm run test:offline
+
 npm development tools use semver ranges in package.json and exact resolved versions in package-lock.json;
-none are deployed or imported at runtime. Use npm ci for reproducible setup. No bundler is required. Native ESM requires localhost/HTTPS; file:// and isolated-document fallbacks are unsupported.
+none are deployed or imported at runtime. No bundler is required. Native ESM requires localhost/HTTPS; file://
+and isolated-document fallbacks are unsupported.
 
 Commands
 --------
@@ -22,6 +37,13 @@ Commands
   npm run lint
   npm run updates:check
   npm run deps:update
+  npm run offline:download
+  npm run offline:check
+  npm run offline:install
+  npm run test:offline
+  npm run lint:offline
+  npm run offline:update
+  npm run offline:clean
   npm run wrangler:check
   npm run wrangler:update
   node --test tests/business_models.test.mjs tests/shared_contracts.test.mjs tests/sync_models.test.mjs tests/storage_models.test.mjs
@@ -46,9 +68,15 @@ runs the repository verifier for itself.
 Dependency updates
 ------------------
 Run npm run updates:check to check both package.json development dependencies and Wrangler.
-For normal npm minor/patch updates within the declared major ranges, run npm run deps:update, then
-verify.bat --no-pause. Major npm upgrades remain deliberate: install the reviewed @latest version explicitly,
-then run the full verifier before keeping the lockfile change.
+For the ChatGPT offline bundle, `npm run offline:update` is the canonical maintenance command: it updates the npm
+lockfile within the reviewed package.json ranges, advances the pinned websocket-client release within >=1.8,<2,
+stages and verifies the complete replacement bundle, atomically swaps it into vendor/offline, and only then deletes
+superseded offline archives. If metadata/download fails, package-lock.json and tools/offline-deps.json are restored.
+The Node 24 archive remains an explicit reviewed pin rather than silently following a new runtime release.
+
+For a normal non-offline npm workspace you may still run npm run deps:update, then verify.bat --no-pause. Major npm
+upgrades remain deliberate: install the reviewed @latest version explicitly, then run the full verifier before
+keeping the lockfile change.
 
 Wrangler is intentionally not a package.json dependency because deployment executes it only inside a fresh,
 isolated temporary directory. Its single reproducible deployment version lives in tools/wrangler-version.txt.
@@ -60,6 +88,7 @@ must not silently change production deployment behavior before verification.
 Suites
 ------
 static_contracts.py: syntax, SQL/RPC, ownership, financial sequencing and deployment gates.
+offline_dependencies_contracts.py: focused ChatGPT/Linux vendor profile, lock-derived npm closure, transactional refresh/rollback and maintenance-command contracts.
 asset_contracts.py: ESM entry, inert/empty seed, CSP and zero inline executable event attributes.
 deploy_preflight.py: read-only public file allowlist, blocked directories, size and secret scans.
 service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and cache-scoped

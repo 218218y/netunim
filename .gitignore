@@ -56,6 +56,9 @@
 # Generated tooling state and dependency caches.
 # -----------------------------------------------------------------------------
 /.work/
+/.offline/
+/vendor/.offline-stage-*/
+/vendor/.offline-previous/
 .wrangler/
 node_modules/
 .npm/
