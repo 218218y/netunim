@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import unicodedata
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
@@ -27,8 +28,23 @@ requirements = (ROOT / 'tests/requirements.txt').read_text(encoding='utf-8')
 run_all = (ROOT / 'tests/run_all.py').read_text(encoding='utf-8')
 browser_harness = (ROOT / 'tests/browser_harness.py').read_text(encoding='utf-8')
 browser_probe = (ROOT / 'tests/offline_environment_probe.py').read_text(encoding='utf-8')
-orders_launcher = (ROOT / '.01run orders.bat').read_text(encoding='utf-8')
-kupa_launcher = (ROOT / '.02#U200f#U200frun kupa.bat').read_text(encoding='utf-8')
+def _visible_launcher_name(name: str) -> str:
+    # Directionality/format characters can be preserved, stripped, or displayed
+    # oddly by Windows/archive tools. They are not part of the semantic name.
+    return ''.join(ch for ch in name if unicodedata.category(ch) != 'Cf').casefold()
+
+
+def _read_launcher(expected_visible_name: str) -> str:
+    expected = expected_visible_name.casefold()
+    matches = [path for path in ROOT.glob('*.bat') if _visible_launcher_name(path.name) == expected]
+    ok(len(matches) == 1, f'windows local launchers: exactly one {expected_visible_name} launcher is discoverable')
+    if len(matches) != 1:
+        return ''
+    return matches[0].read_text(encoding='utf-8')
+
+
+orders_launcher = _read_launcher('.01run orders.bat')
+kupa_launcher = _read_launcher('.02run kupa.bat')
 
 scripts = package.get('scripts', {})
 expected_scripts = {
@@ -85,6 +101,7 @@ ok('setlocal' in orders_launcher.lower() and 'setlocal' in kupa_launcher.lower()
 ok('NO_UPDATE_CHECK=1' in orders_launcher and 'NO_UPDATE_CHECK=1' in kupa_launcher, 'windows local launchers: serve network update checks cannot delay normal startup')
 ok('%~dp0netunim-orders\\site' in orders_launcher and '%~dp0netunim-kupa\\site' in kupa_launcher, 'windows local launchers: site roots are anchored to the BAT location rather than the caller working directory')
 ok('pushd "%SITE_DIR%"' in orders_launcher and 'pushd "%SITE_DIR%"' in kupa_launcher, 'windows local launchers: drive-aware directory changes fail closed before serve starts')
+ok('call npx serve "%SITE_DIR%"' in orders_launcher and 'call npx serve "%SITE_DIR%"' in kupa_launcher, 'windows local launchers: serve receives the absolute site root explicitly and returns control to the BAT')
 ok('offline_deps.py' not in orders_launcher and 'offline_deps.py' not in kupa_launcher, 'windows local launchers: normal serving never enters the ChatGPT offline toolchain')
 
 help_result = subprocess.run([sys.executable, str(ROOT / 'tools/offline_deps.py'), '--help'], cwd=ROOT, capture_output=True, text=True)

@@ -26,8 +26,10 @@ REM Keep local startup deterministic; these variables exist only inside this lau
 set "NO_UPDATE_CHECK=1"
 set "npm_config_update_notifier=false"
 
-REM Always resolve the site from this BAT file's own directory, never from the caller's CWD.
+REM Resolve the site from this BAT file's own directory.
+REM The absolute path is also passed directly to serve, so the served root never depends on CWD.
 set "SITE_DIR=%~dp0netunim-kupa\site"
+for %%I in ("%SITE_DIR%") do set "SITE_DIR=%%~fI"
 if not exist "%SITE_DIR%\index.html" (
     echo.
     echo [CRITICAL ERROR] Kupa site folder was not found:
@@ -46,7 +48,8 @@ pushd "%SITE_DIR%" || (
     exit /b 1
 )
 
-npx serve .
+echo [INFO] Serving directory: "%SITE_DIR%"
+call npx serve "%SITE_DIR%"
 set "SERVER_EXIT=%ERRORLEVEL%"
 popd
 
