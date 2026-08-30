@@ -83,6 +83,8 @@ ok('chat_test()' in source and '"--core-only"' in source and 'probe_rc == 3' in 
 ok('args.command == "test"' in source and 'run_all.py")])' in source, 'offline deps: strict offline test still runs the complete verification gate')
 ok('setlocal' in orders_launcher.lower() and 'setlocal' in kupa_launcher.lower(), 'windows local launchers: temporary environment changes are scoped to the launcher process')
 ok('NO_UPDATE_CHECK=1' in orders_launcher and 'NO_UPDATE_CHECK=1' in kupa_launcher, 'windows local launchers: serve network update checks cannot delay normal startup')
+ok('%~dp0netunim-orders\\site' in orders_launcher and '%~dp0netunim-kupa\\site' in kupa_launcher, 'windows local launchers: site roots are anchored to the BAT location rather than the caller working directory')
+ok('pushd "%SITE_DIR%"' in orders_launcher and 'pushd "%SITE_DIR%"' in kupa_launcher, 'windows local launchers: drive-aware directory changes fail closed before serve starts')
 ok('offline_deps.py' not in orders_launcher and 'offline_deps.py' not in kupa_launcher, 'windows local launchers: normal serving never enters the ChatGPT offline toolchain')
 
 help_result = subprocess.run([sys.executable, str(ROOT / 'tools/offline_deps.py'), '--help'], cwd=ROOT, capture_output=True, text=True)
