@@ -12,6 +12,7 @@ import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/mo
 import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
 import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
+import {money} from '../netunim-orders/site/assets/js/core/money.js';
 import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {createStateNormalization as createOrderNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 
@@ -120,6 +121,25 @@ test('all-suppliers navigation accepts archive years without pretending they bel
  nav.switchSupplier('S');assert.equal(supplierUi.currentSupplierId,'S');
  nav.switchSupplier(ALL_SUPPLIERS_ID);assert.equal(supplierUi.currentSupplierId,ALL_SUPPLIERS_ID);assert.equal(supplierUi.supplierBulkMode,false);
 });
+test('supplier header balance follows the active workflow filter while all keeps the full balance',()=>{
+ const state={suppliers:[{id:'S',name:'ספק',sortOrder:0}],transactions:[
+  {id:'A',supplierId:'S',sequence:1,debit:100,credit:0,invoiceReceived:true,signed:true,supplied:true,hmIssued:false},
+  {id:'B',supplierId:'S',sequence:2,debit:0,credit:30,invoiceReceived:false,signed:true,supplied:false,hmIssued:false},
+  {id:'C',supplierId:'S',sequence:3,debit:0,credit:20,invoiceReceived:true,signed:true,supplied:true,hmIssued:true},
+  {id:'D',supplierId:'S',sequence:4,debit:5,credit:0,invoiceReceived:true,signed:true,supplied:false,hmIssued:true}
+ ]};
+ const supplierUi={currentSupplierId:'S',filterMode:'all',searchText:'',supplierYearView:'current',supplierBulkMode:false,supplierBulkSelected:new Set(),supplierMoveTargetId:null};
+ const main={dataset:{},innerHTML:'',querySelector:()=>null};
+ const previousDocument=globalThis.document;
+ globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
+ try{
+  const view=createDomainsSuppliersView({model:{state},supplierUi,balanceRows:id=>balanceRowsData(state,id),supplierYearContext:id=>supplierYearContextData(state,id),supplierViewRows:(ids,year,filter)=>supplierViewRowsData(state,ids,year,filter),orderedSuppliers:()=>orderedSuppliersData(state),mountViewLayout:()=>{},captureSupplierViewport:()=>null,restoreSupplierViewport:()=>{},syncSupplierBulkUi:()=>{},supplierMoveTargetRow:()=>'',storeSupplierViewport:()=>{},scrollSupplierTransactionsEnd:()=>{},scheduleSave:()=>{}});
+  const header=()=>main.innerHTML.match(/data-supplier-header-balance[^>]*>([^<]*)<\/b>/)?.[1]||'';
+  const expected={all:-55,pending:25,invoice:30,hm:15};
+  for(const mode of Object.keys(expected)){supplierUi.filterMode=mode;view.renderSupplier();assert.equal(header(),money(expected[mode]),mode)}
+ }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+});
+
 test('all-suppliers view renders supplier groups in reverse configured order and exposes shared year filters',()=>{
  const state={suppliers:[{id:'FIRST',name:'ראשון',sortOrder:0},{id:'MIDDLE',name:'אמצעי',sortOrder:1},{id:'LAST',name:'אחרון',sortOrder:2}],transactions:[
   {id:'F1',supplierId:'FIRST',sequence:1,debit:10,credit:0,yearEnd:2025,invoiceReceived:true,signed:true,supplied:true},
@@ -169,6 +189,27 @@ test('customer debt editor treats blank as zero and accepts negative reverse deb
  const debt=model.state.customerDebts[0];
  assert.equal(debt.amount,-125);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,2);assert.equal(closed,2);assert.equal(rendered,2);
  editor.openDebtModal(debt.id);assert.match(body,/id="dAmount"[^>]*value="-125"/);
+});
+
+test('customer header total uses the exact debt rows shown by filters and partial search refresh',()=>{
+ const state={customerDebts:[
+  {id:'D1',customerName:'Open',amount:100,paid:false,invoiceIssued:false,note:''},
+  {id:'D2',customerName:'Invoice',amount:50,paid:true,invoiceIssued:false,note:''},
+  {id:'D3',customerName:'Closed',amount:25,paid:true,invoiceIssued:true,note:''},
+  {id:'D4',customerName:'Reverse',amount:-10,paid:false,invoiceIssued:false,note:''}
+ ],customerOrders:[]};
+ const customerUi={customerTab:'debts',customerFilter:'all',customerOrderFilter:'all',customerSearch:'',customerBulkSelected:new Set(),customerBulkMode:false};
+ const headerNode={textContent:'',classList:{toggle:()=>{}}},results={innerHTML:''},main={innerHTML:'',querySelector:selector=>selector==='[data-customer-visible-total]'?headerNode:null};
+ const previousDocument=globalThis.document;
+ globalThis.document={querySelector:selector=>selector==='#main'?main:selector==='#customerSearchResults'?results:null};
+ try{
+  const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
+  const renderedTotal=()=>main.innerHTML.match(/data-customer-visible-total[^>]*>([^<]*)<\/b>/)?.[1]||'';
+  const expected={all:140,open:90,invoice:50,closed:25};
+  for(const mode of Object.keys(expected)){customerUi.customerFilter=mode;customerUi.customerSearch='';view.renderCustomers();assert.equal(renderedTotal(),money(expected[mode]),mode)}
+  customerUi.customerFilter='all';customerUi.customerSearch='Reverse';view.renderCustomers({resultsOnly:true});
+  assert.equal(headerNode.textContent,money(-10));assert.match(results.innerHTML,/Reverse/);assert.doesNotMatch(results.innerHTML,/>Open</);
+ }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });
 
 test('customer debt amount background gives paid precedence over supplied',()=>{

@@ -417,6 +417,35 @@ def run_offline(command: list[str]) -> int:
     return result.returncode
 
 
+def browser_probe() -> int:
+    install()
+    return subprocess.run(
+        [sys.executable, str(ROOT / "tests" / "offline_environment_probe.py")],
+        cwd=ROOT,
+        env=offline_env(),
+    ).returncode
+
+
+def chat_test() -> int:
+    probe_rc = browser_probe()
+    env = offline_env()
+    if probe_rc == 0:
+        print("OK: browser runtime is usable; running the complete offline verification gate", flush=True)
+        return subprocess.run([sys.executable, str(ROOT / "tests" / "run_all.py")], cwd=ROOT, env=env).returncode
+    if probe_rc == 3:
+        print(
+            "WARNING: browser runtime is unavailable in this host; running core repair verification only. "
+            "Use test:offline for the strict full gate.",
+            flush=True,
+        )
+        return subprocess.run(
+            [sys.executable, str(ROOT / "tests" / "run_all.py"), "--core-only"],
+            cwd=ROOT,
+            env=env,
+        ).returncode
+    return probe_rc
+
+
 def latest_python_version(project: str, specifier: str) -> str:
     request = urllib.request.Request(f"https://pypi.org/pypi/{project}/json", headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=60) as response:
@@ -478,8 +507,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("download", help="download/refresh the complete ChatGPT offline vendor transactionally")
     check_parser = sub.add_parser("check", help="verify every offline archive against its lock/hash")
     check_parser.add_argument("--quiet", action="store_true")
+    sub.add_parser("doctor", help="verify installed offline tools and real localhost browser capability")
     sub.add_parser("install", help="install the vendored Linux dependencies without network access")
     sub.add_parser("test", help="install as needed and run the complete verification gate offline")
+    sub.add_parser("chat-test", help="run full verification when browser works, otherwise explicit core-only repair checks")
     sub.add_parser("lint", help="install as needed and run ESLint offline")
     sub.add_parser("update", help="update reviewed dependency ranges, redownload, then delete superseded vendor files")
     sub.add_parser("clean", help="remove generated installed dependencies but keep the offline vendor")
@@ -489,10 +520,14 @@ def main(argv: list[str] | None = None) -> int:
             refresh_vendor()
         elif args.command == "check":
             check_vendor(quiet=args.quiet)
+        elif args.command == "doctor":
+            return browser_probe()
         elif args.command == "install":
             install()
         elif args.command == "test":
             return run_offline([sys.executable, str(ROOT / "tests" / "run_all.py")])
+        elif args.command == "chat-test":
+            return chat_test()
         elif args.command == "lint":
             node = INSTALL_ROOT / "node" / "bin" / "node"
             install()

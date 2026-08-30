@@ -27,6 +27,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def find_browser() -> str | None:
+    override = os.environ.get("NETUNIM_BROWSER", "").strip()
+    if override:
+        explicit = Path(override).expanduser()
+        if explicit.is_file():
+            return str(explicit.resolve())
+        resolved = shutil.which(override)
+        if resolved:
+            return resolved
+        return None
+
     for name in ("chromium", "chromium-browser", "google-chrome", "chrome", "msedge"):
         path = shutil.which(name)
         if path:

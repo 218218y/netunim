@@ -51,6 +51,7 @@ for label, site in apps:
                       if(!supplierWrap)return {ok:false,reason:'missing supplier scroll container'};
                       const supplierSummary=document.querySelector('.supplier-bottom-summary');
                       const initialTarget=supplierTransactionsEndTop(supplierWrap),supplierInitial={top:supplierWrap.scrollTop,max:supplierWrap.scrollHeight-supplierWrap.clientHeight,target:initialTarget,summaryInScroller:supplierSummary?.parentElement===supplierWrap};
+                      const supplierHeaderBalance=()=>document.querySelector('[data-supplier-header-balance]')?.textContent||'';
                       const summaryValues=()=>({
                         debit:document.querySelector('[data-supplier-summary="debit"]')?.textContent||'',
                         credit:document.querySelector('[data-supplier-summary="credit"]')?.textContent||'',
@@ -58,7 +59,7 @@ for label, site in apps:
                         meta:document.querySelector('[data-supplier-summary="meta"]')?.textContent||''
                       });
                       const statsFor=rows=>transactionFinancialStatsData(rows),matchesStats=(actual,stats)=>actual.debit===money(stats.debit)&&actual.credit===money(stats.credit)&&actual.net===money(stats.net)&&actual.meta.includes(`${stats.txCount} תנועות מוצגות`);
-                      const initialStats=statsFor(state.transactions),supplierInitialSummary=summaryValues();
+                      const initialStats=statsFor(state.transactions),supplierInitialSummary=summaryValues(),supplierInitialHeader=supplierHeaderBalance();
 
                       filterSupplierSearch('פעולה 1');await frame();
                       const searchRows=state.transactions.filter(t=>t.action.includes('פעולה 1')),supplierSearchSummary=summaryValues();
@@ -67,7 +68,11 @@ for label, site in apps:
 
                       filterMode='pending';renderSupplier({scrollMode:'end'});await frame();
                       supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
-                      const pendingStats=statsFor(state.transactions.filter(t=>t.supplied===false)),supplierPendingSummary=summaryValues();
+                      const pendingStats=statsFor(state.transactions.filter(t=>t.supplied===false)),supplierPendingSummary=summaryValues(),supplierPendingHeader=supplierHeaderBalance();
+                      filterMode='invoice';renderSupplier({scrollMode:'end'});await frame();
+                      const invoiceStats=statsFor(state.transactions.filter(t=>t.invoiceReceived===false)),supplierInvoiceHeader=supplierHeaderBalance();
+                      filterMode='hm';renderSupplier({scrollMode:'end'});await frame();
+                      const hmStats=statsFor(state.transactions.filter(t=>t.hmIssued)),supplierHmHeader=supplierHeaderBalance();
                       filterMode='all';renderSupplier({scrollMode:'end'});await frame();
                       supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
 
@@ -78,7 +83,17 @@ for label, site in apps:
                       supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
                       const supplierReturned=supplierWrap?.scrollTop??-1;
 
+                      state.customerDebts[0].paid=true;state.customerDebts[0].invoiceIssued=false;
+                      state.customerDebts[1].paid=true;state.customerDebts[1].invoiceIssued=true;
                       currentView='customers';customerTab='debts';customerFilter='all';customerSearch='';renderCustomers();await frame();
+                      const customerVisibleTotal=()=>document.querySelector('[data-customer-visible-total]')?.textContent||'';
+                      const debtTotal=rows=>money(rows.reduce((sum,d)=>sum+Number(d.amount||0),0));
+                      const customerAllRows=state.customerDebts.filter(d=>!(d.paid&&d.invoiceIssued)),customerAllExpected=debtTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
+                      customerFilter='open';renderCustomers();await frame();const customerOpenExpected=debtTotal(state.customerDebts.filter(d=>!d.paid)),customerOpenTotal=customerVisibleTotal();
+                      customerFilter='invoice';renderCustomers();await frame();const customerInvoiceExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&!d.invoiceIssued)),customerInvoiceTotal=customerVisibleTotal();
+                      customerFilter='closed';renderCustomers();await frame();const customerClosedExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&d.invoiceIssued)),customerClosedTotal=customerVisibleTotal();
+                      customerFilter='all';customerSearch='לקוח 5';renderCustomers();await frame();const customerSearchExpected=debtTotal(customerAllRows.filter(d=>`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(customerSearch))),customerSearchTotal=customerVisibleTotal();
+                      customerSearch='';renderCustomers({resultsOnly:true});await frame();const customerClearedSearchTotal=customerVisibleTotal();
                       const outer=document.querySelector('.customers-view .view-scroll');
                       let customerWrap=document.querySelector('.customer-work-table');
                       const summary=document.querySelector('.customer-bottom-summary');
@@ -126,10 +141,12 @@ for label, site in apps:
 
                       return {
                         ok:near(supplierInitial.top,supplierInitial.target)&&supplierInitial.max>supplierInitial.target+20&&supplierInitial.summaryInScroller&&
-                           matchesStats(supplierInitialSummary,initialStats)&&matchesStats(supplierSearchSummary,statsFor(searchRows))&&
+                           matchesStats(supplierInitialSummary,initialStats)&&supplierInitialHeader===money(initialStats.net)&&matchesStats(supplierSearchSummary,statsFor(searchRows))&&
                            near(supplierCleared.top,supplierCleared.target)&&supplierCleared.max>supplierCleared.target+20&&matchesStats(supplierClearedSummary,initialStats)&&
-                           matchesStats(supplierPendingSummary,pendingStats)&&
+                           matchesStats(supplierPendingSummary,pendingStats)&&supplierPendingHeader===money(pendingStats.net)&&supplierInvoiceHeader===money(invoiceStats.net)&&supplierHmHeader===money(hmStats.net)&&
                            near(supplierReturned,supplierManual)&&
+                           customerAllTotal===customerAllExpected&&customerOpenTotal===customerOpenExpected&&
+                           customerInvoiceTotal===customerInvoiceExpected&&customerClosedTotal===customerClosedExpected&&customerSearchTotal===customerSearchExpected&&customerClearedSearchTotal===customerAllExpected&&
                            customerLayout.outerScroll<=customerLayout.outerClient+1&&customerLayout.outerTop===0&&
                            customerLayout.innerScroll>customerLayout.innerClient&&customerLayout.summaryInScroller&&
                            bottomScroll>0&&raisedTop>bottomTop+80&&near(customerAfter,customerBefore)&&
@@ -137,7 +154,7 @@ for label, site in apps:
                            serviceBefore>0&&near(serviceAfter,serviceBefore)&&
                            warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
                            summaryWasActive&&supplierNavActive&&summaryNavInactive,
-                        supplierInitial,supplierCleared,supplierInitialSummary,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierManual,supplierReturned,customerLayout,
+                        supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierHmHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerLayout,
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
                         serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
                         summaryWasActive,supplierNavActive,summaryNavInactive

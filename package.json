@@ -12,10 +12,12 @@
     "wrangler:update-major": "node tools/wrangler-version.mjs --update --allow-major",
     "offline:download": "python tools/offline_deps.py download",
     "offline:check": "python tools/offline_deps.py check",
+    "offline:doctor": "python tools/offline_deps.py doctor",
     "offline:install": "python tools/offline_deps.py install",
     "offline:update": "python tools/offline_deps.py update",
     "offline:clean": "python tools/offline_deps.py clean",
     "test:offline": "python tools/offline_deps.py test",
+    "test:chat": "python tools/offline_deps.py chat-test",
     "lint:offline": "python tools/offline_deps.py lint"
   },
   "devDependencies": {

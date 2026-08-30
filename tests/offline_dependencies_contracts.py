@@ -24,15 +24,20 @@ lock = json.loads((ROOT / 'package-lock.json').read_text(encoding='utf-8'))
 source = (ROOT / 'tools/offline_deps.py').read_text(encoding='utf-8')
 readme = (ROOT / 'vendor/offline/README.md').read_text(encoding='utf-8')
 requirements = (ROOT / 'tests/requirements.txt').read_text(encoding='utf-8')
+run_all = (ROOT / 'tests/run_all.py').read_text(encoding='utf-8')
+browser_harness = (ROOT / 'tests/browser_harness.py').read_text(encoding='utf-8')
+browser_probe = (ROOT / 'tests/offline_environment_probe.py').read_text(encoding='utf-8')
 
 scripts = package.get('scripts', {})
 expected_scripts = {
     'offline:download': 'python tools/offline_deps.py download',
     'offline:check': 'python tools/offline_deps.py check',
+    'offline:doctor': 'python tools/offline_deps.py doctor',
     'offline:install': 'python tools/offline_deps.py install',
     'offline:update': 'python tools/offline_deps.py update',
     'offline:clean': 'python tools/offline_deps.py clean',
     'test:offline': 'python tools/offline_deps.py test',
+    'test:chat': 'python tools/offline_deps.py chat-test',
     'lint:offline': 'python tools/offline_deps.py lint',
 }
 for name, command in expected_scripts.items():
@@ -63,14 +68,19 @@ ok('tempfile.mkdtemp(prefix=".offline-stage-"' in source and 'os.replace(stage, 
 ok('shutil.rmtree(backup, ignore_errors=True)' in source and 'refresh_vendor()' in source, 'offline deps: superseded archives are removed only after a complete refresh')
 ok('original_lock = LOCK_PATH.read_bytes()' in source and 'LOCK_PATH.write_bytes(original_lock)' in source, 'offline deps: failed online update rolls back dependency metadata')
 ok('npm", "update", "--package-lock-only"' in source or '"update", "--package-lock-only"' in source, 'offline deps: update refreshes the lockfile without lifecycle-script installation')
-ok('Chrome/Chromium itself is **not** vendored' in readme, 'offline deps: system browser boundary is documented explicitly')
+ok('Chrome/Chromium itself is **not** vendored' in readme and 'policy can make' in readme, 'offline deps: system browser boundary and host-policy limitation are documented explicitly')
 ok('Wrangler is also excluded' in readme, 'offline deps: deployment-only Wrangler is excluded from the verification vendor')
 ok('NODE_MODULES_MARKER' in source and 'not offline_managed_node_modules()' in source, 'offline deps: installer cannot silently overwrite a normal npm node_modules tree')
 ok('remove_generated_install()' in source and 'offline_managed_node_modules()' in source, 'offline deps: update/clean remove only toolchain-owned installed dependencies')
 ok('npm install' not in source and 'npm ci' not in source, 'offline deps: offline installer never resolves packages from npm')
+ok('NETUNIM_BROWSER' in browser_harness, 'offline deps: browser harness supports an explicit unmanaged test-browser override')
+ok('ERR_BLOCKED_BY_ADMINISTRATOR' in browser_probe and 'BROWSER_RUNTIME_UNAVAILABLE' in browser_probe, 'offline deps: environment doctor distinguishes host browser policy from application test failures')
+ok('CORE_SUITES' in run_all and 'RUNTIME_SUITES' in run_all and '--core-only' in run_all, 'offline deps: chat repair mode can run deterministic core suites without weakening the full gate')
+ok('chat_test()' in source and '"--core-only"' in source and 'probe_rc == 3' in source, 'offline deps: chat test falls back only for an explicitly unavailable browser runtime')
+ok('args.command == "test"' in source and 'run_all.py")])' in source, 'offline deps: strict offline test still runs the complete verification gate')
 
 help_result = subprocess.run([sys.executable, str(ROOT / 'tools/offline_deps.py'), '--help'], cwd=ROOT, capture_output=True, text=True)
-ok(help_result.returncode == 0 and all(word in help_result.stdout for word in ('download', 'install', 'test', 'update')), 'offline deps: maintenance CLI is runnable with the system Python only')
+ok(help_result.returncode == 0 and all(word in help_result.stdout for word in ('download', 'doctor', 'install', 'test', 'chat-test', 'update')), 'offline deps: maintenance CLI is runnable with the system Python only')
 
 if errors:
     print(f'\n{len(errors)} offline dependency contract(s) failed')

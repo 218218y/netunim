@@ -20,10 +20,21 @@ ChatGPT/Linux offline setup (preferred for repair sessions):
 
 Run `offline:download` once on an internet-connected machine before uploading the repository. It stores only
 the Linux x86_64/glibc Node runtime, the exact npm verification closure from package-lock.json, and the
-websocket-client wheel required by the browser harness. Chromium is supplied by the ChatGPT host and is not
-copied into the repository. After that, installation and tests require no package-network access:
+websocket-client wheel required by the browser harness. Browser binaries are supplied separately by the host.
+After upload, first verify both the package vendor and the host browser capability:
   npm run offline:check
+  npm run offline:doctor
+
+For ChatGPT repair sessions use:
+  npm run test:chat
+
+`test:chat` runs the full gate when localhost/CDP works. If the host browser is installed but blocked by an
+enterprise URL policy, it runs the deterministic non-browser core suites and clearly reports that runtime suites
+were skipped. This fallback is for repair feedback only. The strict deployment-grade command remains:
   npm run test:offline
+
+If an unmanaged test browser is available, point the harness to it before running doctor/tests:
+  NETUNIM_BROWSER=/path/to/chrome-for-testing npm run offline:doctor
 
 npm development tools use semver ranges in package.json and exact resolved versions in package-lock.json;
 none are deployed or imported at runtime. No bundler is required. Native ESM requires localhost/HTTPS; file://
@@ -39,8 +50,10 @@ Commands
   npm run deps:update
   npm run offline:download
   npm run offline:check
+  npm run offline:doctor
   npm run offline:install
   npm run test:offline
+  npm run test:chat
   npm run lint:offline
   npm run offline:update
   npm run offline:clean
@@ -88,7 +101,7 @@ must not silently change production deployment behavior before verification.
 Suites
 ------
 static_contracts.py: syntax, SQL/RPC, ownership, financial sequencing and deployment gates.
-offline_dependencies_contracts.py: focused ChatGPT/Linux vendor profile, lock-derived npm closure, transactional refresh/rollback and maintenance-command contracts.
+offline_dependencies_contracts.py: focused ChatGPT/Linux vendor profile, lock-derived npm closure, transactional refresh/rollback, browser-capability diagnostics and maintenance-command contracts.
 asset_contracts.py: ESM entry, inert/empty seed, CSP and zero inline executable event attributes.
 deploy_preflight.py: read-only public file allowlist, blocked directories, size and secret scans.
 service_worker_contracts.py: complete shell, install/activate, app-scoped cleanup, network-first and cache-scoped
@@ -126,7 +139,9 @@ The shipped modules contain no test hooks or global compatibility bridge. runtim
 Actual localhost navigation and asynchronous appReady completion are required; a failed startup does not fall back
 to a simulated DOM. Real CSP headers are served by the harness. Browser-initiated downloads exercised by workflows
 are redirected into each disposable runtime directory and deleted with that session; tests must never write the user's
-real Downloads folder. Browser tests require an available loopback port.
+real Downloads folder. Browser tests require an available loopback port and a browser allowed to navigate to localhost. A browser merely
+being installed is insufficient; `offline:doctor` checks the real capability. `NETUNIM_BROWSER` is the supported
+way to select a dedicated unmanaged test browser.
 
 Performance limits catch pathological regressions, not small machine-dependent timing differences. Headless tests
 and fake file handles cannot certify native folder-picker UI, installation on every OS, live Supabase/RLS, Access
