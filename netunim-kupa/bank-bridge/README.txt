@@ -42,19 +42,19 @@ Automatic refresh becomes due 24 hours after the last successful Hapoalim sync s
 If Kupa was closed when the period elapsed, it checks on the next opening. Failed background attempts never overwrite the existing balance and are throttled for one hour on that computer.
 If Hapoalim requires an additional interactive step, use "Open bank verification" explicitly.
 
-Bridge v8 deliberately does not call israeli-bank-scrapers.scrape() as one all-or-nothing operation. After login it waits until both the Hapoalim SPA REST context and accounts service are really available, selects the configured account, reads that account's currentBalance as the required result, and only then requests recent transactions. This avoids losing a valid balance because another account or the optional transaction endpoint failed.
+Bridge v10 deliberately does not call israeli-bank-scrapers.scrape() as one all-or-nothing operation. After login it waits until both the Hapoalim SPA REST context and accounts service are really available, selects the configured account, reads that account's currentBalance as the required result, and only then requests recent transactions. This avoids losing a valid balance because another account or the optional transaction endpoint failed.
 
-The recent feed requests the complete rolling 30-day window with the same 1000-row page size used by the pinned Hapoalim scraper. Each raw Hapoalim transaction also carries currentBalance; Bridge v8 preserves it as balanceAfter so Kupa can show the bank-provided balance after that transaction instead of reconstructing it locally. A transaction-fetch failure is partial success: the balance and successful bank-sync time are still saved, while Kupa shows a warning instead of returning a generic failed balance update.
+The recent feed requests the complete rolling 30-day window with the same 1000-row page size used by the pinned Hapoalim scraper. Each raw Hapoalim transaction also carries currentBalance; Bridge v10 preserves it as balanceAfter so Kupa can show the bank-provided balance after that transaction instead of reconstructing it locally. A transaction-fetch failure is partial success: the balance and successful bank-sync time are still saved, while Kupa shows a warning instead of returning a generic failed balance update.
 The normalized feed (balance, selected account, successful sync time, recent transactions and warning) is stored with Kupa's shared bank state so all Kupa computers see the same last successful result. Its versioned shape is intended to be reusable by the Orders app later; Orders is not wired to write/read this feed in this patch.
 
 
-Session-aware login (Bridge v8)
+Session-aware login (Bridge v10)
 --------------------------------
-The Hapoalim scraper library historically classifies login success by a fixed list of post-login URLs. Hapoalim may route a valid authenticated account to a different SPA URL, which can make the library return UNKNOWN_ERROR even while the bank account is visibly open. Bridge v8 does not trust the URL as the authority. Login success is also recognized when the page exposes the Hapoalim REST context and the authenticated /ServerServices/general/accounts request succeeds.
+The Hapoalim scraper library historically classifies login success by a fixed list of post-login URLs. Hapoalim may route a valid authenticated account to a different SPA URL, which can make the library return UNKNOWN_ERROR even while the bank account is visibly open. Bridge v10 does not trust the URL as the authority. Login success is also recognized when the page exposes the Hapoalim REST context and the authenticated /ServerServices/general/accounts request succeeds.
 
 After a successful run the Bridge remembers only the successful Hapoalim page origin/path (never query/hash tokens). On later refreshes it first tries to reuse that authenticated browser session from the dedicated persistent Chrome/Edge profile. Only when the saved session is no longer usable does it run the credential login flow again. Silent login waits up to 90 seconds; if the bank requires renewed user verification, the Bridge reports AUTH_REQUIRED and the user can explicitly choose "פתח אימות בבנק".
 
-Exact account selection (Bridge v8)
+Exact account selection (Bridge v10)
 -----------------------------------
 Bank Hapoalim identifies a current account to its internal API as bank-branch-account. For Bank Hapoalim the bank number is 12, so branch 123 and account 456789 become 12-123-456789.
 Kupa stores branch and account as separate fields in the local Bridge credentials. If an account number alone is ambiguous, missing or stale, the Bridge returns only a safe list of open account identifiers (bank/branch/account) and Kupa renders them as selectable choices. Choosing one updates only the encrypted local account selector; the bank password does not need to be typed again. Closed accounts are excluded using the same accountClosingReasonCode rule as the pinned Hapoalim scraper.
@@ -80,13 +80,21 @@ The visible Chrome/Edge window may stay open for up to 10 minutes while waiting 
 
 The Bridge reuses the same dedicated browser profile and remembers the same Chrome/Edge executable on that Windows computer. This preserves bank cookies/device state as far as Bank Hapoalim permits. The bank can still require verification again according to its own security policy.
 
-Bridge v8 — יציבות ניווט ו-feed מלא ל-30 יום
+Bridge v10 — יציבות ניווט ו-feed מלא ל-30 יום
 -----------------------------------
-החל מ-v8 קריאת יתרה ותנועות אינה מתחילה ברגע הראשון שבו דף החשבון נראה פתוח. ה-Bridge דורש חלון יציבות קצר של ה-SPA/API, ואם Puppeteer מאבד Execution Context בגלל redirect פנימי הוא ממתין לסשן מאומת ויציב ומנסה מחדש עד שלוש פעמים. שגיאות API אמיתיות אינן מוסתרות ואינן מקבלות retry אוטומטי.
+החל מ-v10 קריאת יתרה ותנועות אינה מתחילה ברגע הראשון שבו דף החשבון נראה פתוח. ה-Bridge דורש חלון יציבות קצר של ה-SPA/API, ואם Puppeteer מאבד Execution Context בגלל redirect פנימי הוא ממתין לסשן מאומת ויציב ומנסה מחדש עד שלוש פעמים. שגיאות API אמיתיות אינן מוסתרות ואינן מקבלות retry אוטומטי.
 במסך הקופה כפתורי הרענון, זמן העדכון האחרון וכשל העדכון האחרון נשארים גלויים; מפתח ה-Bridge, פרטי החשבון והעדכון האוטומטי נמצאים תחת 'הגדרות חיבור וסנכרון' הסגורות כברירת מחדל.
 
 
-Transaction storage and retention (Bridge v8)
+Cheque deposit enrichment (Bridge v10)
+
+The bridge now treats only an explicit cheque-deposit activityDescription as a cheque deposit. Beneficiary/memo text is never used for classification; this fixes false positives such as Hebrew personal names that happen to contain the letters צק. Returned-cheque and ordinary cheque-debit transactions are not treated as deposits.
+
+The pinned Hapoalim scraper publicly types the pfmDetails response only far enough to extract transactionNumber. It does not publish a stable schema for the per-cheque table or cheque images visible in the bank UI. Bridge v10 therefore does not expose arbitrary primitive pfmDetails fields. Generic values such as transactionStatusCode=0, transactionSum=0, check=false and multiCheck=false are ignored. If a bank response explicitly contains structured cheque rows (positive amount plus cheque number or full bank/branch/account identity), those rows are preserved as checkItems and shown by Kupa. Zero identifiers are rejected.
+
+Potential image/scan/document URLs, session values, cookies and tokens are never persisted. At most a boolean document-presence marker survives. A failure to enrich one deposit never invalidates balance or the main transaction feed.
+
+Transaction storage and retention (Bridge v10)
 ---------------------------------------------
 Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful bank refresh is also copied to the browser recovery snapshot (localStorage + IndexedDB). In Supabase mode the same feed is saved in the shared Kupa cloud document; in file/directory mode it is saved in the Kupa JSON file.
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.

@@ -135,6 +135,140 @@ export function selectAccountDescriptor(accounts,targetAccount=''){
 }
 
 function compactText(value,max=240){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
+function detailKeyToken(value){return String(value??'').toLowerCase().replace(/[^a-z0-9א-ת]+/g,'')}
+function primitiveDetailValue(value){
+  if(typeof value==='string')return compactText(value,180);
+  if(typeof value==='number'&&Number.isFinite(value))return String(value);
+  if(typeof value==='boolean')return value?'כן':'לא';
+  return '';
+}
+function meaningfulDetailValue(value){
+  const clean=primitiveDetailValue(value),token=detailKeyToken(clean);
+  if(!clean||token==='0'||token==='false'||token==='לא'||token==='none'||token==='null'||token==='undefined')return '';
+  return clean;
+}
+function isDocumentDetailKey(key){const token=detailKeyToken(key);return /(image|scan|document|attachment|file|pdf|base64|binary|photo|צילום|סריק|מסמך|קובץ|תמונה)/i.test(token)}
+function isUnsafeTechnicalDetailKey(key){const token=detailKeyToken(key);return /(token|cookie|session|jwt|xsrf|csrf|authorization|html|content|href|url|uri)/i.test(token)}
+function isChequeCountKey(key){
+  const token=detailKeyToken(key);
+  return /((check|cheque|cheq|chk).*(count|quantity|qty|total|numberof)|(count|quantity|qty|total|numberof).*(check|cheque|cheq|chk)|(?:checks|cheques)(?:count|number|total)|(?:count|number|total)(?:checks|cheques)|(?:כמות|מספר)(?:ה)?(?:שיקים|צקים)|(?:שיקים|צקים)(?:כמות|מספר))/.test(token);
+}
+function isChequeNumberKey(key){
+  const token=detailKeyToken(key);
+  if(isChequeCountKey(key))return false;
+  return /((check|cheque|cheq|chk).*(number|no|num|serial|reference)|(number|no|num|serial|reference).*(check|cheque|cheq|chk)|(?:מספר|מס|אסמכתא)(?:ה)?(?:שיק|צק)$|(?:שיק|צק)(?:מספר|מס|אסמכתא)$)/.test(token);
+}
+function isTransactionReferenceKey(key){const token=detailKeyToken(key);return /^(transactionnumber|transactionno|referencenumber|reference|אסמכתא|מספרתנועה)$/.test(token)}
+function isBankNumberKey(key){return /^(bank|banknumber|bankno|bankcode|בנק|מספרבנק|מסבנק)$/.test(detailKeyToken(key))}
+function isBranchNumberKey(key){return /^(branch|branchnumber|branchno|branchcode|סניף|מספרסניף|מססניף)$/.test(detailKeyToken(key))}
+function isAccountNumberKey(key){return /^(account|accountnumber|accountno|accountid|חשבון|מספרחשבון|מסחשבון)$/.test(detailKeyToken(key))}
+function isChequeAmountKey(key){return /^(amount|sum|checkamount|chequeamount|checksum|chequesum|סכום|סכוםשיק|סכוםצק)$/.test(detailKeyToken(key))}
+function isSemanticLabelKey(key){return /^(label|title|name|caption|fieldname|displayname|description|תווית|כותרת|שם)$/.test(detailKeyToken(key))}
+function isSemanticValueKey(key){return /^(value|fieldvalue|displayvalue|text|data|ערך|תוכן)$/.test(detailKeyToken(key))}
+
+function depositDescriptionToken(value){return String(value??'').toLowerCase().replace(/[\u05f3\u05f4'’׳״]/g,"'").replace(/\s+/g,' ').trim()}
+export function isHapoalimChequeTransaction(txn){
+  // Only the bank's activity description is authoritative here. Do not scan beneficiary names:
+  // Hebrew names such as "זרצקי" contain the letters צק and previously caused false positives.
+  const text=depositDescriptionToken(txn?.activityDescription);
+  if(!text)return false;
+  return /(?:^|[\s.,;:()\-/])(?:הפק(?:דה|דת)?\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים)|הפק\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים))(?:$|[\s.,;:()\-/])/.test(text)
+    || /\b(?:check|cheque)s?\s+deposit\b|\bdeposit(?:ed|ing)?\s+(?:check|cheque)s?\b/i.test(text);
+}
+
+function semanticPairsFromObject(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return [];
+  const entries=Object.entries(value),pairs=[];
+  const labelEntry=entries.find(([key,child])=>isSemanticLabelKey(key)&&meaningfulDetailValue(child));
+  const valueEntry=entries.find(([key,child])=>isSemanticValueKey(key)&&meaningfulDetailValue(child));
+  if(labelEntry&&valueEntry&&labelEntry[0]!==valueEntry[0])pairs.push([meaningfulDetailValue(labelEntry[1]),valueEntry[1]]);
+  for(const [key,child] of entries){if(child===null||child===undefined||typeof child==='object')continue;pairs.push([key,child])}
+  return pairs;
+}
+function normalizeChequeItemObject(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+  let bankNumber='',branchNumber='',accountNumber='',checkNumber='',rowReference='',amount=null,hasDocumentReference=false;
+  for(const [rawKey,rawValue] of semanticPairsFromObject(value)){
+    const key=String(rawKey||'');
+    if(isUnsafeTechnicalDetailKey(key))continue;
+    if(isDocumentDetailKey(key)){if(meaningfulDetailValue(rawValue))hasDocumentReference=true;continue}
+    const clean=meaningfulDetailValue(rawValue);if(!clean)continue;
+    if(isBankNumberKey(key)){bankNumber=compactText(clean,20);continue}
+    if(isBranchNumberKey(key)){branchNumber=compactText(clean,20);continue}
+    if(isAccountNumberKey(key)){accountNumber=compactText(clean,40);continue}
+    if(isChequeNumberKey(key)){checkNumber=compactText(clean,80);continue}
+    // In the bank's expanded cheque-deposit table the row reference is presented as
+    // "אסמכתא (מס' צ'ק)". Treat a generic reference as the cheque number ONLY when
+    // this object is independently proven to be a cheque row by bank+branch+account+amount.
+    if(isTransactionReferenceKey(key)){rowReference=compactText(clean,80);continue}
+    if(isChequeAmountKey(key)){
+      const n=Number(String(clean).replace(/[,\s₪]/g,''));if(Number.isFinite(n)&&n>0)amount=n;
+    }
+  }
+  const fullAccountIdentity=!!(bankNumber&&branchNumber&&accountNumber);
+  if(!checkNumber&&fullAccountIdentity&&rowReference)checkNumber=rowReference;
+  // Accept only a real cheque row: positive amount plus an explicit cheque number, or a full bank/branch/account identity.
+  if(!(Number.isFinite(amount)&&amount>0&&(checkNumber||fullAccountIdentity)))return null;
+  return {bankNumber,branchNumber,accountNumber,checkNumber,amount,hasDocumentReference};
+}
+function chequeItemKey(item){return [item.bankNumber,item.branchNumber,item.accountNumber,item.checkNumber,item.amount].join('|')}
+
+export function normalizeHapoalimAdditionalDetails(payload){
+  const checkNumbers=new Set(),items=[],itemKeys=new Set();
+  let referenceNumber='',checkCount=null,hasDocumentReference=false;
+  const addItem=item=>{if(!item)return;const key=chequeItemKey(item);if(itemKeys.has(key))return;itemKeys.add(key);items.push(item);if(item.checkNumber)checkNumbers.add(item.checkNumber);if(item.hasDocumentReference)hasDocumentReference=true};
+  const consumeSemanticField=(key,value)=>{
+    if(isUnsafeTechnicalDetailKey(key))return;
+    if(isDocumentDetailKey(key)){if(meaningfulDetailValue(value))hasDocumentReference=true;return}
+    const clean=meaningfulDetailValue(value);if(!clean)return;
+    if(isTransactionReferenceKey(key)&&!referenceNumber){referenceNumber=clean;return}
+    if(isChequeCountKey(key)){
+      const n=Number(String(clean).replace(/[^0-9.-]/g,''));if(Number.isFinite(n)&&n>0)checkCount=Math.trunc(n);
+      return;
+    }
+    if(isChequeNumberKey(key)&&clean!=='0')checkNumbers.add(clean);
+  };
+  const visit=(value,path='',depth=0)=>{
+    if(depth>5||value===null||value===undefined)return;
+    if(Array.isArray(value)){
+      if(path&&isChequeNumberKey(path)){for(const child of value.slice(0,50))consumeSemanticField(path,child);return}
+      for(const child of value.slice(0,80))visit(child,path,depth+1);
+      return;
+    }
+    if(typeof value!=='object'){if(path)consumeSemanticField(path,value);return}
+    addItem(normalizeChequeItemObject(value));
+    const entries=Object.entries(value);
+    const labelEntry=entries.find(([key,child])=>isSemanticLabelKey(key)&&meaningfulDetailValue(child));
+    const valueEntry=entries.find(([key,child])=>isSemanticValueKey(key)&&meaningfulDetailValue(child));
+    const consumed=new Set();
+    if(labelEntry&&valueEntry&&labelEntry[0]!==valueEntry[0]){
+      consumeSemanticField(meaningfulDetailValue(labelEntry[1]),valueEntry[1]);
+      consumed.add(labelEntry[0]);consumed.add(valueEntry[0]);
+    }
+    for(const [rawKey,child] of entries){
+      if(consumed.has(rawKey))continue;
+      const key=String(rawKey||''),nextPath=path?`${path}.${key}`:key;
+      if(isDocumentDetailKey(key)){if(meaningfulDetailValue(child))hasDocumentReference=true;continue}
+      if(isUnsafeTechnicalDetailKey(key))continue;
+      if(child&&typeof child==='object'){visit(child,nextPath,depth+1);continue}
+      consumeSemanticField(key,child);
+    }
+  };
+  visit(payload);
+  const cleanItems=items.slice(0,50),numbers=[...checkNumbers].filter(x=>x&&x!=='0').slice(0,50);
+  if(cleanItems.length){for(const item of cleanItems){if(item.checkNumber&&!numbers.includes(item.checkNumber))numbers.push(item.checkNumber)}}
+  if(checkCount===null&&cleanItems.length)checkCount=cleanItems.length;
+  else if(checkCount===null&&numbers.length)checkCount=numbers.length;
+  return {referenceNumber:compactText(referenceNumber,100),checkNumbers:numbers,checkCount,checkItems:cleanItems,hasDocumentReference};
+}
+
+export function buildHapoalimAdditionalDetailsUrl(baseUrl,pfmDetails,accountId){
+  const base=new URL(String(baseUrl||'')),url=new URL(String(pfmDetails||''),base);
+  if(url.origin!==base.origin){const e=new Error('כתובת פרטי התנועה אינה שייכת לבנק הפועלים');e.code='UNSAFE_DETAIL_URL';throw e}
+  url.searchParams.set('accountId',String(accountId||''));
+  url.searchParams.set('lang','he');
+  return url.toString();
+}
 function dateDigits(value){const s=String(value??'').replace(/\D/g,'');return s.length>=8?s.slice(0,8):''}
 export function ymdDate(value=new Date()){
   const d=value instanceof Date?value:new Date(value);
@@ -155,7 +289,20 @@ export function normalizeHapoalimTransaction(txn){
   const amount=Number.isFinite(amountNumber)?(outbound?-Math.abs(amountNumber):Math.abs(amountNumber)):0;
   const details=txn?.beneficiaryDetailsData&&typeof txn.beneficiaryDetailsData==='object'?txn.beneficiaryDetailsData:{};
   const memo=[details.partyHeadline,details.partyName,details.messageHeadline,details.messageDetail].map(x=>compactText(x,120)).filter(Boolean).join(' · ');
-  const identifier=compactText(txn?.referenceNumber||txn?.serialNumber||`${txn?.eventDate||''}-${txn?.eventAmount||''}`,100);
+  const bankReference=compactText(txn?.referenceNumber,100),bankSerial=compactText(txn?.serialNumber,100);
+  const identifier=bankReference||bankSerial||compactText(`${txn?.eventDate||''}-${txn?.eventAmount||''}`,100);
+  const cheque=isHapoalimChequeTransaction(txn);
+  const normalizedExtra=txn?.netunimAdditionalDetails&&typeof txn.netunimAdditionalDetails==='object'?txn.netunimAdditionalDetails:null;
+  const checkDetails=cheque?{
+    checkNumbers:Array.isArray(normalizedExtra?.checkNumbers)?normalizedExtra.checkNumbers.map(x=>compactText(x,80)).filter(x=>x&&x!=='0').slice(0,50):[],
+    checkCount:Number.isFinite(Number(normalizedExtra?.checkCount))&&Number(normalizedExtra.checkCount)>0?Math.trunc(Number(normalizedExtra.checkCount)):null,
+    checkItems:Array.isArray(normalizedExtra?.checkItems)?normalizedExtra.checkItems.map(item=>({
+      bankNumber:compactText(item?.bankNumber,20),branchNumber:compactText(item?.branchNumber,20),accountNumber:compactText(item?.accountNumber,40),
+      checkNumber:compactText(item?.checkNumber,80),amount:Number.isFinite(Number(item?.amount))&&Number(item.amount)>0?Number(item.amount):null,hasDocumentReference:!!item?.hasDocumentReference,
+    })).filter(item=>item.amount&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber))).slice(0,50):[],
+    hasDocumentReference:!!normalizedExtra?.hasDocumentReference,
+    warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
+  }:null;
   return {
     id:identifier,
     date:isoFromBankDate(txn?.eventDate),
@@ -166,6 +313,10 @@ export function normalizeHapoalimTransaction(txn){
     memo:compactText(memo,260),
     status:Number(txn?.serialNumber)===0?'pending':'completed',
     balanceAfter:txn?.currentBalance===null||txn?.currentBalance===undefined||txn?.currentBalance===''?null:(Number.isFinite(Number(txn.currentBalance))?Number(txn.currentBalance):null),
+    bankReference,
+    bankSerial,
+    cheque,
+    checkDetails,
   };
 }
 

@@ -10,6 +10,9 @@ import {
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+  buildHapoalimAdditionalDetailsUrl,
+  isHapoalimChequeTransaction,
+  normalizeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
   SILENT_AUTH_TIMEOUT_MS,
   isTransientNavigationError,
@@ -24,7 +27,7 @@ import {
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=8;
+const BRIDGE_VERSION=10;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -230,6 +233,28 @@ async function pageFetchJson(page,requestFactory,{initialReady=null}={}){
   },{attempts:HAPOALIM_DATA_RETRY_LIMIT});
 }
 
+async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{initialReady=null}={}){
+  const source=Array.isArray(rawTransactions)?rawTransactions:[];
+  const enriched=[];
+  let reusableReady=initialReady;
+  for(const transaction of source){
+    const pfmDetails=String(transaction?.pfmDetails||'').trim();
+    if(!pfmDetails||Number(transaction?.serialNumber)===0||!isHapoalimChequeTransaction(transaction)){
+      enriched.push(transaction);continue;
+    }
+    try{
+      const extraResult=await pageFetchJson(page,async()=>({url:buildHapoalimAdditionalDetailsUrl(HAPOALIM_BASE_URL,pfmDetails,accountId)}),{initialReady:reusableReady});
+      reusableReady=extraResult.ready;
+      const details=normalizeHapoalimAdditionalDetails({transaction,additionalInformation:extraResult.data});
+      enriched.push({...transaction,...(details.referenceNumber?{referenceNumber:details.referenceNumber}:{}),netunimAdditionalDetails:details});
+    }catch(error){
+      enriched.push({...transaction,netunimAdditionalDetailsWarning:`לא ניתן היה לטעון את פירוט השיק מהבנק: ${error?.message||error}`});
+      reusableReady=null;
+    }
+  }
+  return {transactions:enriched,ready:reusableReady};
+}
+
 async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
   const stableReady=ready?.ready?ready:await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
   const rawAccounts=Array.isArray(stableReady?.accounts)?stableReady.accounts:[];
@@ -257,7 +282,8 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
       if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
       return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
     },{initialReady:balanceReady});
-    transactions=normalizeRecentTransactions(txResult.data?.transactions,HAPOALIM_TRANSACTION_LIMIT);
+    const enriched=await enrichHapoalimChequeTransactions(page,txResult.data?.transactions,accountId,{initialReady:txResult.ready});
+    transactions=normalizeRecentTransactions(enriched.transactions,HAPOALIM_TRANSACTION_LIMIT);
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
   const sessionHref=String(page?.url?.()||balanceReady?.href||stableReady?.href||'');
@@ -379,7 +405,7 @@ if(args.has('--doctor')){
     enableHapoalimSessionAwareLogin(probe,{interactive:true});
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
     console.log(`Browser: ${browserPath}`);
-    console.log('Scraper: Hapoalim session-aware login + navigation-stable data reads + persistent-session reuse + MFA + exact branch/account selector OK');
+    console.log('Scraper: Hapoalim session-aware login + navigation-stable data reads + structured cheque-deposit enrichment + persistent-session reuse + MFA + exact branch/account selector OK');
     process.exit(0);
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }

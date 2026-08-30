@@ -75,6 +75,25 @@ function bankBridgeDiagnosticsMarkup(s){
   return error+warning;
 }
 
+function bankChequeDetailsMarkup(row){
+  if(!row?.cheque)return '';
+  const details=row.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:{};
+  const items=(Array.isArray(details.checkItems)?details.checkItems:[]).filter(item=>item&&Number(item.amount)>0&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber)));
+  const numbers=[...new Set((Array.isArray(details.checkNumbers)?details.checkNumbers:[]).filter(x=>x&&x!=='0'))];
+  const count=Number(details.checkCount);
+  const facts=[];
+  if(items.length>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(items.length)}</span>`);
+  else if(Number.isFinite(count)&&count>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(Math.trunc(count))}</span>`);
+  if(!items.length&&numbers.length)facts.push(`<span><b>מספרי שיקים:</b> ${numbers.map(x=>esc(x)).join(', ')}</span>`);
+  if(row.bankReference&&row.bankReference!=='0')facts.push(`<span><b>אסמכתת הפקדה:</b> ${esc(row.bankReference)}</span>`);
+
+  const table=items.length?`<div class="bank-cheque-items-wrap"><table class="bank-cheque-items"><thead><tr><th>בנק</th><th>סניף</th><th>חשבון</th><th>מס׳ שיק</th><th>סכום</th><th>מסמך</th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.bankNumber||'—')}</td><td>${esc(item.branchNumber||'—')}</td><td>${esc(item.accountNumber||'—')}</td><td class="bank-cheque-number">${esc(item.checkNumber||'—')}</td><td class="bank-cheque-amount">${money(Number(item.amount))}</td><td>${item.hasDocumentReference?'קיים בבנק':'—'}</td></tr>`).join('')}</tbody></table></div>`:'';
+  const documentNote=!items.length&&details.hasDocumentReference?'<div class="bank-cheque-document-note">הבנק מציין שקיים מסמך/צילום עבור ההפקדה, אך כתובת המסמך אינה נשמרת בקופה.</div>':'';
+  const warning=details.warning?`<div class="bank-cheque-detail-warning">${esc(details.warning)}</div>`:'';
+  if(!facts.length&&!table&&!documentNote&&!warning)return '';
+  return `<div class="bank-cheque-info">${facts.length?`<div class="bank-cheque-facts">${facts.join('')}</div>`:''}${table}${documentNote}${warning}</div>`;
+}
+
 function bankTransactionsMarkup(feed){
   const rows=feed?.transactions||[];
   const balance=Number(feed?.balance);
@@ -86,7 +105,7 @@ function bankTransactionsMarkup(feed){
     const valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'';
     return `<tr class="${row.status==='pending'?'pending':''}">
       <td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td>
-      <td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}</td>
+      <td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${bankChequeDetailsMarkup(row)}</td>
       <td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td>
       <td class="bank-transaction-money credit">${amount>0?money(amount):''}</td>
       <td class="bank-transaction-money balance-after">${row.balanceAfter!==null&&row.balanceAfter!==undefined&&row.balanceAfter!==''&&Number.isFinite(Number(row.balanceAfter))?money(Number(row.balanceAfter)):'—'}</td>

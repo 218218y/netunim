@@ -7,6 +7,9 @@ import {
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
+  buildHapoalimAdditionalDetailsUrl,
+  isHapoalimChequeTransaction,
+  normalizeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
   isTransientNavigationError,
   SILENT_AUTH_TIMEOUT_MS,
@@ -70,26 +73,76 @@ assert.equal(HAPOALIM_TRANSACTION_LIMIT,1000,'bridge requests the full thirty-da
 assert.equal(BANK_FEED_TRANSACTION_LIMIT,1000,'shared Kupa bank feed preserves the full thirty-day bank page instead of trimming it to twenty rows');
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 
+const detailPayload=[{
+  transactionNumber:987654,
+  chequeCount:2,
+  rows:[
+    {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeNumber:'4463454',chequeAmount:830,scanImageUrl:'https://login.bankhapoalim.co.il/temporary/scan?id=secret'},
+    {bankNumber:17,branchNumber:732,accountNumber:'105323448',referenceNumber:'80000071',chequeAmount:1000},
+  ],
+  sessionToken:'must-not-survive',
+}];
+const chequeDetails=normalizeHapoalimAdditionalDetails(detailPayload);
+assert.equal(chequeDetails.referenceNumber,'987654','Hapoalim additional transaction data exposes the bank transaction reference without guessing');
+assert.deepEqual(chequeDetails.checkNumbers,['4463454','80000071'],'explicit per-cheque identifiers are preserved exactly as returned by the bank');
+assert.equal(chequeDetails.checkCount,2,'explicit bank-provided cheque count is preserved');
+assert.deepEqual(chequeDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830],['17','732','105323448','80000071',1000]],'structured bank/branch/account/check-number/amount rows become a deterministic cheque table, including the bank UI row reference shown as אסמכתא (מס׳ צ׳ק)');
+assert.equal(chequeDetails.hasDocumentReference,true,'scan/document presence can be indicated without persisting its URL');
+assert.equal(JSON.stringify(chequeDetails).includes('secret'),false,'document/session values are never persisted into the shared bank feed');
+assert.equal(buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','/details?id=7','12-345-678901'),'https://login.bankhapoalim.co.il/details?id=7&accountId=12-345-678901&lang=he','pfm detail requests stay on Hapoalim origin and add exact account/language parameters');
+assert.throws(()=>buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','https://example.com/details','12-345-678901'),e=>e?.code==='UNSAFE_DETAIL_URL','foreign pfm detail URLs fail closed');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק.שיק בסלולר'}),true,'bank-provided mobile cheque deposit description is recognized for targeted detail enrichment');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק שיק-ע.ישיר'}),true,'direct-channel cheque deposit remains eligible for targeted enrichment');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'החזרת שיק'}),false,'returned cheques are not misclassified as cheque deposits');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'שיק'}),false,'ordinary cheque debits are not misclassified as cheque deposits');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'זיכוי מדיסקונט',beneficiaryDetailsData:{partyName:'זרצקי פרידה'}}),false,'beneficiary names containing the Hebrew letters צק cannot trigger cheque-deposit enrichment');
+assert.equal(isHapoalimChequeTransaction({activityDescription:'העברה נכנסת'}),false,'ordinary transfers do not trigger extra cheque-detail requests');
+
+const genericPfm=normalizeHapoalimAdditionalDetails([{transactionNumber:7826069983,transactionStatusCode:0,transactionSum:0,check:false,multiCheck:false,checkNumber:0}]);
+assert.equal(genericPfm.referenceNumber,'7826069983','generic PFM payload may still provide a useful aggregate bank transaction reference');
+assert.deepEqual(genericPfm.checkNumbers,[],'zero/check flags are never converted into fake cheque identifiers');
+assert.equal(genericPfm.checkCount,null,'generic false/zero PFM flags never invent a one-cheque count');
+assert.deepEqual(genericPfm.checkItems,[],'generic PFM status objects do not become a cheque-detail table');
+
+const hebrewChequeId=normalizeHapoalimAdditionalDetails([{label:'מספר שיק',value:'778899'},{label:'מספר שיקים',value:'4'}]);
+assert.deepEqual(hebrewChequeId.checkNumbers,['778899'],'singular Hebrew cheque-number labels remain identifiers, not counts');
+assert.equal(hebrewChequeId.checkCount,4,'plural Hebrew number-of-cheques labels are classified as counts');
+const labelledCheque=normalizeHapoalimAdditionalDetails([{bank:'10',branch:'856',account:'4244721',label:'מספר צ׳ק',value:'5000243',amount:'755.00',image:'https://bank.example/secret'}]);
+assert.equal(labelledCheque.hasDocumentReference,true,'label/value scan references are detected without persisting the sensitive target');
+assert.equal(JSON.stringify(labelledCheque).includes('bank.example'),false,'label/value document targets never enter the normalized feed');
+const chequeArray=normalizeHapoalimAdditionalDetails({chequeNumbers:['1001','0','1002','1003']});
+assert.deepEqual(chequeArray.checkNumbers,['1001','1002','1003'],'arrays explicitly named as cheque numbers preserve non-zero identifiers and discard sentinel zero');
+assert.equal(chequeArray.checkCount,3,'explicit cheque-number arrays provide a deterministic count when no separate count is returned');
+
 const rawInbound={referenceNumber:101,eventDate:'20260830',valueDate:'20260830',eventAmount:250,eventActivityTypeCode:1,activityDescription:'העברה נכנסת',serialNumber:9,currentBalance:4321.5,beneficiaryDetailsData:{partyName:'לקוח'}};
 const rawOutbound={referenceNumber:102,eventDate:'20260829',valueDate:'20260829',eventAmount:80,eventActivityTypeCode:2,activityDescription:'הוראת קבע',serialNumber:0,currentBalance:4071.5,beneficiaryDetailsData:{messageDetail:'בדיקה'}};
-const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoalimTransaction(rawOutbound);
+const rawCheque={referenceNumber:555,eventDate:'20260828',valueDate:'20260828',eventAmount:1900,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:77,currentBalance:5971.5,netunimAdditionalDetails:chequeDetails};
+const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoalimTransaction(rawOutbound),cheque=normalizeHapoalimTransaction(rawCheque);
 assert.equal(inbound.amount,250,'incoming Hapoalim transaction is positive');
 assert.equal(outbound.amount,-80,'outgoing Hapoalim transaction is negative');
 assert.equal(outbound.status,'pending','serial number zero maps to pending like the pinned scraper');
 assert.match(inbound.memo,/לקוח/,'beneficiary details are normalized into a compact memo');
 assert.equal(inbound.balanceAfter,4321.5,'raw Hapoalim currentBalance is preserved as the authoritative balance after the transaction');
 assert.equal(normalizeHapoalimTransaction({...rawInbound,currentBalance:null}).balanceAfter,null,'missing bank row balance stays unknown instead of being coerced to zero');
+assert.equal(cheque.cheque,true,'cheque deposits remain explicitly marked after normalization');
+assert.equal(cheque.bankReference,'555','main transaction reference is preserved as a stable bank identifier');
+assert.equal(cheque.bankSerial,'77','bank serial is preserved separately instead of being mislabeled as a cheque number');
+assert.deepEqual(cheque.checkDetails.checkNumbers,['4463454','80000071'],'additional cheque identifiers survive transaction normalization');
+assert.equal(cheque.checkDetails.checkItems.length,2,'structured cheque rows survive transaction normalization');
+assert.equal(cheque.checkDetails.hasDocumentReference,true,'only the fact that a scan/document reference exists survives normalization');
 const repeated=normalizeRecentTransactions([rawOutbound,rawInbound,rawInbound],20);
 assert.equal(repeated.length,2,'duplicate recent bank transactions are removed deterministically');
 assert.equal(repeated[0].id,'101','recent transactions are sorted newest first');
 
 const feed=normalizeBankFeed({
   provider:'hapoalim',accountNumber:'12-345-678901',balance:4321.5,syncedAt:'2026-08-30T06:15:00.000Z',
-  transactions:[inbound,outbound],transactionWarning:'',
+  transactions:[inbound,outbound,cheque],transactionWarning:'',
 });
 assert.equal(feed.balance,4321.5,'shared bank feed preserves the authoritative bank balance');
-assert.equal(feed.transactions.length,2,'shared bank feed carries the complete fetched rolling-window transaction set');
-assert.equal(feed.transactions[0].balanceAfter,4321.5,'shared bank feed preserves the bank-provided per-transaction balance');
+assert.equal(feed.transactions.length,3,'shared bank feed carries the complete fetched rolling-window transaction set');
+assert.equal(feed.transactions.find(x=>x.bankReference==='101').balanceAfter,4321.5,'shared bank feed preserves the bank-provided per-transaction balance');
+assert.equal(feed.version,4,'shared feed schema is upgraded to v4 for structured cheque rows');
+assert.deepEqual(feed.transactions.find(x=>x.cheque).checkDetails.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'shared feed v4 preserves structured verified cheque rows across cloud/local normalization');
 assert.equal(feed.accountNumber,'12-345-678901','shared bank feed carries the selected account identity');
 assert.equal(feed.syncedAt,'2026-08-30T06:15:00.000Z','shared bank feed carries the successful bank-sync timestamp');
 assert.equal(normalizeBankFeed({balance:4,syncedAt:'bad'}),null,'invalid feed timestamps are rejected instead of becoming shared success markers');
@@ -118,4 +171,4 @@ assert.equal(sessionTerminal.value,unknownSuccessUrl,'session-aware login does n
 await assert.rejects(()=>waitForTerminalLoginResult(sessionAwarePage,{SUCCESS:[async()=>false]},{timeoutMs:25,pollMs:10,timeoutCode:'SILENT_AUTH_TIMEOUT',timeoutMarker:'NETUNIM_SILENT_AUTH_TIMEOUT'}),e=>e?.code==='SILENT_AUTH_TIMEOUT'&&e?.message==='NETUNIM_SILENT_AUTH_TIMEOUT','silent login timeout has its own deterministic code instead of masquerading as interactive MFA');
 assert.deepEqual(scraperFailureMessage({errorType:'GENERIC',errorMessage:'NETUNIM_SILENT_AUTH_TIMEOUT'}),['לא נמצא סשן בנק פעיל ברענון השקט. לחץ „פתח אימות בבנק” פעם אחת כדי לחדש את ההזדהות.','AUTH_REQUIRED']);
 
-console.log('PASS bank bridge models: shared 24h schedule, staged account selection, transaction normalization/feed and session-aware MFA behavior are deterministic');
+console.log('PASS bank bridge models: shared 24h schedule, staged account selection, cheque detail enrichment, transaction feed and session-aware MFA behavior are deterministic');
