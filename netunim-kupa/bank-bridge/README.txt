@@ -42,19 +42,19 @@ Automatic refresh becomes due 24 hours after the last successful Hapoalim sync s
 If Kupa was closed when the period elapsed, it checks on the next opening. Failed background attempts never overwrite the existing balance and are throttled for one hour on that computer.
 If Hapoalim requires an additional interactive step, use "Open bank verification" explicitly.
 
-Bridge v6 deliberately does not call israeli-bank-scrapers.scrape() as one all-or-nothing operation. After login it waits until both the Hapoalim SPA REST context and accounts service are really available, selects the configured account, reads that account's currentBalance as the required result, and only then requests recent transactions. This avoids losing a valid balance because another account or the optional transaction endpoint failed.
+Bridge v7 deliberately does not call israeli-bank-scrapers.scrape() as one all-or-nothing operation. After login it waits until both the Hapoalim SPA REST context and accounts service are really available, selects the configured account, reads that account's currentBalance as the required result, and only then requests recent transactions. This avoids losing a valid balance because another account or the optional transaction endpoint failed.
 
 The recent feed is intentionally bounded to the latest 20 transactions from a 30-day request window. A transaction-fetch failure is partial success: the balance and successful bank-sync time are still saved, while Kupa shows a warning instead of returning a generic failed balance update.
 The normalized feed (balance, selected account, successful sync time, recent transactions and warning) is stored with Kupa's shared bank state so all Kupa computers see the same last successful result. Its versioned shape is intended to be reusable by the Orders app later; Orders is not wired to write/read this feed in this patch.
 
 
-Session-aware login (Bridge v6)
+Session-aware login (Bridge v7)
 --------------------------------
-The Hapoalim scraper library historically classifies login success by a fixed list of post-login URLs. Hapoalim may route a valid authenticated account to a different SPA URL, which can make the library return UNKNOWN_ERROR even while the bank account is visibly open. Bridge v6 does not trust the URL as the authority. Login success is also recognized when the page exposes the Hapoalim REST context and the authenticated /ServerServices/general/accounts request succeeds.
+The Hapoalim scraper library historically classifies login success by a fixed list of post-login URLs. Hapoalim may route a valid authenticated account to a different SPA URL, which can make the library return UNKNOWN_ERROR even while the bank account is visibly open. Bridge v7 does not trust the URL as the authority. Login success is also recognized when the page exposes the Hapoalim REST context and the authenticated /ServerServices/general/accounts request succeeds.
 
 After a successful run the Bridge remembers only the successful Hapoalim page origin/path (never query/hash tokens). On later refreshes it first tries to reuse that authenticated browser session from the dedicated persistent Chrome/Edge profile. Only when the saved session is no longer usable does it run the credential login flow again. Silent login waits up to 90 seconds; if the bank requires renewed user verification, the Bridge reports AUTH_REQUIRED and the user can explicitly choose "פתח אימות בבנק".
 
-Exact account selection (Bridge v6)
+Exact account selection (Bridge v7)
 -----------------------------------
 Bank Hapoalim identifies a current account to its internal API as bank-branch-account. For Bank Hapoalim the bank number is 12, so branch 123 and account 456789 become 12-123-456789.
 Kupa stores branch and account as separate fields in the local Bridge credentials. If an account number alone is ambiguous, missing or stale, the Bridge returns only a safe list of open account identifiers (bank/branch/account) and Kupa renders them as selectable choices. Choosing one updates only the encrypted local account selector; the bank password does not need to be typed again. Closed accounts are excluded using the same accountClosingReasonCode rule as the pinned Hapoalim scraper.
@@ -79,3 +79,8 @@ If Bank Hapoalim requests an SMS/voice verification code, use "פתח אימות
 The visible Chrome/Edge window may stay open for up to 10 minutes while waiting for the verification flow to reach a real success/error page. It closes immediately when the login reaches a terminal result; there is no fixed delay after successful verification.
 
 The Bridge reuses the same dedicated browser profile and remembers the same Chrome/Edge executable on that Windows computer. This preserves bank cookies/device state as far as Bank Hapoalim permits. The bank can still require verification again according to its own security policy.
+
+Bridge v7 — יציבות ניווט בבנק הפועלים
+-----------------------------------
+החל מ-v7 קריאת יתרה ותנועות אינה מתחילה ברגע הראשון שבו דף החשבון נראה פתוח. ה-Bridge דורש חלון יציבות קצר של ה-SPA/API, ואם Puppeteer מאבד Execution Context בגלל redirect פנימי הוא ממתין לסשן מאומת ויציב ומנסה מחדש עד שלוש פעמים. שגיאות API אמיתיות אינן מוסתרות ואינן מקבלות retry אוטומטי.
+במסך הקופה כפתורי הרענון, זמן העדכון האחרון וכשל העדכון האחרון נשארים גלויים; מפתח ה-Bridge, פרטי החשבון והעדכון האוטומטי נמצאים תחת 'הגדרות חיבור וסנכרון' הסגורות כברירת מחדל.

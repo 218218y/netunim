@@ -6,12 +6,16 @@ import {spawn} from 'node:child_process';
 import {randomBytes,randomUUID,timingSafeEqual} from 'node:crypto';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
+  HAPOALIM_NAVIGATION_STABLE_MS,
+  HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
   INTERACTIVE_AUTH_TIMEOUT_MS,
   SILENT_AUTH_TIMEOUT_MS,
+  isTransientNavigationError,
   normalizeRecentTransactions,
   parseAccountSelector,
+  retryTransientNavigation,
   scraperFailureMessage,
   selectAccountDescriptor,
   waitForTerminalLoginResult,
@@ -20,7 +24,7 @@ import {
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=6;
+const BRIDGE_VERSION=7;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -165,19 +169,26 @@ function enableHapoalimSessionAwareLogin(scraper,{interactive=false}={}){
   return scraper;
 }
 
-async function waitForHapoalimSessionReady(page,{timeoutMs=HAPOALIM_POST_LOGIN_TIMEOUT_MS,pollMs=500}={}){
+async function waitForHapoalimSessionReady(page,{timeoutMs=HAPOALIM_POST_LOGIN_TIMEOUT_MS,pollMs=350,stableMs=HAPOALIM_NAVIGATION_STABLE_MS}={}){
   const deadline=Date.now()+Math.max(1000,Number(timeoutMs)||HAPOALIM_POST_LOGIN_TIMEOUT_MS);
-  let last={href:'',restContext:'',status:0,message:''};
+  let last={href:'',restContext:'',status:0,message:''},stableKey='',stableSince=0;
   while(Date.now()<deadline){
     if(page?.isClosed?.())throw Object.assign(new Error('חלון הבנק נסגר לפני שניתן היה לקרוא את נתוני החשבון'),{code:'BANK_PAGE_CLOSED'});
     try{
       last=await readHapoalimSessionState(page);
-      if(last?.ready)return last;
-    }catch(e){last={...last,message:String(e?.message||e)}}
+      if(last?.ready){
+        const key=`${String(last.href||'')}|${String(last.restContext||'')}`;
+        if(key!==stableKey){stableKey=key;stableSince=Date.now()}
+        if(Date.now()-stableSince>=Math.max(0,Number(stableMs)||0))return last;
+      }else{stableKey='';stableSince=0}
+    }catch(e){
+      if(!isTransientNavigationError(e))last={...last,message:String(e?.message||e)};
+      stableKey='';stableSince=0;
+    }
     await new Promise(resolve=>setTimeout(resolve,Math.min(pollMs,Math.max(50,deadline-Date.now()))));
   }
   const status=last?.status?` HTTP ${last.status}`:'';
-  const e=new Error(`הכניסה לבנק הצליחה, אבל שירות הנתונים של הפועלים לא נהיה מוכן בתוך ${Math.round(timeoutMs/1000)} שניות.${status}`);
+  const e=new Error(`הכניסה לבנק הצליחה, אבל שירות הנתונים של הפועלים לא נשאר יציב מספיק לקריאת נתונים בתוך ${Math.round(timeoutMs/1000)} שניות.${status}`);
   e.code='BANK_SESSION_NOT_READY';e.detail=last;throw e;
 }
 
@@ -194,7 +205,7 @@ async function tryReuseSavedHapoalimSession(page){
   }catch{return null}
 }
 
-async function pageFetchJson(page,url,{method='GET',headers={},body}={}){
+async function pageFetchJsonOnce(page,{url,method='GET',headers={},body}={}){
   const result=await page.evaluate(async({url,method,headers,body})=>{
     try{
       const response=await fetch(url,{method,headers,body,credentials:'include',cache:'no-store'});
@@ -207,31 +218,50 @@ async function pageFetchJson(page,url,{method='GET',headers={},body}={}){
   return result.data;
 }
 
+async function pageFetchJson(page,requestFactory,{initialReady=null}={}){
+  let reusableReady=initialReady;
+  return retryTransientNavigation(async()=>{
+    let ready=reusableReady;reusableReady=null;
+    if(ready&&String(page?.url?.()||'')!==String(ready.href||''))ready=null;
+    if(!ready)ready=await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
+    const request=await requestFactory(ready);
+    const data=await pageFetchJsonOnce(page,request);
+    return {data,ready};
+  },{attempts:HAPOALIM_DATA_RETRY_LIMIT});
+}
+
 async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
-  const rawAccounts=Array.isArray(ready?.accounts)?ready.accounts:[];
+  const stableReady=ready?.ready?ready:await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
+  const rawAccounts=Array.isArray(stableReady?.accounts)?stableReady.accounts:[];
   const openAccounts=rawAccounts.filter(account=>Number(account?.accountClosingReasonCode)===0);
   const selected=await runStage('account',()=>Promise.resolve(selectAccountDescriptor(openAccounts,{bankNumber:'12',branchNumber:credentials.branchNumber||'',accountNumber:credentials.accountNumber||''})),'ACCOUNT_SELECTION_FAILED');
   const accountId=selected.accountId;
-  const restContext=String(ready.restContext||'').replace(/^\/+/, '');
-  const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
-  const balanceUrl=`${apiSiteUrl}/current-account/composite/balanceAndCreditLimit?accountId=${encodeURIComponent(accountId)}&view=details&lang=he`;
-  const balanceData=await runStage('balance',()=>pageFetchJson(page,balanceUrl), 'BALANCE_FETCH_FAILED');
+  const balanceResult=await runStage('balance',()=>pageFetchJson(page,async current=>{
+    const restContext=String(current.restContext||'').replace(/^\/+/, '');
+    const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
+    return {url:`${apiSiteUrl}/current-account/composite/balanceAndCreditLimit?accountId=${encodeURIComponent(accountId)}&view=details&lang=he`};
+  },{initialReady:stableReady}), 'BALANCE_FETCH_FAILED');
+  const balanceData=balanceResult.data,balanceReady=balanceResult.ready;
   const balance=Number(balanceData?.currentBalance);
   if(!Number.isFinite(balance))throw stageError('balance',Object.assign(new Error('בנק הפועלים לא החזיר יתרת עו״ש מספרית לחשבון שנבחר'),{code:'NO_BALANCE'}));
 
   let transactions=[],transactionWarning='';
   try{
     const end=new Date(),start=new Date(end);start.setDate(start.getDate()-Math.max(1,HAPOALIM_TRANSACTION_LOOKBACK_DAYS-1));
-    const transactionsUrl=`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=100&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`;
-    const cookies=await page.cookies();
-    const xsrf=String(cookies.find(cookie=>cookie.name==='XSRF-TOKEN')?.value||'');
-    const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};
-    if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
-    const txData=await pageFetchJson(page,transactionsUrl,{method:'POST',headers,body:'[]'});
-    transactions=normalizeRecentTransactions(txData?.transactions,HAPOALIM_TRANSACTION_LIMIT);
+    const txResult=await pageFetchJson(page,async current=>{
+      const restContext=String(current.restContext||'').replace(/^\/+/, '');
+      const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
+      const cookies=await page.cookies();
+      const xsrf=String(cookies.find(cookie=>cookie.name==='XSRF-TOKEN')?.value||'');
+      const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};
+      if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
+      return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=100&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
+    },{initialReady:balanceReady});
+    transactions=normalizeRecentTransactions(txResult.data?.transactions,HAPOALIM_TRANSACTION_LIMIT);
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
-  return {balance,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning};
+  const sessionHref=String(page?.url?.()||balanceReady?.href||stableReady?.href||'');
+  return {balance,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning,sessionHref};
 }
 
 async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
@@ -263,10 +293,10 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
       ready=await runStage('session',()=>waitForHapoalimSessionReady(scraper.page),'BANK_SESSION_NOT_READY');
     }
     const snapshot=await runStage('data',()=>fetchSelectedHapoalimSnapshot(scraper.page,credentials,ready),'BANK_DATA_ERROR');
-    const sessionUrl=safeHapoalimSessionUrl(ready?.href);
+    const sessionUrl=safeHapoalimSessionUrl(snapshot?.sessionHref||ready?.href);
     if(sessionUrl)await writeMeta({sessionUrl});
     success=true;
-    return {...snapshot,fetchedAt:new Date().toISOString()};
+    const {sessionHref:_,...publicSnapshot}=snapshot;return {...publicSnapshot,fetchedAt:new Date().toISOString()};
   }finally{
     if(scraper){try{await scraper.terminate(success)}catch(e){console.error('Bank Bridge browser cleanup failed:',e?.message||e)}}
     scrapeBusy=false;
@@ -349,7 +379,7 @@ if(args.has('--doctor')){
     enableHapoalimSessionAwareLogin(probe,{interactive:true});
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
     console.log(`Browser: ${browserPath}`);
-    console.log('Scraper: Hapoalim session-aware login + persistent-session reuse + MFA + staged data adapter + exact branch/account selector OK');
+    console.log('Scraper: Hapoalim session-aware login + navigation-stable data reads + persistent-session reuse + MFA + exact branch/account selector OK');
     process.exit(0);
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }

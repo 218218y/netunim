@@ -3,12 +3,16 @@ import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/ass
 import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
+  HAPOALIM_NAVIGATION_STABLE_MS,
+  HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
   INTERACTIVE_AUTH_TIMEOUT_MS,
+  isTransientNavigationError,
   SILENT_AUTH_TIMEOUT_MS,
   normalizeAccountNumber,
   parseAccountSelector,
+  retryTransientNavigation,
   publicAccountDescriptors,
   normalizeHapoalimTransaction,
   normalizeRecentTransactions,
@@ -51,6 +55,16 @@ assert.throws(()=>selectAccountDescriptor(accountDescriptors,{branchNumber:'345'
 assert.deepEqual(publicAccountDescriptors([accountDescriptors[0]])[0],{bankNumber:'12',branchNumber:'345',accountNumber:'678901',accountId:'12-345-678901'},'public account choices contain identifiers only, without balance or transaction data');
 
 assert.equal(HAPOALIM_POST_LOGIN_TIMEOUT_MS,60*1000,'post-login bank SPA/API readiness may settle for up to sixty seconds');
+assert.equal(HAPOALIM_NAVIGATION_STABLE_MS,1500,'bank data reads require a bounded stable navigation window instead of a fixed blind delay');
+assert.equal(HAPOALIM_DATA_RETRY_LIMIT,3,'transient navigation recovery is bounded to three attempts');
+assert.equal(isTransientNavigationError(new Error('Execution context was destroyed, most likely because of a navigation.')),true,'Puppeteer destroyed execution contexts are classified as transient navigation races');
+assert.equal(isTransientNavigationError(new Error('HTTP 500')),false,'ordinary bank/API failures are not misclassified as navigation races');
+let navAttempts=0,navRecoveries=0;
+const navRecovered=await retryTransientNavigation(async()=>{navAttempts++;if(navAttempts<3)throw new Error('Execution context was destroyed, most likely because of a navigation.');return 'ok'},{attempts:3,onRetry:async()=>{navRecoveries++}});
+assert.equal(navRecovered,'ok','transient page navigation is retried until a fresh execution context succeeds');
+assert.equal(navAttempts,3,'navigation retry preserves a strict attempt bound');
+assert.equal(navRecoveries,2,'navigation recovery callback runs only between transient attempts');
+await assert.rejects(()=>retryTransientNavigation(async()=>{throw new Error('bank rejected request')},{attempts:3}),/bank rejected request/,'non-navigation failures are never retried as if they were transient');
 assert.equal(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,30,'recent transaction fetch is intentionally bounded to thirty days');
 assert.equal(HAPOALIM_TRANSACTION_LIMIT,20,'bridge exposes at most twenty recent transactions');
 assert.equal(BANK_FEED_TRANSACTION_LIMIT,20,'shared Kupa bank feed uses the same twenty-row cap');

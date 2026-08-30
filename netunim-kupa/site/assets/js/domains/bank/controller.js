@@ -43,9 +43,9 @@ async function refreshBankBridgeStatus(){
     return bankBridgeUiState();
   }
   try{
-    const s=await bridge.status(),bridgeVersion=Number(s.bridgeVersion||0),upgradeRequired=bridgeVersion<6;
+    const s=await bridge.status(),bridgeVersion=Number(s.bridgeVersion||0),upgradeRequired=bridgeVersion<7;
     if(upgradeRequired){
-      Object.assign(bridgeState,{checked:true,available:true,configured:!!s.configured,upgradeRequired:true,bridgeVersion,branchNumber:s.branchNumber||'',accountNumber:s.accountNumber||'',availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',message:'מותקנת במחשב גרסת Bank Bridge ישנה. יש להריץ מחדש install_bank_bridge.bat כדי להשתמש בזיהוי סשן מאומת של הפועלים וברענון היציב.'});
+      Object.assign(bridgeState,{checked:true,available:true,configured:!!s.configured,upgradeRequired:true,bridgeVersion,branchNumber:s.branchNumber||'',accountNumber:s.accountNumber||'',availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',message:'מותקנת במחשב גרסת Bank Bridge ישנה. יש להריץ מחדש install_bank_bridge.bat כדי לקבל קריאה יציבה גם בזמן ניווטים של אתר הפועלים.'});
     }else{
       Object.assign(bridgeState,{checked:true,available:true,configured:!!s.configured,upgradeRequired:false,bridgeVersion,branchNumber:s.branchNumber||'',accountNumber:s.accountNumber||'',availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',message:s.configured?'החיבור המקומי מוכן.':'Bank Bridge פעיל, אך עדיין לא נשמרו בו פרטי בנק הפועלים.'});
     }
@@ -122,7 +122,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     const canonicalAccount=result.accountId||[result.branchNumber,result.accountNumber].filter(Boolean).join('-')||result.accountNumber||'';
     const feed=normalizeBankFeed({provider:'hapoalim',accountNumber:canonicalAccount,balance:Number(result.balance),syncedAt:fetchedAt,transactions:result.transactions||[],transactionWarning:result.transactionWarning||''});
     await commitBankSnapshot(result.balance,{source:'hapoalim',accountNumber:canonicalAccount||null,bankSyncAt:fetchedAt,bankFeed:feed,message:auto?'נתוני הבנק עודכנו אוטומטית מבנק הפועלים':'יתרת העו״ש ונתוני הבנק עודכנו מבנק הפועלים'});
-    Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(6,bridgeState.bridgeVersion||0),branchNumber:result.branchNumber||bridgeState.branchNumber,accountNumber:result.accountNumber||bridgeState.accountNumber,availableAccounts:[],lastScrapeAt:fetchedAt,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:result.transactionWarning||'',message:result.transactionWarning?'היתרה עודכנה בהצלחה; קיימת אזהרה לגבי התנועות האחרונות.':'היתרה והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
+    Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(7,bridgeState.bridgeVersion||0),branchNumber:result.branchNumber||bridgeState.branchNumber,accountNumber:result.accountNumber||bridgeState.accountNumber,availableAccounts:[],lastScrapeAt:fetchedAt,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:result.transactionWarning||'',message:result.transactionWarning?'היתרה עודכנה בהצלחה; קיימת אזהרה לגבי התנועות האחרונות.':'היתרה והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
     if(result.transactionWarning&&!auto)toast('היתרה עודכנה. התנועות האחרונות לא נטענו במלואן; פרטי האזהרה מוצגים במסך הבנק.');
     return true;
   }catch(e){

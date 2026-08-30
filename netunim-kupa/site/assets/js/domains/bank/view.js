@@ -40,6 +40,13 @@ function bankAccountChoicesMarkup(accounts){
   }).join('')}</div></div>`;
 }
 
+function bankBridgeDiagnosticsMarkup(s){
+  const stage=errorStageLabel(s?.lastErrorStage);
+  const error=s?.lastError?`<div class="bank-sync-detail error"><b>העדכון האחרון נכשל${stage?` בשלב: ${esc(stage)}`:''}</b><span>${esc(s.lastError)}</span>${s.lastErrorCode||s.lastErrorHttpStatus?`<small>${s.lastErrorCode?`קוד: ${esc(s.lastErrorCode)}`:''}${s.lastErrorCode&&s.lastErrorHttpStatus?' · ':''}${s.lastErrorHttpStatus?`HTTP מהבנק: ${esc(s.lastErrorHttpStatus)}`:''}</small>`:''}${s.availableAccounts?.length?'<small>פתח את הגדרות החיבור למטה כדי לבחור את החשבון המדויק.</small>':''}</div>`:'';
+  const warning=s?.lastWarning?`<div class="bank-sync-detail warn"><b>היתרה נשמרה, אך קיימת אזהרת תנועות</b><span>${esc(s.lastWarning)}</span></div>`:'';
+  return error+warning;
+}
+
 function bankTransactionsMarkup(feed){
   const rows=feed?.transactions||[];
   if(!feed)return '<div class="empty bank-feed-empty">לא בוצע עדיין סנכרון בנק שמכיל תנועות.</div>';
@@ -56,6 +63,10 @@ function bankTransactionsMarkup(feed){
 function updateBridgePanel(){
   const s=bankBridgeUiState(),status=document.getElementById('bankBridgeStatus');
   if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||s.lastError?'error':s.configured?'ok':''}`}
+  const diagnostics=document.getElementById('bankBridgeDiagnostics');if(diagnostics)diagnostics.innerHTML=bankBridgeDiagnosticsMarkup(s);
+  const choices=document.getElementById('bankBridgeAccountChoices');if(choices)choices.innerHTML=bankAccountChoicesMarkup(s.availableAccounts);
+  const branch=document.getElementById('bankBranchNumberInput');if(branch&&document.activeElement!==branch&&!branch.value)branch.value=s.branchNumber||'';
+  const account=document.getElementById('bankAccountNumberInput');if(account&&document.activeElement!==account&&!account.value)account.value=s.accountNumber||'';
   const refresh=document.querySelector('[data-action="refresh-bank-from-hapoalim"]');if(refresh)refresh.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
   const auth=document.querySelector('[data-action="open-bank-auth"]');if(auth)auth.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
   const remove=document.querySelector('[data-action="delete-bank-bridge-credentials"]');if(remove)remove.disabled=!!s.busy||!s.configured;
@@ -70,7 +81,6 @@ function renderBank(){
   const autoDeposits=bankDerivedCheckDeposits(),bridgeUi=bankBridgeUiState(),feed=bridgeUi.feed;
   const staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses;
   const lastSync=bridgeUi.sharedLastSyncAt;
-  const lastErrorStage=errorStageLabel(bridgeUi.lastErrorStage);
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
     <div class="bank-entry">
@@ -83,33 +93,37 @@ function renderBank(){
     <div class="bank-mini ${esc(after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">צילום יתרה פחות חיובים שעברו מאז + מחזור האשראי הבא</div></div>
   </div>
   <section class="section bank-sync-section">
-    <div class="section-head bank-sync-head"><div><h3>סנכרון בנק הפועלים</h3><div class="muted">ה-Bridge המקומי קורא קודם את היתרה של החשבון שנבחר ורק אחר כך תנועות אחרונות. פרטי ההתחברות נשארים מוצפנים במחשב.</div></div><div class="bank-sync-head-actions"><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן עכשיו'}</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>פתח אימות בבנק</button></div></div>
+    <div class="section-head bank-sync-head"><div><h3>סנכרון בנק הפועלים</h3></div><div class="bank-sync-head-actions"><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן עכשיו'}</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured?'disabled':''}>פתח אימות בבנק</button></div></div>
     <div class="bank-sync-success ${lastSync?'ok':'idle'}"><span class="bank-sync-dot"></span><div><b>${lastSync?'עדכון הבנק האחרון הצליח':'אין עדיין עדכון בנק מוצלח'}</b><small>${esc(syncTimeLabel(lastSync))}${feed?.accountNumber?` · חשבון ${esc(feed.accountNumber)}`:''}</small></div></div>
-    <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
-    ${bridgeUi.lastError?`<div class="bank-sync-detail error"><b>העדכון האחרון נכשל${lastErrorStage?` בשלב: ${esc(lastErrorStage)}`:''}</b><span>${esc(bridgeUi.lastError)}</span>${bridgeUi.lastErrorCode||bridgeUi.lastErrorHttpStatus?`<small>${bridgeUi.lastErrorCode?`קוד: ${esc(bridgeUi.lastErrorCode)}`:''}${bridgeUi.lastErrorCode&&bridgeUi.lastErrorHttpStatus?' · ':''}${bridgeUi.lastErrorHttpStatus?`HTTP מהבנק: ${esc(bridgeUi.lastErrorHttpStatus)}`:''}</small>`:''}</div>`:''}
-    ${bankAccountChoicesMarkup(bridgeUi.availableAccounts)}
-    ${bridgeUi.lastWarning?`<div class="bank-sync-detail warn"><b>היתרה נשמרה, אך קיימת אזהרת תנועות</b><span>${esc(bridgeUi.lastWarning)}</span></div>`:''}
-    <div class="bank-connection-forms">
-      <form id="bankBridgePairForm" class="bank-sync-form bank-sync-pair-form" autocomplete="off">
-        <div class="bank-sync-form-title">חיבור הדפדפן ל-Bridge במחשב הזה</div>
-        <label><span>מפתח Bank Bridge</span><input id="bankBridgeTokenInput" name="bankBridgeToken" type="password" autocomplete="off" placeholder="הדבק את המפתח שהעתיקה ההתקנה"></label>
-        <button type="button" class="btn" data-action="save-bank-bridge-token" ${bridgeUi.busy?'disabled':''}>שמור מפתח למחשב זה</button>
-        <small>${bridgeUi.tokenConfigured?'מפתח מקומי כבר שמור בדפדפן הזה. אפשר להחליף אותו בהדבקת מפתח חדש.':'יש לבצע פעם אחת בכל מחשב/דפדפן.'}</small>
-      </form>
-      <form id="bankBridgeCredentialsForm" class="bank-sync-form bank-sync-credentials-form" autocomplete="off">
-        <div class="bank-sync-form-title">פרטי בנק הפועלים — נשמרים רק ב-Windows</div>
-        <div class="bank-sync-credential-grid">
-          <label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label>
-          <label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label>
-          <label><span>סניף</span><input id="bankBranchNumberInput" name="branchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.branchNumber||'')}"></label>
-          <label><span>מספר חשבון</span><input id="bankAccountNumberInput" name="accountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.accountNumber||'')}"></label>
+    <div id="bankBridgeDiagnostics">${bankBridgeDiagnosticsMarkup(bridgeUi)}</div>
+    <details class="bank-sync-settings">
+      <summary><span><b>הגדרות חיבור וסנכרון</b><small>Bridge, פרטי הפועלים, בחירת חשבון ועדכון אוטומטי</small></span><span class="bank-sync-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="bank-sync-settings-body">
+        <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
+        <div id="bankBridgeAccountChoices">${bankAccountChoicesMarkup(bridgeUi.availableAccounts)}</div>
+        <div class="bank-connection-forms">
+          <form id="bankBridgePairForm" class="bank-sync-form bank-sync-pair-form" autocomplete="off">
+            <div class="bank-sync-form-title">חיבור הדפדפן ל-Bridge במחשב הזה</div>
+            <label><span>מפתח Bank Bridge</span><input id="bankBridgeTokenInput" name="bankBridgeToken" type="password" autocomplete="off" placeholder="הדבק את המפתח שהעתיקה ההתקנה"></label>
+            <button type="button" class="btn" data-action="save-bank-bridge-token" ${bridgeUi.busy?'disabled':''}>שמור מפתח למחשב זה</button>
+            <small>${bridgeUi.tokenConfigured?'מפתח מקומי כבר שמור בדפדפן הזה. אפשר להחליף אותו בהדבקת מפתח חדש.':'יש לבצע פעם אחת בכל מחשב/דפדפן.'}</small>
+          </form>
+          <form id="bankBridgeCredentialsForm" class="bank-sync-form bank-sync-credentials-form" autocomplete="off">
+            <div class="bank-sync-form-title">פרטי בנק הפועלים — נשמרים רק ב-Windows</div>
+            <div class="bank-sync-credential-grid">
+              <label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label>
+              <label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label>
+              <label><span>סניף</span><input id="bankBranchNumberInput" name="branchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.branchNumber||'')}"></label>
+              <label><span>מספר חשבון</span><input id="bankAccountNumberInput" name="accountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.accountNumber||'')}"></label>
+            </div>
+            <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים במחשב</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
+            <small>כאשר יש כמה חשבונות, יש להזין גם סניף וגם חשבון. Bank Bridge בונה מזהה מדויק בפורמט 12-סניף-חשבון ולא מנחש לפי סיומת.</small>
+          </form>
         </div>
-        <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים במחשב</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
-        <small>כאשר יש כמה חשבונות, יש להזין גם סניף וגם חשבון. Bank Bridge בונה מזהה מדויק בפורמט 12-סניף-חשבון ולא מנחש לפי סיומת.</small>
-      </form>
-    </div>
-    <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי פעם ב־24 שעות</span></label></div>
-    <div class="soft-note">„רענן עכשיו” מנסה סנכרון שקט. אם הפועלים דורש אימות נוסף לחץ „פתח אימות בבנק”. לאחר שהחשבון נפתח, ה-Bridge מחכה עד ששירותי הנתונים של הבנק באמת מוכנים ורק אז קורא את היתרה. התנועות הן שכבה נפרדת: כשל בהן אינו מבטל יתרה שכבר נקראה בהצלחה.</div>
+        <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי פעם ב־24 שעות</span></label></div>
+        <div class="soft-note">„רענן עכשיו” מנסה קודם את הסשן השמור. „פתח אימות בבנק” עדיין נדרש כאשר הפועלים דורש הזדהות מחדש. Bridge v7 ממתין ליציבות הניווט של אתר הבנק ומנסה מחדש רק שגיאות ניווט רגעיות, כדי שלא לאבד יתרה או תנועות בזמן redirect פנימי.</div>
+      </div>
+    </details>
   </section>
   <section class="section bank-transactions-section">
     <div class="section-head bank-transactions-head"><div><h3>תנועות אחרונות מהבנק</h3><div class="muted">עד 20 תנועות מה־30 ימים האחרונים · הנתונים נשמרים יחד עם זמן הסנכרון האחרון כדי שיופיעו גם במחשב אחר.</div></div>${lastSync?`<span class="bank-transactions-updated">${esc(new Date(lastSync).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'}))}</span>`:''}</div>
