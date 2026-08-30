@@ -35,7 +35,7 @@ try:
             newEnabled:document.querySelector('#calendarNewButton')?.disabled===false,
             offline:document.querySelector('#calendarStatus')?.textContent.includes('אופליין')===true,
             weekActive:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="week"]')?.classList.contains('active')===true,
-            todayVisible:focusVisible(),
+            todayPresent:!!document.querySelector(`[data-calendar-day="${today}"]`),
           };
           document.querySelector('[data-action="calendar-set-view"][data-click-arg0="week"]').click();
           const weekImmediate=!!document.querySelector('.calendar-board.mode-week')&&!document.querySelector('.calendar-loading');
@@ -90,7 +90,7 @@ try:
         print(json.dumps({'result':result,'survived':survived,'errors':errors},ensure_ascii=False))
         expected=bool(
             result['initial']['active'] and result['initial']['normal'] and result['initial']['birthday'] and
-            result['initial']['newEnabled'] and result['initial']['offline'] and result['initial']['weekActive'] and result['initial']['todayVisible'] and
+            result['initial']['newEnabled'] and result['initial']['offline'] and result['initial']['weekActive'] and result['initial']['todayPresent'] and
             result['week']['active'] and result['week']['days']==7 and result['week']['immediate'] and result['day']['active'] and result['day']['days']==1 and result['day']['immediate'] and
             result['todayButton']['visible'] and result['todayButton']['monthActive'] and
             result['beforeReload']['count']==1 and result['beforeReload']['type']=='insert' and
