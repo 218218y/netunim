@@ -300,7 +300,7 @@ html,body{height:100%;overflow:hidden}
 .calendar-title-block{display:flex;align-items:baseline;gap:12px;min-width:max-content}
 .calendar-title-block h1{margin:0;font-size:20px;letter-spacing:-.35px}
 .calendar-period-title{font-size:14px;font-weight:800;color:#5f5147}
-.calendar-nav-actions,.calendar-view-modes{display:flex;gap:5px}
+.calendar-nav-actions,.calendar-view-modes{display:flex;gap:5px;flex:0 0 auto}
 .calendar-nav-actions .btn{min-width:34px}
 .calendar-view-modes{padding:2px;border:1px solid var(--line);border-radius:10px;background:#f7f4f1}
 .calendar-view-mode{border-color:transparent;background:transparent;box-shadow:none}
@@ -362,7 +362,7 @@ html,body{height:100%;overflow:hidden}
 .calendar-readonly-details .calendar-description{white-space:pre-wrap;padding:10px;border:1px solid var(--line);border-radius:10px;background:#faf9f8}
 .calendar-event-form textarea{min-height:90px}
 @media(max-width:1050px){.calendar-toolbar{flex-wrap:wrap}.calendar-toolbar-spacer{display:none}.calendar-status{order:4;flex:1 1 100%;max-width:none}.calendar-body-month{min-width:820px}.calendar-body-week{min-width:820px}.calendar-grid-month{min-height:700px}.calendar-grid-week{min-height:560px}}
-@media(max-width:780px){.calendar-title-block{flex:1}.calendar-toolbar>.btn.primary{margin-right:auto}.calendar-view-modes{order:2}.calendar-body-month,.calendar-body-week{min-width:760px}.calendar-weekdays,.calendar-grid-month,.calendar-grid-week{grid-template-columns:repeat(7,minmax(108px,1fr))}}
+@media(max-width:780px){.calendar-title-block{flex:1}.calendar-toolbar>.btn.primary{margin-right:auto}.calendar-body-month,.calendar-body-week{min-width:760px}.calendar-weekdays,.calendar-grid-month,.calendar-grid-week{grid-template-columns:repeat(7,minmax(108px,1fr))}}
 
 /* ===== אישורים מעוצבים + הגנת יציאה מטפסים ===== */
 .confirm-backdrop{position:fixed;inset:0;z-index:170;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(255,255,255,.62);backdrop-filter:blur(6px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .18s ease,visibility .18s ease}

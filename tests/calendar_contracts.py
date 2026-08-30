@@ -63,6 +63,7 @@ navigation=(SITE/'assets/js/ui/navigation.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 headers=(SITE/'_headers').read_text(encoding='utf-8')
 worker=(SITE/'service-worker.js').read_text(encoding='utf-8')
+css=(SITE/'assets/app.css').read_text(encoding='utf-8')
 
 ok('Object.freeze' in config and 'backendPath' in config and 'clientSecret' not in config and 'client_secret' not in config,'calendar config: browser points only at the Supabase OAuth backend and contains no client secret')
 ok('auth/calendar.events' not in config and 'auth/calendar.calendarlist.readonly' not in config,'calendar config: Google scopes moved out of the public browser OAuth configuration')
@@ -84,6 +85,12 @@ ok('resumeKnownConnectionSilently' in controller and 'calendarAuth.restore()' in
 ok('hydrateLegacyConnectionPreference' in controller and "getMeta('accountId')" in controller,'calendar reconnect migration: existing installations inherit their previously verified Calendar account once')
 
 ok('data-click-arg0="month"' in controller and 'data-click-arg0="week"' in controller and 'data-click-arg0="day"' in controller and 'calendar-prev-period' in controller and 'calendar-next-period' in controller,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
+toolbar_markup=re.search(r'function toolbarMarkup\(\)\{.*?return `(.*?)`\}',controller,re.S)
+toolbar_source=toolbar_markup.group(1) if toolbar_markup else ''
+nav_pos=toolbar_source.find('<div class="calendar-nav-actions">')
+views_pos=toolbar_source.find('${viewModeMarkup()}')
+title_pos=toolbar_source.find('<div class="calendar-title-block">')
+ok(0<=nav_pos<views_pos<title_pos and '.calendar-nav-actions,.calendar-view-modes{display:flex;gap:5px;flex:0 0 auto}' in css and '.calendar-view-modes{order:2}' not in css,'calendar toolbar: RTL right edge is navigation, then view modes, then dynamic title, so period text cannot shift the controls')
 ok('alignFocusInScroller' in controller and 'scroller.scrollTop' in controller and 'window.scrollTo' not in controller,'calendar focus: today/focused date is aligned inside the calendar scroller without moving the page viewport')
 ok((SITE/'assets/js/calendar/view.js').is_file(),'calendar view: pure period/focus helper module is part of the application')
 ok('calendarPrefetchRangeFor' in controller and 'calendarRangeContains' in controller and 'getRangeCacheCovering' in controller,'calendar cache: view changes reuse any cached snapshot that covers the visible range instead of requiring an exact range key')
