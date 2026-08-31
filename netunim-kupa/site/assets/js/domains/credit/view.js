@@ -140,7 +140,7 @@ function renderCredit(){
 
     <section class="section credit-forecast-section"><div class="section-head"><div><h3>${esc(forecastTitle)}</h3></div></div><div class="section-body"><div class="credit-forecast-list">${forecastRows}</div></div></section>
 
-    <section id="credit-active-transactions" class="section credit-detail-section" style="margin-top:16px"><div class="section-head"><div><h3>עסקאות ותשלומים פעילים</h3></div></div>${detailFocus?`<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(monthLabel(detailFocus.monthKey))} · מוצגות עסקאות עם חיוב בחודש זה</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus">הצג הכל ×</button></div>`:''}<div style="overflow:auto"><table><thead><tr>${bulkHeader('credits')}<th>כרטיס</th><th>תיאור</th><th>סכום כולל</th><th>התקדמות</th><th>תשלום הבא</th><th>יתרה עתידית</th><th>מצב</th><th></th></tr></thead><tbody>${detailItems.length?detailItems.map(item=>item.source==='manual'?manualCreditRow(item.record):syncedCreditRow(item.series)).join(''):`<tr><td colspan="9"><div class="empty compact">${detailFocus?'אין עסקאות פעילות לכרטיס בחודש שנבחר.':'אין עסקאות פעילות להצגה במסנן הנוכחי.'}</div></td></tr>`}</tbody></table></div></section>
+    <section id="credit-active-transactions" class="section credit-detail-section" style="margin-top:16px"><div class="section-head"><div><h3>עסקאות ותשלומים פעילים</h3></div></div>${detailFocus?`<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(monthLabel(detailFocus.monthKey))} · מוצגות עסקאות עם חיוב בחודש זה</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus">הצג הכל ×</button></div>`:''}<div style="overflow:auto"><table><thead><tr>${bulkHeader('credits')}<th>כרטיס</th><th>תיאור</th><th>סכום כולל</th><th>התקדמות</th><th>תשלום הבא</th><th>יתרה עתידית</th><th>מצב</th><th></th></tr></thead><tbody>${detailItems.length?creditDetailGroupedRows(detailItems,{focusMonthKey:detailFocus?.monthKey||''}):`<tr><td colspan="9"><div class="empty compact">${detailFocus?'אין עסקאות פעילות לכרטיס בחודש שנבחר.':'אין עסקאות פעילות להצגה במסנן הנוכחי.'}</div></td></tr>`}</tbody></table></div></section>
 
     ${creditHistoryMarkup(historyItems,detailPartitions.olderCount)}
     ${creditMonthlySummaryDetails(future)}
@@ -187,9 +187,30 @@ function creditMonthlySummaryMarkup(rows){
   for(const row of rows){const mk=monthKey(row.date),card=summaryCard(row),key=`${mk}\u0000${card}`;by.set(key,(by.get(key)||0)+row.amount);cardTotals.set(card,(cardTotals.get(card)||0)+row.amount);grand+=row.amount}
   return `<div class="credit-month-summary"><div class="credit-month-summary-scroll"><table><thead><tr><th>חודש</th>${cards.map(card=>`<th>${esc(card)}</th>`).join('')}<th>סה״כ חודש</th></tr></thead><tbody>${months.map(m=>{let total=0;const cells=cards.map(card=>{const v=by.get(`${m}\u0000${card}`)||0;total+=v;return `<td class="amount">${v?money(v):'—'}</td>`}).join('');return `<tr><th>${esc(monthLabel(m))}</th>${cells}<td class="amount total">${money(total)}</td></tr>`}).join('')}</tbody><tfoot><tr><th>סה״כ לכרטיס</th>${cards.map(card=>`<td class="amount">${money(cardTotals.get(card)||0)}</td>`).join('')}<td class="amount total">${money(grand)}</td></tr></tfoot></table></div></div>`;
 }
+function creditDetailMonthKey(item,historical,focusMonthKey=''){
+  if(!historical&&focusMonthKey)return focusMonthKey;
+  const date=historical?item?.completedDate:item?.nextDate;
+  return date&&date!=='9999-12-31'?monthKey(date):'';
+}
+function creditDetailGroupedRows(items,{historical=false,focusMonthKey=''}={}){
+  const groups=[];
+  for(const item of items){
+    const key=creditDetailMonthKey(item,historical,focusMonthKey)||'unknown';
+    let group=groups.at(-1);
+    if(!group||group.key!==key){group={key,items:[]};groups.push(group)}
+    group.items.push(item);
+  }
+  return groups.map(group=>{
+    const known=group.key!=='unknown',label=known?monthLabel(group.key):'מועד עתידי לא ידוע';
+    const context=historical?'הסתיימו בחודש זה':focusMonthKey?'חיובים בחודש שנבחר':known?'חודש התשלום הבא':'אין תאריך חיוב עתידי באופק הסנכרון';
+    const countLabel=group.items.length===1?'עסקה אחת':`${group.items.length} עסקאות`;
+    const rows=group.items.map(item=>item.source==='manual'?manualCreditRow(item.record,{historical}):syncedCreditRow(item.series,{historical})).join('');
+    return `<tr class="credit-detail-month-divider"><th colspan="9" scope="rowgroup"><span><b>${esc(label)}</b><small>${esc(context)}</small></span><em>${esc(countLabel)}</em></th></tr>${rows}`;
+  }).join('');
+}
 function creditHistoryMarkup(items,olderCount){
   if(!items.length&&!olderCount)return '';
-  const rows=items.map(item=>item.source==='manual'?manualCreditRow(item.record,{historical:true}):syncedCreditRow(item.series,{historical:true})).join('');
+  const rows=creditDetailGroupedRows(items,{historical:true});
   return `<details class="section credit-history-section" style="margin-top:16px"><summary><span><b>היסטוריית עסקאות שהסתיימו · ${esc(CREDIT_DETAIL_HISTORY_DAYS)} ימים</b><small>${esc(items.length)} עסקאות במסנן הנוכחי${olderCount?` · ${esc(olderCount)} רשומות ישנות יותר נשמרות במקור ואינן מוצגות`:''}</small></span><span aria-hidden="true">⌄</span></summary><div style="overflow:auto"><table><thead><tr>${bulkHeader('credits')}<th>כרטיס</th><th>תיאור</th><th>סכום כולל</th><th>התקדמות</th><th>חיוב אחרון</th><th>יתרה עתידית</th><th>מצב</th><th></th></tr></thead><tbody>${rows||`<tr><td colspan="9"><div class="empty compact">אין עסקאות שהסתיימו ב־${esc(CREDIT_DETAIL_HISTORY_DAYS)} הימים האחרונים במסנן הנוכחי.</div></td></tr>`}</tbody></table></div></details>`;
 }
 function syncedCreditRow(series,{historical=false}={}){
