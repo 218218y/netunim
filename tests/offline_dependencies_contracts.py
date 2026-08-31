@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -29,9 +30,18 @@ run_all = (ROOT / 'tests/run_all.py').read_text(encoding='utf-8')
 browser_harness = (ROOT / 'tests/browser_harness.py').read_text(encoding='utf-8')
 browser_probe = (ROOT / 'tests/offline_environment_probe.py').read_text(encoding='utf-8')
 def _visible_launcher_name(name: str) -> str:
-    # Directionality/format characters can be preserved, stripped, or displayed
-    # oddly by Windows/archive tools. They are not part of the semantic name.
-    return ''.join(ch for ch in name if unicodedata.category(ch) != 'Cf').casefold()
+    # Directionality/format characters can be preserved, stripped, or serialized by
+    # archive/upload tooling as literal #Uxxxx markers. They are not part of the
+    # semantic launcher name, so normalize only markers that decode to Unicode Cf.
+    def strip_serialized_format(match: re.Match[str]) -> str:
+        try:
+            char = chr(int(match.group(1), 16))
+        except (TypeError, ValueError, OverflowError):
+            return match.group(0)
+        return '' if unicodedata.category(char) == 'Cf' else match.group(0)
+
+    normalized = re.sub(r'#U([0-9A-Fa-f]{4,6})', strip_serialized_format, name)
+    return ''.join(ch for ch in normalized if unicodedata.category(ch) != 'Cf').casefold()
 
 
 def _read_launcher(expected_visible_name: str) -> str:

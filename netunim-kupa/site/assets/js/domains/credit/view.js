@@ -47,7 +47,9 @@ function providerFilterMarkup(ui,cards){
   return `<div class="credit-filter-chip-row"><span class="credit-filter-label">חברת אשראי</span><div class="credit-filter-chips">${button('all','כל החברות',cards.length)}${providers.map(provider=>button(provider,CREDIT_PROVIDER_LABELS[provider]||provider,cards.filter(x=>x.provider===provider).length)).join('')}</div></div>`;
 }
 function cardFilterMarkup(ui,cards){
-  const scoped=cards.filter(card=>!card.hidden&&(ui.creditProviderFilter==='all'||card.provider===ui.creditProviderFilter));
+  const provider=ui.creditProviderFilter||'all';
+  if(provider==='all')return '';
+  const scoped=cards.filter(card=>!card.hidden&&card.provider===provider);
   if(!scoped.length)return '';
   return `<div class="credit-filter-chip-row"><span class="credit-filter-label">כרטיסים</span><div class="credit-filter-chips"><button type="button" class="credit-filter-chip ${ui.creditCardFilter==='all'?'active':''}" data-action="credit-card-filter" data-click-arg0="all"><span>כל הכרטיסים</span><small>${esc(scoped.length)}</small></button>${scoped.map(card=>`<button type="button" class="credit-filter-chip card ${ui.creditCardFilter===card.creditAccountKey?'active':''}" data-action="credit-card-filter" data-click-arg0="${esc(card.creditAccountKey)}"><span>${esc(card.name)}</span><small>${esc(card.account)}${card.ownerLabel?` · ${esc(card.ownerLabel)}`:''}</small></button>`).join('')}</div></div>`;
 }
@@ -60,8 +62,10 @@ function renderCredit(){
   const filterCards=includedCards.filter(card=>primaryCardFilterMatch(ui,card));
   const availableProviders=new Set(filterCards.map(x=>x.provider));
   if(ui.creditProviderFilter!=='all'&&!availableProviders.has(ui.creditProviderFilter))ui.creditProviderFilter='all';
-  const availableCardKeys=new Set(filterCards.filter(x=>!x.hidden&&(ui.creditProviderFilter==='all'||x.provider===ui.creditProviderFilter)).map(x=>x.creditAccountKey));
-  if(ui.creditCardFilter!=='all'&&!availableCardKeys.has(ui.creditCardFilter))ui.creditCardFilter='all';
+  const availableCardKeys=ui.creditProviderFilter==='all'
+    ?new Set()
+    :new Set(filterCards.filter(x=>!x.hidden&&x.provider===ui.creditProviderFilter).map(x=>x.creditAccountKey));
+  if(ui.creditProviderFilter==='all'||(ui.creditCardFilter!=='all'&&!availableCardKeys.has(ui.creditCardFilter)))ui.creditCardFilter='all';
 
   const future=allFuture.filter(row=>filterMatch(ui,row));
   const businessFuture=future.filter(x=>x.account==='עסקי');
