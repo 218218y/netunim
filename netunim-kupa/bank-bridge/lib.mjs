@@ -391,7 +391,10 @@ function safeCreditScrapeFailure(typeValue,rawValue,profile){
   let code=`CREDIT_${type}`,message='סנכרון האשראי נכשל';
   if(/fetchPostWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
     code='CREDIT_LOGIN_HTML_RESPONSE';
-    message=isIsracardGroup?'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת JSON. החיבור הזה לא הושלם; ודא שקיים רק חיבור אחד לאותה זהות בחברה ונסה שוב. אם התקלה חוזרת, השתמש ברענון עם חלון אבחון.':'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת נתונים. נסה שוב עם חלון אבחון.';
+    const validateStage=/reqName=ValidateIdData/i.test(raw);
+    if(profile?.provider==='amex'&&validateStage)message='American Express החזירה דף HTML כבר בשלב ValidateIdData, לפני שלב בדיקת הסיסמה. זו תגובת אתר/הגנת אוטומציה של החברה למחבר הנוכחי ולא כשל בנתוני הקופה; חלון האבחון נסגר מיד משום שאין שלב כניסה נוסף שניתן להשלים.';
+    else if(profile?.provider==='isracard'&&validateStage)message='ישראכרט החזירה דף HTML בשלב ValidateIdData במקום JSON. החיבור לא הגיע לשלב בדיקת הסיסמה; נסה שוב בחלון אבחון ובזמן אחר, בלי ליצור חיבור נוסף לאותה זהות.';
+    else message=isIsracardGroup?'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת JSON. החיבור הזה לא הושלם; ודא שקיים רק חיבור אחד לאותה זהות בחברה ונסה שוב. אם התקלה חוזרת, השתמש ברענון עם חלון אבחון.':'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת נתונים. נסה שוב עם חלון אבחון.';
   }else if(/fetchGetWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
     code='CREDIT_DATA_HTML_RESPONSE';
     message='שירות הנתונים של החברה החזיר דף HTML במקום תשובת JSON. החיבור נשמר אך לא התקבלו ממנו נתונים תקינים.';

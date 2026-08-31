@@ -1,7 +1,7 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, setCreditSyncMode, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
+export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
 return {
   'dashboard-go':(element,event)=>{dashboardGo(element.dataset.page,element.dataset.tab)},
   'dashboard-keyboard':(element,event)=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();element.click()}},
@@ -29,6 +29,8 @@ return {
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},
   'credit-view':(element,event)=>{ui.creditView=element.value;renderCredit()},
+  'credit-account-filter':(element,event)=>{ui.creditAccountFilter=element.value;renderCredit()},
+  'credit-owner-filter':(element,event)=>{ui.creditOwnerFilter=element.value;renderCredit()},
   'open-credit-modal-2':(element,event)=>{openCreditModal(element.dataset.clickArg0)},
   'open-cash-modal':(element,event)=>{openCashModal()},
   'open-cash-modal-2':(element,event)=>{openCashModal(element.dataset.clickArg0)},
@@ -45,8 +47,8 @@ return {
   'reset-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();resetCreditSync()},
   'refresh-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false})},
   'refresh-credit-sync-interactive':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:true,auto:false})},
-  'set-credit-sync-mode':(element,event)=>{setCreditSyncMode(element.dataset.clickArg0||'manual')},
   'set-credit-card-included':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'included',element.checked)},
+  'set-credit-card-hidden':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'hidden',element.checked)},
   'set-credit-card-account':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'account',element.value)},
   'set-credit-card-name':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'cardName',element.value)},
   'set-credit-auto-refresh':(element,event)=>{setCreditAutoRefresh(element.checked)},

@@ -3,7 +3,7 @@ import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {wholeMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
-import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
+import {CREDIT_SYNC_VERSION,normalizeCreditSync} from '../domains/credit/sync-feed.js';
 import {assertPortablePayload} from './validation.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -30,9 +30,12 @@ function normalizeState(d){
   n.checks=normalizeSharedChecks(n.checks);
   n.cash=(n.cash||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
   n.expenses=(n.expenses||[]).map(x=>({...x,amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
+  const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
   const before=(n.credits||[]).length;
-  n.credits=(n.credits||[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount)})).filter(cr=>!inactiveCreditExpired(cr));
+  // v3 is the one-time cutover requested for Kupa: discard the historical manual credit dataset once.
+  // Future manual additions are preserved because the synchronized state is then persisted as v3.
+  n.credits=creditSyncSourceVersion<CREDIT_SYNC_VERSION?[]:(n.credits||[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')})).filter(cr=>!inactiveCreditExpired(cr));
   model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);
   return n;
 }

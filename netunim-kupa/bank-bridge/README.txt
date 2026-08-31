@@ -100,15 +100,15 @@ Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.
 
 
-Credit-card sync (Bridge v13)
+Credit-card sync (Bridge v14)
 -----------------------------
-Bridge v13 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
+Bridge v14 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
 
 Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are supported only for different login identities. The same Visa Cal/Max username or the same Isracard/Amex ID cannot be stored twice for the same provider, because one issuer login already returns all cards visible to that identity. Profiles for different identities are scraped sequentially to avoid cookie/session collisions.
 
 Each scrape requests 120 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, and transaction dates, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
 
-The web app stores these normalized results in state.creditSync. Manual state.credits are never deleted automatically. A pre-cutover review of synchronized charges is available while manual mode is still active. Switching to synced mode only changes the selectors used by forecasts/bank projections; the manual dataset remains available as an immediate rollback.
+The web app stores these normalized results in state.creditSync. Credit feed v3 has one calculation model: included issuer cards are always the primary source, and any newly-created state.credits row is an additive manual adjustment only. On the one-time v2 -> v3 migration, pre-existing manual credit rows are removed so old hand-entered schedules cannot double-count the newly synchronized issuer feed. New manual additions created after the migration remain persistent and additive.
 
 Bridge v12 — issuer/card selection
 
@@ -118,10 +118,12 @@ An issuer login can legitimately return many current/old/household cards. Kupa t
 
 The Isracard/Amex scraper does not click the visible SMS/password UI. It loads the login page, then calls ValidateIdData and performLogonI inside the page with the fixed-password credentials. Therefore an interactive browser remaining visually on the SMS login screen is not itself a failure signal. The Bridge result/error is authoritative.
 
-Bridge v13 — reset, duplicate prevention and safe diagnostics
+Bridge v14 — reset, duplicate prevention, presentation controls and safe diagnostics
 
-The /credit/reset endpoint deletes only the local encrypted credit profile vault and credit-sync metadata; it does not touch Hapoalim credentials. The Kupa UI pairs this with clearing state.creditSync through the normal save path, so a full reset also removes synchronized card/profile/mapping data from the Kupa document/cloud and returns to manual-credit mode. Manual state.credits remain intact.
+The /credit/reset endpoint deletes only the local encrypted credit profile vault and credit-sync metadata; it does not touch Hapoalim credentials. The Kupa UI pairs this with clearing state.creditSync through the normal save path, so a full reset also removes synchronized card/profile/mapping data from the Kupa document/cloud. The app remains in synchronized-primary mode; any post-migration manual additions are a separate additive layer and are not deleted by a credit-sync reset.
 
 Deleting one credit profile through /credit/profiles remains intentionally local-only for multi-computer use. A previously synchronized cloud profile can therefore still appear as “configure on this computer” after local deletion; use the explicit full reset when the goal is to start from zero everywhere.
 
-Scraper error strings are not trusted as safe diagnostics. Isracard/Amex HTML returned where the fixed-password JSON service was expected is classified as CREDIT_LOGIN_HTML_RESPONSE, and generic raw scraper messages are no longer persisted. This prevents request payload details embedded by the upstream scraper from leaking into the Kupa/cloud error feed.
+Scraper error strings are not trusted as safe diagnostics. Isracard/Amex HTML returned where the fixed-password JSON service was expected is classified as CREDIT_LOGIN_HTML_RESPONSE, and generic raw scraper messages are no longer persisted. Bridge v14 additionally identifies the ValidateIdData stage so an Amex HTML response is reported accurately as a pre-password issuer/WAF response instead of being mislabeled as bad credentials. This prevents request payload details embedded by the upstream scraper from leaking into the Kupa/cloud error feed.
+
+Per-card mapping now has three independent presentation/calculation dimensions: included/excluded, visible/hidden, and business/home. Hidden is presentation-only: an included hidden card stays in totals but its card identity and detailed issuer rows are omitted from live/detail views. Owner and business/home filters are composable across forecasts, issuer summaries, and the unified payment-detail table.
