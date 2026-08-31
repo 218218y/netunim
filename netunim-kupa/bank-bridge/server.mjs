@@ -38,7 +38,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=18;
+const BRIDGE_VERSION=19;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -63,7 +63,7 @@ async function ensureToken(){
 }
 async function readMeta(){
   try{return JSON.parse(await fs.readFile(META_FILE,'utf8'))}
-  catch{return {lastScrapeAt:null,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastAvailableAccounts:[],browserPath:'',sessionUrl:''}}
+  catch{return {lastScrapeAt:null,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:'',browserPath:'',sessionUrl:''}}
 }
 async function writeMeta(patch){const current=await readMeta();await ensureAppDir();await fs.writeFile(META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
 
@@ -95,9 +95,13 @@ async function unprotectText(blob){
 async function writeCredentials(credentials){await ensureAppDir();const encrypted=await protectText(JSON.stringify(credentials));await fs.writeFile(CREDENTIALS_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
 function normalizeStoredCredentials(value){
   if(!value||typeof value!=='object')return null;
-  const rawAccount=String(value.accountNumber||'').trim(),rawBranch=String(value.branchNumber||'').trim();
-  const selector=rawBranch?{bankNumber:'12',branchNumber:rawBranch.replace(/\D/g,''),accountNumber:rawAccount.replace(/\D/g,'')}:parseAccountSelector(rawAccount);
-  return {...value,branchNumber:selector.branchNumber||'',accountNumber:selector.accountNumber||''};
+  const legacyAccount=String(value.accountNumber||'').trim(),legacyBranch=String(value.branchNumber||'').trim();
+  const legacySelector=legacyBranch?{bankNumber:'12',branchNumber:legacyBranch.replace(/\D/g,''),accountNumber:legacyAccount.replace(/\D/g,'')}:parseAccountSelector(legacyAccount);
+  const businessBranchNumber=String(value.businessBranchNumber??legacySelector.branchNumber??'').replace(/\D/g,'');
+  const businessAccountNumber=String(value.businessAccountNumber??legacySelector.accountNumber??'').replace(/\D/g,'');
+  const homeBranchNumber=String(value.homeBranchNumber||'').replace(/\D/g,'');
+  const homeAccountNumber=String(value.homeAccountNumber||'').replace(/\D/g,'');
+  return {...value,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber,branchNumber:businessBranchNumber,accountNumber:businessAccountNumber};
 }
 async function readCredentials(){try{const encrypted=(await fs.readFile(CREDENTIALS_FILE,'utf8')).trim();if(!encrypted)return null;return normalizeStoredCredentials(JSON.parse(await unprotectText(encrypted)))}catch(e){if(e?.code==='ENOENT')return null;throw e}}
 async function deleteCredentials(){await fs.rm(CREDENTIALS_FILE,{force:true})}
@@ -148,7 +152,7 @@ async function readJson(req){
   if(!chunks.length)return {};try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Object.assign(new Error('JSON לא תקין'),{code:'INVALID_JSON'})}
 }
 function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
-function safeError(error){return {ok:false,code:error?.code||'BRIDGE_ERROR',stage:error?.stage||'',message:error?.message||'שגיאת Bank Bridge',httpStatus:Number(error?.httpStatus)||0,availableAccounts:Array.isArray(error?.availableAccounts)?error.availableAccounts:[],creditErrors:Array.isArray(error?.creditErrors)?error.creditErrors:[]}}
+function safeError(error){return {ok:false,code:error?.code||'BRIDGE_ERROR',stage:error?.stage||'',message:error?.message||'שגיאת Bank Bridge',httpStatus:Number(error?.httpStatus)||0,availableAccounts:Array.isArray(error?.availableAccounts)?error.availableAccounts:[],accountRole:error?.accountRole==='home'?'home':error?.accountRole==='business'?'business':'',creditErrors:Array.isArray(error?.creditErrors)?error.creditErrors:[]}}
 function stageError(stage,error,code='BANK_DATA_ERROR'){
   const e=error instanceof Error?error:new Error(String(error||'שגיאה לא ידועה'));
   if(!e.stage)e.stage=stage;if(!e.code)e.code=code;return e;
@@ -282,22 +286,18 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
   return {transactions:enriched,ready:reusableReady};
 }
 
-async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
-  const stableReady=ready?.ready?ready:await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
-  const rawAccounts=Array.isArray(stableReady?.accounts)?stableReady.accounts:[];
-  const openAccounts=rawAccounts.filter(account=>Number(account?.accountClosingReasonCode)===0);
-  const selected=await runStage('account',()=>Promise.resolve(selectAccountDescriptor(openAccounts,{bankNumber:'12',branchNumber:credentials.branchNumber||'',accountNumber:credentials.accountNumber||''})),'ACCOUNT_SELECTION_FAILED');
+async function fetchHapoalimAccountSnapshot(page,selected,ready){
   const accountId=selected.accountId;
   const balanceResult=await runStage('balance',()=>pageFetchJson(page,async current=>{
     const restContext=String(current.restContext||'').replace(/^\/+/, '');
     const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
     return {url:`${apiSiteUrl}/current-account/composite/balanceAndCreditLimit?accountId=${encodeURIComponent(accountId)}&view=details&lang=he`};
-  },{initialReady:stableReady}), 'BALANCE_FETCH_FAILED');
+  },{initialReady:ready}), 'BALANCE_FETCH_FAILED');
   const balanceData=balanceResult.data,balanceReady=balanceResult.ready;
   const balance=Number(balanceData?.currentBalance);
   if(!Number.isFinite(balance))throw stageError('balance',Object.assign(new Error('בנק הפועלים לא החזיר יתרת עו״ש מספרית לחשבון שנבחר'),{code:'NO_BALANCE'}));
 
-  let transactions=[],transactionWarning='';
+  let transactions=[],transactionWarning='',reusableReady=balanceReady;
   try{
     const end=new Date(),start=new Date(end);start.setDate(start.getDate()-Math.max(1,HAPOALIM_TRANSACTION_LOOKBACK_DAYS-1));
     const txResult=await pageFetchJson(page,async current=>{
@@ -309,12 +309,50 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
       if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
       return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
     },{initialReady:balanceReady});
-    const enriched=await enrichHapoalimChequeTransactions(page,txResult.data?.transactions,accountId,{initialReady:txResult.ready});
+    reusableReady=txResult.ready;
+    const enriched=await enrichHapoalimChequeTransactions(page,txResult.data?.transactions,accountId,{initialReady:reusableReady});
+    reusableReady=enriched.ready||reusableReady;
     transactions=normalizeRecentTransactions(enriched.transactions,HAPOALIM_TRANSACTION_LIMIT);
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
-  const sessionHref=String(page?.url?.()||balanceReady?.href||stableReady?.href||'');
-  return {balance,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning,sessionHref};
+  return {snapshot:{balance,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning},ready:reusableReady};
+}
+
+function configuredAccountSelector(credentials,role){
+  const home=role==='home';
+  return {bankNumber:'12',branchNumber:home?credentials.homeBranchNumber||'':credentials.businessBranchNumber||credentials.branchNumber||'',accountNumber:home?credentials.homeAccountNumber||'':credentials.businessAccountNumber||credentials.accountNumber||''};
+}
+
+function selectConfiguredAccount(openAccounts,credentials,role){
+  const selector=configuredAccountSelector(credentials,role);
+  try{return selectAccountDescriptor(openAccounts,selector)}
+  catch(error){error.accountRole=role;throw error}
+}
+
+async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
+  const stableReady=ready?.ready?ready:await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
+  const rawAccounts=Array.isArray(stableReady?.accounts)?stableReady.accounts:[];
+  const openAccounts=rawAccounts.filter(account=>Number(account?.accountClosingReasonCode)===0);
+  const businessSelected=await runStage('account',()=>Promise.resolve(selectConfiguredAccount(openAccounts,credentials,'business')),'ACCOUNT_SELECTION_FAILED');
+  const homeRequested=!!(credentials.homeBranchNumber||credentials.homeAccountNumber);
+  let homeSelected=null,homeFailure=null;
+  if(homeRequested){
+    try{homeSelected=await runStage('account',()=>Promise.resolve(selectConfiguredAccount(openAccounts,credentials,'home')),'ACCOUNT_SELECTION_FAILED')}
+    catch(error){homeFailure=safeError(error)}
+  }
+  if(homeSelected&&homeSelected.accountId===businessSelected.accountId){
+    homeFailure=safeError(stageError('account',Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'),{code:'DUPLICATE_ACCOUNT_ROLE',accountRole:'home'}),'ACCOUNT_SELECTION_FAILED'));
+    homeSelected=null;
+  }
+  const businessResult=await fetchHapoalimAccountSnapshot(page,businessSelected,stableReady);
+  let homeResult=null;
+  if(homeSelected&&!homeFailure){
+    try{homeResult=await fetchHapoalimAccountSnapshot(page,homeSelected,businessResult.ready)}
+    catch(error){error.accountRole='home';homeFailure=safeError(error)}
+  }
+  const business=businessResult.snapshot,home=homeResult?.snapshot||null;
+  const sessionHref=String(page?.url?.()||homeResult?.ready?.href||businessResult.ready?.href||stableReady?.href||'');
+  return {...business,accounts:{business,home},accountFailures:{home:homeFailure},sessionHref};
 }
 
 async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
@@ -418,7 +456,7 @@ async function handler(req,res,token){
   try{
     if(req.method==='GET'&&req.url==='/status'){
       const credentials=await readCredentials(),meta=await readMeta();
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.branchNumber||'',accountNumber:credentials?.accountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
+      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',accountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',businessBranchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',businessAccountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',homeBranchNumber:credentials?.homeBranchNumber||'',homeAccountNumber:credentials?.homeAccountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',lastWarningCode:meta.lastWarningCode||'',lastWarningStage:meta.lastWarningStage||'',lastWarningHttpStatus:Number(meta.lastWarningHttpStatus)||0,accountRole:meta.lastAccountRole==='home'?'home':meta.lastAccountRole==='business'?'business':'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
     }
     if(req.method==='GET'&&req.url==='/credit/status'){
       const profiles=await readCreditProfiles(),meta=await readCreditMeta();
@@ -450,29 +488,40 @@ async function handler(req,res,token){
       sendJson(req,res,200,{ok:true,...result});return;
     }
     if(req.method==='POST'&&req.url==='/credentials'){
-      const body=await readJson(req),userCode=String(body.userCode||'').trim(),password=String(body.password||''),branchNumber=String(body.branchNumber||'').replace(/\D/g,''),accountNumber=String(body.accountNumber||'').replace(/\D/g,'');
+      const body=await readJson(req),userCode=String(body.userCode||'').trim(),password=String(body.password||'');
+      const businessBranchNumber=String(body.businessBranchNumber??body.branchNumber??'').replace(/\D/g,''),businessAccountNumber=String(body.businessAccountNumber??body.accountNumber??'').replace(/\D/g,'');
+      const homeBranchNumber=String(body.homeBranchNumber||'').replace(/\D/g,''),homeAccountNumber=String(body.homeAccountNumber||'').replace(/\D/g,'');
       if(!userCode||!password)throw Object.assign(new Error('חסרים קוד משתמש או סיסמה'),{code:'MISSING_CREDENTIALS'});
-      if((branchNumber&&!accountNumber)||(!branchNumber&&accountNumber))throw Object.assign(new Error('כאשר בוחרים חשבון יש להזין גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR'});
-      await writeCredentials({userCode,password,branchNumber,accountNumber});await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastAvailableAccounts:[]});sendJson(req,res,200,{ok:true,configured:true,branchNumber,accountNumber});return;
+      if((businessBranchNumber&&!businessAccountNumber)||(!businessBranchNumber&&businessAccountNumber))throw Object.assign(new Error('לחשבון העסקי יש להזין גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR',accountRole:'business'});
+      if((homeBranchNumber&&!homeAccountNumber)||(!homeBranchNumber&&homeAccountNumber))throw Object.assign(new Error('לחשבון הביתי יש להזין גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR',accountRole:'home'});
+      if(businessBranchNumber&&homeBranchNumber&&businessBranchNumber===homeBranchNumber&&businessAccountNumber===homeAccountNumber)throw Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'),{code:'DUPLICATE_ACCOUNT_ROLE',accountRole:'home'});
+      await writeCredentials({userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber});
+      await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});
+      sendJson(req,res,200,{ok:true,configured:true,branchNumber:businessBranchNumber,accountNumber:businessAccountNumber,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber});return;
     }
     if(req.method==='POST'&&req.url==='/account-selection'){
-      const body=await readJson(req),branchNumber=String(body.branchNumber||'').replace(/\D/g,''),accountNumber=String(body.accountNumber||'').replace(/\D/g,'');
-      if(!branchNumber||!accountNumber)throw Object.assign(new Error('יש לבחור גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR'});
+      const body=await readJson(req),role=body.role==='home'?'home':'business',branchNumber=String(body.branchNumber||'').replace(/\D/g,''),accountNumber=String(body.accountNumber||'').replace(/\D/g,'');
+      if(!branchNumber||!accountNumber)throw Object.assign(new Error('יש לבחור גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR',accountRole:role});
       const credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
-      await writeCredentials({...credentials,branchNumber,accountNumber});
-      await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastAvailableAccounts:[]});
-      sendJson(req,res,200,{ok:true,configured:true,branchNumber,accountNumber});return;
+      const patch=role==='home'?{homeBranchNumber:branchNumber,homeAccountNumber:accountNumber}:{businessBranchNumber:branchNumber,businessAccountNumber:accountNumber,branchNumber,accountNumber};
+      const next=normalizeStoredCredentials({...credentials,...patch});
+      if(next.businessBranchNumber&&next.homeBranchNumber&&next.businessBranchNumber===next.homeBranchNumber&&next.businessAccountNumber===next.homeAccountNumber)throw Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'),{code:'DUPLICATE_ACCOUNT_ROLE',accountRole:role});
+      await writeCredentials(next);
+      await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});
+      sendJson(req,res,200,{ok:true,configured:true,role,branchNumber,accountNumber,businessBranchNumber:next.businessBranchNumber,businessAccountNumber:next.businessAccountNumber,homeBranchNumber:next.homeBranchNumber,homeAccountNumber:next.homeAccountNumber});return;
     }
     if(req.method==='DELETE'&&req.url==='/credentials'){
-      await deleteCredentials();await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastAvailableAccounts:[]});sendJson(req,res,200,{ok:true,configured:false});return;
+      await deleteCredentials();await writeMeta({lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});sendJson(req,res,200,{ok:true,configured:false});return;
     }
     if(req.method==='POST'&&req.url==='/balance'){
       const body=await readJson(req),credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
       try{
         const result=await scrapeHapoalimSnapshot(credentials,{interactive:!!body.interactive});
-        await writeMeta({lastScrapeAt:result.fetchedAt,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:result.transactionWarning||'',lastAvailableAccounts:[]});
+        const homeFailure=result.accountFailures?.home||null;
+        const warnings=[result.accounts?.business?.transactionWarning?`עסקי: ${result.accounts.business.transactionWarning}`:'',result.accounts?.home?.transactionWarning?`ביתי: ${result.accounts.home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean).join(' | ');
+        await writeMeta({lastScrapeAt:result.fetchedAt,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings,lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,lastAvailableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],lastAccountRole:homeFailure?'home':''});
         sendJson(req,res,200,{ok:true,...result});return;
-      }catch(e){await writeMeta({lastError:e?.message||String(e),lastErrorCode:e?.code||'BRIDGE_ERROR',lastErrorStage:e?.stage||'',lastErrorHttpStatus:Number(e?.httpStatus)||0,lastWarning:'',lastAvailableAccounts:Array.isArray(e?.availableAccounts)?e.availableAccounts:[]});throw e}
+      }catch(e){await writeMeta({lastError:e?.message||String(e),lastErrorCode:e?.code||'BRIDGE_ERROR',lastErrorStage:e?.stage||'',lastErrorHttpStatus:Number(e?.httpStatus)||0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:Array.isArray(e?.availableAccounts)?e.availableAccounts:[],lastAccountRole:e?.accountRole==='home'?'home':e?.accountRole==='business'?'business':''});throw e}
     }
     if(req.method==='POST'&&req.url==='/shutdown'){
       sendJson(req,res,200,{ok:true});setTimeout(()=>activeServer?.close(()=>process.exit(0)),50);return;

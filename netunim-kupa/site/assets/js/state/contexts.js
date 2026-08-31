@@ -1,7 +1,7 @@
 export function createContexts(){
 return {
   model:{
-    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:3,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],expenses:[],cards:[],bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[]}},
+    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:3,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],expenses:[],cards:[],bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[],homeFeed:null}},
     lastNormalizeRemovedCredits:0
   },
   session:{
@@ -32,6 +32,7 @@ return {
     creditProviderFilter:'all',
     creditCardFilter:'all',
     creditDetailFocus:null,
+    bankAccountView:'business',
     bulkCollection:null,
     bulkSelected:new Set(),
     modalDraftGuard:null,

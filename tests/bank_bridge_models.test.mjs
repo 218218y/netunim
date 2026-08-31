@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
+import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {
   buildCreditMonths,
@@ -176,6 +177,44 @@ assert.deepEqual(feed.transactions.find(x=>x.cheque).checkDetails.checkItems.map
 assert.equal(feed.accountNumber,'12-345-678901','shared bank feed carries the selected account identity');
 assert.equal(feed.syncedAt,'2026-08-30T06:15:00.000Z','shared bank feed carries the successful bank-sync timestamp');
 assert.equal(normalizeBankFeed({balance:4,syncedAt:'bad'}),null,'invalid feed timestamps are rejected instead of becoming shared success markers');
+
+const dualStamp='2026-08-30T06:20:00.000Z';
+const controllerModel={state:{bank:{currentBalance:900,updatedAt:null,asOfDate:null,adjustments:[],feed:null,homeFeed:null}}};
+let controllerSaves=0;
+let dualBridgeResult={fetchedAt:dualStamp,accounts:{business:{balance:5100,branchNumber:'345',accountNumber:'111222',accountId:'12-345-111222',transactions:[]},home:{balance:2600,branchNumber:'345',accountNumber:'333444',accountId:'12-345-333444',transactions:[]}}};
+const dualController=createDomainsBankController({
+  model:controllerModel,session:{connectionMode:'local',backendReady:true},checksSession:{},sharedChecksHaveLocalWork:()=>false,
+  saveState:async()=>{controllerSaves++;return true},syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>17,toast:()=>{},render:()=>{},
+  bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>dualBridgeResult,autoEnabled:()=>false,markAutoAttempt:()=>{},autoAttemptDelayMs:()=>0},
+});
+assert.equal(await dualController.refreshBankBalance({interactive:false,auto:false}),true,'dual-account controller accepts one bridge refresh containing both roles');
+assert.equal(controllerModel.state.bank.currentBalance,5100,'only the business balance becomes the Kupa currentBalance');
+assert.equal(controllerModel.state.bank.sourceAccount,'12-345-111222','business account identity remains the bank snapshot source');
+assert.equal(controllerModel.state.bank.feed.balance,5100,'business feed remains the canonical bank feed');
+assert.equal(controllerModel.state.bank.homeFeed.balance,2600,'home balance is stored only in the separate view feed');
+assert.equal(controllerModel.state.bank.homeFeed.accountNumber,'12-345-333444','home feed preserves its own account identity');
+dualBridgeResult={fetchedAt:'2026-08-30T07:20:00.000Z',accounts:{business:{balance:5150,branchNumber:'345',accountNumber:'111222',accountId:'12-345-111222',transactions:[]},home:null},accountFailures:{home:{code:'ACCOUNT_NOT_FOUND',stage:'account',message:'החשבון הביתי לא נמצא',availableAccounts:[{bankNumber:'12',branchNumber:'345',accountNumber:'555666'}],accountRole:'home'}}};
+assert.equal(await dualController.refreshBankBalance({interactive:false,auto:false}),true,'a home-account failure does not block the business balance refresh');
+assert.equal(controllerModel.state.bank.currentBalance,5150,'business balance still advances when only the home account fails');
+assert.equal(controllerModel.state.bank.homeFeed.balance,2600,'last successful home feed is preserved when a later home refresh fails');
+assert.equal(dualController.bankBridgeUiState().accountSelectionRole,'home','home failure is attributed to the home selector for corrective UI');
+assert.equal(dualController.bankBridgeUiState().availableAccounts[0].accountNumber,'555666','home account choices survive partial refresh diagnostics');
+assert.equal(dualController.bankBridgeUiState().lastWarningCode,'ACCOUNT_NOT_FOUND','partial home failure keeps its safe diagnostic code separate from a full refresh error');
+assert.equal(dualController.bankBridgeUiState().lastWarningStage,'account','partial home failure keeps its failing bank stage for corrective UI');
+
+const earlyHomeFeed=normalizeBankFeed({provider:'hapoalim',accountNumber:'12-345-777888',balance:1800,syncedAt:'2026-08-29T06:20:00.000Z',transactions:[]});
+const earlyModel={state:{bank:{currentBalance:4900,updatedAt:null,asOfDate:null,adjustments:[],feed:null,homeFeed:earlyHomeFeed}}};
+const earlyController=createDomainsBankController({
+  model:earlyModel,session:{connectionMode:'local',backendReady:true},checksSession:{},sharedChecksHaveLocalWork:()=>false,saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>18,toast:()=>{},render:()=>{},
+  bridge:{getBridgeToken:()=> 'paired',fetchBalance:async()=>({fetchedAt:'2026-08-30T08:20:00.000Z',accounts:{business:{balance:5250,branchNumber:'345',accountNumber:'111222',accountId:'12-345-111222',transactions:[]},home:null},accountFailures:{home:{code:'ACCOUNT_NOT_FOUND',stage:'account',message:'החשבון הביתי לא נמצא',availableAccounts:[],accountRole:'home'}}}),autoEnabled:()=>false,markAutoAttempt:()=>{},autoAttemptDelayMs:()=>0},
+});
+assert.equal(await earlyController.refreshBankBalance({interactive:false,auto:false}),true,'home failure may occur before the initial bridge status request has populated local account fields');
+assert.equal(earlyModel.state.bank.homeFeed.accountNumber,'12-345-777888','a pre-status home failure preserves the prior home feed instead of treating missing local status as an account removal');
+
+await dualController.commitBankSnapshot(5200,{source:'manual'});
+assert.equal(controllerModel.state.bank.currentBalance,5200,'manual business snapshot can still replace Kupa currentBalance');
+assert.equal(controllerModel.state.bank.homeFeed.balance,2600,'manual business snapshot never destroys the last synchronized home feed');
+assert.equal(controllerSaves,3,'successful dual refresh, partial-home refresh and manual snapshot all follow the normal persistence path');
 
 assert.deepEqual(scraperFailureMessage({errorType:'INVALID_PASSWORD'}),['פרטי ההתחברות לבנק הפועלים אינם נכונים','INVALID_PASSWORD']);
 assert.equal(INTERACTIVE_AUTH_TIMEOUT_MS,10*60*1000,'interactive Hapoalim authentication window is ten minutes');

@@ -22,6 +22,7 @@ function normalizeState(d){
   n.bank.source=n.bank.source?String(n.bank.source):null;
   n.bank.sourceAccount=n.bank.sourceAccount?String(n.bank.sourceAccount):null;
   n.bank.feed=normalizeBankFeed(n.bank.feed);
+  n.bank.homeFeed=normalizeBankFeed(n.bank.homeFeed);
   n.bank.bankSyncAt=n.bank.feed?.syncedAt||n.bank.bankSyncAt||(n.bank.source==='hapoalim'?n.bank.updatedAt:null);
   n.bank.asOfDate=n.bank.asOfDate||(n.bank.updatedAt?String(n.bank.updatedAt).slice(0,10):null);
   n.bank.snapshotToken=n.bank.snapshotToken?String(n.bank.snapshotToken):null;

@@ -130,7 +130,7 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=18))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=19))process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   echo ERROR: Bank Bridge did not start correctly.
   echo See: %APPROOT%\bridge.log

@@ -19,6 +19,11 @@ function mergeState3Way(base,local,remote){
     asOfDate:mergeValue(bb.asOfDate,lb.asOfDate,rb.asOfDate,'bank.asOfDate',conflicts),
     snapshotToken:mergeValue(bb.snapshotToken,lb.snapshotToken,rb.snapshotToken,'bank.snapshotToken',conflicts),
     snapshotSeq:mergeValue(bb.snapshotSeq,lb.snapshotSeq,rb.snapshotSeq,'bank.snapshotSeq',conflicts),
+    source:mergeValue(bb.source,lb.source,rb.source,'bank.source',conflicts),
+    sourceAccount:mergeValue(bb.sourceAccount,lb.sourceAccount,rb.sourceAccount,'bank.sourceAccount',conflicts),
+    bankSyncAt:mergeValue(bb.bankSyncAt,lb.bankSyncAt,rb.bankSyncAt,'bank.bankSyncAt',conflicts),
+    feed:mergeValue(bb.feed,lb.feed,rb.feed,'bank.feed',conflicts),
+    homeFeed:mergeValue(bb.homeFeed,lb.homeFeed,rb.homeFeed,'bank.homeFeed',conflicts),
     adjustments:mergeRecordArray(bb.adjustments,lb.adjustments,rb.adjustments,'id','bank.adjustments',conflicts)
   };
   return {state:normalizeState(out),conflicts};
@@ -40,6 +45,11 @@ function rebaseLocalProgress(base,local,remote){
     asOfDate:mergeValuePreferLocal(bb.asOfDate,lb.asOfDate,rb.asOfDate),
     snapshotToken:mergeValuePreferLocal(bb.snapshotToken,lb.snapshotToken,rb.snapshotToken),
     snapshotSeq:mergeValuePreferLocal(bb.snapshotSeq,lb.snapshotSeq,rb.snapshotSeq),
+    source:mergeValuePreferLocal(bb.source,lb.source,rb.source),
+    sourceAccount:mergeValuePreferLocal(bb.sourceAccount,lb.sourceAccount,rb.sourceAccount),
+    bankSyncAt:mergeValuePreferLocal(bb.bankSyncAt,lb.bankSyncAt,rb.bankSyncAt),
+    feed:mergeValuePreferLocal(bb.feed,lb.feed,rb.feed),
+    homeFeed:mergeValuePreferLocal(bb.homeFeed,lb.homeFeed,rb.homeFeed),
     adjustments:mergeRecordArrayPreferLocal(bb.adjustments,lb.adjustments,rb.adjustments,'id')
   };
   return normalizeState(out);

@@ -33,6 +33,20 @@ for(const [app,api]of [['kupa',kupaChecks({checksSession:{sharedChecksBootstrapA
    assert.equal(api.mergeSharedChecks(base,[],base).checks.length,0);
  });
 }
+test('Kupa bank sync keeps business and home feeds independent across normalization, merge and rebase',()=>{
+ const stamp='2026-08-31T18:00:00.000Z';
+ const businessFeed={provider:'hapoalim',accountNumber:'123-111111',balance:4100,syncedAt:stamp,transactions:[{id:'B1',date:stamp,amount:-25,description:'עסקי'}]};
+ const homeFeed={provider:'hapoalim',accountNumber:'123-222222',balance:2300,syncedAt:stamp,transactions:[{id:'H1',date:stamp,amount:-10,description:'ביתי'}]};
+ const base=k.normalizeState({version:4,bank:{currentBalance:4000,updatedAt:stamp,source:'hapoalim',sourceAccount:'123-111111',bankSyncAt:stamp,feed:businessFeed,homeFeed:null,adjustments:[]}});
+ assert.equal(base.bank.currentBalance,4000);assert.equal(base.bank.feed.accountNumber,'123-111111');assert.equal(base.bank.homeFeed,null);
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.bank.homeFeed=homeFeed;remote.bank.currentBalance=4100;remote.bank.feed=businessFeed;
+ const merged=km.mergeState3Way(base,local,remote);
+ assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.bank.currentBalance,4100);assert.equal(merged.state.bank.feed.accountNumber,'123-111111');assert.equal(merged.state.bank.homeFeed.accountNumber,'123-222222');assert.equal(merged.state.bank.homeFeed.balance,2300);
+ const rebased=km.rebaseLocalProgress(base,local,remote);
+ assert.equal(rebased.bank.currentBalance,4100);assert.equal(rebased.bank.homeFeed.accountNumber,'123-222222');
+});
+
 test('Kupa rebase retains edits made during an in-flight save',()=>{
  const base=k.normalizeState({version:4,checks:[],credits:[],cash:[{id:'A',amount:10}],expenses:[],cards:[]});
  const newer=structuredClone(base);newer.cash[0].amount=15;

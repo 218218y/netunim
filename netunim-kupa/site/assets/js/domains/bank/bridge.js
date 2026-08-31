@@ -15,6 +15,7 @@ function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){
   const e=new Error(message);e.code=code;e.stage=stage;
   e.httpStatus=Number(extra?.httpStatus)||0;
   e.availableAccounts=Array.isArray(extra?.availableAccounts)?extra.availableAccounts:[];
+  e.accountRole=extra?.accountRole==='home'?'home':extra?.accountRole==='business'?'business':'';
   e.creditErrors=Array.isArray(extra?.creditErrors)?extra.creditErrors:[];
   return e;
 }
@@ -36,7 +37,7 @@ async function request(path,{method='GET',body=null,timeoutMs=5000}={}){
     const r=await fetch(BRIDGE_URL+path,{method,headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});
     const text=await r.text();let data={};
     try{data=text?JSON.parse(text):{}}catch{}
-    if(!r.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${r.status})`,data.code||`HTTP_${r.status}`,data.stage||'',{httpStatus:data.httpStatus,availableAccounts:data.availableAccounts,creditErrors:data.creditErrors});
+    if(!r.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${r.status})`,data.code||`HTTP_${r.status}`,data.stage||'',{httpStatus:data.httpStatus,availableAccounts:data.availableAccounts,accountRole:data.accountRole,creditErrors:data.creditErrors});
     return data;
   }catch(e){
     if(e?.name==='AbortError')throw bridgeError('Bank Bridge לא הגיב בזמן. ודא שהוא פועל במחשב ונסה שוב.','BRIDGE_TIMEOUT');
@@ -46,11 +47,11 @@ async function request(path,{method='GET',body=null,timeoutMs=5000}={}){
 }
 
 async function status(){return request('/status',{timeoutMs:3500})}
-async function configureCredentials({token,userCode,password,branchNumber,accountNumber}){
+async function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){
   if(token)setBridgeToken(token);
-  return request('/credentials',{method:'POST',body:{userCode,password,branchNumber,accountNumber},timeoutMs:10000});
+  return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000});
 }
-async function selectAccount({branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{branchNumber,accountNumber},timeoutMs:10000})}
+async function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 async function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
 async function fetchBalance({interactive=false}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:180000})}
 

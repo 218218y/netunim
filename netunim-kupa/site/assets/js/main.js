@@ -460,6 +460,7 @@ const domainsBankController=createDomainsBankController({
 
 const domainsBankView=createDomainsBankView({
   model,
+  ui,
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
@@ -645,6 +646,7 @@ const uiActions=createUiActions({
   saveBankBridgeToken:(...args)=>domainsBankController.saveBankBridgeToken(...args),
   configureBankBridge:(...args)=>domainsBankController.configureBankBridge(...args),
   selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
+  setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),
   refreshBankBalance:(...args)=>domainsBankController.refreshBankBalance(...args),
   deleteBankBridgeCredentials:(...args)=>domainsBankController.deleteBankBridgeCredentials(...args),
   setBankAutoRefresh:(...args)=>domainsBankController.setBankAutoRefresh(...args),
