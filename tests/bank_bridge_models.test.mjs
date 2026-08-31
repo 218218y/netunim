@@ -4,9 +4,11 @@ import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/sit
 import {
   buildCreditMonths,
   classifyCamoufoxProviderResponse,
+  camoufoxFingerprintLooksSane,
   isCamoufoxRetryableNativeFailure,
   normalizeIsracardFamilyTransaction,
   parseIsracardDate,
+  sanitizeCamoufoxFingerprint,
 } from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
@@ -45,6 +47,15 @@ assert.equal(loginHtml.code,'CREDIT_LOGIN_HTML_RESPONSE','Camoufox login HTML ke
 assert.equal(loginHtml.message.includes('<html'),false,'Camoufox safe errors never retain raw provider HTML');
 assert.equal(classifyCamoufoxProviderResponse({stage:'CardsTransactionsList 2026-08',status:200,text:'<html>maintenance</html>'}).code,'CREDIT_DATA_HTML_RESPONSE','post-login HTML is distinguished from login failure');
 assert.equal(classifyCamoufoxProviderResponse({stage:'ValidateIdData',status:403,text:'Access denied'}).code,'CREDIT_AUTOMATION_BLOCKED','403/WAF responses use the canonical automation-blocked code');
+assert.equal(classifyCamoufoxProviderResponse({stage:'LoginPage',status:429,text:'Too Many Requests'}).code,'CREDIT_PROVIDER_RATE_LIMITED','429 is classified as provider rate limiting instead of being misdiagnosed as a fingerprint/WAF block');
+const poisonedFingerprint={navigator:{userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0',platform:'Linux x86_64',oscpu:'Linux x86_64',hardwareConcurrency:8},screen:{width:1536,height:960,availWidth:1536,availHeight:960,outerWidth:751,outerHeight:886,innerWidth:1280,innerHeight:720},videoCard:{vendor:'Google Inc. (NVIDIA)',renderer:'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Direct3D11)'}};
+assert.equal(camoufoxFingerprintLooksSane(poisonedFingerprint),false,'known BrowserForge cross-OS/impossible-window samples are rejected before a Camoufox session starts');
+const sanitizedFingerprint=sanitizeCamoufoxFingerprint(poisonedFingerprint);
+assert.equal(sanitizedFingerprint.navigator.platform,'Win32','Windows UA is normalized to the matching navigator platform');
+assert.equal(sanitizedFingerprint.screen.availHeight,920,'a Windows taskbar is preserved when the source fingerprint incorrectly exposes the full screen as available');
+assert.equal(sanitizedFingerprint.screen.innerWidth,751,'impossible inner>outer window geometry is clamped before launch');
+assert.equal(camoufoxFingerprintLooksSane(sanitizedFingerprint),true,'the normalized fingerprint passes the Bank Bridge consistency contract');
+assert.equal(poisonedFingerprint.navigator.platform,'Linux x86_64','fingerprint sanitation does not mutate the upstream sample object');
 assert.deepEqual(buildCreditMonths(new Date('2026-05-03T00:00:00Z'),2,new Date('2026-08-31T00:00:00Z')).map(x=>x.toISOString().slice(0,7)),['2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'],'Camoufox adapter requests every billing month from the lookback through the configured future horizon');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_HTML_RESPONSE'}),true,'Isracard native HTML/WAF failures are eligible for one Camoufox fallback');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),false,'invalid credentials never trigger a second browser engine attempt');

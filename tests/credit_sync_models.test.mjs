@@ -100,6 +100,9 @@ assert.equal(merged.profiles.length,2,'partial sync replaces successful profile 
 assert.equal(merged.profiles.find(p=>p.profileId==='p-max-b').accounts[0].txns[0].id,'keep','last successful data survives a failed profile refresh');
 assert.equal(merged.syncedAt,'2026-08-30T10:00:00.000Z','shared credit sync time advances when at least one profile succeeded');
 assert.equal(merged.errors.length,1);
+const structuredFailure=normalizeCreditSync({errors:[{profileId:'p-amex',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403,message:'חסימה',at:'2026-08-30T10:00:00.000Z'}]}).errors[0];
+assert.equal(structuredFailure.stage,'LoginPage','credit diagnostics preserve the safe failure stage');
+assert.equal(structuredFailure.httpStatus,403,'credit diagnostics preserve the issuer HTTP status without retaining response HTML');
 assert.equal(merged.mode,'synced','v3 has one canonical synchronized source marker; manual mode no longer exists as a calculation switch');
 assert.equal(creditSyncHasData({creditSync:merged}),true);
 assert.equal(merged.cardMappings[keyA]?.included,true,'v1 discovered cards migrate as included so an upgrade never silently removes existing forecast amounts');
@@ -214,7 +217,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:16,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:17,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
@@ -229,7 +232,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:16,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:17,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

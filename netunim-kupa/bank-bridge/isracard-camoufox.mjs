@@ -9,6 +9,11 @@ const FETCH_TIMEOUT_MS=60_000;
 const RATE_DELAY_MIN_MS=2_500;
 const RATE_DELAY_MAX_MS=3_000;
 const INSTALLMENTS_KEYWORD='תשלום';
+const CAMOUFOX_SCREEN={minWidth:1280,maxWidth:1920,minHeight:720,maxHeight:1200};
+const CAMOUFOX_FINGERPRINT_ATTEMPTS=24;
+const CAMOUFOX_LOGIN_SESSION_ATTEMPTS=3;
+const CAMOUFOX_LOGIN_RETRY_MIN_MS=1_000;
+const CAMOUFOX_LOGIN_RETRY_MAX_MS=2_000;
 
 function cleanText(value,max=260){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
@@ -75,9 +80,11 @@ export function normalizeIsracardFamilyTransaction(txn={},processedDate=null){
 }
 
 function responseLooksHtml(text){return /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(String(text||''))}
-function responseLooksBlocked(text,status){return Number(status)===429||Number(status)===403||/block automation|bot detection|access denied|cf-chl|cloudflare/i.test(String(text||''))}
+function responseLooksRateLimited(text,status){return Number(status)===429||/too many requests|rate[ -]?limit/i.test(String(text||''))}
+function responseLooksBlocked(text,status){return Number(status)===403||/block automation|bot detection|access denied|cf-chl|cloudflare/i.test(String(text||''))}
 function loginStage(stage){return stage==='ValidateIdData'||stage==='performLogonI'}
 export function classifyCamoufoxProviderResponse({stage='',status=0,text=''}){
+  if(responseLooksRateLimited(text,status))return {code:'CREDIT_PROVIDER_RATE_LIMITED',message:'חברת האשראי הגבילה זמנית את קצב הבקשות. יש להמתין לפני ניסיון נוסף.',stage,httpStatus:Number(status)||0};
   if(responseLooksBlocked(text,status))return {code:'CREDIT_AUTOMATION_BLOCKED',message:'אתר חברת האשראי חסם את סשן הדפדפן האוטומטי.',stage,httpStatus:Number(status)||0};
   if(responseLooksHtml(text))return {code:loginStage(stage)?'CREDIT_LOGIN_HTML_RESPONSE':'CREDIT_DATA_HTML_RESPONSE',message:loginStage(stage)?'שירות ההתחברות של חברת האשראי החזיר HTML במקום JSON.':'שירות הנתונים של חברת האשראי החזיר HTML במקום JSON.',stage,httpStatus:Number(status)||0};
   if(Number(status)<200||Number(status)>=300)return {code:'CREDIT_PROVIDER_HTTP_ERROR',message:`שירות חברת האשראי החזיר HTTP ${Number(status)||'לא ידוע'} בשלב ${stage||'לא ידוע'}.`,stage,httpStatus:Number(status)||0};
@@ -137,10 +144,88 @@ async function login(page,provider,credentials,servicesUrl){
   throw safeError('פרטי ההתחברות הקבועים נדחו על ידי חברת האשראי.','CREDIT_INVALID_PASSWORD',{stage:'performLogonI'});
 }
 
+
+function clampFingerprintAxis(screen,axis){
+  const lower=axis.toLowerCase(),screenKey=lower,availKey=`avail${axis}`,outerKey=`outer${axis}`,innerKey=`inner${axis}`;
+  const screenSize=finiteNumber(screen?.[screenKey],0);let avail=finiteNumber(screen?.[availKey],0),outer=finiteNumber(screen?.[outerKey],0),inner=finiteNumber(screen?.[innerKey],0);
+  if(screenSize>0&&avail>screenSize){screen[availKey]=screenSize;avail=screenSize}
+  const outerCap=avail>0?avail:screenSize;
+  if(outer>0&&outerCap>0&&outer>outerCap){const chrome=inner>0?Math.max(0,outer-inner):0;screen[outerKey]=outerCap;outer=outerCap;if(inner>0){screen[innerKey]=Math.max(1,outerCap-chrome);inner=screen[innerKey]}}
+  if(inner>0&&outer>0&&inner>outer)screen[innerKey]=outer;
+}
+export function sanitizeCamoufoxFingerprint(fingerprint={}){
+  const fp={...fingerprint,navigator:{...(fingerprint?.navigator||{})},screen:{...(fingerprint?.screen||{})},videoCard:{...(fingerprint?.videoCard||{})}};
+  const ua=String(fp.navigator.userAgent||'');
+  if(/Windows NT/i.test(ua)){
+    const ntVersion=ua.match(/Windows NT ([0-9.]+)/i)?.[1]||'10.0';
+    const arch=/Win64; x64/i.test(ua)?'; Win64; x64':/WOW64/i.test(ua)?'; WOW64':'';
+    fp.navigator.platform='Win32';
+    fp.navigator.oscpu=`Windows NT ${ntVersion}${arch}`;
+  }
+  const sw=finiteNumber(fp.screen.width,0),sh=finiteNumber(fp.screen.height,0),aw=finiteNumber(fp.screen.availWidth,0),ah=finiteNumber(fp.screen.availHeight,0);
+  if(sw>0&&sh>0&&aw===sw&&ah===sh)fp.screen.availHeight=Math.max(1,sh-40);
+  clampFingerprintAxis(fp.screen,'Width');clampFingerprintAxis(fp.screen,'Height');
+  return fp;
+}
+export function camoufoxFingerprintLooksSane(fingerprint={}){
+  const nav=fingerprint?.navigator||{},screen=fingerprint?.screen||{},video=fingerprint?.videoCard||{};
+  const ua=String(nav.userAgent||''),platform=String(nav.platform||''),oscpu=String(nav.oscpu||''),cores=finiteNumber(nav.hardwareConcurrency,0);
+  if(!/Firefox\/\d+/i.test(ua)||!/Windows NT/i.test(ua)||platform!=='Win32'||!/Windows NT/i.test(oscpu))return false;
+  if(!Number.isInteger(cores)||cores<2||cores>32)return false;
+  const width=finiteNumber(screen.width,0),height=finiteNumber(screen.height,0),availWidth=finiteNumber(screen.availWidth,0),availHeight=finiteNumber(screen.availHeight,0),outerWidth=finiteNumber(screen.outerWidth,0),outerHeight=finiteNumber(screen.outerHeight,0),innerWidth=finiteNumber(screen.innerWidth,0),innerHeight=finiteNumber(screen.innerHeight,0);
+  if(width<CAMOUFOX_SCREEN.minWidth||width>CAMOUFOX_SCREEN.maxWidth||height<CAMOUFOX_SCREEN.minHeight||height>CAMOUFOX_SCREEN.maxHeight)return false;
+  if(availWidth<=0||availHeight<=0||availWidth>width||availHeight>height)return false;
+  if(outerWidth<=0||outerHeight<=0||outerWidth>availWidth||outerHeight>availHeight)return false;
+  if(innerWidth<=0||innerHeight<=0||innerWidth>outerWidth||innerHeight>outerHeight)return false;
+  const gpu=`${video.vendor||''} ${video.renderer||''}`;
+  if(/swiftshader|llvmpipe|microsoft basic render|software raster/i.test(gpu))return false;
+  return true;
+}
+async function createSaneCamoufoxFingerprint(){
+  let generateFingerprint;
+  try{({generateFingerprint}=await import('camoufox-js/dist/fingerprints.js'))}catch{throw safeError('מנוע טביעת-הדפדפן של Camoufox אינו זמין. הרץ שוב install_bank_bridge.bat.','CREDIT_CAMOUFOX_RUNTIME_MISSING')}
+  for(let attempt=1;attempt<=CAMOUFOX_FINGERPRINT_ATTEMPTS;attempt++){
+    const generated=generateFingerprint(undefined,{operatingSystems:['windows'],screen:CAMOUFOX_SCREEN});
+    const fingerprint=sanitizeCamoufoxFingerprint(generated);
+    if(camoufoxFingerprintLooksSane(fingerprint))return fingerprint;
+  }
+  throw safeError('Camoufox לא הצליח לייצר טביעת דפדפן עקבית לאחר סינון דגימות לא תקינות.','CREDIT_CAMOUFOX_FINGERPRINT_INVALID');
+}
+async function closeCamoufoxSession(browser,page){try{await page?.close()}catch{}try{await browser?.close()}catch{}}
+async function launchCamoufox(Camoufox,{interactive=false,enableCache=false}={}){
+  const fingerprint=await createSaneCamoufoxFingerprint();
+  return Camoufox({headless:!interactive,humanize:true,os:'windows',locale:'he-IL',enable_cache:!!enableCache,fingerprint,i_know_what_im_doing:true});
+}
+async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false}={}){
+  let lastStatus=0;
+  for(let attempt=1;attempt<=CAMOUFOX_LOGIN_SESSION_ATTEMPTS;attempt++){
+    let browser,page;
+    try{
+      browser=await launchCamoufox(Camoufox,{interactive,enableCache:true});
+      page=await browser.newPage();page.setDefaultTimeout(45_000);page.setDefaultNavigationTimeout(LOGIN_TIMEOUT_MS);
+      await page.route('**/*',async route=>{try{if(route.request().url().includes('detector-dom.min.js'))await route.abort();else await route.continue()}catch{}});
+      const response=await page.goto(`${cfg.baseUrl}/personalarea/Login`,{waitUntil:'load',timeout:LOGIN_TIMEOUT_MS});
+      const status=Number(response?.status?.()||0);lastStatus=status;
+      if(status===429)throw safeError('חברת האשראי הגבילה זמנית את קצב הבקשות כבר בטעינת דף הכניסה.','CREDIT_PROVIDER_RATE_LIMITED',{stage:'LoginPage',httpStatus:status});
+      if(status===403){
+        if(attempt<CAMOUFOX_LOGIN_SESSION_ATTEMPTS){await closeCamoufoxSession(browser,page);browser=null;page=null;await sleep(CAMOUFOX_LOGIN_RETRY_MIN_MS+Math.floor(Math.random()*(CAMOUFOX_LOGIN_RETRY_MAX_MS-CAMOUFOX_LOGIN_RETRY_MIN_MS+1)));continue}
+        throw safeError('אתר חברת האשראי דחה את כל טביעות הדפדפן התקינות שנבדקו לפני שליחת פרטי ההתחברות.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
+      }
+      if(status>=400)throw safeError(`אתר חברת האשראי לא נטען (HTTP ${status}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage:'LoginPage',httpStatus:status});
+      return {browser,page};
+    }catch(error){
+      if(browser||page)await closeCamoufoxSession(browser,page);
+      if(String(error?.code||'').startsWith('CREDIT_'))throw error;
+      throw error;
+    }
+  }
+  throw safeError('אתר חברת האשראי חסם את סשן Camoufox כבר בטעינת דף הכניסה.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:lastStatus});
+}
+
 export async function doctorCamoufox(){
   process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||'';
   let Camoufox;try{({Camoufox}=await import('camoufox-js'))}catch{throw safeError('חבילת camoufox-js אינה מותקנת ב-Bank Bridge.','CREDIT_CAMOUFOX_RUNTIME_MISSING')}
-  let browser;try{browser=await Camoufox({headless:true,humanize:true,os:'windows',locale:'he-IL'});if(!browser||typeof browser.newPage!=='function')throw new Error('Camoufox API incompatible')}catch(e){if(e?.code?.startsWith?.('CREDIT_'))throw e;throw safeError(`Camoufox אינו מוכן להפעלה: ${cleanText(e?.message||e,180)}`,'CREDIT_CAMOUFOX_RUNTIME_MISSING')}finally{try{await browser?.close()}catch{}}
+  let browser;try{browser=await launchCamoufox(Camoufox,{interactive:false});if(!browser||typeof browser.newPage!=='function')throw new Error('Camoufox API incompatible')}catch(e){if(e?.code?.startsWith?.('CREDIT_'))throw e;throw safeError(`Camoufox אינו מוכן להפעלה: ${cleanText(e?.message||e,180)}`,'CREDIT_CAMOUFOX_RUNTIME_MISSING')}finally{try{await browser?.close()}catch{}}
   return true;
 }
 
@@ -149,12 +234,7 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
   let Camoufox;try{({Camoufox}=await import('camoufox-js'))}catch{throw safeError('מנוע Camoufox של Bank Bridge אינו מותקן. הרץ שוב install_bank_bridge.bat.','CREDIT_CAMOUFOX_RUNTIME_MISSING')}
   const cfg=PROVIDERS[provider],servicesUrl=`${cfg.baseUrl}/services/ProxyRequestHandler.ashx`;let browser,page;
   try{
-    browser=await Camoufox({headless:!interactive,humanize:true,os:'windows',locale:'he-IL',enable_cache:true});
-    page=await browser.newPage();page.setDefaultTimeout(45_000);page.setDefaultNavigationTimeout(LOGIN_TIMEOUT_MS);
-    await page.route('**/*',async route=>{try{if(route.request().url().includes('detector-dom.min.js'))await route.abort();else await route.continue()}catch{}});
-    const response=await page.goto(`${cfg.baseUrl}/personalarea/Login`,{waitUntil:'load',timeout:LOGIN_TIMEOUT_MS});
-    if(response&&[403,429].includes(response.status()))throw safeError('אתר חברת האשראי חסם את סשן Camoufox כבר בטעינת דף הכניסה.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:response.status()});
-    if(response&&response.status()>=400)throw safeError(`אתר חברת האשראי לא נטען (HTTP ${response.status()}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage:'LoginPage',httpStatus:response.status()});
+    ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive}));
     await login(page,provider,credentials,servicesUrl);
     const months=buildCreditMonths(startDate,futureMonthsToScrape),combined={};
     for(const month of months){const data=await fetchTransactionsForMonth(page,servicesUrl,month,startDate);for(const [account,txns] of Object.entries(data)){if(!combined[account])combined[account]=[];combined[account].push(...txns)}}

@@ -54,7 +54,7 @@ if errorlevel 1 (
 )
 
 echo Installing the pinned Camoufox adapter used by American Express...
-call npm install --no-save --package-lock=false --no-audit --no-fund camoufox-js@0.12.0 playwright-core@1.60.0
+call npm install --no-save --package-lock=false --no-audit --no-fund camoufox-js@0.12.0 playwright-core@1.60.0 fingerprint-generator@2.1.86
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -129,7 +129,7 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=16))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=17))process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   echo ERROR: Bank Bridge did not start correctly.
   echo See: %APPROOT%\bridge.log

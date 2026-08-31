@@ -38,7 +38,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=16;
+const BRIDGE_VERSION=17;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -404,7 +404,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false}={}){
     // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
     for(const profile of enabled){
       try{success.push(await scrapeCreditProfile(profile,{interactive}))}
-      catch(error){errors.push({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',message:error?.message||String(error),at:new Date().toISOString()})}
+      catch(error){errors.push({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at:new Date().toISOString()})}
     }
     const syncedAt=success.length?new Date().toISOString():null;
     return {profiles:success,errors,syncedAt};
