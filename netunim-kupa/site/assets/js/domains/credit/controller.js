@@ -2,6 +2,7 @@ import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,creditSyncHasData,creditSyncHasIncludedCards,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
+const CREDIT_BRIDGE_VERSION=13;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=60*60*1000;
@@ -20,7 +21,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     try{
       const status=await bridge.creditStatus();
       local.status=status;local.error='';
-      if(Number(status.bridgeVersion||0)<12)local.error='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';
+      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)local.error='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';
       if(!quiet&&model.state.creditSync?.mode==='synced')render();
       return status;
     }catch(e){local.status=null;local.error=e?.message||String(e);if(!quiet)render();return null}
@@ -41,7 +42,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       <div class="form-group cc-field cc-id"><label>תעודת זהות</label><input id="ccId" inputmode="numeric" autocomplete="username" placeholder="${canPreserveCredentials?'השאר ריק כדי לא לשנות':''}"></div>
       <div class="form-group cc-field cc-card6"><label>6 ספרות אחרונות של כרטיס</label><input id="ccCard6" inputmode="numeric" maxlength="6" autocomplete="cc-number" placeholder="${canPreserveCredentials?'השאר ריק כדי לא לשנות':''}"></div>
       <div class="form-group cc-field cc-password"><label>סיסמה</label><input id="ccPassword" type="password" autocomplete="current-password" placeholder="${canPreserveCredentials?'השאר ריק כדי לא לשנות':''}"></div>
-      <div class="form-group full"><div class="notice">פרטי ההתחברות נשלחים רק ל‑Bridge המקומי ונשמרים מוצפנים ב‑Windows. הם אינם נשמרים בקופה או ב‑Supabase. אפשר להגדיר כמה חיבורים לאותה חברה, גם לשני אנשים שונים.</div></div>
+      <div class="form-group full"><div class="notice">פרטי ההתחברות נשלחים רק ל‑Bridge המקומי ונשמרים מוצפנים ב‑Windows. הם אינם נשמרים בקופה או ב‑Supabase. יש להגדיר חיבור אחד בלבד לכל זהות כניסה בכל חברה; חיבור יחיד מגלה את כל הכרטיסים שהזהות מורשית לראות. אפשר להגדיר חיבור נוסף לאותה חברה רק לבעל חשבון אחר עם זהות כניסה שונה.</div></div>
       <div class="form-group full"><div class="notice">כרטיס Mastercard מחברים לפי החברה המנפיקה שלו — כאל, MAX, ישראכרט או American Express — ולא כחיבור נפרד. כרטיס American Express יש לבחור כחיבור American Express נפרד, גם אם ניהולו בקבוצת ישראכרט.</div></div><div class="form-group full cc-isracard-note" hidden><div class="notice">ישראכרט/American Express: החיבור משתמש בתעודת זהות + 6 ספרות אחרונות + הסיסמה הקבועה. ברענון עם חלון, הדף עשוי להישאר חזותית על מסך SMS מפני שה־scraper מבצע את מסלול הסיסמה הקבועה דרך שירותי האתר ברקע; מצב הסנכרון בקופה הוא מקור האמת להצלחה או לכשל.</div></div>
     </form>`;
     modal(isEdit?'עריכת חיבור אשראי':'חיבור חדש לחברת אשראי',body,isEdit?'שמור חיבור':'הוסף חיבור',async()=>{
@@ -58,8 +59,27 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   }
 
   async function deleteCreditConnection(profileId){
-    if(!await confirmDialog('למחוק חיבור מהמחשב?','פרטי ההתחברות המוצפנים של החיבור יימחקו מהמחשב הזה. נתוני הסנכרון שכבר נשמרו בקופה לא יימחקו.',{confirmText:'מחק חיבור'}))return;
+    if(!await confirmDialog('למחוק חיבור מהמחשב?','פרטי ההתחברות המוצפנים של החיבור יימחקו מהמחשב הזה. נתוני הסנכרון שכבר נשמרו בקופה/בענן לא יימחקו ולכן החיבור עדיין עשוי להופיע כ״הגדר גם במחשב זה״. למחיקה מלאה והתחלה מחדש השתמש ב״איפוס מלא״.',{confirmText:'מחק חיבור'}))return;
     try{await bridge.deleteCreditProfile(profileId);await refreshCreditBridgeStatus();toast('החיבור המקומי נמחק');render()}catch(e){toast(e?.message||'מחיקת החיבור נכשלה')}
+  }
+
+
+  async function resetCreditSync(){
+    if(local.busy)return toast('כבר מתבצע סנכרון אשראי');
+    if(!await confirmDialog('לאפס את כל סנכרון האשראי?','האיפוס ימחק את כל חיבורי חברות האשראי המוצפנים מהמחשב הזה וגם את כל נתוני הסנכרון, השיוכים והשגיאות השמורים בקופה/בענן. עסקאות האשראי הידניות לא יימחקו, ומקור החישוב יחזור להזנה ידנית.',{confirmText:'אפס והתחל מחדש'}))return;
+    local.busy=true;local.error='';render();
+    try{
+      const status=local.status||await refreshCreditBridgeStatus();
+      if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
+      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
+      await bridge.resetCreditProfiles();
+      localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
+      model.state.creditSync=normalizeCreditSync({});
+      await saveState('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');
+      await refreshCreditBridgeStatus();
+      toast('סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
+    }catch(e){local.error=e?.message||String(e);toast(local.error)}
+    finally{local.busy=false;render();scheduleAuto()}
   }
 
   async function refreshCreditSync({interactive=false,auto=false}={}){
@@ -68,7 +88,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     try{
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
-      if(Number(status.bridgeVersion||0)<12)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
+      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       if(auto)markAutoAttempt();
       const result=await bridge.syncCreditCards({interactive});
@@ -119,5 +139,5 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     refreshCreditSync({interactive:false,auto:true}).catch(()=>{});
   }
 
-  return {creditSyncUiState,refreshCreditBridgeStatus,openCreditConnectionModal,deleteCreditConnection,refreshCreditSync,setCreditSyncMode,setCreditCardMapping,setCreditAutoRefresh,maybeAutoRefreshCreditSync};
+  return {creditSyncUiState,refreshCreditBridgeStatus,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditSyncMode,setCreditCardMapping,setCreditAutoRefresh,maybeAutoRefreshCreditSync};
 }

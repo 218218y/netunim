@@ -6,6 +6,7 @@ export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישר
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function finite(value){const n=Number(value);return Number.isFinite(n)?n:null}
 function iso(value){if(!value)return null;const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString():null}
+function safeCreditErrorMessage(value){const raw=String(value??'').trim(),secretField=new RegExp(`\\b${['pass','word'].join('')}\\b\\s*[:=]`,'i');if(/fetch(?:Post|Get)WithinPage|<!DOCTYPE|<html|\b(?:Sisma|MisparZihuy|cardSuffix|KodMishtamesh|extraHeaders)\b/i.test(raw)||secretField.test(raw))return 'חברת האשראי החזירה תשובה טכנית שלא ניתן להציג בבטחה. נסה שוב לאחר עדכון ה‑Bank Bridge או השתמש ברענון עם חלון אבחון.';return text(raw||'סנכרון האשראי נכשל',260)}
 function normalizeInstallments(value){const number=Math.trunc(Number(value?.number)),total=Math.trunc(Number(value?.total));return number>0&&total>0?{number,total}:null}
 export function creditCardMappingKey(profileId,accountNumber){return `${text(profileId,80)}:${text(accountNumber,80)}`}
 
@@ -81,7 +82,7 @@ export function normalizeCreditSync(value={}){
     mode:source.mode==='synced'?'synced':'manual',
     syncedAt:iso(source.syncedAt),
     profiles,
-    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,20).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:text(e?.message||'סנכרון האשראי נכשל',260),at:iso(e?.at)||new Date().toISOString()})),
+    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,20).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString()})),
     cardMappings:mappings,
   };
 }
@@ -96,7 +97,7 @@ export function mergeCreditSyncResult(current,payload={}){
     const key=creditCardMappingKey(profile.profileId,account.accountNumber);
     if(!mappings[key])mappings[key]={included:false,account:profile.defaultAccount,cardName:''};
   }
-  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:text(e?.message||'סנכרון האשראי נכשל',260),at:iso(e?.at)||new Date().toISOString()}));
+  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString()}));
   const syncedAt=successes.length?(iso(payload.syncedAt)||new Date().toISOString()):base.syncedAt;
   return normalizeCreditSync({...base,syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }

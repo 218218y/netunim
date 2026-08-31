@@ -1,7 +1,7 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, refreshCreditSync, setCreditSyncMode, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
+export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, setCreditSyncMode, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
 return {
   'dashboard-go':(element,event)=>{dashboardGo(element.dataset.page,element.dataset.tab)},
   'dashboard-keyboard':(element,event)=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();element.click()}},
@@ -42,6 +42,7 @@ return {
   'set-bank-auto-refresh':(element,event)=>{setBankAutoRefresh(element.checked)},
   'open-credit-connection':(element,event)=>{event?.preventDefault();event?.stopPropagation();openCreditConnectionModal(element.dataset.clickArg0||'')},
   'delete-credit-connection':(element,event)=>{event?.preventDefault();event?.stopPropagation();deleteCreditConnection(element.dataset.clickArg0||'')},
+  'reset-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();resetCreditSync()},
   'refresh-credit-sync':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:false,auto:false})},
   'refresh-credit-sync-interactive':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshCreditSync({interactive:true,auto:false})},
   'set-credit-sync-mode':(element,event)=>{setCreditSyncMode(element.dataset.clickArg0||'manual')},

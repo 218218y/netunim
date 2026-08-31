@@ -57,7 +57,8 @@ async function fetchBalance({interactive=false}={}){return request('/balance',{m
 async function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
 async function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
 async function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
+async function resetCreditProfiles(){return request('/credit/reset',{method:'POST',body:{},timeoutMs:15000})}
 async function syncCreditCards({interactive=false}={}){return request('/credit/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,syncCreditCards};
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,syncCreditCards};
 }

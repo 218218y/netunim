@@ -100,11 +100,11 @@ Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.
 
 
-Credit-card sync (Bridge v12)
+Credit-card sync (Bridge v13)
 -----------------------------
-Bridge v12 adds encrypted multi-profile credit-card connections for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
+Bridge v13 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
 
-Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are intentionally supported. Profiles are scraped sequentially to avoid cookie/session collisions between different identities.
+Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are supported only for different login identities. The same Visa Cal/Max username or the same Isracard/Amex ID cannot be stored twice for the same provider, because one issuer login already returns all cards visible to that identity. Profiles for different identities are scraped sequentially to avoid cookie/session collisions.
 
 Each scrape requests 120 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, and transaction dates, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
 
@@ -117,3 +117,11 @@ American Express is a separate CompanyTypes.amex scraper in israeli-bank-scraper
 An issuer login can legitimately return many current/old/household cards. Kupa therefore separates discovery from inclusion. Existing v1 cards migrate as included so an upgrade cannot silently alter totals; cards first discovered under credit feed v2 are excluded until the user explicitly opts them in. Business/home classification and display name remain per-card and per-profile.
 
 The Isracard/Amex scraper does not click the visible SMS/password UI. It loads the login page, then calls ValidateIdData and performLogonI inside the page with the fixed-password credentials. Therefore an interactive browser remaining visually on the SMS login screen is not itself a failure signal. The Bridge result/error is authoritative.
+
+Bridge v13 — reset, duplicate prevention and safe diagnostics
+
+The /credit/reset endpoint deletes only the local encrypted credit profile vault and credit-sync metadata; it does not touch Hapoalim credentials. The Kupa UI pairs this with clearing state.creditSync through the normal save path, so a full reset also removes synchronized card/profile/mapping data from the Kupa document/cloud and returns to manual-credit mode. Manual state.credits remain intact.
+
+Deleting one credit profile through /credit/profiles remains intentionally local-only for multi-computer use. A previously synchronized cloud profile can therefore still appear as “configure on this computer” after local deletion; use the explicit full reset when the goal is to start from zero everywhere.
+
+Scraper error strings are not trusted as safe diagnostics. Isracard/Amex HTML returned where the fixed-password JSON service was expected is classified as CREDIT_LOGIN_HTML_RESPONSE, and generic raw scraper messages are no longer persisted. This prevents request payload details embedded by the upstream scraper from leaking into the Kupa/cloud error feed.

@@ -5,8 +5,10 @@ import {
   CREDIT_PROVIDER_CONFIG,
   creditProviderSupported,
   creditProfilePublic,
+  creditProfilesShareLoginIdentity,
   normalizeCreditProfileInput,
   normalizeCreditScrapeAccount,
+  creditScrapeFailure,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
 import {
   CREDIT_PROVIDER_LABELS,
@@ -38,6 +40,9 @@ const max1=normalizeCreditProfileInput({profileId:'p-max-a',provider:'max',label
 const max2=normalizeCreditProfileInput({profileId:'p-max-b',provider:'max',label:'MAX ב',ownerLabel:'אדם ב',defaultAccount:'ביתי',username:'user-b',password:'secret-b'});
 assert.notEqual(max1.profileId,max2.profileId,'two identities at the same issuer remain separate profiles');
 assert.notDeepEqual(max1.credentials,max2.credentials,'same-issuer profiles keep independent credentials');
+assert.equal(creditProfilesShareLoginIdentity(max1,max2),false,'different usernames at the same issuer remain separate login identities');
+const maxDuplicate=normalizeCreditProfileInput({profileId:'p-max-a-duplicate',provider:'max',label:'MAX duplicate',username:'user-a',password:'different-secret'});
+assert.equal(creditProfilesShareLoginIdentity(max1,maxDuplicate),true,'the same provider username is one login identity even when a second card/password entry is attempted');
 assert.equal(creditProfilePublic(max1).credentials,undefined,'public bridge profile never exposes credentials');
 const edited=normalizeCreditProfileInput({profileId:max1.profileId,provider:'max',label:'MAX א - חדש',username:'',password:''},max1);
 assert.equal(edited.credentials.username,'user-a','editing local metadata with blank secret fields preserves encrypted credentials');
@@ -47,6 +52,13 @@ const isracard=normalizeCreditProfileInput({profileId:'p-isra',provider:'isracar
 const amex=normalizeCreditProfileInput({profileId:'p-amex',provider:'amex',id:'123456789',card6Digits:'654321',password:'x',defaultAccount:'ביתי'});
 assert.equal(isracard.credentials.card6Digits,'123456');
 assert.equal(amex.credentials.card6Digits,'654321');
+const isracardSameOwnerDifferentCard=normalizeCreditProfileInput({profileId:'p-isra-2',provider:'isracard',id:'123456789',card6Digits:'999999',password:'other'});
+assert.equal(creditProfilesShareLoginIdentity(isracard,isracardSameOwnerDifferentCard),true,'Isracard uses one connection per identity; another card suffix must not create a duplicate login profile');
+assert.equal(creditProfilesShareLoginIdentity(isracard,amex),false,'Isracard and Amex remain separate provider identities even for the same ID');
+const secretMarker='DO_NOT_PERSIST_THIS_PASSWORD';
+const htmlFailure=creditScrapeFailure({errorType:'GENERIC',errorMessage:`fetchPostWithinPage parse error: Unexpected token '<', "<!DOCTYPE html>"; data: {"Sisma":"${secretMarker}"}`},isracard);
+assert.equal(htmlFailure.code,'CREDIT_LOGIN_HTML_RESPONSE','HTML returned by the Isracard fixed-password JSON endpoint is classified explicitly');
+assert.equal(htmlFailure.message.includes(secretMarker),false,'technical scraper errors never expose credential-bearing request payloads');
 
 const normalizedAccount=normalizeCreditScrapeAccount({
   accountNumber:'4321',balance:-1250.75,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:15000,
@@ -84,6 +96,8 @@ assert.equal(merged.cardMappings[keyB]?.included,true);
 const allFailed=mergeCreditSyncResult(merged,{profiles:[],errors:[{profileId:'p-max-a',provider:'max',code:'CREDIT_TIMEOUT',message:'כשל'}]});
 assert.equal(allFailed.syncedAt,merged.syncedAt,'all-failed refresh preserves last successful sync timestamp');
 assert.equal(allFailed.profiles.length,2,'all-failed refresh preserves every last successful profile slice');
+const sanitizedHistoricalError=normalizeCreditSync({errors:[{profileId:'p-isra',message:`fetchPostWithinPage parse error <!DOCTYPE html> password=${secretMarker}`}]}).errors[0];
+assert.equal(sanitizedHistoricalError.message.includes(secretMarker),false,'historical technical bridge errors are scrubbed before display/re-persistence');
 const discoveredLater=mergeCreditSyncResult(merged,{syncedAt:'2026-08-30T11:00:00.000Z',profiles:[{profileId:'p-max-a',provider:'max',label:'MAX א',defaultAccount:'עסקי',accounts:[normalizedAccount,{accountNumber:'7777',txns:[{id:'new',processedDate:'2026-10-10T00:00:00.000Z',chargedAmount:-77,chargedCurrency:'ILS',description:'חדש'}]}]}],errors:[]});
 assert.equal(discoveredLater.cardMappings[creditCardMappingKey('p-max-a','7777')]?.included,false,'cards first discovered after v2 are opt-in and cannot silently enter Kupa totals');
 
@@ -119,7 +133,7 @@ assert.equal(pendingRows.some(r=>r.description==='ממתינה'),false,'pending 
 
 globalThis.localStorage={getItem:()=>'',setItem:()=>{},removeItem:()=>{}};
 const bridgeApi=createDomainsBankBridge();
-for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','syncCreditCards']){
+for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','resetCreditProfiles','syncCreditCards']){
   assert.equal(typeof bridgeApi[method],'function',`browser bridge exposes ${method} as a callable local API method`);
 }
 
@@ -128,13 +142,28 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:12,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:13,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
-for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','refreshCreditSync','setCreditSyncMode','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
+for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditSyncMode','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
   assert.equal(typeof creditController[method],'function',`credit controller exposes ${method}`);
 }
 await creditController.refreshCreditBridgeStatus();
 creditController.setCreditAutoRefresh(false);
 
-console.log('PASS credit sync models: multi-profile issuer credentials, safe partial merge, source cutover/rollback, card mapping and ILS forecast semantics are deterministic');
+let resetBridgeCalls=0,resetSaveCalls=0;
+const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCreditSync({mode:'synced',profiles:[{profileId:'old',provider:'max',accounts:[{accountNumber:'1234',txns:[{id:'old-tx',processedDate:'2026-09-01T00:00:00.000Z',chargedAmount:-10,chargedCurrency:'ILS'}]}]}]})}};
+const resetController=createDomainsCreditController({
+  model:resetModel,
+  saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
+  bridge:{creditStatus:async()=>({bridgeVersion:13,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
+});
+await resetController.resetCreditSync();
+assert.equal(resetBridgeCalls,1,'full credit reset deletes the local encrypted issuer profiles through the bridge');
+assert.equal(resetSaveCalls,1,'full credit reset persists the cleared synchronized feed through the ordinary Kupa save path');
+assert.equal(resetModel.state.creditSync.mode,'manual','full reset returns the active credit source to manual mode');
+assert.equal(resetModel.state.creditSync.profiles.length,0,'full reset removes synchronized cloud profiles/card data');
+assert.equal(resetModel.state.credits[0].id,'manual-kept','full reset never deletes manual credit records');
+
+console.log('PASS credit sync models: issuer identity de-duplication, safe diagnostics/reset, partial merge, cutover/rollback, card mapping and ILS forecast semantics are deterministic');

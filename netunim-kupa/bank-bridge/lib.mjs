@@ -356,6 +356,16 @@ function creditText(value,max=240){return String(value??'').trim().replace(/\s+/
 function creditNumber(value){const n=Number(value);return Number.isFinite(n)?n:null}
 export function creditProviderSupported(value){return Object.prototype.hasOwnProperty.call(CREDIT_PROVIDER_CONFIG,String(value||''))}
 export function creditProfilePublic(profile){return {profileId:creditText(profile?.profileId,80),provider:creditText(profile?.provider,30),label:creditText(profile?.label,100),ownerLabel:creditText(profile?.ownerLabel,100),defaultAccount:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',active:profile?.active!==false,configured:true}}
+export function creditProfilesShareLoginIdentity(a,b){
+  const provider=creditText(a?.provider,30);
+  if(!provider||provider!==creditText(b?.provider,30)||!creditProviderSupported(provider))return false;
+  if(provider==='visaCal'||provider==='max'){
+    const av=String(a?.credentials?.username||'').trim(),bv=String(b?.credentials?.username||'').trim();
+    return !!av&&av===bv;
+  }
+  const av=String(a?.credentials?.id||'').replace(/\D/g,''),bv=String(b?.credentials?.id||'').replace(/\D/g,'');
+  return !!av&&av===bv;
+}
 export function normalizeCreditProfileInput(value={},existing=null){
   const provider=creditText(value.provider||existing?.provider,30);
   if(!creditProviderSupported(provider)){const e=new Error('חברת האשראי שנבחרה אינה נתמכת');e.code='UNSUPPORTED_CREDIT_PROVIDER';throw e}
@@ -376,8 +386,24 @@ export function normalizeCreditScrapeTransaction(tx={}){
 export function normalizeCreditScrapeAccount(account={}){
   return {accountNumber:creditText(account.accountNumber||'',80),balance:creditNumber(account.balance),balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame:creditText(account.cardFrame||'',80),txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
 }
-export function creditScrapeFailure(result,profile){
-  const type=String(result?.errorType||'SCRAPE_FAILED').toUpperCase(),raw=creditText(result?.errorMessage||'',260),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
-  const messages={INVALID_PASSWORD:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:isIsracardGroup?'שירות הסיסמה הקבועה החזיר תשובה שלא זוהתה. מסך ה-SMS שנשאר פתוח בחלון אינו מדד להצלחת החיבור':'החברה החזירה מסך או תשובה שלא זוהו'};
-  const e=new Error(`${label}: ${messages[type]||raw||'סנכרון האשראי נכשל'}`);e.code=`CREDIT_${type}`;return e;
+function safeCreditScrapeFailure(typeValue,rawValue,profile){
+  const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
+  let code=`CREDIT_${type}`,message='סנכרון האשראי נכשל';
+  if(/fetchPostWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
+    code='CREDIT_LOGIN_HTML_RESPONSE';
+    message=isIsracardGroup?'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת JSON. החיבור הזה לא הושלם; ודא שקיים רק חיבור אחד לאותה זהות בחברה ונסה שוב. אם התקלה חוזרת, השתמש ברענון עם חלון אבחון.':'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת נתונים. נסה שוב עם חלון אבחון.';
+  }else if(/fetchGetWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
+    code='CREDIT_DATA_HTML_RESPONSE';
+    message='שירות הנתונים של החברה החזיר דף HTML במקום תשובת JSON. החיבור נשמר אך לא התקבלו ממנו נתונים תקינים.';
+  }else if(/automation detected and blocked|block automation|bot detection/i.test(raw)){
+    code='CREDIT_AUTOMATION_BLOCKED';
+    message='אתר חברת האשראי חסם זמנית את הגישה האוטומטית. נסה מאוחר יותר או ברענון עם חלון אבחון.';
+  }else{
+    const messages={INVALID_PASSWORD:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:isIsracardGroup?'שירות הסיסמה הקבועה החזיר תשובה שלא זוהתה. מסך ה-SMS שנשאר פתוח בחלון אינו מדד להצלחת החיבור':'החברה החזירה מסך או תשובה שלא זוהו'};
+    message=messages[type]||'החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.';
+    if(!messages[type])code='CREDIT_SCRAPE_FAILED';
+  }
+  const e=new Error(`${label}: ${message}`);e.code=code;return e;
 }
+export function creditScrapeFailure(result,profile){return safeCreditScrapeFailure(result?.errorType,result?.errorMessage,profile)}
+export function creditThrownScrapeFailure(error,profile){if(String(error?.code||'').startsWith('CREDIT_'))return error;return safeCreditScrapeFailure('SCRAPE_FAILED',error?.message||error,profile)}

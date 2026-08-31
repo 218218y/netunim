@@ -655,6 +655,7 @@ const uiActions=createUiActions({
   setBankAutoRefresh:(...args)=>domainsBankController.setBankAutoRefresh(...args),
   openCreditConnectionModal:(...args)=>domainsCreditController.openCreditConnectionModal(...args),
   deleteCreditConnection:(...args)=>domainsCreditController.deleteCreditConnection(...args),
+  resetCreditSync:(...args)=>domainsCreditController.resetCreditSync(...args),
   refreshCreditSync:(...args)=>domainsCreditController.refreshCreditSync(...args),
   setCreditSyncMode:(...args)=>domainsCreditController.setCreditSyncMode(...args),
   setCreditCardMapping:(...args)=>domainsCreditController.setCreditCardMapping(...args),

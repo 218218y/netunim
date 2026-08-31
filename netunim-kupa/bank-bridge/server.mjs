@@ -28,14 +28,16 @@ import {
   CREDIT_FUTURE_MONTHS,
   creditProviderSupported,
   creditProfilePublic,
+  creditProfilesShareLoginIdentity,
   normalizeCreditProfileInput,
   normalizeCreditScrapeAccount,
   creditScrapeFailure,
+  creditThrownScrapeFailure,
 } from './lib.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=12;
+const BRIDGE_VERSION=13;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -104,6 +106,7 @@ async function readCreditProfiles(){
   }catch(e){if(e?.code==='ENOENT')return [];throw e}
 }
 async function writeCreditProfiles(profiles){await ensureAppDir();const encrypted=await protectText(JSON.stringify(Array.isArray(profiles)?profiles:[]));await fs.writeFile(CREDIT_PROFILES_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
+async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true})])}
 async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
 async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
 function publicCreditProfiles(profiles){return (Array.isArray(profiles)?profiles:[]).map(creditProfilePublic).filter(x=>x.profileId&&creditProviderSupported(x.provider))}
@@ -366,7 +369,7 @@ async function scrapeCreditProfile(profile,{interactive=false}={}){
     const result=await scraper.scrape(profile.credentials);
     if(!result?.success)throw creditScrapeFailure(result,profile);
     return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
-  }catch(e){if(e?.code)throw e;throw Object.assign(new Error(`${profile.label}: ${e?.message||e}`),{code:'CREDIT_SCRAPE_FAILED'})}
+  }catch(e){throw creditThrownScrapeFailure(e,profile)}
 }
 async function scrapeAllCreditProfiles(profiles,{interactive=false}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
@@ -402,8 +405,14 @@ async function handler(req,res,token){
       const body=await readJson(req),profiles=await readCreditProfiles(),requestedId=String(body.profileId||'').trim();
       const existing=requestedId?profiles.find(p=>p.profileId===requestedId):null;
       const normalized=normalizeCreditProfileInput({...body,profileId:requestedId||randomUUID()},existing||null);
+      const duplicate=profiles.find(p=>p.profileId!==normalized.profileId&&creditProfilesShareLoginIdentity(p,normalized));
+      if(duplicate)throw Object.assign(new Error(`כבר קיים חיבור ${creditProfilePublic(duplicate).label} לאותה זהות בחברה. חיבור אחד מחזיר את כל הכרטיסים של אותה זהות; אין ליצור חיבור נפרד לכל כרטיס.`),{code:'CREDIT_DUPLICATE_LOGIN'});
       const next=existing?profiles.map(p=>p.profileId===existing.profileId?normalized:p):[...profiles,normalized];
       await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
+    }
+    if(req.method==='POST'&&req.url==='/credit/reset'){
+      if(scrapeBusy)throw Object.assign(new Error('לא ניתן לאפס חיבורי אשראי בזמן שמתבצע סנכרון'),{code:'SCRAPE_BUSY'});
+      await resetCreditProfiles();sendJson(req,res,200,{ok:true,profiles:[],lastSyncAt:null,lastErrors:[]});return;
     }
     if(req.method==='DELETE'&&req.url==='/credit/profiles'){
       const body=await readJson(req),profileId=String(body.profileId||'').trim(),profiles=await readCreditProfiles();
