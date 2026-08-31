@@ -373,6 +373,7 @@ const domainsCustomersView=createDomainsCustomersView({
 
 const domainsCustomersEditor=createDomainsCustomersEditor({
   model,
+  customerUi,
   modal:(...args)=>uiModal.modal(...args),
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
@@ -794,7 +795,9 @@ const uiActions=createUiActions({
   toggleCustomerBulkVisible:(...args)=>domainsCustomersBulk.toggleCustomerBulkVisible(...args),
   deleteSelectedCustomerRows:(...args)=>domainsCustomersBulk.deleteSelectedCustomerRows(...args),
   renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
-  saveCustomerOrderNote:(...args)=>domainsCustomersView.saveCustomerOrderNote(...args),
+  addCustomerOrder:(...args)=>domainsCustomersEditor.addCustomerOrder(...args),
+  saveCustomerOrderField:(...args)=>domainsCustomersEditor.saveCustomerOrderField(...args),
+  deleteCustomerOrder:(...args)=>domainsCustomersEditor.deleteCustomerOrder(...args),
   setCustomerFlag:(...args)=>domainsCustomersView.setCustomerFlag(...args),
   saveDebtNote:(...args)=>domainsCustomersView.saveDebtNote(...args),
   openDebtModal:(...args)=>domainsCustomersEditor.openDebtModal(...args),

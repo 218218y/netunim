@@ -12,6 +12,7 @@ import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/mo
 import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
 import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
+import {createDomainsCustomersBulk} from '../netunim-orders/site/assets/js/domains/customers/bulk.js';
 import {money} from '../netunim-orders/site/assets/js/core/money.js';
 import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {createStateNormalization as createOrderNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
@@ -189,6 +190,34 @@ test('customer debt editor treats blank as zero and accepts negative reverse deb
  const debt=model.state.customerDebts[0];
  assert.equal(debt.amount,-125);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,2);assert.equal(closed,2);assert.equal(rendered,2);
  editor.openDebtModal(debt.id);assert.match(body,/id="dAmount"[^>]*value="-125"/);
+});
+
+test('customer order tracking uses the clean manual row model for inline add, edit and delete',async()=>{
+ const state={customerDebts:[],customerOrders:[{id:'O1',orderNumber:'10',customerName:'קיים',mark1:'V',mark2:'VV',mark3:'VVV',mattresses:'זוגי',note:'הערה'}]};
+ const customerUi={customerTab:'orders',customerFilter:'all',customerOrderFilter:'mattress',customerSearch:'קיים',customerBulkSelected:new Set(['O1']),customerBulkMode:false};
+ let saved=0,rendered=0;
+ const editor=createDomainsCustomersEditor({model:{state},customerUi,modal:()=>{},toast:msg=>{throw new Error(msg)},scheduleSave:()=>{saved++},closeModal:()=>{},renderCustomers:()=>{rendered++},confirmDialog:async()=>true});
+ const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
+ const existing=view.customerOrderRow(state.customerOrders[0]);
+ assert.match(existing,/data-blur-arg1="orderNumber"/);assert.match(existing,/data-blur-arg1="mark3"/);assert.match(existing,/value="זוגי"/);assert.match(existing,/data-action="add-customer-order"/);assert.match(existing,/data-action="delete-customer-order"/);
+ const id=editor.addCustomerOrder();assert.ok(state.customerOrders.some(x=>x.id===id));assert.equal(customerUi.customerOrderFilter,'all');assert.equal(customerUi.customerSearch,'');
+ const added=state.customerOrders.find(x=>x.id===id);assert.deepEqual({orderNumber:added.orderNumber,customerName:added.customerName,mark1:added.mark1,mark2:added.mark2,mark3:added.mark3,mattresses:added.mattresses,note:added.note},{orderNumber:'',customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:''});
+ assert.equal('sourceMarkA' in added,false);assert.equal('mattressMarked' in added,false);assert.equal('sourceAttention' in added,false);
+ editor.saveCustomerOrderField(id,'orderNumber',{value:'20'});editor.saveCustomerOrderField(id,'customerName',{value:'חדש'});editor.saveCustomerOrderField(id,'mark1',{value:'א'});editor.saveCustomerOrderField(id,'mark2',{value:'ב'});editor.saveCustomerOrderField(id,'mark3',{value:'ג'});editor.saveCustomerOrderField(id,'mattresses',{value:'זוגי'});editor.saveCustomerOrderField(id,'note',{value:'בדיקה'});
+ assert.deepEqual({orderNumber:added.orderNumber,customerName:added.customerName,mark1:added.mark1,mark2:added.mark2,mark3:added.mark3,mattresses:added.mattresses,note:added.note},{orderNumber:'20',customerName:'חדש',mark1:'א',mark2:'ב',mark3:'ג',mattresses:'זוגי',note:'בדיקה'});
+ await editor.deleteCustomerOrder('O1');assert.equal(state.customerOrders.some(x=>x.id==='O1'),false);assert.equal(customerUi.customerBulkSelected.has('O1'),false);assert.equal(saved,9);assert.equal(rendered,2);
+});
+
+test('customer order table exposes add action and no longer shows the legacy V-marker disclaimer',()=>{
+ const state={customerDebts:[],customerOrders:[{id:'O1',orderNumber:'1',customerName:'לקוח',mark3:'VVV'}]};
+ const customerUi={customerTab:'orders',customerFilter:'all',customerOrderFilter:'all',customerSearch:'',customerBulkSelected:new Set(),customerBulkMode:false};
+ const bulk=createDomainsCustomersBulk({customerUi,model:{state},renderCustomers:()=>{},toast:()=>{},scheduleSave:()=>{},confirmDialog:async()=>true});
+ const main={innerHTML:''},previousDocument=globalThis.document;
+ globalThis.document={querySelector:selector=>selector==='#main'?main:null,querySelectorAll:()=>[]};
+ try{
+  const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:st=>bulk.customerBottomSummary(st),customerBulkCell:()=>'',scheduleSave:()=>{}});
+  view.renderCustomers();assert.match(main.innerHTML,/סימון 3/);assert.match(main.innerHTML,/data-action="add-customer-order"/);assert.doesNotMatch(main.innerHTML,/דורש תשומת לב/);assert.doesNotMatch(main.innerHTML,/סימוני V \/ VV \/ VVV/);
+ }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });
 
 test('customer header total uses the exact debt rows shown by filters and partial search refresh',()=>{
