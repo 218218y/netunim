@@ -11,7 +11,7 @@ def ok(condition,message):
     print(('PASS' if condition else 'FAIL'),message)
     if not condition: errors.append(message)
 
-for rel in ['server.mjs','lib.mjs','isracard-camoufox.mjs']:
+for rel in ['server.mjs','lib.mjs','isracard-camoufox.mjs','provision-camoufox.mjs']:
     r=subprocess.run(['node','--check',str(BRIDGE/rel)],capture_output=True,text=True)
     ok(r.returncode==0,f'bank bridge: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
@@ -33,6 +33,7 @@ ok(r.returncode==0,'credit sync models: multi-profile, cutover/rollback and fore
 server=(BRIDGE/'server.mjs').read_text(encoding='utf-8')
 lib=(BRIDGE/'lib.mjs').read_text(encoding='utf-8')
 camoufox=(BRIDGE/'isracard-camoufox.mjs').read_text(encoding='utf-8')
+camoufox_provisioner=(BRIDGE/'provision-camoufox.mjs').read_text(encoding='utf-8')
 controller=(SITE/'assets/js/domains/bank/controller.js').read_text(encoding='utf-8')
 client=(SITE/'assets/js/domains/bank/bridge.js').read_text(encoding='utf-8')
 feed=(SITE/'assets/js/domains/bank/feed.js').read_text(encoding='utf-8')
@@ -87,7 +88,8 @@ ok('%APPROOT%\\app' in installer and 'app-staging' in installer and 'npm ci' in 
 ok('--stop-existing' in installer and "req.url==='/shutdown'" in server and 'stopVerifiedListener' in server, 'bank bridge upgrade: an existing verified bridge is stopped before replacing its runtime')
 ok('node "%STAGING%\\server.mjs" --stop-existing' in installer and 'if exist "%APPDIR%" (' in installer and 'The previous Bank Bridge runtime could not be removed.' in installer, 'bank bridge upgrade: validated staging code performs shutdown and activation fails closed if old runtime remains locked')
 ok('const BRIDGE_VERSION=15' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=15' in installer and '/health' in installer, 'financial bridge install: installer verifies the Amex-Camoufox bridge v15 after hidden startup')
-ok('camoufox-js@0.12.0' in installer and 'playwright-core@1.60.0' in installer and 'CAMOUFOX_INSTALL_DIR=%APPROOT%\\camoufox' in installer and 'node node_modules\\camoufox-js\\dist\\__main__.js fetch' in installer and 'doctorCamoufox()' in server, 'Amex runtime install: Camoufox is downloaded into stable LOCALAPPDATA and a real browser launch is doctor-checked before activation')
+ok('camoufox-js@0.12.0' in installer and 'playwright-core@1.60.0' in installer and 'CAMOUFOX_INSTALL_DIR=%APPROOT%\\camoufox' in installer and 'provision-camoufox.mjs' in installer and 'node provision-camoufox.mjs' in installer and 'CamoufoxFetcher' in camoufox_provisioner and 'camoufoxPath(false)' in camoufox_provisioner and 'installedVerStr()' in camoufox_provisioner and 'node_modules\\camoufox-js\\dist\\__main__.js fetch' not in installer and 'downloadMMDB' not in camoufox_provisioner and 'doctorCamoufox()' in server, 'Amex runtime install: only the required Camoufox browser is provisioned in stable LOCALAPPDATA; optional GeoIP cannot block installation, and a real browser launch is doctor-checked before activation')
+ok('geoip:' not in camoufox and 'downloadMMDB' not in camoufox_provisioner, 'Amex Camoufox install: Netunim does not request GeoIP spoofing, so the optional GeoLite MMDB is not a runtime/install dependency')
 ok('>> "%LOCALAPPDATA%\\NetunimKupaBankBridge\\bridge.log" 2>&1' in start_script, 'bank bridge startup: background output goes to a log instead of popup error windows')
 
 ok('syncSharedChecksFromCloud({quiet:true,required:true})' in controller and 'sharedChecksObservedSequence()' in controller and 'snapshotSeq:observedSeq' in controller, 'bank snapshot integrity: remote balance uses existing synchronized check watermark before saving')

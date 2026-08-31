@@ -30,7 +30,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs lib.mjs isracard-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs lib.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -63,13 +63,15 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Installing/updating the Camoufox browser in the stable local cache...
-node node_modules\camoufox-js\dist\__main__.js fetch
+echo Validating/provisioning the Camoufox browser in the stable local cache...
+rem Do not use the upstream `camoufox fetch` CLI here: it also downloads the optional GeoIP MMDB.
+rem Netunim never enables Camoufox geoip, so that unrelated download must not make Bridge installation fail.
+node provision-camoufox.mjs
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: Camoufox browser download failed. The existing Bank Bridge was not changed.
-  echo Check the internet connection and try install_bank_bridge.bat again.
+  echo ERROR: Camoufox browser provisioning failed. The existing Bank Bridge was not changed.
+  echo Check the error above and try install_bank_bridge.bat again.
   pause
   exit /b 1
 )
