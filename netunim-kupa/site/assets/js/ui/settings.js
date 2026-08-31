@@ -1,10 +1,10 @@
 import {esc} from '../core/values.js';
-import {money, formatNullableMoney} from '../core/money.js';
+import {formatNullableMoney} from '../core/money.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 import {SUPA_EMAIL_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiSettings({model, session, checksSession, files, supaProjectRef, supaConfigured, bankCheckEffectsTotal, bankCurrentBalance, saveState}){
+export function createUiSettings({model, session, checksSession, files, supaProjectRef, supaConfigured, bankCurrentBalance, saveState}){
 function renderSettings(){
   const b=session.serverInfo.backups||[],cloudActive=session.connectionMode==='supabase',cloudReady=supaConfigured(),email=localStorage.getItem(SUPA_EMAIL_KEY)||'',sourceUpdatedAt=session.serverInfo.lastSavedAt||null,kupaUpdatedAt=cloudActive?sourceUpdatedAt:null,checksUpdatedAt=cloudActive?(checksSession.sharedChecksUpdatedAt||null):null,lastCloudUpdatedAt=latestCloudUpdatedAt(kupaUpdatedAt,checksUpdatedAt);
   document.getElementById('content').innerHTML=`
@@ -29,7 +29,7 @@ function renderSettings(){
       <div class="soft-note" style="margin-top:14px">הפרויקט שמוגדר כרגע: <code>${esc(supaProjectRef())}</code>. בהתקנה חדשה יש להריץ את <code>supabase/setup.sql</code> וגם את <code>netunim-orders/supabase/shared/setup.sql</code>. במעבר מהמערכת הקיימת יש להריץ את <code>netunim-orders/supabase/shared/cutover.sql</code> בזמן חלון ההקפאה, ורק לאחר הצלחת האימות להעלות את שתי גרסאות האתר החדשות. קובץ <code>supabase/config.js</code> מכיל רק Project URL ו־Publishable Key — לא מפתח סודי.</div>
     `}
   </div></section>
-  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>נתוני מערכת</h3></div></div><div class="section-body"><div class="statline"><span class="stat-pill">${esc(model.state.checks.length)} צקים</span><span class="stat-pill">${esc(model.state.credits.length)} עסקאות אשראי</span><span class="stat-pill">${esc(model.state.cash.length)} תנועות מזומן</span><span class="stat-pill">${esc(model.state.expenses.length)} הוצאות</span><span class="stat-pill">עו״ש: ${formatNullableMoney(bankCurrentBalance())}</span><span class="stat-pill">השפעת אירועי צקים מאז צילום הבנק: ${money(bankCheckEffectsTotal())}</span></div></div></section>`}
+  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>נתוני מערכת</h3></div></div><div class="section-body"><div class="statline"><span class="stat-pill">${esc(model.state.checks.length)} צקים</span><span class="stat-pill">${esc(model.state.credits.length)} עסקאות אשראי</span><span class="stat-pill">${esc(model.state.cash.length)} תנועות מזומן</span><span class="stat-pill">${esc(model.state.expenses.length)} הוצאות</span><span class="stat-pill">עו״ש ממקור הבנק: ${formatNullableMoney(bankCurrentBalance())}</span></div></div></section>`}
 
 function updateCard(i,k,v){const old=model.state.cards[i][k];model.state.cards[i][k]=v;if(k==='name'&&old!==v){model.state.credits.forEach(cr=>{if(cr.card===old)cr.card=v})}saveState('ההגדרה נשמרה')}
 

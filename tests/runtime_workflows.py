@@ -36,8 +36,8 @@ flows={
  row.querySelector('[data-series-field="amount"]').value='200';row.querySelector('[data-series-field="number"]').value='0007';
  for(const [part,value]of [['day','10'],['month','09'],['year','26']]){const e=row.querySelector('[data-date-part="'+part+'"]');e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new FocusEvent('blur',{bubbles:false}))}
  saveModal();await saved();assert(state.checks.length===1&&state.checks[0].dueDate==='2026-09-10','check create/date controls');
- click('mark-deposited');await saved();assert(state.checks[0].status==='הופקד - במעקב'&&bankCurrentBalance()===1200,'deposit bank effect');
- checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1200,'cleared is not double-deposited');
+ click('mark-deposited');await saved();assert(state.checks[0].status==='הופקד - במעקב'&&bankCurrentBalance()===1000,'deposit preserves authoritative bank balance');
+ checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1000,'cleared preserves authoritative bank balance');
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
  const backup=payloadFromState(state,dbRevision);state.expenses=[];
  setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await saved();

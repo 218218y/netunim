@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {num, money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 
-export function createDomainsBankView({model, bankAsOfDate, bankDerivedCheckDeposits, bankCurrentBalance, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, bankBridgeUiState, refreshBankBridgeStatus}){
+export function createDomainsBankView({model, bankAsOfDate, bankCurrentBalance, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, bankBridgeUiState, refreshBankBridgeStatus}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
@@ -133,14 +133,14 @@ function renderBank(){
   const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth);
   const targetExpenseRows=cycle.targetExpenseRows.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const allRows=[...model.state.expenses].sort((a,b)=>(a.description||'').localeCompare(b.description||''));
-  const autoDeposits=bankDerivedCheckDeposits(),bridgeUi=bankBridgeUiState(),feed=bridgeUi.feed;
+  const bridgeUi=bankBridgeUiState(),feed=bridgeUi.feed;
   const staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses;
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
     <div class="bank-entry">
       <label>עובר ושב בבנק — יתרה מעודכנת</label>
       <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש" value="${esc(bank===null?'':bank)}"><button type="button" class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
-      <small>${esc(bankSnapshotLabel())}${autoDeposits.length?` · נוספו מאז אוטומטית ${autoDeposits.length} הפקדות צקים (${money(autoDeposits.reduce((a,x)=>a+x.amount,0))})`:''}</small>
+      <small>${esc(bankSnapshotLabel())} · היתרה מוצגת ממקור הבנק בלבד; סטטוס צ׳קים אינו משנה אותה</small>
     </div>
     <div class="bank-mini"><div class="bank-label">אשראי במחזור הקרוב</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${cycleLabel}`:'אין חיובי אשראי עתידיים'}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות למחזור הקרוב</div><div class="bank-value">${money(targetExpenseRows.reduce((a,x)=>a+num(x.amount),0))}</div><div class="muted">הוצאות של ${esc(cycleLabel)} בלבד</div></div>

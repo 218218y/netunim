@@ -39,11 +39,11 @@ kexpr = r"""(()=>{
  return out;
 })()"""
 kexpected = {
-    "deposit": 1100,
-    "returnAfterSnapshot": 900,
+    "deposit": 1000,
+    "returnAfterSnapshot": 1000,
     "amountChangeThenDelete": 1000,
-    "pendingDeposit": 1100,
-    "pendingReturn": 900,
+    "pendingDeposit": 1000,
+    "pendingReturn": 1000,
     "bootRepairCount": 1,
     "bootRepairApplied": True,
     "postRepairDeleteCount": 0,
@@ -58,7 +58,7 @@ oexpr = r"""(()=>{
  const b=computeKupaNetReadout({bank:{currentBalance:1000,updatedAt:'2026-08-26T10:00:00Z',asOfDate:'2026-08-26',snapshotSeq:10,adjustments:[]},credits:[],expenses:[],cash:[]}).bank;
  return {returnAfterSnapshot:a,pendingDeposit:b};
 })()"""
-oexpected = {"returnAfterSnapshot": 900, "pendingDeposit": 1100}
+oexpected = {"returnAfterSnapshot": 1000, "pendingDeposit": 1000}
 
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok

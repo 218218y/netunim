@@ -4,7 +4,7 @@ export const CREDIT_SYNC_VERSION=3;
 export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישראכרט',amex:'American Express'};
 
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
-function finite(value){const n=Number(value);return Number.isFinite(n)?n:null}
+function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 function iso(value){if(!value)return null;const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString():null}
 function safeCreditErrorMessage(value){const raw=String(value??'').trim(),secretField=new RegExp(`\\b${['pass','word'].join('')}\\b\\s*[:=]`,'i');if(/fetch(?:Post|Get)WithinPage|<!DOCTYPE|<html|\b(?:Sisma|MisparZihuy|cardSuffix|KodMishtamesh|extraHeaders)\b/i.test(raw)||secretField.test(raw))return 'חברת האשראי החזירה תשובה טכנית שלא ניתן להציג בבטחה. נסה שוב לאחר עדכון ה‑Bank Bridge או השתמש ברענון עם חלון אבחון.';return text(raw||'סנכרון האשראי נכשל',260)}
 function normalizeInstallments(value){const number=Math.trunc(Number(value?.number)),total=Math.trunc(Number(value?.total));return number>0&&total>0?{number,total}:null}
@@ -36,7 +36,8 @@ export function normalizeCreditAccount(account={}){
     balance:finite(account.balance),
     balanceDate:iso(account.balanceDate),
     cardType:text(account.cardType||'',80),
-    cardFrame:text(account.cardFrame||'',80),
+    cardFrame:finite(account.cardFrame),
+    availableCredit:finite(account.availableCredit),
     txns:txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}),
   };
 }
@@ -102,7 +103,7 @@ export function mergeCreditSyncResult(current,payload={}){
   return normalizeCreditSync({...base,syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 
-export function creditSyncHasData(state){return !!normalizeCreditSync(state?.creditSync).profiles.some(p=>p.accounts.some(a=>a.txns.length||a.balance!==null))}
+export function creditSyncHasData(state){return !!normalizeCreditSync(state?.creditSync).profiles.some(p=>p.accounts.some(a=>a.txns.length||a.balance!==null||a.cardFrame!==null||a.availableCredit!==null))}
 export function creditSyncHasIncludedCards(state){const sync=normalizeCreditSync(state?.creditSync);return sync.profiles.some(p=>p.accounts.some(a=>sync.cardMappings[creditCardMappingKey(p.profileId,a.accountNumber)]?.included===true))}
 export function creditCardIncluded(sync,profileId,accountNumber){return normalizeCreditSync(sync).cardMappings[creditCardMappingKey(profileId,accountNumber)]?.included===true}
 export function creditCardHidden(sync,profileId,accountNumber){return normalizeCreditSync(sync).cardMappings[creditCardMappingKey(profileId,accountNumber)]?.hidden===true}
@@ -122,6 +123,7 @@ function accountPresentation(profile,account,mapping={}){
   const cardName=mapping.cardName||[CREDIT_PROVIDER_LABELS[profile.provider]||profile.label,account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' ');
   return {accountClass,cardName:cardName||'כרטיס אשראי',ownerLabel:profile.ownerLabel||'',hidden:mapping.hidden===true};
 }
+function synchronizedCardKey(profile,account){return `sync:${profile.profileId}:${account.accountNumber}`}
 
 export function syncedInstallmentsData(state){
   const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();
@@ -138,7 +140,7 @@ export function syncedInstallmentsData(state){
         const stableId=tx.id?`${tx.id}|${date}|${amount}|${tx.description}|${part}`:`idless-${txIndex}|${date}|${amount}|${tx.description}|${part}`;
         const identity=`${profile.profileId}|${account.accountNumber}|${stableId}`;
         if(seen.has(identity))continue;seen.add(identity);
-        rows.push({creditId:`SYNC:${identity}`,date,amount,part,totalParts,card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,source:'credit_sync',profileId:profile.profileId,accountNumber:account.accountNumber,provider:profile.provider,status:tx.status});
+        rows.push({creditId:`SYNC:${identity}`,creditAccountKey:synchronizedCardKey(profile,account),date,amount,part,totalParts,card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,source:'credit_sync',profileId:profile.profileId,accountNumber:account.accountNumber,provider:profile.provider,status:tx.status});
       }
     }
   }
@@ -191,9 +193,9 @@ export function syncedCreditSeries(state,asOf=todayISO()){
     const remainingCount=Math.max(0,group.totalParts-completedCount),futureItems=items.filter(x=>x.date>=asOf);
     const remainingAmount=futureItems.reduce((sum,x)=>sum+x.amount,0),knownTotal=items.reduce((sum,x)=>sum+x.amount,0);
     const originalTotal=group.originalCandidates.find(v=>Number.isFinite(v)&&Math.abs(v)>=Math.abs(knownTotal)-0.01);
-    const totalAmount=originalTotal??knownTotal;
+    const totalAmount=originalTotal??knownTotal,lastChargeDate=items.reduce((latest,item)=>item.date>latest?item.date:latest,'');
     const partial=remainingCount>futureItems.length;
-    result.push({...group,items,totalAmount,completedCount,remainingCount,next,remainingAmount,partial,complete:remainingCount===0});
+    result.push({...group,items,totalAmount,completedCount,remainingCount,next,remainingAmount,lastChargeDate,partial,complete:remainingCount===0});
   }
   return result.sort((a,b)=>{
     const an=a.next?.date||'9999-12-31',bn=b.next?.date||'9999-12-31';return an.localeCompare(bn)||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he');
@@ -204,5 +206,5 @@ export function creditSyncSummary(state){
   const sync=normalizeCreditSync(state?.creditSync),accounts=sync.profiles.flatMap(p=>p.accounts.map(a=>({profile:p,account:a}))),txns=accounts.reduce((n,x)=>n+x.account.txns.length,0);
   const includedAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.included===true).length;
   const hiddenAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.hidden===true).length;
-  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount,hiddenAccountCount,transactionCount:txns,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null),today:todayISO()};
+  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount,hiddenAccountCount,transactionCount:txns,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null||x.account.cardFrame!==null||x.account.availableCredit!==null),today:todayISO()};
 }

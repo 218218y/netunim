@@ -353,7 +353,7 @@ export const CREDIT_HISTORY_DAYS=120;
 export const CREDIT_FUTURE_MONTHS=12;
 
 function creditText(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
-function creditNumber(value){const n=Number(value);return Number.isFinite(n)?n:null}
+function creditNumber(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 export function creditProviderSupported(value){return Object.prototype.hasOwnProperty.call(CREDIT_PROVIDER_CONFIG,String(value||''))}
 export function creditProfilePublic(profile){return {profileId:creditText(profile?.profileId,80),provider:creditText(profile?.provider,30),label:creditText(profile?.label,100),ownerLabel:creditText(profile?.ownerLabel,100),defaultAccount:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',active:profile?.active!==false,configured:true}}
 export function creditProfilesShareLoginIdentity(a,b){
@@ -383,8 +383,13 @@ export function normalizeCreditScrapeTransaction(tx={}){
   const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
   return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
 }
-export function normalizeCreditScrapeAccount(account={}){
-  return {accountNumber:creditText(account.accountNumber||'',80),balance:creditNumber(account.balance),balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame:creditText(account.cardFrame||'',80),txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
+export function normalizeCreditScrapeAccount(account={},provider=''){
+  const balance=creditNumber(account.balance),cardFrame=creditNumber(account.cardFrame),directAvailable=creditNumber(account.availableCredit);
+  // israeli-bank-scrapers defines MAX balance as -(CreditLimit - OpenToBuy), so
+  // CreditLimit + balance is the issuer's exact OpenToBuy value. Cal's balance is
+  // only the next debit, therefore applying the same formula there would be false.
+  const maxAvailable=provider==='max'&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
+  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
 }
 function safeCreditScrapeFailure(typeValue,rawValue,profile){
   const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
+import {computeKupaNetReadoutData, kupaAllInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {ALL_SUPPLIERS_ID, balanceRowsData, orderedSuppliersData, supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, supplierViewRowsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
@@ -38,14 +39,20 @@ test('expense recurrence and one-time dates remain distinct',()=>{
  const state={expenses:[{id:'R',date:'2024-01-31',amount:50,recurring:true,active:true},{id:'O',date:'2024-01-10',amount:80,recurring:false,active:true}]};
  assert.deepEqual(expenseOccurrencesForMonthData(state,'2024-02').map(x=>[x.id,x.dueDate]),[['R','2024-02-29']]);
 });
-test('bank watermark and pending checks do not double count deposits',()=>{
- const base=[{id:'C',amount:100,status:'בקופה'}],state={bank:{currentBalance:1000,snapshotSeq:5,adjustments:[]},checks:[{...base[0],status:'הופקד - במעקב'}]};
- assert.equal(bankCurrentBalanceData([],base,state),1100);
- const event={seq:6,checkId:'C',delta:100};
- assert.equal(bankCurrentBalanceData([event],state.checks,state),1100);
- state.bank.snapshotSeq=6;state.bank.currentBalance=1100;
- state.checks=[{...base[0],status:'חזר'}];
- assert.equal(bankCurrentBalanceData([event],[{...base[0],status:'הופקד - במעקב'}],state),1000);
+test('bank balance remains the authoritative snapshot regardless of check workflow status',()=>{
+ const state={bank:{currentBalance:1000,snapshotSeq:5,adjustments:[]},checks:[{id:'C',amount:100,status:'בקופה'}]};
+ assert.equal(bankCurrentBalanceData(state),1000);
+ state.checks[0].status='הופקד - במעקב';assert.equal(bankCurrentBalanceData(state),1000);
+ state.checks[0].status='נפרע';assert.equal(bankCurrentBalanceData(state),1000);
+ state.checks[0].status='חזר';assert.equal(bankCurrentBalanceData(state),1000);
+ state.bank.adjustments=[{type:'manual',amount:25},{type:'check_deposit',amount:500}];
+ assert.equal(bankCurrentBalanceData(state),1025,'manual corrections remain supported while legacy check adjustments stay excluded');
+});
+test('Orders readout includes synchronized credit and never adds check events to bank',()=>{
+ const key='P:1111',kupa={bank:{currentBalance:1000,asOfDate:'2020-01-01',adjustments:[]},credits:[],expenses:[],cash:[],creditSync:{version:3,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'T',processedDate:'2099-01-10',chargedAmount:-75,chargedCurrency:'ILS',status:'completed'}]}]}],cardMappings:{[key]:{included:true}}}};
+ assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75);
+ const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,status:'הופקד - במעקב'}]},kupa);
+ assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.net,925);
 });
 test('merge preserves independent changes and detects deletion versus edit',()=>{
  const base=[{id:'A',value:1},{id:'B',value:2}],local=[{id:'A',value:3},{id:'B',value:2}],remote=[{id:'A',value:1},{id:'B',value:4}];

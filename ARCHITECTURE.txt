@@ -30,8 +30,8 @@ UI contexts own filters, selections and modal drafts. Orders lastCloudState belo
 Data ownership and recovery
 ---------------------------
 kupa_documents owns cash, credit, expenses, cards and bank snapshots. order_management_documents owns Orders data.
-shared_checks_documents is the authoritative shared check list and financial bank-event log.
-Neither app writes checks into its own cloud document. Bank watermarks and pending check deltas prevent double counting.
+shared_checks_documents is the authoritative shared check list. Its legacy bankEvents/depositSeq metadata remains readable for backward compatibility with deployed RPCs, but does not participate in bank calculations.
+Neither app writes checks into its own cloud document. The bank snapshot/feed is the sole source of bank balance in both Kupa and the Orders readout; check workflow states cannot change it.
 Portable backups still contain checks and retain the existing schema versions and file names.
 Orders restore preserves live shared checks by default unless the user explicitly selects check restoration.
 

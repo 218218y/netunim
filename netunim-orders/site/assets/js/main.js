@@ -217,7 +217,6 @@ const domainsChecksView=createDomainsChecksView({
 
 const domainsBankSelectors=createDomainsBankSelectors({
   model,
-  checksSession,
 });
 
 const domainsBankCache=createDomainsBankCache({

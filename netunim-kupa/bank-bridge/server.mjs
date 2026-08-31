@@ -38,7 +38,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=15;
+const BRIDGE_VERSION=16;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -361,7 +361,7 @@ function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes
 async function scrapeCreditWithCamoufox(profile,{interactive=false}={}){
   const result=await scrapeIsracardFamilyWithCamoufox({provider:profile.provider,credentials:profile.credentials,startDate:creditStartDate(),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,interactive:!!interactive});
   if(!result?.success)throw Object.assign(new Error('Camoufox לא החזיר תוצאת סנכרון תקינה'),{code:'CREDIT_CAMOUFOX_FAILED'});
-  return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
+  return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider))};
 }
 async function scrapeCreditProfile(profile,{interactive=false}={}){
   // American Express is known to reject the upstream Puppeteer/Chromium fingerprint before ValidateIdData.
@@ -382,7 +382,7 @@ async function scrapeCreditProfile(profile,{interactive=false}={}){
   try{
     const result=await scraper.scrape(profile.credentials);
     if(!result?.success)throw creditScrapeFailure(result,profile);
-    return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
+    return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider))};
   }catch(e){
     const failure=creditThrownScrapeFailure(e,profile);
     // Isracard currently still works for many local Chrome/Edge sessions. If its WAF starts returning the same

@@ -461,7 +461,6 @@ const domainsBankController=createDomainsBankController({
 const domainsBankView=createDomainsBankView({
   model,
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
-  bankDerivedCheckDeposits:(...args)=>domainsBankSelectors.bankDerivedCheckDeposits(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
@@ -477,7 +476,6 @@ const uiSettings=createUiSettings({
   files,
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
-  bankCheckEffectsTotal:(...args)=>domainsBankSelectors.bankCheckEffectsTotal(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
 });
@@ -589,10 +587,7 @@ const lifecycle=createLifecycle({
   bankAdjustments:(...args)=>domainsBankSelectors.bankAdjustments(...args),
   bankAdjustmentsTotal:(...args)=>domainsBankSelectors.bankAdjustmentsTotal(...args),
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
-  pendingSharedCheckBankDelta:(...args)=>domainsBankSelectors.pendingSharedCheckBankDelta(...args),
   sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
-  bankDerivedCheckDeposits:(...args)=>domainsBankSelectors.bankDerivedCheckDeposits(...args),
-  bankCheckEffectsTotal:(...args)=>domainsBankSelectors.bankCheckEffectsTotal(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   nextCreditCycle:(...args)=>domainsCreditSelectors.nextCreditCycle(...args),
   modalFormSnapshot:(...args)=>uiModal.modalFormSnapshot(...args),

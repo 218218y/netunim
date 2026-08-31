@@ -21,7 +21,7 @@ import {
   syncedInstallmentsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {allInstallmentsData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {allInstallmentsData,nextCreditCycleData,creditDetailPartitionsData,CREDIT_DETAIL_HISTORY_DAYS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
@@ -73,8 +73,14 @@ const normalizedAccount=normalizeCreditScrapeAccount({
   ],
 });
 assert.equal(normalizedAccount.accountNumber,'4321');
+assert.equal(normalizedAccount.cardFrame,15000);
+assert.equal(normalizedAccount.availableCredit,null,'an issuer credit limit is not mislabeled as available credit without provider proof');
 assert.equal(normalizedAccount.txns[0].installments.total,3);
 assert.equal(normalizedAccount.txns[0].chargedAmount,-100);
+const maxFrame=normalizeCreditScrapeAccount({accountNumber:'9999',balance:-1250.75,cardFrame:15000},'max');
+assert.equal(maxFrame.availableCredit,13749.25,'MAX OpenToBuy is recovered exactly from the scraper-defined balance and credit limit');
+const missingNumbers=normalizeCreditScrapeAccount({accountNumber:'0000',balance:null,cardFrame:null,availableCredit:null});
+assert.equal(missingNumbers.balance,null);assert.equal(missingNumbers.cardFrame,null);assert.equal(missingNumbers.availableCredit,null);
 
 const previous=normalizeCreditSync({
   version:1,mode:'manual',syncedAt:'2026-08-29T09:00:00.000Z',
@@ -134,6 +140,24 @@ assert.equal(dealSeries.remainingCount,3,'installment progress is derived from e
 assert.equal(dealSeries.next.part,1);
 assert.equal(dealSeries.partial,true,'missing future installment rows are flagged rather than silently invented');
 
+const historyKey=creditCardMappingKey('history','1000');
+const historyState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'history',provider:'max',accounts:[{accountNumber:'1000',txns:[
+  {id:'active',processedDate:'2026-10-01',chargedAmount:-30,chargedCurrency:'ILS',description:'פעילה'},
+  {id:'recent',processedDate:'2026-08-15',chargedAmount:-40,chargedCurrency:'ILS',description:'הסתיימה לאחרונה'},
+  {id:'old',processedDate:'2026-05-01',chargedAmount:-50,chargedCurrency:'ILS',description:'היסטוריה ישנה'},
+]}]}],cardMappings:{[historyKey]:{included:true,hidden:false,account:'עסקי'}}})};
+const partitions=creditDetailPartitionsData(historyState,'2026-09-01');
+assert.equal(CREDIT_DETAIL_HISTORY_DAYS,60);
+assert.deepEqual(partitions.active.map(x=>x.series.description),['פעילה'],'regular detail contains only obligations with a future charge');
+assert.deepEqual(partitions.history.map(x=>x.series.description),['הסתיימה לאחרונה'],'completed rows stay in a separate bounded history');
+assert.equal(partitions.olderCount,1,'older completed rows remain in source data without cluttering either ordinary or recent-history detail');
+
+const collisionState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[
+  {profileId:'owner-a',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'a',processedDate:'2026-09-10',chargedAmount:-10,chargedCurrency:'ILS'}]}]},
+  {profileId:'owner-b',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'b',processedDate:'2026-09-20',chargedAmount:-20,chargedCurrency:'ILS'}]}]},
+],cardMappings:{[creditCardMappingKey('owner-a','1111')]:{included:true,cardName:'אותו שם'},[creditCardMappingKey('owner-b','1111')]:{included:true,cardName:'אותו שם'}}})};
+assert.equal(nextCreditCycleData(collisionState,'2026-09-01').rows.length,2,'same display name/card suffix under different login identities cannot collapse one card cycle');
+
 const hiddenState={...syncedState,creditSync:{...syncedState.creditSync,cardMappings:{...syncedState.creditSync.cardMappings,[keyA]:{...syncedState.creditSync.cardMappings[keyA],hidden:true}}}};
 const hiddenForecast=syncedInstallmentsData(hiddenState);
 assert(hiddenForecast.some(r=>r.profileId==='p-max-a'&&r.hidden===true),'hidden is a presentation flag and does not remove an included card from cash-flow calculation');
@@ -151,6 +175,9 @@ const pendingAndIdless=normalizeCreditSync({version:1,profiles:[{profileId:'p-ca
 const pendingRows=syncedInstallmentsData({creditSync:pendingAndIdless});
 assert.equal(pendingRows.filter(r=>r.amount===25).length,2,'two legitimate id-less issuer transactions are not collapsed merely because their visible fields match');
 assert.equal(pendingRows.some(r=>r.description==='ממתינה'),false,'pending issuer rows never enter the cash-flow forecast with a purchase date masquerading as a billing date');
+const originalFallback=normalizeCreditSync({version:3,profiles:[{profileId:'fallback',provider:'max',accounts:[{accountNumber:'2222',balance:null,cardFrame:null,txns:[{id:'original-only',processedDate:'2026-09-10',chargedAmount:null,originalAmount:-12,chargedCurrency:'ILS'}]}]}],cardMappings:{[creditCardMappingKey('fallback','2222')]:{included:true}}});
+assert.equal(originalFallback.profiles[0].accounts[0].balance,null,'missing issuer balance remains unavailable instead of becoming a displayed zero');
+assert.equal(syncedInstallmentsData({creditSync:originalFallback})[0].amount,12,'a missing charged amount falls back to the explicit original amount instead of being coerced to zero');
 
 const normalizationModel={state:{},lastNormalizeRemovedCredits:0};
 const stateNormalization=createStateNormalization({model:normalizationModel});
@@ -171,7 +198,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:15,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:16,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
@@ -186,7 +213,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:15,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:16,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

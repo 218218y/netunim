@@ -1,7 +1,6 @@
 import {nextSeriesCheckNumber} from '../../shared/check-series.js';
 export {nextSeriesCheckNumber};
 import {checkDaysFromToday, checkAddMonthsISO} from '../../core/dates.js';
-import {kupaWholeMoney} from '../../core/money.js';
 
 export function normalizeSharedBankEvents(events){return (Array.isArray(events)?events:[]).map(e=>{const seq=Number(e?.seq),delta=Math.round(Number(e?.delta||0));return{seq:Number.isSafeInteger(seq)&&seq>0?seq:null,at:e?.at||null,delta,kind:String(e?.kind||'check_effect_delta'),checkId:String(e?.checkId||'')}}).filter(e=>e.seq&&e.checkId)}
 
@@ -12,5 +11,3 @@ export function checkUrgency(c){if(c.status!=='בקופה')return '';const d=che
 
 
 export function generatedCheckSeriesRow(first,i){return {date:first.date?checkAddMonthsISO(first.date,i):'',amount:first.amount,number:nextSeriesCheckNumber(first.number,i),manualDate:false,manualAmount:false,manualNumber:false}}
-
-export function checkBankEffectAmount(c){return c&&['הופקד - במעקב','נפרע'].includes(c.status)?kupaWholeMoney(c.amount):0}

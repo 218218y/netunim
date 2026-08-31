@@ -13,8 +13,6 @@ export function checkUrgency(c){if(c.status!=='בקופה')return '';const d=day
 
 export function generatedCheckSeriesRow(first,i){return {date:first.date?addMonthsISO(first.date,i):'',amount:first.amount,number:nextSeriesCheckNumber(first.number,i),manualDate:false,manualAmount:false,manualNumber:false}}
 
-export function checkBankEffectAmount(c){return c&&['הופקד - במעקב','נפרע'].includes(c.status)?num(c.amount):0}
-
 export function activeChecksData(state){return state.checks.filter(x=>x.status==='בקופה')}
 
 export function depositedChecksData(state){return state.checks.filter(x=>x.status==='הופקד - במעקב')}
