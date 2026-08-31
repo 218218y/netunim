@@ -72,7 +72,7 @@ Maintenance
 
 Dependency
 ----------
-The bridge pins israeli-bank-scrapers 6.9.0 for Hapoalim/Cal/Max and the normal Isracard path. The Isracard-family WAF path pins camoufox-js 0.12.0 with playwright-core 1.60.0; Bridge v17 also pins fingerprint-generator 2.1.86 because that package chooses the generated browser fingerprint used by Camoufox. The matching Camoufox browser is downloaded into the stable local cache during installation. Bank/card websites can change without notice; a changed issuer protocol still requires a reviewed connector update rather than blind retries.
+The bridge pins israeli-bank-scrapers 6.9.0 for Hapoalim/Cal/Max and the normal Isracard path. The Isracard-family WAF path pins camoufox-js 0.12.0 with playwright-core 1.60.0; Bridge v18 also pins fingerprint-generator 2.1.86 because that package chooses the generated browser fingerprint used by Camoufox. The matching Camoufox browser is downloaded into the stable local cache during installation. Bank/card websites can change without notice; a changed issuer protocol still requires a reviewed connector update rather than blind retries.
 
 Interactive bank verification
 -----------------------------
@@ -101,15 +101,15 @@ Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.
 
 
-Credit-card sync (Bridge v17)
+Credit-card sync (Bridge v18)
 -----------------------------
-Bridge v17 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
+Bridge v18 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
 
 Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are supported only for different login identities. The same Visa Cal/Max username or the same Isracard/Amex ID cannot be stored twice for the same provider, because one issuer login already returns all cards visible to that identity. Profiles for different identities are scraped sequentially to avoid cookie/session collisions.
 
 Each scrape requests 120 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, optional credit limit/available credit, and transaction dates, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
 
-Bridge v17 preserves Visa Cal's issuer credit limit and MAX's credit limit. israeli-bank-scrapers 6.9.0 defines MAX balance as -(CreditLimit - OpenToBuy), so only for MAX the bridge derives exact availableCredit as cardFrame + balance. Visa Cal balance is the next debit rather than total limit use, so the bridge deliberately does not apply that formula. The current Isracard/Amex normalized adapters expose neither value. Missing numeric values remain null rather than being coerced to zero.
+Bridge v18 preserves Visa Cal's issuer credit limit and MAX's credit limit. israeli-bank-scrapers 6.9.0 defines MAX balance as -(CreditLimit - OpenToBuy), so only for MAX the bridge derives exact availableCredit as cardFrame + balance. Visa Cal balance is the next debit rather than total limit use, so the bridge deliberately does not apply that formula. The current Isracard/Amex normalized adapters expose neither value. Missing numeric values remain null rather than being coerced to zero.
 
 The web app stores these normalized results in state.creditSync. Credit feed v3 has one calculation model: included issuer cards are always the primary source, and any newly-created state.credits row is an additive manual adjustment only. On the one-time v2 -> v3 migration, pre-existing manual credit rows are removed so old hand-entered schedules cannot double-count the newly synchronized issuer feed. New manual additions created after the migration remain persistent and additive.
 
@@ -155,3 +155,12 @@ Kupa no longer converts check workflow changes into synthetic bank movements. Th
 
 Completed credit series are removed from the ordinary active-detail table. The UI keeps a separate collapsed 60-day history while the normalized issuer feed itself remains bounded by the existing 120-day scrape window. Orders now evaluates the same state.creditSync rows as Kupa when calculating the read-only Kupa net balance.
 
+
+
+Bridge v18 — Camoufox owns fingerprint generation
+
+Bridge v17's installer could fail before Camoufox launched because the local fingerprint pre-filter treated BrowserForge's zero innerWidth/innerHeight values as invalid. Those zeroes are collection sentinels for unavailable window measurements, not proof of an impossible browser, and Camoufox's own mapper intentionally skips zero-valued fields. Rejecting them caused every generated sample on affected datasets to be discarded during --doctor.
+
+Bridge v18 removes that duplicate local fingerprint sanitizer/validator. It uses Camoufox's supported os='windows' and screen constraints and lets Camoufox generate/map the BrowserForge fingerprint internally. The security boundary remains stronger and simpler: before any ID, card digits or password are sent, the Bridge opens the issuer login page anonymously; an HTTP 403 discards that entire browser session and launches a fresh Camoufox-generated session, while HTTP 429 is not retried. The installer doctor now checks that the real Camoufox browser/runtime can launch, instead of rejecting valid BrowserForge sentinel data.
+
+The installer also no longer prints the misleading Chrome/Edge-only advice for a Camoufox doctor failure; the exact diagnostic printed immediately above is authoritative and the previously installed Bridge remains untouched on any doctor failure.

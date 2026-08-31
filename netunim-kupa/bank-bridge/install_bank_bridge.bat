@@ -81,7 +81,8 @@ node server.mjs --doctor
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: Bank Bridge doctor check failed. Install or update Google Chrome or Microsoft Edge and try again.
+  echo ERROR: Bank Bridge doctor check failed. The existing Bank Bridge was not changed.
+  echo See the precise diagnostic above; it identifies whether Chrome/Edge, Camoufox, or the scraper runtime failed.
   pause
   exit /b 1
 )
@@ -129,7 +130,7 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=17))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=18))process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   echo ERROR: Bank Bridge did not start correctly.
   echo See: %APPROOT%\bridge.log
