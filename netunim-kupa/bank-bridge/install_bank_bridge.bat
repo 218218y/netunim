@@ -19,6 +19,7 @@ set "APPDIR=%APPROOT%\app"
 set "STAGING=%APPROOT%\app-staging"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "AUTOSTART=%STARTUP%\NetunimKupaBankBridge.vbs"
+set "CAMOUFOX_INSTALL_DIR=%APPROOT%\camoufox"
 
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -29,7 +30,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs lib.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs lib.mjs isracard-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -52,7 +53,28 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Checking Chrome/Edge and the scraper runtime...
+echo Installing the pinned Camoufox adapter used by American Express...
+call npm install --no-save --package-lock=false --no-audit --no-fund camoufox-js@0.12.0 playwright-core@1.60.0
+if errorlevel 1 (
+  popd
+  rmdir /S /Q "%STAGING%" >nul 2>nul
+  echo ERROR: Camoufox Node runtime installation failed. The existing Bank Bridge was not changed.
+  pause
+  exit /b 1
+)
+
+echo Installing/updating the Camoufox browser in the stable local cache...
+node node_modules\camoufox-js\dist\__main__.js fetch
+if errorlevel 1 (
+  popd
+  rmdir /S /Q "%STAGING%" >nul 2>nul
+  echo ERROR: Camoufox browser download failed. The existing Bank Bridge was not changed.
+  echo Check the internet connection and try install_bank_bridge.bat again.
+  pause
+  exit /b 1
+)
+
+echo Checking Chrome/Edge, Camoufox and the scraper runtime...
 node server.mjs --doctor
 if errorlevel 1 (
   popd
@@ -105,7 +127,7 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=14))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=15))process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   echo ERROR: Bank Bridge did not start correctly.
   echo See: %APPROOT%\bridge.log
@@ -119,5 +141,6 @@ echo Bank Bridge was installed successfully in a stable local folder and added t
 echo The Bank Bridge key was copied to the clipboard. Paste it into Kupa on THIS computer.
 echo Install the Bridge separately on every other computer that should refresh bank or credit-card data.
 echo Hapoalim and credit-card credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
+echo American Express uses a local Camoufox browser installed under %CAMOUFOX_INSTALL_DIR% to pass the issuer WAF with a real browser fingerprint.
 echo.
 pause

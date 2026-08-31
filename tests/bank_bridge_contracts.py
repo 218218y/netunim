@@ -11,7 +11,7 @@ def ok(condition,message):
     print(('PASS' if condition else 'FAIL'),message)
     if not condition: errors.append(message)
 
-for rel in ['server.mjs','lib.mjs']:
+for rel in ['server.mjs','lib.mjs','isracard-camoufox.mjs']:
     r=subprocess.run(['node','--check',str(BRIDGE/rel)],capture_output=True,text=True)
     ok(r.returncode==0,f'bank bridge: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
@@ -32,6 +32,7 @@ ok(r.returncode==0,'credit sync models: multi-profile, cutover/rollback and fore
 
 server=(BRIDGE/'server.mjs').read_text(encoding='utf-8')
 lib=(BRIDGE/'lib.mjs').read_text(encoding='utf-8')
+camoufox=(BRIDGE/'isracard-camoufox.mjs').read_text(encoding='utf-8')
 controller=(SITE/'assets/js/domains/bank/controller.js').read_text(encoding='utf-8')
 client=(SITE/'assets/js/domains/bank/bridge.js').read_text(encoding='utf-8')
 feed=(SITE/'assets/js/domains/bank/feed.js').read_text(encoding='utf-8')
@@ -59,6 +60,7 @@ ok("const HOST='127.0.0.1'" in server and 'activeServer.listen(PORT,HOST' in ser
 ok('System.Security.Cryptography.DataProtectionScope]::CurrentUser' in server and 'ProtectedData]::Protect' in server and 'ProtectedData]::Unprotect' in server, 'bank bridge security: Hapoalim credentials use Windows DPAPI CurrentUser encryption')
 ok('Bearer ' in server and 'timingSafeEqual' in server and "req.url==='/health'" in server, 'bank bridge security: private routes require a timing-safe bearer key')
 ok(package.get('dependencies',{}).get('israeli-bank-scrapers')=='6.9.0', 'bank bridge dependency: scraper version is pinned exactly')
+ok(package.get('netunimRuntimeDependencies',{}).get('camoufox-js')=='0.12.0' and package.get('netunimRuntimeDependencies',{}).get('playwright-core')=='1.60.0', 'bank bridge dependency: Amex Camoufox/Playwright runtime versions are pinned explicitly')
 ok(package.get('allowScripts',{}).get('puppeteer') is False and 'PUPPETEER_SKIP_DOWNLOAD=true' in installer, 'bank bridge dependency: Puppeteer browser download/install script is disabled')
 ok('findInstalledBrowser' in server and 'executablePath:browserPath' in server and '--user-data-dir=${BROWSER_PROFILE_DIR}' in server and '--profile-directory=Default' in server and 'rememberBrowser' in server, 'bank bridge browser: one installed Chrome/Edge choice and a dedicated persistent local profile are reused across runs')
 ok('selectAccountDescriptor' in server and 'parseAccountSelector' in server and 'availableAccounts' in server and 'branchNumber' in server and 'MULTIPLE_ACCOUNTS' in lib, 'bank bridge account guard: Hapoalim bank 12 + exact branch/account are selected before bank reads and ambiguous account numbers return safe choices')
@@ -69,7 +71,7 @@ ok('enableHapoalimSessionAwareLogin(scraper,{interactive})' in server and 'SILEN
 ok('tryReuseSavedHapoalimSession' in server and 'sessionUrl' in server and 'safeHapoalimSessionUrl' in server and "`${url.origin}${url.pathname}`" in server, 'bank session reuse: successful profile session path is reused before a new credential login and query/hash tokens are never persisted')
 
 # Root cause guard: do not reintroduce the monolithic library scrape that couples every account, balance and transaction fetch.
-ok('scraper.login(' in server and 'scraper.initialize(' in server and 'fetchSelectedHapoalimSnapshot' in server and 'scraper.scrape(profile.credentials)' in server, 'financial adapters: Hapoalim keeps its staged login/data flow while supported credit issuers use their native complete scraper flow')
+ok('scraper.login(' in server and 'scraper.initialize(' in server and 'fetchSelectedHapoalimSnapshot' in server and 'scraper.scrape(profile.credentials)' in server and "if(profile.provider==='amex')" in server and 'scrapeCreditWithCamoufox' in server, 'financial adapters: Hapoalim keeps staged bank reads, Cal/Max/native Isracard keep upstream scrapers, and Amex uses the dedicated Camoufox adapter')
 ok('waitForHapoalimSessionReady' in server and 'window.bnhpApp?.restContext' in server and '/ServerServices/general/accounts' in server and 'HAPOALIM_POST_LOGIN_TIMEOUT_MS' in server and 'HAPOALIM_NAVIGATION_STABLE_MS' in server, 'bank post-login readiness: visible homepage is not treated as data-ready until authenticated SPA/API state remains stable across navigation')
 ok('balanceAndCreditLimit' in server and "runStage('balance'" in server and 'currentBalance' in server, 'bank balance: selected account balance is fetched independently as the authoritative required result')
 ok('retryTransientNavigation' in server and 'pageFetchJsonOnce' in server and 'HAPOALIM_DATA_RETRY_LIMIT' in server and 'isTransientNavigationError' in server, 'bank navigation recovery: balance/transaction reads retry only transient destroyed execution contexts after re-establishing a stable authenticated page')
@@ -84,7 +86,8 @@ ok('ExpandEnvironmentStrings("%LOCALAPPDATA%")' in launcher and '%~dp0' not in l
 ok('%APPROOT%\\app' in installer and 'app-staging' in installer and 'npm ci' in installer and '--doctor' in installer, 'bank bridge install: runtime is staged and validated in a stable per-user location before activation')
 ok('--stop-existing' in installer and "req.url==='/shutdown'" in server and 'stopVerifiedListener' in server, 'bank bridge upgrade: an existing verified bridge is stopped before replacing its runtime')
 ok('node "%STAGING%\\server.mjs" --stop-existing' in installer and 'if exist "%APPDIR%" (' in installer and 'The previous Bank Bridge runtime could not be removed.' in installer, 'bank bridge upgrade: validated staging code performs shutdown and activation fails closed if old runtime remains locked')
-ok('const BRIDGE_VERSION=14' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=14' in installer and '/health' in installer, 'financial bridge install: installer verifies the credit-v3/diagnostics bridge v14 after hidden startup')
+ok('const BRIDGE_VERSION=15' in server and 'version:BRIDGE_VERSION' in server and 'Number(j.version)>=15' in installer and '/health' in installer, 'financial bridge install: installer verifies the Amex-Camoufox bridge v15 after hidden startup')
+ok('camoufox-js@0.12.0' in installer and 'playwright-core@1.60.0' in installer and 'CAMOUFOX_INSTALL_DIR=%APPROOT%\\camoufox' in installer and 'node node_modules\\camoufox-js\\dist\\__main__.js fetch' in installer and 'doctorCamoufox()' in server, 'Amex runtime install: Camoufox is downloaded into stable LOCALAPPDATA and a real browser launch is doctor-checked before activation')
 ok('>> "%LOCALAPPDATA%\\NetunimKupaBankBridge\\bridge.log" 2>&1' in start_script, 'bank bridge startup: background output goes to a log instead of popup error windows')
 
 ok('syncSharedChecksFromCloud({quiet:true,required:true})' in controller and 'sharedChecksObservedSequence()' in controller and 'snapshotSeq:observedSeq' in controller, 'bank snapshot integrity: remote balance uses existing synchronized check watermark before saving')
@@ -117,6 +120,11 @@ ok('./assets/js/domains/bank/bridge.js' in worker and './assets/js/domains/bank/
 ok("const CREDIT_PROFILES_FILE=path.join(APP_DIR,'credit-card-profiles.dpapi')" in server and 'protectText(JSON.stringify' in server and 'readCreditProfiles' in server and 'writeCreditProfiles' in server, 'credit security: issuer credentials are stored only in the local DPAPI vault')
 ok("req.url==='/credit/status'" in server and "req.url==='/credit/profiles'" in server and "req.url==='/credit/reset'" in server and "req.url==='/credit/sync'" in server, 'credit bridge API: local profile management/status/reset/sync routes are authenticated loopback endpoints')
 ok("const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard,amex:CompanyTypes.amex}" in server and 'CompanyTypes?.visaCal' in server and 'CompanyTypes?.max' in server and 'CompanyTypes?.isracard' in server and 'CompanyTypes?.amex' in server, 'credit providers: pinned scraper integration is explicit for Cal, MAX, Isracard and Amex')
+ok("amex:{baseUrl:'https://he.americanexpress.co.il',companyCode:'77'}" in camoufox and "isracard:{baseUrl:'https://digital.isracard.co.il',companyCode:'11'}" in camoufox and "reqName=ValidateIdData" in camoufox and "reqName=performLogonI" in camoufox, 'Amex Camoufox adapter: provider URLs/company codes and the fixed-password ValidateIdData/performLogonI protocol match the upstream scraper')
+ok("Camoufox({headless:!interactive,humanize:true,os:'windows',locale:'he-IL',enable_cache:true})" in camoufox and 'detector-dom.min.js' in camoufox and 'responseLooksBlocked' in camoufox, 'Amex WAF root fix: the adapter uses a hardened Camoufox fingerprint and preserves the upstream detector-script block without raw Chromium automation')
+ok('classifyCamoufoxProviderResponse' in camoufox and "'CREDIT_LOGIN_HTML_RESPONSE'" in camoufox and "'CREDIT_DATA_HTML_RESPONSE'" in camoufox and "'CREDIT_AUTOMATION_BLOCKED'" in camoufox, 'Amex WAF diagnostics: the Camoufox path uses the same canonical safe error taxonomy as the existing Kupa credit model')
+ok('isCamoufoxRetryableNativeFailure(failure)' in server and "profile.provider==='isracard'" in server and 'CREDIT_INVALID_PASSWORD' in camoufox, 'Isracard fallback: only WAF/HTML native failures may switch browser engines; invalid credentials never trigger a duplicate login attempt')
+ok('JSON.stringify(data||{})' in camoufox and 'result?.text' in camoufox and 'request' not in camoufox.split('function pageFetchJson',1)[1].split('function accountsUrl',1)[0].lower(), 'Amex diagnostics security: fetch errors retain status/stage only and never embed credential-bearing request bodies or raw HTML')
 ok("mastercard" not in lib.lower() or "creditprovidersupported('mastercard')" not in lib.lower(), 'credit providers: Mastercard is not invented as a separate issuer login')
 ok("visaCal:{label:'כאל',credentialFields:['username','password']}" in lib and "max:{label:'MAX',credentialFields:['username','password']}" in lib and "isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']}" in lib and "amex:{label:'American Express',credentialFields:['id','card6Digits','password']}" in lib, 'credit credentials: issuer-specific required login fields match the pinned scraper contract, including separate Amex identity')
 ok('futureMonthsToScrape:CREDIT_FUTURE_MONTHS' in server and 'combineInstallments:false' in server and 'additionalTransactionInformation:false' in server and 'includeRawTransaction:false' in server, 'credit scraping: future issuer charge dates are requested without raw/sensitive transaction payloads')

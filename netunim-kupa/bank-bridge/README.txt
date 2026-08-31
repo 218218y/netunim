@@ -32,7 +32,8 @@ Security model
 - Credentials are encrypted with Windows DPAPI CurrentUser under %LOCALAPPDATA%\NetunimKupaBankBridge.
 - Kupa never stores the Hapoalim user code/password in localStorage, JSON, backups, Supabase or the deployed site.
 - The browser stores only the local Bridge key and the auto-refresh preference for that browser profile.
-- The scraper uses Chrome/Edge already installed on Windows. Puppeteer's own browser download is disabled.
+- Hapoalim, Visa Cal, Max and the normal Isracard path use Chrome/Edge already installed on Windows. Puppeteer's own browser download is disabled.
+- American Express uses a separate locally installed Camoufox browser because the issuer currently rejects the ordinary automated Chromium fingerprint before the fixed-password API login can start. Camoufox files stay under %LOCALAPPDATA%\NetunimKupaBankBridge\camoufox.
 - A dedicated browser profile under the Bridge data directory is reused to preserve harmless browser/device state between bank sessions; it is not the user's normal Chrome profile.
 
 Automatic and manual refresh
@@ -71,7 +72,7 @@ Maintenance
 
 Dependency
 ----------
-The bridge pins israeli-bank-scrapers 6.9.0. Bank websites can change without notice; if Bank Hapoalim changes its login/site flow, the pinned scraper may need a reviewed update.
+The bridge pins israeli-bank-scrapers 6.9.0 for Hapoalim/Cal/Max and the normal Isracard path. Bridge v15 additionally pins camoufox-js 0.12.0 with playwright-core 1.60.0 for the Isracard-family WAF path and downloads the matching Camoufox browser into the stable local cache during installation. Bank/card websites can change without notice; a changed issuer protocol still requires a reviewed connector update rather than blind retries.
 
 Interactive bank verification
 -----------------------------
@@ -100,9 +101,9 @@ Kupa stores bank.feed inside the ordinary Kupa state. Therefore every successful
 The canonical feed is a rolling 30-day snapshot, not a long-term bank archive. A later successful refresh replaces the previous feed, so transactions that have moved outside the bank's new 30-day window are no longer kept in bank.feed. Browser recovery copies/backups must not be treated as a transaction archive. If permanent bank history is required later for Kupa + Orders, it should use a dedicated append/merge bank-transactions store instead of growing the main Kupa document without bound.
 
 
-Credit-card sync (Bridge v14)
+Credit-card sync (Bridge v15)
 -----------------------------
-Bridge v14 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
+Bridge v15 keeps the encrypted multi-profile credit-card connections introduced in v12 for Visa Cal, Max, Isracard and American Express. Profiles are stored only in %LOCALAPPDATA%\NetunimKupaBankBridge\credit-card-profiles.dpapi using Windows DPAPI CurrentUser encryption. The HTTP status API exposes profile IDs/labels/provider/default classification only; credentials are never returned to the browser.
 
 Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are supported only for different login identities. The same Visa Cal/Max username or the same Isracard/Amex ID cannot be stored twice for the same provider, because one issuer login already returns all cards visible to that identity. Profiles for different identities are scraped sequentially to avoid cookie/session collisions.
 
@@ -127,3 +128,14 @@ Deleting one credit profile through /credit/profiles remains intentionally local
 Scraper error strings are not trusted as safe diagnostics. Isracard/Amex HTML returned where the fixed-password JSON service was expected is classified as CREDIT_LOGIN_HTML_RESPONSE, and generic raw scraper messages are no longer persisted. Bridge v14 additionally identifies the ValidateIdData stage so an Amex HTML response is reported accurately as a pre-password issuer/WAF response instead of being mislabeled as bad credentials. This prevents request payload details embedded by the upstream scraper from leaking into the Kupa/cloud error feed.
 
 Per-card mapping now has three independent presentation/calculation dimensions: included/excluded, visible/hidden, and business/home. Hidden is presentation-only: an included hidden card stays in totals but its card identity and detailed issuer rows are omitted from live/detail views. Owner and business/home filters are composable across forecasts, issuer summaries, and the unified payment-detail table.
+
+Bridge v15 — American Express WAF/browser-engine fix
+----------------------------------------------------
+The v14 diagnostic proved that the failing American Express session received HTML at ValidateIdData, before performLogonI/password validation. The upstream Isracard/Amex connector performs those login steps as in-page JSON requests, so repeatedly waiting on or typing into the visible login form cannot repair that failure class.
+
+Bridge v15 keeps the issuer protocol (American Express base URL/company code 77, ValidateIdData, performLogonI, DashboardMonth and CardsTransactionsList) but changes the browser engine for American Express to Camoufox, a hardened Firefox build with generated browser fingerprints. This is deliberately isolated to American Express: Cal/Max/Hapoalim retain their existing paths, while Isracard tries its existing Chrome/Edge path first and falls back to Camoufox only after a canonical HTML/WAF failure. Invalid credentials never cause a second browser-engine login attempt.
+
+The installer pins the Camoufox JS/runtime versions, downloads its browser to %LOCALAPPDATA%\NetunimKupaBankBridge\camoufox, launches it in the staged --doctor check, and only then replaces the active Bridge. A download/launch failure therefore leaves the previously installed Bridge untouched. The first v15 installation can take longer because this browser binary is downloaded once.
+
+Camoufox responses are normalized into the same safe credit error taxonomy already used by Kupa (CREDIT_AUTOMATION_BLOCKED, CREDIT_LOGIN_HTML_RESPONSE and CREDIT_DATA_HTML_RESPONSE). Raw issuer HTML and credential-bearing request bodies are never persisted or returned to Kupa. The Amex numeric/string response quirks are also normalized explicitly, and installment month shifts clamp to the destination month end instead of overflowing dates such as January 31 into March.
+

@@ -34,10 +34,11 @@ import {
   creditScrapeFailure,
   creditThrownScrapeFailure,
 } from './lib.mjs';
+import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWithCamoufox} from './isracard-camoufox.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=14;
+const BRIDGE_VERSION=15;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -46,6 +47,8 @@ const CREDIT_PROFILES_FILE=path.join(APP_DIR,'credit-card-profiles.dpapi');
 const CREDIT_META_FILE=path.join(APP_DIR,'credit-card-status.json');
 const META_FILE=path.join(APP_DIR,'status.json');
 const BROWSER_PROFILE_DIR=path.join(APP_DIR,'browser-profile');
+const CAMOUFOX_INSTALL_DIR=path.join(APP_DIR,'camoufox');
+process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
 let scrapeBusy=false;
 let activeServer=null;
 let cachedBrowserPath='';
@@ -355,7 +358,18 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
 
 function creditStartDate(){const d=new Date();d.setDate(d.getDate()-CREDIT_HISTORY_DAYS);return d}
 function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard,amex:CompanyTypes.amex};return map[provider]}
+async function scrapeCreditWithCamoufox(profile,{interactive=false}={}){
+  const result=await scrapeIsracardFamilyWithCamoufox({provider:profile.provider,credentials:profile.credentials,startDate:creditStartDate(),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,interactive:!!interactive});
+  if(!result?.success)throw Object.assign(new Error('Camoufox לא החזיר תוצאת סנכרון תקינה'),{code:'CREDIT_CAMOUFOX_FAILED'});
+  return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
+}
 async function scrapeCreditProfile(profile,{interactive=false}={}){
+  // American Express is known to reject the upstream Puppeteer/Chromium fingerprint before ValidateIdData.
+  // Use the locally-installed Camoufox engine directly; this is the same browser class proven live against Amex.
+  if(profile.provider==='amex'){
+    try{return await scrapeCreditWithCamoufox(profile,{interactive})}
+    catch(e){throw creditThrownScrapeFailure(e,profile)}
+  }
   const browserPath=await findInstalledBrowser();
   const {CompanyTypes,createScraper}=await import('israeli-bank-scrapers');
   const companyId=scraperCompanyId(CompanyTypes,profile.provider);
@@ -369,7 +383,16 @@ async function scrapeCreditProfile(profile,{interactive=false}={}){
     const result=await scraper.scrape(profile.credentials);
     if(!result?.success)throw creditScrapeFailure(result,profile);
     return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(normalizeCreditScrapeAccount)};
-  }catch(e){throw creditThrownScrapeFailure(e,profile)}
+  }catch(e){
+    const failure=creditThrownScrapeFailure(e,profile);
+    // Isracard currently still works for many local Chrome/Edge sessions. If its WAF starts returning the same
+    // HTML/automation response as Amex, fall back once to the proven Camoufox adapter instead of retrying Chromium.
+    if(profile.provider==='isracard'&&isCamoufoxRetryableNativeFailure(failure)){
+      try{return await scrapeCreditWithCamoufox(profile,{interactive})}
+      catch(camoufoxError){throw creditThrownScrapeFailure(camoufoxError,profile)}
+    }
+    throw failure;
+  }
 }
 async function scrapeAllCreditProfiles(profiles,{interactive=false}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
@@ -492,8 +515,10 @@ if(args.has('--doctor')){
     const probe=pkg.createScraper({companyId:pkg.CompanyTypes.hapoalim,startDate:new Date(),showBrowser:false,executablePath:browserPath});
     enableHapoalimSessionAwareLogin(probe,{interactive:true});
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
+    await doctorCamoufox();
     console.log(`Browser: ${browserPath}`);
-    console.log('Scraper: Hapoalim + Cal + Max + Isracard + Amex support, secure multi-profile credit sync, session-aware bank reads OK');
+    console.log(`Camoufox: ${CAMOUFOX_INSTALL_DIR}`);
+    console.log('Scraper: Hapoalim + Cal + Max + Isracard native/fallback + Amex Camoufox support, secure multi-profile credit sync, session-aware bank reads OK');
     process.exit(0);
   }catch(e){console.error(e?.message||e);process.exit(1)}
 }

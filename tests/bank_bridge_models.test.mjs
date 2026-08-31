@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {
+  buildCreditMonths,
+  classifyCamoufoxProviderResponse,
+  isCamoufoxRetryableNativeFailure,
+  normalizeIsracardFamilyTransaction,
+  parseIsracardDate,
+} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
+import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
   HAPOALIM_NAVIGATION_STABLE_MS,
   HAPOALIM_DATA_RETRY_LIMIT,
@@ -25,6 +32,22 @@ import {
   waitForTerminalLoginResult,
   ymdDate,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
+
+const amexInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'123456',voucherNumberRatzOutbound:'777777',dealSumOutbound:'0',fullPurchaseDate:'12/06/2026',fullPaymentDate:'02/07/2026',dealSum:'100.50',paymentSum:'100.50',currencyId:'ש"ח',fullSupplierNameHeb:'  חנות בדיקה  ',moreInfo:'תשלום 2 מתוך 3'},null);
+assert.equal(parseIsracardDate('31/08/2026'),'2026-08-31T00:00:00.000Z','Camoufox adapter parses issuer DD/MM/YYYY dates deterministically');
+assert.equal(amexInstallment.originalAmount,-100.5,'Camoufox adapter explicitly coerces Amex string amount fields instead of relying on JS/Python truthiness quirks');
+assert.equal(amexInstallment.date,'2026-07-12T00:00:00.000Z','Camoufox adapter preserves upstream installment date-fixing semantics');
+assert.equal(amexInstallment.originalCurrency,'ILS','Camoufox adapter normalizes NIS/shekel issuer currency to ILS');
+const endOfMonthInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'654321',voucherNumberRatzOutbound:'000000001',dealSumOutbound:'0',fullPurchaseDate:'31/01/2026',fullPaymentDate:'15/02/2026',dealSum:'50',paymentSum:'50',currencyId:'ש"ח',fullSupplierNameHeb:'בדיקת סוף חודש',moreInfo:'תשלום 2 מתוך 2'},null);
+assert.equal(endOfMonthInstallment.date,'2026-02-28T00:00:00.000Z','installment month shifting clamps to the target month end, matching moment.add semantics instead of overflowing into March');
+const loginHtml=classifyCamoufoxProviderResponse({stage:'ValidateIdData',status:200,text:'<!DOCTYPE html><html><body>challenge</body></html>'});
+assert.equal(loginHtml.code,'CREDIT_LOGIN_HTML_RESPONSE','Camoufox login HTML keeps the canonical safe credit error code used by Kupa');
+assert.equal(loginHtml.message.includes('<html'),false,'Camoufox safe errors never retain raw provider HTML');
+assert.equal(classifyCamoufoxProviderResponse({stage:'CardsTransactionsList 2026-08',status:200,text:'<html>maintenance</html>'}).code,'CREDIT_DATA_HTML_RESPONSE','post-login HTML is distinguished from login failure');
+assert.equal(classifyCamoufoxProviderResponse({stage:'ValidateIdData',status:403,text:'Access denied'}).code,'CREDIT_AUTOMATION_BLOCKED','403/WAF responses use the canonical automation-blocked code');
+assert.deepEqual(buildCreditMonths(new Date('2026-05-03T00:00:00Z'),2,new Date('2026-08-31T00:00:00Z')).map(x=>x.toISOString().slice(0,7)),['2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'],'Camoufox adapter requests every billing month from the lookback through the configured future horizon');
+assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_HTML_RESPONSE'}),true,'Isracard native HTML/WAF failures are eligible for one Camoufox fallback');
+assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),false,'invalid credentials never trigger a second browser engine attempt');
 
 const now=Date.parse('2026-08-30T06:00:00+03:00');
 assert.equal(bankAutoRefreshDue(null,now),true,'missing successful bank sync is due');

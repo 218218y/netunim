@@ -1,7 +1,7 @@
 {
   "name": "netunim-kupa-bank-bridge",
   "private": true,
-  "version": "1.8.0",
+  "version": "1.9.0",
   "type": "module",
   "engines": {
     "node": ">=22.22.2"
@@ -11,5 +11,9 @@
   },
   "dependencies": {
     "israeli-bank-scrapers": "6.9.0"
+  },
+  "netunimRuntimeDependencies": {
+    "camoufox-js": "0.12.0",
+    "playwright-core": "1.60.0"
   }
 }

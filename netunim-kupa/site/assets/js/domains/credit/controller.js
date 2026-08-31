@@ -2,7 +2,7 @@ import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=14;
+const CREDIT_BRIDGE_VERSION=15;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=60*60*1000;
@@ -43,7 +43,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       <div class="form-group cc-field cc-card6"><label>6 ספרות אחרונות של כרטיס</label><input id="ccCard6" inputmode="numeric" maxlength="6" autocomplete="cc-number" placeholder="${canPreserveCredentials?'השאר ריק כדי לא לשנות':''}"></div>
       <div class="form-group cc-field cc-password"><label>סיסמה</label><input id="ccPassword" type="password" autocomplete="current-password" placeholder="${canPreserveCredentials?'השאר ריק כדי לא לשנות':''}"></div>
       <div class="form-group full"><div class="notice">פרטי ההתחברות נשלחים רק ל‑Bridge המקומי ונשמרים מוצפנים ב‑Windows. הם אינם נשמרים בקופה או ב‑Supabase. יש להגדיר חיבור אחד בלבד לכל זהות כניסה בכל חברה; חיבור יחיד מגלה את כל הכרטיסים שהזהות מורשית לראות. אפשר להגדיר חיבור נוסף לאותה חברה רק לבעל חשבון אחר עם זהות כניסה שונה.</div></div>
-      <div class="form-group full"><div class="notice">כרטיס Mastercard מחברים לפי החברה המנפיקה שלו — כאל, MAX, ישראכרט או American Express — ולא כחיבור נפרד. כרטיס American Express יש לבחור כחיבור American Express נפרד, גם אם ניהולו בקבוצת ישראכרט.</div></div><div class="form-group full cc-isracard-note" hidden><div class="notice">ישראכרט/American Express: החיבור משתמש בתעודת זהות + 6 ספרות אחרונות + הסיסמה הקבועה דרך שירותי האתר. בישראכרט, אחרי שההתחברות הצליחה, חלון האבחון יכול להישאר זמן ממושך על מסך הכניסה בזמן שה־scraper אוסף חודשים רבים ברקע ובהשהיות מכוונות נגד חסימת אוטומציה; דקה וחצי ואף יותר אינה בהכרח תקלה. ב‑American Express, אם החלון נסגר כמעט מיד ומופיעה CREDIT_LOGIN_HTML_RESPONSE, הכשל הוא כבר בשלב ValidateIdData — לפני שלב כניסת הסיסמה — ולכן אין טעם להמתין בחלון.</div></div>
+      <div class="form-group full"><div class="notice">כרטיס Mastercard מחברים לפי החברה המנפיקה שלו — כאל, MAX, ישראכרט או American Express — ולא כחיבור נפרד. כרטיס American Express יש לבחור כחיבור American Express נפרד, גם אם ניהולו בקבוצת ישראכרט.</div></div><div class="form-group full cc-isracard-note" hidden><div class="notice">ישראכרט/American Express: החיבור משתמש בתעודת זהות + 6 ספרות אחרונות + הסיסמה הקבועה דרך שירותי האתר. החל מ‑Bank Bridge v15, American Express רץ במנוע Camoufox ייעודי בגלל חסימת הדפדפן האוטומטי הרגיל; ישראכרט עובר אליו רק אם החיבור הרגיל מחזיר חסימת אוטומציה/HTML. בישראכרט חלון אבחון יכול להישאר זמן ממושך על מסך הכניסה בזמן איסוף חודשים רבים ובהשהיות מכוונות — זה אינו בהכרח תקלה.</div></div>
     </form>`;
     modal(isEdit?'עריכת חיבור אשראי':'חיבור חדש לחברת אשראי',body,isEdit?'שמור חיבור':'הוסף חיבור',async()=>{
       const selectedProvider=document.getElementById('ccProvider').value;
