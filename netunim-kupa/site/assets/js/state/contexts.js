@@ -30,6 +30,8 @@ return {
     creditView:'rolling12',
     creditAccountFilter:'all',
     creditOwnerFilter:'all',
+    creditProviderFilter:'all',
+    creditCardFilter:'all',
     bulkCollection:null,
     bulkSelected:new Set(),
     modalDraftGuard:null,

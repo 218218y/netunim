@@ -1,7 +1,7 @@
 import {num} from '../../core/money.js';
 import {todayISO, monthKey} from '../../core/dates.js';
 import {normalizeSharedBankEvents, checksBalanceData} from '../checks/model.js';
-import {allInstallmentsData, nextCreditCycleData} from '../credit/model.js';
+import {businessInstallmentsData, nextBusinessCreditCycleData} from '../credit/model.js';
 import {expenseOccurrencesForMonthData, expenseRowsBetweenData} from '../expenses/model.js';
 import {cashBalanceData} from '../cash/model.js';
 
@@ -20,9 +20,9 @@ export function sharedChecksObservedSequenceData(sharedChecksBankEvents,state){c
 export function bankCurrentBalanceData(state){const b=bankBaseBalanceData(state);return b===null?null:b+bankAdjustmentsTotalData(state)}
 
 export function bankNextCycleCommitmentsData(state){
-  const b=bankCurrentBalanceData(state);const start=bankAsOfDateData(state),today=todayISO(),cycle=nextCreditCycleData(state,today);
+  const b=bankCurrentBalanceData(state);const start=bankAsOfDateData(state),today=todayISO(),cycle=nextBusinessCreditCycleData(state,today);
   if(b===null)return {credit:0,expenses:0,total:0,start,end:cycle.targetEnd,targetMonth:cycle.targetMonth,nextCreditRows:cycle.rows,nextCreditTotal:cycle.total,elapsedCredit:0,elapsedExpenses:0,targetExpenseRows:[]};
-  const elapsedCreditRows=allInstallmentsData(state).filter(x=>x.date>=start&&x.date<today);
+  const elapsedCreditRows=businessInstallmentsData(state).filter(x=>x.date>=start&&x.date<today);
   const elapsedExpenseRows=expenseRowsBetweenData(state,start,today).filter(x=>x.dueDate<today);
   const targetExpenseRows=expenseOccurrencesForMonthData(state,cycle.targetMonth,false).filter(x=>x.dueDate>=today);
   const creditRows=[...elapsedCreditRows,...cycle.rows].filter((x,i,a)=>a.findIndex(y=>y.creditId===x.creditId&&y.part===x.part)===i);
@@ -32,9 +32,9 @@ export function bankNextCycleCommitmentsData(state){
 }
 
 export function bankLongTermPositionData(state){
-  const b=bankCurrentBalanceData(state);const start=bankAsOfDateData(state),cycle=nextCreditCycleData(state,todayISO());
+  const b=bankCurrentBalanceData(state);const start=bankAsOfDateData(state),cycle=nextBusinessCreditCycleData(state,todayISO());
   if(b===null)return {bank:null,credit:0,expenses:0,cash:cashBalanceData(state),checks:checksBalanceData(state),kupa:cashBalanceData(state)+checksBalanceData(state),net:null,targetMonth:cycle.targetMonth};
-  const credit=allInstallmentsData(state).filter(x=>x.date>=start).reduce((a,x)=>a+x.amount,0);
+  const credit=businessInstallmentsData(state).filter(x=>x.date>=start).reduce((a,x)=>a+x.amount,0);
   const expenseRows=expenseOccurrencesForMonthData(state,cycle.targetMonth,false).filter(x=>cycle.targetMonth!==monthKey(start)||x.dueDate>=start);
   const expenses=expenseRows.reduce((a,x)=>a+num(x.amount),0);
   const cash=cashBalanceData(state),checks=checksBalanceData(state),kupa=cash+checks;

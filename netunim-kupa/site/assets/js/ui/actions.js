@@ -31,6 +31,8 @@ return {
   'credit-view':(element,event)=>{ui.creditView=element.value;renderCredit()},
   'credit-account-filter':(element,event)=>{ui.creditAccountFilter=element.value;renderCredit()},
   'credit-owner-filter':(element,event)=>{ui.creditOwnerFilter=element.value;renderCredit()},
+  'credit-provider-filter':(element,event)=>{ui.creditProviderFilter=element.dataset.clickArg0||'all';ui.creditCardFilter='all';renderCredit()},
+  'credit-card-filter':(element,event)=>{ui.creditCardFilter=element.dataset.clickArg0||'all';renderCredit()},
   'open-credit-modal-2':(element,event)=>{openCreditModal(element.dataset.clickArg0)},
   'open-cash-modal':(element,event)=>{openCashModal()},
   'open-cash-modal-2':(element,event)=>{openCashModal(element.dataset.clickArg0)},

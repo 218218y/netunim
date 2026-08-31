@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
-import {computeKupaNetReadoutData, kupaAllInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
+import {computeKupaNetReadoutData, kupaAllInstallments, kupaBusinessInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {ALL_SUPPLIERS_ID, balanceRowsData, orderedSuppliersData, supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, supplierViewRowsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
@@ -48,9 +48,13 @@ test('bank balance remains the authoritative snapshot regardless of check workfl
  state.bank.adjustments=[{type:'manual',amount:25},{type:'check_deposit',amount:500}];
  assert.equal(bankCurrentBalanceData(state),1025,'manual corrections remain supported while legacy check adjustments stay excluded');
 });
-test('Orders readout includes synchronized credit and never adds check events to bank',()=>{
- const key='P:1111',kupa={bank:{currentBalance:1000,asOfDate:'2020-01-01',adjustments:[]},credits:[],expenses:[],cash:[],creditSync:{version:3,profiles:[{profileId:'P',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'T',processedDate:'2099-01-10',chargedAmount:-75,chargedCurrency:'ILS',status:'completed'}]}]}],cardMappings:{[key]:{included:true}}}};
- assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75);
+test('Orders readout includes only business synchronized credit in Kupa net and never adds check events to bank',()=>{
+ const businessKey='P:1111',homeKey='P:2222',kupa={bank:{currentBalance:1000,asOfDate:'2020-01-01',adjustments:[]},credits:[],expenses:[],cash:[],creditSync:{version:3,profiles:[{profileId:'P',provider:'max',accounts:[
+  {accountNumber:'1111',txns:[{id:'T',processedDate:'2099-01-10',chargedAmount:-75,chargedCurrency:'ILS',status:'completed'}]},
+  {accountNumber:'2222',txns:[{id:'H',processedDate:'2099-01-10',chargedAmount:-125,chargedCurrency:'ILS',status:'completed'}]},
+ ]}],cardMappings:{[businessKey]:{included:true,account:'עסקי'},[homeKey]:{included:true,account:'ביתי'}}}};
+ assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),200,'credit reporting still sees both included cards');
+ assert.equal(kupaBusinessInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75,'business readout excludes the included home card');
  const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,status:'הופקד - במעקב'}]},kupa);
  assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.net,925);
 });

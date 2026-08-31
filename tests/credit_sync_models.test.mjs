@@ -21,8 +21,9 @@ import {
   syncedInstallmentsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {allInstallmentsData,nextCreditCycleData,creditDetailPartitionsData,CREDIT_DETAIL_HISTORY_DAYS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {allInstallmentsData,businessInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,creditDetailPartitionsData,CREDIT_DETAIL_HISTORY_DAYS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
+import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 
@@ -127,7 +128,22 @@ assert(rows.some(r=>r.profileId==='p-max-a'&&r.card==='MAX עסקי'&&r.account=
 assert(rows.some(r=>r.profileId==='p-max-a'&&r.amount===-50),'issuer refund/credit becomes a negative Kupa obligation rather than being double-counted as spending');
 assert(rows.some(r=>r.profileId==='p-max-b'&&r.card==='MAX ביתי'&&r.account==='ביתי'),'same issuer/account suffix can be classified differently for another owner profile');
 assert.equal(creditSyncHasIncludedCards(syncedState),true,'at least one synchronized card is explicitly included');
+assert(businessInstallmentsData(syncedState).every(r=>r.account==='עסקי'),'business cash-flow selector excludes every home-classified card while the general credit report keeps both classifications');
+assert(allInstallmentsData(syncedState).some(r=>r.account==='ביתי'),'home included cards remain present in ordinary credit reporting');
+assert.equal(nextBusinessCreditCycleData(syncedState,'2026-09-01').rows.some(r=>r.account==='ביתי'),false,'the business next-cycle calculation cannot select a home card');
 assert.equal(allInstallmentsData(syncedState).some(r=>r.creditId==='manual-1'),true,'manual additions are additive to synchronized issuer rows, never an alternative mode');
+const businessOnlyBankState={version:4,checks:[],cash:[],expenses:[],cards:[],bank:{currentBalance:1000,asOfDate:'2999-09-01',adjustments:[]},creditSync:normalizeCreditSync({version:3,profiles:[
+  {profileId:'biz',provider:'max',defaultAccount:'עסקי',accounts:[{accountNumber:'1000',txns:[{id:'biz-tx',processedDate:'2999-09-10',chargedAmount:-100,chargedCurrency:'ILS',description:'עסקי'}]}]},
+  {profileId:'home',provider:'max',defaultAccount:'ביתי',accounts:[{accountNumber:'2000',txns:[{id:'home-tx',processedDate:'2999-09-10',chargedAmount:-250,chargedCurrency:'ILS',description:'ביתי'}]}]},
+],cardMappings:{
+  [creditCardMappingKey('biz','1000')]:{included:true,hidden:false,account:'עסקי'},
+  [creditCardMappingKey('home','2000')]:{included:true,hidden:false,account:'ביתי'},
+}}),credits:[]};
+const businessBankPosition=bankLongTermPositionData(businessOnlyBankState);
+assert.equal(allInstallmentsData(businessOnlyBankState).reduce((sum,row)=>sum+row.amount,0),350,'credit reporting still contains both included business and home obligations');
+assert.equal(businessBankPosition.credit,100,'bank long-term credit subtraction includes only the business-classified obligation');
+assert.equal(businessBankPosition.net,900,'home credit cannot reduce the business Kupa net position');
+
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');
 assert(allInstallmentsData(legacyModeState).some(r=>r.source==='credit_sync'),'legacy mode flags cannot disable issuer calculations');

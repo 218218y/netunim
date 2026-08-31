@@ -3,7 +3,7 @@ import {money, formatNullableMoney} from '../../core/money.js';
 import {HEB_MONTHS, dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({model, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, monthSumInstallments, monthSumExpenses, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, monthSumChecks}){
+export function createDomainsDashboardView({model, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingBusinessInstallments, monthSumBusinessInstallments, monthSumExpenses, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth, monthSumChecks}){
 function renderDashboard(){
   const now=new Date();
   const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
@@ -18,9 +18,9 @@ function renderDashboard(){
   });
   const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${money(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
   const alerts=[...criticalAlerts,...upcomingAlerts];
-  const months=[];for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;months.push({k,label:HEB_MONTHS[d.getMonth()],checks:monthSumChecks(k),credit:monthSumInstallments(k,true)+monthSumExpenses(k,true)})}
+  const months=[];for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;months.push({k,label:HEB_MONTHS[d.getMonth()],checks:monthSumChecks(k),credit:monthSumBusinessInstallments(k,true)+monthSumExpenses(k,true)})}
   const max=Math.max(1,...months.map(x=>Math.max(x.checks,x.credit)));
-  const cycle=bankNextCycleCommitments(),bankAfter=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth),futureCreditRows=pendingInstallments(),futureCreditTotal=futureCreditRows.reduce((a,x)=>a+x.amount,0);
+  const cycle=bankNextCycleCommitments(),bankAfter=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth),futureCreditRows=pendingBusinessInstallments(),futureCreditTotal=futureCreditRows.reduce((a,x)=>a+x.amount,0);
   document.getElementById('content').innerHTML=`
   <div class="grid kpis">
    ${kpi('מזומן בקופה',cashBalance(),'#edf4f1','#638f87','יתרת תנועות המזומן',{page:'cash',tab:''})}
@@ -29,10 +29,10 @@ function renderDashboard(){
    ${kpi('הופקדו במעקב',depositedBalance(),'#f7f1e8','#b78b57',`${depositedChecks().length} צקים ממתינים`,{page:'checks',tab:'deposited'})}
   </div>
   <div class="grid kpis" style="margin-top:16px">
-   ${kpi('סה״כ אשראי עתידי',futureCreditTotal,'#f7efe7','#c59661',futureCreditRows.length?`${futureCreditRows.length} חיובים עתידיים שנותרו`:'אין חיובי אשראי עתידיים',{page:'credit',tab:''})}
-   ${kpi('אשראי במחזור הקרוב',cycle.nextCreditTotal,'#edf4f1','#638f87',cycle.nextCreditRows.length?`החיובים הקרובים עד ${dateFmt(cycle.end)} · ${cycleLabel}`:'אין חיוב אשראי עתידי',{page:'credit',tab:''})}
-   ${kpiDisplay('עו״ש אחרי המחזור הקרוב',bankAfter,'#eff3f0','#5f7c77',bankAfter===null?'יש להזין יתרת עו״ש בטאב בנק':`כולל אשראי קרוב + הוצאות ${cycleLabel}`,{page:'bank',tab:''})}
-   ${kpiDisplay('מאזן כולל נטו',long.net,'#edf3ef','#557a68',long.net===null?'יש להזין יתרת עו״ש':`עו״ש − כל האשראי העתידי − חודש הוצאות + קופה`,{page:'bank',tab:''})}
+   ${kpi('סה״כ אשראי עסקי עתידי',futureCreditTotal,'#f7efe7','#c59661',futureCreditRows.length?`${futureCreditRows.length} חיובים עתידיים שנותרו`:'אין חיובי אשראי עתידיים',{page:'credit',tab:''})}
+   ${kpi('אשראי עסקי במחזור הקרוב',cycle.nextCreditTotal,'#edf4f1','#638f87',cycle.nextCreditRows.length?`החיובים הקרובים עד ${dateFmt(cycle.end)} · ${cycleLabel}`:'אין חיוב אשראי עתידי',{page:'credit',tab:''})}
+   ${kpiDisplay('עו״ש אחרי המחזור הקרוב',bankAfter,'#eff3f0','#5f7c77',bankAfter===null?'יש להזין יתרת עו״ש בטאב בנק':`כולל אשראי עסקי קרוב + הוצאות ${cycleLabel}`,{page:'bank',tab:''})}
+   ${kpiDisplay('מאזן כולל נטו',long.net,'#edf3ef','#557a68',long.net===null?'יש להזין יתרת עו״ש':`עו״ש − כל האשראי העסקי העתידי − חודש הוצאות + קופה`,{page:'bank',tab:''})}
   </div>
   <div class="grid two" style="margin-top:16px">
    <section class="section"><div class="section-head"><div><h3>פעולות מהירות</h3></div></div><div class="section-body"><div class="quick">
@@ -44,7 +44,7 @@ function renderDashboard(){
   </div>
   <div class="grid two" style="margin-top:16px">
    <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — צקים</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.checks,max,'#76929a')).join('')}</div></div></section>
-   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — אשראי והוצאות</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.credit,max,'#638f87')).join('')}</div></div></section>
+   <section class="section"><div class="section-head"><div><h3>6 חודשים קדימה — אשראי עסקי והוצאות</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.credit,max,'#638f87')).join('')}</div></div></section>
   </div>`}
 
 function kpiAttrs(action){
