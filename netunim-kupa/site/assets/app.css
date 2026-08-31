@@ -101,9 +101,10 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
 
 
 /* Credit reporting / business cash-flow separation */
-.credit-filter-toolbar{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 14px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#fff}
-.credit-filter-selects,.credit-filter-stats{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.credit-filter-stats{justify-content:flex-end}.credit-filter-stats .stat-pill.business{border-color:#cfe0d8;background:#f4f8f6;color:#4f7164}
+.credit-filter-toolbar{display:grid;grid-template-columns:1fr;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.credit-filter-primary{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;min-width:0}
+.credit-filter-selects,.credit-filter-stats{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
+.credit-filter-selects{flex:0 1 auto}.credit-filter-stats{justify-content:flex-end;min-width:0}.credit-filter-stats .stat-pill.business{border-color:#cfe0d8;background:#f4f8f6;color:#4f7164}
 .credit-filter-chip-stack{grid-column:1/-1;display:grid;gap:8px;padding-top:9px;border-top:1px solid #edf0ee}
 .credit-filter-chip-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:start}
 .credit-filter-label{padding-top:7px;font-size:12px;font-weight:850;color:#63736d}
@@ -117,17 +118,17 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
 .credit-forecast-row{display:grid;grid-template-columns:100px minmax(90px,1fr) 105px 24px;gap:12px;align-items:center;padding:10px 12px}.credit-forecast-row>b{font-size:13px}.credit-forecast-row em{font-style:normal;font-size:10px;color:#557a68;background:#edf5f1;border-radius:999px;padding:2px 5px}.credit-forecast-row em.past{color:var(--muted);background:#f1f3f2}
 .credit-forecast-row .bar{height:9px}.credit-forecast-row .bar i{background:var(--green,#638f87)}.credit-forecast-row .num{text-align:left;font-weight:850;direction:ltr}
 .credit-toggle-chevron{display:inline-grid;place-items:center;font-size:19px;transition:transform .18s ease;color:#6a7974}.credit-forecast-month[open] .credit-toggle-chevron,.credit-collapsible-section[open] .credit-toggle-chevron{transform:rotate(180deg)}
-.credit-forecast-breakdown{border-top:1px solid #edf0ee;background:#fbfcfb;padding:7px 12px 10px;display:grid;gap:4px}.credit-forecast-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 3px}.credit-forecast-card+ .credit-forecast-card{border-top:1px dashed #e2e7e5}.credit-forecast-card>span{display:grid;gap:2px}.credit-forecast-card small{color:var(--muted);font-size:11px}.credit-forecast-card strong{direction:ltr}
+.credit-forecast-breakdown{border-top:1px solid #edf0ee;background:#fbfcfb;padding:7px 12px 10px;display:grid;gap:4px}.credit-forecast-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 6px}.credit-forecast-card+ .credit-forecast-card{border-top:1px dashed #e2e7e5}.credit-forecast-card>span{display:grid;gap:2px}.credit-forecast-card small{color:var(--muted);font-size:11px}.credit-forecast-card strong{direction:ltr}.credit-forecast-card-button{appearance:none;width:100%;border:0;background:transparent;color:inherit;font:inherit;text-align:inherit;cursor:pointer;border-radius:8px;transition:background .15s ease}.credit-forecast-card-button:hover,.credit-forecast-card-button:focus-visible{background:#eef5f1;outline:none}.credit-detail-focus{margin:0 16px 12px;padding:10px 12px;border:1px solid #cfe0d8;border-radius:12px;background:#f4f8f6;display:flex;align-items:center;justify-content:space-between;gap:12px}.credit-detail-focus>span{display:grid;gap:2px}.credit-detail-focus small{color:var(--muted)}
 
 .credit-collapsible-section{overflow:hidden}.credit-section-toggle{list-style:none;cursor:pointer;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fbfcfb;user-select:none}.credit-section-toggle::-webkit-details-marker{display:none}.credit-section-toggle:hover{background:#f7faf8}.credit-section-toggle>span:first-child{display:grid;gap:3px}.credit-section-toggle small{color:var(--muted);font-weight:500}.credit-collapsible-body{border-top:1px solid var(--line);background:#fff}
 .credit-collapsible-body .credit-month-summary{margin:0;border:0;border-radius:0}.credit-collapsible-body .credit-live-grid{padding:14px 16px}.credit-empty-note{margin:14px 16px}
 .credit-live-section{margin-bottom:0}
 
 @media(max-width:800px){
-  .credit-filter-toolbar{grid-template-columns:1fr}.credit-filter-stats{justify-content:flex-start}.credit-filter-selects{display:grid;grid-template-columns:1fr 1fr;width:100%}.credit-filter-selects select:last-child{grid-column:1/-1}
+  .credit-filter-primary{align-items:stretch;flex-direction:column}.credit-filter-stats{justify-content:flex-start;flex-wrap:wrap}.credit-filter-selects{display:grid;grid-template-columns:1fr 1fr;width:100%}
   .credit-filter-chip-row{grid-template-columns:1fr;gap:5px}.credit-filter-label{padding-top:0}.credit-forecast-list{flex-direction:column}.credit-forecast-column{width:100%}.credit-forecast-row{grid-template-columns:82px minmax(70px,1fr) 88px 20px;gap:8px;padding:10px}
 }
 @media(max-width:520px){
-  .credit-filter-selects{grid-template-columns:1fr}.credit-filter-selects select:last-child{grid-column:auto}.credit-filter-stats .stat-pill{display:inline-flex}
+  .credit-filter-selects{grid-template-columns:1fr}.credit-filter-stats .stat-pill{display:inline-flex}.credit-detail-focus{margin-inline:10px;align-items:flex-start;flex-direction:column}.credit-detail-focus .iconbtn{width:100%}
   .credit-forecast-row{grid-template-columns:78px 1fr 82px 18px;font-size:12px}.credit-forecast-row>b{font-size:12px}.credit-filter-chip.card span{max-width:135px}
 }
