@@ -25,8 +25,8 @@ function updateCustomerVisibleTotal(total){
   el.textContent=money(total);el.classList.toggle('badtext',total>0);el.classList.toggle('goodtext',total<0);
 }
 
-function renderCustomers({resultsOnly=false}={}){
-  const st=customerStats(),q=(customerUi.customerSearch||'').trim(),summary=customerBottomSummary(st);
+function renderCustomers({resultsOnly=false,resetScroll=false}={}){
+  const st=customerUi.customerTab==='debts'?customerStats():null,q=(customerUi.customerSearch||'').trim(),summary=st?customerBottomSummary(st):'';
   let table='',visibleDebtTotal=null;
   if(customerUi.customerTab==='debts'){
     const rows=filteredCustomerDebtRows();visibleDebtTotal=customerVisibleDebtTotal(rows);
@@ -44,7 +44,7 @@ function renderCustomers({resultsOnly=false}={}){
     const host=$('#customerSearchResults');
     if(host)host.innerHTML=body;
     if(visibleDebtTotal!==null)updateCustomerVisibleTotal(visibleDebtTotal);
-    bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'));
+    bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'),{resetTop:resetScroll});
     syncCustomerBulkUi();
     return;
   }
@@ -52,7 +52,7 @@ function renderCustomers({resultsOnly=false}={}){
   const debtTotal=customerUi.customerTab==='debts'?`<span class="customer-visible-total">סה״כ <b data-customer-visible-total class="${esc(visibleDebtTotal>0?'badtext':visibleDebtTotal<0?'goodtext':'')}">${money(visibleDebtTotal)}</b></span>`:'';
   $('#main').innerHTML=`<div class="customers-view"><div class="module-toolbar customer-command"><div class="module-tabs"><button class="chip-filter ${esc(customerUi.customerTab==='debts'?'active':'')}" data-action="set-customer-tab">חובות</button><button class="chip-filter ${esc(customerUi.customerTab==='orders'?'active':'')}" data-action="set-customer-tab-2">מעקב הזמנות</button></div>${customerBulkControls()}<input class="customer-search" placeholder="${esc(customerUi.customerTab==='debts'?'חיפוש לקוח, הזמנה, טלפון או הערה…':'חיפוש הזמנה, לקוח או סימון…')}" value="${esc(customerUi.customerSearch)}" data-input="customer-search">${filters}${customerUi.customerTab==='debts'?'<button class="btn primary small customer-add-btn" data-action="open-debt-modal">+ חוב לקוח</button>':''}${debtTotal}</div><div id="customerSearchResults">${body}</div></div>`;
   mountViewLayout({sourceSelector:'.customers-view',headCount:1,className:'customers-view'});
-  bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'));
+  bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'),{resetTop:resetScroll});
   syncCustomerBulkUi();
 }
 

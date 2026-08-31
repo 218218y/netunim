@@ -6,9 +6,9 @@ function scrollViewportSnapshot(el){if(!el)return null;const maxTop=Math.max(0,e
 
 function storeScrollViewport(key,el){if(!key||!el)return;ui.scrollViewportMemory.set(key,scrollViewportSnapshot(el))}
 
-function restoreScrollViewport(key,el,{fallback='start'}={}){if(!el)return;const saved=key?ui.scrollViewportMemory.get(key):null;requestAnimationFrame(()=>{if(saved){const maxTop=Math.max(0,el.scrollHeight-el.clientHeight);el.scrollTop=saved.atEnd?maxTop:Math.min(saved.top,maxTop);el.scrollLeft=saved.left}else if(fallback==='end')el.scrollTop=el.scrollHeight;if(key)storeScrollViewport(key,el)})}
+function restoreScrollViewport(key,el,{fallback='start',resetTop=false}={}){if(!el)return;const saved=key?ui.scrollViewportMemory.get(key):null;requestAnimationFrame(()=>{const maxTop=Math.max(0,el.scrollHeight-el.clientHeight);if(saved){el.scrollTop=resetTop?(fallback==='end'?maxTop:0):(saved.atEnd?maxTop:Math.min(saved.top,maxTop));el.scrollLeft=saved.left}else if(fallback==='end')el.scrollTop=maxTop;else if(resetTop)el.scrollTop=0;if(key)storeScrollViewport(key,el)})}
 
-function bindScrollViewport(key,el,{fallback='start'}={}){if(!el)return;el.addEventListener('scroll',()=>storeScrollViewport(key,el),{passive:true});restoreScrollViewport(key,el,{fallback})}
+function bindScrollViewport(key,el,{fallback='start',resetTop=false}={}){if(!el)return;el.addEventListener('scroll',()=>storeScrollViewport(key,el),{passive:true});restoreScrollViewport(key,el,{fallback,resetTop})}
 
 function mountViewLayout({sourceSelector='',headCount=1,className='',scrollKey=''}={}){
   const main=$('#main'),source=sourceSelector?main?.querySelector(sourceSelector):main;
