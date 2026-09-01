@@ -3,6 +3,7 @@ import {financeRefreshDue,FINANCE_AUTO_INTERVAL_MS} from '../netunim-orders/site
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
 import {creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
@@ -35,6 +36,77 @@ const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-0
 assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+
+const probeChecksSession={kupaCloudReadState:{version:4,bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[]},checksBankEvents:[]};
+let bankProbeCalls=0,creditProbeCalls=0;
+const probeBridge={
+  getBridgeToken:()=> 'paired',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,setBankAutoEnabled(){},setCreditAutoEnabled(){},setBridgeToken:v=>v,
+  status:async()=>{bankProbeCalls++;const error=new Error('bridge offline');error.code='BRIDGE_UNAVAILABLE';throw error},
+  creditStatus:async()=>{creditProbeCalls++;const error=new Error('credit bridge offline');error.code='BRIDGE_UNAVAILABLE';throw error},
+};
+const probeController=createDomainsFinanceController({
+  tab:{primaryTab:true},checksSession:probeChecksSession,bridge:probeBridge,loadSession:()=>({access_token:'x'}),
+  refreshKupaReadout:async()=>true,readKupaReadOnlyCloud:async()=>({revision:1,state:structuredClone(probeChecksSession.kupaCloudReadState)}),rpcSaveKupaDocument:async()=>{throw new Error('not used')},acceptKupaCloudRow:()=>true,
+  syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,toast:()=>{},
+});
+await probeController.refreshBankBridgeStatus({quiet:true});
+await probeController.refreshCreditBridgeStatus({quiet:true});
+const passiveProbeSnapshot=probeController.snapshot();
+assert.equal(passiveProbeSnapshot.bankStatusChecked,true,'bank bridge availability probe records completion even when the local bridge is offline');
+assert.equal(passiveProbeSnapshot.creditStatusChecked,true,'credit bridge availability probe records completion even when the local bridge is offline');
+assert.equal(passiveProbeSnapshot.bankError,'','passive bank availability failure is not recorded as a fresh bank synchronization failure');
+assert.equal(passiveProbeSnapshot.bankErrorAt,null);
+assert.equal(passiveProbeSnapshot.creditError,'','passive credit availability failure is not recorded as a fresh credit synchronization failure');
+assert.equal(passiveProbeSnapshot.creditErrorAt,null);
+assert.equal(passiveProbeSnapshot.bankBridgeError,'bridge offline');
+assert.equal(passiveProbeSnapshot.creditBridgeError,'credit bridge offline');
+
+let viewProbeCalls=0,viewProbeChecked=false;
+const mainStub={innerHTML:'',querySelector:()=>null};
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?mainStub:null},configurable:true});
+const financeView=createDomainsFinanceView({
+  ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business'},
+  controller:{
+    snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:viewProbeChecked,creditStatusChecked:false,bankBridgeError:viewProbeChecked?'bridge offline':'',creditBridgeError:''}),
+    refreshBankBridgeStatus:async()=>{viewProbeCalls++;viewProbeChecked=true;return null},
+  },
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+});
+financeView.renderKupa();
+await Promise.resolve();await Promise.resolve();
+assert.equal(viewProbeCalls,1,'failed bank availability probe is one-shot per loaded state and cannot create a render/probe loop');
+
+let creditViewProbeCalls=0,creditViewProbeChecked=false;
+const creditFinanceView=createDomainsFinanceView({
+  ui:{currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailMonth:''},
+  controller:{
+    snapshot:()=>({kupa:{bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[]},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:creditViewProbeChecked,bankBridgeError:'',creditBridgeError:creditViewProbeChecked?'credit bridge offline':''}),
+    refreshCreditBridgeStatus:async()=>{creditViewProbeCalls++;creditViewProbeChecked=true;return null},
+  },
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+});
+creditFinanceView.renderKupa();
+await Promise.resolve();await Promise.resolve();
+assert.equal(creditViewProbeCalls,1,'failed credit availability probe is one-shot per loaded state and cannot create a render/probe loop');
+
+let disclosureRendered=false;
+const oldDisclosure={open:true},newDisclosure={open:false};
+const disclosureMain={
+  _html:'',
+  get innerHTML(){return this._html},
+  set innerHTML(value){this._html=value;disclosureRendered=true},
+  querySelector:selector=>selector==='.finance-sync-settings'?(disclosureRendered?newDisclosure:oldDisclosure):null,
+};
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
+const disclosureView=createDomainsFinanceView({
+  ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business'},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:21,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+});
+disclosureView.renderKupa();
+assert.equal(newDisclosure.open,true,'Kupa rerenders preserve an already-open synchronization disclosure instead of collapsing it');
+assert.match(disclosureMain.innerHTML,/<form id="ordersBankCredentialsForm"[\s\S]*type="password"[\s\S]*<\/form>/,'bank password input belongs to a real form so Chromium does not emit the password-outside-form warning');
+
 const baseState={version:4,businessName:'ניהול קופה',credits:[],cash:[{id:'cash-kept',amount:7}],expenses:[],cards:[{id:'card-kept',name:'כרטיס'}],creditSync:initialCredit,bank:{currentBalance:900,updatedAt:'2026-08-30T00:00:00Z',asOfDate:'2026-08-30',snapshotSeq:2,adjustments:[],feed:null,homeFeed:null}};
 let cloudRow={revision:5,updated_at:'2026-09-01T00:00:00Z',state:structuredClone(baseState)};
 const checksSession={kupaCloudReadState:structuredClone(baseState),checksBankEvents:[{seq:4,at:'2026-09-01T01:30:00Z',delta:-25,kind:'check_effect_delta',checkId:'check-4'}]};
