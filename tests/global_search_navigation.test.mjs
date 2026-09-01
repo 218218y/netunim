@@ -4,7 +4,7 @@ import {createUiGlobalSearch} from '../netunim-orders/site/assets/js/ui/global-s
 
 function harness(state={}){
   const calls={views:[],renders:[],modals:[]};
-  const ui={checkTab:'open',checkYear:'2026',checkSearchValue:'local'};
+  const ui={kupaSubView:'bank',checkTab:'open',checkYear:'2026',checkSearchValue:'local'};
   const supplierUi={currentSupplierId:null,filterMode:'pending',searchText:'local',supplierYearView:'current'};
   const customerUi={customerSearch:'local',customerOrderFilter:'attention',customerTab:'orders',customerFilter:'open'};
   const serviceUi={serviceSearch:'local',serviceFilter:'open'};
@@ -55,7 +55,8 @@ test('global check navigation removes local tab, year and search constraints',()
   const h=harness();
   try{
     h.search.navigateItem({group:'checks',kind:'check',id:'check-1'});
-    assert.deepEqual(h.calls.views,['checks']);
+    assert.deepEqual(h.calls.views,['kupa']);
+    assert.equal(h.ui.kupaSubView,'checks');
     assert.equal(h.ui.checkTab,'all');
     assert.equal(h.ui.checkYear,'all');
     assert.equal(h.ui.checkSearchValue,'');

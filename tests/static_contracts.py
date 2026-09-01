@@ -206,6 +206,32 @@ ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;borde
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
 
+# Orders Kupa UI owns the financial surface; checks and balance are embedded children,
+# while Bank/Credit continue to use the one shared Kupa document rather than copied state.
+orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
+orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
+orders_checks_view = (O / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
+orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
+orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
+orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
+ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
+   "orders Kupa UI: one top-level Kupa tab replaces standalone checks and balance tabs")
+ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
+   and all(label in orders_finance_view for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
+   "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
+ok("checksView.checksMarkup({embedded:true})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
+   and "checksMarkup({embedded=false}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
+   "orders Kupa UI: existing Checks and Balance views are embedded instead of duplicated")
+ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
+   "orders Kupa UI: composition root and state own the new financial surface")
+ok("const BANK_BRIDGE_VERSION=21" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v21 contract")
+ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
+   and "toggle-credit-selection" not in orders_finance_view,
+   "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
+ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,
+   "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
+
 # 4. SQL and migration contracts.
 sqls = {
     "preflight": (S / "preflight.sql").read_text(encoding="utf-8"),

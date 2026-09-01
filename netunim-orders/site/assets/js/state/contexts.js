@@ -5,6 +5,13 @@ return {
   },
   ui:{
     currentView:'supplier',
+    kupaSubView:'bank',
+    bankAccountView:'business',
+    creditView:'rolling12',
+    creditAccountFilter:'all',
+    creditProviderFilter:'all',
+    creditCardFilter:'all',
+    creditDetailMonth:'',
     checkTab:'open',
     checkYear:'all',
     checkSearchValue:'',

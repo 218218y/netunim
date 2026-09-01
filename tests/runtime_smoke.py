@@ -133,11 +133,12 @@ for label, site in apps:
                       warehouseWrap=document.querySelector('.warehouse-view-shell .view-scroll');
                       const warehouseAfter=warehouseWrap?.scrollTop??-1;
 
-                      switchView('summary');await frame();
-                      const summaryWasActive=document.querySelector('[data-view="summary"]')?.classList.contains('active')===true;
+                      switchView('kupa');await frame();
+                      document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]')?.click();await frame();
+                      const summaryWasActive=document.querySelector('[data-view="kupa"]')?.classList.contains('active')===true&&document.querySelector('[data-action="set-kupa-section"][data-click-arg0="summary"]')?.classList.contains('active')===true;
                       openSupplier('SMOKE-SUP');await frame();
                       const supplierNavActive=document.querySelector('[data-view="supplier"]')?.classList.contains('active')===true;
-                      const summaryNavInactive=document.querySelector('[data-view="summary"]')?.classList.contains('active')===false;
+                      const summaryNavInactive=document.querySelector('[data-view="kupa"]')?.classList.contains('active')===false;
 
                       return {
                         ok:near(supplierInitial.top,supplierInitial.target)&&supplierInitial.max>supplierInitial.target+20&&supplierInitial.summaryInScroller&&

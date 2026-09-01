@@ -32,8 +32,14 @@ function creditAttemptDelayMs(){return attemptDelayMs(CREDIT_ATTEMPT_KEY)}
 function bankAttemptReady(){return attemptReady(BANK_ATTEMPT_KEY)}
 function creditAttemptReady(){return attemptReady(CREDIT_ATTEMPT_KEY)}
 function status(){return request('/status',{timeoutMs:3500})}
+function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){if(token)setBridgeToken(token);return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000})}
+function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
+function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
 function fetchBalance({interactive=false}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive},timeoutMs:interactive?INTERACTIVE_TIMEOUT_MS:180000})}
 function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
+function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
+function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
+function resetCreditProfiles(){return request('/credit/reset',{method:'POST',body:{},timeoutMs:15000})}
 function syncCreditCards({interactive=false}={}){return request('/credit/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
-return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,fetchBalance,creditStatus,syncCreditCards};
+return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,syncCreditCards};
 }

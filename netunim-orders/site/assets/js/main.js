@@ -17,6 +17,7 @@ import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
 import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
+import {createDomainsFinanceView} from './domains/finance/view.js';
 import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createSyncChecksPersistence} from './sync/checks-persistence.js';
@@ -200,6 +201,7 @@ const uiNavigation=createUiNavigation({
   serviceUi,
   warehouseUi,
   notesUi,
+  renderKupa:(...args)=>domainsFinanceView.renderKupa(...args),
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderSummary:(...args)=>domainsDashboardView.renderSummary(...args),
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
@@ -227,6 +229,7 @@ const domainsBankCache=createDomainsBankCache({
   checksSession,
   ui,
   computeKupaNetReadout:(...args)=>domainsBankSelectors.computeKupaNetReadout(...args),
+  renderKupa:(...args)=>domainsFinanceView.renderKupa(...args),
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderSummary:(...args)=>domainsDashboardView.renderSummary(...args),
   loadSession:(...args)=>cloudAuth.loadSession(...args),
@@ -610,6 +613,17 @@ const domainsFinanceController=createDomainsFinanceController({
   toast:(...args)=>uiStatus.toast(...args),
 });
 
+const domainsFinanceView=createDomainsFinanceView({
+  ui,
+  controller:domainsFinanceController,
+  checksView:domainsChecksView,
+  dashboardView:domainsDashboardView,
+  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+});
+
 const syncDocument=createSyncDocument({
   model,
   files,
@@ -755,8 +769,28 @@ const uiActions=createUiActions({
   serviceUi,
   warehouseUi,
   ui,
+  setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
+  setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
+  saveOrdersBankToken:(...args)=>domainsFinanceView.saveBankToken(...args),
+  configureOrdersBank:(...args)=>domainsFinanceView.configureBank(...args),
+  selectOrdersBankAccount:(...args)=>domainsFinanceView.selectBankAccount(...args),
+  deleteOrdersBankCredentials:(...args)=>domainsFinanceView.deleteBankCredentials(...args),
+  refreshOrdersBank:(...args)=>domainsFinanceView.refreshBank(...args),
+  setOrdersBankAuto:(...args)=>domainsFinanceView.setBankAuto(...args),
+  refreshOrdersCredit:(...args)=>domainsFinanceView.refreshCredit(...args),
+  setOrdersCreditAuto:(...args)=>domainsFinanceView.setCreditAuto(...args),
+  setOrdersCreditView:(...args)=>domainsFinanceView.setCreditView(...args),
+  setOrdersCreditAccountFilter:(...args)=>domainsFinanceView.setCreditAccountFilter(...args),
+  setOrdersCreditProviderFilter:(...args)=>domainsFinanceView.setCreditProviderFilter(...args),
+  setOrdersCreditCardFilter:(...args)=>domainsFinanceView.setCreditCardFilter(...args),
+  setOrdersCreditDetailMonth:(...args)=>domainsFinanceView.setCreditDetailMonth(...args),
+  setOrdersCreditCardMapping:(...args)=>domainsFinanceView.setCardMapping(...args),
+  openOrdersCreditConnection:(...args)=>domainsFinanceView.openCreditConnection(...args),
+  saveOrdersCreditConnection:(...args)=>domainsFinanceView.saveCreditConnection(...args),
+  deleteOrdersCreditConnection:(...args)=>domainsFinanceView.deleteCreditConnection(...args),
+  resetOrdersCreditSync:(...args)=>domainsFinanceView.resetCreditSync(...args),
   setSupplierYearView:(...args)=>domainsSuppliersNavigation.setSupplierYearView(...args),
-  setSummarySupplierYearView:(...args)=>domainsDashboardView.setSummarySupplierYearView(...args),
+  setSummarySupplierYearView:(...args)=>{domainsDashboardView.setSummarySupplierYearView(...args,{render:false});if(ui.currentView==='kupa')domainsFinanceView.renderKupa();else domainsDashboardView.renderSummary()},
   handleCheckDatePartInput:(...args)=>uiDateEditor.handleCheckDatePartInput(...args),
   handleCheckDatePartBlur:(...args)=>uiDateEditor.handleCheckDatePartBlur(...args),
   handleCheckDatePartKeydown:(...args)=>uiDateEditor.handleCheckDatePartKeydown(...args),
@@ -765,7 +799,7 @@ const uiActions=createUiActions({
   toggleChecksBulkMode:(...args)=>domainsChecksView.toggleChecksBulkMode(...args),
   toggleChecksBulkRow:(...args)=>domainsChecksView.toggleChecksBulkRow(...args),
   toggleChecksBulkVisible:(...args)=>domainsChecksView.toggleChecksBulkVisible(...args),
-  renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
+  renderChecks:(...args)=>ui.currentView==='kupa'?domainsFinanceView.renderKupa(...args):domainsChecksView.renderChecks(...args),
   renderChecksSearch:(...args)=>domainsChecksView.renderChecksSearch(...args),
   openCheckModal:(...args)=>domainsChecksEditor.openCheckModal(...args),
   markCheckSeriesManual:(...args)=>domainsChecksEditor.markCheckSeriesManual(...args),
