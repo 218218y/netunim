@@ -225,11 +225,13 @@ ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</sec
    and "if(section==='checks')return `<div class=\"kupa-checks-status\">${checksView.checksCloudLabel()}</div>`" in orders_finance_view
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
-   and '.kupa-hero{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px' in orders_css
+   and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px' in orders_css
    and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}' in orders_css
-   and '.kupa-hero>.finance-sync-section .finance-command-row{min-height:42px;padding:0;background:transparent;align-items:center}' in orders_css
-   and '.kupa-hero .credit-view-tools{padding:0;border:0;border-radius:0;background:transparent}' in orders_css,
-   "orders Kupa UI: internal tabs stay at the RTL start while Bank/Credit command rows remain compact and avoid redundant nested frames")
+   and '.kupa-hero>.finance-sync-section .finance-command-row{min-height:36px;padding:0;background:transparent;align-items:center}' in orders_css
+   and '.kupa-subtabs{display:flex;align-items:center;flex:0 0 auto;height:36px;gap:3px;padding:2px' in orders_css
+   and '.kupa-hero .finance-view-tools{height:36px;min-height:36px;padding:0;border:0;border-radius:0;background:transparent}' in orders_css
+   and '.kupa-hero .finance-search,.kupa-hero .finance-sync-toggle,.kupa-hero .finance-sync-refresh,.kupa-hero .bank-account-tab{height:36px}' in orders_css,
+   "orders Kupa UI: internal tabs stay at the RTL start and all finance header controls share the compact 36px rhythm without redundant nested frames")
 ok('class="credit-filter-separator"' in orders_finance_view
    and 'class="credit-provider-filter-chips"' in orders_finance_view
    and orders_finance_view.index('class="credit-account-filter-chips"') < orders_finance_view.index('class="credit-filter-separator"') < orders_finance_view.index('class="credit-provider-filter-chips"')
