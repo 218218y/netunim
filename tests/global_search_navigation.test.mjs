@@ -51,6 +51,16 @@ test('global result navigation selects filters that keep paid and closed custome
   }finally{h.restore()}
 });
 
+test('global customer-order navigation activates the direct order-tracking route',()=>{
+  const h=harness({customerOrders:[{id:'order-1'}]});
+  try{
+    h.search.navigateItem({group:'customers',kind:'customer-order',id:'order-1'});
+    assert.equal(h.customerUi.customerTab,'orders');
+    assert.equal(h.customerUi.customerSearch,'');
+    assert.deepEqual(h.calls.views,['customer-orders']);
+  }finally{h.restore()}
+});
+
 test('global check navigation removes local tab, year and search constraints',()=>{
   const h=harness();
   try{

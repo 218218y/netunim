@@ -16,7 +16,7 @@ return {
   'refresh-orders-credit-interactive':(element,event)=>{refreshOrdersCredit(true)},
   'set-orders-credit-auto':(element,event)=>{setOrdersCreditAuto(element.checked)},
   'orders-credit-view':(element,event)=>{setOrdersCreditView(element.value)},
-  'orders-credit-account-filter':(element,event)=>{setOrdersCreditAccountFilter(element.value)},
+  'orders-credit-account-filter':(element,event)=>{setOrdersCreditAccountFilter(element.dataset.clickArg0||element.value||'all')},
   'orders-credit-provider-filter':(element,event)=>{setOrdersCreditProviderFilter(element.dataset.clickArg0)},
   'orders-credit-card-filter':(element,event)=>{setOrdersCreditCardFilter(element.dataset.clickArg0)},
   'orders-credit-detail-month':(element,event)=>{setOrdersCreditDetailMonth(element.dataset.clickArg0)},

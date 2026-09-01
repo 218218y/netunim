@@ -34,7 +34,7 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
 
   function navigateSupplier(item){prepareView('supplier');supplierUi.currentSupplierId=item.kind==='supplier'?item.id:item.parentId;supplierUi.filterMode='all';supplierUi.searchText='';supplierUi.supplierYearView=item.kind==='supplier-transaction'?'all':'current';render({supplierScrollMode:item.kind==='supplier-transaction'?'start':'end'});if(item.kind==='supplier-transaction')reveal('data-tx-id',item.id)}
 
-  function navigateCustomer(item){prepareView('customers');customerUi.customerSearch='';customerUi.customerOrderFilter='all';if(item.kind==='customer-debt'){customerUi.customerTab='debts';const debt=model.state.customerDebts.find(x=>x.id===item.id);customerUi.customerFilter=debt?.paid?(debt.invoiceIssued?'closed':'invoice'):'all'}else{customerUi.customerTab='orders';customerUi.customerFilter='all'}render();reveal('data-customer-bulk-id',item.id)}
+  function navigateCustomer(item){const debts=item.kind==='customer-debt';prepareView(debts?'customers':'customer-orders');customerUi.customerTab=debts?'debts':'orders';customerUi.customerSearch='';customerUi.customerOrderFilter='all';if(debts){const debt=model.state.customerDebts.find(x=>x.id===item.id);customerUi.customerFilter=debt?.paid?(debt.invoiceIssued?'closed':'invoice'):'all'}else customerUi.customerFilter='all';render();reveal('data-customer-bulk-id',item.id)}
 
   function navigateService(item){prepareView('service');serviceUi.serviceSearch='';const call=model.state.serviceCalls.find(x=>x.id===item.id);serviceUi.serviceFilter=call?.closed?'closed':'all';render();reveal('data-service-bulk-id',item.id)}
 

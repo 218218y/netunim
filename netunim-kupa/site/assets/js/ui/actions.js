@@ -29,7 +29,7 @@ return {
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},
   'credit-view':(element,event)=>{ui.creditView=element.value;ui.creditDetailFocus=null;renderCredit()},
-  'credit-account-filter':(element,event)=>{ui.creditAccountFilter=element.value;ui.creditDetailFocus=null;renderCredit()},
+  'credit-account-filter':(element,event)=>{ui.creditAccountFilter=element.dataset.clickArg0||element.value||'all';ui.creditDetailFocus=null;renderCredit()},
   'credit-provider-filter':(element,event)=>{ui.creditProviderFilter=element.dataset.clickArg0||'all';ui.creditCardFilter='all';ui.creditDetailFocus=null;renderCredit()},
   'credit-card-filter':(element,event)=>{ui.creditCardFilter=element.dataset.clickArg0||'all';ui.creditDetailFocus=null;renderCredit()},
   'credit-detail-month':(element,event)=>{ui.creditDetailFocus={monthKey:element.dataset.clickArg0||'',cardKey:''};renderCredit()},

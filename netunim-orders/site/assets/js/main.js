@@ -361,6 +361,7 @@ const domainsCustomersBulk=createDomainsCustomersBulk({
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  onTabChange:(tab)=>uiNavigation.setCustomerRoute(tab),
 });
 
 const domainsCustomersView=createDomainsCustomersView({

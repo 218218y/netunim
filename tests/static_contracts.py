@@ -329,6 +329,21 @@ osetup = sqls["orders_setup"]
 ok("jsonb_typeof(p_state->'checks') is not null" in osetup or "p_state ? 'checks'" in osetup,
    "orders RPC: post-cutover payload containing checks is rejected")
 
+# Compact module navigation and toolbar contracts.
+orders_index=(ROOT/'netunim-orders/site/index.html').read_text(encoding='utf-8')
+orders_navigation=(ROOT/'netunim-orders/site/assets/js/ui/navigation.js').read_text(encoding='utf-8')
+orders_customer_bulk=(ROOT/'netunim-orders/site/assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
+orders_service_view=(ROOT/'netunim-orders/site/assets/js/domains/service/view.js').read_text(encoding='utf-8')
+orders_warehouse_view=(ROOT/'netunim-orders/site/assets/js/domains/warehouse/view.js').read_text(encoding='utf-8')
+orders_finance_view=(ROOT/'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+orders_actions=(ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
+kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
+ok('data-view="customers">לקוחות וחובות</button>' in orders_index and 'data-view="customer-orders">מעקב הזמנות</button>' in orders_index and orders_index.index('data-view="customers"') < orders_index.index('data-view="customer-orders"') < orders_index.index('data-view="warehouse"') and "ui.currentView==='customers'||ui.currentView==='customer-orders'" in orders_navigation and "customerUi.customerTab='orders'" in orders_navigation and 'onTabChange(tab)' in orders_customer_bulk, 'orders navigation: order tracking has a direct main tab and stays synchronized with the existing inner customer tabs')
+ok('<h1>קריאות שירות</h1>' not in orders_service_view and 'module-toolbar service-toolbar' in orders_service_view and 'module-toolbar-actions' in orders_service_view and "headCount:1,className:'service-view-shell'" in orders_service_view, 'orders service: search, filters, selection and open-call action share one fixed toolbar without the redundant title row')
+ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolbar warehouse-toolbar' in orders_warehouse_view and 'open-inventory-item-modal-2' in orders_warehouse_view and 'open-warehouse-order-modal' in orders_warehouse_view and "headCount:1,className:'warehouse-view-shell'" in orders_warehouse_view, 'orders warehouse: search, tabs and item/customer actions share one fixed toolbar without the redundant title row')
+ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל</button>' in source and 'data-click-arg0="עסקי">עסקי</button>' in source and 'data-click-arg0="ביתי">ביתי</button>' in source and 'עסקי + ביתי' not in source for source in (orders_finance_view,kupa_credit_view)) and "element.dataset.clickArg0||element.value||'all'" in kupa_actions and "element.dataset.clickArg0||element.value||'all'" in orders_actions, 'credit account scope: embedded Orders Kupa and standalone Kupa both use three direct chip buttons backed by the existing all/business/home filter state')
+
 print("\nERRORS", len(errors))
 if errors:
     for item in errors:

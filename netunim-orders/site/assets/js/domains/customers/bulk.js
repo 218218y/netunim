@@ -3,8 +3,8 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave, confirmDialog}){
-function setCustomerTab(tab){if(!['debts','orders'].includes(tab)||tab===customerUi.customerTab)return;customerUi.customerTab=tab;customerUi.customerBulkSelected.clear();renderCustomers({resetScroll:true})}
+export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave, confirmDialog, onTabChange=()=>{}}){
+function setCustomerTab(tab){if(!['debts','orders'].includes(tab)||tab===customerUi.customerTab)return;customerUi.customerTab=tab;customerUi.customerBulkSelected.clear();onTabChange(tab);renderCustomers({resetScroll:true})}
 
 function customerBulkSource(){return customerUi.customerTab==='debts'?(model.state.customerDebts||[]):(model.state.customerOrders||[])}
 

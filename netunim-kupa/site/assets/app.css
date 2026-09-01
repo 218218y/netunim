@@ -104,7 +104,7 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
 .credit-filter-toolbar{display:grid;grid-template-columns:1fr;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:#fff}
 .credit-filter-primary{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;min-width:0}
 .credit-filter-selects,.credit-filter-stats{display:flex;align-items:center;gap:8px;flex-wrap:nowrap}
-.credit-filter-selects{flex:0 1 auto}.credit-filter-stats{justify-content:flex-end;min-width:0}.credit-filter-stats .stat-pill.business{border-color:#cfe0d8;background:#f4f8f6;color:#4f7164}
+.credit-filter-selects{flex:0 1 auto}.credit-account-filter-chips{display:flex;align-items:center;gap:6px}.credit-account-filter-chips .credit-filter-chip{min-width:58px;justify-content:center}.credit-filter-stats{justify-content:flex-end;min-width:0}.credit-filter-stats .stat-pill.business{border-color:#cfe0d8;background:#f4f8f6;color:#4f7164}
 .credit-filter-chip-stack{grid-column:1/-1;display:grid;gap:8px;padding-top:9px;border-top:1px solid #edf0ee}
 .credit-filter-chip-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:start}
 .credit-filter-label{padding-top:7px;font-size:12px;font-weight:850;color:#63736d}
