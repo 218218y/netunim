@@ -42,7 +42,7 @@ return {
   'save-bank-bridge-token':(element,event)=>{saveBankBridgeToken()},
   'configure-bank-bridge':(element,event)=>{configureBankBridge()},
   'select-bank-bridge-account':(element,event)=>{selectBankBridgeAccount(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2)},
-  'set-bank-account-view':(element,event)=>{setBankAccountView(element.dataset.clickArg0)},
+  'set-bank-account-view':(element,event)=>{event?.preventDefault();event?.stopPropagation();setBankAccountView(element.dataset.clickArg0)},
   'refresh-bank-from-hapoalim':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:false,auto:false})},
   'open-bank-auth':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:true,auto:false})},
   'delete-bank-bridge-credentials':(element,event)=>{deleteBankBridgeCredentials()},

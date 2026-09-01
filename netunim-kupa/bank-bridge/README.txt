@@ -173,3 +173,7 @@ The credit detail screen is now driven by actual normalized charge rows instead 
 The scrape lookback is 130 days so the UI can reliably cover three complete preceding calendar months even near the end of a long month. Future scraping remains up to 12 months with combineInstallments=false; the UI displays only installments/months the issuer actually supplied and does not extrapolate absent installments.
 
 Bridge v20 also carries an optional transactionDate separately from the installment/billing date. The Isracard-family Camoufox adapter preserves fullPurchaseDate exactly in transactionDate while retaining the existing shifted installment date and fullPaymentDate billing date. For normalized issuer rows that do not supply the new field, the web feed derives the series-origin date from the existing normalized purchase date plus installment number so older/native data stays readable without pretending an unavailable raw field was supplied.
+
+Bridge v21 — compact bank sync status
+------------------------------------
+The bank status endpoint now exposes lastErrorAt for the last failed bank refresh. The Kupa bank toolbar uses this timestamp only for the compact collapsed status (failed + time); the full bank error text remains inside the expanded synchronization panel.
