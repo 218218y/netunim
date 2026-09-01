@@ -6,17 +6,42 @@ import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 
-const BANK_BRIDGE_VERSION=22;
+const BANK_BRIDGE_VERSION=23;
 const CREDIT_BRIDGE_VERSION=20;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}
-function bankLastSyncAt(kupa){const feed=normalizeBankFeed(kupa?.bank?.feed);return feed?.syncedAt||kupa?.bank?.bankSyncAt||(kupa?.bank?.source==='hapoalim'?kupa?.bank?.updatedAt:null)||null}
-function creditLastSyncAt(kupa){return normalizeCreditSync(kupa?.creditSync).syncedAt}
 function revisionConflict(result){return !result?.r?.ok&&String(result?.j?.message||result?.txt||'').includes('revision_conflict')}
 function cleanDigits(value){return String(value||'').replace(/\D/g,'')}
+function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
+function prepareKupaWriteState(kupa){const out=clone(kupa||{});delete out.creditSync;const bank=out.bank&&typeof out.bank==='object'?out.bank:{};out.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:Array.isArray(bank.adjustments)?bank.adjustments.filter(x=>x?.type!=='check_deposit'):[],source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return out}
 
-export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,mergeBankTransactions=async()=>null}){
+function bankLastSyncAt(kupa){const feed=normalizeBankFeed(kupa?.bank?.feed);return feed?.syncedAt||kupa?.bank?.bankSyncAt||(kupa?.bank?.source==='hapoalim'?kupa?.bank?.updatedAt:null)||null}
+function creditLastSyncAt(kupa){return normalizeCreditSync(kupa?.creditSync).syncedAt}
+
+function canonicalJson(value){
+  if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
+  if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value??null);
+}
+function sameInstant(a,b){if(!a&&!b)return true;const x=Date.parse(a||''),y=Date.parse(b||'');return Number.isFinite(x)&&Number.isFinite(y)&&x===y}
+function sameNumber(a,b){if(a===null||a===undefined||a==='')return b===null||b===undefined||b==='';return Number(a)===Number(b)}
+function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=false}={}){
+  const source=Array.isArray(mergeResult?.sourcePayload)?mergeResult.sourcePayload:[],rows=Array.isArray(archive)?archive:[],byKey=new Map();
+  for(const row of rows){const key=String(row?.id||'');if(!key||byKey.has(key))throw new Error(`אימות ארכיון הבנק נכשל (${role||'חשבון'}): מזהה ארכיון כפול או חסר`);byKey.set(key,row)}
+  for(const tx of source){
+    const row=byKey.get(String(tx.mergeKey||'')),statusOk=String(tx.status||'completed')==='pending'?(row?.status==='pending'||row?.status==='completed'):row?.status==='completed';
+    const coreOk=!!row&&sameInstant(tx.date,row.date)&&sameInstant(tx.processedDate,row.processedDate)&&sameNumber(tx.amount,row.amount)&&String(tx.currency||'ILS')===String(row.currency||'ILS')&&String(tx.description||'')===String(row.description||'')&&String(tx.memo||'')===String(row.memo||'')&&String(tx.partyName||'')===String(row.partyName||'')&&String(tx.partyHeadline||'')===String(row.partyHeadline||'')&&String(tx.messageHeadline||'')===String(row.messageHeadline||'')&&String(tx.messageDetail||'')===String(row.messageDetail||'')&&sameNumber(tx.balanceAfter,row.balanceAfter)&&String(tx.bankReference||'')===String(row.bankReference||'')&&String(tx.bankSerial||'')===String(row.bankSerial||'')&&sameNumber(tx.activityTypeCode,row.activityTypeCode)&&statusOk;
+    const detailsOk=!!row&&canonicalJson(tx.checkDetails??null)===canonicalJson(row.checkDetails??null)&&Boolean(tx.cheque)===Boolean(row.cheque);
+    if(!coreOk||!detailsOk)throw new Error(`אימות ארכיון הבנק נכשל (${role||'חשבון'}): תנועת מקור לא נקראה חזרה בשלמותה (${tx.mergeKey||'ללא מזהה'})`);
+  }
+  const total=Number(mergeResult?.result?.total_count);
+  if(requireExactCount&&(!Number.isSafeInteger(total)||total!==source.length))throw new Error(`אימות backfill נכשל (${role||'חשבון'}): הבנק החזיר ${source.length} תנועות אך הארכיון מכיל ${Number.isFinite(total)?total:'מספר לא תקין'}`);
+  return {sourceCount:source.length,archiveCount:Number.isSafeInteger(total)?total:rows.length,insertedCount:Number(mergeResult?.result?.inserted_count)||0,updatedCount:Number(mergeResult?.result?.updated_count)||0,verifiedAt:new Date().toISOString(),exactCount:!!requireExactCount};
+}
+
+
+export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
   const local={bankBusy:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
 
   function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;return {kupa,bank:kupa?.bank?clone(kupa.bank):null,creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?clone(kupa.cards):[],credits:Array.isArray(kupa?.credits)?clone(kupa.credits):[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),bankAutoEnabled:bridge.bankAutoEnabled(),creditAutoEnabled:bridge.creditAutoEnabled(),bridgeTokenConfigured:!!bridge.getBridgeToken(),bankBusy:local.bankBusy,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
@@ -31,7 +56,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(!row?.state)throw new Error('מסמך הקופה בענן לא נמצא');
       const candidate=mutator(clone(row.state));
       if(!candidate){acceptKupaCloudRow(row,{renderIfChanged:true});return {saved:false,skipped:true,row}}
-      const result=await rpcSaveKupaDocument(candidate,Number(row.revision||0));
+      const result=await rpcSaveKupaDocument(prepareKupaWriteState(candidate),Number(row.revision||0));
       if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate};acceptKupaCloudRow(savedRow,{renderIfChanged:true});return {saved:true,skipped:false,row:savedRow}}
       if(revisionConflict(result))continue;
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
@@ -98,17 +123,26 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(Number(status.bridgeVersion||0)<BANK_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון הבנק');
       if(!status.configured)throw new Error('Bank Bridge פעיל אך פרטי בנק הפועלים עדיין לא הוגדרו');
       await prepareBankSnapshot();
-      const financeRow=typeof readFinanceSyncDocument==='function'?await readFinanceSyncDocument():null,archiveInitialized=financeRow?.state?.bank?.archiveInitialized===true,historyDays=!auto&&!archiveInitialized?365:30;
+      const financeRow=typeof readFinanceSyncDocument==='function'?await readFinanceSyncDocument():null,archiveInitialized=financeRow?.state?.bank?.archiveInitialized===true,archiveVersion=Number(financeRow?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2,historyDays=!auto&&!archiveReady?365:30;
       const result=await bridge.fetchBalance({interactive,historyDays}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
       if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
       if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
-      const fetchedAt=result.fetchedAt||new Date().toISOString(),businessFeed=bankFeedFromSnapshot(business,fetchedAt),homeFeed=home?bankFeedFromSnapshot(home,fetchedAt):null,businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
-      await mergeBankTransactions(businessAccount,'business',business.transactions||[]);if(home&&homeAccount)await mergeBankTransactions(homeAccount,'home',home.transactions||[]);
-      const saved=await mutateFinanceCloud(finance=>{
-        const previousBank=finance.bank&&typeof finance.bank==='object'?finance.bank:{},nextHomeFeed=home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),kupa=checksSession.kupaCloudReadState||{};
-        finance.bank={...previousBank,currentBalance:kupaWholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedChecksSequence(kupa),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveInitialized||(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)),archiveInitializedAt:archiveInitialized?previousBank.archiveInitializedAt||null:(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)?fetchedAt:null)};
-        return finance;
-      });
+      const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
+      const businessMerge=await mergeBankTransactions(businessAccount,'business',business.transactions||[]),homeMerge=home&&homeAccount?await mergeBankTransactions(homeAccount,'home',home.transactions||[]):null;
+      const businessArchive=await readBankTransactions(businessAccount,'business',{days:370}),homeArchive=home&&homeAccount?await readBankTransactions(homeAccount,'home',{days:370}):[];
+      const requireExactArchive=historyDays>=365,businessAudit=assertBankArchiveCoverage(businessMerge,businessArchive,{role:'עסקי',requireExactCount:requireExactArchive}),homeAudit=home&&homeAccount?assertBankArchiveCoverage(homeMerge,homeArchive,{role:'ביתי',requireExactCount:requireExactArchive}):null,archiveAudit={version:2,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount},home:homeAudit?{...homeAudit,accountKey:homeAccount}:null};
+      const businessFeed=bankFeedFromSnapshot({...business,transactions:businessArchive},fetchedAt),homeFeed=home?bankFeedFromSnapshot({...home,transactions:homeArchive},fetchedAt):null,kupa=checksSession.kupaCloudReadState||{},snapshotToken=uid('BANK'),snapshotSeq=observedChecksSequence(kupa);
+      const financeBase=financeRow?.state&&typeof financeRow.state==='object'?clone(financeRow.state):{},previousBank=financeBase.bank&&typeof financeBase.bank==='object'?financeBase.bank:{},nextHomeFeed=home?homeFeed:(homeFailure?previousBank.homeFeed??null:null);
+      const exactBackfillVerified=historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);
+      const nextBank={...previousBank,currentBalance:kupaWholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveReady||exactBackfillVerified,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null),archiveAudit,archiveBaselineAudit};
+      let saved={saved:true,skipped:false};
+      if(typeof saveBankSyncSnapshot==='function'){
+        await saveBankSyncSnapshot(financeBankPayload(nextBank),snapshotToken,snapshotSeq);
+        await refreshKupaReadout({force:true,renderIfChanged:true});
+      }else{
+        saved=await mutateFinanceCloud(finance=>{finance.bank=financeBankPayload(nextBank);return finance});
+        await mutateKupaCloud(kupaState=>{const bank=kupaState.bank&&typeof kupaState.bank==='object'?kupaState.bank:{};kupaState.bank={...bank,adjustments:[],snapshotToken,snapshotSeq};return kupaState});
+      }
       local.bankStatus={...status,lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastWarning:[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean).join(' | '),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountRole:homeFailure?'home':''};
       if(!auto&&!saved.skipped)toast(homeFailure?'החשבון העסקי עודכן; החשבון הביתי נשאר בנתון האחרון':'נתוני הבנק העסקי והביתי עודכנו וזמינים בשתי המערכות');
       return true;

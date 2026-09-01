@@ -4,9 +4,31 @@ import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
-const BANK_BRIDGE_VERSION=22;
+const BANK_BRIDGE_VERSION=23;
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
+function canonicalJson(value){
+  if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
+  if(value&&typeof value==='object')return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  return JSON.stringify(value??null);
+}
+function sameInstant(a,b){if(!a&&!b)return true;const x=Date.parse(a||''),y=Date.parse(b||'');return Number.isFinite(x)&&Number.isFinite(y)&&x===y}
+function sameNumber(a,b){if(a===null||a===undefined||a==='')return b===null||b===undefined||b==='';return Number(a)===Number(b)}
+function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=false}={}){
+  const source=Array.isArray(mergeResult?.sourcePayload)?mergeResult.sourcePayload:[],rows=Array.isArray(archive)?archive:[],byKey=new Map();
+  for(const row of rows){const key=String(row?.id||'');if(!key||byKey.has(key))throw new Error(`אימות ארכיון הבנק נכשל (${role||'חשבון'}): מזהה ארכיון כפול או חסר`);byKey.set(key,row)}
+  for(const tx of source){
+    const row=byKey.get(String(tx.mergeKey||'')),statusOk=String(tx.status||'completed')==='pending'?(row?.status==='pending'||row?.status==='completed'):row?.status==='completed';
+    const coreOk=!!row&&sameInstant(tx.date,row.date)&&sameInstant(tx.processedDate,row.processedDate)&&sameNumber(tx.amount,row.amount)&&String(tx.currency||'ILS')===String(row.currency||'ILS')&&String(tx.description||'')===String(row.description||'')&&String(tx.memo||'')===String(row.memo||'')&&String(tx.partyName||'')===String(row.partyName||'')&&String(tx.partyHeadline||'')===String(row.partyHeadline||'')&&String(tx.messageHeadline||'')===String(row.messageHeadline||'')&&String(tx.messageDetail||'')===String(row.messageDetail||'')&&sameNumber(tx.balanceAfter,row.balanceAfter)&&String(tx.bankReference||'')===String(row.bankReference||'')&&String(tx.bankSerial||'')===String(row.bankSerial||'')&&sameNumber(tx.activityTypeCode,row.activityTypeCode)&&statusOk;
+    const detailsOk=!!row&&canonicalJson(tx.checkDetails??null)===canonicalJson(row.checkDetails??null)&&Boolean(tx.cheque)===Boolean(row.cheque);
+    if(!coreOk||!detailsOk)throw new Error(`אימות ארכיון הבנק נכשל (${role||'חשבון'}): תנועת מקור לא נקראה חזרה בשלמותה (${tx.mergeKey||'ללא מזהה'})`);
+  }
+  const total=Number(mergeResult?.result?.total_count);
+  if(requireExactCount&&(!Number.isSafeInteger(total)||total!==source.length))throw new Error(`אימות backfill נכשל (${role||'חשבון'}): הבנק החזיר ${source.length} תנועות אך הארכיון מכיל ${Number.isFinite(total)?total:'מספר לא תקין'}`);
+  return {sourceCount:source.length,archiveCount:Number.isSafeInteger(total)?total:rows.length,insertedCount:Number(mergeResult?.result?.inserted_count)||0,updatedCount:Number(mergeResult?.result?.updated_count)||0,verifiedAt:new Date().toISOString(),exactCount:!!requireExactCount};
+}
+
+
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:''};
 let autoTimer=null;
 
@@ -16,6 +38,7 @@ function feedFromSnapshot(snapshot,fetchedAt){
   if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;
   return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
 }
+function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
 function applyBridgeAccountFields(target,source={}){
   const businessBranchNumber=source.businessBranchNumber||source.branchNumber||target.businessBranchNumber||target.branchNumber||'';
   const businessAccountNumber=source.businessAccountNumber||source.accountNumber||target.businessAccountNumber||target.accountNumber||'';
@@ -141,22 +164,35 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
       if(!bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))){bridge.markAutoAttempt();return true}
       bridge.markAutoAttempt();
     }
-    const finance=await refreshFinanceCloudSnapshot(),archiveInitialized=finance?.state?.bank?.archiveInitialized===true;
-    const historyDays=!auto&&!archiveInitialized?365:30;
+    const finance=await refreshFinanceCloudSnapshot(),archiveInitialized=finance?.state?.bank?.archiveInitialized===true,archiveVersion=Number(finance?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2;
+    const cloudArchive=session.connectionMode==='supabase',historyDays=cloudArchive&&!auto&&!archiveReady?365:30;
     const result=await bridge.fetchBalance({interactive,historyDays}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
     if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
     if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
     const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
-    await mergeBankTransactions(businessAccount,'business',business.transactions||[]);
-    if(home&&homeAccount)await mergeBankTransactions(homeAccount,'home',home.transactions||[]);
-    const businessArchive=await readBankTransactions(businessAccount,{days:45,limit:1200}),homeArchive=homeAccount?await readBankTransactions(homeAccount,{days:45,limit:1200}):[];
+    let businessArchive=Array.isArray(business.transactions)?business.transactions:[],homeArchive=home&&Array.isArray(home.transactions)?home.transactions:[],archiveAudit=null;
+    if(cloudArchive){
+      const businessMerge=await mergeBankTransactions(businessAccount,'business',business.transactions||[]),homeMerge=home&&homeAccount?await mergeBankTransactions(homeAccount,'home',home.transactions||[]):null;
+      businessArchive=await readBankTransactions(businessAccount,'business',{days:370});homeArchive=homeAccount?await readBankTransactions(homeAccount,'home',{days:370}):[];
+      const requireExactArchive=historyDays>=365,businessAudit=assertBankArchiveCoverage(businessMerge,businessArchive,{role:'עסקי',requireExactCount:requireExactArchive}),homeAudit=home&&homeAccount?assertBankArchiveCoverage(homeMerge,homeArchive,{role:'ביתי',requireExactCount:requireExactArchive}):null;
+      archiveAudit={version:2,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount},home:homeAudit?{...homeAudit,accountKey:homeAccount}:null};
+    }
     const businessFeed=feedFromSnapshot({...business,transactions:businessArchive},fetchedAt),homeFeed=home?feedFromSnapshot({...home,transactions:homeArchive},fetchedAt):null;
     const warnings=[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean);
     const previousBank=model.state.bank&&typeof model.state.bank==='object'?model.state.bank:{};
-    const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:archiveInitialized||(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)),archiveInitializedAt:archiveInitialized?previousBank.archiveInitializedAt||null:(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)?fetchedAt:null)};
-    await saveFinancePatch(state=>({...state,bank:nextBank}));
-    model.state.bank=nextBank;
-    await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
+    const exactBackfillVerified=cloudArchive&&historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);
+    const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:cloudArchive?(archiveReady||exactBackfillVerified):previousBank.archiveInitialized===true,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:cloudArchive?(archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null)):(previousBank.archiveInitializedAt||null),archiveAudit:cloudArchive?archiveAudit:(previousBank.archiveAudit||null),archiveBaselineAudit:cloudArchive?archiveBaselineAudit:(previousBank.archiveBaselineAudit||null)};
+    if(session.connectionMode==='supabase'&&typeof saveBankSyncSnapshot==='function'){
+      await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq);
+      model.state.bank=nextBank;
+      const refreshed=await refreshFinanceCloudSnapshot();
+      if(!refreshed?.verified)bridgeState.lastWarning='הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. פתיחה מחדש תטען את העותק בענן.';
+      toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
+    }else{
+      await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}));
+      model.state.bank=nextBank;
+      await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
+    }
     Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
     applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});
     if(homeFailure&&!auto)toast('החשבון העסקי עודכן. החשבון הביתי לא עודכן; הנתון הביתי הקודם נשמר ופרטי התקלה מוצגים במסך הבנק.');

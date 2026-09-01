@@ -16,7 +16,7 @@ async function readFinanceSyncDocument(){
 }
 function overlayFinanceState(base,finance){
   const out=structuredClone(base||{}),fs=finance?.state&&typeof finance.state==='object'?finance.state:{};
-  if(fs.bank&&typeof fs.bank==='object')out.bank={...(out.bank&&typeof out.bank==='object'?out.bank:{}),...structuredClone(fs.bank)};
+  if(fs.bank&&typeof fs.bank==='object'){const kupaBank=out.bank&&typeof out.bank==='object'?out.bank:{},financeBank=structuredClone(fs.bank);out.bank={...kupaBank,...financeBank,adjustments:Array.isArray(kupaBank.adjustments)?structuredClone(kupaBank.adjustments):[],snapshotToken:kupaBank.snapshotToken??null,snapshotSeq:kupaBank.snapshotSeq??null}};
   if(fs.creditSync&&typeof fs.creditSync==='object')out.creditSync=structuredClone(fs.creditSync);
   return out;
 }
@@ -50,16 +50,25 @@ async function saveFinancePatch(mutator){
   }
   throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
 }
-async function mergeBankTransactions(accountKey,accountRole,transactions){
-  const occurrences=new Map(),payload=(Array.isArray(transactions)?transactions:[]).map(tx=>{const signature=`${String(tx.date||'').slice(0,10)}|${String(tx.processedDate||'').slice(0,10)}|${tx.amount}|${tx.description||''}|${tx.memo||''}|${JSON.stringify(tx.checkDetails||null)}`,occ=(occurrences.get(signature)||0)+1;occurrences.set(signature,occ);return {...tx,mergeKey:String(tx.mergeKey||tx.bankReference&&`ref:${tx.bankReference}:${tx.amount}`||tx.bankSerial&&tx.bankSerial!=='0'&&`serial:${tx.bankSerial}:${tx.amount}`||`fallback:${signature}:${occ}`)}});
-  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions',{method:'POST',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');return Array.isArray(j)?j[0]:j;
+async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq){
+  const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
+  const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
+  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot',{method:'POST',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq})});
+  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
 }
-async function readBankTransactions(accountKey,{days=45,limit=1200}={}){
-  const since=new Date(Date.now()-Math.max(1,Number(days)||45)*86400000).toISOString();
-  const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&transaction_date=gte.${encodeURIComponent(since)}&select=merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details&order=transaction_date.desc&limit=${Math.min(2000,Math.max(1,Number(limit)||1200))}`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
-  return (Array.isArray(j)?j:[]).map(x=>({id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details}));
+async function mergeBankTransactions(accountKey,accountRole,transactions){
+  const occurrences=new Map(),payload=(Array.isArray(transactions)?transactions:[]).map(tx=>{const day=String(tx.date||'').slice(0,10),serial=String(tx.bankSerial||''),reference=String(tx.bankReference||''),signature=`${day}|${String(tx.processedDate||'').slice(0,10)}|${tx.amount}|${tx.description||''}|${tx.memo||''}|${JSON.stringify(tx.checkDetails||null)}`,occ=(occurrences.get(signature)||0)+1;occurrences.set(signature,occ);const stableKey=serial&&serial!=='0'&&day?`serial:${day}:${serial}:${tx.amount}`:reference&&day?`ref:${day}:${reference}:${tx.amount}:${tx.description||''}:${tx.memo||''}`:`fallback:${signature}:${occ}`;return {...tx,mergeKey:String(tx.mergeKey||stableKey)}});
+  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions',{method:'POST',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload})});
+  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
+}
+async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000}={}){
+  const since=new Date(Date.now()-Math.max(1,Number(days)||370)*86400000).toISOString(),pageSize=1000,cap=Math.max(pageSize,Number(maxRows)||20000),rows=[];
+  for(let offset=0;offset<cap;offset+=pageSize){
+    const q=`/rest/v1/bank_transactions?account_key=eq.${encodeURIComponent(accountKey)}&account_role=eq.${accountRole==='home'?'home':'business'}&transaction_date=gte.${encodeURIComponent(since)}&select=merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details&order=transaction_date.desc,id.desc&limit=${pageSize}&offset=${offset}`;
+    const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת ארכיון הבנק נכשלה');
+    const page=Array.isArray(j)?j:[];rows.push(...page);if(page.length<pageSize)return rows.map(x=>({id:x.merge_key,date:x.transaction_date,processedDate:x.processed_date,amount:Number(x.amount),currency:x.currency,description:x.description,memo:x.memo,partyName:x.party_name,partyHeadline:x.party_headline,messageHeadline:x.message_headline,messageDetail:x.message_detail,status:x.status,balanceAfter:x.balance_after===null?null:Number(x.balance_after),bankReference:x.bank_reference,bankSerial:x.bank_serial,activityTypeCode:x.activity_type_code,cheque:!!x.cheque,checkDetails:x.check_details}));
+  }
+  throw new Error('ארכיון הבנק גדול ממגבלת הקריאה הבטוחה; התצוגה נעצרה במקום להציג היסטוריה חלקית');
 }
 
 async function readSharedChecksDocument(){
@@ -72,5 +81,5 @@ async function readSharedChecksDocument(){
 }
 async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
 async function rpcSaveSharedChecks(checks,expectedRevision){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');const r=await supaRest(`/rest/v1/rpc/${SHARED_CHECKS_RPC}`,{method:'POST',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
-return {readSupabaseDocument,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,mergeBankTransactions,readBankTransactions};
+return {readSupabaseDocument,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions};
 }

@@ -128,7 +128,7 @@ const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
 const disclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:true,bankSearchValue:''},
-  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:22,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:23,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
 });
 disclosureView.renderKupa();
@@ -142,7 +142,7 @@ const closedDisclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?closedDisclosureMain:null},configurable:true});
 const closedDisclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:false,bankSearchValue:''},
-  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:22,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:23,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
 });
 closedDisclosureView.renderKupa();
@@ -150,42 +150,74 @@ assert.match(closedDisclosureMain.innerHTML,/id="ordersBankSyncPanel" class="fin
 
 const baseState={version:4,businessName:'ניהול קופה',credits:[],cash:[{id:'cash-kept',amount:7}],expenses:[],cards:[{id:'card-kept',name:'כרטיס'}],creditSync:initialCredit,bank:{currentBalance:900,updatedAt:'2026-08-30T00:00:00Z',asOfDate:'2026-08-30',snapshotSeq:2,adjustments:[],feed:null,homeFeed:null}};
 let cloudRow={revision:5,updated_at:'2026-09-01T00:00:00Z',state:structuredClone(baseState)};
-const checksSession={kupaCloudReadState:structuredClone(baseState),checksBankEvents:[{seq:4,at:'2026-09-01T01:30:00Z',delta:-25,kind:'check_effect_delta',checkId:'check-4'}]};
-let saveCalls=0,bankFetchCalls=0,creditFetchCalls=0,injectConflict=true;
+let financeRow={revision:1,updated_at:'2026-09-01T00:00:00Z',state:{bank:null,creditSync:structuredClone(initialCredit)}};
+const overlayReadout=()=>{const state=structuredClone(cloudRow.state),kupaBank=state.bank||{},financeBank=financeRow.state.bank||null;if(financeBank)state.bank={...kupaBank,...structuredClone(financeBank),adjustments:structuredClone(kupaBank.adjustments||[]),snapshotToken:kupaBank.snapshotToken??null,snapshotSeq:kupaBank.snapshotSeq??null};if(financeRow.state.creditSync)state.creditSync=structuredClone(financeRow.state.creditSync);return state};
+const checksSession={kupaCloudReadState:overlayReadout(),checksBankEvents:[{seq:4,at:'2026-09-01T01:30:00Z',delta:-25,kind:'check_effect_delta',checkId:'check-4'}]};
+let saveCalls=0,financeSaveCalls=0,atomicBankSaveCalls=0,bankFetchCalls=0,creditFetchCalls=0;
+const archiveRows={business:[],home:[]};
+function archiveRow(tx){return {id:tx.mergeKey,date:tx.date,processedDate:tx.processedDate||tx.date,amount:Number(tx.amount),currency:tx.currency||'ILS',description:tx.description||'',memo:tx.memo||'',partyName:tx.partyName||'',partyHeadline:tx.partyHeadline||'',messageHeadline:tx.messageHeadline||'',messageDetail:tx.messageDetail||'',status:tx.status||'completed',balanceAfter:tx.balanceAfter??null,bankReference:tx.bankReference||'',bankSerial:tx.bankSerial||'',activityTypeCode:tx.activityTypeCode??null,cheque:!!tx.cheque,checkDetails:tx.checkDetails??null}}
+const mergeBankTransactions=async(accountKey,role,transactions)=>{const payload=(transactions||[]).map((tx,index)=>({...tx,mergeKey:`${role}:${String(tx.date||'').slice(0,10)}:${tx.id||index}`}));archiveRows[role]=payload.map(archiveRow);return {result:{inserted_count:payload.length,updated_count:0,total_count:payload.length},sourcePayload:payload}};
+const readBankTransactions=async(_accountKey,role)=>structuredClone(archiveRows[role]||[]);
+const saveBankSyncSnapshot=async(bankState,snapshotToken,snapshotSeq)=>{atomicBankSaveCalls++;
+  // Simulate an unrelated Kupa change racing just before the atomic RPC. The server-side partial
+  // update must preserve it because it edits only bank metadata + the isolated finance bank key.
+  if(!cloudRow.state.cash.some(x=>x.id==='remote-cash'))cloudRow.state.cash.push({id:'remote-cash',amount:3});
+  financeRow={revision:financeRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:{...structuredClone(financeRow.state),bank:structuredClone(bankState)}};
+  cloudRow={revision:cloudRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:{...structuredClone(cloudRow.state),creditSync:undefined,bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:structuredClone(cloudRow.state.bank?.adjustments||[]),source:null,sourceAccount:null,snapshotToken,snapshotSeq}}};
+  delete cloudRow.state.creditSync;
+  checksSession.kupaCloudReadState=overlayReadout();
+  return {finance_revision:financeRow.revision,kupa_revision:cloudRow.revision,updated_at:'2026-09-01T02:30:30Z'};
+};
 const bridge={
   getBridgeToken:()=> 'paired',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,setBankAutoEnabled(){},setCreditAutoEnabled(){},setBridgeToken:v=>v,
   markBankAttempt(){},markCreditAttempt(){},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
-  status:async()=>({bridgeVersion:22,configured:true}),creditStatus:async()=>({bridgeVersion:20,profiles:[{profileId:'p1'}]}),
-  fetchBalance:async()=>{bankFetchCalls++;return {fetchedAt:'2026-09-01T02:30:00Z',accounts:{business:{balance:1500,branchNumber:'1',accountNumber:'10',transactions:[{id:'b1',date:'2026-09-01T02:00:00Z',amount:-10,description:'עסקי'}]},home:{balance:400,branchNumber:'1',accountNumber:'20',transactions:[{id:'h1',date:'2026-09-01T02:00:00Z',amount:-5,description:'ביתי'}]}}}},
+  status:async()=>({bridgeVersion:23,configured:true}),creditStatus:async()=>({bridgeVersion:20,profiles:[{profileId:'p1'}]}),
+  fetchBalance:async()=>{bankFetchCalls++;return {fetchedAt:'2026-09-01T02:30:00Z',accounts:{business:{balance:1500,branchNumber:'1',accountNumber:'10',transactions:[{id:'b1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-10,description:'עסקי',status:'completed'}]},home:{balance:400,branchNumber:'1',accountNumber:'20',transactions:[{id:'h1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-5,description:'ביתי',status:'completed'}]}}}},
   syncCreditCards:async()=>{creditFetchCalls++;return {syncedAt:'2026-09-01T03:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'fresh',date:'2026-09-01T03:00:00Z',chargedAmount:-75}]}]}],errors:[]}},
 };
 const controller=createDomainsFinanceController({
   tab:{primaryTab:true},checksSession,bridge,loadSession:()=>({access_token:'x'}),
-  refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=structuredClone(cloudRow.state);return true},
-  readKupaReadOnlyCloud:async()=>structuredClone(cloudRow),
-  rpcSaveKupaDocument:async(state,expected)=>{saveCalls++;assert.equal(expected,cloudRow.revision);if(injectConflict){injectConflict=false;cloudRow={...cloudRow,revision:cloudRow.revision+1,state:{...cloudRow.state,cash:[...cloudRow.state.cash,{id:'remote-cash',amount:3}]}};return {r:{ok:false},j:{message:'revision_conflict'},txt:'revision_conflict'}}cloudRow={revision:cloudRow.revision+1,updated_at:'2026-09-01T02:31:00Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(cloudRow)}},
-  acceptKupaCloudRow:row=>{checksSession.kupaCloudReadState=structuredClone(row.state);return true},
+  refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=overlayReadout();return true},
+  readKupaReadOnlyCloud:async()=>({...structuredClone(cloudRow),state:overlayReadout()}),
+  rpcSaveKupaDocument:async(state,expected)=>{saveCalls++;assert.equal(expected,cloudRow.revision);cloudRow={revision:cloudRow.revision+1,updated_at:'2026-09-01T02:31:00Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(cloudRow)}},
+  acceptKupaCloudRow:row=>{cloudRow={...cloudRow,...structuredClone(row)};checksSession.kupaCloudReadState=overlayReadout();return true},
+  readFinanceSyncDocument:async()=>structuredClone(financeRow),
+  rpcSaveFinanceSync:async(state,expected)=>{financeSaveCalls++;assert.equal(expected,financeRow.revision);financeRow={revision:financeRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(financeRow)}},
+  saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions,
   syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,toast:()=>{},
 });
 assert.equal(await controller.refreshBank({interactive:false,auto:false}),true);
-assert.equal(saveCalls,2,'bank write retries on revision conflict');
+assert.equal(atomicBankSaveCalls,1,'bank finance payload and Kupa watermark are committed by one atomic RPC');
+assert.equal(saveCalls,0,'atomic bank sync does not issue a second full Kupa document write');
+assert.equal(financeSaveCalls,0,'atomic bank sync does not issue a separate finance-document replacement write');
 assert.equal(bankFetchCalls,1);
-assert.equal(cloudRow.state.cash.some(x=>x.id==='remote-cash'),true,'retry rebases bank-only mutation over unrelated Kupa changes');
-assert.equal(cloudRow.state.bank.currentBalance,1500,'business account remains the authoritative Kupa balance');
-assert.equal(cloudRow.state.bank.feed.balance,1500);
-assert.equal(cloudRow.state.bank.homeFeed.balance,400,'home account feed is preserved separately');
-assert.equal(cloudRow.state.bank.snapshotSeq,4,'Orders uses the observed shared-check watermark before a new bank snapshot');
+assert.equal(cloudRow.state.cash.some(x=>x.id==='remote-cash'),true,'atomic partial bank update preserves unrelated Kupa changes');
+assert.equal(cloudRow.state.bank.currentBalance,null,'synchronized balance is excluded from the Kupa backup document');
+assert.equal('feed' in cloudRow.state.bank,false,'business feed is excluded from the Kupa backup document');
+assert.equal(financeRow.state.bank.currentBalance,1500,'business account remains the authoritative synchronized finance balance');
+assert.equal(financeRow.state.bank.feed.balance,1500);
+assert.equal(financeRow.state.bank.homeFeed.balance,400,'home account feed is preserved separately in finance state');
+assert.equal(financeRow.state.bank.archiveAudit.business.sourceCount,1,'bank sync stores the independently read-back archive audit');
+assert.equal(financeRow.state.bank.archiveBaselineAudit.business.sourceCount,1,'full manual backfill stores an immutable baseline audit');
+assert.equal(financeRow.state.bank.archiveBaselineAudit.business.accountKey,'1-10','baseline audit is tied to the exact business account');
+assert.equal(cloudRow.state.bank.snapshotSeq,4,'atomic bank snapshot advances the Kupa check watermark together with finance state');
+const baselineAudit=structuredClone(financeRow.state.bank.archiveBaselineAudit);
+assert.equal(await controller.refreshBank({interactive:false,auto:false}),true);
+assert.deepEqual(financeRow.state.bank.archiveBaselineAudit,baselineAudit,'rolling 30-day refresh never overwrites the certified 365-day baseline audit');
+assert.equal(financeRow.state.bank.archiveAudit.historyDays,30,'rolling refresh still records a separate latest audit');
+assert.equal(bankFetchCalls,2);
 
-checksSession.kupaCloudReadState=structuredClone(cloudRow.state);
+checksSession.kupaCloudReadState=overlayReadout();
 assert.equal(await controller.refreshBank({auto:true}),true);
-assert.equal(bankFetchCalls,1,'fresh shared cloud timestamp suppresses a second automatic bank scrape');
+assert.equal(bankFetchCalls,2,'fresh shared cloud timestamp suppresses a second automatic bank scrape');
 
-const bankSaveCalls=saveCalls;
+const bankSaveCalls=saveCalls,bankFinanceSaveCalls=financeSaveCalls;
 assert.equal(await controller.refreshCredit({auto:false}),true);
-assert.equal(saveCalls,bankSaveCalls+1,'credit refresh writes through the same revision-checked Kupa RPC');
+assert.equal(saveCalls,bankSaveCalls,'credit refresh does not write the Kupa backup document');
+assert.equal(financeSaveCalls,bankFinanceSaveCalls+1,'credit refresh writes only the isolated revision-checked finance document');
 assert.equal(creditFetchCalls,1);
-assert.equal(cloudRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
-assert.equal(cloudRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps Kupa card mapping choices');
+assert.equal(financeRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
+assert.equal(financeRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps credit card mapping choices in finance state');
 
 Date.now=realDateNow;
-console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, revision-safe bank mutation, dual-account feed, newest-first transaction detail and credit mapping preservation');
+console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, atomic bank snapshot + archive read-back verification, dual-account feed, newest-first transaction detail and credit mapping preservation');

@@ -255,8 +255,8 @@ ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/dom
    "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=22" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v22 contract")
+ok("const BANK_BRIDGE_VERSION=23" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v23 contract")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")

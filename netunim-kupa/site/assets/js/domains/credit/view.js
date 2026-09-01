@@ -164,10 +164,10 @@ function renderCredit(){
     <section class="section credit-sync-section">
       <div class="credit-command-row">
         <div class="credit-view-tools"><input class="credit-search" type="search" value="${esc(ui.creditSearchValue||'')}" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="credit-search"></div>
-        <button id="creditSyncToggle" type="button" class="credit-sync-toggle ${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button>
+        <div class="credit-sync-quick-actions"><button id="creditSyncToggle" type="button" class="credit-sync-toggle ${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button><button class="btn primary credit-sync-refresh" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן'}</button></div>
       </div>
       <div id="creditSyncPanel" class="credit-sync-settings-body" ${ui.creditSyncOpen?'':'hidden'}>
-          <div class="credit-sync-settings-top"><div><b>אפשרויות סינכרון אשראי</b><small>פירוט מלא של כשל מופיע כאן. חלון אבחון נפתח רק ברענון יזום.</small></div><div class="credit-sync-panel-actions"><button class="btn primary" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן עכשיו'}</button><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>רענן עם חלון אבחון</button></div></div>
+          <div class="credit-sync-settings-top"><div><b>אפשרויות סינכרון אשראי</b><small>פירוט מלא של כשל מופיע כאן. חלון אבחון נפתח רק ברענון יזום.</small></div><div class="credit-sync-panel-actions"><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>רענן עם חלון אבחון</button></div></div>
           ${syncDiagnostics?`<div class="credit-sync-diagnostics">${syncDiagnostics}</div>`:''}
           <div class="credit-sync-mode-card"><div><b>מודל נתונים: סנכרון חברות האשראי + תוספות ידניות</b><small>״כלול״ קובע אם הכרטיס מופיע בדוחות האשראי. שיוך ״עסקי״ קובע אם החיובים שלו נכנסים לחישובי הקופה, העו״ש והמאזן; כרטיס ביתי נשאר גלוי בדוחות אך אינו נגרע מהקופה העסקית.</small></div><span class="badge blue">הפרדה מלאה</span></div>
           <div class="credit-sync-settings-grid">
@@ -179,7 +179,7 @@ function renderCredit(){
               ${mappingRows.length?mappingRows.join(''):'<div class="empty compact">לא התקבלו עדיין כרטיסים. בצע סנכרון ראשון.</div>'}
             </div>
           </div>
-          <div class="soft-note">כרטיס שלא סומן ״כלול״ נשאר רק באזור ההגדרות ואינו מעמיס על התחזית והדוחות. ״הסתר״ ממשיך להיות אפשרות תצוגה בלבד. פרטי הכניסה נשמרים מוצפנים רק ב‑Windows; נתוני הסנכרון והשיוכים נשמרים במצב הקופה ויכולים להישמר בענן.</div>
+          <div class="soft-note">כרטיס שלא סומן ״כלול״ נשאר רק באזור ההגדרות ואינו מעמיס על התחזית והדוחות. ״הסתר״ ממשיך להיות אפשרות תצוגה בלבד. פרטי הכניסה נשמרים מוצפנים רק ב‑Windows; נתוני הסנכרון והשיוכים נשמרים במאגר הפיננסי הנפרד בענן ואינם נכללים בגיבויי מסמך הקופה.</div>
       </div>
     </section>
 

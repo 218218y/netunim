@@ -88,44 +88,175 @@ language plpgsql
 set search_path=pg_catalog,public
 as $$
 declare
-  v_owner uuid:=auth.uid(); r jsonb; v_id bigint; v_inserted int:=0; v_updated int:=0; v_candidates int; v_candidate bigint;
+  v_owner uuid:=auth.uid();
+  r jsonb;
+  v_id bigint;
+  v_inserted int:=0;
+  v_updated int:=0;
+  v_candidates int;
+  v_candidate bigint;
+  v_date timestamptz;
+  v_processed timestamptz;
+  v_amount numeric;
+  v_serial text;
+  v_reference text;
+  v_description text;
+  v_memo text;
+  v_party_name text;
+  v_status text;
 begin
   if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
   if coalesce(btrim(p_account_key),'')='' or p_account_role not in ('business','home') or jsonb_typeof(p_transactions) is distinct from 'array' then raise exception 'invalid_bank_merge_input' using errcode='22023'; end if;
+
+  -- A duplicate merge key means the client could not distinguish two source rows. Fail atomically
+  -- instead of silently collapsing financial movements. Fallback rows receive occurrence suffixes.
+  if exists (
+    select 1
+    from jsonb_array_elements(p_transactions) x(value)
+    group by x.value->>'mergeKey'
+    having coalesce(x.value->>'mergeKey','')='' or count(*)>1
+  ) then
+    raise exception 'bank_archive_ambiguous_source_identity'
+      using errcode='22023', hint='The bank returned rows that cannot be given unique stable identities. No archive rows were changed.';
+  end if;
+
   for r in select value from jsonb_array_elements(p_transactions) loop
+    if nullif(r->>'amount','') is null then raise exception 'invalid_bank_transaction_amount' using errcode='22023'; end if;
+    v_date:=nullif(r->>'date','')::timestamptz;
+    v_processed:=nullif(r->>'processedDate','')::timestamptz;
+    v_amount:=(r->>'amount')::numeric;
+    v_serial:=coalesce(r->>'bankSerial','');
+    v_reference:=coalesce(r->>'bankReference','');
+    v_description:=coalesce(r->>'description','');
+    v_memo:=coalesce(r->>'memo','');
+    v_party_name:=coalesce(r->>'partyName','');
+    v_status:=case when r->>'status'='pending' then 'pending' else 'completed' end;
     v_id:=null;
-    -- Strong identifiers first.
-    if coalesce(r->>'bankReference','')<>'' then
-      select id into v_id from public.bank_transactions where owner_id=v_owner and account_key=p_account_key and bank_reference=r->>'bankReference' and amount=(r->>'amount')::numeric order by id desc limit 1;
+
+    -- Hapoalim reference numbers are not globally unique. The bank serial is day-scoped and is
+    -- the strongest stable identifier available for completed rows, so date is part of every match.
+    if v_date is not null and v_serial not in ('','0') then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.transaction_date::date=v_date::date and b.bank_serial=v_serial and b.amount=v_amount;
+      if v_candidates>1 then
+        raise exception 'bank_archive_existing_identity_collision'
+          using errcode='40001', hint='More than one archived row matches the same bank date/serial/amount identity. No merge was committed.';
+      elsif v_candidates=1 then v_id:=v_candidate; end if;
     end if;
-    if v_id is null and coalesce(r->>'bankSerial','') not in ('','0') then
-      select id into v_id from public.bank_transactions where owner_id=v_owner and account_key=p_account_key and bank_serial=r->>'bankSerial' and amount=(r->>'amount')::numeric order by id desc limit 1;
+    if v_id is null and v_date is not null and v_reference<>'' then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.transaction_date::date=v_date::date and b.bank_reference=v_reference and b.amount=v_amount
+        and b.description=v_description and b.memo=v_memo;
+      if v_candidates>1 then
+        raise exception 'bank_archive_existing_identity_collision'
+          using errcode='40001', hint='More than one archived row matches the same bank date/reference/amount/content identity. No merge was committed.';
+      elsif v_candidates=1 then v_id:=v_candidate; end if;
     end if;
-    -- Pending -> completed reconciliation only when exactly one candidate exists.
-    if v_id is null and coalesce(r->>'status','completed')='completed' then
-      select count(*),min(id) into v_candidates,v_candidate from public.bank_transactions
-      where owner_id=v_owner and account_key=p_account_key and status='pending' and amount=(r->>'amount')::numeric
-        and description=coalesce(r->>'description','')
-        and transaction_date between ((r->>'date')::timestamptz-interval '3 days') and ((r->>'date')::timestamptz+interval '3 days');
+
+    -- Pending -> completed reconciliation is deliberately conservative. Prefer the same bank
+    -- reference across a small date shift; only fall back to content when at least one strong
+    -- beneficiary/memo field exists and every supplied strong field matches exactly.
+    if v_id is null and v_status='completed' and v_date is not null and v_reference<>'' then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.status='pending' and b.amount=v_amount and b.bank_reference=v_reference
+        and b.transaction_date between (v_date-interval '3 days') and (v_date+interval '3 days');
       if v_candidates=1 then v_id:=v_candidate; end if;
     end if;
-    if v_id is null then
-      select id into v_id from public.bank_transactions where owner_id=v_owner and account_key=p_account_key and merge_key=r->>'mergeKey' limit 1;
+    if v_id is null and v_status='completed' and v_date is not null and (v_memo<>'' or v_party_name<>'') then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.status='pending' and b.amount=v_amount and b.description=v_description
+        and (v_memo='' or b.memo=v_memo) and (v_party_name='' or b.party_name=v_party_name)
+        and b.transaction_date between (v_date-interval '3 days') and (v_date+interval '3 days');
+      if v_candidates=1 then v_id:=v_candidate; end if;
     end if;
+    if v_id is null and coalesce(r->>'mergeKey','')<>'' then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role and b.merge_key=r->>'mergeKey';
+      if v_candidates>1 then
+        raise exception 'bank_archive_existing_merge_key_collision'
+          using errcode='40001', hint='More than one archived row has the same merge key. No merge was committed.';
+      elsif v_candidates=1 then v_id:=v_candidate; end if;
+    end if;
+
     if v_id is null then
       insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details)
-      values(v_owner,p_account_key,p_account_role,r->>'mergeKey',nullif(r->>'date','')::timestamptz,nullif(r->>'processedDate','')::timestamptz,(r->>'amount')::numeric,coalesce(nullif(r->>'currency',''),'ILS'),coalesce(r->>'description',''),coalesce(r->>'memo',''),coalesce(r->>'partyName',''),coalesce(r->>'partyHeadline',''),coalesce(r->>'messageHeadline',''),coalesce(r->>'messageDetail',''),case when r->>'status'='pending' then 'pending' else 'completed' end,nullif(r->>'balanceAfter','')::numeric,coalesce(r->>'bankReference',''),coalesce(r->>'bankSerial',''),nullif(r->>'activityTypeCode','')::integer,coalesce((r->>'cheque')::boolean,false),r->'checkDetails');
+      values(v_owner,p_account_key,p_account_role,r->>'mergeKey',v_date,v_processed,v_amount,coalesce(nullif(r->>'currency',''),'ILS'),v_description,coalesce(r->>'memo',''),coalesce(r->>'partyName',''),coalesce(r->>'partyHeadline',''),coalesce(r->>'messageHeadline',''),coalesce(r->>'messageDetail',''),v_status,nullif(r->>'balanceAfter','')::numeric,v_reference,v_serial,nullif(r->>'activityTypeCode','')::integer,coalesce((r->>'cheque')::boolean,false),r->'checkDetails');
       v_inserted:=v_inserted+1;
     else
-      update public.bank_transactions set
-        merge_key=coalesce(nullif(r->>'mergeKey',''),merge_key), transaction_date=coalesce(nullif(r->>'date','')::timestamptz,transaction_date), processed_date=coalesce(nullif(r->>'processedDate','')::timestamptz,processed_date),
-        currency=coalesce(nullif(r->>'currency',''),currency), description=coalesce(nullif(r->>'description',''),description), memo=coalesce(r->>'memo',memo), party_name=coalesce(r->>'partyName',party_name),party_headline=coalesce(r->>'partyHeadline',party_headline),message_headline=coalesce(r->>'messageHeadline',message_headline),message_detail=coalesce(r->>'messageDetail',message_detail),
-        status=case when r->>'status'='pending' and status='completed' then status else coalesce(r->>'status',status) end, balance_after=coalesce(nullif(r->>'balanceAfter','')::numeric,balance_after), bank_reference=coalesce(nullif(r->>'bankReference',''),bank_reference),bank_serial=coalesce(nullif(r->>'bankSerial',''),bank_serial),activity_type_code=coalesce(nullif(r->>'activityTypeCode','')::integer,activity_type_code),cheque=coalesce((r->>'cheque')::boolean,cheque),check_details=coalesce(r->'checkDetails',check_details),last_changed_at=now()
-      where id=v_id;
-      v_updated:=v_updated+1;
+      update public.bank_transactions b set
+        merge_key=coalesce(nullif(r->>'mergeKey',''),b.merge_key),
+        transaction_date=coalesce(v_date,b.transaction_date),
+        processed_date=coalesce(v_processed,b.processed_date),
+        currency=coalesce(nullif(r->>'currency',''),b.currency),
+        description=coalesce(nullif(r->>'description',''),b.description),
+        memo=coalesce(r->>'memo',b.memo),
+        party_name=coalesce(r->>'partyName',b.party_name),
+        party_headline=coalesce(r->>'partyHeadline',b.party_headline),
+        message_headline=coalesce(r->>'messageHeadline',b.message_headline),
+        message_detail=coalesce(r->>'messageDetail',b.message_detail),
+        status=case when v_status='pending' and b.status='completed' then b.status else v_status end,
+        balance_after=coalesce(nullif(r->>'balanceAfter','')::numeric,b.balance_after),
+        bank_reference=coalesce(nullif(r->>'bankReference',''),b.bank_reference),
+        bank_serial=coalesce(nullif(r->>'bankSerial',''),b.bank_serial),
+        activity_type_code=coalesce(nullif(r->>'activityTypeCode','')::integer,b.activity_type_code),
+        cheque=coalesce((r->>'cheque')::boolean,b.cheque),
+        check_details=coalesce(r->'checkDetails',b.check_details),
+        last_changed_at=now()
+      where b.id=v_id and (
+        b.merge_key is distinct from coalesce(nullif(r->>'mergeKey',''),b.merge_key)
+        or b.transaction_date is distinct from coalesce(v_date,b.transaction_date)
+        or b.processed_date is distinct from coalesce(v_processed,b.processed_date)
+        or b.currency is distinct from coalesce(nullif(r->>'currency',''),b.currency)
+        or b.description is distinct from coalesce(nullif(r->>'description',''),b.description)
+        or b.memo is distinct from coalesce(r->>'memo',b.memo)
+        or b.party_name is distinct from coalesce(r->>'partyName',b.party_name)
+        or b.party_headline is distinct from coalesce(r->>'partyHeadline',b.party_headline)
+        or b.message_headline is distinct from coalesce(r->>'messageHeadline',b.message_headline)
+        or b.message_detail is distinct from coalesce(r->>'messageDetail',b.message_detail)
+        or b.status is distinct from (case when v_status='pending' and b.status='completed' then b.status else v_status end)
+        or b.balance_after is distinct from coalesce(nullif(r->>'balanceAfter','')::numeric,b.balance_after)
+        or b.bank_reference is distinct from coalesce(nullif(r->>'bankReference',''),b.bank_reference)
+        or b.bank_serial is distinct from coalesce(nullif(r->>'bankSerial',''),b.bank_serial)
+        or b.activity_type_code is distinct from coalesce(nullif(r->>'activityTypeCode','')::integer,b.activity_type_code)
+        or b.cheque is distinct from coalesce((r->>'cheque')::boolean,b.cheque)
+        or b.check_details is distinct from coalesce(r->'checkDetails',b.check_details)
+      );
+      if found then v_updated:=v_updated+1; end if;
     end if;
   end loop;
-  select count(*)::int into total_count from public.bank_transactions where owner_id=v_owner and account_key=p_account_key;
+  -- Self-verify the statement before returning. If any source row failed to become the exact
+  -- archived row for its merge key, raise and let PostgreSQL roll the whole RPC statement back.
+  if exists (
+    select 1
+    from jsonb_array_elements(p_transactions) x(value)
+    where not exists (
+      select 1 from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.merge_key=x.value->>'mergeKey'
+        and (nullif(x.value->>'date','') is null or b.transaction_date is not distinct from (x.value->>'date')::timestamptz)
+        and (nullif(x.value->>'processedDate','') is null or b.processed_date is not distinct from (x.value->>'processedDate')::timestamptz)
+        and b.amount=(x.value->>'amount')::numeric
+        and b.description=coalesce(x.value->>'description','')
+        and b.memo=coalesce(x.value->>'memo','')
+        and (coalesce(x.value->>'bankReference','')='' or b.bank_reference=x.value->>'bankReference')
+        and (coalesce(x.value->>'bankSerial','')='' or b.bank_serial=x.value->>'bankSerial')
+        and (case when x.value->>'status'='pending' then b.status in ('pending','completed') else b.status='completed' end)
+    )
+  ) then
+    raise exception 'bank_archive_merge_verification_failed'
+      using errcode='40001', hint='The transaction merge did not reproduce every bank row exactly. The entire RPC was rolled back.';
+  end if;
+
+  select count(*)::int into total_count from public.bank_transactions b where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role;
   inserted_count:=v_inserted; updated_count:=v_updated; return next;
 end $$;
 revoke all on function public.merge_bank_transactions(text,text,jsonb) from public,anon;

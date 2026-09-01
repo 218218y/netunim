@@ -164,8 +164,10 @@ assert.deepEqual(cheque.checkDetails.checkNumbers,['4463454','80000071'],'additi
 assert.equal(cheque.checkDetails.checkItems.length,2,'structured cheque rows survive transaction normalization');
 assert.equal(cheque.checkDetails.hasDocumentReference,true,'only the fact that a scan/document reference exists survives normalization');
 const repeated=normalizeRecentTransactions([rawOutbound,rawInbound,rawInbound],20);
-assert.equal(repeated.length,2,'duplicate recent bank transactions are removed deterministically');
+assert.equal(repeated.length,3,'bank normalization preserves repeated source rows instead of guessing that equal-looking transactions are duplicates');
 assert.equal(repeated[0].id,'101','recent transactions are sorted newest first');
+const manyRaw=Array.from({length:1505},(_,i)=>({...rawInbound,referenceNumber:100000+i,serialNumber:i+1,eventDate:i<1000?'20260830':'20260829'}));
+assert.equal(normalizeRecentTransactions(manyRaw,manyRaw.length).length,1505,'bank normalization can preserve more than the bank page size after safe window splitting');
 
 const feed=normalizeBankFeed({
   provider:'hapoalim',accountNumber:'12-345-678901',balance:4321.5,syncedAt:'2026-08-30T06:15:00.000Z',

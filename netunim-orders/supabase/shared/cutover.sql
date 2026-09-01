@@ -949,8 +949,8 @@ begin
   v_old_token := nullif(v_old_bank->>'snapshotToken','');
 
   if v_new_token is distinct from v_old_token and v_new_token is not null then
-    if jsonb_typeof(v_bank->'currentBalance') is distinct from 'number'
-       or jsonb_typeof(v_bank->'snapshotSeq') is distinct from 'number' then
+    if jsonb_typeof(v_bank->'snapshotSeq') is distinct from 'number'
+       or (v_bank->>'source' = 'manual' and jsonb_typeof(v_bank->'currentBalance') is distinct from 'number') then
       raise exception 'invalid_bank_snapshot' using errcode = '22023';
     end if;
 
@@ -991,17 +991,34 @@ begin
     end if;
 
     v_now := clock_timestamp();
-    v_bank := v_bank || jsonb_build_object('snapshotSeq', v_requested_snapshot_seq, 'updatedAt', v_now);
+    v_bank := v_bank || jsonb_build_object('snapshotSeq', v_requested_snapshot_seq);
+    if v_bank->>'source' = 'manual' then
+      v_bank := v_bank || jsonb_build_object('updatedAt', v_now);
+    end if;
   elsif v_old_state is not null then
-    -- metadata שהשרת הקצה אינו ניתן לשכתוב מה-client; retry נשאר idempotent.
+    -- Lightweight bank snapshot metadata is server-authoritative; ordinary Kupa saves cannot roll it back.
     v_bank := v_bank || jsonb_build_object(
+      'snapshotToken', coalesce(v_old_bank->'snapshotToken','null'::jsonb),
       'snapshotSeq', coalesce(v_old_bank->'snapshotSeq','null'::jsonb),
-      'updatedAt', coalesce(v_old_bank->'updatedAt','null'::jsonb)
+      'updatedAt', case when v_bank->>'source' = 'manual' then coalesce(v_old_bank->'updatedAt','null'::jsonb) else 'null'::jsonb end
     );
   else
     v_bank := v_bank || jsonb_build_object('snapshotSeq', null);
   end if;
-  v_server_state := (v_server_state - 'bank') || jsonb_build_object('bank', v_bank);
+
+  -- Financial feeds and credit-company sync are stored in finance_sync_documents / bank_transactions,
+  -- never in the Kupa document or its snapshot backups. Keep only the tiny Kupa-owned bank baseline metadata.
+  v_bank := jsonb_build_object(
+    'currentBalance', case when v_bank->>'source' = 'manual' then coalesce(v_bank->'currentBalance','null'::jsonb) else 'null'::jsonb end,
+    'updatedAt', case when v_bank->>'source' = 'manual' then coalesce(v_bank->'updatedAt','null'::jsonb) else 'null'::jsonb end,
+    'asOfDate', case when v_bank->>'source' = 'manual' then coalesce(v_bank->'asOfDate','null'::jsonb) else 'null'::jsonb end,
+    'adjustments', coalesce(v_bank->'adjustments','[]'::jsonb),
+    'source', case when v_bank->>'source' = 'manual' then 'manual'::text else null end,
+    'sourceAccount', null,
+    'snapshotToken', coalesce(v_bank->'snapshotToken','null'::jsonb),
+    'snapshotSeq', coalesce(v_bank->'snapshotSeq','null'::jsonb)
+  );
+  v_server_state := (v_server_state - 'bank' - 'creditSync') || jsonb_build_object('bank', v_bank);
 
   if v_current_revision is null then
     if coalesce(p_expected_revision,0) <> 0 then

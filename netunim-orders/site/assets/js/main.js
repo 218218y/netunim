@@ -614,7 +614,9 @@ const domainsFinanceController=createDomainsFinanceController({
   toast:(...args)=>uiStatus.toast(...args),
   readFinanceSyncDocument:(...args)=>cloudTransport.readFinanceSyncDocument(...args),
   rpcSaveFinanceSync:(...args)=>cloudTransport.rpcSaveFinanceSync(...args),
+  saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
   mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
+  readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
 });
 
 const domainsFinanceView=createDomainsFinanceView({

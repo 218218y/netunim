@@ -471,6 +471,7 @@ const domainsBankController=createDomainsBankController({
   bridge:domainsBankBridge,
   refreshFinanceCloudSnapshot,
   saveFinancePatch:(...args)=>cloudTransport.saveFinancePatch(...args),
+  saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
   mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
 });

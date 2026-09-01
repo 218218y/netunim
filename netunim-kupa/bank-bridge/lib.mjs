@@ -327,12 +327,13 @@ export function normalizeHapoalimTransaction(txn){
 }
 
 export function normalizeRecentTransactions(transactions,limit=HAPOALIM_TRANSACTION_LIMIT){
-  const seen=new Set();
+  // Preserve every bank row. Hapoalim reference numbers repeat, and even visually identical
+  // transactions can be distinct operations. Window fetching is non-overlapping, so silently
+  // deduplicating here would risk data loss. Identity/deduplication belongs in the archive merge.
   return (Array.isArray(transactions)?transactions:[])
     .map(normalizeHapoalimTransaction)
     .filter(x=>x.id||x.date||x.amount)
     .sort((a,b)=>String(b.date||b.processedDate||'').localeCompare(String(a.date||a.processedDate||'')))
-    .filter(x=>{const key=`${x.id}|${x.date}|${x.amount}|${x.description}`;if(seen.has(key))return false;seen.add(key);return true})
     .slice(0,Math.max(0,Number(limit)||0));
 }
 

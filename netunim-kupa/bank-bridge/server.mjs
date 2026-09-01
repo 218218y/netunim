@@ -39,7 +39,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=22;
+const BRIDGE_VERSION=23;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -330,7 +330,7 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
       const chunkStart=new Date(chunkEnd);chunkStart.setDate(chunkStart.getDate()-Math.min(chunkDays-1,days-offset-1));
       await fetchWindow(chunkStart,chunkEnd);
     }
-    transactions=normalizeRecentTransactions(all,Math.max(HAPOALIM_TRANSACTION_LIMIT,days*20));
+    transactions=normalizeRecentTransactions(all,all.length);
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
 
