@@ -11,6 +11,8 @@ import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/a
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
+import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
+import {validKupaCloudState} from '../netunim-kupa/site/assets/js/state/validation.js';
 
 const k=kupaNormalizer({model:{}}),o=ordersNormalizer({});
 const km=kupaMerge(k),om=ordersMerge(o);
@@ -45,6 +47,21 @@ test('Kupa bank sync keeps business and home feeds independent across normalizat
  assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.bank.currentBalance,4100);assert.equal(merged.state.bank.feed.accountNumber,'123-111111');assert.equal(merged.state.bank.homeFeed.accountNumber,'123-222222');assert.equal(merged.state.bank.homeFeed.balance,2300);
  const rebased=km.rebaseLocalProgress(base,local,remote);
  assert.equal(rebased.bank.currentBalance,4100);assert.equal(rebased.bank.homeFeed.accountNumber,'123-222222');
+});
+
+
+test('Kupa cash and rights are independent ledgers across normalization and cloud merge',()=>{
+ const base=k.normalizeState({version:4,checks:[],credits:[],cash:[{id:'C1',amount:100}],rights:[{id:'R1',amount:40}],expenses:[],cards:[]});
+ assert.equal(cashBalanceData(base),100);assert.equal(rightsBalanceData(base),40);
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.rights.push({id:'R2',amount:-10});remote.cash.push({id:'C2',amount:25});
+ const merged=km.mergeState3Way(base,local,remote);
+ assert.deepEqual(merged.conflicts,[]);assert.equal(cashBalanceData(merged.state),125);assert.equal(rightsBalanceData(merged.state),30);
+ const rebased=km.rebaseLocalProgress(base,local,remote);
+ assert.equal(cashBalanceData(rebased),125);assert.equal(rightsBalanceData(rebased),30);
+ const cloud=k.prepareKupaCloudState(local);assert.equal(Object.prototype.hasOwnProperty.call(cloud,'checks'),false);assert.equal(cloud.rights.length,2);
+ assert.equal(validKupaCloudState(cloud),true);assert.equal(validKupaCloudState({...cloud,rights:'bad'}),false);
+ const legacy=k.normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[]});assert.deepEqual(legacy.rights,[]);
 });
 
 test('Kupa rebase retains edits made during an in-flight save',()=>{

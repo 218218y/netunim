@@ -30,6 +30,7 @@ function normalizeState(d){
   n.bank.adjustments=Array.isArray(n.bank.adjustments)?n.bank.adjustments.map(x=>({...x,amount:wholeMoney(x.amount)})):[];
   n.checks=normalizeSharedChecks(n.checks);
   n.cash=(n.cash||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
+  n.rights=(n.rights||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
   n.expenses=(n.expenses||[]).map(x=>({...x,amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);

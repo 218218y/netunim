@@ -10,6 +10,7 @@ function mergeState3Way(base,local,remote){
   out.checks=mergeRecordArray(base.checks,local.checks,remote.checks,'id','checks',conflicts);
   out.credits=mergeRecordArray(base.credits,local.credits,remote.credits,'id','credits',conflicts);
   out.cash=mergeRecordArray(base.cash,local.cash,remote.cash,'id','cash',conflicts);
+  out.rights=mergeRecordArray(base.rights,local.rights,remote.rights,'id','rights',conflicts);
   out.expenses=mergeRecordArray(base.expenses,local.expenses,remote.expenses,'id','expenses',conflicts);
   out.cards=mergeRecordArray(base.cards,local.cards,remote.cards,'name','cards',conflicts);
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};
@@ -36,6 +37,7 @@ function rebaseLocalProgress(base,local,remote){
   out.checks=mergeRecordArrayPreferLocal(base.checks,local.checks,remote.checks,'id');
   out.credits=mergeRecordArrayPreferLocal(base.credits,local.credits,remote.credits,'id');
   out.cash=mergeRecordArrayPreferLocal(base.cash,local.cash,remote.cash,'id');
+  out.rights=mergeRecordArrayPreferLocal(base.rights,local.rights,remote.rights,'id');
   out.expenses=mergeRecordArrayPreferLocal(base.expenses,local.expenses,remote.expenses,'id');
   out.cards=mergeRecordArrayPreferLocal(base.cards,local.cards,remote.cards,'name');
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};

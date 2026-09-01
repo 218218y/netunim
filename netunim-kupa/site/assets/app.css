@@ -140,10 +140,21 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
 @media(max-width:900px){.bank-account-config-grid{grid-template-columns:1fr}}@media(max-width:700px){.bank-sync-login-grid,.bank-account-config{grid-template-columns:1fr}.bank-account-config small{grid-column:auto}.bank-account-tabs{padding:9px 12px}.bank-account-tab{flex:1;text-align:center}}
 
 /* ===== Responsive primitives and explicit data scroll regions ===== */
+.cash-ledgers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start;direction:rtl}
+.cash-ledger-column{min-width:0;display:grid;gap:16px;direction:rtl}
+.cash-ledger-column>.kpi{min-width:0}
+.cash-ledger-section{min-width:0}
+.cash-ledger-section .section-head{align-items:flex-start;flex-wrap:wrap}
+.cash-ledger-section .bulk-actions{margin-inline-start:auto}
+.cash-ledger-section .table-scroll{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain}
+.cash-ledger-section .cash-table{min-width:540px}
 .cash-kpis{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
 .toolbar-spacer{flex:1 1 auto}.checks-search{min-width:220px}.cash-amount.negative{color:#b5443c}.cash-amount.positive{color:#2f7952}
 .bank-balance-card,.bank-entry,.bank-mini{min-width:0}.bank-input-row{min-width:0}.bank-input-row input{width:0;max-width:100%}
 .credit-detail-table-wrap,.bank-transactions-table-wrap,.credit-live-preview-table{max-width:100%;overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-gutter:stable}
+@media(max-width:1200px){
+  .cash-ledgers{grid-template-columns:1fr}
+}
 @media(max-width:820px){
   .cash-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .toolbar{min-width:0}.toolbar>input{min-width:0}.checks-toolbar .checks-search{order:3;width:100%;flex:1 1 100%}
@@ -151,6 +162,7 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
   .section-head,.bulk-actions,.backup-actions{min-width:0;flex-wrap:wrap}
 }
 @media(max-width:600px){
+  .cash-ledger-section .cash-table{min-width:0}
   .cash-kpis{grid-template-columns:1fr}
   .checks-toolbar{align-items:stretch}.checks-toolbar .segmented{width:100%}.checks-toolbar select{flex:1}.checks-toolbar .checks-grand-total{order:4;justify-content:center}.checks-toolbar .toolbar-spacer{display:none}
   .month-title{align-items:flex-start;flex-direction:column}.month-title .month-check-total{align-self:stretch;justify-content:center}
