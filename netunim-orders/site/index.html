@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="orders-build" content="orders-public-data-free-v1">
 <meta name="color-scheme" content="light">
 <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
@@ -31,11 +31,20 @@
     <button data-view="calendar">יומן</button>
     <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל המאגר" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל המאגר (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
   </nav>
-  <span class="folder-access-slot"><button class="top-settings-btn" id="folderAccessButton" type="button" hidden>אשר תיקייה</button></span>
-  <div class="save-pill" id="savePill">מקומי: שמור</div>
-  <div class="cloud-pill" id="cloudPill">ענן: לא פעיל</div>
-  <button class="top-settings-btn" id="saveNowButton" type="button">שמור עכשיו</button>
-  <button class="top-settings-btn" id="settingsTopButton" data-view="settings">הגדרות</button>
+  <div class="topbar-actions">
+    <span class="folder-access-slot"><button class="top-settings-btn folder-access-button" id="folderAccessButton" type="button" hidden>אשר תיקייה</button></span>
+    <div class="topbar-status" aria-label="מצב שמירה וסנכרון">
+      <div class="save-pill" id="savePill">מקומי: שמור</div>
+      <div class="cloud-pill" id="cloudPill">ענן: לא פעיל</div>
+    </div>
+    <button class="top-settings-btn top-icon-action save-now-button" id="saveNowButton" type="button" aria-label="שמור עכשיו" title="שמור עכשיו">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h12l2 2v14H5V4Zm3 0v6h8V4M8 20v-6h8v6"/></svg>
+      <span>שמור עכשיו</span>
+    </button>
+    <button class="top-settings-btn top-icon-action settings-icon-button" id="settingsTopButton" data-view="settings" type="button" aria-label="הגדרות" title="הגדרות">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Zm7.1 3.5a7 7 0 0 0-.12-1.28l2.02-1.57-2-3.46-2.5 1a7 7 0 0 0-2.2-1.28L14 2.75h-4l-.4 2.66a7 7 0 0 0-2.2 1.28l-2.5-1-2 3.46 2.02 1.57A7 7 0 0 0 4.8 12c0 .44.04.87.12 1.28L2.9 14.85l2 3.46 2.5-1a7 7 0 0 0 2.2 1.28l.4 2.66h4l.4-2.66a7 7 0 0 0 2.2-1.28l2.5 1 2-3.46-2.02-1.57c.08-.41.12-.84.12-1.28Z"/></svg>
+    </button>
+  </div>
 </header>
 <main class="main" id="main"></main>
 </div>

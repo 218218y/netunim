@@ -26,6 +26,7 @@ CORE_SUITES = [
 
 RUNTIME_SUITES = [
     "runtime_smoke.py",
+    "runtime_responsive.py",
     "runtime_calendar.py",
     "runtime_events.py",
     "runtime_security.py",

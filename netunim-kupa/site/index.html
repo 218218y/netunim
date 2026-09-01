@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>ניהול קופה</title>
 <meta name="kupa-build" content="kupa-public-data-free-v1" />
 <meta name="theme-color" content="#f7f8f6" />
@@ -15,7 +15,7 @@
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="ניווט ראשי" aria-hidden="false">
     <div class="brand"><h1>ניהול קופה</h1></div>
     <nav class="nav" id="nav">
       <button data-page="dashboard"><span class="ico">⌂</span> לוח בקרה</button>
@@ -26,10 +26,11 @@
       <button data-page="settings"><span class="ico">⚙</span> הגדרות וגיבוי</button>
     </nav>
   </aside>
+  <button class="sidebar-backdrop" id="sidebarBackdrop" type="button" aria-label="סגור תפריט" tabindex="-1"></button>
   <main class="main">
     <header class="topbar">
-      <div style="display:flex;align-items:center;gap:10px">
-        <button class="btn mobile-menu" id="mobileMenu">☰</button>
+      <div class="topbar-title">
+        <button class="btn mobile-menu" id="mobileMenu" type="button" aria-label="פתח תפריט" aria-controls="sidebar" aria-expanded="false">☰</button>
         <div><h2 id="pageTitle">צקים</h2><div class="sub" id="pageSub"></div></div>
       </div>
       <div class="top-actions">
