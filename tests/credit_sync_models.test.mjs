@@ -21,7 +21,7 @@ import {
   syncedInstallmentsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {allInstallmentsData,businessInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,creditDetailPartitionsData,CREDIT_DETAIL_HISTORY_DAYS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {allInstallmentsData,businessInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
@@ -38,7 +38,7 @@ assert.deepEqual(CREDIT_PROVIDER_CONFIG.visaCal.credentialFields,['username','pa
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.max.credentialFields,['username','password']);
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.isracard.credentialFields,['id','card6Digits','password']);
 assert.deepEqual(CREDIT_PROVIDER_CONFIG.amex.credentialFields,['id','card6Digits','password']);
-assert.equal(CREDIT_HISTORY_DAYS,120,'credit synchronization uses a bounded historical window');
+assert.equal(CREDIT_HISTORY_DAYS,130,'credit synchronization keeps enough issuer history to cover three complete prior calendar months');
 assert.equal(CREDIT_FUTURE_MONTHS,12,'credit synchronization requests a full future year for installment/charge forecasting');
 
 const max1=normalizeCreditProfileInput({profileId:'p-max-a',provider:'max',label:'MAX א',ownerLabel:'אדם א',defaultAccount:'עסקי',username:'user-a',password:'secret-a'});
@@ -69,7 +69,7 @@ assert.match(htmlFailure.message,/ValidateIdData/,'Amex immediate-close diagnost
 const normalizedAccount=normalizeCreditScrapeAccount({
   accountNumber:'4321',balance:-1250.75,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:15000,
   txns:[
-    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',installments:{number:1,total:3},status:'completed'},
+    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',transactionDate:'2026-08-18T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',installments:{number:1,total:3},status:'completed'},
     {identifier:'refund-1',date:'2026-08-22T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:50,originalCurrency:'ILS',chargedAmount:50,chargedCurrency:'ILS',description:'זיכוי',status:'completed'},
   ],
 });
@@ -78,6 +78,7 @@ assert.equal(normalizedAccount.cardFrame,15000);
 assert.equal(normalizedAccount.availableCredit,null,'an issuer credit limit is not mislabeled as available credit without provider proof');
 assert.equal(normalizedAccount.txns[0].installments.total,3);
 assert.equal(normalizedAccount.txns[0].chargedAmount,-100);
+assert.equal(normalizedAccount.txns[0].transactionDate,'2026-08-18T00:00:00.000Z','optional issuer purchase date survives the safe bridge normalization independently of billing date');
 const maxFrame=normalizeCreditScrapeAccount({accountNumber:'9999',balance:-1250.75,cardFrame:15000},'max');
 assert.equal(maxFrame.availableCredit,13749.25,'MAX OpenToBuy is recovered exactly from the scraper-defined balance and credit limit');
 const missingNumbers=normalizeCreditScrapeAccount({accountNumber:'0000',balance:null,cardFrame:null,availableCredit:null});
@@ -161,15 +162,26 @@ assert.equal(dealSeries.partial,true,'missing future installment rows are flagge
 
 const historyKey=creditCardMappingKey('history','1000');
 const historyState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'history',provider:'max',accounts:[{accountNumber:'1000',txns:[
-  {id:'active',processedDate:'2026-10-01',chargedAmount:-30,chargedCurrency:'ILS',description:'פעילה'},
-  {id:'recent',processedDate:'2026-08-15',chargedAmount:-40,chargedCurrency:'ILS',description:'הסתיימה לאחרונה'},
-  {id:'old',processedDate:'2026-05-01',chargedAmount:-50,chargedCurrency:'ILS',description:'היסטוריה ישנה'},
+  {id:'future',processedDate:'2026-10-01',chargedAmount:-30,chargedCurrency:'ILS',description:'עתידית'},
+  {id:'recent',processedDate:'2026-08-15',chargedAmount:-40,chargedCurrency:'ILS',description:'אוגוסט'},
+  {id:'edge',processedDate:'2026-06-15',chargedAmount:-20,chargedCurrency:'ILS',description:'יוני'},
+  {id:'old',processedDate:'2026-05-01',chargedAmount:-50,chargedCurrency:'ILS',description:'ישן מדי'},
 ]}]}],cardMappings:{[historyKey]:{included:true,hidden:false,account:'עסקי'}}})};
-const partitions=creditDetailPartitionsData(historyState,'2026-09-01');
-assert.equal(CREDIT_DETAIL_HISTORY_DAYS,60);
-assert.deepEqual(partitions.active.map(x=>x.series.description),['פעילה'],'regular detail contains only obligations with a future charge');
-assert.deepEqual(partitions.history.map(x=>x.series.description),['הסתיימה לאחרונה'],'completed rows stay in a separate bounded history');
-assert.equal(partitions.olderCount,1,'older completed rows remain in source data without cluttering either ordinary or recent-history detail');
+const monthlyHistory=creditMonthlyDetailData(historyState,'2026-09-01');
+assert.equal(CREDIT_DETAIL_HISTORY_MONTHS,3);
+assert.deepEqual(monthlyHistory.months.map(x=>x.key),['2026-06','2026-08','2026-10'],'monthly detail keeps three prior calendar months plus every actually known future billing month');
+assert.deepEqual(monthlyHistory.months.map(x=>x.total),[20,40,30]);
+assert.equal(monthlyHistory.months.some(x=>x.items.some(item=>item.description==='ישן מדי')),false,'older history remains outside the compact monthly transaction browser');
+
+const multiMonthKey=creditCardMappingKey('multi-month','5555');
+const multiMonthState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'multi-month',provider:'max',accounts:[{accountNumber:'5555',txns:[
+  {id:'plan_1',type:'installments',date:'2026-08-20',processedDate:'2026-09-10',chargedAmount:-100,chargedCurrency:'ILS',originalAmount:-300,originalCurrency:'ILS',description:'פריסה',installments:{number:1,total:3}},
+  {id:'plan_2',type:'installments',date:'2026-09-20',processedDate:'2026-10-10',chargedAmount:-100,chargedCurrency:'ILS',originalAmount:-300,originalCurrency:'ILS',description:'פריסה',installments:{number:2,total:3}},
+  {id:'plan_3',type:'installments',date:'2026-10-20',processedDate:'2026-11-10',chargedAmount:-100,chargedCurrency:'ILS',originalAmount:-300,originalCurrency:'ILS',description:'פריסה',installments:{number:3,total:3}},
+]}]}],cardMappings:{[multiMonthKey]:{included:true,hidden:false,account:'עסקי'}}})};
+const multiMonthDetails=creditMonthlyDetailData(multiMonthState,'2026-09-01');
+assert.deepEqual(multiMonthDetails.months.map(x=>x.key),['2026-09','2026-10','2026-11'],'a synchronized installment series is visible in every future billing month actually supplied by the issuer, not only its next payment');
+assert.deepEqual(multiMonthDetails.months.map(x=>x.items[0].part),[1,2,3]);
 
 const collisionState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[
   {profileId:'owner-a',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'a',processedDate:'2026-09-10',chargedAmount:-10,chargedCurrency:'ILS'}]}]},
@@ -217,7 +229,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:18,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:20,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
@@ -232,7 +244,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:18,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:20,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

@@ -67,6 +67,7 @@ export function normalizeIsracardFamilyTransaction(txn={},processedDate=null){
     identifier:voucher&&/^\d+$/.test(voucher)?Number(voucher):voucher,
     date,
     processedDate:paymentDate,
+    transactionDate:purchaseDate,
     originalAmount:isOutbound?-Math.abs(outboundAmount):-Math.abs(finiteNumber(txn?.dealSum,0)),
     originalCurrency:currency(txn?.currentPaymentCurrency??txn?.currencyId),
     chargedAmount:isOutbound?-Math.abs(finiteNumber(txn?.paymentSumOutbound,0)):-Math.abs(finiteNumber(txn?.paymentSum,0)),

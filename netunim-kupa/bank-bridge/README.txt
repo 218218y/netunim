@@ -107,7 +107,7 @@ Bridge v18 keeps the encrypted multi-profile credit-card connections introduced 
 
 Supported credentials follow israeli-bank-scrapers 6.9.0: Visa Cal and Max use username/password; Isracard and American Express use id/card6Digits/password. Multiple profiles for the same provider are supported only for different login identities. The same Visa Cal/Max username or the same Isracard/Amex ID cannot be stored twice for the same provider, because one issuer login already returns all cards visible to that identity. Profiles for different identities are scraped sequentially to avoid cookie/session collisions.
 
-Each scrape requests 120 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, optional credit limit/available credit, and transaction dates, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
+Each scrape requests 130 historical days and up to 12 future months with combineInstallments=false and without raw transaction payloads. The 130-day lookback guarantees enough source data for the current month plus three complete prior calendar months. The bridge returns a normalized safe subset: card/account number, optional issuer balance/balance date, optional credit limit/available credit, billing/installment dates, optional purchase/transaction date, amounts, description, installments and status. No login secrets or raw HTML are returned. Pending issuer rows remain visible for review but are intentionally excluded from the Kupa cash-flow forecast until the issuer posts them with a trustworthy billing date.
 
 Bridge v18 preserves Visa Cal's issuer credit limit and MAX's credit limit. israeli-bank-scrapers 6.9.0 defines MAX balance as -(CreditLimit - OpenToBuy), so only for MAX the bridge derives exact availableCredit as cardFrame + balance. Visa Cal balance is the next debit rather than total limit use, so the bridge deliberately does not apply that formula. The current Isracard/Amex normalized adapters expose neither value. Missing numeric values remain null rather than being coerced to zero.
 
@@ -153,7 +153,7 @@ Bridge v16 — authoritative bank balance and credit lifecycle
 -----------------------------------------------------------
 Kupa no longer converts check workflow changes into synthetic bank movements. The Hapoalim/manual snapshot is the sole bank balance source. Legacy check event metadata is retained only so existing deployed Supabase RPCs and old documents remain readable; it is excluded from Kupa and Orders calculations.
 
-Completed credit series are removed from the ordinary active-detail table. The UI keeps a separate collapsed 60-day history while the normalized issuer feed itself remains bounded by the existing 120-day scrape window. Orders now evaluates the same state.creditSync rows as Kupa when calculating the read-only Kupa net balance.
+Credit detail no longer splits active and completed series into separate tables. The UI uses one month selector that shows the current/nearest charge month by default, keeps three prior calendar months available as history, and exposes every future billing month that is actually present in the normalized issuer feed. Missing future installments are never synthesized. Orders now evaluates the same state.creditSync rows as Kupa when calculating the read-only Kupa net balance.
 
 
 
@@ -164,3 +164,12 @@ Bridge v17's installer could fail before Camoufox launched because the local fin
 Bridge v18 removes that duplicate local fingerprint sanitizer/validator. It uses Camoufox's supported os='windows' and screen constraints and lets Camoufox generate/map the BrowserForge fingerprint internally. The security boundary remains stronger and simpler: before any ID, card digits or password are sent, the Bridge opens the issuer login page anonymously; an HTTP 403 discards that entire browser session and launches a fresh Camoufox-generated session, while HTTP 429 is not retried. The installer doctor now checks that the real Camoufox browser/runtime can launch, instead of rejecting valid BrowserForge sentinel data.
 
 The installer also no longer prints the misleading Chrome/Edge-only advice for a Camoufox doctor failure; the exact diagnostic printed immediately above is authoritative and the previously installed Bridge remains untouched on any doctor failure.
+
+
+Bridge v20 — unified monthly credit detail and purchase dates
+-----------------------------------------------------------
+The credit detail screen is now driven by actual normalized charge rows instead of collapsing each purchase series to only its next payment. One month selector combines current/future obligations and recent completed history; each month button shows the filtered monthly total and opens the rows billed in that month. The default is the nearest known charge month, while the three preceding calendar months remain available in the same frame.
+
+The scrape lookback is 130 days so the UI can reliably cover three complete preceding calendar months even near the end of a long month. Future scraping remains up to 12 months with combineInstallments=false; the UI displays only installments/months the issuer actually supplied and does not extrapolate absent installments.
+
+Bridge v20 also carries an optional transactionDate separately from the installment/billing date. The Isracard-family Camoufox adapter preserves fullPurchaseDate exactly in transactionDate while retaining the existing shifted installment date and fullPaymentDate billing date. For normalized issuer rows that do not supply the new field, the web feed derives the series-origin date from the existing normalized purchase date plus installment number so older/native data stays readable without pretending an unavailable raw field was supplied.

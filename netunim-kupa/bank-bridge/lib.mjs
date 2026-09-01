@@ -349,7 +349,7 @@ export const CREDIT_PROVIDER_CONFIG={
   isracard:{label:'ישראכרט',credentialFields:['id','card6Digits','password']},
   amex:{label:'American Express',credentialFields:['id','card6Digits','password']},
 };
-export const CREDIT_HISTORY_DAYS=120;
+export const CREDIT_HISTORY_DAYS=130;
 export const CREDIT_FUTURE_MONTHS=12;
 
 function creditText(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
@@ -381,7 +381,7 @@ export function normalizeCreditProfileInput(value={},existing=null){
 }
 export function normalizeCreditScrapeTransaction(tx={}){
   const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
-  return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
+  return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
 }
 export function normalizeCreditScrapeAccount(account={},provider=''){
   const balance=creditNumber(account.balance),cardFrame=creditNumber(account.cardFrame),directAvailable=creditNumber(account.availableCredit);

@@ -17,6 +17,7 @@ export function normalizeCreditTransaction(txn={}){
     type:text(txn.type||'normal',30)||'normal',
     date:iso(txn.date),
     processedDate:iso(txn.processedDate),
+    transactionDate:iso(txn.transactionDate),
     originalAmount:original,
     originalCurrency:text(txn.originalCurrency||'',12),
     chargedAmount:charged,
@@ -153,8 +154,12 @@ function shiftMonthDate(value,delta){
   const first=new Date(Date.UTC(y,m-1+delta,1)),last=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
   first.setUTCDate(Math.min(d,last));return first.toISOString().slice(0,10);
 }
+function transactionOriginDate(tx){
+  const explicit=String(tx?.transactionDate||'').slice(0,10);if(explicit)return explicit;
+  const part=tx?.installments?.number||1;return shiftMonthDate(tx?.date||tx?.processedDate||'',-(part-1));
+}
 function syncedSeriesKey(profile,account,tx,index){
-  const part=tx.installments?.number||1,total=tx.installments?.total||1,originDate=shiftMonthDate(tx.date||tx.processedDate||'',-(part-1));
+  const part=tx.installments?.number||1,total=tx.installments?.total||1,originDate=transactionOriginDate(tx);
   if(total>1){
     const baseId=text(tx.id||'',120).replace(new RegExp(`_${part}$`),'');
     if(baseId)return `${profile.profileId}|${account.accountNumber}|installment|${baseId}|${total}|${originDate}`;
@@ -175,9 +180,9 @@ export function syncedCreditSeries(state,asOf=todayISO()){
       if(tx.status==='pending'||!isShekelTransaction(tx))continue;
       const chargeDate=String(tx.processedDate||tx.date||'').slice(0,10),amount=transactionForecastAmount(tx);
       if(!chargeDate||!amount)continue;
-      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,key=syncedSeriesKey(profile,account,tx,index);
+      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,key=syncedSeriesKey(profile,account,tx,index),transactionDate=transactionOriginDate(tx);
       if(!groups.has(key))groups.set(key,{id:key,source:'credit_sync',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,ownerLabel:presentation.ownerLabel,account:presentation.accountClass,card:presentation.cardName,description:tx.description,totalParts,items:[],originalCandidates:[]});
-      const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.items.push({date:chargeDate,amount,part,totalParts});
+      const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.items.push({date:chargeDate,amount,part,totalParts,transactionDate});
       const original=finite(tx.originalAmount);if(original!==null&&original!==0)group.originalCandidates.push(-original);
     }
   }
@@ -193,9 +198,9 @@ export function syncedCreditSeries(state,asOf=todayISO()){
     const remainingCount=Math.max(0,group.totalParts-completedCount),futureItems=items.filter(x=>x.date>=asOf);
     const remainingAmount=futureItems.reduce((sum,x)=>sum+x.amount,0),knownTotal=items.reduce((sum,x)=>sum+x.amount,0);
     const originalTotal=group.originalCandidates.find(v=>Number.isFinite(v)&&Math.abs(v)>=Math.abs(knownTotal)-0.01);
-    const totalAmount=originalTotal??knownTotal,lastChargeDate=items.reduce((latest,item)=>item.date>latest?item.date:latest,'');
+    const totalAmount=originalTotal??knownTotal,lastChargeDate=items.reduce((latest,item)=>item.date>latest?item.date:latest,''),transactionDate=items.map(item=>item.transactionDate).filter(Boolean).sort()[0]||'';
     const partial=remainingCount>futureItems.length;
-    result.push({...group,items,totalAmount,completedCount,remainingCount,next,remainingAmount,lastChargeDate,partial,complete:remainingCount===0});
+    result.push({...group,items,totalAmount,transactionDate,completedCount,remainingCount,next,remainingAmount,lastChargeDate,partial,complete:remainingCount===0});
   }
   return result.sort((a,b)=>{
     const an=a.next?.date||'9999-12-31',bn=b.next?.date||'9999-12-31';return an.localeCompare(bn)||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he');

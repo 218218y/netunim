@@ -2,7 +2,7 @@ import {num} from '../../core/money.js';
 import {addMonthsISO, todayISO, dObj, monthKey, localISO} from '../../core/dates.js';
 import {syncedInstallmentsData, syncedCreditSeries} from './sync-feed.js';
 
-export const CREDIT_DETAIL_HISTORY_DAYS=60;
+export const CREDIT_DETAIL_HISTORY_MONTHS=3;
 
 export function rawCreditSchedule(cr){if(!cr.firstChargeDate||num(cr.installments)<1)return[];const total=num(cr.totalAmount),n=Number(cr.installments);const base=Math.round((total/n)*100)/100;let rows=[];let used=0;for(let i=0;i<n;i++){let amt=i===n-1?Math.round((total-used)*100)/100:base;used+=amt;rows.push({creditId:cr.id,date:addMonthsISO(cr.firstChargeDate,i),amount:amt,part:i+1,totalParts:n,card:cr.card,account:cr.account==='ביתי'?'ביתי':'עסקי',ownerLabel:String(cr.ownerLabel||''),hidden:false,description:cr.description,source:'manual'})}return rows}
 
@@ -46,13 +46,24 @@ export function nextCreditCycleData(state,reference=todayISO()){return nextCredi
 
 export function nextBusinessCreditCycleData(state,reference=todayISO()){return nextCreditCycleFromRows(businessInstallmentsData(state),reference)}
 
-function historyCutoff(asOf,days){const d=dObj(asOf);if(!d)return asOf;d.setDate(d.getDate()-Math.max(0,Math.trunc(Number(days)||0)));return localISO(d)}
-
-export function creditDetailPartitionsData(state,asOf=todayISO(),historyDays=CREDIT_DETAIL_HISTORY_DAYS){
-  const items=[];
-  for(const series of syncedCreditSeries(state,asOf))items.push({source:'credit_sync',series,account:series.account,ownerLabel:series.ownerLabel,provider:series.provider,profileId:series.profileId,accountNumber:series.accountNumber,creditAccountKey:`sync:${series.profileId}:${series.accountNumber}`,nextDate:series.next?.date||'9999-12-31',completedDate:series.complete?series.lastChargeDate:null,complete:series.complete});
-  for(const record of Array.isArray(state?.credits)?state.credits:[]){const progress=creditProgress(record,asOf),schedule=rawCreditSchedule(record),lastDate=schedule.at(-1)?.date||null,complete=record.active===false||progress.complete;items.push({source:'manual',record,account:record.account,ownerLabel:record.ownerLabel||'',provider:'manual',profileId:'',accountNumber:'',creditAccountKey:'',nextDate:progress.next?.date||'9999-12-31',completedDate:complete?lastDate:null,complete})}
-  const active=items.filter(x=>!x.complete).sort((a,b)=>a.nextDate.localeCompare(b.nextDate)||String((a.series||a.record)?.card||'').localeCompare(String((b.series||b.record)?.card||''),'he'));
-  const cutoff=historyCutoff(asOf,historyDays),completed=items.filter(x=>x.complete),history=completed.filter(x=>x.completedDate&&x.completedDate>=cutoff).sort((a,b)=>String(b.completedDate).localeCompare(String(a.completedDate))||String((a.series||a.record)?.card||'').localeCompare(String((b.series||b.record)?.card||''),'he'));
-  return {active,history,olderCount:completed.length-history.length,cutoff,historyDays};
+export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
+  const currentMonth=monthKey(asOf),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0));
+  const cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),items=[];
+  for(const series of syncedCreditSeries(state,asOf)){
+    for(const charge of series.items){
+      const key=monthKey(charge.date);if(!key||key<cutoffMonth)continue;
+      items.push({source:'credit_sync',series,charge,date:charge.date,amount:charge.amount,part:charge.part,totalParts:charge.totalParts,transactionDate:charge.transactionDate||series.transactionDate||'',account:series.account,ownerLabel:series.ownerLabel,provider:series.provider,profileId:series.profileId,accountNumber:series.accountNumber,creditAccountKey:`sync:${series.profileId}:${series.accountNumber}`,card:series.card,description:series.description});
+    }
+  }
+  for(const record of Array.isArray(state?.credits)?state.credits:[]){
+    for(const charge of rawCreditSchedule(record)){
+      if(record.active===false&&charge.date>=asOf)continue;
+      const key=monthKey(charge.date);if(!key||key<cutoffMonth)continue;
+      items.push({source:'manual',record,charge,date:charge.date,amount:charge.amount,part:charge.part,totalParts:charge.totalParts,transactionDate:record.transactionDate||'',account:record.account==='ביתי'?'ביתי':'עסקי',ownerLabel:String(record.ownerLabel||''),provider:'manual',profileId:'',accountNumber:'',creditAccountKey:`manual:${record.card}`,card:record.card,description:record.description});
+    }
+  }
+  items.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he'));
+  const byMonth=new Map();
+  for(const item of items){const key=monthKey(item.date);if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=item.amount;month.items.push(item)}
+  return {months:[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key)),cutoffMonth,historyMonths:safeHistory,currentMonth};
 }
