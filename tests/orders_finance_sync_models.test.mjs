@@ -112,9 +112,20 @@ const disclosureView=createDomainsFinanceView({
 });
 disclosureView.renderKupa();
 assert.match(disclosureMain.innerHTML,/data-action="toggle-orders-bank-sync-options"[^>]*aria-expanded="true"/,'Kupa rerenders preserve the UI-owned open synchronization state on the status button');
-assert.match(disclosureMain.innerHTML,/id="ordersBankSyncPanel" class="finance-sync-settings-body"(?![^>]*hidden)/,'Kupa rerenders keep the synchronization settings panel visible when UI state is open');
+assert.match(disclosureMain.innerHTML,/id="ordersBankSyncPanel" class="finance-sync-settings-body finance-sync-settings-page"(?![^>]*hidden)/,'Kupa rerenders keep the synchronization settings panel visible when UI state is open');
+assert.ok(disclosureMain.innerHTML.indexOf('<div class="kupa-subcontent">')<disclosureMain.innerHTML.indexOf('id="ordersBankSyncPanel"'),'the bank synchronization settings panel is rendered inside the main scroll content, not the fixed Kupa header');
 assert.match(disclosureMain.innerHTML,/data-input="orders-bank-search"/,'bank account controls expose an independent transaction search field');
 assert.match(disclosureMain.innerHTML,/<form id="ordersBankCredentialsForm"[\s\S]*type="password"[\s\S]*<\/form>/,'bank password input belongs to a real form so Chromium does not emit the password-outside-form warning');
+
+const closedDisclosureMain={innerHTML:''};
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?closedDisclosureMain:null},configurable:true});
+const closedDisclosureView=createDomainsFinanceView({
+  ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:false,bankSearchValue:''},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:21,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+});
+closedDisclosureView.renderKupa();
+assert.match(closedDisclosureMain.innerHTML,/id="ordersBankSyncPanel" class="finance-sync-settings-body finance-sync-settings-page" hidden/,'closed bank synchronization settings are explicitly hidden on first render');
 
 const baseState={version:4,businessName:'ניהול קופה',credits:[],cash:[{id:'cash-kept',amount:7}],expenses:[],cards:[{id:'card-kept',name:'כרטיס'}],creditSync:initialCredit,bank:{currentBalance:900,updatedAt:'2026-08-30T00:00:00Z',asOfDate:'2026-08-30',snapshotSeq:2,adjustments:[],feed:null,homeFeed:null}};
 let cloudRow={revision:5,updated_at:'2026-09-01T00:00:00Z',state:structuredClone(baseState)};

@@ -220,14 +220,20 @@ ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_
    and all(label in orders_finance_view for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
    "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
 ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>' in orders_finance_view
-   and "if(section==='bank')return bankSyncMarkup(s)" in orders_finance_view
-   and "if(section==='credit')return creditSyncMarkup(s)" in orders_finance_view
+   and "if(section==='bank')return bankCommandMarkup(s)" in orders_finance_view
+   and "if(section==='credit')return creditCommandMarkup(s)" in orders_finance_view
    and "if(section==='checks')return `<div class=\"kupa-checks-status\">${checksView.checksCloudLabel()}</div>`" in orders_finance_view
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
    and '.kupa-hero{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px' in orders_css
    and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0' in orders_css,
    "orders Kupa UI: internal tabs stay at the RTL start while the active Bank/Credit/Checks status row occupies the remaining header width")
+ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in orders_finance_view
+   and "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`" in orders_finance_view
+   and '.finance-sync-settings-body[hidden]{display:none}' in orders_css
+   and '.finance-sync-settings-page{min-width:0;border:1px solid #dbe3e8' in orders_css
+   and 'max-height:52vh' not in orders_css and 'max-height:52dvh' not in orders_css,
+   "orders Kupa sync disclosure: settings live in the main scroll surface, close reliably, and never create a nested vertical scroller")
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
