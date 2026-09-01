@@ -219,6 +219,11 @@ ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html
 ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
    and all(label in orders_finance_view for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
    "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
+ok('<section class="kupa-hero">${kupaTabsMarkup()}</section>' in orders_finance_view
+   and '<h1>קופה</h1>' not in orders_finance_view
+   and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
+   and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;' in orders_css,
+   "orders Kupa UI: internal tabs own the header and align to the RTL start edge without redundant title copy")
 ok("checksView.checksMarkup({embedded:true})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded instead of duplicated")
