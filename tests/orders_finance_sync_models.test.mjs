@@ -3,6 +3,7 @@ import {financeRefreshDue,FINANCE_AUTO_INTERVAL_MS} from '../netunim-orders/site
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
+import {creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
 assert.equal(financeRefreshDue(null,now),true);
@@ -19,6 +20,19 @@ const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00
 const mergedCredit=mergeCreditSyncResult(initialCredit,{syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'p2',provider:'visaCal',accounts:[{accountNumber:'2222',txns:[{id:'new',date:'2026-09-01T00:00:00Z',chargedAmount:-20}]}]}],errors:[{profileId:'p1',message:'temporary'}]});
 assert.equal(mergedCredit.profiles.length,2,'partial issuer success preserves previous profiles');
 assert.equal(mergedCredit.cardMappings['p1:1111'].included,true,'existing card classification survives cross-app refresh');
+
+
+const forecastKey='forecast:4444';
+const forecastState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'forecast',provider:'max',defaultAccount:'עסקי',accounts:[{accountNumber:'4444',txns:[
+  {id:'past',processedDate:'2026-08-20',chargedAmount:-40,chargedCurrency:'ILS',description:'כבר נגבה'},
+  {id:'sep',processedDate:'2026-09-10',chargedAmount:-100,chargedCurrency:'ILS',description:'ספטמבר'},
+  {id:'nov',processedDate:'2026-11-10',chargedAmount:-200,chargedCurrency:'ILS',description:'נובמבר'},
+  {id:'mar',processedDate:'2027-03-10',chargedAmount:-300,chargedCurrency:'ILS',description:'מרץ'},
+]}]}],cardMappings:{[forecastKey]:{included:true,hidden:false,account:'עסקי'}}})};
+const rollingForecast=creditMonthBuckets(forecastState,{view:'rolling12',asOf:'2026-09-01'});
+assert.deepEqual(rollingForecast.months.map(month=>month.key),['2026-09','2026-11','2027-03'],'rolling 12-month forecast omits empty months and already-collected history');
+const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-01'});
+assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 const baseState={version:4,businessName:'ניהול קופה',credits:[],cash:[{id:'cash-kept',amount:7}],expenses:[],cards:[{id:'card-kept',name:'כרטיס'}],creditSync:initialCredit,bank:{currentBalance:900,updatedAt:'2026-08-30T00:00:00Z',asOfDate:'2026-08-30',snapshotSeq:2,adjustments:[],feed:null,homeFeed:null}};

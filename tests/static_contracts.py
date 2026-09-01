@@ -219,14 +219,24 @@ ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html
 ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_view
    and all(label in orders_finance_view for label in ("bank:'בנק'","credit:'אשראי'","checks:'צ׳קים'","summary:'מאזן'")),
    "orders Kupa UI: Bank, Credit, Checks and Balance are explicit internal sections")
-ok('<section class="kupa-hero">${kupaTabsMarkup()}</section>' in orders_finance_view
+ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>' in orders_finance_view
+   and "if(section==='bank')return bankSyncMarkup(s)" in orders_finance_view
+   and "if(section==='credit')return creditSyncMarkup(s)" in orders_finance_view
+   and "if(section==='checks')return `<div class=\"kupa-checks-status\">${checksView.checksCloudLabel()}</div>`" in orders_finance_view
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
-   and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;' in orders_css,
-   "orders Kupa UI: internal tabs own the header and align to the RTL start edge without redundant title copy")
-ok("checksView.checksMarkup({embedded:true})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
-   and "checksMarkup({embedded=false}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
-   "orders Kupa UI: existing Checks and Balance views are embedded instead of duplicated")
+   and '.kupa-hero{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px' in orders_css
+   and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0' in orders_css,
+   "orders Kupa UI: internal tabs stay at the RTL start while the active Bank/Credit/Checks status row occupies the remaining header width")
+ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
+   and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
+   "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
+   and "const task=controller.refreshCredit({interactive});renderKupa();await task;renderKupa()" in orders_finance_view,
+   "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")
+ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/domains/finance/reporting.js").read_text(encoding="utf-8")
+   and ".filter(month=>Math.round(month.total*100)!==0)" in (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8"),
+   "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
 ok("const BANK_BRIDGE_VERSION=21" in orders_finance_controller,
