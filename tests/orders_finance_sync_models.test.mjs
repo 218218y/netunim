@@ -5,6 +5,27 @@ import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
 import {creditDetailMonths,creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {createUiLayout} from '../netunim-orders/site/assets/js/ui/layout.js';
+
+
+
+const scrollUi={scrollViewportMemory:new Map()};
+const layout=createUiLayout({ui:scrollUi,supplierUi:{supplierViewportMemory:new Map()}});
+const loadingViewport={scrollHeight:400,clientHeight:400,scrollTop:0,scrollLeft:0};
+const loadingSnapshot=layout.scrollViewportSnapshot(loadingViewport);
+assert.equal(loadingSnapshot.atEnd,false,'a non-scrollable Kupa viewport is a start position, not an end position');
+scrollUi.scrollViewportMemory.set('kupa:bank',loadingSnapshot);
+const loadedViewport={scrollHeight:1600,clientHeight:400,scrollTop:0,scrollLeft:0};
+const realRequestAnimationFrame=globalThis.requestAnimationFrame;
+globalThis.requestAnimationFrame=callback=>{callback();return 1};
+layout.restoreScrollViewport('kupa:bank',loadedViewport);
+assert.equal(loadedViewport.scrollTop,0,'bank data arriving after the Kupa view opens keeps the viewport at the top');
+const endViewport={scrollHeight:1000,clientHeight:400,scrollTop:600,scrollLeft:0};
+scrollUi.scrollViewportMemory.set('kupa:bank',layout.scrollViewportSnapshot(endViewport));
+const expandedViewport={scrollHeight:1400,clientHeight:400,scrollTop:0,scrollLeft:0};
+layout.restoreScrollViewport('kupa:bank',expandedViewport);
+assert.equal(expandedViewport.scrollTop,1000,'a genuinely scrollable viewport that was at the end still follows the end after rerender');
+if(realRequestAnimationFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=realRequestAnimationFrame;
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
 const realDateNow=Date.now;

@@ -2,7 +2,7 @@ import {$} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiLayout({ui, supplierUi}){
-function scrollViewportSnapshot(el){if(!el)return null;const maxTop=Math.max(0,el.scrollHeight-el.clientHeight);return{top:el.scrollTop,left:el.scrollLeft,atEnd:maxTop<=1||el.scrollTop>=maxTop-2}}
+function scrollViewportSnapshot(el){if(!el)return null;const maxTop=Math.max(0,el.scrollHeight-el.clientHeight);return{top:el.scrollTop,left:el.scrollLeft,atEnd:maxTop>1&&el.scrollTop>=maxTop-2}}
 
 function storeScrollViewport(key,el){if(!key||!el)return;ui.scrollViewportMemory.set(key,scrollViewportSnapshot(el))}
 
