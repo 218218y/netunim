@@ -103,22 +103,17 @@ creditFinanceView.renderKupa();
 await Promise.resolve();await Promise.resolve();
 assert.equal(creditViewProbeCalls,1,'failed credit availability probe is one-shot per loaded state and cannot create a render/probe loop');
 
-let disclosureRendered=false;
-const oldDisclosure={open:true},newDisclosure={open:false};
-const disclosureMain={
-  _html:'',
-  get innerHTML(){return this._html},
-  set innerHTML(value){this._html=value;disclosureRendered=true},
-  querySelector:selector=>selector==='.finance-sync-settings'?(disclosureRendered?newDisclosure:oldDisclosure):null,
-};
+const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
 const disclosureView=createDomainsFinanceView({
-  ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business'},
+  ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:true,bankSearchValue:''},
   controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:21,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
 });
 disclosureView.renderKupa();
-assert.equal(newDisclosure.open,true,'Kupa rerenders preserve an already-open synchronization disclosure instead of collapsing it');
+assert.match(disclosureMain.innerHTML,/data-action="toggle-orders-bank-sync-options"[^>]*aria-expanded="true"/,'Kupa rerenders preserve the UI-owned open synchronization state on the status button');
+assert.match(disclosureMain.innerHTML,/id="ordersBankSyncPanel" class="finance-sync-settings-body"(?![^>]*hidden)/,'Kupa rerenders keep the synchronization settings panel visible when UI state is open');
+assert.match(disclosureMain.innerHTML,/data-input="orders-bank-search"/,'bank account controls expose an independent transaction search field');
 assert.match(disclosureMain.innerHTML,/<form id="ordersBankCredentialsForm"[\s\S]*type="password"[\s\S]*<\/form>/,'bank password input belongs to a real form so Chromium does not emit the password-outside-form warning');
 
 const baseState={version:4,businessName:'ניהול קופה',credits:[],cash:[{id:'cash-kept',amount:7}],expenses:[],cards:[{id:'card-kept',name:'כרטיס'}],creditSync:initialCredit,bank:{currentBalance:900,updatedAt:'2026-08-30T00:00:00Z',asOfDate:'2026-08-30',snapshotSeq:2,adjustments:[],feed:null,homeFeed:null}};

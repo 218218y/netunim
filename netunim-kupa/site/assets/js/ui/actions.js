@@ -1,7 +1,7 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, setBankAccountView, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
+export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, dashboardGo, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, setBankAccountView, setBankSearch, toggleBankSyncOptions, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, setCreditSearch, toggleCreditSyncOptions, setCreditCardMapping, setCreditAutoRefresh, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openExpenseModal, updateCard, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
 return {
   'dashboard-go':(element,event)=>{dashboardGo(element.dataset.page,element.dataset.tab)},
   'dashboard-keyboard':(element,event)=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();element.click()}},
@@ -28,6 +28,8 @@ return {
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},
+  'credit-search':(element,event)=>{setCreditSearch(element.value)},
+  'toggle-credit-sync-options':(element,event)=>{toggleCreditSyncOptions()},
   'credit-view':(element,event)=>{ui.creditView=element.value;ui.creditDetailFocus=null;renderCredit()},
   'credit-account-filter':(element,event)=>{ui.creditAccountFilter=element.dataset.clickArg0||element.value||'all';ui.creditDetailFocus=null;renderCredit()},
   'credit-provider-filter':(element,event)=>{ui.creditProviderFilter=element.dataset.clickArg0||'all';ui.creditCardFilter='all';ui.creditDetailFocus=null;renderCredit()},
@@ -43,6 +45,8 @@ return {
   'configure-bank-bridge':(element,event)=>{configureBankBridge()},
   'select-bank-bridge-account':(element,event)=>{selectBankBridgeAccount(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2)},
   'set-bank-account-view':(element,event)=>{event?.preventDefault();event?.stopPropagation();setBankAccountView(element.dataset.clickArg0)},
+  'bank-search':(element,event)=>{setBankSearch(element.value)},
+  'toggle-bank-sync-options':(element,event)=>{toggleBankSyncOptions()},
   'refresh-bank-from-hapoalim':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:false,auto:false})},
   'open-bank-auth':(element,event)=>{event?.preventDefault();event?.stopPropagation();refreshBankBalance({interactive:true,auto:false})},
   'delete-bank-bridge-credentials':(element,event)=>{deleteBankBridgeCredentials()},

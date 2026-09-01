@@ -38,6 +38,9 @@ function bankDateLabel(value){
   return `${weekday} ${dd}/${mm}/${yy}`;
 }
 
+function bankSearchMatch(query,values){const q=String(query||'').trim().toLocaleLowerCase('he-IL');if(!q)return true;return values.map(value=>String(value??'')).join(' ').toLocaleLowerCase('he-IL').includes(q)}
+function bankRowMatchesSearch(row,query){return bankSearchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,JSON.stringify(row?.checkDetails||{})])}
+
 function bankSyncHeadlineState(s){
   const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt;
   if(s?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
@@ -45,7 +48,7 @@ function bankSyncHeadlineState(s){
   if(s?.lastError)return {tone:'error',icon:'!',title:'נכשל',meta:lastFailure?syncTimeLabel(lastFailure):'זמן הכשל לא זמין'};
   if(s?.lastWarning&&lastSync)return {tone:'warn',icon:'!',title:'הושלם חלקית',meta:syncTimeLabel(lastSync)};
   if(lastSync)return {tone:'ok',icon:'✓',title:'הצליח',meta:syncTimeLabel(lastSync)};
-  if(!s?.tokenConfigured)return {tone:'idle',icon:'•',title:'טרם הוגדר',meta:'פתח סינכרון להגדרה'};
+  if(!s?.tokenConfigured)return {tone:'idle',icon:'•',title:'טרם הוגדר',meta:'לחץ להגדרה'};
   if(s?.available===false)return {tone:'error',icon:'!',title:'לא זמין',meta:lastFailure?syncTimeLabel(lastFailure):'Bridge מקומי'};
   return {tone:'idle',icon:'•',title:'טרם סונכרן',meta:s?.configured?'מוכן לרענון':'נדרשת הגדרה'};
 }
@@ -96,10 +99,11 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const rows=feed?.transactions||[],balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
-  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון ${roleLabel}</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${rows.length} תנועות · 30 הימים האחרונים</small></div>${Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:''}</div>`;
+  const allRows=feed?.transactions||[],query=ui.bankSearchValue||'',rows=query.trim()?allRows.filter(row=>bankRowMatchesSearch(row,query)):allRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
+  const countLabel=query.trim()?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
+  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון ${roleLabel}</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${countLabel} · 30 הימים האחרונים</small></div>${Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:''}</div>`;
   if(!feed)return `${caption}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן. הגדר אותו בחיבור לבנק ולחץ „רענן עכשיו”.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
-  if(!rows.length)return `${caption}<div class="empty bank-feed-empty">לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
+  if(!rows.length)return `${caption}<div class="empty bank-feed-empty">${query.trim()&&allRows.length?'אין תנועות המתאימות לחיפוש.':'לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.'}${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
   const body=rows.map(row=>{
     const amount=Number(row.amount)||0,when=row.date||row.processedDate;
     const valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'';
@@ -130,10 +134,12 @@ function setBankAccountView(role){
   ui.bankAccountView=role==='home'?'home':'business';syncBankAccountTabs();
   const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup();
 }
+function setBankSearch(value){ui.bankSearchValue=String(value||'');const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup()}
+function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=document.getElementById('bankSyncPanel'),button=document.getElementById('bankSyncHeadline');if(panel)panel.hidden=!ui.bankSyncOpen;if(button){button.classList.toggle('open',ui.bankSyncOpen);button.setAttribute('aria-expanded',String(ui.bankSyncOpen))}}
 
 function updateBridgePanel(){
   const s=bankBridgeUiState(),headline=document.getElementById('bankSyncHeadline'),status=document.getElementById('bankBridgeStatus');
-  if(headline){const state=bankSyncHeadlineState(s);headline.innerHTML=bankSyncHeadlineMarkup(s);headline.className=`bank-sync-headline ${state.tone}`}
+  if(headline){const state=bankSyncHeadlineState(s);headline.innerHTML=`${bankSyncHeadlineMarkup(s)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span>`;headline.className=`bank-sync-toggle ${state.tone} ${ui.bankSyncOpen?'open':''}`;headline.setAttribute('aria-expanded',String(ui.bankSyncOpen))}
   if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||s.lastError?'error':s.configured?'ok':''}`}
   const diagnostics=document.getElementById('bankBridgeDiagnostics');if(diagnostics)diagnostics.innerHTML=bankBridgeDiagnosticsMarkup(s);
   const choices=document.getElementById('bankBridgeAccountChoices');if(choices)choices.innerHTML=bankAccountChoicesMarkup(s.availableAccounts,s.accountSelectionRole);
@@ -164,38 +170,36 @@ function renderBank(){
     <div class="bank-mini ${esc(after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">צילום יתרה עסקית פחות חיובים שעברו מאז + מחזור האשראי הבא</div></div>
   </div>
   <section class="section bank-sync-section">
-    <details class="bank-sync-settings">
-      <summary class="bank-sync-toolbar">
-        <span class="bank-sync-primary">${bankAccountTabsMarkup()}<span class="bank-sync-disclosure-label">סינכרון <span class="bank-sync-chevron" aria-hidden="true">⌄</span></span></span>
-        <span class="bank-sync-head-actions"><span id="bankSyncHeadline" class="bank-sync-headline ${bankSyncHeadlineState(bridgeUi).tone}">${bankSyncHeadlineMarkup(bridgeUi)}</span><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></span>
-      </summary>
-      <div class="bank-sync-settings-body">
-        <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div>
-        <div id="bankBridgeDiagnostics">${bankBridgeDiagnosticsMarkup(bridgeUi)}</div>
-        <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
-        <div id="bankBridgeAccountChoices">${bankAccountChoicesMarkup(bridgeUi.availableAccounts,bridgeUi.accountSelectionRole)}</div>
-        <div class="bank-connection-forms">
-          <form id="bankBridgePairForm" class="bank-sync-form bank-sync-pair-form" autocomplete="off">
-            <div class="bank-sync-form-title">חיבור הדפדפן ל-Bridge במחשב הזה</div>
-            <label><span>מפתח Bank Bridge</span><input id="bankBridgeTokenInput" name="bankBridgeToken" type="password" autocomplete="off" placeholder="הדבק את המפתח שהעתיקה ההתקנה"></label>
-            <button type="button" class="btn" data-action="save-bank-bridge-token" ${bridgeUi.busy?'disabled':''}>שמור מפתח למחשב זה</button>
-            <small>${bridgeUi.tokenConfigured?'מפתח מקומי כבר שמור בדפדפן הזה. אפשר להחליף אותו בהדבקת מפתח חדש.':'יש לבצע פעם אחת בכל מחשב/דפדפן.'}</small>
-          </form>
-          <form id="bankBridgeCredentialsForm" class="bank-sync-form bank-sync-credentials-form" autocomplete="off">
-            <div class="bank-sync-form-title">פרטי בנק הפועלים — התחברות אחת, שני חשבונות</div>
-            <div class="bank-sync-login-grid"><label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label><label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label></div>
-            <div class="bank-account-config-grid">
-              <fieldset class="bank-account-config business"><legend>חשבון עסקי — מקור הקופה</legend><label><span>סניף עסקי</span><input id="bankBusinessBranchNumberInput" name="businessBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.businessBranchNumber||bridgeUi.branchNumber||'')}"></label><label><span>מספר חשבון עסקי</span><input id="bankBusinessAccountNumberInput" name="businessAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.businessAccountNumber||bridgeUi.accountNumber||'')}"></label><small>רק יתרת החשבון הזה מעדכנת את צילום העו״ש ואת חישובי הקופה.</small></fieldset>
-              <fieldset class="bank-account-config home"><legend>חשבון ביתי — לצפייה בלבד</legend><label><span>סניף ביתי</span><input id="bankHomeBranchNumberInput" name="homeBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="אותו סניף או סניף אחר" value="${esc(bridgeUi.homeBranchNumber||'')}"></label><label><span>מספר חשבון ביתי</span><input id="bankHomeAccountNumberInput" name="homeAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="מספר החשבון הביתי" value="${esc(bridgeUi.homeAccountNumber||'')}"></label><small>היתרה והתנועות נשמרות לתצוגה בלבד ואינן משתתפות באף חישוב עסקי.</small></fieldset>
-            </div>
-            <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים ושני החשבונות</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
-            <small>ה-Bridge משתמש במזהה מלא בנק 12 + סניף + מספר חשבון לכל אחד מהחשבונות. ברענון אחד הוא נכנס פעם אחת לבנק, מאמת ששני החשבונות קיימים, ורק אז קורא את שניהם.</small>
-          </form>
-        </div>
-        <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־4 שעות</span></label></div>
-        <div class="soft-note">„רענן” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות והתנועות נשמרים במצב הקופה המשותף.</div>
+    <div class="bank-command-row">
+      <div class="bank-view-tools">${bankAccountTabsMarkup()}<input class="bank-search" type="search" value="${esc(ui.bankSearchValue||'')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="bank-search"></div>
+      <button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button>
+    </div>
+    <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>
+      <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן עכשיו'}</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>
+      <div id="bankBridgeDiagnostics">${bankBridgeDiagnosticsMarkup(bridgeUi)}</div>
+      <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
+      <div id="bankBridgeAccountChoices">${bankAccountChoicesMarkup(bridgeUi.availableAccounts,bridgeUi.accountSelectionRole)}</div>
+      <div class="bank-connection-forms">
+        <form id="bankBridgePairForm" class="bank-sync-form bank-sync-pair-form" autocomplete="off">
+          <div class="bank-sync-form-title">חיבור הדפדפן ל-Bridge במחשב הזה</div>
+          <label><span>מפתח Bank Bridge</span><input id="bankBridgeTokenInput" name="bankBridgeToken" type="password" autocomplete="off" placeholder="הדבק את המפתח שהעתיקה ההתקנה"></label>
+          <button type="button" class="btn" data-action="save-bank-bridge-token" ${bridgeUi.busy?'disabled':''}>שמור מפתח למחשב זה</button>
+          <small>${bridgeUi.tokenConfigured?'מפתח מקומי כבר שמור בדפדפן הזה. אפשר להחליף אותו בהדבקת מפתח חדש.':'יש לבצע פעם אחת בכל מחשב/דפדפן.'}</small>
+        </form>
+        <form id="bankBridgeCredentialsForm" class="bank-sync-form bank-sync-credentials-form" autocomplete="off">
+          <div class="bank-sync-form-title">פרטי בנק הפועלים — התחברות אחת, שני חשבונות</div>
+          <div class="bank-sync-login-grid"><label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label><label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label></div>
+          <div class="bank-account-config-grid">
+            <fieldset class="bank-account-config business"><legend>חשבון עסקי — מקור הקופה</legend><label><span>סניף עסקי</span><input id="bankBusinessBranchNumberInput" name="businessBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.businessBranchNumber||bridgeUi.branchNumber||'')}"></label><label><span>מספר חשבון עסקי</span><input id="bankBusinessAccountNumberInput" name="businessAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.businessAccountNumber||bridgeUi.accountNumber||'')}"></label><small>רק יתרת החשבון הזה מעדכנת את צילום העו״ש ואת חישובי הקופה.</small></fieldset>
+            <fieldset class="bank-account-config home"><legend>חשבון ביתי — לצפייה בלבד</legend><label><span>סניף ביתי</span><input id="bankHomeBranchNumberInput" name="homeBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="אותו סניף או סניף אחר" value="${esc(bridgeUi.homeBranchNumber||'')}"></label><label><span>מספר חשבון ביתי</span><input id="bankHomeAccountNumberInput" name="homeAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="מספר החשבון הביתי" value="${esc(bridgeUi.homeAccountNumber||'')}"></label><small>היתרה והתנועות נשמרות לתצוגה בלבד ואינן משתתפות באף חישוב עסקי.</small></fieldset>
+          </div>
+          <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים ושני החשבונות</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
+          <small>ה-Bridge משתמש במזהה מלא בנק 12 + סניף + מספר חשבון לכל אחד מהחשבונות. ברענון אחד הוא נכנס פעם אחת לבנק, מאמת ששני החשבונות קיימים, ורק אז קורא את שניהם.</small>
+        </form>
       </div>
-    </details>
+      <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־4 שעות</span></label></div>
+      <div class="soft-note">„רענן עכשיו” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות והתנועות נשמרים במצב הקופה המשותף.</div>
+    </div>
     <div class="bank-transactions-region">${bankTransactionsMarkup(bridgeUi)}</div>
   </section>
   ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש העסקי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
@@ -210,5 +214,5 @@ function renderBank(){
   refreshBankBridgeStatus().then(updateBridgePanel).catch(()=>updateBridgePanel());
 }
 
-return {renderBank,setBankAccountView};
+return {renderBank,setBankAccountView,setBankSearch,toggleBankSyncOptions};
 }
