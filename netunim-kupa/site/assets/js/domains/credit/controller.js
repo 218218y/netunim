@@ -11,7 +11,7 @@ function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !N
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
-  const local={busy:false,status:null,error:'',autoTimer:null};
+  const local={busy:false,status:null,error:'',errorAt:null,autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)==='1'}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
   function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
@@ -21,11 +21,11 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   async function refreshCreditBridgeStatus({quiet=true}={}){
     try{
       const status=await bridge.creditStatus();
-      local.status=status;local.error='';
+      local.status=status;local.error='';local.errorAt=null;
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)local.error='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';
       if(!quiet)render();
       return status;
-    }catch(e){local.status=null;local.error=e?.message||String(e);if(!quiet)render();return null}
+    }catch(e){local.status=null;local.error=e?.message||String(e);local.errorAt=new Date().toISOString();if(!quiet)render();return null}
   }
 
   function profileFromState(profileId){return normalizeCreditSync(model.state.creditSync).profiles.find(p=>p.profileId===profileId)||null}
@@ -68,7 +68,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   async function resetCreditSync(){
     if(local.busy)return toast('כבר מתבצע סנכרון אשראי');
     if(!await confirmDialog('לאפס את כל סנכרון האשראי?','האיפוס ימחק את כל חיבורי חברות האשראי המוצפנים מהמחשב הזה וגם את נתוני הסנכרון, השיוכים והשגיאות השמורים בקופה/בענן. תוספות ידניות חדשות שנוצרו לאחר המעבר לסנכרון יישארו, משום שהן שכבה משלימה ולא מקור חלופי.',{confirmText:'אפס והתחל מחדש'}))return;
-    local.busy=true;local.error='';render();
+    local.busy=true;local.error='';local.errorAt=null;render();
     try{
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
@@ -79,13 +79,13 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       await saveState('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');
       await refreshCreditBridgeStatus();
       toast('סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
-    }catch(e){local.error=e?.message||String(e);toast(local.error)}
+    }catch(e){local.error=e?.message||String(e);local.errorAt=new Date().toISOString();toast(local.error)}
     finally{local.busy=false;render();scheduleAuto()}
   }
 
   async function refreshCreditSync({interactive=false,auto=false}={}){
     if(local.busy)return;
-    local.busy=true;local.error='';if(!auto)render();
+    local.busy=true;local.error='';local.errorAt=null;if(!auto)render();
     try{
       if(auto){
         const latest=await refreshFinanceCloudSnapshot();
@@ -103,7 +103,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       await refreshCreditBridgeStatus();
       if(!auto)toast(result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו');
     }catch(e){
-      local.error=e?.message||String(e);
+      local.error=e?.message||String(e);local.errorAt=new Date().toISOString();
       // If every local profile failed, the Bridge returns HTTP 400 with structured per-profile errors.
       // Persist those diagnostics without deleting the last successful profile data.
       if(Array.isArray(e?.creditErrors)&&e.creditErrors.length){

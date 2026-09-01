@@ -166,9 +166,8 @@ function renderBank(){
   <section class="section bank-sync-section">
     <details class="bank-sync-settings">
       <summary class="bank-sync-toolbar">
-        ${bankAccountTabsMarkup()}
-        <span class="bank-sync-center"><span class="bank-sync-disclosure-label">סינכרון <span class="bank-sync-chevron" aria-hidden="true">⌄</span></span><span id="bankSyncHeadline" class="bank-sync-headline ${bankSyncHeadlineState(bridgeUi).tone}">${bankSyncHeadlineMarkup(bridgeUi)}</span></span>
-        <span class="bank-sync-head-actions"><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></span>
+        <span class="bank-sync-primary">${bankAccountTabsMarkup()}<span class="bank-sync-disclosure-label">סינכרון <span class="bank-sync-chevron" aria-hidden="true">⌄</span></span></span>
+        <span class="bank-sync-head-actions"><span id="bankSyncHeadline" class="bank-sync-headline ${bankSyncHeadlineState(bridgeUi).tone}">${bankSyncHeadlineMarkup(bridgeUi)}</span><button type="button" class="btn primary" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></span>
       </summary>
       <div class="bank-sync-settings-body">
         <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div>

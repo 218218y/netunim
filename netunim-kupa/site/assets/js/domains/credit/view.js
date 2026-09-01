@@ -6,6 +6,28 @@ import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditSyncSummary} from './s
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
+function creditErrorRows(syncUi,summary){
+  const rows=[...(Array.isArray(syncUi?.status?.lastErrors)?syncUi.status.lastErrors:[]),...(Array.isArray(summary?.sync?.errors)?summary.sync.errors:[])],seen=new Set(),out=[];
+  for(const row of rows){const key=[row?.profileId,row?.provider,row?.code,row?.stage,row?.message,row?.at].map(x=>String(x||'')).join('|');if(seen.has(key))continue;seen.add(key);out.push(row)}
+  return out.sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
+}
+function creditSyncHeadlineState(syncUi,summary){
+  const errors=creditErrorRows(syncUi,summary),latestError=errors[0]||null,lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null;
+  const errorAt=syncUi?.errorAt||latestError?.at||null,lastSyncTime=Date.parse(lastSync||'')||0,errorTime=Date.parse(errorAt||'')||0;
+  if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
+  if(syncUi?.error)return {tone:'error',icon:'!',title:'נכשל',meta:errorAt?syncDate(errorAt):'כעת'};
+  if(errors.length){const partial=lastSyncTime&&(!errorTime||lastSyncTime>=errorTime-5000);return {tone:partial?'warn':'error',icon:'!',title:partial?'הושלם חלקית':'נכשל',meta:(partial?lastSync:errorAt)?syncDate(partial?lastSync:errorAt):'זמן לא זמין'};}
+  if(lastSync)return {tone:'ok',icon:'✓',title:'הצליח',meta:syncDate(lastSync)};
+  return {tone:'idle',icon:'•',title:'טרם סונכרן',meta:'מוכן להגדרה'};
+}
+function creditSyncHeadlineMarkup(state){return `<span class="credit-sync-state-icon" aria-hidden="true">${esc(state.icon)}</span><span class="credit-sync-state-copy"><b>${esc(state.title)}</b><small>${esc(state.meta)}</small></span>`}
+function creditSyncDiagnosticsMarkup(syncUi,summary){
+  const errors=creditErrorRows(syncUi,summary),rows=[];
+  const localCovered=syncUi?.error&&errors.some(error=>String(syncUi.error).includes(String(error?.message||''))&&String(error?.message||'').length>0);
+  if(syncUi?.error&&!localCovered)rows.push(`<div class="credit-sync-detail error"><b>הסנכרון האחרון נכשל</b><span>${esc(syncUi.error)}</span>${syncUi.errorAt?`<small>${esc(syncDate(syncUi.errorAt))}</small>`:''}</div>`);
+  for(const error of errors){const label=error?.label||CREDIT_PROVIDER_LABELS[error?.provider]||error?.provider||'חברת אשראי',meta=[error?.code?`קוד: ${error.code}`:'',error?.stage?`שלב: ${error.stage}`:'',error?.httpStatus?`HTTP: ${error.httpStatus}`:'',error?.at?syncDate(error.at):''].filter(Boolean).join(' · ');rows.push(`<div class="credit-sync-detail error"><b>${esc(label)}</b><span>${esc(error?.message||'סנכרון האשראי נכשל')}</span>${meta?`<small>${esc(meta)}</small>`:''}</div>`)}
+  return rows.join('');
+}
 function rowCardKey(row){
   if(row?.creditAccountKey)return row.creditAccountKey;
   if(row?.profileId&&row?.accountNumber)return synchronizedCardKey(row.profileId,row.accountNumber);
@@ -81,9 +103,8 @@ function renderCredit(){
   const maxForecast=Math.max(1,...months.map(x=>Math.abs(x.total)));
   const forecastRows=creditForecastColumns(months,maxForecast);
 
-  const statusClass=syncUi.busy?'busy':syncUi.error?'error':summary.sync.errors.length?'warn':summary.hasData?'ok':'';
-  const statusTitle=syncUi.busy?'מסנכרן חברות אשראי…':syncUi.error?'סנכרון האשראי נכשל':summary.sync.errors.length?'הסנכרון האחרון הושלם חלקית':summary.hasData?'נתוני חברות האשראי זמינים':'חיבור אוטומטי לחברות האשראי';
-  const statusSub=syncUi.error?syncUi.error:summary.sync.errors.length?summary.sync.errors.map(e=>`${e.label||e.provider}: ${e.message}`).join(' · '):`עדכון אחרון: ${syncDate(summary.sync.syncedAt)}`;
+  const syncHeadline=creditSyncHeadlineState(syncUi,summary);
+  const syncDiagnostics=creditSyncDiagnosticsMarkup(syncUi,summary);
   const localProfiles=Array.isArray(syncUi.status?.profiles)?syncUi.status.profiles:[];
   const localIds=new Set(localProfiles.map(p=>p.profileId));
   const cloudOnly=summary.sync.profiles.filter(p=>!localIds.has(p.profileId));
@@ -106,10 +127,12 @@ function renderCredit(){
     <section class="section credit-sync-section">
       <details class="credit-sync-settings">
         <summary class="credit-sync-toolbar">
-          <div class="credit-sync-headline ${statusClass}"><span class="credit-sync-state-icon">${syncUi.busy?'↻':syncUi.error?'!':summary.sync.errors.length?'!':summary.hasData?'✓':'◌'}</span><span class="credit-sync-state-copy"><b>${esc(statusTitle)}</b><small>${esc(statusSub)}</small></span></div>
-          <div class="credit-sync-head-actions"><button class="btn primary" type="button" data-action="refresh-credit-sync">רענן אשראי עכשיו</button><button class="btn" type="button" data-action="refresh-credit-sync-interactive">רענן עם חלון אבחון</button></div><span class="credit-sync-chevron">⌄</span>
+          <span class="credit-sync-primary"><span class="credit-sync-disclosure-label">סינכרון <span class="credit-sync-chevron" aria-hidden="true">⌄</span></span></span>
+          <span class="credit-sync-head-actions"><span class="credit-sync-headline ${syncHeadline.tone}">${creditSyncHeadlineMarkup(syncHeadline)}</span><button class="btn primary" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן'}</button></span>
         </summary>
         <div class="credit-sync-settings-body">
+          <div class="credit-sync-settings-top"><div><b>אפשרויות סינכרון אשראי</b><small>פירוט מלא של כשל מופיע כאן. חלון אבחון נפתח רק ברענון יזום.</small></div><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>רענן עם חלון אבחון</button></div>
+          ${syncDiagnostics?`<div class="credit-sync-diagnostics">${syncDiagnostics}</div>`:''}
           <div class="credit-sync-mode-card"><div><b>מודל נתונים: סנכרון חברות האשראי + תוספות ידניות</b><small>״כלול״ קובע אם הכרטיס מופיע בדוחות האשראי. שיוך ״עסקי״ קובע אם החיובים שלו נכנסים לחישובי הקופה, העו״ש והמאזן; כרטיס ביתי נשאר גלוי בדוחות אך אינו נגרע מהקופה העסקית.</small></div><span class="badge blue">הפרדה מלאה</span></div>
           <div class="credit-sync-settings-grid">
             <div class="credit-sync-panel"><div class="credit-sync-panel-head"><b>חיבורים במחשב זה</b><span class="credit-profile-actions"><button class="btn" type="button" data-action="open-credit-connection">+ חיבור</button><button class="btn danger-soft" type="button" data-action="reset-credit-sync" ${syncUi.busy?'disabled':''}>איפוס מלא</button></span></div>
