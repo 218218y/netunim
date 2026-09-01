@@ -18,7 +18,9 @@ async function readKupaReadOnlyCloud(){const r=await supaFetch(`/rest/v1/${KUPA_
 
 async function readKupaReadOnlyMeta(){const r=await supaFetch(`/rest/v1/${KUPA_READ_TABLE}?document_name=eq.${encodeURIComponent(KUPA_READ_DOC)}&select=document_name,revision,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הקופה לחישוב נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
 
+async function rpcSaveKupaDocument(state,expectedRevision){const expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הקופה אינו תקין');const r=await supaFetch('/rest/v1/rpc/save_kupa_document',{method:'POST',body:JSON.stringify({p_document_name:KUPA_READ_DOC,p_expected_revision:expected,p_state:state})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
+
 async function rpcSaveSharedChecks(checks,expectedRevision){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצ\'קים המקומי אינו תקין');const r=await supaFetch(`/rest/v1/rpc/${SHARED_CHECKS_RPC}`,{method:'POST',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return {r,j,txt,row:Array.isArray(j)?j[0]:j}}
 
-return { readCloud, readCloudMeta, rpcSave, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveSharedChecks };
+return { readCloud, readCloudMeta, rpcSave, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveKupaDocument, rpcSaveSharedChecks };
 }

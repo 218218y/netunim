@@ -15,6 +15,8 @@ import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
+import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
+import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createSyncChecksPersistence} from './sync/checks-persistence.js';
@@ -98,6 +100,8 @@ const storageChecks=createStorageChecks({
 const cloudAuth=createCloudAuth({
 
 });
+
+const domainsFinanceBridge=createDomainsFinanceBridge();
 
 const calendarStorage=createCalendarStorage();
 const calendarAuth=createCalendarAuth({
@@ -591,6 +595,21 @@ const syncChecks=createSyncChecks({
   refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
 });
 
+const domainsFinanceController=createDomainsFinanceController({
+  tab,
+  checksSession,
+  bridge:domainsFinanceBridge,
+  loadSession:(...args)=>cloudAuth.loadSession(...args),
+  refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
+  readKupaReadOnlyCloud:(...args)=>cloudTransport.readKupaReadOnlyCloud(...args),
+  rpcSaveKupaDocument:(...args)=>cloudTransport.rpcSaveKupaDocument(...args),
+  acceptKupaCloudRow:(...args)=>domainsBankCache.acceptKupaCloudRow(...args),
+  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
+  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
+  checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+});
+
 const syncDocument=createSyncDocument({
   model,
   files,
@@ -653,6 +672,7 @@ const uiCloud=createUiCloud({
   saveSession:(...args)=>cloudAuth.saveSession(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
+  startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
 });
 
 const domainsCalendarController=createDomainsCalendarController({
@@ -724,6 +744,7 @@ const lifecycle=createLifecycle({
   refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   openCloud:(...args)=>uiCloud.openCloud(...args),
+  startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
 });
 
 const uiEvents={bindActionEvents};

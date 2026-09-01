@@ -433,6 +433,17 @@ const domainsCashView=createDomainsCashView({
 
 const domainsBankBridge=createDomainsBankBridge();
 
+async function refreshFinanceCloudSnapshot(){
+  if(session.connectionMode!=='supabase'||!session.backendReady)return {verified:true,state:model.state};
+  if(!navigator.onLine)return {verified:false,state:null};
+  try{
+    const row=await cloudTransport.readSupabaseDocument();
+    if(!row?.state)return {verified:false,state:null};
+    if(Number(row.revision||0)>Number(session.dbRevision||0))await syncDocument.cloudPoll();
+    return {verified:true,state:row.state,revision:Number(row.revision||0)};
+  }catch(error){console.error('finance cloud freshness',error);return {verified:false,state:null}}
+}
+
 const domainsCreditController=createDomainsCreditController({
   model,
   saveState:(...args)=>storagePersistence.saveState(...args),
@@ -443,6 +454,7 @@ const domainsCreditController=createDomainsCreditController({
   armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  refreshFinanceCloudSnapshot,
 });
 
 const domainsBankController=createDomainsBankController({
@@ -456,6 +468,7 @@ const domainsBankController=createDomainsBankController({
   toast:(...args)=>uiStatus.toast(...args),
   render:(...args)=>uiNavigation.render(...args),
   bridge:domainsBankBridge,
+  refreshFinanceCloudSnapshot,
 });
 
 const domainsBankView=createDomainsBankView({

@@ -30,6 +30,22 @@ if r.stdout: print(r.stdout.strip())
 if r.stderr: print(r.stderr.strip())
 ok(r.returncode==0,'credit sync models: multi-profile, cutover/rollback and forecast semantics pass')
 
+ORDERS_SITE=ROOT/'netunim-orders/site'
+for rel in ['assets/js/domains/finance/bridge.js','assets/js/domains/finance/bank-feed.js','assets/js/domains/finance/credit-feed.js','assets/js/domains/finance/controller.js','assets/js/domains/bank/cache.js','assets/js/cloud/transport.js','assets/js/lifecycle.js','assets/js/ui/cloud.js','assets/js/main.js']:
+    r=subprocess.run(['node','--check',str(ORDERS_SITE/rel)],capture_output=True,text=True)
+    ok(r.returncode==0,f'orders finance sync: {rel} has valid JavaScript syntax')
+    if r.returncode: print(r.stderr)
+
+r=subprocess.run(['node',str(ROOT/'tests/orders_finance_sync_models.test.mjs')],cwd=ROOT,capture_output=True,text=True)
+if r.stdout: print(r.stdout.strip())
+if r.stderr: print(r.stderr.strip())
+ok(r.returncode==0,'orders finance sync models: shared freshness and conflict-safe cross-app updates pass')
+
+r=subprocess.run(['node',str(ROOT/'tests/cross_app_finance_freshness.test.mjs')],cwd=ROOT,capture_output=True,text=True)
+if r.stdout: print(r.stdout.strip())
+if r.stderr: print(r.stderr.strip())
+ok(r.returncode==0,'cross-app finance freshness: Kupa rechecks the shared cloud clock before automatic bank/credit scraping')
+
 server=(BRIDGE/'server.mjs').read_text(encoding='utf-8')
 lib=(BRIDGE/'lib.mjs').read_text(encoding='utf-8')
 camoufox=(BRIDGE/'isracard-camoufox.mjs').read_text(encoding='utf-8')
@@ -49,6 +65,12 @@ credit_view=(SITE/'assets/js/domains/credit/view.js').read_text(encoding='utf-8'
 app_css=(SITE/'assets/app.css').read_text(encoding='utf-8')
 bank_model=(SITE/'assets/js/domains/bank/model.js').read_text(encoding='utf-8')
 orders_readout=(ROOT/'netunim-orders/site/assets/js/domains/bank/readout.js').read_text(encoding='utf-8')
+orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
+orders_finance_bridge=(ROOT/'netunim-orders/site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8')
+orders_cloud_transport=(ROOT/'netunim-orders/site/assets/js/cloud/transport.js').read_text(encoding='utf-8')
+orders_lifecycle=(ROOT/'netunim-orders/site/assets/js/lifecycle.js').read_text(encoding='utf-8')
+orders_headers=(ROOT/'netunim-orders/site/_headers').read_text(encoding='utf-8')
+orders_worker=(ROOT/'netunim-orders/site/service-worker.js').read_text(encoding='utf-8')
 contexts=(SITE/'assets/js/state/contexts.js').read_text(encoding='utf-8')
 navigation=(SITE/'assets/js/ui/navigation.js').read_text(encoding='utf-8')
 headers=(SITE/'_headers').read_text(encoding='utf-8')
@@ -171,6 +193,21 @@ ok("localStorage.setItem(CREDIT_AUTO_KEY" in credit_controller and 'username' no
 ok("creditSync:{version:3,mode:'synced'" in contexts and 'n.creditSync=normalizeCreditSync(n.creditSync)' in normalization, 'credit state: new state starts directly in the synchronized-primary v3 model')
 ok('isShekelTransaction' in credit_feed and 'foreign-currency rows' in credit_feed.lower(), 'credit forecast safety: non-ILS charged amounts do not silently enter shekel cash-flow totals')
 ok('./assets/js/domains/credit/sync-feed.js' in worker and './assets/js/domains/credit/controller.js' in worker, 'credit PWA: synchronization modules are part of the deterministic app shell')
+
+
+ok("/rest/v1/rpc/save_kupa_document" in orders_cloud_transport and 'p_expected_revision:expected' in orders_cloud_transport, 'Orders finance ownership: updates reuse the canonical Kupa revision-checked RPC instead of creating a second finance document')
+ok('readKupaReadOnlyCloud()' in orders_finance_controller and 'revisionConflict(result)' in orders_finance_controller and 'for(let attempt=0;attempt<3;attempt++)' in orders_finance_controller, 'Orders finance concurrency: bank/credit mutations re-read and retry on Kupa revision conflicts instead of overwriting unrelated changes')
+ok('currentBalance:kupaWholeMoney(business.balance)' in orders_finance_controller and 'feed:businessFeed' in orders_finance_controller and 'homeFeed:nextHomeFeed' in orders_finance_controller, 'Orders bank sync: business remains authoritative while business/home feeds are stored in the same canonical Kupa bank object')
+ok('mergeCreditSyncResult(kupa.creditSync,result)' in orders_finance_controller and 'cardMappings' in (ROOT/'netunim-orders/site/assets/js/domains/finance/credit-feed.js').read_text(encoding='utf-8'), 'Orders credit sync: issuer refresh preserves existing Kupa card mappings and prior successful profiles')
+ok('FINANCE_AUTO_INTERVAL_MS=24*60*60*1000' in orders_finance_bridge and 'await refreshKupaReadout({force:true,renderIfChanged:true})' in orders_finance_controller and 'financeRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState))' in orders_finance_controller and 'financeRefreshDue(creditLastSyncAt(checksSession.kupaCloudReadState))' in orders_finance_controller, 'Orders finance auto refresh: the shared Kupa cloud timestamps are re-read before each daily scrape so a sync from either app suppresses the other')
+ok("const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1'" in orders_finance_bridge and 'bridgeTokenConfigured' in orders_finance_controller and 'p_state' not in orders_finance_bridge, 'Orders bridge security: the device pairing token remains browser-local and is never copied into Kupa/Supabase state')
+ok('http://127.0.0.1:8765' in orders_headers, 'Orders CSP: only the intended loopback Bank Bridge endpoint is added to connect-src')
+ok('./assets/js/domains/finance/controller.js' in orders_worker and './assets/js/domains/finance/bridge.js' in orders_worker and './assets/js/domains/finance/credit-feed.js' in orders_worker, 'Orders finance PWA: cross-app synchronization modules are part of the deterministic offline shell')
+ok('startFinanceAutoSync();' in orders_lifecycle, 'Orders lifecycle: finance auto scheduling starts only after normal Orders boot/cloud recovery completes')
+ok('refreshFinanceCloudSnapshot' in main and "readSupabaseDocument()" in main and 'syncDocument.cloudPoll()' in main, 'Kupa cross-app freshness: automatic finance refresh has a direct shared-cloud preflight instead of waiting for the 12-second poll')
+ok('refreshFinanceCloudSnapshot' in controller and 'bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))' in controller, 'Kupa bank cross-app freshness: a fresh Orders bank snapshot suppresses the local automatic Bridge scrape')
+ok('refreshFinanceCloudSnapshot' in credit_controller and "due(latest.state?.creditSync?.syncedAt)" in credit_controller and 'retryWait=autoAttemptDelayMs()' in credit_controller, 'Kupa credit cross-app freshness: a fresh Orders credit sync suppresses the local scrape and failed attempts do not wake every second')
+ok('bankAttemptDelayMs' in orders_finance_bridge and 'creditAttemptDelayMs' in orders_finance_bridge and 'retryWait+250' in orders_finance_controller, 'Orders finance scheduler: the one-hour failure cooldown is honored by timers instead of polling every second')
 
 if errors:
     print('\nERRORS',len(errors))

@@ -6,11 +6,12 @@ import {normalizeBankFeed} from './feed.js';
 
 const BANK_BRIDGE_VERSION=19;
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:''};
 let autoTimer=null;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
+function sharedBankLastSyncAt(state=model.state){const feed=normalizeBankFeed(state?.bank?.feed);return feed?.syncedAt||state?.bank?.bankSyncAt||(state?.bank?.source==='hapoalim'?state?.bank?.updatedAt:null)||null}
 function feedFromSnapshot(snapshot,fetchedAt){
   if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;
   return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
@@ -48,7 +49,7 @@ async function saveBankBalance(){
 
 function bankBridgeUiState(){
   const feed=normalizeBankFeed(model.state.bank?.feed),homeFeed=normalizeBankFeed(model.state.bank?.homeFeed);
-  const sharedLastSyncAt=feed?.syncedAt||model.state.bank?.bankSyncAt||(model.state.bank?.source==='hapoalim'?model.state.bank?.updatedAt:null)||null;
+  const sharedLastSyncAt=sharedBankLastSyncAt();
   const homeLastSyncAt=homeFeed?.syncedAt||null;
   return {...bridgeState,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
 }
@@ -132,8 +133,14 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
   if(bridgeState.upgradeRequired){if(!auto)toast('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');return false}
   bridgeState.busy=true;bridgeState.lastError='';bridgeState.lastErrorCode='';bridgeState.lastErrorStage='';bridgeState.lastErrorHttpStatus=0;bridgeState.lastWarning='';bridgeState.lastWarningCode='';bridgeState.lastWarningStage='';bridgeState.lastWarningHttpStatus=0;bridgeState.accountSelectionRole='';
   bridgeState.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
-  if(auto)bridge.markAutoAttempt();render();
+  render();
   try{
+    if(auto){
+      const latest=await refreshFinanceCloudSnapshot();
+      if(!latest?.verified){bridge.markAutoAttempt();throw new Error('לא ניתן לאמת את זמן סנכרון הבנק המשותף בענן');}
+      if(!bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))){bridge.markAutoAttempt();return true}
+      bridge.markAutoAttempt();
+    }
     const result=await bridge.fetchBalance({interactive}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
     if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
     if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
@@ -157,7 +164,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
 function maybeAutoRefreshBankBalance(){
   if(autoTimer){clearTimeout(autoTimer);autoTimer=null}
   if(!session.backendReady||!bridge.autoEnabled()||!bridge.getBridgeToken()||bridgeState.busy)return;
-  const feed=normalizeBankFeed(model.state.bank?.feed),now=Date.now(),lastSyncAt=feed?.syncedAt||model.state.bank?.bankSyncAt||(model.state.bank?.source==='hapoalim'?model.state.bank?.updatedAt:null),lastSyncMs=lastSyncAt?Date.parse(lastSyncAt):NaN;
+  const now=Date.now(),lastSyncAt=sharedBankLastSyncAt(),lastSyncMs=lastSyncAt?Date.parse(lastSyncAt):NaN;
   if(!bankAutoRefreshDue(lastSyncAt,now)){
     const dueIn=Math.max(1000,lastSyncMs+24*60*60*1000-now+250);autoTimer=setTimeout(maybeAutoRefreshBankBalance,dueIn);return;
   }

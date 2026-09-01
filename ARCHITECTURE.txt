@@ -32,6 +32,7 @@ Data ownership and recovery
 kupa_documents owns cash, credit, expenses, cards and bank snapshots. order_management_documents owns Orders data.
 shared_checks_documents is the authoritative shared check list. Its legacy bankEvents/depositSeq metadata remains readable for backward compatibility with deployed RPCs, but does not participate in bank calculations.
 Neither app writes checks into its own cloud document. The bank snapshot/feed is the sole source of bank balance in both Kupa and the Orders readout; check workflow states cannot change it.
+Orders may refresh the canonical bank feeds and creditSync inside kupa_documents/main through the same revision-checked Kupa RPC; it never stores a second finance copy. Before automatic finance refresh it re-reads the shared Kupa timestamps, so a successful refresh by either app satisfies the common 24-hour freshness window. The Bank Bridge pairing token remains local to each browser origin; bank/card login credentials remain only inside the local Bridge. Neither is persisted in Supabase.
 Portable backups still contain checks and retain the existing schema versions and file names.
 Orders restore preserves live shared checks by default unless the user explicitly selects check restoration.
 

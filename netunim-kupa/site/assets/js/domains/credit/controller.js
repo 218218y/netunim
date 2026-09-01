@@ -10,11 +10,12 @@ const CREDIT_AUTO_RETRY_MS=60*60*1000;
 function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !Number.isFinite(t)||now-t>=CREDIT_AUTO_INTERVAL_MS}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
-export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog}){
+export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
   const local={busy:false,status:null,error:'',autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)==='1'}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
-  function autoAttemptReady(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return !n||Date.now()-n>=CREDIT_AUTO_RETRY_MS}
+  function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
+  function autoAttemptReady(){return autoAttemptDelayMs()===0}
   function creditSyncUiState(){return {...local,autoEnabled:autoEnabled(),sync:normalizeCreditSync(model.state.creditSync)}}
 
   async function refreshCreditBridgeStatus({quiet=true}={}){
@@ -86,11 +87,16 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     if(local.busy)return;
     local.busy=true;local.error='';if(!auto)render();
     try{
+      if(auto){
+        const latest=await refreshFinanceCloudSnapshot();
+        if(!latest?.verified){markAutoAttempt();throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');}
+        if(!due(latest.state?.creditSync?.syncedAt)){markAutoAttempt();return true}
+        markAutoAttempt();
+      }
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
-      if(auto)markAutoAttempt();
       const result=await bridge.syncCreditCards({interactive});
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveState(result.errors?.length?'האשראי עודכן חלקית':'האשראי עודכן מחברות האשראי');
@@ -123,8 +129,8 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     if(local.autoTimer){clearTimeout(local.autoTimer);local.autoTimer=null}
     if(!autoEnabled())return;
     const syncedAt=model.state.creditSync?.syncedAt,t=syncedAt?Date.parse(syncedAt):NaN;
-    const wait=Number.isFinite(t)?Math.max(0,t+CREDIT_AUTO_INTERVAL_MS-Date.now()):0;
-    local.autoTimer=setTimeout(()=>{local.autoTimer=null;maybeAutoRefreshCreditSync()},Math.max(1000,wait+250));
+    const wait=Number.isFinite(t)?Math.max(0,t+CREDIT_AUTO_INTERVAL_MS-Date.now()):0,retryWait=autoAttemptDelayMs();
+    local.autoTimer=setTimeout(()=>{local.autoTimer=null;maybeAutoRefreshCreditSync()},Math.max(1000,wait+250,retryWait+250));
   }
   async function maybeAutoRefreshCreditSync(){
     scheduleAuto();if(!autoEnabled()||local.busy||!due(model.state.creditSync?.syncedAt)||!autoAttemptReady())return;
