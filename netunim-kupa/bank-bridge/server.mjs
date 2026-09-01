@@ -9,6 +9,7 @@ import {
   HAPOALIM_NAVIGATION_STABLE_MS,
   HAPOALIM_DATA_RETRY_LIMIT,
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
+  HAPOALIM_INITIAL_BACKFILL_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
   buildHapoalimAdditionalDetailsUrl,
   isHapoalimChequeTransaction,
@@ -38,7 +39,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=21;
+const BRIDGE_VERSION=22;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -286,7 +287,7 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
   return {transactions:enriched,ready:reusableReady};
 }
 
-async function fetchHapoalimAccountSnapshot(page,selected,ready){
+async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPOALIM_TRANSACTION_LOOKBACK_DAYS){
   const accountId=selected.accountId;
   const balanceResult=await runStage('balance',()=>pageFetchJson(page,async current=>{
     const restContext=String(current.restContext||'').replace(/^\/+/, '');
@@ -295,27 +296,45 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready){
   },{initialReady:ready}), 'BALANCE_FETCH_FAILED');
   const balanceData=balanceResult.data,balanceReady=balanceResult.ready;
   const balance=Number(balanceData?.currentBalance);
+  const availableBalance=Number.isFinite(Number(balanceData?.withdrawalBalance))?Number(balanceData.withdrawalBalance):null;
+  const creditLimit=Number.isFinite(Number(balanceData?.creditLimitAmount))?Number(balanceData.creditLimitAmount):null;
+  const creditLimitUsed=Number.isFinite(Number(balanceData?.creditLimitUtilizationAmount))?Number(balanceData.creditLimitUtilizationAmount):null;
+  const creditLimitUsedPercent=Number.isFinite(Number(balanceData?.creditLimitUtilizationPercent))?Number(balanceData.creditLimitUtilizationPercent):null;
   if(!Number.isFinite(balance))throw stageError('balance',Object.assign(new Error('בנק הפועלים לא החזיר יתרת עו״ש מספרית לחשבון שנבחר'),{code:'NO_BALANCE'}));
 
   let transactions=[],transactionWarning='',reusableReady=balanceReady;
   try{
-    const end=new Date(),start=new Date(end);start.setDate(start.getDate()-Math.max(1,HAPOALIM_TRANSACTION_LOOKBACK_DAYS-1));
-    const txResult=await pageFetchJson(page,async current=>{
-      const restContext=String(current.restContext||'').replace(/^\/+/, '');
-      const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
-      const cookies=await page.cookies();
-      const xsrf=String(cookies.find(cookie=>cookie.name==='XSRF-TOKEN')?.value||'');
-      const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};
-      if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
-      return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(end)}&retrievalStartDate=${ymdDate(start)}&sortCode=1`,method:'POST',headers,body:'[]'};
-    },{initialReady:balanceReady});
-    reusableReady=txResult.ready;
-    const enriched=await enrichHapoalimChequeTransactions(page,txResult.data?.transactions,accountId,{initialReady:reusableReady});
-    reusableReady=enriched.ready||reusableReady;
-    transactions=normalizeRecentTransactions(enriched.transactions,HAPOALIM_TRANSACTION_LIMIT);
+    const end=new Date(),days=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(1,Number(historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
+    const all=[];
+    async function fetchWindow(windowStart,windowEnd){
+      const txResult=await pageFetchJson(page,async current=>{
+        const restContext=String(current.restContext||'').replace(/^\/+/, '');
+        const apiSiteUrl=`${HAPOALIM_BASE_URL}/${restContext}`;
+        const cookies=await page.cookies(),xsrf=String(cookies.find(cookie=>cookie.name==='XSRF-TOKEN')?.value||'');
+        const headers={'Content-Type':'application/json;charset=UTF-8','pageUuid':'/current-account/transactions','uuid':randomUUID()};if(xsrf)headers['X-XSRF-TOKEN']=xsrf;
+        return {url:`${apiSiteUrl}/current-account/transactions?accountId=${encodeURIComponent(accountId)}&numItemsPerPage=${HAPOALIM_TRANSACTION_LIMIT}&retrievalEndDate=${ymdDate(windowEnd)}&retrievalStartDate=${ymdDate(windowStart)}&sortCode=1`,method:'POST',headers,body:'[]'};
+      },{initialReady:reusableReady});
+      reusableReady=txResult.ready;const raw=Array.isArray(txResult.data?.transactions)?txResult.data.transactions:[];
+      const spanDays=Math.floor((windowEnd-windowStart)/86400000)+1;
+      if(raw.length>=HAPOALIM_TRANSACTION_LIMIT){
+        if(spanDays<=1)throw Object.assign(new Error('יום יחיד החזיר 1000 תנועות או יותר; אי אפשר להבטיח היסטוריה מלאה בלי pagination של הבנק'),{code:'BANK_HISTORY_DAY_FULL'});
+        const mid=new Date(windowStart.getTime()+Math.floor((windowEnd-windowStart)/2));
+        const next=new Date(mid);next.setDate(next.getDate()+1);
+        await fetchWindow(windowStart,mid);await fetchWindow(next,windowEnd);return;
+      }
+      const enriched=await enrichHapoalimChequeTransactions(page,raw,accountId,{initialReady:reusableReady});reusableReady=enriched.ready||reusableReady;all.push(...enriched.transactions);
+    }
+    const chunkDays=days>HAPOALIM_TRANSACTION_LOOKBACK_DAYS?60:days;
+    for(let offset=0;offset<days;offset+=chunkDays){
+      const chunkEnd=new Date(end);chunkEnd.setDate(chunkEnd.getDate()-offset);
+      const chunkStart=new Date(chunkEnd);chunkStart.setDate(chunkStart.getDate()-Math.min(chunkDays-1,days-offset-1));
+      await fetchWindow(chunkStart,chunkEnd);
+    }
+    transactions=normalizeRecentTransactions(all,Math.max(HAPOALIM_TRANSACTION_LIMIT,days*20));
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
-  return {snapshot:{balance,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning},ready:reusableReady};
+
+  return {snapshot:{balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning},ready:reusableReady};
 }
 
 function configuredAccountSelector(credentials,role){
@@ -329,7 +348,7 @@ function selectConfiguredAccount(openAccounts,credentials,role){
   catch(error){error.accountRole=role;throw error}
 }
 
-async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
+async function fetchSelectedHapoalimSnapshot(page,credentials,ready,historyDays=HAPOALIM_TRANSACTION_LOOKBACK_DAYS){
   const stableReady=ready?.ready?ready:await waitForHapoalimSessionReady(page,{timeoutMs:20000,pollMs:300,stableMs:HAPOALIM_NAVIGATION_STABLE_MS});
   const rawAccounts=Array.isArray(stableReady?.accounts)?stableReady.accounts:[];
   const openAccounts=rawAccounts.filter(account=>Number(account?.accountClosingReasonCode)===0);
@@ -344,10 +363,10 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
     homeFailure=safeError(stageError('account',Object.assign(new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים'),{code:'DUPLICATE_ACCOUNT_ROLE',accountRole:'home'}),'ACCOUNT_SELECTION_FAILED'));
     homeSelected=null;
   }
-  const businessResult=await fetchHapoalimAccountSnapshot(page,businessSelected,stableReady);
+  const businessResult=await fetchHapoalimAccountSnapshot(page,businessSelected,stableReady,historyDays);
   let homeResult=null;
   if(homeSelected&&!homeFailure){
-    try{homeResult=await fetchHapoalimAccountSnapshot(page,homeSelected,businessResult.ready)}
+    try{homeResult=await fetchHapoalimAccountSnapshot(page,homeSelected,businessResult.ready,historyDays)}
     catch(error){error.accountRole='home';homeFailure=safeError(error)}
   }
   const business=businessResult.snapshot,home=homeResult?.snapshot||null;
@@ -355,7 +374,7 @@ async function fetchSelectedHapoalimSnapshot(page,credentials,ready){
   return {...business,accounts:{business,home},accountFailures:{home:homeFailure},sessionHref};
 }
 
-async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
+async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays=HAPOALIM_TRANSACTION_LOOKBACK_DAYS}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון מול הבנק'),{code:'SCRAPE_BUSY'});
   scrapeBusy=true;
   let scraper=null,success=false;
@@ -383,7 +402,7 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false}={}){
       if(!loginResult?.success){const [message,code]=scraperFailureMessage(loginResult);throw stageError('login',Object.assign(new Error(message),{code}))}
       ready=await runStage('session',()=>waitForHapoalimSessionReady(scraper.page),'BANK_SESSION_NOT_READY');
     }
-    const snapshot=await runStage('data',()=>fetchSelectedHapoalimSnapshot(scraper.page,credentials,ready),'BANK_DATA_ERROR');
+    const snapshot=await runStage('data',()=>fetchSelectedHapoalimSnapshot(scraper.page,credentials,ready,historyDays),'BANK_DATA_ERROR');
     const sessionUrl=safeHapoalimSessionUrl(snapshot?.sessionHref||ready?.href);
     if(sessionUrl)await writeMeta({sessionUrl});
     success=true;
@@ -516,7 +535,8 @@ async function handler(req,res,token){
     if(req.method==='POST'&&req.url==='/balance'){
       const body=await readJson(req),credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
       try{
-        const result=await scrapeHapoalimSnapshot(credentials,{interactive:!!body.interactive});
+        const historyDays=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,Number(body.historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
+        const result=await scrapeHapoalimSnapshot(credentials,{interactive:!!body.interactive,historyDays});
         const homeFailure=result.accountFailures?.home||null;
         const warnings=[result.accounts?.business?.transactionWarning?`עסקי: ${result.accounts.business.transactionWarning}`:'',result.accounts?.home?.transactionWarning?`ביתי: ${result.accounts.home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean).join(' | ');
         await writeMeta({lastScrapeAt:result.fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings,lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,lastAvailableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],lastAccountRole:homeFailure?'home':''});

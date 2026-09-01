@@ -101,7 +101,9 @@ function bankChequeDetailsMarkup(row){
 function bankTransactionsTableMarkup(feed,role){
   const allRows=feed?.transactions||[],query=ui.bankSearchValue||'',rows=query.trim()?allRows.filter(row=>bankRowMatchesSearch(row,query)):allRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
   const countLabel=query.trim()?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
-  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון ${roleLabel}</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${countLabel} · 30 הימים האחרונים</small></div>${Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:''}</div>`;
+  const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),limit=feed?.creditLimit===null||feed?.creditLimit===undefined?null:Number(feed.creditLimit);
+  const balanceFacts=[Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:'',Number.isFinite(available)?`<div class="bank-current-balance"><span>יתרה זמינה למשיכה</span><b>${money(available)}</b></div>`:'',Number.isFinite(limit)&&limit>0?`<div class="bank-current-balance"><span>מסגרת אשראי</span><b>${money(limit)}</b></div>`:''].filter(Boolean).join('');
+  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון ${roleLabel}</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${countLabel} · הארכיון נשמר בענן; מוצג חלון אחרון</small></div><div class="bank-balance-facts">${balanceFacts}</div></div>`;
   if(!feed)return `${caption}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן. הגדר אותו בחיבור לבנק ולחץ „רענן עכשיו”.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
   if(!rows.length)return `${caption}<div class="empty bank-feed-empty">${query.trim()&&allRows.length?'אין תנועות המתאימות לחיפוש.':'לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.'}${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
   const body=rows.map(row=>{
@@ -198,7 +200,7 @@ function renderBank(){
         </form>
       </div>
       <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־4 שעות</span></label></div>
-      <div class="soft-note">„רענן עכשיו” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות והתנועות נשמרים במצב הקופה המשותף.</div>
+      <div class="soft-note">„רענן עכשיו” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות נשמרים במאגר סינכרון פיננסי נפרד, ותנועות הבנק מתמזגות לארכיון ייעודי שאינו נכלל בגיבויי הקופה.</div>
     </div>
     <div class="bank-transactions-region">${bankTransactionsMarkup(bridgeUi)}</div>
   </section>

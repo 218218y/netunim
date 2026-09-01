@@ -53,7 +53,7 @@ async function configureCredentials({token,userCode,password,businessBranchNumbe
 }
 async function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 async function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
-async function fetchBalance({interactive=false}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:180000})}
+async function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:240000})}
 
 async function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
 async function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}

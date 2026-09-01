@@ -8,7 +8,7 @@ import {assertPortablePayload} from './validation.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateNormalization({model}){
-function prepareKupaCloudState(source=model.state){const x=normalizeState(clone(source));delete x.checks;x.bank={...x.bank,adjustments:(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit')};return x}
+function prepareKupaCloudState(source=model.state){const x=normalizeState(clone(source));delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:null,snapshotSeq:bank.snapshotSeq??null};return x}
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
 

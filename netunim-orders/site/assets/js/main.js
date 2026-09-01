@@ -612,6 +612,9 @@ const domainsFinanceController=createDomainsFinanceController({
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
   toast:(...args)=>uiStatus.toast(...args),
+  readFinanceSyncDocument:(...args)=>cloudTransport.readFinanceSyncDocument(...args),
+  rpcSaveFinanceSync:(...args)=>cloudTransport.rpcSaveFinanceSync(...args),
+  mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
 });
 
 const domainsFinanceView=createDomainsFinanceView({

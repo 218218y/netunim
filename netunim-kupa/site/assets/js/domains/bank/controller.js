@@ -4,9 +4,9 @@ import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
-const BANK_BRIDGE_VERSION=21;
+const BANK_BRIDGE_VERSION=22;
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:''};
 let autoTimer=null;
 
@@ -14,7 +14,7 @@ function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumb
 function sharedBankLastSyncAt(state=model.state){const feed=normalizeBankFeed(state?.bank?.feed);return feed?.syncedAt||state?.bank?.bankSyncAt||(state?.bank?.source==='hapoalim'?state?.bank?.updatedAt:null)||null}
 function feedFromSnapshot(snapshot,fetchedAt){
   if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;
-  return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
+  return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
 }
 function applyBridgeAccountFields(target,source={}){
   const businessBranchNumber=source.businessBranchNumber||source.branchNumber||target.businessBranchNumber||target.branchNumber||'';
@@ -141,14 +141,22 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
       if(!bankAutoRefreshDue(sharedBankLastSyncAt(latest.state||model.state))){bridge.markAutoAttempt();return true}
       bridge.markAutoAttempt();
     }
-    const result=await bridge.fetchBalance({interactive}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
+    const finance=await refreshFinanceCloudSnapshot(),archiveInitialized=finance?.state?.bank?.archiveInitialized===true;
+    const historyDays=!auto&&!archiveInitialized?365:30;
+    const result=await bridge.fetchBalance({interactive,historyDays}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
     if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
     if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
-    const fetchedAt=result.fetchedAt||new Date().toISOString();
-    const businessFeed=feedFromSnapshot(business,fetchedAt),homeFeed=home?feedFromSnapshot(home,fetchedAt):null;
-    const businessAccount=accountIdOf(business),warnings=[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean);
-    const nextHomeFeed=home?homeFeed:(homeFailure?undefined:null);
-    await commitBankSnapshot(business.balance,{source:'hapoalim',accountNumber:businessAccount||null,bankSyncAt:fetchedAt,bankFeed:businessFeed,homeBankFeed:nextHomeFeed,message:auto?(homeFailure?'החשבון העסקי עודכן אוטומטית; החשבון הביתי נשאר בנתון האחרון בגלל תקלה נקודתית.':'שני חשבונות הבנק עודכנו אוטומטית מבנק הפועלים'):homeFailure?'החשבון העסקי עודכן; החשבון הביתי נשאר בנתון האחרון עד לתיקון החיבור.':home?'החשבון העסקי והחשבון הביתי עודכנו מבנק הפועלים':'יתרת העו״ש ונתוני החשבון העסקי עודכנו מבנק הפועלים'});
+    const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
+    await mergeBankTransactions(businessAccount,'business',business.transactions||[]);
+    if(home&&homeAccount)await mergeBankTransactions(homeAccount,'home',home.transactions||[]);
+    const businessArchive=await readBankTransactions(businessAccount,{days:45,limit:1200}),homeArchive=homeAccount?await readBankTransactions(homeAccount,{days:45,limit:1200}):[];
+    const businessFeed=feedFromSnapshot({...business,transactions:businessArchive},fetchedAt),homeFeed=home?feedFromSnapshot({...home,transactions:homeArchive},fetchedAt):null;
+    const warnings=[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean);
+    const previousBank=model.state.bank&&typeof model.state.bank==='object'?model.state.bank:{};
+    const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:archiveInitialized||(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)),archiveInitializedAt:archiveInitialized?previousBank.archiveInitializedAt||null:(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)?fetchedAt:null)};
+    await saveFinancePatch(state=>({...state,bank:nextBank}));
+    model.state.bank=nextBank;
+    await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
     applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});
     if(homeFailure&&!auto)toast('החשבון העסקי עודכן. החשבון הביתי לא עודכן; הנתון הביתי הקודם נשמר ופרטי התקלה מוצגים במסך הבנק.');

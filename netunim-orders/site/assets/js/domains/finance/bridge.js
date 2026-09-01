@@ -38,7 +38,7 @@ function status(){return request('/status',{timeoutMs:3500})}
 function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){if(token)setBridgeToken(token);return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000})}
 function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
-function fetchBalance({interactive=false}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive},timeoutMs:interactive?INTERACTIVE_TIMEOUT_MS:180000})}
+function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_TIMEOUT_MS:240000})}
 function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
 function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
 function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}

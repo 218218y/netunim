@@ -10,7 +10,7 @@ const CREDIT_AUTO_RETRY_MS=60*60*1000;
 function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !Number.isFinite(t)||now-t>=CREDIT_AUTO_INTERVAL_MS}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
-export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
+export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false})}){
   const local={busy:false,status:null,error:'',errorAt:null,autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
@@ -76,7 +76,8 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       await bridge.resetCreditProfiles();
       localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
       model.state.creditSync=normalizeCreditSync({});
-      await saveState('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');
+      await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
+      await saveState('סנכרון האשראי אופס והופרד מגיבויי הקופה');
       await refreshCreditBridgeStatus();
       toast('סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
     }catch(e){local.error=e?.message||String(e);local.errorAt=new Date().toISOString();toast(local.error)}
@@ -99,7 +100,8 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
-      await saveState(result.errors?.length?'האשראי עודכן חלקית':'האשראי עודכן מחברות האשראי');
+      await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
+      await saveState(result.errors?.length?'האשראי עודכן חלקית ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');
       await refreshCreditBridgeStatus();
       if(!auto)toast(result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו');
     }catch(e){
@@ -108,7 +110,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       // Persist those diagnostics without deleting the last successful profile data.
       if(Array.isArray(e?.creditErrors)&&e.creditErrors.length){
         model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,{profiles:[],errors:e.creditErrors});
-        await saveState('סנכרון האשראי נכשל — הנתונים המוצלחים הקודמים נשמרו');
+        await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
       }
       if(!auto)toast(local.error)
     }
@@ -121,7 +123,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     if(field==='hidden')current.hidden=!!value;
     if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';
     if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);
-    sync.cardMappings[key]=current;model.state.creditSync=sync;await saveState('שיוך כרטיס האשראי עודכן');render();
+    sync.cardMappings[key]=current;model.state.creditSync=sync;await saveFinancePatch(state=>({...state,creditSync:sync}));await saveState('שיוך כרטיס האשראי עודכן');render();
   }
 
   function setCreditAutoRefresh(enabled){localStorage.setItem(CREDIT_AUTO_KEY,enabled?'1':'0');scheduleAuto();render()}

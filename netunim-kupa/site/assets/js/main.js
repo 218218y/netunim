@@ -455,6 +455,7 @@ const domainsCreditController=createDomainsCreditController({
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   refreshFinanceCloudSnapshot,
+  saveFinancePatch:(...args)=>cloudTransport.saveFinancePatch(...args),
 });
 
 const domainsBankController=createDomainsBankController({
@@ -469,6 +470,9 @@ const domainsBankController=createDomainsBankController({
   render:(...args)=>uiNavigation.render(...args),
   bridge:domainsBankBridge,
   refreshFinanceCloudSnapshot,
+  saveFinancePatch:(...args)=>cloudTransport.saveFinancePatch(...args),
+  mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
+  readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
 });
 
 const domainsBankView=createDomainsBankView({

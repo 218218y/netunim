@@ -4,6 +4,7 @@ export const HAPOALIM_POST_LOGIN_TIMEOUT_MS=60*1000;
 export const HAPOALIM_NAVIGATION_STABLE_MS=1500;
 export const HAPOALIM_DATA_RETRY_LIMIT=3;
 export const HAPOALIM_TRANSACTION_LOOKBACK_DAYS=30;
+export const HAPOALIM_INITIAL_BACKFILL_DAYS=365;
 export const HAPOALIM_TRANSACTION_LIMIT=1000;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
@@ -311,6 +312,11 @@ export function normalizeHapoalimTransaction(txn){
     currency:'ILS',
     description:compactText(txn?.activityDescription,180)||'תנועת בנק',
     memo:compactText(memo,260),
+    partyName:compactText(details.partyName,160),
+    partyHeadline:compactText(details.partyHeadline,160),
+    messageHeadline:compactText(details.messageHeadline,160),
+    messageDetail:compactText(details.messageDetail,220),
+    activityTypeCode:Number.isFinite(Number(txn?.eventActivityTypeCode))?Number(txn.eventActivityTypeCode):null,
     status:Number(txn?.serialNumber)===0?'pending':'completed',
     balanceAfter:txn?.currentBalance===null||txn?.currentBalance===undefined||txn?.currentBalance===''?null:(Number.isFinite(Number(txn.currentBalance))?Number(txn.currentBalance):null),
     bankReference,

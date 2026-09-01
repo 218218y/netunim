@@ -6,17 +6,17 @@ import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 
-const BANK_BRIDGE_VERSION=21;
+const BANK_BRIDGE_VERSION=22;
 const CREDIT_BRIDGE_VERSION=20;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
-function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}
+function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}
 function bankLastSyncAt(kupa){const feed=normalizeBankFeed(kupa?.bank?.feed);return feed?.syncedAt||kupa?.bank?.bankSyncAt||(kupa?.bank?.source==='hapoalim'?kupa?.bank?.updatedAt:null)||null}
 function creditLastSyncAt(kupa){return normalizeCreditSync(kupa?.creditSync).syncedAt}
 function revisionConflict(result){return !result?.r?.ok&&String(result?.j?.message||result?.txt||'').includes('revision_conflict')}
 function cleanDigits(value){return String(value||'').replace(/\D/g,'')}
 
-export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,toast}){
+export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,mergeBankTransactions=async()=>null}){
   const local={bankBusy:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
 
   function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;return {kupa,bank:kupa?.bank?clone(kupa.bank):null,creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?clone(kupa.cards):[],credits:Array.isArray(kupa?.credits)?clone(kupa.credits):[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),bankAutoEnabled:bridge.bankAutoEnabled(),creditAutoEnabled:bridge.creditAutoEnabled(),bridgeTokenConfigured:!!bridge.getBridgeToken(),bankBusy:local.bankBusy,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
@@ -37,6 +37,19 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
     }
     throw new Error('מסמך הקופה השתנה שוב בזמן עדכון פיננסי; לא נדרס שום נתון')
+  }
+
+  async function mutateFinanceCloud(mutator){
+    if(typeof readFinanceSyncDocument!=='function'||typeof rpcSaveFinanceSync!=='function')return mutateKupaCloud(kupa=>{const finance={bank:clone(kupa.bank||{}),creditSync:clone(kupa.creditSync||{})},next=mutator(finance);if(!next)return null;if(next.bank)kupa.bank=next.bank;if(next.creditSync)kupa.creditSync=next.creditSync;return kupa});
+    for(let attempt=0;attempt<3;attempt++){
+      const row=await readFinanceSyncDocument(),base=row?.state&&typeof row.state==='object'?clone(row.state):{};
+      const candidate=mutator(base);if(!candidate)return {saved:false,skipped:true,row};
+      const result=await rpcSaveFinanceSync(candidate,Number(row?.revision||0));
+      if(result.r.ok){await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:result.row}}
+      if(String(result.j?.message||result.txt||'').includes('revision_conflict'))continue;
+      throw new Error(result.j?.message||result.txt||'שמירת נתוני הסינכרון הפיננסי נכשלה');
+    }
+    throw new Error('נתוני הסינכרון הפיננסי השתנו שוב בזמן השמירה; לא נדרס שום נתון')
   }
 
   async function refreshBankBridgeStatus({quiet=true}={}){
@@ -85,15 +98,16 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(Number(status.bridgeVersion||0)<BANK_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון הבנק');
       if(!status.configured)throw new Error('Bank Bridge פעיל אך פרטי בנק הפועלים עדיין לא הוגדרו');
       await prepareBankSnapshot();
-      const result=await bridge.fetchBalance({interactive}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
+      const financeRow=typeof readFinanceSyncDocument==='function'?await readFinanceSyncDocument():null,archiveInitialized=financeRow?.state?.bank?.archiveInitialized===true,historyDays=!auto&&!archiveInitialized?365:30;
+      const result=await bridge.fetchBalance({interactive,historyDays}),business=result.accounts?.business||result,home=result.accounts?.home??null,homeFailure=result.accountFailures?.home||null;
       if(!Number.isFinite(Number(business?.balance)))throw new Error('Bank Bridge לא החזיר יתרה עסקית תקינה');
       if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
-      const fetchedAt=result.fetchedAt||new Date().toISOString(),businessFeed=bankFeedFromSnapshot(business,fetchedAt),homeFeed=home?bankFeedFromSnapshot(home,fetchedAt):null,businessAccount=accountIdOf(business);
-      const saved=await mutateKupaCloud(kupa=>{
-        if(auto&&!bankRefreshDue(bankLastSyncAt(kupa)))return null;
-        const previousBank=kupa.bank&&typeof kupa.bank==='object'?kupa.bank:{},nextHomeFeed=home?homeFeed:(homeFailure?previousBank.homeFeed??null:null);
-        kupa.bank={...previousBank,currentBalance:kupaWholeMoney(business.balance),updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedChecksSequence(kupa),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed};
-        return kupa;
+      const fetchedAt=result.fetchedAt||new Date().toISOString(),businessFeed=bankFeedFromSnapshot(business,fetchedAt),homeFeed=home?bankFeedFromSnapshot(home,fetchedAt):null,businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
+      await mergeBankTransactions(businessAccount,'business',business.transactions||[]);if(home&&homeAccount)await mergeBankTransactions(homeAccount,'home',home.transactions||[]);
+      const saved=await mutateFinanceCloud(finance=>{
+        const previousBank=finance.bank&&typeof finance.bank==='object'?finance.bank:{},nextHomeFeed=home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),kupa=checksSession.kupaCloudReadState||{};
+        finance.bank={...previousBank,currentBalance:kupaWholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedChecksSequence(kupa),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed,archiveInitialized:archiveInitialized||(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)),archiveInitializedAt:archiveInitialized?previousBank.archiveInitializedAt||null:(historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning)?fetchedAt:null)};
+        return finance;
       });
       local.bankStatus={...status,lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastWarning:[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean).join(' | '),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountRole:homeFailure?'home':''};
       if(!auto&&!saved.skipped)toast(homeFailure?'החשבון העסקי עודכן; החשבון הביתי נשאר בנתון האחרון':'נתוני הבנק העסקי והביתי עודכנו וזמינים בשתי המערכות');
@@ -115,22 +129,22 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון האשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
-      const saved=await mutateKupaCloud(kupa=>{if(auto&&!creditRefreshDue(creditLastSyncAt(kupa)))return null;kupa.creditSync=mergeCreditSyncResult(kupa.creditSync,result);return kupa});
+      const saved=await mutateFinanceCloud(finance=>{if(auto&&!creditRefreshDue(creditLastSyncAt({creditSync:finance.creditSync})))return null;finance.creditSync=mergeCreditSyncResult(finance.creditSync,result);return finance});
       await refreshCreditBridgeStatus({quiet:true});
       if(!auto&&!saved.skipped)toast(result.errors?.length?`האשראי עודכן עם ${result.errors.length} אזהרות והנתונים זמינים בשתי המערכות`:'נתוני האשראי עודכנו וזמינים בשתי המערכות');
       return true;
     }catch(error){
       local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.creditBridgeError=local.creditError;
-      if(Array.isArray(error?.creditErrors)&&error.creditErrors.length){try{await mutateKupaCloud(kupa=>{kupa.creditSync=mergeCreditSyncResult(kupa.creditSync,{profiles:[],errors:error.creditErrors});return kupa})}catch(persistError){console.error('credit diagnostics save',persistError)}}
+      if(Array.isArray(error?.creditErrors)&&error.creditErrors.length){try{await mutateFinanceCloud(finance=>{finance.creditSync=mergeCreditSyncResult(finance.creditSync,{profiles:[],errors:error.creditErrors});return finance})}catch(persistError){console.error('credit diagnostics save',persistError)}}
       if(!auto)toast(local.creditError);return false;
     }finally{local.creditBusy=false;scheduleCreditAuto()}
   }
 
   async function saveCreditProfile(profile){if(local.creditBusy)return false;local.creditBusy=true;local.creditError='';local.creditErrorAt=null;try{await bridge.saveCreditProfile(profile);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי נשמר במחשב זה');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}
   async function deleteCreditProfile(profileId){if(local.creditBusy)return false;local.creditBusy=true;try{await bridge.deleteCreditProfile(profileId);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי המקומי נמחק');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}
-  async function resetCreditSync(){if(local.creditBusy)return false;local.creditBusy=true;try{const status=local.creditStatus||await refreshCreditBridgeStatus({quiet:true});if(!status)throw new Error(local.creditBridgeError||'Bank Bridge אינו זמין');if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');await bridge.resetCreditProfiles();await mutateKupaCloud(kupa=>{kupa.creditSync=normalizeCreditSync({});return kupa});bridge.setCreditAutoEnabled(false);local.creditStatus={...status,profiles:[],lastErrors:[]};local.creditError='';local.creditErrorAt=null;toast('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false;scheduleCreditAuto()}}
+  async function resetCreditSync(){if(local.creditBusy)return false;local.creditBusy=true;try{const status=local.creditStatus||await refreshCreditBridgeStatus({quiet:true});if(!status)throw new Error(local.creditBridgeError||'Bank Bridge אינו זמין');if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');await bridge.resetCreditProfiles();await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance});bridge.setCreditAutoEnabled(false);local.creditStatus={...status,profiles:[],lastErrors:[]};local.creditError='';local.creditErrorAt=null;toast('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false;scheduleCreditAuto()}}
 
-  async function setCreditCardMapping(profileId,accountNumber,field,value){try{await mutateKupaCloud(kupa=>{const sync=normalizeCreditSync(kupa.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:''};if(field==='included')current.included=!!value;else if(field==='hidden')current.hidden=!!value;else if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';else if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);else return null;sync.cardMappings[key]=current;kupa.creditSync=sync;return kupa});toast('שיוך כרטיס האשראי עודכן');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}}
+  async function setCreditCardMapping(profileId,accountNumber,field,value){try{await mutateFinanceCloud(kupa=>{const sync=normalizeCreditSync(kupa.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:''};if(field==='included')current.included=!!value;else if(field==='hidden')current.hidden=!!value;else if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';else if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);else return null;sync.cardMappings[key]=current;kupa.creditSync=sync;return kupa});toast('שיוך כרטיס האשראי עודכן');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}}
 
   function clearTimer(name){if(local[name]){clearTimeout(local[name]);local[name]=null}}
   function autoWait(lastSyncAt,intervalMs){const time=lastSyncAt?Date.parse(lastSyncAt):NaN;return Number.isFinite(time)?Math.max(1000,time+intervalMs-Date.now()+250):1000}
