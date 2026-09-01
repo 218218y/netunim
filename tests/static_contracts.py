@@ -226,8 +226,18 @@ ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</sec
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
    and '.kupa-hero{display:flex;align-items:flex-start;justify-content:flex-start;gap:10px' in orders_css
-   and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0' in orders_css,
-   "orders Kupa UI: internal tabs stay at the RTL start while the active Bank/Credit/Checks status row occupies the remaining header width")
+   and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}' in orders_css
+   and '.kupa-hero>.finance-sync-section .finance-command-row{min-height:42px;padding:0;background:transparent;align-items:center}' in orders_css
+   and '.kupa-hero .credit-view-tools{padding:0;border:0;border-radius:0;background:transparent}' in orders_css,
+   "orders Kupa UI: internal tabs stay at the RTL start while Bank/Credit command rows remain compact and avoid redundant nested frames")
+ok('class="credit-filter-separator"' in orders_finance_view
+   and 'class="credit-provider-filter-chips"' in orders_finance_view
+   and orders_finance_view.index('class="credit-account-filter-chips"') < orders_finance_view.index('class="credit-filter-separator"') < orders_finance_view.index('class="credit-provider-filter-chips"')
+   and 'class="credit-filter-card-row"' in orders_finance_view
+   and 'credit-filter-chip-stack' not in orders_finance_view
+   and '.credit-filter-separator{flex:0 0 1px;width:1px;height:24px' in orders_css
+   and '.credit-filter-card-row{display:grid;grid-template-columns:70px minmax(0,1fr)' in orders_css,
+   "orders credit filters: account and provider chips share one row with a visual divider, while card chips open on a dedicated second row only for a selected provider")
 ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in orders_finance_view
    and "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`" in orders_finance_view
    and '.finance-sync-settings-body[hidden]{display:none}' in orders_css
