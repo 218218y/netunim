@@ -949,8 +949,8 @@ bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.dismissModal());
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>uiNavigation.switchView(b.dataset.view)));
 document.addEventListener('click',e=>{const menu=$('#supplierMenu');if(menu&&!menu.contains(e.target))domainsSuppliersNavigation.closeSupplierMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavigation.closeSupplierMenu()});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,120)});
-window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,300)});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,120);domainsFinanceController.startAutoSync()});
+window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,300);domainsFinanceController.startAutoSync()});
 window.addEventListener('offline',()=>{if(cloudAuth.cloudEnabled())uiStatus.setCloud('ענן: אופליין','offline')});
 window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const ok=storageBrowser.localSnapshot();if(cloudAuth.cloudEnabled()&&ok&&stateSnapshots.cloudHasLocalWork())storageBrowser.markCloudPending();if(cloudAuth.loadSession()&&stateSnapshots.checksHaveLocalWork())storageChecks.markChecksPending()});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}

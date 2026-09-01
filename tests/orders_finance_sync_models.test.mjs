@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
-import {financeRefreshDue,FINANCE_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
+import {bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
-import {creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {creditDetailMonths,creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
-assert.equal(financeRefreshDue(null,now),true);
-assert.equal(financeRefreshDue(new Date(now-FINANCE_AUTO_INTERVAL_MS+1).toISOString(),now),false);
-assert.equal(financeRefreshDue(new Date(now-FINANCE_AUTO_INTERVAL_MS).toISOString(),now),true);
+const realDateNow=Date.now;
+Date.now=()=>Date.parse('2026-09-01T03:00:00.000Z');
+assert.equal(BANK_AUTO_INTERVAL_MS,4*60*60*1000,'Orders bank cadence matches Kupa at four hours');
+assert.equal(CREDIT_AUTO_INTERVAL_MS,24*60*60*1000,'Orders credit cadence remains daily');
+assert.equal(bankRefreshDue(null,now),true);
+assert.equal(bankRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS+1).toISOString(),now),false);
+assert.equal(bankRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS).toISOString(),now),true);
+assert.equal(creditRefreshDue(new Date(now-CREDIT_AUTO_INTERVAL_MS+1).toISOString(),now),false);
+assert.equal(creditRefreshDue(new Date(now-CREDIT_AUTO_INTERVAL_MS).toISOString(),now),true);
 
 const bank=normalizeBankFeed({balance:1234,syncedAt:'2026-09-01T01:00:00Z',accountNumber:'123-456',transactions:[
   {id:'a',date:'2026-09-01T00:00:00Z',amount:5,description:'הפקדה'},
@@ -34,6 +40,14 @@ const rollingForecast=creditMonthBuckets(forecastState,{view:'rolling12',asOf:'2
 assert.deepEqual(rollingForecast.months.map(month=>month.key),['2026-09','2026-11','2027-03'],'rolling 12-month forecast omits empty months and already-collected history');
 const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-01'});
 assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
+
+const detailSortKey='detail-sort:7777';
+const detailSortState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'detail-sort',provider:'max',ownerLabel:'יעקב',defaultAccount:'עסקי',accounts:[{accountNumber:'7777',txns:[
+  {id:'older-purchase',date:'2026-08-03',transactionDate:'2026-08-03',processedDate:'2026-09-10',chargedAmount:-30,chargedCurrency:'ILS',description:'עסקה ישנה'},
+  {id:'newer-purchase',date:'2026-08-28',transactionDate:'2026-08-28',processedDate:'2026-09-05',chargedAmount:-40,chargedCurrency:'ILS',description:'עסקה חדשה'},
+]}]}],cardMappings:{[detailSortKey]:{included:true,hidden:false,account:'עסקי'}}})};
+const septemberDetails=creditDetailMonths(detailSortState,{asOf:'2026-09-01'}).find(month=>month.key==='2026-09');
+assert.deepEqual(septemberDetails.items.map(row=>row.description),['עסקה חדשה','עסקה ישנה'],'Orders transaction/payment detail is sorted by purchase date newest-first, independent of card or billing-date order');
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 
@@ -146,4 +160,5 @@ assert.equal(creditFetchCalls,1);
 assert.equal(cloudRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
 assert.equal(cloudRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps Kupa card mapping choices');
 
-console.log('PASS Orders finance sync models: shared 24h freshness, revision-safe bank mutation, dual-account feed and credit mapping preservation');
+Date.now=realDateNow;
+console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, revision-safe bank mutation, dual-account feed, newest-first transaction detail and credit mapping preservation');

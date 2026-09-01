@@ -4,7 +4,8 @@ const BANK_AUTO_KEY='netunim_orders_bank_auto_daily_v1';
 const CREDIT_AUTO_KEY='netunim_orders_credit_auto_daily_v1';
 const BANK_ATTEMPT_KEY='netunim_orders_bank_auto_attempt_v1';
 const CREDIT_ATTEMPT_KEY='netunim_orders_credit_auto_attempt_v1';
-export const FINANCE_AUTO_INTERVAL_MS=24*60*60*1000;
+export const BANK_AUTO_INTERVAL_MS=4*60*60*1000;
+export const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const AUTO_RETRY_MS=60*60*1000;
 const INTERACTIVE_TIMEOUT_MS=15*60*1000;
 
@@ -15,7 +16,9 @@ function markAttempt(key,now=Date.now()){localStorage.setItem(key,String(now))}
 function attemptDelayMs(key,now=Date.now()){const last=Number(localStorage.getItem(key)||0);return last?Math.max(0,last+AUTO_RETRY_MS-now):0}
 function attemptReady(key,now=Date.now()){return attemptDelayMs(key,now)===0}
 
-export function financeRefreshDue(updatedAt,now=Date.now()){const t=updatedAt?Date.parse(updatedAt):NaN;return !Number.isFinite(t)||now-t>=FINANCE_AUTO_INTERVAL_MS}
+function refreshDue(updatedAt,intervalMs,now=Date.now()){const t=updatedAt?Date.parse(updatedAt):NaN;return !Number.isFinite(t)||now-t>=intervalMs}
+export function bankRefreshDue(updatedAt,now=Date.now()){return refreshDue(updatedAt,BANK_AUTO_INTERVAL_MS,now)}
+export function creditRefreshDue(updatedAt,now=Date.now()){return refreshDue(updatedAt,CREDIT_AUTO_INTERVAL_MS,now)}
 
 export function createDomainsFinanceBridge(){
 function getBridgeToken(){return localStorage.getItem(TOKEN_KEY)||''}

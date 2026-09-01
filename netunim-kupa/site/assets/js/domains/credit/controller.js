@@ -12,7 +12,7 @@ function providerFields(provider){return provider==='isracard'||provider==='amex
 
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state})}){
   const local={busy:false,status:null,error:'',errorAt:null,autoTimer:null};
-  function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)==='1'}
+  function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
   function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}

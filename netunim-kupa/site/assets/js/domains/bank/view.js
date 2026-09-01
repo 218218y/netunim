@@ -192,7 +192,7 @@ function renderBank(){
             <small>ה-Bridge משתמש במזהה מלא בנק 12 + סניף + מספר חשבון לכל אחד מהחשבונות. ברענון אחד הוא נכנס פעם אחת לבנק, מאמת ששני החשבונות קיימים, ורק אז קורא את שניהם.</small>
           </form>
         </div>
-        <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־24 שעות</span></label></div>
+        <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־4 שעות</span></label></div>
         <div class="soft-note">„רענן” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות והתנועות נשמרים במצב הקופה המשותף.</div>
       </div>
     </details>

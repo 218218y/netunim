@@ -5,6 +5,8 @@ import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/doma
 const store=new Map();
 Object.defineProperty(globalThis,'localStorage',{value:{getItem:key=>store.has(key)?store.get(key):null,setItem:(key,value)=>store.set(key,String(value)),removeItem:key=>store.delete(key)},configurable:true});
 
+const realDateNow=Date.now;
+Date.now=()=>Date.parse('2026-09-01T05:00:00.000Z');
 const old='2026-08-30T00:00:00.000Z',fresh='2026-09-01T04:00:00.000Z';
 let bankFetches=0,bankMarks=0;
 const bankModel={state:{bank:{source:'hapoalim',updatedAt:old,bankSyncAt:old,feed:{version:4,provider:'hapoalim',balance:100,syncedAt:old,transactions:[]}},checks:[]}};
@@ -48,4 +50,8 @@ const creditUnavailable=createDomainsCreditController({
 await creditUnavailable.refreshCreditSync({auto:true});
 assert.equal(creditUnavailableFetches,0,'Kupa credit auto refresh fails closed when shared cloud freshness cannot be verified');
 
+// The production controller deliberately keeps an auto-refresh timer alive. Clear it so this focused model test exits cleanly.
+creditController.setCreditAutoRefresh(false);
+creditUnavailable.setCreditAutoRefresh(false);
+Date.now=realDateNow;
 console.log('PASS cross-app finance freshness: Kupa rechecks shared cloud timestamps and suppresses duplicate bank/credit auto scrapes');

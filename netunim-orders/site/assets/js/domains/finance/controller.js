@@ -4,7 +4,7 @@ import {kupaWholeMoney} from '../../core/money.js';
 import {normalizeSharedBankEvents} from '../checks/model.js';
 import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
-import {FINANCE_AUTO_INTERVAL_MS,financeRefreshDue} from './bridge.js';
+import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 
 const BANK_BRIDGE_VERSION=21;
 const CREDIT_BRIDGE_VERSION=20;
@@ -80,7 +80,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     try{
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true});
       if(auto&&!cloudFresh)throw new Error('לא ניתן לאמת את זמן סנכרון הבנק המשותף בענן');
-      if(auto&&!financeRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState)))return true;
+      if(auto&&!bankRefreshDue(bankLastSyncAt(checksSession.kupaCloudReadState)))return true;
       const status=await bridge.status();local.bankStatus=status;local.bankStatusChecked=true;local.bankBridgeError='';
       if(Number(status.bridgeVersion||0)<BANK_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון הבנק');
       if(!status.configured)throw new Error('Bank Bridge פעיל אך פרטי בנק הפועלים עדיין לא הוגדרו');
@@ -90,7 +90,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(home&&!Number.isFinite(Number(home.balance)))throw new Error('Bank Bridge לא החזיר יתרה ביתית תקינה');
       const fetchedAt=result.fetchedAt||new Date().toISOString(),businessFeed=bankFeedFromSnapshot(business,fetchedAt),homeFeed=home?bankFeedFromSnapshot(home,fetchedAt):null,businessAccount=accountIdOf(business);
       const saved=await mutateKupaCloud(kupa=>{
-        if(auto&&!financeRefreshDue(bankLastSyncAt(kupa)))return null;
+        if(auto&&!bankRefreshDue(bankLastSyncAt(kupa)))return null;
         const previousBank=kupa.bank&&typeof kupa.bank==='object'?kupa.bank:{},nextHomeFeed=home?homeFeed:(homeFailure?previousBank.homeFeed??null:null);
         kupa.bank={...previousBank,currentBalance:kupaWholeMoney(business.balance),updatedAt:new Date().toISOString(),asOfDate:checkTodayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedChecksSequence(kupa),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:nextHomeFeed};
         return kupa;
@@ -110,12 +110,12 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     try{
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true});
       if(auto&&!cloudFresh)throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');
-      if(auto&&!financeRefreshDue(creditLastSyncAt(checksSession.kupaCloudReadState)))return true;
+      if(auto&&!creditRefreshDue(creditLastSyncAt(checksSession.kupaCloudReadState)))return true;
       const status=await bridge.creditStatus();local.creditStatus=status;local.creditStatusChecked=true;local.creditBridgeError='';
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון האשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
-      const saved=await mutateKupaCloud(kupa=>{if(auto&&!financeRefreshDue(creditLastSyncAt(kupa)))return null;kupa.creditSync=mergeCreditSyncResult(kupa.creditSync,result);return kupa});
+      const saved=await mutateKupaCloud(kupa=>{if(auto&&!creditRefreshDue(creditLastSyncAt(kupa)))return null;kupa.creditSync=mergeCreditSyncResult(kupa.creditSync,result);return kupa});
       await refreshCreditBridgeStatus({quiet:true});
       if(!auto&&!saved.skipped)toast(result.errors?.length?`האשראי עודכן עם ${result.errors.length} אזהרות והנתונים זמינים בשתי המערכות`:'נתוני האשראי עודכנו וזמינים בשתי המערכות');
       return true;
@@ -133,9 +133,9 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   async function setCreditCardMapping(profileId,accountNumber,field,value){try{await mutateKupaCloud(kupa=>{const sync=normalizeCreditSync(kupa.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:''};if(field==='included')current.included=!!value;else if(field==='hidden')current.hidden=!!value;else if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';else if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);else return null;sync.cardMappings[key]=current;kupa.creditSync=sync;return kupa});toast('שיוך כרטיס האשראי עודכן');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}}
 
   function clearTimer(name){if(local[name]){clearTimeout(local[name]);local[name]=null}}
-  function autoWait(lastSyncAt){const time=lastSyncAt?Date.parse(lastSyncAt):NaN;return Number.isFinite(time)?Math.max(1000,time+FINANCE_AUTO_INTERVAL_MS-Date.now()+250):1000}
-  function scheduleBankAuto(){clearTimer('bankTimer');if(!loadSession()||!bridge.bankAutoEnabled()||!bridge.getBridgeToken())return;const retryWait=typeof bridge.bankAttemptDelayMs==='function'?bridge.bankAttemptDelayMs():0,wait=Math.max(autoWait(bankLastSyncAt(checksSession.kupaCloudReadState)),retryWait+250);local.bankTimer=setTimeout(()=>{local.bankTimer=null;maybeAutoRefreshBank().catch(error=>console.error('orders bank auto refresh',error))},wait)}
-  function scheduleCreditAuto(){clearTimer('creditTimer');if(!loadSession()||!bridge.creditAutoEnabled()||!bridge.getBridgeToken())return;const retryWait=typeof bridge.creditAttemptDelayMs==='function'?bridge.creditAttemptDelayMs():0,wait=Math.max(autoWait(creditLastSyncAt(checksSession.kupaCloudReadState)),retryWait+250);local.creditTimer=setTimeout(()=>{local.creditTimer=null;maybeAutoRefreshCredit().catch(error=>console.error('orders credit auto refresh',error))},wait)}
+  function autoWait(lastSyncAt,intervalMs){const time=lastSyncAt?Date.parse(lastSyncAt):NaN;return Number.isFinite(time)?Math.max(1000,time+intervalMs-Date.now()+250):1000}
+  function scheduleBankAuto(){clearTimer('bankTimer');if(!loadSession()||!bridge.bankAutoEnabled()||!bridge.getBridgeToken())return;const retryWait=typeof bridge.bankAttemptDelayMs==='function'?bridge.bankAttemptDelayMs():0,wait=Math.max(autoWait(bankLastSyncAt(checksSession.kupaCloudReadState),BANK_AUTO_INTERVAL_MS),retryWait+250);local.bankTimer=setTimeout(()=>{local.bankTimer=null;maybeAutoRefreshBank().catch(error=>console.error('orders bank auto refresh',error))},wait)}
+  function scheduleCreditAuto(){clearTimer('creditTimer');if(!loadSession()||!bridge.creditAutoEnabled()||!bridge.getBridgeToken())return;const retryWait=typeof bridge.creditAttemptDelayMs==='function'?bridge.creditAttemptDelayMs():0,wait=Math.max(autoWait(creditLastSyncAt(checksSession.kupaCloudReadState),CREDIT_AUTO_INTERVAL_MS),retryWait+250);local.creditTimer=setTimeout(()=>{local.creditTimer=null;maybeAutoRefreshCredit().catch(error=>console.error('orders credit auto refresh',error))},wait)}
   async function maybeAutoRefreshBank(){scheduleBankAuto();if(!tab.primaryTab||!loadSession()||!navigator.onLine||local.bankBusy||local.creditBusy||!bridge.bankAutoEnabled()||!bridge.getBridgeToken()||!bridge.bankAttemptReady())return false;return refreshBank({interactive:false,auto:true})}
   async function maybeAutoRefreshCredit(){scheduleCreditAuto();if(!tab.primaryTab||!loadSession()||!navigator.onLine||local.bankBusy||local.creditBusy||!bridge.creditAutoEnabled()||!bridge.getBridgeToken()||!bridge.creditAttemptReady())return false;return refreshCredit({interactive:false,auto:true})}
   function startAutoSync(){scheduleBankAuto();scheduleCreditAuto()}

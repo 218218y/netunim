@@ -60,8 +60,9 @@ assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),
 
 const now=Date.parse('2026-08-30T06:00:00+03:00');
 assert.equal(bankAutoRefreshDue(null,now),true,'missing successful bank sync is due');
-assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS+1).toISOString(),now),false,'sync younger than 24h is not due');
-assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS).toISOString(),now),true,'sync at 24h is due');
+assert.equal(BANK_AUTO_INTERVAL_MS,4*60*60*1000,'bank auto refresh cadence is four hours');
+assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS+1).toISOString(),now),false,'sync younger than 4h is not due');
+assert.equal(bankAutoRefreshDue(new Date(now-BANK_AUTO_INTERVAL_MS).toISOString(),now),true,'sync at 4h is due');
 assert.equal(bankAutoRefreshDue('not-a-date',now),true,'invalid historical sync timestamp fails open to a fresh bank check');
 assert.equal(normalizeAccountNumber('12-345-678901'),'12345678901');
 assert.deepEqual(parseAccountSelector('345-678901'),{bankNumber:'12',branchNumber:'345',accountNumber:'678901'},'branch-account selector is normalized with Hapoalim bank 12');
@@ -241,4 +242,4 @@ assert.equal(sessionTerminal.value,unknownSuccessUrl,'session-aware login does n
 await assert.rejects(()=>waitForTerminalLoginResult(sessionAwarePage,{SUCCESS:[async()=>false]},{timeoutMs:25,pollMs:10,timeoutCode:'SILENT_AUTH_TIMEOUT',timeoutMarker:'NETUNIM_SILENT_AUTH_TIMEOUT'}),e=>e?.code==='SILENT_AUTH_TIMEOUT'&&e?.message==='NETUNIM_SILENT_AUTH_TIMEOUT','silent login timeout has its own deterministic code instead of masquerading as interactive MFA');
 assert.deepEqual(scraperFailureMessage({errorType:'GENERIC',errorMessage:'NETUNIM_SILENT_AUTH_TIMEOUT'}),['לא נמצא סשן בנק פעיל ברענון השקט. לחץ „פתח אימות בבנק” פעם אחת כדי לחדש את ההזדהות.','AUTH_REQUIRED']);
 
-console.log('PASS bank bridge models: shared 24h schedule, staged account selection, cheque detail enrichment, transaction feed and session-aware MFA behavior are deterministic');
+console.log('PASS bank bridge models: shared four-hour bank schedule, staged account selection, cheque detail enrichment, transaction feed and session-aware MFA behavior are deterministic');

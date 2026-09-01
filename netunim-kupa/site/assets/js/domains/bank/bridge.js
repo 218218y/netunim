@@ -2,7 +2,7 @@ const BRIDGE_URL='http://127.0.0.1:8765';
 const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1';
 const AUTO_KEY='netunim_kupa_bank_auto_daily_v1';
 const AUTO_ATTEMPT_KEY='netunim_kupa_bank_auto_attempt_v1';
-export const BANK_AUTO_INTERVAL_MS=24*60*60*1000;
+export const BANK_AUTO_INTERVAL_MS=4*60*60*1000;
 export const INTERACTIVE_BRIDGE_TIMEOUT_MS=15*60*1000;
 const AUTO_RETRY_COOLDOWN_MS=60*60*1000;
 
@@ -23,7 +23,7 @@ function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){
 export function createDomainsBankBridge(){
 function getBridgeToken(){return localStorage.getItem(TOKEN_KEY)||''}
 function setBridgeToken(value){const token=String(value||'').trim();if(token)localStorage.setItem(TOKEN_KEY,token);else localStorage.removeItem(TOKEN_KEY);return token}
-function autoEnabled(){return localStorage.getItem(AUTO_KEY)==='1'}
+function autoEnabled(){return localStorage.getItem(AUTO_KEY)!=='0'}
 function setAutoEnabled(enabled){localStorage.setItem(AUTO_KEY,enabled?'1':'0')}
 function markAutoAttempt(now=Date.now()){localStorage.setItem(AUTO_ATTEMPT_KEY,String(now))}
 function autoAttemptDelayMs(now=Date.now()){const last=Number(localStorage.getItem(AUTO_ATTEMPT_KEY)||0);return last?Math.max(0,last+AUTO_RETRY_COOLDOWN_MS-now):0}

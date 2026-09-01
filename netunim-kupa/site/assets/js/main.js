@@ -689,9 +689,9 @@ const uiActions=createUiActions({
 });
 
 
-window.addEventListener('online',()=>{if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}});
+window.addEventListener('online',()=>{if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 window.addEventListener('offline',()=>{if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision);uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100)});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 const sidebar=document.getElementById('sidebar'),sidebarBackdrop=document.getElementById('sidebarBackdrop'),mobileMenu=document.getElementById('mobileMenu'),sidebarMedia=window.matchMedia('(max-width: 820px)');
 function setSidebarOpen(open,{restoreFocus=false}={}){const expanded=sidebarMedia.matches&&!!open;sidebar.classList.toggle('open',expanded);sidebarBackdrop.classList.toggle('open',expanded);document.body.classList.toggle('sidebar-open',expanded);mobileMenu.setAttribute('aria-expanded',String(expanded));mobileMenu.setAttribute('aria-label',expanded?'סגור תפריט':'פתח תפריט');sidebar.setAttribute('aria-hidden',String(sidebarMedia.matches&&!expanded));sidebarBackdrop.tabIndex=expanded?0:-1;if(expanded)requestAnimationFrame(()=>sidebar.querySelector('.nav button.active')?.focus());else if(restoreFocus)mobileMenu.focus()}
 function syncSidebarMode(){if(sidebarMedia.matches)setSidebarOpen(sidebar.classList.contains('open'));else setSidebarOpen(false)}

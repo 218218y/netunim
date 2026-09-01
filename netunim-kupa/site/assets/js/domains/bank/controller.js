@@ -1,7 +1,7 @@
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
-import {bankAutoRefreshDue} from './bridge.js';
+import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
 const BANK_BRIDGE_VERSION=21;
@@ -125,7 +125,7 @@ async function deleteBankBridgeCredentials(){
   finally{bridgeState.busy=false;render()}
 }
 
-function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון יומי אוטומטי הופעל':'עדכון יומי אוטומטי כובה');maybeAutoRefreshBankBalance()}
+function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');maybeAutoRefreshBankBalance()}
 
 async function refreshBankBalance({interactive=false,auto=false}={}){
   if(bridgeState.busy)return false;
@@ -166,7 +166,7 @@ function maybeAutoRefreshBankBalance(){
   if(!session.backendReady||!bridge.autoEnabled()||!bridge.getBridgeToken()||bridgeState.busy)return;
   const now=Date.now(),lastSyncAt=sharedBankLastSyncAt(),lastSyncMs=lastSyncAt?Date.parse(lastSyncAt):NaN;
   if(!bankAutoRefreshDue(lastSyncAt,now)){
-    const dueIn=Math.max(1000,lastSyncMs+24*60*60*1000-now+250);autoTimer=setTimeout(maybeAutoRefreshBankBalance,dueIn);return;
+    const dueIn=Math.max(1000,lastSyncMs+BANK_AUTO_INTERVAL_MS-now+250);autoTimer=setTimeout(maybeAutoRefreshBankBalance,dueIn);return;
   }
   const retryIn=bridge.autoAttemptDelayMs(now);
   if(retryIn>0){autoTimer=setTimeout(maybeAutoRefreshBankBalance,Math.max(1000,retryIn+250));return}

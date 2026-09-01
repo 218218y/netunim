@@ -62,8 +62,9 @@ export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CRED
       items.push({source:'manual',record,charge,date:charge.date,amount:charge.amount,part:charge.part,totalParts:charge.totalParts,transactionDate:record.transactionDate||'',account:record.account==='ביתי'?'ביתי':'עסקי',ownerLabel:String(record.ownerLabel||''),provider:'manual',profileId:'',accountNumber:'',creditAccountKey:`manual:${record.card}`,card:record.card,description:record.description});
     }
   }
-  items.sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he'));
+  const detailSort=(a,b)=>String(b.transactionDate||b.date||'').localeCompare(String(a.transactionDate||a.date||''))||String(b.date||'').localeCompare(String(a.date||''))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he');
   const byMonth=new Map();
   for(const item of items){const key=monthKey(item.date);if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=item.amount;month.items.push(item)}
+  for(const month of byMonth.values())month.items.sort(detailSort);
   return {months:[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key)),cutoffMonth,historyMonths:safeHistory,currentMonth};
 }

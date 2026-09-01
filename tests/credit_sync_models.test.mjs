@@ -183,6 +183,14 @@ const multiMonthDetails=creditMonthlyDetailData(multiMonthState,'2026-09-01');
 assert.deepEqual(multiMonthDetails.months.map(x=>x.key),['2026-09','2026-10','2026-11'],'a synchronized installment series is visible in every future billing month actually supplied by the issuer, not only its next payment');
 assert.deepEqual(multiMonthDetails.months.map(x=>x.items[0].part),[1,2,3]);
 
+const detailSortKey=creditCardMappingKey('detail-sort','7777');
+const detailSortState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'detail-sort',provider:'max',ownerLabel:'יעקב',accounts:[{accountNumber:'7777',txns:[
+  {id:'older-purchase',date:'2026-08-03',transactionDate:'2026-08-03',processedDate:'2026-09-10',chargedAmount:-30,chargedCurrency:'ILS',description:'עסקה ישנה'},
+  {id:'newer-purchase',date:'2026-08-28',transactionDate:'2026-08-28',processedDate:'2026-09-05',chargedAmount:-40,chargedCurrency:'ILS',description:'עסקה חדשה'},
+]}]}],cardMappings:{[detailSortKey]:{included:true,hidden:false,account:'עסקי'}}})};
+const detailSortMonth=creditMonthlyDetailData(detailSortState,'2026-09-01').months.find(month=>month.key==='2026-09');
+assert.deepEqual(detailSortMonth.items.map(item=>item.description),['עסקה חדשה','עסקה ישנה'],'Kupa transaction/payment detail is sorted by purchase date newest-first, independent of card or billing-date order');
+
 const collisionState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[
   {profileId:'owner-a',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'a',processedDate:'2026-09-10',chargedAmount:-10,chargedCurrency:'ILS'}]}]},
   {profileId:'owner-b',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'b',processedDate:'2026-09-20',chargedAmount:-20,chargedCurrency:'ILS'}]}]},
@@ -224,7 +232,8 @@ for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','r
   assert.equal(typeof bridgeApi[method],'function',`browser bridge exposes ${method} as a callable local API method`);
 }
 
-globalThis.localStorage={getItem:()=>'',setItem:()=>{},removeItem:()=>{}};
+const controllerStorage=new Map();
+globalThis.localStorage={getItem:key=>controllerStorage.has(key)?controllerStorage.get(key):'',setItem:(key,value)=>controllerStorage.set(key,String(value)),removeItem:key=>controllerStorage.delete(key)};
 const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
@@ -253,5 +262,6 @@ assert.equal(resetSaveCalls,1,'full credit reset persists the cleared synchroniz
 assert.equal(resetModel.state.creditSync.mode,'synced','full reset keeps the canonical synchronized-source model');
 assert.equal(resetModel.state.creditSync.profiles.length,0,'full reset removes synchronized cloud profiles/card data');
 assert.equal(resetModel.state.credits[0].id,'manual-kept','full reset preserves post-migration manual additions');
+resetController.setCreditAutoRefresh(false);
 
 console.log('PASS credit sync models: v3 synced-primary model, one-time manual cleanup, additive manual rows, hidden cards, owner/account classification, safe diagnostics and partial merge are deterministic');
