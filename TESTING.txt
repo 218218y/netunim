@@ -1,4 +1,8 @@
-﻿npm run offline:download
+﻿עדכון נתונים ניהול הזמנות
+npm run deps:update
+npm run wrangler:update
+
+npm run offline:download
 npm run offline:update
 
 python tools/sync-assets.py
