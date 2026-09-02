@@ -1,7 +1,7 @@
 {
   "name": "netunim-kupa-bank-bridge",
   "private": true,
-  "version": "1.9.1",
+  "version": "1.9.2",
   "type": "module",
   "engines": {
     "node": ">=22.22.2"

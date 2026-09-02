@@ -177,3 +177,12 @@ Bridge v20 also carries an optional transactionDate separately from the installm
 Bridge v21 — compact bank sync status
 ------------------------------------
 The bank status endpoint now exposes lastErrorAt for the last failed bank refresh. The Kupa bank toolbar uses this timestamp only for the compact collapsed status (failed + time); the full bank error text remains inside the expanded synchronization panel.
+
+Bridge v24 — Amex anonymous Login 403 / request-interception fix
+---------------------------------------------------------------
+The PWA/browser that hosts Kupa does not choose the browser engine used for issuer scraping. Kupa calls the loopback Bank Bridge on 127.0.0.1; the Bridge launches Camoufox as its own local process for American Express. Chrome Local Network Access permission is therefore required only so the installed PWA can reach the Bridge, not so Chrome can open the American Express site.
+
+The remaining Amex failure was isolated to the anonymous GET of /personalarea/Login returning HTTP 403 before ValidateIdData and before credentials were sent. The Camoufox adapter was installing Playwright page.route('**/*') interception on every request only to abort detector-dom.min.js. Current Camoufox/Firefox diagnostics show that routed Firefox requests can differ on the wire from normal Firefox (cache-control headers and header ordering), and strict WAFs can reject the document request before page JavaScript executes. This exactly matches the Bridge's LoginPage/403 failure boundary.
+
+Bridge v24 removes request interception entirely from the Isracard-family Camoufox adapter. The login/data protocol does not require interception, so no substitute blocker or header rewrite is added. Anonymous Login qualification, bounded 403 session rotation, 429 handling, safe diagnostics, and the rule that credentials are sent only after an accepted Login document remain unchanged. The web app now requires Bridge v24 so a stale local Bridge cannot silently keep the old interception behavior after deployment.
+

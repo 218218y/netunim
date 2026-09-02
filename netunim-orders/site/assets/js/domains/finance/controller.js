@@ -6,8 +6,8 @@ import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 
-const BANK_BRIDGE_VERSION=23;
-const CREDIT_BRIDGE_VERSION=20;
+const BANK_BRIDGE_VERSION=24;
+const CREDIT_BRIDGE_VERSION=24;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}

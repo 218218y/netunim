@@ -28,8 +28,8 @@ flows={
  setPage('cash');click('open-cash-modal');fill({mDate:'2026-08-27',mDesc:'Cash receipt',mAmount:'120',mNote:'workflow'});saveModal();await saved();
  assert(state.cash.length===1&&state.cash[0].amount===120,'cash create');
  click('open-cash-modal-2');fill({mAmount:'125'});saveModal();await saved();assert(cashBalance()===125,'cash edit');
- setPage('bank');click('open-expense-modal');fill({eDesc:'Rent',eAmount:'50',eDate:'2026-09-10'});saveModal();await saved();assert(state.expenses.length===1,'expense create');
- setPage('credit');click('open-credit-modal');fill({cDesc:'Purchase',cTotal:'300',cParts:'3',cTx:'2026-08-27',cFirst:'2026-09-10'});saveModal();await saved();
+ setPage('credit');element('[data-action="expenses-hub-tab"][data-click-arg0="expenses"]').click();await waitFor(()=>!!document.querySelector('[data-action="open-expense-modal"]'),'Expenses tab did not render');click('open-expense-modal');fill({eDesc:'Rent',eAmount:'50',eDate:'2026-09-10'});saveModal();await saved();assert(state.expenses.length===1,'expense create');
+ element('[data-action="expenses-hub-tab"][data-click-arg0="credit"]').click();await waitFor(()=>!!document.querySelector('[data-action="open-credit-modal"]'),'Credit tab did not render');click('open-credit-modal');fill({cDesc:'Purchase',cTotal:'300',cParts:'3',cTx:'2026-08-27',cFirst:'2026-09-10'});saveModal();await saved();
  assert(state.credits.length===1&&rawCreditSchedule(state.credits[0]).length===3,'credit schedule');
  setPage('checks');click('open-check-modal');fill({fName:'Customer'});
  const row=element('#checkSeriesRows .check-series-row');

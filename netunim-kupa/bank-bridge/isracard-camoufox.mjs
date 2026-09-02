@@ -163,7 +163,11 @@ async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false}={}){
     try{
       browser=await launchCamoufox(Camoufox,{interactive,enableCache:true});
       page=await browser.newPage();page.setDefaultTimeout(45_000);page.setDefaultNavigationTimeout(LOGIN_TIMEOUT_MS);
-      await page.route('**/*',async route=>{try{if(route.request().url().includes('detector-dom.min.js'))await route.abort();else await route.continue()}catch{}});
+      // Do not install Playwright request interception here. In the Camoufox/Firefox
+      // stack used by this Bridge, page.route() changes the document request's wire
+      // fingerprint (cache headers/header order) and strict issuer WAFs can reject
+      // the anonymous Login navigation with HTTP 403 before any page script runs.
+      // The adapter does not need interception for its login/data protocol.
       const response=await page.goto(`${cfg.baseUrl}/personalarea/Login`,{waitUntil:'load',timeout:LOGIN_TIMEOUT_MS});
       const status=Number(response?.status?.()||0);lastStatus=status;
       if(status===429)throw safeError('חברת האשראי הגבילה זמנית את קצב הבקשות כבר בטעינת דף הכניסה.','CREDIT_PROVIDER_RATE_LIMITED',{stage:'LoginPage',httpStatus:status});

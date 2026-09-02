@@ -2,7 +2,7 @@ import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=20;
+const CREDIT_BRIDGE_VERSION=24;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=60*60*1000;

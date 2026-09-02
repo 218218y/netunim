@@ -44,7 +44,7 @@ assert.equal(creditFetches,0,'Kupa credit auto refresh must not scrape when Orde
 let creditUnavailableFetches=0;
 const creditUnavailable=createDomainsCreditController({
   model:creditModel,saveState:async()=>true,toast:()=>{},render:()=>{},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
-  bridge:{creditStatus:async()=>({bridgeVersion:20,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{creditUnavailableFetches++}},
+  bridge:{creditStatus:async()=>({bridgeVersion:24,profiles:[{profileId:'p1'}]}),syncCreditCards:async()=>{creditUnavailableFetches++}},
   refreshFinanceCloudSnapshot:async()=>({verified:false,state:null}),
 });
 await creditUnavailable.refreshCreditSync({auto:true});
