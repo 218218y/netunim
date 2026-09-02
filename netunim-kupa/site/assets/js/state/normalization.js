@@ -5,6 +5,7 @@ import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
 import {CREDIT_SYNC_VERSION,normalizeCreditSync} from '../domains/credit/sync-feed.js';
 import {assertPortablePayload} from './validation.js';
+import {normalizeCashflowSettings} from '../shared/cashflow.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateNormalization({model}){
@@ -38,6 +39,7 @@ function normalizeState(d){
   }
   n.notes=(Array.isArray(n.notes)?n.notes:[]).filter(x=>x&&x.id).map(x=>({...x,id:String(x.id),content:String(x.content||''),createdAt:String(x.createdAt||''),updatedAt:String(x.updatedAt||x.createdAt||'')}));
   n.expenses=(Array.isArray(n.expenses)?n.expenses:[]).map(x=>({...x,account:x.account==='ביתי'?'ביתי':'עסקי',amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
+  n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
   const before=(n.credits||[]).length;

@@ -34,6 +34,7 @@ import {createDomainsCashView} from './domains/cash/view.js';
 import {createDomainsCashController} from './domains/cash/controller.js';
 import {createDomainsNotesController} from './domains/notes/controller.js';
 import {createDomainsBankView} from './domains/bank/view.js';
+import {createDomainsBankAlerts} from './domains/bank/alerts.js';
 import {createDomainsBankBridge} from './domains/bank/bridge.js';
 import {createDomainsBankController} from './domains/bank/controller.js';
 import {createUiSettings} from './ui/settings.js';
@@ -385,6 +386,7 @@ const uiNavigation=createUiNavigation({
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
+  maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -539,6 +541,14 @@ const uiSettings=createUiSettings({
 
 const uiModal=createUiModal({
   ui,
+});
+
+const domainsBankAlerts=createDomainsBankAlerts({
+  model,
+  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
+  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
 });
 
 const domainsChecksEditor=createDomainsChecksEditor({
@@ -733,6 +743,7 @@ const uiActions=createUiActions({
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
   openExpenseModal:(...args)=>domainsExpensesEditor.openExpenseModal(...args),
   updateCard:(...args)=>uiSettings.updateCard(...args),
+  updateCashflowMinimum:(...args)=>uiSettings.updateCashflowMinimum(...args),
   manualBackup:(...args)=>uiBackup.manualBackup(...args),
   downloadJsonBackup:(...args)=>uiBackup.downloadJsonBackup(...args),
   restoreBackup:(...args)=>uiBackup.restoreBackup(...args),

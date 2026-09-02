@@ -5,6 +5,7 @@ import {normalizeSharedBankEvents} from '../checks/model.js';
 import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
+import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 
 const BANK_BRIDGE_VERSION=24;
 const CREDIT_BRIDGE_VERSION=24;
@@ -57,11 +58,22 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       const candidate=mutator(clone(row.state));
       if(!candidate){acceptKupaCloudRow(row,{renderIfChanged:true});return {saved:false,skipped:true,row}}
       const result=await rpcSaveKupaDocument(prepareKupaWriteState(candidate),Number(row.revision||0));
-      if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate};acceptKupaCloudRow(savedRow,{renderIfChanged:true});return {saved:true,skipped:false,row:savedRow}}
+      if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate};await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:savedRow}}
       if(revisionConflict(result))continue;
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
     }
     throw new Error('מסמך הקופה השתנה שוב בזמן עדכון פיננסי; לא נדרס שום נתון')
+  }
+
+  async function saveCashflowMinimum(account,value){
+    const raw=String(value??'').trim(),parsed=raw===''?null:Number(raw);
+    if(parsed!==null&&!Number.isFinite(parsed)){toast('סכום המינימום אינו תקין');return false}
+    if(!loadSession()){toast('יש להתחבר לענן כדי לשמור את ההגדרה המשותפת');return false}
+    try{
+      await mutateKupaCloud(kupa=>{const settings=normalizeCashflowSettings(kupa.cashflowSettings);if(account==='home')settings.homeMinimum=parsed;else settings.businessMinimum=parsed;kupa.cashflowSettings=normalizeCashflowSettings(settings);return kupa});
+      toast('סף ההתראה התזרימי נשמר ומשותף לשתי המערכות');
+      return true;
+    }catch(error){toast(error?.message||String(error));return false}
   }
 
   async function mutateFinanceCloud(mutator){
@@ -198,5 +210,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setBankAutoEnabled(value){bridge.setBankAutoEnabled(value);scheduleBankAuto()}
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
 
-  return {snapshot,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,mutateKupaCloud};
+  return {snapshot,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,saveCashflowMinimum,mutateKupaCloud};
 }

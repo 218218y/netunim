@@ -15,6 +15,12 @@ function mergeState3Way(base,local,remote){
   out.notes=mergeRecordArray(base.notes,local.notes,remote.notes,'id','notes',conflicts);
   out.expenses=mergeRecordArray(base.expenses,local.expenses,remote.expenses,'id','expenses',conflicts);
   out.cards=mergeRecordArray(base.cards,local.cards,remote.cards,'name','cards',conflicts);
+  const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
+  out.cashflowSettings={
+    version:1,
+    businessMinimum:mergeValue(bc.businessMinimum,lc.businessMinimum,rc.businessMinimum,'cashflowSettings.businessMinimum',conflicts),
+    homeMinimum:mergeValue(bc.homeMinimum,lc.homeMinimum,rc.homeMinimum,'cashflowSettings.homeMinimum',conflicts),
+  };
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};
   out.bank={
     currentBalance:mergeValue(bb.currentBalance,lb.currentBalance,rb.currentBalance,'bank.currentBalance',conflicts),
@@ -44,6 +50,12 @@ function rebaseLocalProgress(base,local,remote){
   out.notes=mergeRecordArrayPreferLocal(base.notes,local.notes,remote.notes,'id');
   out.expenses=mergeRecordArrayPreferLocal(base.expenses,local.expenses,remote.expenses,'id');
   out.cards=mergeRecordArrayPreferLocal(base.cards,local.cards,remote.cards,'name');
+  const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
+  out.cashflowSettings={
+    version:1,
+    businessMinimum:mergeValuePreferLocal(bc.businessMinimum,lc.businessMinimum,rc.businessMinimum),
+    homeMinimum:mergeValuePreferLocal(bc.homeMinimum,lc.homeMinimum,rc.homeMinimum),
+  };
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};
   out.bank={
     currentBalance:mergeValuePreferLocal(bb.currentBalance,lb.currentBalance,rb.currentBalance),

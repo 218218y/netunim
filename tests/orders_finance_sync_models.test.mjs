@@ -170,7 +170,7 @@ let cloudRow={revision:5,updated_at:'2026-09-01T00:00:00Z',state:structuredClone
 let financeRow={revision:1,updated_at:'2026-09-01T00:00:00Z',state:{bank:null,creditSync:structuredClone(initialCredit)}};
 const overlayReadout=()=>{const state=structuredClone(cloudRow.state),kupaBank=state.bank||{},financeBank=financeRow.state.bank||null;if(financeBank)state.bank={...kupaBank,...structuredClone(financeBank),adjustments:structuredClone(kupaBank.adjustments||[]),snapshotToken:kupaBank.snapshotToken??null,snapshotSeq:kupaBank.snapshotSeq??null};if(financeRow.state.creditSync)state.creditSync=structuredClone(financeRow.state.creditSync);return state};
 const checksSession={kupaCloudReadState:overlayReadout(),checksBankEvents:[{seq:4,at:'2026-09-01T01:30:00Z',delta:-25,kind:'check_effect_delta',checkId:'check-4'}]};
-let saveCalls=0,financeSaveCalls=0,atomicBankSaveCalls=0,bankFetchCalls=0,creditFetchCalls=0;
+let saveCalls=0,financeSaveCalls=0,atomicBankSaveCalls=0,bankFetchCalls=0,creditFetchCalls=0,acceptKupaCalls=0,refreshKupaCalls=0;
 const archiveRows={business:[],home:[]};
 function archiveRow(tx){return {id:tx.mergeKey,date:tx.date,processedDate:tx.processedDate||tx.date,amount:Number(tx.amount),currency:tx.currency||'ILS',description:tx.description||'',memo:tx.memo||'',partyName:tx.partyName||'',partyHeadline:tx.partyHeadline||'',messageHeadline:tx.messageHeadline||'',messageDetail:tx.messageDetail||'',status:tx.status||'completed',balanceAfter:tx.balanceAfter??null,bankReference:tx.bankReference||'',bankSerial:tx.bankSerial||'',activityTypeCode:tx.activityTypeCode??null,cheque:!!tx.cheque,checkDetails:tx.checkDetails??null}}
 const mergeBankTransactions=async(accountKey,role,transactions)=>{const payload=(transactions||[]).map((tx,index)=>({...tx,mergeKey:`${role}:${String(tx.date||'').slice(0,10)}:${tx.id||index}`}));archiveRows[role]=payload.map(archiveRow);return {result:{inserted_count:payload.length,updated_count:0,total_count:payload.length},sourcePayload:payload}};
@@ -194,10 +194,10 @@ const bridge={
 };
 const controller=createDomainsFinanceController({
   tab:{primaryTab:true},checksSession,bridge,loadSession:()=>({access_token:'x'}),
-  refreshKupaReadout:async()=>{checksSession.kupaCloudReadState=overlayReadout();return true},
+  refreshKupaReadout:async()=>{refreshKupaCalls++;checksSession.kupaCloudReadState=overlayReadout();return true},
   readKupaReadOnlyCloud:async()=>({...structuredClone(cloudRow),state:overlayReadout()}),
   rpcSaveKupaDocument:async(state,expected)=>{saveCalls++;assert.equal(expected,cloudRow.revision);cloudRow={revision:cloudRow.revision+1,updated_at:'2026-09-01T02:31:00Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(cloudRow)}},
-  acceptKupaCloudRow:row=>{cloudRow={...cloudRow,...structuredClone(row)};checksSession.kupaCloudReadState=overlayReadout();return true},
+  acceptKupaCloudRow:row=>{acceptKupaCalls++;cloudRow={...cloudRow,...structuredClone(row)};checksSession.kupaCloudReadState=overlayReadout();return true},
   readFinanceSyncDocument:async()=>structuredClone(financeRow),
   rpcSaveFinanceSync:async(state,expected)=>{financeSaveCalls++;assert.equal(expected,financeRow.revision);financeRow={revision:financeRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(financeRow)}},
   saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions,
@@ -235,6 +235,17 @@ assert.equal(financeSaveCalls,bankFinanceSaveCalls+1,'credit refresh writes only
 assert.equal(creditFetchCalls,1);
 assert.equal(financeRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
 assert.equal(financeRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps credit card mapping choices in finance state');
+
+const acceptsBeforeThreshold=acceptKupaCalls,refreshesBeforeThreshold=refreshKupaCalls,financeBeforeThreshold=structuredClone(financeRow.state);
+assert.equal(await controller.saveCashflowMinimum('business','5000'),true,'Orders can persist the shared business cashflow threshold');
+assert.equal(saveCalls,bankSaveCalls+1,'cashflow threshold updates the Kupa core document exactly once');
+assert.equal(cloudRow.state.cashflowSettings.businessMinimum,5000);
+assert.deepEqual(financeRow.state,financeBeforeThreshold,'saving a Kupa cashflow threshold never rewrites isolated bank/credit finance state');
+assert.equal(acceptKupaCalls,acceptsBeforeThreshold,'raw Kupa RPC rows are not accepted into the finance-overlay cache after a core write');
+assert.equal(refreshKupaCalls,refreshesBeforeThreshold+1,'a successful Kupa core write re-reads the merged Kupa+finance view before rendering');
+assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessMinimum,5000);
+assert.equal(checksSession.kupaCloudReadState.bank.feed.balance,1500,'bank feed remains visible immediately after saving the shared threshold');
+assert.equal(checksSession.kupaCloudReadState.creditSync.profiles[0].accounts[0].txns[0].id,'fresh','credit feed remains visible immediately after saving the shared threshold');
 
 Date.now=realDateNow;
 console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, atomic bank snapshot + archive read-back verification, dual-account feed, newest-first transaction detail and credit mapping preservation');

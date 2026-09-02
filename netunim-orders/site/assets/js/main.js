@@ -15,6 +15,7 @@ import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
+import {createDomainsBankAlerts} from './domains/bank/alerts.js';
 import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
@@ -211,6 +212,7 @@ const uiNavigation=createUiNavigation({
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
+  maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
 });
 
 const domainsChecksView=createDomainsChecksView({
@@ -632,6 +634,11 @@ const domainsFinanceView=createDomainsFinanceView({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
+const domainsBankAlerts=createDomainsBankAlerts({
+  financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
+  modal:(...args)=>uiModal.modal(...args),
+});
+
 const syncDocument=createSyncDocument({
   model,
   files,
@@ -732,6 +739,7 @@ const uiSettings=createUiSettings({
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
+  financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
 });
 
 const lifecycle=createLifecycle({
@@ -787,6 +795,7 @@ const uiActions=createUiActions({
   deleteOrdersBankCredentials:(...args)=>domainsFinanceView.deleteBankCredentials(...args),
   refreshOrdersBank:(...args)=>domainsFinanceView.refreshBank(...args),
   setOrdersBankAuto:(...args)=>domainsFinanceView.setBankAuto(...args),
+  saveOrdersCashflowMinimum:(...args)=>domainsFinanceController.saveCashflowMinimum(...args),
   refreshOrdersCredit:(...args)=>domainsFinanceView.refreshCredit(...args),
   setOrdersCreditAuto:(...args)=>domainsFinanceView.setCreditAuto(...args),
   setOrdersCreditView:(...args)=>domainsFinanceView.setCreditView(...args),

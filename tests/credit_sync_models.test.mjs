@@ -26,6 +26,8 @@ import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/ba
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
+import {todayISO,localISO,dObj,addMonthsISO} from '../netunim-kupa/site/assets/js/core/dates.js';
 
 assert.equal(CREDIT_SYNC_VERSION,3,'credit feed v3 is the synced-primary/additive-manual model');
 assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['amex','isracard','max','visaCal'],'bridge exposes Cal, MAX, Isracard and Amex issuer connections; Mastercard is not a separate login provider');
@@ -159,12 +161,30 @@ assert.equal(businessCycle.nextCreditTotal,100);assert.equal(businessCycle.targe
 assert.equal(homeCycle.nextCreditTotal,250);assert.equal(homeCycle.targetExpenseTotal,60,'home cycle includes only home expenses');
 assert.equal(bankProjectedThisMonthData(splitAccountState),860,'business projected checking subtracts only its own credit clearing and expenses');
 assert.equal(bankHomeProjectedThisMonthData(splitAccountState),1690,'home projected checking subtracts only home credit clearing and home expenses');
+const ordersBusinessCashflow=kupaAccountCashflowData(splitAccountState,'עסקי'),ordersHomeCashflow=kupaAccountCashflowData(splitAccountState,'ביתי');
+assert.equal(ordersBusinessCashflow.total,businessCycle.total,'Orders uses the exact same business next-cycle commitment total as Kupa');
+assert.equal(ordersBusinessCashflow.projected,bankProjectedThisMonthData(splitAccountState),'Orders business projected checking is numerically identical to Kupa');
+assert.equal(ordersHomeCashflow.total,homeCycle.total,'Orders uses the exact same home next-cycle commitment total as Kupa');
+assert.equal(ordersHomeCashflow.projected,bankHomeProjectedThisMonthData(splitAccountState),'Orders home projected checking is numerically identical to Kupa');
 assert.equal(splitLong.expenses,40,'dashboard business position excludes the home mortgage from business expenses');
 assert.equal(splitLong.net,860,'dashboard business net cannot be reduced by a home expense or home card');
 const noBusinessBalance={...structuredClone(splitAccountState),bank:{...structuredClone(splitAccountState.bank),currentBalance:null,updatedAt:null,asOfDate:null,source:null,feed:null}};
 assert.equal(bankNextCycleCommitmentsData(noBusinessBalance).targetExpenseTotal,40,'expense commitments remain visible even when the business bank balance is not synchronized');
 assert.equal(bankNextCycleCommitmentsData(noBusinessBalance).nextCreditTotal,100,'credit commitments remain visible even when the business bank balance is not synchronized');
 assert.equal(bankProjectedThisMonthData(noBusinessBalance),null,'only the projected bank result becomes unavailable when the balance itself is unavailable');
+
+const currentDay=todayISO(),shiftDay=(iso,days)=>{const d=dObj(iso);d.setDate(d.getDate()+days);return localISO(d)},snapshotStart=shiftDay(currentDay,-2),elapsedDay=shiftDay(currentDay,-1),futureDay=addMonthsISO(currentDay,1);
+const staleSnapshotState={version:4,checks:[],cash:[],cards:[],bank:{currentBalance:1000,asOfDate:snapshotStart,adjustments:[]},creditSync:{version:3,profiles:[],errors:[],cardMappings:{}},credits:[
+ {id:'elapsed-credit',description:'עבר מאז הצילום',account:'עסקי',card:'ישן',firstChargeDate:elapsedDay,totalAmount:100,installments:1,active:true},
+ {id:'future-credit',description:'מחזור הבא',account:'עסקי',card:'עתידי',firstChargeDate:futureDay,totalAmount:200,installments:1,active:true},
+],expenses:[
+ {id:'elapsed-expense',description:'הוצאה מאז הצילום',account:'עסקי',date:elapsedDay,amount:30,recurring:false,active:true},
+ {id:'future-expense',description:'הוצאה למחזור הבא',account:'עסקי',date:futureDay,amount:40,recurring:false,active:true},
+]};
+const staleKupaCycle=bankNextCycleCommitmentsData(staleSnapshotState),staleOrders=kupaAccountCashflowData(staleSnapshotState,'עסקי');
+assert.equal(staleKupaCycle.elapsedCredit,100);assert.equal(staleKupaCycle.elapsedExpenses,30,'Kupa includes obligations elapsed since a stale bank snapshot');
+assert.equal(staleOrders.elapsedCredit,staleKupaCycle.elapsedCredit);assert.equal(staleOrders.elapsedExpenses,staleKupaCycle.elapsedExpenses,'Orders preserves the stale-snapshot correction instead of using a simplified current-month formula');
+assert.equal(staleOrders.total,staleKupaCycle.total);assert.equal(staleOrders.projected,bankProjectedThisMonthData(staleSnapshotState));
 
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');

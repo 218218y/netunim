@@ -3,6 +3,7 @@ import {money} from '../../core/money.js';
 import {checkDateFmt,checkMonthKey,checkMonthLabel,checkTodayISO} from '../../core/dates.js';
 import {CREDIT_PROVIDER_LABELS,normalizeCreditSync} from './credit-feed.js';
 import {creditDetailMonths,creditErrors,creditMonthBuckets,creditSummary} from './reporting.js';
+import {kupaAccountCashflowData} from '../bank/readout.js';
 
 const KUPA_SECTIONS=['bank','credit','checks','summary'];
 const KUPA_SECTION_LABELS={bank:'בנק',credit:'אשראי',checks:'צ׳קים',summary:'מאזן'};
@@ -32,8 +33,8 @@ export function createDomainsFinanceView({ui,controller,checksView,dashboardView
   function bankTransactionsMarkup(feed,role){
     const allRows=feed?.transactions||[],query=ui.bankSearchValue||'',rows=query.trim()?allRows.filter(row=>bankRowMatchesSearch(row,query)):allRows,balance=Number(feed?.balance);
     const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),countLabel=query.trim()?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
-    const roleName=role==='home'?'ביתי':'עסקי',difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null;
-    const balanceFacts=Number.isFinite(balance)?`<div class="bank-compact-balance"><span class="bank-primary-balance"><span>יתרה ${roleName}</span><b>${money(balance)}</b></span>${Number.isFinite(available)?`<span class="bank-balance-separator" aria-hidden="true"></span><span class="bank-available-balance"><span>למשיכה</span><b>${money(available)}</b><span class="bank-balance-delta" title="הפרש בין היתרה ליתרה הזמינה למשיכה">(${money(difference)})</span></span><span class="bank-balance-separator" aria-hidden="true"></span>`:''}</div>`:'';
+    const roleName=role==='home'?'ביתי':'עסקי',difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null,cashflow=kupaAccountCashflowData(snapshot().kupa,roleName),cashflowFacts=cashflow.projected===null?'':`<span class="bank-cashflow-summary"><span class="bank-cashflow-metric ${cashflow.alert.active?'alert':''}"><span>עו״ש תזרימי</span><b>${money(cashflow.projected)}</b></span><span class="bank-cashflow-metric expected"><span>הוצאות צפויות</span><b>${money(cashflow.total)}</b></span></span>`;
+    const balanceFacts=Number.isFinite(balance)?`<div class="bank-compact-balance"><span class="bank-primary-balance"><span>יתרה ${roleName}</span><b>${money(balance)}</b></span>${Number.isFinite(available)?`<span class="bank-balance-separator" aria-hidden="true"></span><span class="bank-available-balance"><span>למשיכה</span><b>${money(available)}</b><span class="bank-balance-delta" title="הפרש בין היתרה ליתרה הזמינה למשיכה">(${money(difference)})</span></span><span class="bank-balance-separator" aria-hidden="true"></span>${cashflowFacts}`:''}</div>`:'';
     const accountTitle=feed?.accountNumber?`חשבון ${roleName} ${esc(feed.accountNumber)}`:`חשבון ${roleName}`;
     const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small></div>${balanceFacts}</div>`;
     if(!feed)return `${caption}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
