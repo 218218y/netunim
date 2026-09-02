@@ -370,6 +370,7 @@ const domainsChecksView=createDomainsChecksView({
   bulkControls:(...args)=>uiBulk.bulkControls(...args),
   bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
+  futureCheckMonths:(...args)=>domainsChecksSelectors.futureCheckMonths(...args),
 });
 
 const uiNavigation=createUiNavigation({
@@ -398,7 +399,6 @@ const domainsDashboardView=createDomainsDashboardView({
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
   bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
-  monthSumChecks:(...args)=>domainsChecksSelectors.monthSumChecks(...args),
 });
 
 const uiBulk=createUiBulk({

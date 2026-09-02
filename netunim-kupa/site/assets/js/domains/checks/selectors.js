@@ -1,4 +1,4 @@
-import {activeChecksData, depositedChecksData, checksBalanceData, depositedBalanceData, monthSumChecksData} from './model.js';
+import {activeChecksData, depositedChecksData, checksBalanceData, depositedBalanceData, futureCheckMonthsData} from './model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsChecksSelectors({model}){
@@ -10,7 +10,7 @@ function checksBalance(...args){return checksBalanceData(model.state,...args)}
 
 function depositedBalance(...args){return depositedBalanceData(model.state,...args)}
 
-function monthSumChecks(...args){return monthSumChecksData(model.state,...args)}
+function futureCheckMonths(...args){return futureCheckMonthsData(model.state,...args)}
 
-return { activeChecks, depositedChecks, checksBalance, depositedBalance, monthSumChecks };
+return { activeChecks, depositedChecks, checksBalance, depositedBalance, futureCheckMonths };
 }
