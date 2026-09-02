@@ -113,7 +113,7 @@ assert.equal(viewProbeCalls,1,'failed bank availability probe is one-shot per lo
 
 let creditViewProbeCalls=0,creditViewProbeChecked=false;
 const creditFinanceView=createDomainsFinanceView({
-  ui:{currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailMonth:''},
+  ui:{currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null},
   controller:{
     snapshot:()=>({kupa:{bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[]},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:creditViewProbeChecked,bankBridgeError:'',creditBridgeError:creditViewProbeChecked?'credit bridge offline':''}),
     refreshCreditBridgeStatus:async()=>{creditViewProbeCalls++;creditViewProbeChecked=true;return null},
@@ -123,6 +123,23 @@ const creditFinanceView=createDomainsFinanceView({
 creditFinanceView.renderKupa();
 await Promise.resolve();await Promise.resolve();
 assert.equal(creditViewProbeCalls,1,'failed credit availability probe is one-shot per loaded state and cannot create a render/probe loop');
+
+const drilldownMain={innerHTML:''};
+let drilldownScrolled=0;
+Object.defineProperty(globalThis,'requestAnimationFrame',{value:callback=>{callback();return 1},configurable:true});
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?drilldownMain:id==='ordersCreditDetailRegion'?{scrollIntoView:()=>{drilldownScrolled++}}:null,querySelector:()=>null},configurable:true});
+const drilldownCreditSync=normalizeCreditSync({version:3,mode:'synced',profiles:[{profileId:'p1',provider:'max',label:'MAX',ownerLabel:'',defaultAccount:'עסקי',accounts:[{accountNumber:'1234',txns:[{id:'tx1',processedDate:'2026-09-15',transactionDate:'2026-08-20',chargedAmount:120,originalAmount:120,status:'completed',description:'בדיקת מיקוד'}]}]}],cardMappings:{'p1:1234':{included:true,hidden:false,account:'עסקי',cardName:'כרטיס בדיקה'}}});
+const drilldownUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
+const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:drilldownCreditSync,cards:[],credits:[]},bank:{},creditSync:drilldownCreditSync,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false});
+drilldownView.renderKupa();
+assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-focus"[^>]*data-click-arg0="2026-09"[^>]*data-click-arg1="sync:p1:1234"/,'Orders forecast rows expose the same month/card drilldown identity as Kupa');
+drilldownView.setCreditDetailFocus('2026-09','sync:p1:1234');
+assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:'sync:p1:1234'});
+assert.equal(drilldownScrolled,1,'Orders forecast drilldown scrolls to the transactions region after rendering');
+assert.match(drilldownMain.innerHTML,/מיקוד בכרטיס מתוך התחזית/);
+assert.match(drilldownMain.innerHTML,/בדיקת מיקוד/);
+drilldownView.clearCreditDetailFocus('2026-09');
+assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:''},'clearing a forecast card focus preserves the selected month');
 
 const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});

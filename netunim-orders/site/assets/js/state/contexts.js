@@ -15,7 +15,7 @@ return {
     creditAccountFilter:'all',
     creditProviderFilter:'all',
     creditCardFilter:'all',
-    creditDetailMonth:'',
+    creditDetailFocus:null,
     checkTab:'open',
     checkYear:'all',
     checkSearchValue:'',
