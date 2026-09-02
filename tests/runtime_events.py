@@ -41,9 +41,10 @@ expressions = {
  backendReady=false;connectionMode='';
  setPage('dashboard');
  assertBackdropGestureContract(()=>openCheckModal());
- const tile=document.querySelector('.kpi.clickable');
- tile.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
- if(currentPage!=='cash')throw new Error('KPI keyboard navigation failed');
+ const bankQuick=document.querySelector('#content button[data-action="set-page"]');
+ if(!bankQuick||bankQuick.tagName!=='BUTTON')throw new Error('Dashboard bank quick action must remain a native button');
+ bankQuick.click();await frame();
+ if(currentPage!=='bank')throw new Error('Dashboard bank quick action failed');
  openCheckModal();
  document.getElementById('fName').value='event customer';
  let rows=document.querySelectorAll('#checkSeriesRows .check-series-row');
@@ -68,7 +69,7 @@ expressions = {
  if(document.getElementById('fName').value!=='quote test')throw new Error('Data ID was interpreted as executable code');
  clickText('#modal','שמור שינויים');
  if(state.checks.length!==1||state.checks[0].id!==strangeId)throw new Error('Modal callback lost ID');
- return {keyboard:true,series:true,manualOverride:true,draft:true,quotedId:true};
+ return {dashboardAction:true,series:true,manualOverride:true,draft:true,quotedId:true};
  """,
  'orders': r"""
  state.suppliers=[{id:'S1',name:'Supplier',active:true,sortOrder:0},{id:'S2',name:'Second',active:true,sortOrder:1}];

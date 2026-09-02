@@ -29,15 +29,7 @@ function renderDashboard(){
    <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
   </div>`}
 
-function kpiAttrs(action){
-  if(!action)return '';
-  return ` role="button" tabindex="0" data-action="dashboard-go" data-keydown="dashboard-keyboard" data-page="${esc(action.page)}" data-tab="${esc(action.tab||'')}"`;
-}
+function kpi(label,value,accent,dot,hint){return `<div class="kpi" style="--accent:${esc(accent)};--dot:${esc(dot)}"><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${money(value)}</div><div class="hint">${esc(hint)}</div></div>`}
 
-function kpiDisplay(label,value,accent,dot,hint,action=''){return `<div class="kpi${esc(action?' clickable':'')}" style="--accent:${esc(accent)};--dot:${esc(dot)}"${kpiAttrs(action)}><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${formatNullableMoney(value)}</div><div class="hint">${esc(hint)}</div></div>`}
-
-function kpi(label,value,accent,dot,hint,action=''){return `<div class="kpi${esc(action?' clickable':'')}" style="--accent:${esc(accent)};--dot:${esc(dot)}"${kpiAttrs(action)}><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${money(value)}</div><div class="hint">${esc(hint)}</div></div>`}
-
-
-return { renderDashboard, kpiAttrs, kpiDisplay, kpi };
+return { renderDashboard, kpi };
 }

@@ -6,15 +6,5 @@ function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPag
 
 function render(){if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();maybeAutoRefreshBankBalance();maybeAutoRefreshCreditSync()}
 
-function dashboardGo(page,tab='',focus='all'){
-  if(page==='checks'){
-    ui.checkTab=tab||'open';
-    ui.checkYear='all';
-    ui.checkFocus=focus||'all';
-    ui.checkSearchValue='';
-  }
-  setPage(page);
-}
-
-return { setPage, render, dashboardGo };
+return { setPage, render };
 }

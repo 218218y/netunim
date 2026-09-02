@@ -665,7 +665,6 @@ const uiActions=createUiActions({
   openCheckDatePicker:(...args)=>uiDateEditor.openCheckDatePicker(...args),
   applyCheckDatePicker:(...args)=>uiDateEditor.applyCheckDatePicker(...args),
   setPage:(...args)=>uiNavigation.setPage(...args),
-  dashboardGo:(...args)=>uiNavigation.dashboardGo(...args),
   clearCheckFocus:(...args)=>domainsChecksView.clearCheckFocus(...args),
   toggleBulkMode:(...args)=>uiBulk.toggleBulkMode(...args),
   toggleBulkRow:(...args)=>uiBulk.toggleBulkRow(...args),

@@ -278,6 +278,13 @@ ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
    and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות חודש אחד','סה״כ קופה','מאזן כולל נטו'))
    and 'class="grid kpis"' not in kupa_dashboard_view,
    "kupa dashboard: the five long-term bank summary calculations replace all eight legacy KPI cards at the top")
+kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
+ok('button data-action="set-page"' in kupa_dashboard_view
+   and 'dashboard-go' not in kupa_dashboard_view and 'dashboard-keyboard' not in kupa_dashboard_view
+   and 'dashboard-go' not in kupa_actions and 'dashboard-keyboard' not in kupa_actions
+   and 'dashboardGo' not in kupa_navigation,
+   "kupa dashboard events: current quick navigation uses a native button and obsolete clickable-KPI keyboard plumbing is removed")
 ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
    and "const task=controller.refreshCredit({interactive});renderKupa();await task;renderKupa()" in orders_finance_view,
    "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")
