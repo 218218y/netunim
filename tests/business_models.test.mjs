@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
-import {futureCheckMonthsData} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
+import {futureCheckMonthsData as kupaFutureCheckMonthsData} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
+import {futureCheckMonthsData as ordersFutureCheckMonthsData} from '../netunim-orders/site/assets/js/domains/checks/model.js';
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {computeKupaNetReadoutData, kupaAllInstallments, kupaBusinessInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
@@ -49,17 +50,20 @@ test('future check forecast starts at the current month, fills internal gaps, tr
   {id:'CLOSED',amount:999,dueDate:'2026-12-01',status:'נפרע'},
   {id:'FEB27',amount:300,dueDate:'2027-02-15',status:'בקופה'}
  ]};
- assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2026'}),[
-  {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250}
- ]);
- assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'all'}),[
-  {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250},{key:'2026-12',total:0},{key:'2027-01',total:0},{key:'2027-02',total:300}
- ]);
- assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2027'}),[
-  {key:'2027-01',total:0},{key:'2027-02',total:300}
- ]);
- assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2025'}),[]);
- assert.deepEqual(futureCheckMonthsData({checks:[]},{fromMonth:'2026-09',year:'2026'}),[]);
+ const forecastModels=[kupaFutureCheckMonthsData,ordersFutureCheckMonthsData];
+ for(const futureCheckMonthsData of forecastModels){
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2026'}),[
+   {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250}
+  ]);
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'all'}),[
+   {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250},{key:'2026-12',total:0},{key:'2027-01',total:0},{key:'2027-02',total:300}
+  ]);
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2027'}),[
+   {key:'2027-01',total:0},{key:'2027-02',total:300}
+  ]);
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2025'}),[]);
+  assert.deepEqual(futureCheckMonthsData({checks:[]},{fromMonth:'2026-09',year:'2026'}),[]);
+ }
 });
 test('bank balance remains the authoritative snapshot regardless of check workflow status',()=>{
  const state={bank:{currentBalance:1000,snapshotSeq:5,adjustments:[]},checks:[{id:'C',amount:100,status:'בקופה'}]};

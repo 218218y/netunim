@@ -1,11 +1,10 @@
 import {esc} from '../../core/values.js';
 import {money, formatNullableMoney} from '../../core/money.js';
-import {HEB_MONTHS, dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
+import {dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({model, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingBusinessInstallments, monthSumBusinessInstallments, monthSumExpenses, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth}){
+export function createDomainsDashboardView({model, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingBusinessInstallments, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth}){
 function renderDashboard(){
-  const now=new Date();
   const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const overdue=activeChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const depOver=depositedChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
@@ -18,8 +17,6 @@ function renderDashboard(){
   });
   const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${money(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
   const alerts=[...criticalAlerts,...upcomingAlerts];
-  const months=[];for(let i=0;i<6;i++){const d=new Date(now.getFullYear(),now.getMonth()+i,1),k=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;months.push({k,label:HEB_MONTHS[d.getMonth()],credit:monthSumBusinessInstallments(k,true)+monthSumExpenses(k,true)})}
-  const max=Math.max(1,...months.map(x=>Math.abs(x.credit)));
   const cycle=bankNextCycleCommitments(),bankAfter=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth),futureCreditRows=pendingBusinessInstallments(),futureCreditTotal=futureCreditRows.reduce((a,x)=>a+x.amount,0);
   document.getElementById('content').innerHTML=`
   <div class="grid kpis">
@@ -41,8 +38,7 @@ function renderDashboard(){
     <button data-action="set-page"><b>בנק ועו״ש</b><span>יתרה, מחזור קרוב ומאזן כולל</span></button>
    </div></div></section>
    <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
-  </div>
-  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>6 חודשים קדימה — אשראי עסקי והוצאות</h3></div></div><div class="section-body"><div class="bar-list">${months.map(x=>barRow(x.label,x.credit,max,'#638f87')).join('')}</div></div></section>`}
+  </div>`}
 
 function kpiAttrs(action){
   if(!action)return '';
@@ -53,7 +49,6 @@ function kpiDisplay(label,value,accent,dot,hint,action=''){return `<div class="k
 
 function kpi(label,value,accent,dot,hint,action=''){return `<div class="kpi${esc(action?' clickable':'')}" style="--accent:${esc(accent)};--dot:${esc(dot)}"${kpiAttrs(action)}><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${money(value)}</div><div class="hint">${esc(hint)}</div></div>`}
 
-function barRow(label,val,max,c){return `<div class="bar-row"><b>${esc(label)}</b><div class="bar"><i style="--bar:${esc(c)};width:${esc(Math.max(2,val/max*100))}%"></i></div><div class="num">${money(val)}</div></div>`}
 
-return { renderDashboard, kpiAttrs, kpiDisplay, kpi, barRow };
+return { renderDashboard, kpiAttrs, kpiDisplay, kpi };
 }

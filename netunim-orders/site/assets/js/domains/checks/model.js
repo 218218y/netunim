@@ -1,5 +1,6 @@
 import {nextSeriesCheckNumber} from '../../shared/check-series.js';
 export {nextSeriesCheckNumber};
+export {futureCheckMonthsData} from '../../shared/check-forecast.js';
 import {checkDaysFromToday, checkAddMonthsISO} from '../../core/dates.js';
 
 export function normalizeSharedBankEvents(events){return (Array.isArray(events)?events:[]).map(e=>{const seq=Number(e?.seq),delta=Math.round(Number(e?.delta||0));return{seq:Number.isSafeInteger(seq)&&seq>0?seq:null,at:e?.at||null,delta,kind:String(e?.kind||'check_effect_delta'),checkId:String(e?.checkId||'')}}).filter(e=>e.seq&&e.checkId)}

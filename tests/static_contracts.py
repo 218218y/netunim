@@ -212,6 +212,7 @@ orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
 orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
 orders_checks_view = (O / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
+kupa_dashboard_view = (K / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
@@ -249,6 +250,16 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in o
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+ok("checkForecastMarkup()" in orders_checks_view
+   and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear})" in orders_checks_view
+   and '.checks-forecast-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px}' in orders_css
+   and '@media(max-width:620px){.checks-forecast-columns{grid-template-columns:1fr}' in orders_css
+   and (ROOT / "shared/check-forecast.js").read_text(encoding="utf-8") == (K / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8") == (O / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8"),
+   "shared checks forecast: Orders Kupa uses the same month-range model and responsive two-column presentation as Kupa")
+ok("6 חודשים קדימה — אשראי עסקי והוצאות" not in kupa_dashboard_view
+   and "monthSumBusinessInstallments" not in kupa_dashboard_view
+   and "monthSumExpenses" not in kupa_dashboard_view,
+   "kupa dashboard: obsolete six-month business-credit-and-expenses panel is removed at the source")
 ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
    and "const task=controller.refreshCredit({interactive});renderKupa();await task;renderKupa()" in orders_finance_view,
    "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")
