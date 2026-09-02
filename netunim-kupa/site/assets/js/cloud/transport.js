@@ -49,14 +49,14 @@ function financeLeaseName(value){const name=String(value||'').trim();if(name!=='
 async function claimFinanceSyncLease(leaseName,leaseToken,{ttlSeconds=FINANCE_LEASE_TTL_SECONDS}={}){
   const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim(),ttl=Math.max(60,Math.min(1800,Math.trunc(Number(ttlSeconds)||FINANCE_LEASE_TTL_SECONDS)));
   if(!token)throw new Error('מזהה נעילת הסינכרון הפיננסי חסר');
-  const r=await supaRest('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl})});
+  let r;try{r=await supaRest('/rest/v1/rpc/claim_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token,p_ttl_seconds:ttl}),networkRetry:true})}catch(error){if(String(error?.code||'').startsWith('SUPABASE_NETWORK_')){const e=new Error('לא ניתן לקבל כרגע נעילת סינכרון מהענן. לא נפתחה כניסה לבנק או לחברת האשראי כדי למנוע סינכרון כפול ממחשב אחר.');e.code='FINANCE_LEASE_CLOUD_UNAVAILABLE';e.cause=error;throw e}throw error}
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
   if(!r.ok)throw new Error(j?.message||j?.hint||body||'תפיסת נעילת הסינכרון המשותפת נכשלה');
   const row=Array.isArray(j)?j[0]:j;return {acquired:row?.acquired===true,leasedUntil:row?.leased_until||null};
 }
 async function releaseFinanceSyncLease(leaseName,leaseToken){
   const name=financeLeaseName(leaseName),token=String(leaseToken||'').trim();if(!token)return false;
-  const r=await supaRest('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token})});
+  const r=await supaRest('/rest/v1/rpc/release_finance_sync_lease',{method:'POST',body:JSON.stringify({p_lease_name:name,p_lease_token:token}),networkRetry:true});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
   if(!r.ok)throw new Error(j?.message||j?.hint||body||'שחרור נעילת הסינכרון המשותפת נכשל');
   const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true;

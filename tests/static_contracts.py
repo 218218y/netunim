@@ -310,8 +310,8 @@ ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/dom
    "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=24" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v24 contract")
+ok("const BANK_BRIDGE_VERSION=25" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v25 contract")
 ok("const CREDIT_BRIDGE_VERSION=24" in orders_finance_controller,
    "orders Kupa UI: credit controls require the current Bridge v24 contract")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
@@ -325,6 +325,8 @@ kupa_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf
 kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
 kupa_bank_controller=(K / "site/assets/js/domains/bank/controller.js").read_text(encoding="utf-8")
 kupa_credit_controller=(K / "site/assets/js/domains/credit/controller.js").read_text(encoding="utf-8")
+kupa_cloud_auth=(K / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
+orders_cloud_auth=(O / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
 orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 orders_bank_cache=(O / "site/assets/js/domains/bank/cache.js").read_text(encoding="utf-8")
 ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_view and "lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null" not in kupa_credit_view,
@@ -344,6 +346,12 @@ for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetch
 ok("claimSharedFinanceSyncLease" in kupa_main and "remoteFinanceLeaseTokens" in kupa_main
    and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
+ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth
+   and kupa_transport.count("networkRetry:true")>=2,
+   "Kupa cloud transport: transient Supabase reads and same-token lease RPCs retry with bounded network timeouts; arbitrary writes are not globally retried")
+ok("SUPA_NETWORK_ATTEMPTS=3" in orders_cloud_auth and "fetchSupaNetwork" in orders_cloud_auth and "method==='GET'||method==='HEAD'" in orders_cloud_auth
+   and orders_transport.count("networkRetry:true")>=2,
+   "Orders cloud transport: transient Supabase reads and same-token lease RPCs retry with bounded network timeouts; arbitrary writes are not globally retried")
 
 # 4. SQL and migration contracts.
 sqls = {

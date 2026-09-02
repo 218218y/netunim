@@ -7,7 +7,7 @@ import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 
-const BANK_BRIDGE_VERSION=24;
+const BANK_BRIDGE_VERSION=25;
 const CREDIT_BRIDGE_VERSION=24;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}

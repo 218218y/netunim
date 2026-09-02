@@ -186,3 +186,10 @@ The remaining Amex failure was isolated to the anonymous GET of /personalarea/Lo
 
 Bridge v24 removes request interception entirely from the Isracard-family Camoufox adapter. The login/data protocol does not require interception, so no substitute blocker or header rewrite is added. Anonymous Login qualification, bounded 403 session rotation, 429 handling, safe diagnostics, and the rule that credentials are sent only after an accepted Login document remain unchanged. The web app now requires Bridge v24 so a stale local Bridge cannot silently keep the old interception behavior after deployment.
 
+
+
+Bridge v25 — Hapoalim navigation-race recovery and cloud lease resilience
+-----------------------------------------------------------------------
+Hapoalim login can complete while its SPA is replacing the active document. israeli-bank-scrapers 6.9.0 performs a client-side URL read with page.evaluate after postAction; if that read lands on the document swap, Puppeteer reports "Execution context was destroyed, most likely because of a navigation" even though the submitted login may already have reached a terminal success/failure state. Bridge v25 does not resubmit credentials. It catches only this classified transient navigation race and resolves the result from the same login attempt using the already-established terminal URL/authenticated accounts API signal, then proceeds through the existing stable-session gate. Real credential/authentication failures keep their existing error classification.
+
+The two web apps also treat transient Supabase transport loss separately from bank login. Safe GET requests are retried with bounded timeouts. The distributed bank/credit lease claim and release RPCs are retried only with the same lease token; the SQL contract already makes same-token claim renewal idempotent, so a lost HTTP response cannot create a second owner or a second bank session. Mutating finance/document save RPCs are not automatically retried. If Supabase remains unreachable, synchronization still fails closed before the local Bridge is opened, preserving the cross-computer single-session guarantee.

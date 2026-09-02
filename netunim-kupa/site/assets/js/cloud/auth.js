@@ -1,6 +1,24 @@
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {SUPA_SESSION_KEY, SUPA_SESSION_IDB_KEY, SUPA_EMAIL_KEY, SUPA_AUTO_KEY} from '../state/constants.js';
 
+const SUPA_NETWORK_ATTEMPTS=3;
+const SUPA_NETWORK_TIMEOUT_MS=20*1000;
+const SUPA_NETWORK_BACKOFF_MS=[500,1500];
+
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
+function isSupaNetworkError(error){const name=String(error?.name||''),message=String(error?.message||error||'').toLowerCase();return name==='AbortError'||name==='TypeError'||message.includes('failed to fetch')||message.includes('networkerror')||message.includes('load failed')}
+function supaNetworkFailure(error){const timedOut=String(error?.name||'')==='AbortError',e=new Error(timedOut?'החיבור ל-Supabase לא הגיב בזמן גם לאחר ניסיונות חוזרים.':'לא ניתן להגיע כרגע ל-Supabase גם לאחר ניסיונות חוזרים.');e.code=timedOut?'SUPABASE_NETWORK_TIMEOUT':'SUPABASE_NETWORK_UNAVAILABLE';e.cause=error;return e}
+async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS}={}){
+  const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;
+  for(let attempt=0;attempt<attempts;attempt++){
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));
+    try{return await fetch(url,{...options,signal:controller.signal})}
+    catch(error){lastError=error;if(!isSupaNetworkError(error)||attempt+1>=attempts)throw supaNetworkFailure(error);await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)])}
+    finally{clearTimeout(timer)}
+  }
+  throw supaNetworkFailure(lastError);
+}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudAuth({session, idbGet, idbPut, idbDelete, supaProjectRef, setCloudHeaderStatus}){
 function supaConfigured(){return !!(SUPA_CONFIG.url&&SUPA_CONFIG.publishableKey)}
@@ -33,8 +51,9 @@ async function supaRefresh(){
 async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh();return s}
 
 async function supaRest(path,options={}){
-  let s=await supaEnsureSession(),r=await fetch(`${SUPA_CONFIG.url}${path}`,{...options,headers:{...supaBaseHeaders(s.access_token),...(options.headers||{})}});
-  if(r.status===401){s=await supaRefresh();r=await fetch(`${SUPA_CONFIG.url}${path}`,{...options,headers:{...supaBaseHeaders(s.access_token),...(options.headers||{})}})}
+  const {networkRetry,networkTimeoutMs,...requestOptions}=options,method=String(requestOptions.method||'GET').toUpperCase(),retry=networkRetry===undefined?(method==='GET'||method==='HEAD'):!!networkRetry;
+  let s=await supaEnsureSession(),r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs});
+  if(r.status===401){s=await supaRefresh();r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs})}
   return r
 }
 

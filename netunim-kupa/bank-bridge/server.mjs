@@ -39,7 +39,7 @@ import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWith
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=24;
+const BRIDGE_VERSION=25;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -178,17 +178,25 @@ async function hapoalimSessionIsAuthenticated(page){
   try{return !!(await readHapoalimSessionState(page))?.ready}catch{return false}
 }
 
+function scraperLoginResultFromTerminal(resultKey,successKey){
+  const key=String(resultKey||'').toUpperCase(),success=String(successKey||'SUCCESS').toUpperCase();
+  if(key===success)return {success:true};
+  const failureKey=key||'GENERAL';
+  return {success:false,errorType:failureKey,errorMessage:`Login failed with ${failureKey} error`};
+}
+
 function enableHapoalimSessionAwareLogin(scraper,{interactive=false}={}){
-  const originalGetLoginOptions=scraper?.getLoginOptions?.bind(scraper);
-  if(typeof originalGetLoginOptions!=='function')throw Object.assign(new Error('גרסת scraper של הפועלים אינה תואמת למתאם ההתחברות'),{code:'SCRAPER_ADAPTER_INCOMPATIBLE'});
+  const originalGetLoginOptions=scraper?.getLoginOptions?.bind(scraper),originalLogin=scraper?.login?.bind(scraper);
+  if(typeof originalGetLoginOptions!=='function'||typeof originalLogin!=='function')throw Object.assign(new Error('גרסת scraper של הפועלים אינה תואמת למתאם ההתחברות'),{code:'SCRAPER_ADAPTER_INCOMPATIBLE'});
+  let activeLogin=null;
   scraper.getLoginOptions=(credentials)=>{
     const options=originalGetLoginOptions(credentials),originalResults=options.possibleResults||{};
     const successKey=Object.keys(originalResults).find(key=>String(key).toUpperCase()==='SUCCESS')||'SUCCESS';
     const originalSuccess=Array.isArray(originalResults[successKey])?originalResults[successKey]:[originalResults[successKey]].filter(Boolean);
     const detectionResults={...originalResults,[successKey]:[...originalSuccess,async()=>hapoalimSessionIsAuthenticated(scraper.page)]};
-    let terminalResultKey='';
-    const possibleResults=Object.fromEntries(Object.entries(originalResults).map(([key,conditions])=>[key,[...(Array.isArray(conditions)?conditions:[conditions]),async()=>terminalResultKey===key]]));
-    if(!possibleResults[successKey])possibleResults[successKey]=[async()=>terminalResultKey===successKey];
+    const state={successKey,detectionResults,terminalResultKey:''};activeLogin=state;
+    const possibleResults=Object.fromEntries(Object.entries(originalResults).map(([key,conditions])=>[key,[...(Array.isArray(conditions)?conditions:[conditions]),async()=>state.terminalResultKey===key]]));
+    if(!possibleResults[successKey])possibleResults[successKey]=[async()=>state.terminalResultKey===successKey];
     const timeoutMs=interactive?INTERACTIVE_AUTH_TIMEOUT_MS:SILENT_AUTH_TIMEOUT_MS;
     return {...options,possibleResults,postAction:async()=>{
       const terminal=await waitForTerminalLoginResult(scraper.page,detectionResults,{
@@ -198,8 +206,27 @@ function enableHapoalimSessionAwareLogin(scraper,{interactive=false}={}){
         closedCode:interactive?'INTERACTIVE_BROWSER_CLOSED':'BANK_PAGE_CLOSED',
         closedMarker:interactive?'NETUNIM_INTERACTIVE_BROWSER_CLOSED':'NETUNIM_BANK_PAGE_CLOSED',
       });
-      terminalResultKey=terminal.resultKey;
+      state.terminalResultKey=terminal.resultKey;
     }};
+  };
+  scraper.login=async(credentials)=>{
+    try{return await originalLogin(credentials)}
+    catch(error){
+      if(!isTransientNavigationError(error)||!activeLogin)throw error;
+      let resultKey=activeLogin.terminalResultKey;
+      if(!resultKey){
+        const timeoutMs=interactive?INTERACTIVE_AUTH_TIMEOUT_MS:SILENT_AUTH_TIMEOUT_MS;
+        const terminal=await waitForTerminalLoginResult(scraper.page,activeLogin.detectionResults,{
+          timeoutMs,pollMs:350,
+          timeoutCode:interactive?'INTERACTIVE_AUTH_TIMEOUT':'SILENT_AUTH_TIMEOUT',
+          timeoutMarker:interactive?'NETUNIM_INTERACTIVE_AUTH_TIMEOUT':'NETUNIM_SILENT_AUTH_TIMEOUT',
+          closedCode:interactive?'INTERACTIVE_BROWSER_CLOSED':'BANK_PAGE_CLOSED',
+          closedMarker:interactive?'NETUNIM_INTERACTIVE_BROWSER_CLOSED':'NETUNIM_BANK_PAGE_CLOSED',
+        });
+        resultKey=terminal.resultKey;activeLogin.terminalResultKey=resultKey;
+      }
+      return scraperLoginResultFromTerminal(resultKey,activeLogin.successKey);
+    }
   };
   return scraper;
 }
