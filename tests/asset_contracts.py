@@ -47,8 +47,10 @@ for label, project in APPS.items():
     script_policy = re.search(r'\bscript-src\s+([^;\n]+)', headers)
     ok(bool(script_policy) and "'unsafe-inline'" not in script_policy[1] and "'unsafe-eval'" not in script_policy[1],
        f'{label}: script CSP forbids inline execution and dynamic code')
-    ok("style-src-elem 'self'" in headers and "object-src 'none'" in headers and "frame-ancestors 'none'" in headers and "base-uri 'none'" in headers,
-       f'{label}: strict stylesheet, object, frame and base policies are retained')
+    style_elem_policy = re.search(r'\bstyle-src-elem\s+([^;\n]+)', headers)
+    ok(bool(style_elem_policy) and style_elem_policy[1].strip() == "'self'" and
+       "object-src 'none'" in headers and "frame-ancestors 'none'" in headers and "base-uri 'none'" in headers,
+       f'{label}: element styles are self-only and object, frame and base policies are retained')
 
     ok(app_js.is_file() and app_js.stat().st_size > 0, f"{label}: JavaScript entrypoint exists in site/assets/app.js")
     ok(app_css.is_file() and app_css.stat().st_size > 1000, f"{label}: stylesheet exists in site/assets/app.css")

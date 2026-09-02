@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import {bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
-import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
+import {creditFrameStatus,creditUpcomingCharge,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
-import {creditDetailMonths,creditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {creditDetailMonths,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {createUiLayout} from '../netunim-orders/site/assets/js/ui/layout.js';
 
 
@@ -48,6 +48,13 @@ const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00
 const mergedCredit=mergeCreditSyncResult(initialCredit,{syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'p2',provider:'visaCal',accounts:[{accountNumber:'2222',txns:[{id:'new',date:'2026-09-01T00:00:00Z',chargedAmount:-20}]}]}],errors:[{profileId:'p1',message:'temporary'}]});
 assert.equal(mergedCredit.profiles.length,2,'partial issuer success preserves previous profiles');
 assert.equal(mergedCredit.cardMappings['p1:1111'].included,true,'existing card classification survives cross-app refresh');
+
+const ordersFrameFeed=normalizeCreditSync({version:3,profiles:[{profileId:'limits',provider:'amex',accounts:[{accountNumber:'3333',txns:[{id:'sep',processedDate:'2026-09-10',chargedAmount:-300,chargedCurrency:'ILS',status:'completed'},{id:'oct',processedDate:'2026-10-10',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]}],cardMappings:{'limits:3333':{included:true,manualFrame:4000}}});
+const ordersFrameAccount=ordersFrameFeed.profiles[0].accounts[0];
+assert.equal(creditFrameStatus(ordersFrameAccount,ordersFrameFeed.cardMappings['limits:3333'],'2026-09-01').available,3500,'Orders uses the same manual-frame fallback calculation as Kupa');
+assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions'},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
+const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
+assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
 
 
 const forecastKey='forecast:4444';

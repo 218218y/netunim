@@ -123,11 +123,12 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   }
 
   async function setCreditCardMapping(profileId,accountNumber,field,value){
-    const sync=normalizeCreditSync(model.state.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:''};
+    const sync=normalizeCreditSync(model.state.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};
     if(field==='included')current.included=!!value;
     if(field==='hidden')current.hidden=!!value;
     if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';
     if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);
+    if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0)){toast('מסגרת ידנית חייבת להיות מספר חיובי או אפס');return false}current.manualFrame=amount===null?null:Math.round(amount*100)/100}
     sync.cardMappings[key]=current;model.state.creditSync=sync;await saveFinancePatch(state=>({...state,creditSync:sync}));await saveState('שיוך כרטיס האשראי עודכן');render();
   }
 

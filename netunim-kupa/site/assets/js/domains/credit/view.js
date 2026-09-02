@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
 import {creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
-import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditSyncSummary} from './sync-feed.js';
+import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
@@ -197,7 +197,7 @@ function renderCredit(){
           <select aria-label="טווח תחזית אשראי" data-change="credit-view"><option value="rolling12" ${ui.creditView==='rolling12'?'selected':''}>12 חודשים קדימה</option><option value="all" ${ui.creditView==='all'?'selected':''}>כל השנים</option><optgroup label="לפי שנה">${years.map(y=>`<option value="${esc(y)}" ${ui.creditView===y?'selected':''}>${esc(y)}</option>`).join('')}</optgroup></select>
           <div class="credit-account-filter-chips" role="group" aria-label="סינון עסקי או ביתי"><button type="button" class="credit-filter-chip ${ui.creditAccountFilter==='all'?'active':''}" data-action="credit-account-filter" data-click-arg0="all">הכל</button><button type="button" class="credit-filter-chip ${ui.creditAccountFilter==='עסקי'?'active':''}" data-action="credit-account-filter" data-click-arg0="עסקי">עסקי</button><button type="button" class="credit-filter-chip ${ui.creditAccountFilter==='ביתי'?'active':''}" data-action="credit-account-filter" data-click-arg0="ביתי">ביתי</button></div>
         </div>
-        <div class="credit-filter-stats"><span class="stat-pill">סה״כ: ${money(future.reduce((a,x)=>a+x.amount,0))}</span><span class="stat-pill business">מתוכם עסקי: ${money(businessFuture.reduce((a,x)=>a+x.amount,0))}</span>${bulkControls('credits')}<button class="btn primary" data-action="open-credit-modal">+ תוספת ידנית</button></div>
+        <div class="credit-filter-stats"><span class="stat-pill">סה״כ: ${money(future.reduce((a,x)=>a+x.amount,0))}</span><span class="stat-pill business">מתוכם עסקי: ${money(businessFuture.reduce((a,x)=>a+x.amount,0))}</span>${creditAvailableTotalMarkup(summary)}${bulkControls('credits')}<button class="btn primary" data-action="open-credit-modal">+ תוספת ידנית</button></div>
       </div>
       <div class="credit-filter-chip-stack">${providerFilterMarkup(ui,filterCards)}${cardFilterMarkup(ui,filterCards)}</div>
     </div>
@@ -213,7 +213,7 @@ function renderCredit(){
 
 function creditLocalProfileRow(p){return `<div class="credit-profile-row"><span><b>${esc(p.label)}</b><small>${esc(CREDIT_PROVIDER_LABELS[p.provider]||p.provider)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''} · ברירת מחדל ${esc(p.defaultAccount)}</small></span><span class="credit-profile-actions"><button class="btn" type="button" data-action="open-credit-connection" data-click-arg0="${esc(p.profileId)}">עריכה</button><button class="btn danger-soft" type="button" data-action="delete-credit-connection" data-click-arg0="${esc(p.profileId)}">מחיקה מהמחשב</button></span></div>`}
 function creditMappingRow(profile,account,mappings){
-  const key=creditCardMappingKey(profile.profileId,account.accountNumber),mapping=mappings[key]||{},included=mapping.included===true,hidden=mapping.hidden===true,accountClass=mapping.account||profile.defaultAccount||'עסקי',cardName=mapping.cardName||'';
+  const key=creditCardMappingKey(profile.profileId,account.accountNumber),mapping=mappings[key]||{},included=mapping.included===true,hidden=mapping.hidden===true,accountClass=mapping.account||profile.defaultAccount||'עסקי',cardName=mapping.cardName||'',manualFrame=mapping.manualFrame??'',issuerFrameAvailable=account.cardFrame!==null||account.availableCredit!==null;
   const calculationText=included?(accountClass==='עסקי'?'מוצג בדוחות · משפיע על הקופה':'מוצג בדוחות · לא משפיע על הקופה'):'זוהה בלבד';
   return `<div class="credit-mapping-row ${included?'included':'excluded'} ${hidden?'hidden-card':''}">
     <label class="credit-card-include"><input type="checkbox" data-change="set-credit-card-included" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" ${included?'checked':''}><span>${included?'כלול':'לא כלול'}</span></label>
@@ -221,21 +221,32 @@ function creditMappingRow(profile,account,mappings){
     <span><b>${esc(CREDIT_PROVIDER_LABELS[profile.provider]||profile.provider)} • ${esc(account.accountNumber||'כרטיס')}</b><small>${esc(profile.label)}${profile.ownerLabel?` · ${esc(profile.ownerLabel)}`:''} · ${esc(calculationText)}${hidden?' · מוסתר מהפירוט':''}</small></span>
     <select aria-label="שיוך חשבון" data-change="set-credit-card-account" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}"><option ${accountClass==='עסקי'?'selected':''}>עסקי</option><option ${accountClass==='ביתי'?'selected':''}>ביתי</option></select>
     <input aria-label="שם הכרטיס" data-change="set-credit-card-name" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(cardName)}" placeholder="שם תצוגה (רשות)">
+    <input class="credit-manual-frame" type="number" inputmode="decimal" min="0" step="0.01" aria-label="מסגרת ידנית" title="${issuerFrameAvailable?'לא בשימוש: התקבל נתון מסגרת מהחברה':'משמשת רק כאשר חברת האשראי אינה מספקת מסגרת'}" data-change="set-credit-card-manual-frame" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(manualFrame)}" placeholder="${issuerFrameAvailable?'מסגרת מהחברה':'מסגרת ידנית'}" ${issuerFrameAvailable?'disabled':''}>
   </div>`
 }
-
+function creditAvailableTotalMarkup(summary){
+  if(!summary.includedAccountCount)return '';
+  const unknown=summary.availableCreditUnknownCount||0,label=summary.availableCreditKnownCount?money(summary.availableCreditTotal):'לא זמין';
+  return `<span class="stat-pill credit-available-total" title="סה״כ לכל הכרטיסים שסומנו כלולים; כרטיס ללא מסגרת מהחברה דורש מסגרת ידנית">מסגרת פנויה: ${label}${unknown?` · ${esc(unknown)} ללא מסגרת`:''}</span>`;
+}
+function upcomingChargeMarkup(account,provider,asOf){
+  const upcoming=creditUpcomingCharge(account,provider,asOf);
+  if(!upcoming)return '<div class="credit-live-balance unavailable"><span>חיוב קרוב</span><b>לא זמין</b></div>';
+  return `<div class="credit-live-balance"><span>חיוב קרוב${upcoming.date?`<small>${dateFmt(upcoming.date)}${upcoming.source==='transactions'?' · מהעסקאות':''}</small>`:''}</span><b>${money(upcoming.amount)}</b></div>`;
+}
 function renderSyncedAccounts(summary){
   const cardModels=summary.sync.profiles.flatMap(p=>p.accounts.map(a=>{
     const mapping=summary.sync.cardMappings[creditCardMappingKey(p.profileId,a.accountNumber)]||{},included=mapping.included===true,hidden=mapping.hidden===true,accountClass=mapping.account||p.defaultAccount,name=cardDisplayName(p,a,mapping);
     return {p,a,mapping,included,hidden,account:accountClass,ownerLabel:p.ownerLabel||'',name,provider:p.provider,profileId:p.profileId,accountNumber:a.accountNumber,creditAccountKey:synchronizedCardKey(p.profileId,a.accountNumber)};
   })).filter(x=>x.included&&!x.hidden&&filterMatch(ui,x));
-  const cards=cardModels.map(({p,a,account,name})=>{const pending=a.txns.filter(tx=>tx.status==='pending').length;return `<article class="credit-live-card included"><div><b>${esc(name)}</b><small>${esc(p.label)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''} · ${esc(account)} · <span class="credit-card-state on">כלול בדוחות</span></small></div><div class="credit-live-balance"><span>${a.balance===null?'יתרה/חיוב קרוב לא זמין':'חיוב/יתרה שהחברה החזירה'}</span><b>${a.balance===null?'—':money(Math.abs(a.balance))}</b></div>${creditFrameMarkup(a,p.provider)}<small>${a.txns.length} תנועות${pending?` · ${pending} ממתינות`:''}${a.balanceDate?` · נכון ל־${dateFmt(String(a.balanceDate).slice(0,10))}`:''}</small></article>`}).join('');
-  return `<details class="section credit-collapsible-section credit-live-section" style="margin-top:16px"><summary class="credit-section-toggle"><span><b>נתונים חיים מחברות האשראי</b><small>${esc(cardModels.length)} כרטיסים כלולים במסנן · נתוני מסגרת, יתרה ותנועות גולמיות</small></span><span class="credit-toggle-chevron" aria-hidden="true">⌄</span></summary><div class="credit-collapsible-body"><div class="credit-live-grid">${cards||'<div class="empty compact">אין כרטיסים כלולים וגלויים במסנן הנוכחי.</div>'}</div></div></details>`
+  const cards=cardModels.map(({p,a,mapping,account,name})=>{const pending=a.txns.filter(tx=>tx.status==='pending').length,frameStatus=creditFrameStatus(a,mapping,summary.today);return `<article class="credit-live-card included"><div><b>${esc(name)}</b><small>${esc(p.label)}${p.ownerLabel?` · ${esc(p.ownerLabel)}`:''} · ${esc(account)} · <span class="credit-card-state on">כלול בדוחות</span></small></div>${upcomingChargeMarkup(a,p.provider,summary.today)}${creditFrameMarkup(frameStatus)}<small>${a.txns.length} תנועות${pending?` · ${pending} ממתינות`:''}</small></article>`}).join('');
+  return `<details class="section credit-collapsible-section credit-live-section" style="margin-top:16px"><summary class="credit-section-toggle"><span><b>נתונים חיים מחברות האשראי</b><small>${esc(cardModels.length)} כרטיסים כלולים במסנן · חיוב קרוב, מסגרת פנויה ותנועות מסונכרנות</small></span><span class="credit-toggle-chevron" aria-hidden="true">⌄</span></summary><div class="credit-collapsible-body"><div class="credit-live-grid">${cards||'<div class="empty compact">אין כרטיסים כלולים וגלויים במסנן הנוכחי.</div>'}</div></div></details>`
 }
-function creditFrameMarkup(account,provider){
-  const frame=account.cardFrame,available=account.availableCredit;
-  if(frame===null&&available===null)return '<div class="credit-live-frame unavailable"><span>מסגרת פנויה</span><b>לא נמסרה</b></div>';
-  return `<div class="credit-live-frame"><span>${available!==null?`מסגרת פנויה${provider==='max'?' · נתון MAX':''}`:'מסגרת כוללת · פנויה לא נמסרה'}</span><b>${available!==null?money(available):money(frame)}</b>${available!==null&&frame!==null?`<small>מתוך ${money(frame)}</small>`:''}</div>`;
+function creditFrameMarkup(status){
+  if(status.available===null)return '<div class="credit-live-frame unavailable"><span>מסגרת פנויה</span><b>לא זמינה</b><small>הזן מסגרת ידנית בהגדרות הכרטיס</small></div>';
+  const direct=status.source==='issuer_available',manual=status.source==='manual_frame_calculated',label=direct?'מסגרת פנויה · נתון החברה':manual?'מסגרת פנויה · מסגרת ידנית':'מסגרת פנויה · מחושבת';
+  const detail=direct?(status.frame!==null?`מתוך ${money(status.frame)}`:''):`מתוך ${money(status.frame)} · חיובים עתידיים ידועים ${money(status.commitments)}`;
+  return `<div class="credit-live-frame"><span>${label}</span><b>${money(status.available)}</b>${detail?`<small>${detail}</small>`:''}</div>`;
 }
 function creditDetailMonthTabs(months,selectedKey){
   if(!months.length)return '<div class="credit-detail-month-empty">אין חיובים להצגה</div>';

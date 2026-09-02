@@ -16,6 +16,10 @@ import {
   creditCardMappingKey,
   creditSyncHasData,
   creditSyncHasIncludedCards,
+  creditKnownFutureCommitment,
+  creditUpcomingCharge,
+  creditFrameStatus,
+  creditSyncSummary,
   mergeCreditSyncResult,
   normalizeCreditSync,
   syncedInstallmentsData,
@@ -85,6 +89,31 @@ const maxFrame=normalizeCreditScrapeAccount({accountNumber:'9999',balance:-1250.
 assert.equal(maxFrame.availableCredit,13749.25,'MAX OpenToBuy is recovered exactly from the scraper-defined balance and credit limit');
 const missingNumbers=normalizeCreditScrapeAccount({accountNumber:'0000',balance:null,cardFrame:null,availableCredit:null});
 assert.equal(missingNumbers.balance,null);assert.equal(missingNumbers.cardFrame,null);assert.equal(missingNumbers.availableCredit,null);
+
+
+const availabilityAccount=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',txns:[
+  {id:'past',processedDate:'2026-08-10',chargedAmount:-90,chargedCurrency:'ILS',status:'completed'},
+  {id:'next-a',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',status:'completed'},
+  {id:'next-refund',processedDate:'2026-09-10',chargedAmount:50,chargedCurrency:'ILS',status:'completed'},
+  {id:'later',processedDate:'2026-10-10',chargedAmount:-450,chargedCurrency:'ILS',status:'completed'},
+  {id:'pending-no-billing-date',date:'2026-09-02',chargedAmount:-100,chargedCurrency:'ILS',status:'pending'},
+  {id:'foreign',processedDate:'2026-09-12',chargedAmount:-80,chargedCurrency:'USD',status:'completed'},
+]}]}],cardMappings:{'availability:5555':{included:true,manualFrame:5000}}}).profiles[0].accounts[0];
+assert.equal(creditKnownFutureCommitment(availabilityAccount,'2026-09-02'),650,'computed availability subtracts only known future ILS billing rows; pending rows with no billing date and foreign currency do not get guessed into the frame');
+assert.deepEqual(creditUpcomingCharge(availabilityAccount,'isracard','2026-09-02'),{amount:200,date:'2026-09-10',source:'transactions'},'Isracard upcoming debit is recovered deterministically from the earliest synchronized future billing date');
+const manualFrameStatus=creditFrameStatus(availabilityAccount,{manualFrame:5000},'2026-09-02');
+assert.deepEqual(manualFrameStatus,{frame:5000,available:4350,commitments:650,source:'manual_frame_calculated',frameSource:'manual'},'manual frame is a fallback only when issuer frame/available credit is absent');
+const issuerFrameStatus=creditFrameStatus({...availabilityAccount,cardFrame:6000},{manualFrame:5000},'2026-09-02');
+assert.equal(issuerFrameStatus.available,5350);assert.equal(issuerFrameStatus.source,'issuer_frame_calculated');assert.equal(issuerFrameStatus.frame,6000,'issuer frame always overrides a stored manual fallback');
+const directAvailableStatus=creditFrameStatus({...availabilityAccount,cardFrame:6000,availableCredit:4321},{manualFrame:9000},'2026-09-02');
+assert.equal(directAvailableStatus.available,4321);assert.equal(directAvailableStatus.source,'issuer_available','issuer-provided available credit is authoritative and is never reduced a second time');
+assert.deepEqual(creditUpcomingCharge({balance:-321,balanceDate:'2026-09-10',txns:[]},'visaCal','2026-09-02'),{amount:321,date:'2026-09-10',source:'issuer_balance'},'Cal balance is allowed only as a documented next-debit fallback');
+assert.equal(creditUpcomingCharge({balance:-1250,txns:[]},'max','2026-09-02'),null,'MAX balance represents utilized credit and is never mislabeled as an upcoming debit');
+const manualMappingSync=normalizeCreditSync({version:3,profiles:[{profileId:'manual-frame',provider:'amex',accounts:[{accountNumber:'7777',txns:[]}]}],cardMappings:{'manual-frame:7777':{included:true,manualFrame:12345.67}}});
+assert.equal(manualMappingSync.cardMappings['manual-frame:7777'].manualFrame,12345.67,'manual frame survives normalization in the existing v3 schema without triggering the destructive v2-to-v3 cutover');
+assert.equal(normalizeCreditSync({version:3,cardMappings:{bad:{manualFrame:-1}}}).cardMappings.bad.manualFrame,null,'invalid negative manual frame fails closed');
+const availabilitySummary=creditSyncSummary({creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'sum',provider:'isracard',accounts:[{accountNumber:'1',txns:[{processedDate:'2026-09-10',chargedAmount:-100,chargedCurrency:'ILS'}]},{accountNumber:'2',availableCredit:2500,txns:[]},{accountNumber:'3',txns:[]}]}],cardMappings:{'sum:1':{included:true,manualFrame:1000},'sum:2':{included:true},'sum:3':{included:true}}})});
+assert.equal(availabilitySummary.availableCreditKnownCount,2);assert.equal(availabilitySummary.availableCreditUnknownCount,1,'total available credit stays explicit when one included card still lacks a frame');
 
 const previous=normalizeCreditSync({
   version:1,mode:'manual',syncedAt:'2026-08-29T09:00:00.000Z',

@@ -66,6 +66,7 @@ return {
   'set-credit-card-hidden':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'hidden',element.checked)},
   'set-credit-card-account':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'account',element.value)},
   'set-credit-card-name':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'cardName',element.value)},
+  'set-credit-card-manual-frame':(element,event)=>{setCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'manualFrame',element.value)},
   'set-credit-auto-refresh':(element,event)=>{setCreditAutoRefresh(element.checked)},
   'open-expense-modal':(element,event)=>{openExpenseModal()},
   'open-expense-modal-2':(element,event)=>{openExpenseModal(element.dataset.clickArg0)},

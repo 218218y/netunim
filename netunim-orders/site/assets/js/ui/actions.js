@@ -31,6 +31,7 @@ return {
   'orders-credit-hidden':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'hidden',element.checked)},
   'orders-credit-account':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'account',element.value)},
   'orders-credit-name':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'cardName',element.value)},
+  'orders-credit-manual-frame':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'manualFrame',element.value)},
   'open-orders-credit-connection':(element,event)=>{openOrdersCreditConnection(element.dataset.clickArg0||'')},
   'save-orders-credit-connection':(element,event)=>{saveOrdersCreditConnection(element.dataset.clickArg0||'')},
   'delete-orders-credit-connection':(element,event)=>{deleteOrdersCreditConnection(element.dataset.clickArg0)},

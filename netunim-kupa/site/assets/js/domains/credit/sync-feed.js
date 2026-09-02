@@ -5,6 +5,7 @@ export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישר
 
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
+function nonNegativeMoney(value){const n=finite(value);return n!==null&&n>=0?Math.round(n*100)/100:null}
 function iso(value){if(!value)return null;const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString():null}
 function safeCreditErrorMessage(value){const raw=String(value??'').trim(),secretField=new RegExp(`\\b${['pass','word'].join('')}\\b\\s*[:=]`,'i');if(/fetch(?:Post|Get)WithinPage|<!DOCTYPE|<html|\b(?:Sisma|MisparZihuy|cardSuffix|KodMishtamesh|extraHeaders)\b/i.test(raw)||secretField.test(raw))return 'חברת האשראי החזירה תשובה טכנית שלא ניתן להציג בבטחה. נסה שוב לאחר עדכון ה‑Bank Bridge או השתמש ברענון עם חלון אבחון.';return text(raw||'סנכרון האשראי נכשל',260)}
 function normalizeInstallments(value){const number=Math.trunc(Number(value?.number)),total=Math.trunc(Number(value?.total));return number>0&&total>0?{number,total}:null}
@@ -61,6 +62,7 @@ function normalizedMapping(raw={},legacyInclude=false){
     hidden:raw.hidden===true,
     account:raw.account==='ביתי'?'ביתי':'עסקי',
     cardName:text(raw.cardName||'',100),
+    manualFrame:nonNegativeMoney(raw.manualFrame),
   };
 }
 
@@ -76,7 +78,7 @@ export function normalizeCreditSync(value={}){
   if(legacyInclude){
     for(const profile of profiles)for(const account of profile.accounts){
       const key=creditCardMappingKey(profile.profileId,account.accountNumber);
-      if(!mappings[key])mappings[key]={included:true,hidden:false,account:profile.defaultAccount,cardName:''};
+      if(!mappings[key])mappings[key]={included:true,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null};
     }
   }
   return {
@@ -97,7 +99,7 @@ export function mergeCreditSyncResult(current,payload={}){
   const mappings={...base.cardMappings};
   for(const profile of successes)for(const account of profile.accounts){
     const key=creditCardMappingKey(profile.profileId,account.accountNumber);
-    if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:''};
+    if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null};
   }
   const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),stage:text(e?.stage||'',80),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString()}));
   const syncedAt=successes.length?(iso(payload.syncedAt)||new Date().toISOString()):base.syncedAt;
@@ -118,6 +120,28 @@ function transactionForecastAmount(tx){
 function isShekelTransaction(tx){
   const currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12).toUpperCase().replace(/\s+/g,'');
   return !currency||['ILS','NIS','₪','ש״ח','שח'].includes(currency);
+}
+function creditChargeDate(tx){return String(tx?.processedDate||tx?.date||'').slice(0,10)}
+function knownFutureChargeAmount(tx){if(tx?.status==='pending'||!isShekelTransaction(tx))return 0;return transactionForecastAmount(tx)}
+export function creditKnownFutureCommitment(account={},asOf=todayISO()){
+  let total=0;
+  for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(date&&date>=asOf&&amount)total+=amount}
+  return Math.round(total*100)/100;
+}
+export function creditUpcomingCharge(account={},provider='',asOf=todayISO()){
+  const byDate=new Map();
+  for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(!date||date<asOf||!amount)continue;byDate.set(date,(byDate.get(date)||0)+amount)}
+  for(const date of [...byDate.keys()].sort()){const amount=Math.round((byDate.get(date)||0)*100)/100;if(amount>0.004)return {amount,date,source:'transactions'}}
+  // Visa Cal defines account.balance as the next debit. MAX uses balance for utilized credit instead, so it must never be relabeled as an upcoming debit.
+  if(provider==='visaCal'){const raw=finite(account?.balance);if(raw!==null)return {amount:Math.round(Math.abs(raw)*100)/100,date:String(account?.balanceDate||'').slice(0,10),source:'issuer_balance'}}
+  return null;
+}
+export function creditFrameStatus(account={},mapping={},asOf=todayISO()){
+  const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf);
+  if(directAvailable!==null)return {frame:issuerFrame,available:Math.round(directAvailable*100)/100,commitments,source:'issuer_available',frameSource:issuerFrame!==null?'issuer':null};
+  const frame=issuerFrame!==null?issuerFrame:manualFrame;
+  if(frame===null)return {frame:null,available:null,commitments,source:'unavailable',frameSource:null};
+  return {frame,available:Math.round((frame-commitments)*100)/100,commitments,source:issuerFrame!==null?'issuer_frame_calculated':'manual_frame_calculated',frameSource:issuerFrame!==null?'issuer':'manual'};
 }
 function accountPresentation(profile,account,mapping={}){
   const accountClass=mapping.account==='ביתי'?'ביתי':mapping.account==='עסקי'?'עסקי':profile.defaultAccount;
@@ -208,8 +232,8 @@ export function syncedCreditSeries(state,asOf=todayISO()){
 }
 
 export function creditSyncSummary(state){
-  const sync=normalizeCreditSync(state?.creditSync),accounts=sync.profiles.flatMap(p=>p.accounts.map(a=>({profile:p,account:a}))),txns=accounts.reduce((n,x)=>n+x.account.txns.length,0);
-  const includedAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.included===true).length;
-  const hiddenAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.hidden===true).length;
-  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount,hiddenAccountCount,transactionCount:txns,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null||x.account.cardFrame!==null||x.account.availableCredit!==null),today:todayISO()};
+  const sync=normalizeCreditSync(state?.creditSync),today=todayISO(),accounts=sync.profiles.flatMap(p=>p.accounts.map(a=>({profile:p,account:a}))),txns=accounts.reduce((n,x)=>n+x.account.txns.length,0);
+  const included=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.included===true),hiddenAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.hidden===true).length;
+  const availability=included.map(x=>creditFrameStatus(x.account,sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]||{},today)),known=availability.filter(x=>x.available!==null);
+  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount:included.length,hiddenAccountCount,transactionCount:txns,availableCreditTotal:Math.round(known.reduce((sum,x)=>sum+x.available,0)*100)/100,availableCreditKnownCount:known.length,availableCreditUnknownCount:availability.length-known.length,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null||x.account.cardFrame!==null||x.account.availableCredit!==null),today};
 }
