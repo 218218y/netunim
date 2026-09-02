@@ -1296,6 +1296,17 @@ begin
   end if;
 
   perform set_config('app.order_management_rpc_write', '1', true);
+
+  -- Distributed fail-fast writer gate: do not let concurrent stale clients queue on the row lock
+  -- and exhaust PostgREST's database pool. The transaction-scoped lock releases automatically.
+  if not pg_try_advisory_xact_lock(
+    hashtextextended('order_management:' || v_owner::text || ':' || p_document_name, 0)
+  ) then
+    raise exception 'revision_conflict'
+      using errcode = '40001',
+            hint = 'Another save for this document is already in progress; refresh the revision before retrying.';
+  end if;
+
   select d.revision, d.state, d.updated_at
     into v_current_revision, v_old_state, v_old_updated_at
   from public.order_management_documents d

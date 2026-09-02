@@ -453,6 +453,10 @@ ok("jsonb_typeof(p_state->'checks') is not null" in ksetup or "p_state ? 'checks
 osetup = sqls["orders_setup"]
 ok("jsonb_typeof(p_state->'checks') is not null" in osetup or "p_state ? 'checks'" in osetup,
    "orders RPC: post-cutover payload containing checks is rejected")
+order_save_func=funcdef(osetup, "save_order_management_document")
+ok("pg_try_advisory_xact_lock" in order_save_func and "hashtextextended('order_management:'" in order_save_func
+   and order_save_func.index("pg_try_advisory_xact_lock") < order_save_func.lower().index("for update"),
+   "orders RPC: distributed fail-fast writer gate precedes the row lock so conflicting clients cannot exhaust the PostgREST pool")
 
 # Compact module navigation and toolbar contracts.
 orders_index=(ROOT/'netunim-orders/site/index.html').read_text(encoding='utf-8')
