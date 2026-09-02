@@ -10,7 +10,7 @@ function restoreScrollViewport(key,el,{fallback='start',resetTop=false}={}){if(!
 
 function bindScrollViewport(key,el,{fallback='start',resetTop=false}={}){if(!el)return;el.addEventListener('scroll',()=>storeScrollViewport(key,el),{passive:true});restoreScrollViewport(key,el,{fallback,resetTop})}
 
-function mountViewLayout({sourceSelector='',headCount=1,className='',scrollKey=''}={}){
+function mountViewLayout({sourceSelector='',headCount=1,className='',scrollKey='',resetTop=false}={}){
   const main=$('#main'),source=sourceSelector?main?.querySelector(sourceSelector):main;
   if(!main||!source)return;
   const nodes=[...source.children];
@@ -24,7 +24,7 @@ function mountViewLayout({sourceSelector='',headCount=1,className='',scrollKey='
   shell.append(head,body);
   main.replaceChildren(shell);
   if(!shell.classList.contains('supplier-view-shell'))delete main.dataset.supplierId;
-  if(scrollKey)bindScrollViewport(scrollKey,body);
+  if(scrollKey)bindScrollViewport(scrollKey,body,{resetTop});
 }
 
 function captureSupplierViewport(){const main=$('#main'),wrap=main?.querySelector('.supplier-view-shell .supplier-table-panel .table-wrap'),supplierId=main?.dataset?.supplierId;if(!wrap||!supplierId)return null;const snap=scrollViewportSnapshot(wrap);return{supplierId,...snap,windowY:window.scrollY}}

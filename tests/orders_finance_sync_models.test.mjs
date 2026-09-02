@@ -25,6 +25,10 @@ scrollUi.scrollViewportMemory.set('kupa:bank',layout.scrollViewportSnapshot(endV
 const expandedViewport={scrollHeight:1400,clientHeight:400,scrollTop:0,scrollLeft:0};
 layout.restoreScrollViewport('kupa:bank',expandedViewport);
 assert.equal(expandedViewport.scrollTop,1000,'a genuinely scrollable viewport that was at the end still follows the end after rerender');
+scrollUi.scrollViewportMemory.set('kupa:credit',layout.scrollViewportSnapshot(endViewport));
+const filteredCreditViewport={scrollHeight:1400,clientHeight:400,scrollTop:0,scrollLeft:0};
+layout.restoreScrollViewport('kupa:credit',filteredCreditViewport,{resetTop:true});
+assert.equal(filteredCreditViewport.scrollTop,0,'an explicit credit-filter navigation reset overrides stale at-end viewport memory');
 if(realRequestAnimationFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=realRequestAnimationFrame;
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
@@ -57,18 +61,22 @@ const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
 assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
 
 const selectionFeed=normalizeCreditSync({version:3,profiles:[
-  {profileId:'max-filter',provider:'max',label:'MAX',defaultAccount:'עסקי',accounts:[{accountNumber:'1111',availableCredit:700,txns:[{id:'m1',processedDate:'2026-09-12',chargedAmount:-50,chargedCurrency:'ILS',status:'completed'}]}]},
+  {profileId:'max-filter',provider:'max',label:'MAX',defaultAccount:'עסקי',accounts:[{accountNumber:'1111',cardFrame:1000,availableCredit:700,txns:[{id:'m1',processedDate:'2026-09-12',chargedAmount:-50,chargedCurrency:'ILS',status:'completed'}]}]},
   {profileId:'isr-filter',provider:'isracard',label:'ישראכרט',defaultAccount:'עסקי',accounts:[{accountNumber:'2222',txns:[{id:'i1',processedDate:'2026-09-15',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]},
   {profileId:'amex-filter',provider:'amex',label:'AMEX',defaultAccount:'ביתי',accounts:[{accountNumber:'3333',txns:[{id:'a1',processedDate:'2026-09-20',chargedAmount:-100,chargedCurrency:'ILS',status:'completed'}]}]},
 ],cardMappings:{'max-filter:1111':{included:true,hidden:false,account:'עסקי'},'isr-filter:2222':{included:true,hidden:false,account:'עסקי',manualFrame:1000},'amex-filter:3333':{included:true,hidden:true,account:'ביתי'}}});
 const selectionSummary=creditSummary({creditSync:selectionFeed,credits:[]});
 const allSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts));
+assert.equal(allSelection.totalFrame,2000,'all-card total frame sums issuer and manual fallback frames through the same selected-card aggregate');
+assert.equal(allSelection.totalFrameKnownCount,2);
+assert.equal(allSelection.totalFrameUnknownCount,1,'unknown total frames remain explicit in the aggregate');
 assert.equal(allSelection.availableCreditTotal,1500,'all-card available frame sums issuer available credit and calculated manual fallback');
 assert.equal(allSelection.availableCreditKnownCount,2);
 assert.equal(allSelection.availableCreditUnknownCount,1,'missing frame data stays explicit instead of fabricating a complete total');
 assert.equal(allSelection.upcomingChargeTotal,350,'all-card live summary adds the next known charge of each included card');
 const maxSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts,{provider:'max'}));
 assert.equal(maxSelection.count,1);
+assert.equal(maxSelection.totalFrame,1000,'provider/card filters drive the transactions-header total frame from the same selected account models');
 assert.equal(maxSelection.availableCreditTotal,700,'provider/card filters can drive the transactions-header available frame from the same selected account models');
 const businessSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts,{account:'עסקי'}));
 assert.equal(businessSelection.availableCreditTotal,1500);
@@ -169,14 +177,19 @@ assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:''},'
 const frameUiMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?frameUiMain:null,querySelector:()=>null},configurable:true});
 const frameUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
-const frameView=createDomainsFinanceView({ui:frameUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:selectionFeed,cards:[],credits:[]},bank:{},creditSync:selectionFeed,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false});
+const frameMountCalls=[];
+const frameView=createDomainsFinanceView({ui:frameUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:selectionFeed,cards:[],credits:[]},bank:{},creditSync:selectionFeed,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(options){frameMountCalls.push(options)},modal(){},closeModal(){},confirmDialog:async()=>false});
 frameView.renderKupa();
+assert.equal(frameMountCalls.at(-1).resetTop,false,'ordinary Kupa rerenders preserve the remembered viewport');
 assert.doesNotMatch(frameUiMain.innerHTML,/credit-available-total/,'Orders removes the all-card available-frame pill from the top credit toolbar');
-assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3><div class="credit-detail-frame-summary[^"]*"[^>]*><span>מסגרת פנויה:<\/span><b>[^<]*1,500/,'the transactions heading carries the available frame for the current all-card selection');
-assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*חיוב קרוב · כל הכרטיסים[\s\S]*350[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'live issuer data ends with one all-card card containing upcoming charge and available frame');
+assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3>[\s\S]*מסגרת כוללת:<\/span><b>[^<]*2,000[\s\S]*מסגרת פנויה:<\/span><b>[^<]*1,500/,'the transactions heading carries total and available frames for the current all-card selection');
+assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*חיוב קרוב · כל הכרטיסים[\s\S]*350[\s\S]*מסגרת כוללת · כל הכרטיסים[\s\S]*2,000[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'live issuer data ends with one all-card card containing upcoming charge, total frame and available frame');
 frameView.setCreditProviderFilter('max');
-assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3><div class="credit-detail-frame-summary[^"]*"[^>]*><span>מסגרת פנויה:<\/span><b>[^<]*700/,'the transactions-header frame follows the selected provider/card filter instead of the global total');
-assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'the bottom all-card live summary remains global even while the transaction filter is narrowed');
+assert.equal(frameMountCalls.at(-1).resetTop,true,'changing the credit provider explicitly resets the Kupa credit viewport to the start');
+assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3>[\s\S]*מסגרת כוללת:<\/span><b>[^<]*1,000[\s\S]*מסגרת פנויה:<\/span><b>[^<]*700/,'the transactions-header total and available frames follow the selected provider/card filter instead of the global total');
+assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*מסגרת כוללת · כל הכרטיסים[\s\S]*2,000[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'the bottom all-card live summary remains global even while the transaction filter is narrowed');
+frameView.setCreditCardFilter('sync:max-filter:1111');
+assert.equal(frameMountCalls.at(-1).resetTop,true,'changing the selected credit card also resets the Kupa credit viewport to the start');
 
 const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
