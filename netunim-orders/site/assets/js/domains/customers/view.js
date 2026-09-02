@@ -1,5 +1,5 @@
 import {esc} from '../../core/values.js';
-import {customerDebtStatus} from './model.js';
+import {customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
@@ -9,8 +9,8 @@ function filteredCustomerDebtRows(){
   const q=(customerUi.customerSearch||'').trim();
   return (model.state.customerDebts||[]).filter(d=>{
     const ds=customerDebtStatus(d);
-    if(customerUi.customerFilter==='all'&&d.paid)return false;
-    if(customerUi.customerFilter==='open'&&d.paid)return false;
+    if(customerUi.customerFilter==='all'&&!customerDebtNeedsAttention(d))return false;
+    if(customerUi.customerFilter==='open'&&!customerDebtIsOutstanding(d))return false;
     if(customerUi.customerFilter==='invoice'&&!(d.paid&&!d.invoiceIssued))return false;
     if(customerUi.customerFilter==='closed'&&ds.key!=='closed')return false;
     if(q&&!`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(q))return false;
@@ -18,7 +18,7 @@ function filteredCustomerDebtRows(){
   }).sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
 }
 
-function customerVisibleDebtTotal(rows){return rows.reduce((sum,d)=>sum+Number(d.amount||0),0)}
+function customerVisibleDebtTotal(rows){return rows.filter(customerDebtIsOutstanding).reduce((sum,d)=>sum+Number(d.amount||0),0)}
 
 function updateCustomerVisibleTotal(total){
   const el=$('#main')?.querySelector('[data-customer-visible-total]');if(!el)return;

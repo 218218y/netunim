@@ -88,11 +88,12 @@ for label, site in apps:
                       currentView='customers';customerTab='debts';customerFilter='all';customerSearch='';renderCustomers();await frame();
                       const customerVisibleTotal=()=>document.querySelector('[data-customer-visible-total]')?.textContent||'';
                       const debtTotal=rows=>money(rows.reduce((sum,d)=>sum+Number(d.amount||0),0));
-                      const customerAllRows=state.customerDebts.filter(d=>!d.paid),customerAllExpected=debtTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
-                      customerFilter='open';renderCustomers();await frame();const customerOpenExpected=debtTotal(state.customerDebts.filter(d=>!d.paid)),customerOpenTotal=customerVisibleTotal();
-                      customerFilter='invoice';renderCustomers();await frame();const customerInvoiceExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&!d.invoiceIssued)),customerInvoiceTotal=customerVisibleTotal();
-                      customerFilter='closed';renderCustomers();await frame();const customerClosedExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&d.invoiceIssued)),customerClosedTotal=customerVisibleTotal();
-                      customerFilter='all';customerSearch='לקוח 5';renderCustomers();await frame();const customerSearchExpected=debtTotal(customerAllRows.filter(d=>`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(customerSearch))),customerSearchTotal=customerVisibleTotal();
+                      const customerAllRows=state.customerDebts.filter(d=>!(d.paid&&d.invoiceIssued)),customerOutstandingTotal=rows=>debtTotal(rows.filter(d=>!d.paid)),customerAllExpected=customerOutstandingTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
+                      const customerAllHasPaidMissingInvoice=customerAllRows.some(d=>d.paid&&!d.invoiceIssued)&&[...document.querySelectorAll('.customer-table tbody tr')].some(row=>row.textContent?.includes('שולם · חסרה חשבונית'));
+                      customerFilter='open';renderCustomers();await frame();const customerOpenExpected=customerOutstandingTotal(state.customerDebts.filter(d=>!d.paid)),customerOpenTotal=customerVisibleTotal();
+                      customerFilter='invoice';renderCustomers();await frame();const customerInvoiceExpected=customerOutstandingTotal(state.customerDebts.filter(d=>d.paid&&!d.invoiceIssued)),customerInvoiceTotal=customerVisibleTotal();
+                      customerFilter='closed';renderCustomers();await frame();const customerClosedExpected=customerOutstandingTotal(state.customerDebts.filter(d=>d.paid&&d.invoiceIssued)),customerClosedTotal=customerVisibleTotal();
+                      customerFilter='all';customerSearch='לקוח 5';renderCustomers();await frame();const customerSearchExpected=customerOutstandingTotal(customerAllRows.filter(d=>`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(customerSearch))),customerSearchTotal=customerVisibleTotal();
                       customerSearch='';renderCustomers({resultsOnly:true});await frame();const customerClearedSearchTotal=customerVisibleTotal();
                       const outer=document.querySelector('.customers-view .view-scroll');
                       let customerWrap=document.querySelector('.customer-work-table');
@@ -146,7 +147,7 @@ for label, site in apps:
                            near(supplierCleared.top,supplierCleared.target)&&supplierCleared.max>supplierCleared.target+20&&matchesStats(supplierClearedSummary,initialStats)&&
                            matchesStats(supplierPendingSummary,pendingStats)&&supplierPendingHeader===money(pendingStats.net)&&supplierInvoiceHeader===money(invoiceStats.net)&&supplierHmHeader===money(hmStats.net)&&
                            near(supplierReturned,supplierManual)&&
-                           customerAllTotal===customerAllExpected&&customerOpenTotal===customerOpenExpected&&
+                           customerAllHasPaidMissingInvoice&&customerAllTotal===customerAllExpected&&customerOpenTotal===customerOpenExpected&&
                            customerInvoiceTotal===customerInvoiceExpected&&customerClosedTotal===customerClosedExpected&&customerSearchTotal===customerSearchExpected&&customerClearedSearchTotal===customerAllExpected&&
                            customerLayout.outerScroll<=customerLayout.outerClient+1&&customerLayout.outerTop===0&&
                            customerLayout.innerScroll>customerLayout.innerClient&&customerLayout.summaryInScroller&&

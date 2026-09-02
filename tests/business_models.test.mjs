@@ -12,7 +12,7 @@ import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js
 import {createDomainsSuppliersView} from '../netunim-orders/site/assets/js/domains/suppliers/view.js';
 import {inventoryStatsData} from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 import {serviceStatus} from '../netunim-orders/site/assets/js/domains/service/model.js';
-import {customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
+import {customerDebtIsOutstanding,customerDebtNeedsAttention,customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
 import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
 import {createDomainsCustomersBulk} from '../netunim-orders/site/assets/js/domains/customers/bulk.js';
@@ -209,6 +209,12 @@ test('customer debt summary excludes paid rows and treats negative open amounts 
  const state={customerDebts:[{amount:100,supplied:true},{amount:60,supplied:false},{amount:25},{amount:-40,supplied:false},{amount:70,paid:true,supplied:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
  assert.deepEqual(customerStatsData(state),{openTotal:145,openSuppliedTotal:100,openUnsuppliedTotal:45,allTotal:255,open:4,openSupplied:1,openUnsupplied:3,missingInvoice:1,closed:1,trackedOrders:1});
 });
+test('customer debt attention and outstanding-money semantics stay separate',()=>{
+ const open={paid:false,invoiceIssued:false},paidMissingInvoice={paid:true,invoiceIssued:false},closed={paid:true,invoiceIssued:true};
+ assert.equal(customerDebtNeedsAttention(open),true);assert.equal(customerDebtNeedsAttention(paidMissingInvoice),true);assert.equal(customerDebtNeedsAttention(closed),false);
+ assert.equal(customerDebtIsOutstanding(open),true);assert.equal(customerDebtIsOutstanding(paidMissingInvoice),false);assert.equal(customerDebtIsOutstanding(closed),false);
+});
+
 test('customer debt editor treats blank as zero and accepts negative reverse debt',()=>{
  const model={state:{customerDebts:[]}};
  let body='',saved=0,closed=0,rendered=0;
@@ -257,7 +263,7 @@ test('customer order table exposes add action and no longer shows the legacy V-m
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });
 
-test('customer header total uses the exact debt rows shown by filters and partial search refresh',()=>{
+test('customer header total counts only outstanding money while filters can show non-debt follow-up rows',()=>{
  const state={customerDebts:[
   {id:'D1',customerName:'Open',amount:100,paid:false,invoiceIssued:false,note:''},
   {id:'D2',customerName:'Invoice',amount:50,paid:true,invoiceIssued:false,note:''},
@@ -271,9 +277,9 @@ test('customer header total uses the exact debt rows shown by filters and partia
  try{
   const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
   const renderedTotal=()=>main.innerHTML.match(/data-customer-visible-total[^>]*>([^<]*)<\/b>/)?.[1]||'';
-  const expected={all:90,open:90,invoice:50,closed:25};
+  const expected={all:90,open:90,invoice:0,closed:0};
   for(const mode of Object.keys(expected)){customerUi.customerFilter=mode;customerUi.customerSearch='';view.renderCustomers();assert.equal(renderedTotal(),money(expected[mode]),mode)}
-  customerUi.customerFilter='all';customerUi.customerSearch='';view.renderCustomers();assert.match(main.innerHTML,/>Open</);assert.match(main.innerHTML,/>Reverse</);assert.doesNotMatch(main.innerHTML,/>Invoice</);assert.doesNotMatch(main.innerHTML,/>Closed</);assert.match(main.innerHTML,/customer-add-btn[\s\S]*customer-visible-total/);
+  customerUi.customerFilter='all';customerUi.customerSearch='';view.renderCustomers();assert.match(main.innerHTML,/>Open</);assert.match(main.innerHTML,/>Reverse</);assert.match(main.innerHTML,/>Invoice</);assert.doesNotMatch(main.innerHTML,/>Closed</);assert.match(main.innerHTML,/customer-add-btn[\s\S]*customer-visible-total/);
   customerUi.customerFilter='all';customerUi.customerSearch='Reverse';view.renderCustomers({resultsOnly:true});
   assert.equal(headerNode.textContent,money(-10));assert.match(results.innerHTML,/Reverse/);assert.doesNotMatch(results.innerHTML,/>Open</);
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
