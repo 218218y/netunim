@@ -4,6 +4,11 @@ export function customerDebtStatus(d){if(d.paid&&d.invoiceIssued)return{key:'clo
 
 export function customerDebtNeedsAttention(d){return !(d?.paid&&d?.invoiceIssued)}
 export function customerDebtIsOutstanding(d){return !d?.paid}
+export function customerDebtFilteredTotal(rows,filter){
+  const visibleRows=Array.isArray(rows)?rows:[],sum=items=>items.reduce((total,d)=>total+Number(d?.amount||0),0);
+  if(filter==='all'||filter==='open')return sum(visibleRows.filter(customerDebtIsOutstanding));
+  return sum(visibleRows);
+}
 
 export function customerStatsData(state){
   const rows=state.customerDebts||[],openRows=rows.filter(customerDebtIsOutstanding),openSuppliedRows=openRows.filter(d=>d.supplied===true),openUnsuppliedRows=openRows.filter(d=>d.supplied!==true),sum=items=>items.reduce((total,d)=>total+Number(d.amount||0),0);

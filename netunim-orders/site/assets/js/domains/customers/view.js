@@ -1,5 +1,5 @@
 import {esc} from '../../core/values.js';
-import {customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
+import {customerDebtFilteredTotal,customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
@@ -18,8 +18,6 @@ function filteredCustomerDebtRows(){
   }).sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
 }
 
-function customerVisibleDebtTotal(rows){return rows.filter(customerDebtIsOutstanding).reduce((sum,d)=>sum+Number(d.amount||0),0)}
-
 function updateCustomerVisibleTotal(total){
   const el=$('#main')?.querySelector('[data-customer-visible-total]');if(!el)return;
   el.textContent=money(total);el.classList.toggle('badtext',total>0);el.classList.toggle('goodtext',total<0);
@@ -29,7 +27,7 @@ function renderCustomers({resultsOnly=false,resetScroll=false}={}){
   const st=customerUi.customerTab==='debts'?customerStats():null,q=(customerUi.customerSearch||'').trim(),summary=st?customerBottomSummary(st):'';
   let table='',visibleDebtTotal=null;
   if(customerUi.customerTab==='debts'){
-    const rows=filteredCustomerDebtRows();visibleDebtTotal=customerVisibleDebtTotal(rows);
+    const rows=filteredCustomerDebtRows();visibleDebtTotal=customerDebtFilteredTotal(rows,customerUi.customerFilter);
     table=`<table class="customer-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th class="customer-col-name">לקוח</th><th class="customer-col-amount table-head-center">סכום</th><th class="customer-col-order table-head-center">הזמנה</th><th class="customer-col-paid table-head-center">שולם</th><th class="customer-col-supplied table-head-center">סופק</th><th class="customer-col-invoice table-head-center">חשבונית יצאה</th><th class="customer-col-state table-head-badge-text">מצב</th><th class="customer-col-note table-head-input-text">הערה</th><th class="customer-col-actions"></th></tr></thead><tbody>${rows.map(debtRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?10:9)}" class="empty">אין חובות המתאימים לסינון.</td></tr>`}</tbody></table>`;
   }else{
     const rows=(model.state.customerOrders||[]).filter(o=>{
