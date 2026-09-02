@@ -4,7 +4,7 @@ import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/financ
 import {creditFrameStatus,creditUpcomingCharge,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
-import {creditDetailMonths,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {creditAccountAggregate,creditDetailMonths,creditFilterAccountModels,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {createUiLayout} from '../netunim-orders/site/assets/js/ui/layout.js';
 
 
@@ -55,6 +55,24 @@ assert.equal(creditFrameStatus(ordersFrameAccount,ordersFrameFeed.cardMappings['
 assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions'},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
 const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
 assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
+
+const selectionFeed=normalizeCreditSync({version:3,profiles:[
+  {profileId:'max-filter',provider:'max',label:'MAX',defaultAccount:'עסקי',accounts:[{accountNumber:'1111',availableCredit:700,txns:[{id:'m1',processedDate:'2026-09-12',chargedAmount:-50,chargedCurrency:'ILS',status:'completed'}]}]},
+  {profileId:'isr-filter',provider:'isracard',label:'ישראכרט',defaultAccount:'עסקי',accounts:[{accountNumber:'2222',txns:[{id:'i1',processedDate:'2026-09-15',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]},
+  {profileId:'amex-filter',provider:'amex',label:'AMEX',defaultAccount:'ביתי',accounts:[{accountNumber:'3333',txns:[{id:'a1',processedDate:'2026-09-20',chargedAmount:-100,chargedCurrency:'ILS',status:'completed'}]}]},
+],cardMappings:{'max-filter:1111':{included:true,hidden:false,account:'עסקי'},'isr-filter:2222':{included:true,hidden:false,account:'עסקי',manualFrame:1000},'amex-filter:3333':{included:true,hidden:true,account:'ביתי'}}});
+const selectionSummary=creditSummary({creditSync:selectionFeed,credits:[]});
+const allSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts));
+assert.equal(allSelection.availableCreditTotal,1500,'all-card available frame sums issuer available credit and calculated manual fallback');
+assert.equal(allSelection.availableCreditKnownCount,2);
+assert.equal(allSelection.availableCreditUnknownCount,1,'missing frame data stays explicit instead of fabricating a complete total');
+assert.equal(allSelection.upcomingChargeTotal,350,'all-card live summary adds the next known charge of each included card');
+const maxSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts,{provider:'max'}));
+assert.equal(maxSelection.count,1);
+assert.equal(maxSelection.availableCreditTotal,700,'provider/card filters can drive the transactions-header available frame from the same selected account models');
+const businessSelection=creditAccountAggregate(creditFilterAccountModels(selectionSummary.accounts,{account:'עסקי'}));
+assert.equal(businessSelection.availableCreditTotal,1500);
+assert.equal(businessSelection.availableCreditUnknownCount,0,'account filters exclude unrelated cards from the selected available-frame aggregate');
 
 
 const forecastKey='forecast:4444';
@@ -147,6 +165,18 @@ assert.match(drilldownMain.innerHTML,/מיקוד בכרטיס מתוך התחז�
 assert.match(drilldownMain.innerHTML,/בדיקת מיקוד/);
 drilldownView.clearCreditDetailFocus('2026-09');
 assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:''},'clearing a forecast card focus preserves the selected month');
+
+const frameUiMain={innerHTML:''};
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?frameUiMain:null,querySelector:()=>null},configurable:true});
+const frameUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
+const frameView=createDomainsFinanceView({ui:frameUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:selectionFeed,cards:[],credits:[]},bank:{},creditSync:selectionFeed,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false});
+frameView.renderKupa();
+assert.doesNotMatch(frameUiMain.innerHTML,/credit-available-total/,'Orders removes the all-card available-frame pill from the top credit toolbar');
+assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3><div class="credit-detail-frame-summary[^"]*"[^>]*><span>מסגרת פנויה:<\/span><b>[^<]*1,500/,'the transactions heading carries the available frame for the current all-card selection');
+assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*חיוב קרוב · כל הכרטיסים[\s\S]*350[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'live issuer data ends with one all-card card containing upcoming charge and available frame');
+frameView.setCreditProviderFilter('max');
+assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3><div class="credit-detail-frame-summary[^"]*"[^>]*><span>מסגרת פנויה:<\/span><b>[^<]*700/,'the transactions-header frame follows the selected provider/card filter instead of the global total');
+assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'the bottom all-card live summary remains global even while the transaction filter is narrowed');
 
 const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
