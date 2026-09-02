@@ -19,7 +19,11 @@ export function pendingInstallmentsData(state){return allInstallmentsData(state)
 // Credit-page visibility and Kupa cash-flow ownership are intentionally separate.
 // Every explicitly included card remains visible in credit reporting, while only
 // obligations classified as business are allowed to affect business cash/bank math.
-export function businessInstallmentsData(state){return allInstallmentsData(state).filter(x=>x.account==='עסקי')}
+export function accountInstallmentsData(state,account='עסקי'){const target=account==='ביתי'?'ביתי':'עסקי';return allInstallmentsData(state).filter(x=>x.account===target)}
+
+export function businessInstallmentsData(state){return accountInstallmentsData(state,'עסקי')}
+
+export function homeInstallmentsData(state){return accountInstallmentsData(state,'ביתי')}
 
 export function pendingBusinessInstallmentsData(state){return businessInstallmentsData(state).filter(x=>x.date>=todayISO())}
 
@@ -44,7 +48,11 @@ function nextCreditCycleFromRows(rows,reference){
 
 export function nextCreditCycleData(state,reference=todayISO()){return nextCreditCycleFromRows(allInstallmentsData(state),reference)}
 
-export function nextBusinessCreditCycleData(state,reference=todayISO()){return nextCreditCycleFromRows(businessInstallmentsData(state),reference)}
+export function nextAccountCreditCycleData(state,account='עסקי',reference=todayISO()){return nextCreditCycleFromRows(accountInstallmentsData(state,account),reference)}
+
+export function nextBusinessCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'עסקי',reference)}
+
+export function nextHomeCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'ביתי',reference)}
 
 export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
   const currentMonth=monthKey(asOf),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0));

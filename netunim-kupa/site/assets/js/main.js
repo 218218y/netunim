@@ -407,6 +407,7 @@ const uiBulk=createUiBulk({
 const domainsExpensesView=createDomainsExpensesView({
   model,
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
+  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
 });
 
 const domainsCreditView=createDomainsCreditView({
@@ -514,9 +515,13 @@ const domainsBankView=createDomainsBankView({
   model,
   ui,
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
+  bankHomeAsOfDate:(...args)=>domainsBankSelectors.bankHomeAsOfDate(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
+  bankHomeBalance:(...args)=>domainsBankSelectors.bankHomeBalance(...args),
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
+  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
   bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
+  bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
   bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
   refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
 });

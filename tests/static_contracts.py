@@ -274,14 +274,27 @@ ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-
    "kupa expenses hub: the former Credit navigation is labeled Expenses and defaults to an internal Credit/Expenses surface")
 expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding="utf-8")
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
-ok('הוצאות מחזור' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
-   and 'הוצאות מחזור' not in bank_view and 'הגדרת הוצאות קבועות ונוספות' not in bank_view
-   and '<div class="net-summary">' not in bank_view,
-   "kupa expense ownership: editable expense sections live in the Expenses domain and are removed from the Bank tail")
+ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
+   and "cycleAccountRows('עסקי',businessCycle)" in expense_view and "cycleAccountRows('ביתי',homeCycle)" in expense_view
+   and 'הגדרת הוצאות קבועות ונוספות' not in bank_view and '<div class="net-summary">' not in bank_view,
+   "kupa expense ownership: editable expense sections live in the Expenses domain and render explicit business/home groups instead of depending on Bank markup")
 ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
-   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות חודש אחד','סה״כ קופה','מאזן כולל נטו'))
-   and 'class="grid kpis"' not in kupa_dashboard_view,
-   "kupa dashboard: the five long-term bank summary calculations replace all eight legacy KPI cards at the top")
+   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד','סה״כ קופה','מאזן כולל נטו'))
+   and 'חודש הוצאות עסקיות' in kupa_dashboard_view and 'class="grid kpis"' not in kupa_dashboard_view,
+   "kupa dashboard: the five long-term business summary calculations remain explicit and label expenses as business-only")
+bank_model=(K / "site/assets/js/domains/bank/model.js").read_text(encoding="utf-8")
+kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
+ok("bankAccountNextCycleCommitmentsData" in bank_model and "expenseBelongsTo(x,role)" in bank_model
+   and "bankHomeNextCycleCommitmentsData" in bank_model and "bankHomeProjectedThisMonthData" in bank_model
+   and all(label in bank_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי במחזור הקרוב','הוצאות עסקיות למחזור הקרוב','עו״ש עסקי אחרי המחזור הקרוב','אשראי ביתי במחזור הקרוב','הוצאות ביתיות למחזור הקרוב','עו״ש ביתי אחרי המחזור הקרוב'))
+   and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
+   "kupa account ownership: business/home bank, credit and expenses are calculated by one role-aware model and rendered as two explicit four-card groups with separated expense tables")
+ok("function applyKupaCoreState" in kupa_sync_document
+   and kupa_sync_document.count("applyKupaCoreState(authoritative") >= 2
+   and "applyKupaCoreState(pending.snapshot" in kupa_sync_document
+   and "applyKupaCoreState(newest.snapshot" in kupa_sync_document,
+   "kupa save ownership: Kupa-only save responses are reapplied through a finance-preserving overlay instead of resetting bank/credit state")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
 ok('button data-action="set-page"' in kupa_dashboard_view

@@ -21,9 +21,9 @@ import {
   syncedInstallmentsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {allInstallmentsData,businessInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
-import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
+import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 
@@ -147,6 +147,24 @@ const businessBankPosition=bankLongTermPositionData(businessOnlyBankState);
 assert.equal(allInstallmentsData(businessOnlyBankState).reduce((sum,row)=>sum+row.amount,0),350,'credit reporting still contains both included business and home obligations');
 assert.equal(businessBankPosition.credit,100,'bank long-term credit subtraction includes only the business-classified obligation');
 assert.equal(businessBankPosition.net,900,'home credit cannot reduce the business Kupa net position');
+
+assert.equal(homeInstallmentsData(businessOnlyBankState).reduce((sum,row)=>sum+row.amount,0),250,'home cash-flow selector isolates home-classified credit');
+assert.equal(nextHomeCreditCycleData(businessOnlyBankState,'2026-09-01').rows.every(r=>r.account==='ביתי'),true,'the home next-cycle calculation contains only home cards');
+const splitAccountState={...structuredClone(businessOnlyBankState),expenses:[
+  {id:'biz-exp',description:'שכירות עסק',account:'עסקי',date:'2999-09-12',amount:40,recurring:true,active:true},
+  {id:'home-exp',description:'משכנתא',account:'ביתי',date:'2999-09-13',amount:60,recurring:true,active:true},
+],bank:{...structuredClone(businessOnlyBankState.bank),homeFeed:{version:4,provider:'hapoalim',accountNumber:'home',balance:2000,syncedAt:'2999-09-01T08:00:00.000Z',transactions:[]}}};
+const businessCycle=bankNextCycleCommitmentsData(splitAccountState),homeCycle=bankHomeNextCycleCommitmentsData(splitAccountState),splitLong=bankLongTermPositionData(splitAccountState);
+assert.equal(businessCycle.nextCreditTotal,100);assert.equal(businessCycle.targetExpenseTotal,40,'business cycle includes only business expenses');
+assert.equal(homeCycle.nextCreditTotal,250);assert.equal(homeCycle.targetExpenseTotal,60,'home cycle includes only home expenses');
+assert.equal(bankProjectedThisMonthData(splitAccountState),860,'business projected checking subtracts only its own credit clearing and expenses');
+assert.equal(bankHomeProjectedThisMonthData(splitAccountState),1690,'home projected checking subtracts only home credit clearing and home expenses');
+assert.equal(splitLong.expenses,40,'dashboard business position excludes the home mortgage from business expenses');
+assert.equal(splitLong.net,860,'dashboard business net cannot be reduced by a home expense or home card');
+const noBusinessBalance={...structuredClone(splitAccountState),bank:{...structuredClone(splitAccountState.bank),currentBalance:null,updatedAt:null,asOfDate:null,source:null,feed:null}};
+assert.equal(bankNextCycleCommitmentsData(noBusinessBalance).targetExpenseTotal,40,'expense commitments remain visible even when the business bank balance is not synchronized');
+assert.equal(bankNextCycleCommitmentsData(noBusinessBalance).nextCreditTotal,100,'credit commitments remain visible even when the business bank balance is not synchronized');
+assert.equal(bankProjectedThisMonthData(noBusinessBalance),null,'only the projected bank result becomes unavailable when the balance itself is unavailable');
 
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');

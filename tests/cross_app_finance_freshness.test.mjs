@@ -126,6 +126,41 @@ assert.equal(dirtyModel.state.creditSync.syncedAt,fresh,'finance-only polling ap
 assert.equal(dirtySession.financeRevision,4);
 assert.equal(dirtyRenders,1);
 
+
+const persistModel={state:{version:4,businessName:'קופה',checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[{id:'EXP-1',description:'משכנתא',account:'ביתי',amount:5000,date:'2026-09-05',type:'קבוע',recurring:true,active:true}],cards:[],bank:{currentBalance:4321,updatedAt:fresh,asOfDate:'2026-09-01',adjustments:[],source:'hapoalim',sourceAccount:'biz',snapshotToken:'WATERMARK',snapshotSeq:11,feed:{version:4,provider:'hapoalim',accountNumber:'biz',balance:4321,syncedAt:fresh,transactions:[]},homeFeed:{version:4,provider:'hapoalim',accountNumber:'home',balance:8765,syncedAt:fresh,transactions:[]}},creditSync:{version:3,mode:'synced',syncedAt:fresh,profiles:[],errors:[],cardMappings:{}}}};
+const persistNormalization=createStateNormalization({model:persistModel});persistModel.state=persistNormalization.normalizeState(persistModel.state);
+const persistedBase=persistNormalization.prepareKupaCloudState({...structuredClone(persistModel.state),expenses:[]});
+const persistSession={connectionMode:'supabase',backendReady:true,dbRevision:4,financeRevision:9,financeUpdatedAt:fresh,cloudSyncBusy:false,cloudWriteBusy:false,cloudConflictPending:false,cloudDocumentName:'main',localGeneration:1,lastSavedSnapshot:JSON.stringify(persistedBase),serverInfo:{}};
+let pendingPersist=null,persistRenders=0,persistRpcRevision=4;
+const persistSync=createSyncDocument({
+  model:persistModel,session:persistSession,checksSession:{},tab:{primaryTab:true},
+  prepareKupaCloudState:(...args)=>persistNormalization.prepareKupaCloudState(...args),applyKupaCloudState:(...args)=>persistNormalization.applyKupaCloudState(...args),
+  getCloudPending:async()=>pendingPersist,stageCloudPendingLocal:(snapshot,msg,baseRevision,baseState,generation,conflict=false)=>(pendingPersist={snapshot:structuredClone(snapshot),msg,baseRevision,baseState:structuredClone(baseState),generation,conflict}),
+  clearCloudPending:async()=>{pendingPersist=null},rebaseNewerPending:async()=>false,lastSavedCloudState:()=>structuredClone(persistedBase),
+  supaRest:async(path,{body})=>{assert.match(path,/save_kupa_document/);const payload=JSON.parse(body);return {ok:true,text:async()=>JSON.stringify({revision:++persistRpcRevision,state:payload.p_state,updated_at:'2026-09-01T04:05:00.000Z'})}},
+  persistImmediateBrowserSnapshot:()=>{},backupSnapshotToComputer:async()=>{},render:()=>{persistRenders++},toast:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},reportError:()=>{},pollSharedChecks:async()=>{},
+});
+const expenseSnapshot=persistNormalization.prepareKupaCloudState(persistModel.state);
+assert.equal(await persistSync.persistSupabaseState(expenseSnapshot,'ההוצאה נשמרה',1),true);
+assert.equal(persistModel.state.expenses[0].description,'משכנתא','a normal Kupa save keeps the newly persisted expense visible');
+assert.equal(persistModel.state.bank.currentBalance,4321,'a Kupa document save must not erase the synchronized business bank overlay');
+assert.equal(persistModel.state.bank.homeFeed.balance,8765,'a Kupa document save must not erase the synchronized home bank overlay');
+assert.equal(persistModel.state.creditSync.syncedAt,fresh,'a Kupa document save must not reset synchronized credit status to unsynchronized');
+assert.equal(persistSession.financeRevision,9,'saving Kupa-owned data does not invent or roll back the independent finance revision');
+assert.equal(persistRenders,1);
+
+// A manual business balance is Kupa-owned even when an older synchronized feed is still retained for diagnostics.
+persistModel.state.bank={...persistModel.state.bank,currentBalance:1111,updatedAt:'2026-09-01T04:10:00.000Z',asOfDate:'2026-09-01',source:'manual',sourceAccount:null};
+persistModel.state.expenses.push({id:'EXP-2',description:'הוצאה עסקית',account:'עסקי',amount:50,date:'2026-09-06',type:'קבוע',recurring:true,active:true});
+persistSession.localGeneration=2;
+const manualSnapshot=persistNormalization.prepareKupaCloudState(persistModel.state);
+assert.equal(await persistSync.persistSupabaseState(manualSnapshot,'הוצאה נוספת נשמרה',2),true);
+assert.equal(persistModel.state.bank.currentBalance,1111,'a Kupa save must preserve the authoritative manual business balance rather than revive an older finance balance');
+assert.equal(persistModel.state.bank.source,'manual','manual bank ownership remains in the Kupa document after unrelated saves');
+assert.equal(persistModel.state.bank.feed.accountNumber,'biz','finance-owned synchronized feed metadata remains available alongside a manual business snapshot');
+assert.equal(persistModel.state.bank.homeFeed.balance,8765,'the independent home feed remains available after a manual business snapshot is saved');
+assert.equal(persistModel.state.creditSync.syncedAt,fresh,'credit synchronization state remains finance-owned in mixed manual/synchronized bank mode');
+
 // The production controller deliberately keeps an auto-refresh timer alive. Clear it so this focused model test exits cleanly.
 creditController.setCreditAutoRefresh(false);
 creditUnavailable.setCreditAutoRefresh(false);

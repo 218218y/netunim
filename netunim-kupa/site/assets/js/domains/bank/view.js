@@ -1,13 +1,19 @@
 import {esc} from '../../core/values.js';
-import {num, money, formatNullableMoney} from '../../core/money.js';
+import {money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 
-export function createDomainsBankView({model,ui,bankAsOfDate,bankCurrentBalance,bankNextCycleCommitments,bankProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
+export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
   const account=model.state.bank.sourceAccount?` · חשבון עסקי ${model.state.bank.sourceAccount}`:'';
   return `${source} · ${dateFmt(bankAsOfDate())} · ${new Date(model.state.bank.updatedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
+}
+
+function homeBankSnapshotLabel(){
+  const feed=model.state.bank?.homeFeed;if(!feed?.syncedAt)return 'היתרה הביתית טרם סונכרנה.';
+  const account=feed.accountNumber?` · חשבון ביתי ${feed.accountNumber}`:'';
+  return `בנק הפועלים · ${dateFmt(bankHomeAsOfDate())} · ${new Date(feed.syncedAt).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}${account}`;
 }
 
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
@@ -157,18 +163,28 @@ function updateBridgePanel(){
 
 function renderBank(){
   const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth);
-  const targetExpenseRows=cycle.targetExpenseRows;
-  const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses;
+  const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth);
+  const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses;
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
+    <div class="bank-account-summary-label business"><b>חשבון עסקי</b><span>התחייבויות עסקיות בלבד</span></div>
     <div class="bank-entry">
       <label>עובר ושב עסקי בבנק — היתרה לחישובי הקופה</label>
       <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש עסקי" value="${esc(bank===null?'':bank)}"><button type="button" class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
-      <small>${esc(bankSnapshotLabel())} · רק החשבון העסקי נכנס לחישובי הקופה; החשבון הביתי הוא לצפייה בלבד</small>
+      <small>${esc(bankSnapshotLabel())} · החשבון העסקי מחושב רק מול אשראי והוצאות שסווגו עסקיים</small>
     </div>
     <div class="bank-mini"><div class="bank-label">אשראי עסקי במחזור הקרוב</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${cycleLabel}`:'אין חיובי אשראי עסקיים עתידיים'}</div></div>
-    <div class="bank-mini"><div class="bank-label">הוצאות למחזור הקרוב</div><div class="bank-value">${money(targetExpenseRows.reduce((a,x)=>a+num(x.amount),0))}</div><div class="muted">הוצאות של ${esc(cycleLabel)} בלבד</div></div>
-    <div class="bank-mini ${esc(after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">צילום יתרה עסקית פחות חיובים שעברו מאז + מחזור האשראי הבא</div></div>
+    <div class="bank-mini"><div class="bank-label">הוצאות עסקיות למחזור הקרוב</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">הוצאות עסקיות של ${esc(cycleLabel)} בלבד</div></div>
+    <div class="bank-mini ${esc(after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש עסקי פחות חיובים שעברו מאז, אשראי עסקי והוצאות עסקיות במחזור הקרוב</div></div>
+    <div class="bank-account-summary-label home"><b>חשבון ביתי</b><span>התחייבויות ביתיות בלבד</span></div>
+    <div class="bank-entry bank-home-entry">
+      <label>עובר ושב ביתי בבנק — היתרה לחישובי הבית</label>
+      <div class="bank-readonly-value">${formatNullableMoney(homeBank)}</div>
+      <small>${esc(homeBankSnapshotLabel())} · החשבון הביתי מחושב רק מול אשראי והוצאות שסווגו ביתיים</small>
+    </div>
+    <div class="bank-mini"><div class="bank-label">אשראי ביתי במחזור הקרוב</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${homeCycleLabel}`:'אין חיובי אשראי ביתיים עתידיים'}</div></div>
+    <div class="bank-mini"><div class="bank-label">הוצאות ביתיות למחזור הקרוב</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">הוצאות ביתיות של ${esc(homeCycleLabel)} בלבד</div></div>
+    <div class="bank-mini ${esc(homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש ביתי פחות חיובים שעברו מאז, אשראי ביתי והוצאות ביתיות במחזור הקרוב</div></div>
   </div>
   <section class="section bank-sync-section">
     <div class="bank-command-row">
@@ -192,7 +208,7 @@ function renderBank(){
           <div class="bank-sync-login-grid"><label><span>קוד משתמש</span><input id="bankUserCodeInput" name="username" type="text" autocomplete="username" spellcheck="false" placeholder="קוד המשתמש לבנק"></label><label><span>סיסמה</span><input id="bankPasswordInput" name="current-password" type="password" autocomplete="current-password" placeholder="הסיסמה נשלחת רק ל-Bridge המקומי"></label></div>
           <div class="bank-account-config-grid">
             <fieldset class="bank-account-config business"><legend>חשבון עסקי — מקור הקופה</legend><label><span>סניף עסקי</span><input id="bankBusinessBranchNumberInput" name="businessBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 123" value="${esc(bridgeUi.businessBranchNumber||bridgeUi.branchNumber||'')}"></label><label><span>מספר חשבון עסקי</span><input id="bankBusinessAccountNumberInput" name="businessAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="לדוגמה 456789" value="${esc(bridgeUi.businessAccountNumber||bridgeUi.accountNumber||'')}"></label><small>רק יתרת החשבון הזה מעדכנת את צילום העו״ש ואת חישובי הקופה.</small></fieldset>
-            <fieldset class="bank-account-config home"><legend>חשבון ביתי — לצפייה בלבד</legend><label><span>סניף ביתי</span><input id="bankHomeBranchNumberInput" name="homeBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="אותו סניף או סניף אחר" value="${esc(bridgeUi.homeBranchNumber||'')}"></label><label><span>מספר חשבון ביתי</span><input id="bankHomeAccountNumberInput" name="homeAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="מספר החשבון הביתי" value="${esc(bridgeUi.homeAccountNumber||'')}"></label><small>היתרה והתנועות נשמרות לתצוגה בלבד ואינן משתתפות באף חישוב עסקי.</small></fieldset>
+            <fieldset class="bank-account-config home"><legend>חשבון ביתי — חישובי בית</legend><label><span>סניף ביתי</span><input id="bankHomeBranchNumberInput" name="homeBranchNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="אותו סניף או סניף אחר" value="${esc(bridgeUi.homeBranchNumber||'')}"></label><label><span>מספר חשבון ביתי</span><input id="bankHomeAccountNumberInput" name="homeAccountNumber" type="text" inputmode="numeric" autocomplete="off" placeholder="מספר החשבון הביתי" value="${esc(bridgeUi.homeAccountNumber||'')}"></label><small>היתרה משתתפת בחישובי הבית בלבד; היא לעולם אינה נכנסת לחישובים העסקיים.</small></fieldset>
           </div>
           <div class="bank-sync-form-actions"><button type="button" class="btn" data-action="configure-bank-bridge" ${bridgeUi.busy?'disabled':''}>שמור פרטי הפועלים ושני החשבונות</button><button type="button" class="btn danger-soft" data-action="delete-bank-bridge-credentials" ${bridgeUi.busy||!bridgeUi.configured?'disabled':''}>מחק פרטי התחברות</button></div>
           <small>ה-Bridge משתמש במזהה מלא בנק 12 + סניף + מספר חשבון לכל אחד מהחשבונות. ברענון אחד הוא נכנס פעם אחת לבנק, מאמת ששני החשבונות קיימים, ורק אז קורא את שניהם.</small>
@@ -203,7 +219,8 @@ function renderBank(){
     </div>
     <div class="bank-transactions-region">${bankTransactionsMarkup(bridgeUi)}</div>
   </section>
-  ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש העסקי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
+  ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש העסקי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים עסקיים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
+  ${homeStaleTotal>0&&homeBank!==null?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש הביתי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים ביתיים שכבר עברו מאז הצילום בסך ${money(homeStaleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
 `;
   updateBridgePanel();
   for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm'])document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
