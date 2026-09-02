@@ -154,6 +154,8 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
           model.state.checks=[{id:'RESP-CHECK',name:'לקוח בדיקה',amount:900,dueDate:'2026-09-15',status:'בקופה',checkNumber:'123',note:'הערה'}];
           model.state.cash=[{id:'RESP-CASH',date:'2026-09-01',type:'הכנסה',description:'בדיקת מזומן ארוכה',amount:500,note:'הערה ארוכה לבדיקת התאמה'}];
           model.state.rights=[{id:'RESP-RIGHT',date:'2026-09-01',type:'הכנסה',description:'בדיקת זכות ארוכה',amount:100,note:'הערת זכות ארוכה לבדיקת התאמה'}];
+          model.state.rightsLastCalculatedDate='2026-09-01';
+          model.state.notes=[{id:'RESP-NOTE',content:'פתק בדיקה ארוך לבדיקת התאמה למסכים צרים',createdAt:'2026-09-01T10:00:00Z',updatedAt:'2026-09-01T10:00:00Z'}];
           model.state.cards=[{name:'כרטיס בדיקה',account:'עסקי',chargeDay:10,active:true}];
           return true;
         })()"""
@@ -163,7 +165,7 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
         set_viewport(browser, width, height)
         result = browser.evaluate(
             "(async()=>{" + COMMON_LAYOUT_CHECK + r"""
-              const routes=['dashboard','checks','credit','cash','bank','settings'];
+              const routes=['dashboard','checks','credit','cash','bank','notes','settings'];
               const routeResults=[];
               for(const route of routes){
                 document.querySelector(`[data-page="${route}"]`)?.click();await frame();

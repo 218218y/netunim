@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash/view.js';
 import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/cash/editor.js';
+import {createDomainsCashController} from '../netunim-kupa/site/assets/js/domains/cash/controller.js';
 import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
 
 function fakeKpi(label,value){return `<article class="test-kpi" data-label="${label}" data-value="${value}"></article>`}
@@ -11,16 +12,28 @@ test('cash page renders only the two requested independent ledger columns',()=>{
   const content={innerHTML:''};
   Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='content'?content:null},configurable:true});
   const synced=[];
-  const model={state:{cash:[{id:'C1',date:'2026-09-01',type:'הכנסה',description:'מזומן',amount:100,note:''}],rights:[{id:'R1',date:'2026-08-31',type:'הכנסה',description:'זכות',amount:40,note:''}]}};
+  const model={state:{rightsLastCalculatedDate:'2026-08-30',cash:[{id:'C1',date:'2026-09-01',type:'הכנסה',description:'מזומן',amount:100,note:''}],rights:[{id:'R1',date:'2026-08-31',type:'הכנסה',description:'זכות',amount:40,note:''}]}};
   const view=createDomainsCashView({model,ui:{bulkSelected:new Set()},cashBalance:()=>100,rightsBalance:()=>40,kpi:fakeKpi,syncBulkUi:c=>synced.push(c),bulkControls:()=>'',bulkHeader:()=>'',bulkCell:()=>''});
   view.renderCash();
   assert.match(content.innerHTML,/cash-ledgers/);
   assert.ok(content.innerHTML.indexOf('cash-ledger-cash')<content.innerHTML.indexOf('cash-ledger-rights'),'cash is the first RTL grid item (right column)');
   assert.match(content.innerHTML,/יתרת מזומן/);assert.match(content.innerHTML,/תנועות מזומן/);
   assert.match(content.innerHTML,/יתרת מעשר/);assert.match(content.innerHTML,/תנועות מעשר/);
+  assert.match(content.innerHTML,/חושב לאחרונה בתאריך/);assert.match(content.innerHTML,/value="2026-08-30"/);assert.match(content.innerHTML,/data-change="set-rights-last-calculated-date"/);
   assert.doesNotMatch(content.innerHTML,/יציאות \/ התאמות/);assert.doesNotMatch(content.innerHTML,/>כניסות</);
   assert.match(content.innerHTML,/data-action="open-right-modal"/);assert.match(content.innerHTML,/data-action="open-right-modal-2"/);
   assert.deepEqual(synced,['cash','rights']);
+});
+
+
+test('manual rights calculation date is stateful and saved independently of ledger activity',()=>{
+  let saved='',toast='';
+  const model={state:{rights:[],rightsLastCalculatedDate:null}};
+  const controller=createDomainsCashController({model,saveState:msg=>{saved=msg},toast:msg=>{toast=msg}});
+  assert.equal(controller.setRightsLastCalculatedDate('2026-09-02'),true);
+  assert.equal(model.state.rightsLastCalculatedDate,'2026-09-02');assert.equal(saved,'תאריך חישוב המעשר נשמר');
+  assert.equal(controller.setRightsLastCalculatedDate('2026-02-31'),false);assert.equal(model.state.rightsLastCalculatedDate,'2026-09-02');assert.match(toast,/אינו תקין/);
+  controller.setRightsLastCalculatedDate('');assert.equal(model.state.rightsLastCalculatedDate,null);assert.equal(saved,'תאריך חישוב המעשר נוקה');
 });
 
 test('rights editor writes only to rights and routes add/edit actions independently',()=>{

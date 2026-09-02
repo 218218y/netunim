@@ -29,9 +29,15 @@ function normalizeState(d){
   {const seq=Number(n.bank.snapshotSeq);n.bank.snapshotSeq=Number.isSafeInteger(seq)&&seq>=0?seq:null}
   n.bank.adjustments=Array.isArray(n.bank.adjustments)?n.bank.adjustments.map(x=>({...x,amount:wholeMoney(x.amount)})):[];
   n.checks=normalizeSharedChecks(n.checks);
-  n.cash=(n.cash||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
-  n.rights=(n.rights||[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
-  n.expenses=(n.expenses||[]).map(x=>({...x,amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
+  n.cash=(Array.isArray(n.cash)?n.cash:[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
+  n.rights=(Array.isArray(n.rights)?n.rights:[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
+  {
+    const raw=String(n.rightsLastCalculatedDate||'').trim();
+    const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if(match){const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),d=new Date(Date.UTC(year,month-1,day));n.rightsLastCalculatedDate=d.getUTCFullYear()===year&&d.getUTCMonth()===month-1&&d.getUTCDate()===day?raw:null}else n.rightsLastCalculatedDate=null;
+  }
+  n.notes=(Array.isArray(n.notes)?n.notes:[]).filter(x=>x&&x.id).map(x=>({...x,id:String(x.id),content:String(x.content||''),createdAt:String(x.createdAt||''),updatedAt:String(x.updatedAt||x.createdAt||'')}));
+  n.expenses=(Array.isArray(n.expenses)?n.expenses:[]).map(x=>({...x,amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
   const before=(n.credits||[]).length;

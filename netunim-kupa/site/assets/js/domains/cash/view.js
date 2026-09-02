@@ -10,7 +10,8 @@ function ledgerTable({collection,title,rows,openAction,editAction}){
 function renderCash(){
   const cashRows=[...model.state.cash].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const rightsRows=[...(model.state.rights||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  document.getElementById('content').innerHTML=`<div class="cash-ledgers"><div class="cash-ledger-column cash-ledger-cash">${kpi('יתרת מזומן',cashBalance(),'#e8f4f2','#147d73','מחושב מכל תנועות המזומן')}${ledgerTable({collection:'cash',title:'תנועות מזומן',rows:cashRows,openAction:'open-cash-modal',editAction:'open-cash-modal-2'})}</div><div class="cash-ledger-column cash-ledger-rights">${kpi('יתרת מעשר',rightsBalance(),'#eef1f8','#7f86a6','מחושב מכל תנועות הזכות')}${ledgerTable({collection:'rights',title:'תנועות מעשר',rows:rightsRows,openAction:'open-right-modal',editAction:'open-right-modal-2'})}</div></div>`;
+  const rightsKpi=`<div class="rights-kpi-wrap">${kpi('יתרת מעשר',rightsBalance(),'#eef1f8','#7f86a6','מחושב מכל תנועות הזכות')}<label class="rights-calculated-date"><span>חושב לאחרונה בתאריך</span><input type="date" value="${esc(model.state.rightsLastCalculatedDate||'')}" data-change="set-rights-last-calculated-date" aria-label="תאריך חישוב אחרון של יתרת המעשר"></label></div>`;
+  document.getElementById('content').innerHTML=`<div class="cash-ledgers"><div class="cash-ledger-column cash-ledger-cash">${kpi('יתרת מזומן',cashBalance(),'#e8f4f2','#147d73','מחושב מכל תנועות המזומן')}${ledgerTable({collection:'cash',title:'תנועות מזומן',rows:cashRows,openAction:'open-cash-modal',editAction:'open-cash-modal-2'})}</div><div class="cash-ledger-column cash-ledger-rights">${rightsKpi}${ledgerTable({collection:'rights',title:'תנועות מעשר',rows:rightsRows,openAction:'open-right-modal',editAction:'open-right-modal-2'})}</div></div>`;
   syncBulkUi('cash');syncBulkUi('rights')
 }
 

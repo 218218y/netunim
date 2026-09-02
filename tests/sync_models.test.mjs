@@ -51,17 +51,17 @@ test('Kupa bank sync keeps business and home feeds independent across normalizat
 
 
 test('Kupa cash and rights are independent ledgers across normalization and cloud merge',()=>{
- const base=k.normalizeState({version:4,checks:[],credits:[],cash:[{id:'C1',amount:100}],rights:[{id:'R1',amount:40}],expenses:[],cards:[]});
+ const base=k.normalizeState({version:4,checks:[],credits:[],cash:[{id:'C1',amount:100}],rights:[{id:'R1',amount:40}],rightsLastCalculatedDate:'2026-08-28',notes:[{id:'N1',content:'בסיס',createdAt:'2026-08-28T10:00:00Z'}],expenses:[],cards:[]});
  assert.equal(cashBalanceData(base),100);assert.equal(rightsBalanceData(base),40);
  const local=structuredClone(base),remote=structuredClone(base);
- local.rights.push({id:'R2',amount:-10});remote.cash.push({id:'C2',amount:25});
+ local.rights.push({id:'R2',amount:-10});local.rightsLastCalculatedDate='2026-09-01';remote.cash.push({id:'C2',amount:25});remote.notes.push({id:'N2',content:'פתק מרוחק',createdAt:'2026-08-29T10:00:00Z'});
  const merged=km.mergeState3Way(base,local,remote);
- assert.deepEqual(merged.conflicts,[]);assert.equal(cashBalanceData(merged.state),125);assert.equal(rightsBalanceData(merged.state),30);
+ assert.deepEqual(merged.conflicts,[]);assert.equal(cashBalanceData(merged.state),125);assert.equal(rightsBalanceData(merged.state),30);assert.equal(merged.state.rightsLastCalculatedDate,'2026-09-01');assert.equal(merged.state.notes.length,2);
  const rebased=km.rebaseLocalProgress(base,local,remote);
- assert.equal(cashBalanceData(rebased),125);assert.equal(rightsBalanceData(rebased),30);
- const cloud=k.prepareKupaCloudState(local);assert.equal(Object.prototype.hasOwnProperty.call(cloud,'checks'),false);assert.equal(cloud.rights.length,2);
- assert.equal(validKupaCloudState(cloud),true);assert.equal(validKupaCloudState({...cloud,rights:'bad'}),false);
- const legacy=k.normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[]});assert.deepEqual(legacy.rights,[]);
+ assert.equal(cashBalanceData(rebased),125);assert.equal(rightsBalanceData(rebased),30);assert.equal(rebased.rightsLastCalculatedDate,'2026-09-01');assert.equal(rebased.notes.length,2);
+ const cloud=k.prepareKupaCloudState(local);assert.equal(Object.prototype.hasOwnProperty.call(cloud,'checks'),false);assert.equal(cloud.rights.length,2);assert.equal(cloud.rightsLastCalculatedDate,'2026-09-01');assert.equal(cloud.notes.length,1);
+ assert.equal(validKupaCloudState(cloud),true);assert.equal(validKupaCloudState({...cloud,rights:'bad'}),false);assert.equal(validKupaCloudState({...cloud,notes:'bad'}),false);
+ const legacy=k.normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[]});assert.deepEqual(legacy.rights,[]);assert.deepEqual(legacy.notes,[]);assert.equal(legacy.rightsLastCalculatedDate,null);
 });
 
 test('Kupa rebase retains edits made during an in-flight save',()=>{

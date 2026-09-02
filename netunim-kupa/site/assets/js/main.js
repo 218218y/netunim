@@ -30,6 +30,8 @@ import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createUiBulk} from './ui/bulk.js';
 import {createDomainsCreditView} from './domains/credit/view.js';
 import {createDomainsCashView} from './domains/cash/view.js';
+import {createDomainsCashController} from './domains/cash/controller.js';
+import {createDomainsNotesController} from './domains/notes/controller.js';
 import {createDomainsBankView} from './domains/bank/view.js';
 import {createDomainsBankBridge} from './domains/bank/bridge.js';
 import {createDomainsBankController} from './domains/bank/controller.js';
@@ -377,6 +379,7 @@ const uiNavigation=createUiNavigation({
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
   renderCash:(...args)=>domainsCashView.renderCash(...args),
   renderBank:(...args)=>domainsBankView.renderBank(...args),
+  renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
@@ -430,6 +433,18 @@ const domainsCashView=createDomainsCashView({
   bulkControls:(...args)=>uiBulk.bulkControls(...args),
   bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
+});
+
+const domainsCashController=createDomainsCashController({
+  model,
+  saveState:(...args)=>storagePersistence.saveState(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+});
+
+const domainsNotesController=createDomainsNotesController({
+  model,
+  saveState:(...args)=>storagePersistence.saveState(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const domainsBankBridge=createDomainsBankBridge();
@@ -690,6 +705,11 @@ const uiActions=createUiActions({
   prefillChargeDate:(...args)=>domainsCreditEditor.prefillChargeDate(...args),
   openCashModal:(...args)=>domainsCashEditor.openCashModal(...args),
   openRightModal:(...args)=>domainsCashEditor.openRightModal(...args),
+  setRightsLastCalculatedDate:(...args)=>domainsCashController.setRightsLastCalculatedDate(...args),
+  addStickyNote:(...args)=>domainsNotesController.addStickyNote(...args),
+  updateStickyNote:(...args)=>domainsNotesController.updateStickyNote(...args),
+  blurStickyNote:(...args)=>domainsNotesController.blurStickyNote(...args),
+  deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
   openExpenseModal:(...args)=>domainsExpensesEditor.openExpenseModal(...args),
   updateCard:(...args)=>uiSettings.updateCard(...args),
   manualBackup:(...args)=>uiBackup.manualBackup(...args),

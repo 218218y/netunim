@@ -1,4 +1,4 @@
-export const TITLES={dashboard:['לוח בקרה',''],checks:['צקים',''],credit:['אשראי',''],cash:['מזומן',''],bank:['בנק',''],settings:['הגדרות וגיבוי','']};
+export const TITLES={dashboard:['לוח בקרה',''],checks:['צקים',''],credit:['אשראי',''],cash:['מזומן',''],bank:['בנק',''],notes:['הערות',''],settings:['הגדרות וגיבוי','']};
 export const SUPA_SESSION_KEY='kupa.supabase.session.v1';
 export const SUPA_SESSION_IDB_KEY='supabase-session-v2';
 export const SUPA_EMAIL_KEY='kupa.supabase.email.v1';
@@ -19,5 +19,5 @@ export const BACKUP_PREFIX='kupa-backup_';
 export const AUTO_BACKUP_INTERVAL_MS=12*60*60*1000;
 export const AUTO_BACKUP_PREFIX='kupa-backup-auto_';
 export const AUTO_BACKUP_KEEP=60;
-export const INITIAL_STATE={"version":4,"businessName":"ניהול קופה","checks":[],"credits":[],"cash":[],"rights":[],"expenses":[],"cards":[],"bank":{"currentBalance":null,"updatedAt":null,"asOfDate":null,"adjustments":[],"homeFeed":null}};
+export const INITIAL_STATE={"version":4,"businessName":"ניהול קופה","checks":[],"credits":[],"cash":[],"rights":[],"rightsLastCalculatedDate":null,"notes":[],"expenses":[],"cards":[],"bank":{"currentBalance":null,"updatedAt":null,"asOfDate":null,"adjustments":[],"homeFeed":null}};
 export const CLOUD_PENDING_KEY='cloud-pending-v2';
