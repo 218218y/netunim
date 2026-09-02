@@ -17,8 +17,8 @@
       "project": "websocket-client",
       "import": "websocket",
       "specifier": ">=1.8,<2",
-      "version": "1.9.1",
-      "wheel": "websocket_client-1.9.1-py3-none-any.whl"
+      "version": "1.9.2",
+      "wheel": "websocket_client-1.9.2-py3-none-any.whl"
     }
   ]
 }

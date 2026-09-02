@@ -6,8 +6,8 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "packageLockSha256": "2ff2583278bb5621c052c40d9f9f7de53a3b832c2e6f0fd09ffcf10a1ae97508",
-  "configSha256": "5ce8d861ba92a65a9284879caf94bd018e3873734964c96bc8fca2704c42b053",
+  "packageLockSha256": "e3249bd2838f239117c3e3a522d134171d1288e527f6ec618537e5b244f7d376",
+  "configSha256": "c242a9cf1b121c93e4c0e6eb5166d20acd32b0a63458b0b1bc20b514904e9d76",
   "node": {
     "version": "24.18.0",
     "file": "node/node-v24.18.0-linux-x64.tar.xz",
@@ -346,10 +346,10 @@
     {
       "lockPath": "node_modules/globals",
       "name": "globals",
-      "version": "17.11.0",
-      "url": "https://registry.npmjs.org/globals/-/globals-17.11.0.tgz",
-      "integrity": "sha512-Z2I8hM+PbJDXQDq3Icgpzv+mPdwr68iZUU9d5WW4FuXfDUQfkZaZuvjMv42/5crNyw154+9+VWXbYrUgDXbxNw==",
-      "file": "npm/globals-17.11.0.tgz"
+      "version": "17.12.0",
+      "url": "https://registry.npmjs.org/globals/-/globals-17.12.0.tgz",
+      "integrity": "sha512-cezEd/DTyyht9cvSSURyygXPfy04GtWO/5e6ZPvH7fCtjKz9PYOmuawphw1Ctd1f6C+5JypXfGD7ahNMXvevBA==",
+      "file": "npm/globals-17.12.0.tgz"
     },
     {
       "lockPath": "node_modules/ignore",
@@ -581,11 +581,11 @@
       "project": "websocket-client",
       "import": "websocket",
       "specifier": ">=1.8,<2",
-      "version": "1.9.1",
-      "wheel": "websocket_client-1.9.1-py3-none-any.whl",
-      "file": "python/websocket_client-1.9.1-py3-none-any.whl",
-      "url": "https://files.pythonhosted.org/packages/3e/0e/7b514f6eb4bf518a9af0285c1a78297467b95fd7d1ebab08b41f8889ab2f/websocket_client-1.9.1-py3-none-any.whl",
-      "sha256": "19a871b81d0022589dd9e8e1b1891e0516d32113837dfb987d7691b6a425a1e2"
+      "version": "1.9.2",
+      "wheel": "websocket_client-1.9.2-py3-none-any.whl",
+      "file": "python/websocket_client-1.9.2-py3-none-any.whl",
+      "url": "https://files.pythonhosted.org/packages/d5/d2/cc4dc1271e464942db7ee278baae2daa99ee77cb2af744025c04da585a3e/websocket_client-1.9.2-py3-none-any.whl",
+      "sha256": "e1a673830a9c7bfa47b1cd3d5e4178f4c9651d80a4eab02c9c23a1c3ec6250ce"
     }
   ]
 }
