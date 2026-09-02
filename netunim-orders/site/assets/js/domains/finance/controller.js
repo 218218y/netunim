@@ -13,6 +13,8 @@ const CREDIT_BRIDGE_VERSION=24;
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}
 function revisionConflict(result){return !result?.r?.ok&&String(result?.j?.message||result?.txt||'').includes('revision_conflict')}
+function saveBusy(result){return !result?.r?.ok&&(Number(result?.r?.status)===429||String(result?.j?.message||result?.txt||'').includes('save_busy'))}
+function contentionBackoff(attempt){return new Promise(resolve=>setTimeout(resolve,300*Math.pow(2,Math.max(0,attempt))+Math.floor(Math.random()*200)))}
 function cleanDigits(value){return String(value||'').replace(/\D/g,'')}
 function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
 function prepareKupaWriteState(kupa){const out=clone(kupa||{});delete out.creditSync;const bank=out.bank&&typeof out.bank==='object'?out.bank:{};out.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:Array.isArray(bank.adjustments)?bank.adjustments.filter(x=>x?.type!=='check_deposit'):[],source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return out}
@@ -59,7 +61,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       if(!candidate){acceptKupaCloudRow(row,{renderIfChanged:true});return {saved:false,skipped:true,row}}
       const result=await rpcSaveKupaDocument(prepareKupaWriteState(candidate),Number(row.revision||0));
       if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate};await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:savedRow}}
-      if(revisionConflict(result))continue;
+      if(saveBusy(result)||revisionConflict(result)){await contentionBackoff(attempt);continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
     }
     throw new Error('מסמך הקופה השתנה שוב בזמן עדכון פיננסי; לא נדרס שום נתון')
@@ -83,7 +85,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       const candidate=mutator(base);if(!candidate)return {saved:false,skipped:true,row};
       const result=await rpcSaveFinanceSync(candidate,Number(row?.revision||0));
       if(result.r.ok){await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:result.row}}
-      if(String(result.j?.message||result.txt||'').includes('revision_conflict'))continue;
+      if(saveBusy(result)||revisionConflict(result)){await contentionBackoff(attempt);continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הסינכרון הפיננסי נכשלה');
     }
     throw new Error('נתוני הסינכרון הפיננסי השתנו שוב בזמן השמירה; לא נדרס שום נתון')

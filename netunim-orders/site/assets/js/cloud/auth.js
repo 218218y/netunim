@@ -4,6 +4,30 @@ import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/const
 const SUPA_NETWORK_ATTEMPTS=3;
 const SUPA_NETWORK_TIMEOUT_MS=20*1000;
 const SUPA_NETWORK_BACKOFF_MS=[500,1500];
+const SUPA_DATA_API_BACKOFF_MS=[15_000,30_000,60_000,120_000];
+const SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504]);
+let supaDataApiQueue=Promise.resolve();
+let supaDataApiFailureCount=0;
+let supaDataApiBlockedUntil=0;
+
+function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
+function supaDataApiBackoffError(){const retryAfterMs=Math.max(0,supaDataApiBlockedUntil-Date.now()),e=new Error(`Supabase Data API במצב התאוששות. ניסיון נוסף יתבצע בעוד ${Math.max(1,Math.ceil(retryAfterMs/1000))} שניות.`);e.code='SUPABASE_DATA_API_BACKOFF';e.retryAfterMs=retryAfterMs;return e}
+function resetSupaDataApiBreaker(){supaDataApiFailureCount=0;supaDataApiBlockedUntil=0}
+function tripSupaDataApiBreaker(){const index=Math.min(supaDataApiFailureCount,SUPA_DATA_API_BACKOFF_MS.length-1),delay=SUPA_DATA_API_BACKOFF_MS[index];supaDataApiFailureCount=Math.min(supaDataApiFailureCount+1,SUPA_DATA_API_BACKOFF_MS.length);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);return delay}
+function isSupaDataApiTransportFailure(error){return ['SUPABASE_NETWORK_TIMEOUT','SUPABASE_NETWORK_UNAVAILABLE'].includes(String(error?.code||''))}
+async function withSupaDataApiSlot(path,request){
+  if(!isSupaDataApiPath(path))return request();
+  const run=supaDataApiQueue.then(async()=>{
+    if(Date.now()<supaDataApiBlockedUntil)throw supaDataApiBackoffError();
+    try{
+      const response=await request();
+      if(SUPA_DATA_API_RETRY_STATUSES.has(Number(response?.status)))tripSupaDataApiBreaker();else resetSupaDataApiBreaker();
+      return response;
+    }catch(error){if(isSupaDataApiTransportFailure(error))tripSupaDataApiBreaker();throw error}
+  });
+  supaDataApiQueue=run.catch(()=>{});
+  return run;
+}
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 function isSupaNetworkError(error){const name=String(error?.name||''),message=String(error?.message||error||'').toLowerCase();return name==='AbortError'||name==='TypeError'||message.includes('failed to fetch')||message.includes('networkerror')||message.includes('load failed')}
@@ -28,7 +52,7 @@ async function refreshSession(){const s=loadSession();if(!s?.refresh_token)throw
 
 async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession();return s}
 
-async function supaFetch(path,opt={}){const {networkRetry,networkTimeoutMs,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),retry=networkRetry===undefined?(method==='GET'||method==='HEAD'):!!networkRetry;let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs});if(r.status===401){s=await refreshSession();r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs})}return r}
+async function supaFetch(path,opt={}){const {networkRetry,networkTimeoutMs,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),retry=networkRetry===undefined?(method==='GET'||method==='HEAD'):!!networkRetry;const request=async()=>{let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs});if(r.status===401){s=await refreshSession();r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs})}return r};return withSupaDataApiSlot(path,request)}
 
 function cloudEnabled(){return localStorage.getItem(CLOUD_AUTO_KEY)==='1'&&!!loadSession()}
 

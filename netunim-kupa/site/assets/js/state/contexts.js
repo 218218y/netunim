@@ -19,6 +19,8 @@ return {
     cloudSyncBusy:false,
     cloudWriteBusy:false,
     cloudPollTimer:null,
+    cloudRecoveryTimer:null,
+    cloudRecoveryAttempt:0,
     cloudConflictPending:false,
     cloudAuthNoDocument:false,
     localFileConflictPending:false,

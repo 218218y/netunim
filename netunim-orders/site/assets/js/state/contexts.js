@@ -114,6 +114,8 @@ return {
     cloudUpdatedAt:null,
     cloudBusy:false,
     cloudPollTimer:null,
+    cloudRecoveryTimer:null,
+    cloudRecoveryAttempt:0,
     saveTimer:null,
     localGeneration:0,
     cloudSaveRequested:false,

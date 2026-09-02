@@ -3,6 +3,11 @@ import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 
+function cloudResultMessage(res){return String(res?.j?.message||res?.body||'')}
+function revisionConflict(res){return !res?.r?.ok&&cloudResultMessage(res).includes('revision_conflict')}
+function saveBusy(res){return !res?.r?.ok&&(Number(res?.r?.status)===429||cloudResultMessage(res).includes('save_busy'))}
+function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,300*Math.pow(2,Math.max(0,attempt))+Math.floor(Math.random()*200)))}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, persistImmediateBrowserSnapshot, loadSharedChecksBase, loadSharedChecksBankEvents, listBackups, backupSnapshotToComputer, saveState, syncSharedChecksFromCloud, render, getCloudPending, readSupabaseDocument, supaRest, loadCloudPendingSync, putCloudPending, clearCloudPending, mergeKupaCloudState3Way, rebaseNewerPending, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, toast, pollSharedChecks}){
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
@@ -60,7 +65,7 @@ async function reconcileCloudPending(remoteRow=null){
         candidate=merged.state
       }
       session.cloudWriteBusy=true;const res=await rpcSaveCloud(candidate,expected);session.cloudWriteBusy=false;
-      if(!res.r.ok){const em=res.j?.message||res.body||'שמירה לענן נכשלה';if(String(em).includes('revision_conflict')){row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;continue}throw new Error(em)}
+      if(!res.r.ok){const em=res.j?.message||res.body||'שמירה לענן נכשלה';if(saveBusy(res)){await contentionBackoff(attempt);continue}if(revisionConflict(res)){await contentionBackoff(attempt);row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;continue}throw new Error(em)}
       const completedGeneration=Number(pending.generation||0),newRev=Number(res.row?.revision||expected+1),authoritative=prepareKupaCloudState(res.row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
       const newer=await rebaseNewerPending(completedGeneration,authoritative,newRev);
       if(!newer){await clearCloudPending(completedGeneration);model.state=applyKupaCoreState(authoritative,model.state.checks);setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן')}else{const newest=await getCloudPending();model.state=applyKupaCoreState(newest?.snapshot||model.state,model.state.checks);setSaveStatus(newest?.conflict?'התנגשות שמורה מקומית':'ממתין לשינוי הבא…',newest?.conflict?'error':'saving');setCloudHeaderStatus(newest?.conflict?'conflict':'syncing',newest?.conflict?'ענן: התנגשות':'ענן: מסנכרן…')}
@@ -86,7 +91,9 @@ async function persistSupabaseState(snapshot,msg,generation=session.localGenerat
       session.cloudWriteBusy=true;res=await rpcSaveCloud(candidate,baseRevision);session.cloudWriteBusy=false;
       if(res.r.ok)break;
       const em=res.j?.message||res.body||'שמירה לענן נכשלה';
-      if(!String(em).includes('revision_conflict'))throw new Error(em);
+      if(saveBusy(res)){await contentionBackoff(attempt);continue}
+      if(!revisionConflict(res))throw new Error(em);
+      await contentionBackoff(attempt);
       const remote=await readSupabaseDocument();if(!remote)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');const merged=mergeKupaCloudState3Way(baseState,candidate,remote.state);
       if(merged.conflicts.length){stageCloudPendingLocal(snapshot,msg,pending.baseRevision,pending.baseState,generation,true);session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
       candidate=merged.state;baseRevision=Number(remote.revision||0);baseState=prepareKupaCloudState(remote.state);res=null

@@ -7,6 +7,10 @@ const FINANCE_TABLE='finance_sync_documents';
 const FINANCE_RPC='save_finance_sync_document';
 const FINANCE_LEASE_TTL_SECONDS=20*60;
 
+function rpcSaveBusy(res){return !res?.r?.ok&&(Number(res?.r?.status)===429||String(res?.j?.message||res?.body||'').includes('save_busy'))}
+function rpcRevisionConflict(res){return !res?.r?.ok&&String(res?.j?.message||res?.body||'').includes('revision_conflict')}
+function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,300*Math.pow(2,Math.max(0,attempt))+Math.floor(Math.random()*200)))}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest}){
 async function readFinanceSyncDocument(){
@@ -67,7 +71,7 @@ async function saveFinancePatch(mutator){
     const next=mutator(base);if(!next)return {saved:false,row};
     const res=await rpcSaveFinanceSync(next,Number(row?.revision||0));
     if(res.r.ok)return {saved:true,row:res.row};
-    if(String(res.j?.message||res.body||'').includes('revision_conflict'))continue;
+    if(rpcSaveBusy(res)||rpcRevisionConflict(res)){await contentionBackoff(attempt);continue}
     throw new Error(res.j?.message||res.body||'שמירת הסינכרון הפיננסי נכשלה');
   }
   throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');

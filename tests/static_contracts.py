@@ -62,7 +62,7 @@ def funcdef(text: str, name: str):
     pattern = re.compile(
         r"create\s+(?:or\s+replace\s+)?function\s+public\."
         + re.escape(name)
-        + r"\b.*?\n\$\$\s*;",
+        + r"\b.*?\bas\s+(?P<tag>\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$).*?(?P=tag)\s*;",
         re.I | re.S,
     )
     match = pattern.search(text)
@@ -352,6 +352,22 @@ ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_c
 ok("SUPA_NETWORK_ATTEMPTS=3" in orders_cloud_auth and "fetchSupaNetwork" in orders_cloud_auth and "method==='GET'||method==='HEAD'" in orders_cloud_auth
    and orders_transport.count("networkRetry:true")>=2,
    "Orders cloud transport: transient Supabase reads and same-token lease RPCs retry with bounded network timeouts; arbitrary writes are not globally retried")
+for label,auth in (("Kupa",kupa_cloud_auth),("Orders",orders_cloud_auth)):
+    ok("SUPA_DATA_API_BACKOFF_MS=[15_000,30_000,60_000,120_000]" in auth
+       and "supaDataApiQueue=Promise.resolve()" in auth
+       and "SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504])" in auth
+       and "withSupaDataApiSlot" in auth
+       and "SUPABASE_DATA_API_BACKOFF" in auth,
+       f"{label} Data API resilience: one local request lane and exponential circuit breaker protect PostgREST from retry storms")
+orders_ui_cloud=(O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
+kupa_ui_cloud=(K / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
+for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
+    ok("CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000]" in ui_cloud
+       and "scheduleCloudRecovery" in ui_cloud and "cloudRecoveryTimer" in ui_cloud,
+       f"{label} cloud startup: transient Data API failure schedules bounded automatic recovery instead of requiring a reload")
+ok(kupa_sync_document.count("if(saveBusy(res)){await contentionBackoff(attempt);continue}")>=2
+   and "if(!revisionConflict(res))throw new Error(em)" in kupa_sync_document,
+   "Kupa cloud writes: save_busy retries are bounded and do not trigger revision reads/merges")
 
 # 4. SQL and migration contracts.
 sqls = {
@@ -363,6 +379,12 @@ sqls = {
     "orders_setup": (O / "supabase/setup.sql").read_text(encoding="utf-8"),
     "kupa_finance_lease": (K / "supabase/financial_sync_distributed_lease_upgrade.sql").read_text(encoding="utf-8"),
     "orders_finance_lease": (O / "supabase/financial_sync_distributed_lease_upgrade.sql").read_text(encoding="utf-8"),
+    "kupa_finance_archive": (K / "supabase/financial_sync_archive_upgrade.sql").read_text(encoding="utf-8"),
+    "orders_finance_archive": (O / "supabase/financial_sync_archive_upgrade.sql").read_text(encoding="utf-8"),
+    "kupa_finance_integrity": (K / "supabase/financial_sync_integrity_v2_upgrade.sql").read_text(encoding="utf-8"),
+    "orders_finance_integrity": (O / "supabase/financial_sync_integrity_v2_upgrade.sql").read_text(encoding="utf-8"),
+    "kupa_contention_hardening": (K / "supabase/core_rpc_contention_hardening_upgrade.sql").read_text(encoding="utf-8"),
+    "orders_contention_hardening": (O / "supabase/core_rpc_contention_hardening_upgrade.sql").read_text(encoding="utf-8"),
 }
 for name, text in sqls.items():
     ok(dollar_balanced(text), f"{name}: dollar-quote delimiters balanced")
@@ -384,6 +406,41 @@ ok("enable row level security" in lease_sql.lower()
    "distributed finance lease SQL: RLS confines lease rows to the authenticated owner")
 ok(all(fragment in sqls["kupa_setup"] and fragment in sqls["orders_setup"] for fragment in ("create table if not exists public.finance_sync_leases","create or replace function public.claim_finance_sync_lease","create or replace function public.release_finance_sync_lease")),
    "distributed finance lease SQL: clean installations include the same lock table and RPCs as the additive upgrade")
+contention_sql=sqls["orders_contention_hardening"]
+ok(contention_sql==sqls["kupa_contention_hardening"],
+   "core RPC contention hardening: Kupa and Orders ship the exact same final migration")
+ok("create schema if not exists netunim_internal" in contention_sql
+   and contention_sql.count("raise exception 'save_busy'")>=6
+   and contention_sql.count("errcode='PT429'")>=6
+   and "hashtextextended('order_management:'" in contention_sql
+   and contention_sql.count("hashtextextended('netunim_financial_write:'")>=5
+   and contention_sql.count("set_config('lock_timeout','100ms',true)")>=6
+   and "notify pgrst,'reload schema'" in contention_sql,
+   "core RPC contention hardening: public writers fail fast, financial writers share a deterministic gate, row locks are bounded, and PostgREST schema cache reload is explicit")
+contention_without_comments=re.sub(r"--.*", "", contention_sql)
+ok(not re.search(r"(?im)^\s*(insert|update|delete)\s", contention_without_comments),
+   "core RPC contention hardening: migration changes RPC plumbing only and does not mutate application rows")
+
+# Authoritative/setup SQL must remain safe even before/after the additive wrapper migration.
+financial_source_contracts = [
+    ("kupa setup", sqls["kupa_setup"], ("save_kupa_document","save_finance_sync_document","save_bank_sync_snapshot","merge_bank_transactions")),
+    ("orders setup", sqls["orders_setup"], ("save_finance_sync_document","save_bank_sync_snapshot","merge_bank_transactions")),
+    ("shared setup", sqls["shared_setup"], ("save_shared_checks_document",)),
+    ("cutover financial RPCs", sqls["cutover"], ("save_shared_checks_document","save_kupa_document")),
+    ("kupa finance archive upgrade", sqls["kupa_finance_archive"], ("save_finance_sync_document","merge_bank_transactions")),
+    ("orders finance archive upgrade", sqls["orders_finance_archive"], ("save_finance_sync_document","merge_bank_transactions")),
+    ("kupa finance integrity upgrade", sqls["kupa_finance_integrity"], ("save_kupa_document","save_bank_sync_snapshot","merge_bank_transactions")),
+    ("orders finance integrity upgrade", sqls["orders_finance_integrity"], ("save_kupa_document","save_bank_sync_snapshot","merge_bank_transactions")),
+]
+for label, source, names in financial_source_contracts:
+    for name in names:
+        definition=funcdef(source,name)
+        ok(bool(definition)
+           and "hashtextextended('netunim_financial_write:'" in definition
+           and "raise exception 'save_busy'" in definition
+           and "errcode = 'PT429'" in definition
+           and "set_config('lock_timeout', '100ms', true)" in definition,
+           f"{label}: {name} has fail-fast shared financial writer protection in the source-of-truth SQL")
 
 cut = sqls["cutover"]
 ok(re.match(r"(?s)^\s*--.*?\nbegin;", cut) is not None, "cutover: begins with transaction")
@@ -455,8 +512,10 @@ ok("jsonb_typeof(p_state->'checks') is not null" in osetup or "p_state ? 'checks
    "orders RPC: post-cutover payload containing checks is rejected")
 order_save_func=funcdef(osetup, "save_order_management_document")
 ok("pg_try_advisory_xact_lock" in order_save_func and "hashtextextended('order_management:'" in order_save_func
-   and order_save_func.index("pg_try_advisory_xact_lock") < order_save_func.lower().index("for update"),
-   "orders RPC: distributed fail-fast writer gate precedes the row lock so conflicting clients cannot exhaust the PostgREST pool")
+   and "raise exception 'save_busy'" in order_save_func and "errcode = 'PT429'" in order_save_func
+   and "for update nowait" in order_save_func.lower()
+   and order_save_func.index("pg_try_advisory_xact_lock") < order_save_func.lower().index("for update nowait"),
+   "orders RPC: busy writers are distinct from revision conflicts and both advisory/row locks fail fast before they can exhaust PostgREST")
 
 # Compact module navigation and toolbar contracts.
 orders_index=(ROOT/'netunim-orders/site/index.html').read_text(encoding='utf-8')

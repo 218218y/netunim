@@ -394,6 +394,15 @@ begin
   if v_owner is null then
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
+  -- Shared per-user financial writer gate: fail fast instead of filling the PostgREST pool.
+  if not pg_try_advisory_xact_lock(
+    hashtextextended('netunim_financial_write:' || v_owner::text, 0)
+  ) then
+    raise exception 'save_busy'
+      using errcode = 'PT429',
+            hint = 'Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout', '100ms', true);
   if p_document_name is null or btrim(p_document_name) = '' then
     raise exception 'invalid_document_name' using errcode = '22023';
   end if;
@@ -907,6 +916,15 @@ begin
   if v_owner is null then
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
+  -- Shared per-user financial writer gate: fail fast instead of filling the PostgREST pool.
+  if not pg_try_advisory_xact_lock(
+    hashtextextended('netunim_financial_write:' || v_owner::text, 0)
+  ) then
+    raise exception 'save_busy'
+      using errcode = 'PT429',
+            hint = 'Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout', '100ms', true);
   if p_document_name is null or btrim(p_document_name) = '' then
     raise exception 'invalid_document_name' using errcode = '22023';
   end if;
@@ -1297,21 +1315,28 @@ begin
 
   perform set_config('app.order_management_rpc_write', '1', true);
 
-  -- Distributed fail-fast writer gate: do not let concurrent stale clients queue on the row lock
-  -- and exhaust PostgREST's database pool. The transaction-scoped lock releases automatically.
+  -- Busy is not a revision conflict. Failing fast prevents a stale/parallel client
+  -- from turning one active writer into a PostgREST connection-pool convoy.
   if not pg_try_advisory_xact_lock(
     hashtextextended('order_management:' || v_owner::text || ':' || p_document_name, 0)
   ) then
-    raise exception 'revision_conflict'
-      using errcode = '40001',
-            hint = 'Another save for this document is already in progress; refresh the revision before retrying.';
+    raise exception 'save_busy'
+      using errcode = 'PT429',
+            hint = 'Another save is already in progress. Retry later without refreshing the revision.';
   end if;
+  perform set_config('lock_timeout', '100ms', true);
 
-  select d.revision, d.state, d.updated_at
-    into v_current_revision, v_old_state, v_old_updated_at
-  from public.order_management_documents d
-  where d.owner_id = v_owner and d.document_name = p_document_name
-  for update;
+  begin
+    select d.revision, d.state, d.updated_at
+      into v_current_revision, v_old_state, v_old_updated_at
+    from public.order_management_documents d
+    where d.owner_id = v_owner and d.document_name = p_document_name
+    for update nowait;
+  exception when lock_not_available then
+    raise exception 'save_busy'
+      using errcode = 'PT429',
+            hint = 'The document row is temporarily locked. Retry later without refreshing the revision.';
+  end;
 
   if v_current_revision is null then
     if coalesce(p_expected_revision,0) <> 0 then

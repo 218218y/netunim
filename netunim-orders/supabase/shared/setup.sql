@@ -212,6 +212,15 @@ begin
   if v_owner is null then
     raise exception 'not_authenticated' using errcode = '42501';
   end if;
+  -- Shared per-user financial writer gate: fail fast instead of filling the PostgREST pool.
+  if not pg_try_advisory_xact_lock(
+    hashtextextended('netunim_financial_write:' || v_owner::text, 0)
+  ) then
+    raise exception 'save_busy'
+      using errcode = 'PT429',
+            hint = 'Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout', '100ms', true);
   if p_document_name is null or btrim(p_document_name) = '' then
     raise exception 'invalid_document_name' using errcode = '22023';
   end if;
