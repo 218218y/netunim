@@ -36,10 +36,9 @@ function checksMarkup({embedded=false,showEmbeddedStatus=true}={}){const rows=vi
 
 function checkForecastMarkup(){
   const months=futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear});
-  const title=ui.checkYear==='all'?'צ׳קים בקופה לפי חודשים קדימה':`צ׳קים בקופה להפקדה — ${ui.checkYear}`;
-  if(!months.length)return `<section class="checks-forecast"><div class="checks-forecast-head"><div><h3>${esc(title)}</h3></div></div><div class="checks-forecast-body"><div class="checks-forecast-empty">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div></section>`;
+  if(!months.length)return `<section class="checks-forecast"><div class="checks-forecast-body"><div class="checks-forecast-empty">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div></section>`;
   const max=Math.max(1,...months.map(x=>Math.abs(x.total))),split=Math.ceil(months.length/2),columns=[months.slice(0,split),months.slice(split)];
-  return `<section class="checks-forecast"><div class="checks-forecast-head"><div><h3>${esc(title)}</h3></div><span class="checks-forecast-note">${esc(months.length)} חודשים עד החודש האחרון שבו קיים צ׳ק</span></div><div class="checks-forecast-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="checks-forecast-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div></section>`;
+  return `<section class="checks-forecast"><div class="checks-forecast-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="checks-forecast-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div></section>`;
 }
 
 function checkForecastBarRow(month,max){const width=month.total===0?0:Math.max(2,Math.abs(month.total)/max*100);return `<div class="checks-forecast-row"><b>${esc(checkMonthLabel(month.key))}</b><div class="checks-forecast-bar"><i style="width:${esc(width)}%"></i></div><div class="checks-forecast-num">${money(month.total)}</div></div>`}
