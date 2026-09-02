@@ -152,7 +152,8 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
         r"""(()=>{
           document.getElementById('connectScreen').style.display='none';
           model.state.checks=[{id:'RESP-CHECK',name:'לקוח בדיקה',amount:900,dueDate:'2026-09-15',status:'בקופה',checkNumber:'123',note:'הערה'}];
-          model.state.cash=[{id:'RESP-CASH',date:'2026-09-01',type:'הכנסה',description:'בדיקה',amount:500,note:'הערה'}];
+          model.state.cash=[{id:'RESP-CASH',date:'2026-09-01',type:'הכנסה',description:'בדיקת מזומן ארוכה',amount:500,note:'הערה ארוכה לבדיקת התאמה'}];
+          model.state.rights=[{id:'RESP-RIGHT',date:'2026-09-01',type:'הכנסה',description:'בדיקת זכות ארוכה',amount:100,note:'הערת זכות ארוכה לבדיקת התאמה'}];
           model.state.cards=[{name:'כרטיס בדיקה',account:'עסקי',chargeDay:10,active:true}];
           return true;
         })()"""
@@ -183,11 +184,14 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
               const modalVisible=withinViewport(modal);
               document.getElementById('modalBackdrop')?.classList.remove('open');
               document.querySelector('[data-page="cash"]')?.click();await frame();
-              const cashColumns=getComputedStyle(document.querySelector('.cash-kpis')).gridTemplateColumns.split(' ').length;
+              const cashLedgers=document.querySelector('.cash-ledgers');
+              const cashColumns=getComputedStyle(cashLedgers).gridTemplateColumns.split(' ').filter(Boolean).length;
+              const cashHorizontalOverflow=[...document.querySelectorAll('.cash-ledger-section .table-scroll')].some(wrap=>wrap.scrollWidth>wrap.clientWidth+1);
+              const cashDesktopStretch=innerWidth>1180?[...document.querySelectorAll('.cash-ledger-column')].every(column=>{const section=column.querySelector('.cash-ledger-section');return Math.abs(section.getBoundingClientRect().bottom-column.getBoundingClientRect().bottom)<=1;}):true;
               const mobileCashRow=innerWidth<=600?getComputedStyle(document.querySelector('.cash-table tbody tr')).display:null;
               document.querySelector('[data-page="settings"]')?.click();await frame();
               const settingsRow=innerWidth<=600?getComputedStyle(document.querySelector('.settings-table tbody tr')).display:null;
-              return {width:innerWidth,height:innerHeight,routeResults,drawer,modalVisible,cashColumns,mobileCashRow,settingsRow};
+              return {width:innerWidth,height:innerHeight,routeResults,drawer,modalVisible,cashColumns,cashHorizontalOverflow,cashDesktopStretch,mobileCashRow,settingsRow};
             })()"""
         )
         assert result["width"] == width and result["height"] == height, result
@@ -197,8 +201,10 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
             assert drawer["open"] and drawer["visible"] and drawer["expanded"] == "true" and drawer["backdrop"] and drawer["closed"], result
         else:
             assert result["drawer"]["desktopVisible"] and result["drawer"]["expanded"] == "false", result
-        expected_columns = 1 if width <= 600 else 2 if width <= 820 else 3
+        expected_columns = 2 if width > 1180 else 1
         assert result["cashColumns"] == expected_columns, result
+        assert not result["cashHorizontalOverflow"], result
+        assert result["cashDesktopStretch"], result
         if width <= 600:
             assert result["mobileCashRow"] == "grid" and result["settingsRow"] == "grid", result
         for route in result["routeResults"]:

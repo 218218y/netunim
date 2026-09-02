@@ -15,6 +15,7 @@ for command in (
     ['node', '--test', 'tests/global_search_navigation.test.mjs'],
     ['node', '--test', 'tests/shared_contracts.test.mjs'],
     ['node', '--test', 'tests/sync_models.test.mjs'],
+    ['node', '--test', 'tests/cash_rights.test.mjs'],
     ['node', '--test', 'tests/storage_models.test.mjs'],
 ):
     result = subprocess.run(command, cwd=ROOT)

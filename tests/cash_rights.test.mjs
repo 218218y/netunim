@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash/view.js';
 import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/cash/editor.js';
 import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
@@ -35,4 +36,16 @@ test('rights editor writes only to rights and routes add/edit actions independen
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
   actions['open-cash-modal']({dataset:{}},{});actions['open-right-modal']({dataset:{}},{});
   assert.equal(cashOpened,1);assert.equal(rightOpened,1);
+});
+
+
+test('cash ledger CSS fits desktop columns without horizontal table scrolling and stretches the short side',()=>{
+  const css=readFileSync(new URL('../netunim-kupa/site/assets/app.css',import.meta.url),'utf8');
+  assert.match(css,/\.cash-ledgers\{[^}]*align-items:stretch[^}]*min-height:calc\(100dvh - 140px\)/);
+  assert.match(css,/\.cash-ledger-column\{[^}]*grid-template-rows:auto minmax\(0,1fr\)/);
+  assert.match(css,/\.cash-ledger-section\{[^}]*height:100%/);
+  assert.match(css,/\.cash-ledger-section \.table-scroll\{[^}]*overflow-x:hidden/);
+  assert.match(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:0[^}]*table-layout:fixed/);
+  assert.doesNotMatch(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:540px/);
+  assert.match(css,/@media\(max-width:1180px\)\{[\s\S]*?\.cash-ledgers\{grid-template-columns:1fr/);
 });
