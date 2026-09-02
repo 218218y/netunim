@@ -449,14 +449,29 @@ const domainsNotesController=createDomainsNotesController({
 const domainsBankBridge=createDomainsBankBridge();
 
 async function refreshFinanceCloudSnapshot(){
-  if(session.connectionMode!=='supabase'||!session.backendReady)return {verified:true,state:model.state};
+  if(session.connectionMode!=='supabase'||!session.backendReady)return {verified:true,state:model.state,revision:Number(session.dbRevision||0),financeRevision:Number(session.financeRevision||0)};
   if(!navigator.onLine)return {verified:false,state:null};
   try{
     const row=await cloudTransport.readSupabaseDocument();
     if(!row?.state)return {verified:false,state:null};
-    if(Number(row.revision||0)>Number(session.dbRevision||0))await syncDocument.cloudPoll();
-    return {verified:true,state:row.state,revision:Number(row.revision||0)};
+    const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0);
+    if(kupaChanged||financeChanged)await syncDocument.cloudPoll();
+    return {verified:true,state:row.state,revision:Number(row.revision||0),financeRevision:Number(row.financeRevision||0)};
   }catch(error){console.error('finance cloud freshness',error);return {verified:false,state:null}}
+}
+async function saveFinancePatchTracked(...args){
+  const result=await cloudTransport.saveFinancePatch(...args),row=result?.row;
+  if(row){session.financeRevision=Number(row.revision||session.financeRevision||0);session.financeUpdatedAt=row.updated_at||session.financeUpdatedAt||null}
+  return result
+}
+const remoteFinanceLeaseTokens=new Set();
+async function claimSharedFinanceSyncLease(kind,token){
+  if(session.connectionMode!=='supabase'||!session.backendReady)return {acquired:true,localOnly:true};
+  const result=await cloudTransport.claimFinanceSyncLease(kind,token);if(result?.acquired)remoteFinanceLeaseTokens.add(String(token));return result
+}
+async function releaseSharedFinanceSyncLease(kind,token){
+  const key=String(token||'');if(!remoteFinanceLeaseTokens.has(key))return true;
+  try{return await cloudTransport.releaseFinanceSyncLease(kind,key)}finally{remoteFinanceLeaseTokens.delete(key)}
 }
 
 const domainsCreditController=createDomainsCreditController({
@@ -470,7 +485,9 @@ const domainsCreditController=createDomainsCreditController({
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   refreshFinanceCloudSnapshot,
-  saveFinancePatch:(...args)=>cloudTransport.saveFinancePatch(...args),
+  saveFinancePatch:(...args)=>saveFinancePatchTracked(...args),
+  claimFinanceSyncLease:(...args)=>claimSharedFinanceSyncLease(...args),
+  releaseFinanceSyncLease:(...args)=>releaseSharedFinanceSyncLease(...args),
 });
 
 const domainsBankController=createDomainsBankController({
@@ -485,7 +502,9 @@ const domainsBankController=createDomainsBankController({
   render:(...args)=>uiNavigation.render(...args),
   bridge:domainsBankBridge,
   refreshFinanceCloudSnapshot,
-  saveFinancePatch:(...args)=>cloudTransport.saveFinancePatch(...args),
+  saveFinancePatch:(...args)=>saveFinancePatchTracked(...args),
+  claimFinanceSyncLease:(...args)=>claimSharedFinanceSyncLease(...args),
+  releaseFinanceSyncLease:(...args)=>releaseSharedFinanceSyncLease(...args),
   saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
   mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),

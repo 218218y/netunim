@@ -6,6 +6,8 @@ return {
   },
   session:{
     dbRevision:0,
+    financeRevision:0,
+    financeUpdatedAt:null,
     backendReady:false,
     saveQueue:Promise.resolve(),
     localGeneration:0,

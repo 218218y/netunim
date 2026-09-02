@@ -307,6 +307,31 @@ ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ 
 ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,
    "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
 
+kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
+kupa_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
+kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+kupa_bank_controller=(K / "site/assets/js/domains/bank/controller.js").read_text(encoding="utf-8")
+kupa_credit_controller=(K / "site/assets/js/domains/credit/controller.js").read_text(encoding="utf-8")
+orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
+orders_bank_cache=(O / "site/assets/js/domains/bank/cache.js").read_text(encoding="utf-8")
+ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_view and "lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null" not in kupa_credit_view,
+   "credit status ownership: Kupa headline uses the shared cloud sync timestamp instead of stale local Bridge history")
+ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transport
+   and "financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_sync_document
+   and "applyFinanceOnlyRow(row)" in kupa_sync_document
+   and "financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_main,
+   "Kupa finance freshness: finance_sync_documents has an independent revision and finance-only updates wake an already-open Kupa without overwriting pending Kupa edits")
+ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
+   and "row.financeRevision=Number(finance?.revision||0)" in orders_transport,
+   "Orders finance freshness: read-only Kupa cache tracks finance_sync_documents revision independently of kupa_documents")
+for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetchBalance"),(kupa_credit_controller,"credit","bridge.syncCreditCards"),(orders_finance_controller,"bank","bridge.fetchBalance"),(orders_finance_controller,"credit","bridge.syncCreditCards")):
+    claim=f"claimFinanceSyncLease('{kind}'"
+    ok(claim in controller and controller.index(claim)<controller.index(bridge_call),
+       f"distributed finance lease: {kind} claim happens before opening the local Bridge session")
+ok("claimSharedFinanceSyncLease" in kupa_main and "remoteFinanceLeaseTokens" in kupa_main
+   and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
+   "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
+
 # 4. SQL and migration contracts.
 sqls = {
     "preflight": (S / "preflight.sql").read_text(encoding="utf-8"),
@@ -315,10 +340,29 @@ sqls = {
     "postflight": (S / "postflight.sql").read_text(encoding="utf-8"),
     "kupa_setup": (K / "supabase/setup.sql").read_text(encoding="utf-8"),
     "orders_setup": (O / "supabase/setup.sql").read_text(encoding="utf-8"),
+    "kupa_finance_lease": (K / "supabase/financial_sync_distributed_lease_upgrade.sql").read_text(encoding="utf-8"),
+    "orders_finance_lease": (O / "supabase/financial_sync_distributed_lease_upgrade.sql").read_text(encoding="utf-8"),
 }
 for name, text in sqls.items():
     ok(dollar_balanced(text), f"{name}: dollar-quote delimiters balanced")
     ok("security definer" not in text.lower(), f"{name}: no SECURITY DEFINER")
+
+lease_sql=sqls["kupa_finance_lease"]
+ok(lease_sql==sqls["orders_finance_lease"], "distributed finance lease migration: Kupa and Orders ship the exact same additive migration")
+ok("primary key(owner_id,lease_name)" in lease_sql
+   and "on conflict(owner_id,lease_name) do update" in lease_sql
+   and "where lease.leased_until<=v_now or lease.lease_token=excluded.lease_token" in lease_sql
+   and "clock_timestamp()" in lease_sql
+   and "p_ttl_seconds<60 or p_ttl_seconds>1800" in lease_sql,
+   "distributed finance lease SQL: claim is server-clock, atomic per user/kind, renewable only by its token, and bounded to 20-minute max TTL")
+ok("enable row level security" in lease_sql.lower()
+   and 'finance_sync_leases_select_own' in lease_sql
+   and 'finance_sync_leases_insert_own' in lease_sql
+   and 'finance_sync_leases_update_own' in lease_sql
+   and "auth.uid()" in lease_sql,
+   "distributed finance lease SQL: RLS confines lease rows to the authenticated owner")
+ok(all(fragment in sqls["kupa_setup"] and fragment in sqls["orders_setup"] for fragment in ("create table if not exists public.finance_sync_leases","create or replace function public.claim_finance_sync_lease","create or replace function public.release_finance_sync_lease")),
+   "distributed finance lease SQL: clean installations include the same lock table and RPCs as the additive upgrade")
 
 cut = sqls["cutover"]
 ok(re.match(r"(?s)^\s*--.*?\nbegin;", cut) is not None, "cutover: begins with transaction")

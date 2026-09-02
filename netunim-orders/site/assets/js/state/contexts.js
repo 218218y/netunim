@@ -135,6 +135,8 @@ return {
     kupaNetReadout:null,
     kupaCloudReadState:null,
     kupaReadRevision:0,
+    financeReadRevision:0,
+    financeReadUpdatedAt:null,
     sharedChecksSaveTimer:null,
     sharedChecksSaveMessage:''
   }

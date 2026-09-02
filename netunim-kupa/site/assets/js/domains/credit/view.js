@@ -7,12 +7,13 @@ import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditSyncSummary} from './s
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
 function creditErrorRows(syncUi,summary){
-  const rows=[...(Array.isArray(syncUi?.status?.lastErrors)?syncUi.status.lastErrors:[]),...(Array.isArray(summary?.sync?.errors)?summary.sync.errors:[])],seen=new Set(),out=[];
+  const sharedSyncTime=Date.parse(summary?.sync?.syncedAt||'')||0,localErrors=(Array.isArray(syncUi?.status?.lastErrors)?syncUi.status.lastErrors:[]).filter(error=>{if(!sharedSyncTime)return true;const at=Date.parse(error?.at||'')||0;return at>=sharedSyncTime-5000});
+  const rows=[...localErrors,...(Array.isArray(summary?.sync?.errors)?summary.sync.errors:[])],seen=new Set(),out=[];
   for(const row of rows){const key=[row?.profileId,row?.provider,row?.code,row?.stage,row?.message,row?.at].map(x=>String(x||'')).join('|');if(seen.has(key))continue;seen.add(key);out.push(row)}
   return out.sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
 }
 function creditSyncHeadlineState(syncUi,summary){
-  const errors=creditErrorRows(syncUi,summary),latestError=errors[0]||null,lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null;
+  const errors=creditErrorRows(syncUi,summary),latestError=errors[0]||null,lastSync=summary?.sync?.syncedAt||null;
   const errorAt=syncUi?.errorAt||latestError?.at||null,lastSyncTime=Date.parse(lastSync||'')||0,errorTime=Date.parse(errorAt||'')||0;
   if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(syncUi?.error)return {tone:'error',icon:'!',title:'נכשל',meta:errorAt?syncDate(errorAt):'כעת'};
