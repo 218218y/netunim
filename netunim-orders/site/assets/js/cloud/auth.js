@@ -1,32 +1,34 @@
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/constants.js';
+import {createDataApiScheduler} from '../shared/cloud-sync.js';
 
 const SUPA_NETWORK_ATTEMPTS=3;
 const SUPA_NETWORK_TIMEOUT_MS=20*1000;
+const SUPA_BACKGROUND_TIMEOUT_MS=8*1000;
 const SUPA_NETWORK_BACKOFF_MS=[500,1500];
 const SUPA_DATA_API_BACKOFF_MS=[15_000,30_000,60_000,120_000];
 const SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504]);
-let supaDataApiQueue=Promise.resolve();
 let supaDataApiFailureCount=0;
 let supaDataApiBlockedUntil=0;
+let refreshPromise=null;
 
 function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
 function supaDataApiBackoffError(){const retryAfterMs=Math.max(0,supaDataApiBlockedUntil-Date.now()),e=new Error(`Supabase Data API במצב התאוששות. ניסיון נוסף יתבצע בעוד ${Math.max(1,Math.ceil(retryAfterMs/1000))} שניות.`);e.code='SUPABASE_DATA_API_BACKOFF';e.retryAfterMs=retryAfterMs;return e}
 function resetSupaDataApiBreaker(){supaDataApiFailureCount=0;supaDataApiBlockedUntil=0}
 function tripSupaDataApiBreaker(){const index=Math.min(supaDataApiFailureCount,SUPA_DATA_API_BACKOFF_MS.length-1),delay=SUPA_DATA_API_BACKOFF_MS[index];supaDataApiFailureCount=Math.min(supaDataApiFailureCount+1,SUPA_DATA_API_BACKOFF_MS.length);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);return delay}
 function isSupaDataApiTransportFailure(error){return ['SUPABASE_NETWORK_TIMEOUT','SUPABASE_NETWORK_UNAVAILABLE'].includes(String(error?.code||''))}
-async function withSupaDataApiSlot(path,request){
+const supaDataApiScheduler=createDataApiScheduler({maxHighBurst:4,canRun:()=>Date.now()>=supaDataApiBlockedUntil});
+async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey=''}={}){
   if(!isSupaDataApiPath(path))return request();
-  const run=supaDataApiQueue.then(async()=>{
+  const scheduled=supaDataApiScheduler.schedule(async()=>{
     if(Date.now()<supaDataApiBlockedUntil)throw supaDataApiBackoffError();
     try{
       const response=await request();
       if(SUPA_DATA_API_RETRY_STATUSES.has(Number(response?.status)))tripSupaDataApiBreaker();else resetSupaDataApiBreaker();
       return response;
     }catch(error){if(isSupaDataApiTransportFailure(error))tripSupaDataApiBreaker();throw error}
-  });
-  supaDataApiQueue=run.catch(()=>{});
-  return run;
+  },{priority,key:coalesceKey,blockedError:supaDataApiBackoffError});
+  return scheduled.then(response=>typeof response?.clone==='function'?response.clone():response);
 }
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
@@ -48,11 +50,11 @@ function cloudAuthRequired(message='נדרשת התחברות לענן'){const e
 
 async function authPassword(email,password){const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({email,password})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error_description||j.msg||j.message||'התחברות נכשלה');j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);saveSession(j);localStorage.setItem(CLOUD_EMAIL_KEY,email);return j}
 
-async function refreshSession(){const s=loadSession();if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));if(!r.ok){saveSession(null);throw cloudAuthRequired('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);saveSession(j);return j}
+async function refreshSession({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const s=loadSession();if(!s?.refresh_token)throw cloudAuthRequired('נדרשת התחברות מחדש לענן');if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>=Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));if(!r.ok){saveSession(null);throw cloudAuthRequired('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);saveSession(j);return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-orders-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
 
-async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession();return s}
+async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession({force:false,observedAccessToken:s.access_token});return s}
 
-async function supaFetch(path,opt={}){const {networkRetry,networkTimeoutMs,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),retry=networkRetry===undefined?(method==='GET'||method==='HEAD'):!!networkRetry;const request=async()=>{let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs});if(r.status===401){s=await refreshSession();r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs:networkTimeoutMs})}return r};return withSupaDataApiSlot(path,request)}
+async function supaFetch(path,opt={}){const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);const request=async()=>{let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs});if(r.status===401){const observed=s.access_token;s=await refreshSession({force:true,observedAccessToken:observed});r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs})}return r};return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})}
 
 function cloudEnabled(){return localStorage.getItem(CLOUD_AUTO_KEY)==='1'&&!!loadSession()}
 

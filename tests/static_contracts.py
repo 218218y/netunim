@@ -106,9 +106,9 @@ ok("shared_checks_documents" in ks and "save_shared_checks_document" in ks,
 ok("shared_checks_documents" in os and "save_shared_checks_document" in os,
    "orders: shared checks endpoint configured")
 ok("ensureSharedChecksForNewCloud" in ks, "kupa: explicit greenfield shared-checks onboarding exists")
-ok("sharedChecksBootstrapActive&&!l.length&&r.length>0&&b.length>0&&jsonEq(b,r)" in ks and "repairEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
+ok("checksSession.sharedChecksBootstrapActive&&!l.length&&r.length>0&&b.length>0&&jsonEq(b,r)" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
    "kupa: shared bootstrap protection is state-based, not stale-marker based")
-ok("אין ליצור אותו אוטומטית" in ks and "אין ליצור אותו אוטומטית" in os,
+ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
    "clients: missing shared store fails safe outside greenfield setup")
 ok("Array.isArray(d.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
 ok("!Array.isArray(d)" in os, "orders: cloud state rejects arrays")
@@ -354,20 +354,29 @@ ok("SUPA_NETWORK_ATTEMPTS=3" in orders_cloud_auth and "fetchSupaNetwork" in orde
    "Orders cloud transport: transient Supabase reads and same-token lease RPCs retry with bounded network timeouts; arbitrary writes are not globally retried")
 for label,auth in (("Kupa",kupa_cloud_auth),("Orders",orders_cloud_auth)):
     ok("SUPA_DATA_API_BACKOFF_MS=[15_000,30_000,60_000,120_000]" in auth
-       and "supaDataApiQueue=Promise.resolve()" in auth
+       and "createDataApiScheduler" in auth
+       and "maxHighBurst:4" in auth
        and "SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504])" in auth
        and "withSupaDataApiSlot" in auth
+       and "SUPA_BACKGROUND_TIMEOUT_MS=8*1000" in auth
        and "SUPABASE_DATA_API_BACKOFF" in auth,
-       f"{label} Data API resilience: one local request lane and exponential circuit breaker protect PostgREST from retry storms")
+       f"{label} Data API resilience: one priority lane and exponential circuit breaker protect PostgREST from retry storms")
 orders_ui_cloud=(O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 kupa_ui_cloud=(K / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
     ok("CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000]" in ui_cloud
        and "scheduleCloudRecovery" in ui_cloud and "cloudRecoveryTimer" in ui_cloud,
        f"{label} cloud startup: transient Data API failure schedules bounded automatic recovery instead of requiring a reload")
-ok(kupa_sync_document.count("if(saveBusy(res)){await contentionBackoff(attempt);continue}")>=2
+kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
+kupa_cloud_policy=(K / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
+ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
+   and kupa_sync_checks.count("runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks")>=2
+   and "runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync" in kupa_transport
+   and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy
+   and "if(normalizeCloudError(result).kind!=='busy')return result" in kupa_cloud_policy
+   and "if(saveBusy(res))throw new Error('save_busy')" in kupa_sync_document
    and "if(!revisionConflict(res))throw new Error(em)" in kupa_sync_document,
-   "Kupa cloud writes: save_busy retries are bounded and do not trigger revision reads/merges")
+   "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts trigger revision reads/merges")
 
 # 4. SQL and migration contracts.
 sqls = {

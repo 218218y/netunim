@@ -1,15 +1,14 @@
 import {assertValidCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
+import {CLOUD_WRITE_POLICY,contentionDelay,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 const FINANCE_DOC='main';
 const FINANCE_TABLE='finance_sync_documents';
 const FINANCE_RPC='save_finance_sync_document';
 const FINANCE_LEASE_TTL_SECONDS=20*60;
 
-function rpcSaveBusy(res){return !res?.r?.ok&&(Number(res?.r?.status)===429||String(res?.j?.message||res?.body||'').includes('save_busy'))}
-function rpcRevisionConflict(res){return !res?.r?.ok&&String(res?.j?.message||res?.body||'').includes('revision_conflict')}
-function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,300*Math.pow(2,Math.max(0,attempt))+Math.floor(Math.random()*200)))}
+function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest}){
@@ -46,7 +45,7 @@ async function readSupabaseDocument(){
 }
 async function rpcSaveFinanceSync(state,expectedRevision){
   const expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');
-  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}`,{method:'POST',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state})});
+  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
 function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
@@ -66,25 +65,25 @@ async function releaseFinanceSyncLease(leaseName,leaseToken){
   const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true;
 }
 async function saveFinancePatch(mutator){
-  for(let attempt=0;attempt<3;attempt++){
-    const row=await readFinanceSyncDocument(),base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{};
-    const next=mutator(base);if(!next)return {saved:false,row};
-    const res=await rpcSaveFinanceSync(next,Number(row?.revision||0));
-    if(res.r.ok)return {saved:true,row:res.row};
-    if(rpcSaveBusy(res)||rpcRevisionConflict(res)){await contentionBackoff(attempt);continue}
-    throw new Error(res.j?.message||res.body||'שמירת הסינכרון הפיננסי נכשלה');
+  let row=await readFinanceSyncDocument();
+  for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
+    const base=row?.state&&typeof row.state==='object'?structuredClone(row.state):{},next=mutator(base);if(!next)return {saved:false,row};
+    const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(next,Number(row?.revision||0)));
+    if(res?.r?.ok)return {saved:true,row:res.row};
+    const error=normalizeCloudError(res);if(error.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument();continue}
+    throw new Error(res?.j?.message||res?.body||'שמירת הסינכרון הפיננסי נכשלה');
   }
   throw new Error('נתוני הסינכרון הפיננסי השתנו במקביל; לא נדרס שום נתון');
 }
 async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq){
   const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
   const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
-  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot',{method:'POST',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq})});
+  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
 }
 async function mergeBankTransactions(accountKey,accountRole,transactions){
   const occurrences=new Map(),payload=(Array.isArray(transactions)?transactions:[]).map(tx=>{const day=String(tx.date||'').slice(0,10),serial=String(tx.bankSerial||''),reference=String(tx.bankReference||''),signature=`${day}|${String(tx.processedDate||'').slice(0,10)}|${tx.amount}|${tx.description||''}|${tx.memo||''}|${JSON.stringify(tx.checkDetails||null)}`,occ=(occurrences.get(signature)||0)+1;occurrences.set(signature,occ);const stableKey=serial&&serial!=='0'&&day?`serial:${day}:${serial}:${tx.amount}`:reference&&day?`ref:${day}:${reference}:${tx.amount}:${tx.description||''}:${tx.memo||''}`:`fallback:${signature}:${occ}`;return {...tx,mergeKey:String(tx.mergeKey||stableKey)}});
-  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions',{method:'POST',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload})});
+  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
 }
 async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000}={}){
@@ -106,6 +105,6 @@ async function readSharedChecksDocument(){
   return row
 }
 async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
-async function rpcSaveSharedChecks(checks,expectedRevision){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');const r=await supaRest(`/rest/v1/rpc/${SHARED_CHECKS_RPC}`,{method:'POST',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
+async function rpcSaveSharedChecks(checks,expectedRevision){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0);if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');const r=await supaRest(`/rest/v1/rpc/${SHARED_CHECKS_RPC}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
 return {readSupabaseDocument,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions};
 }

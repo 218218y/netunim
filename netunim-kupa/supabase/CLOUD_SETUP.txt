@@ -49,3 +49,11 @@
 - קובץ הלקוח הפעיל הוא netunim-kupa/site/supabase/config.js ומכיל Project URL + Publishable Key בלבד. אין לשים service_role/secret בדפדפן.
 - RLS מגביל את המשתמש למסמכים שלו.
 - לפריסה ציבורית מעלים רק את תיקיית site/.
+
+שדרוג Cloud Sync v3 (לא באמצעות setup.sql על מערכת קיימת)
+--------------------------------------------------------
+1. גבה את מסמכי הענן והר revisions ובצע את השינוי תחילה ב-staging.
+2. ודא ש-core_rpc_contention_hardening_upgrade.sql כבר הוחל.
+3. הרץ migration יחיד: netunim-kupa/supabase/cloud_sync_lossless_v3_upgrade.sql.
+4. הרץ את בדיקות החוזה server-side ואת benchmark ה-staging לפני בחירת statement_timeout.
+5. רק לאחר שה-SQL עבר, פרוס את לקוחות Orders ו-Kupa יחד והריץ tools/sync-assets.py --check.

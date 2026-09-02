@@ -69,7 +69,7 @@ ok('Object.freeze' in config and 'backendPath' in config and 'clientSecret' not 
 ok('auth/calendar.events' not in config and 'auth/calendar.calendarlist.readonly' not in config,'calendar config: Google scopes moved out of the public browser OAuth configuration')
 ok('localStorage' not in auth and 'indexedDB' not in auth and 'accessToken' in auth and 'refresh_token' not in auth,'calendar auth: browser keeps only the short-lived Google access token in memory')
 ok('beginConnect' in auth and 'restore' in auth and "action:'token'" not in auth,'calendar auth: browser uses the server OAuth bridge instead of Google popup APIs')
-ok('function ready()' in auth and "backend('token')" in auth and "backend('start'" in auth,'calendar auth: startup refresh and interactive linking are separate server actions')
+ok('function ready()' in auth and "backend('token'" in auth and "backend('start'" in auth,'calendar auth: startup refresh and interactive linking are separate server actions')
 ok('async function prepare()' in auth and 'calendarAuth.prepare()' in controller and 'accounts.google.com/gsi/client' not in auth,'calendar auth: no Google Identity script or popup preload remains in the browser')
 ok('initTokenClient' not in auth and 'requestAccessToken' not in auth and 'beginConnect' in auth,'calendar auth: popup-only Google token model is fully removed')
 ok('calendarUi:{' in contexts and "viewMode:'week'" in contexts and "focusDate:''" in contexts and 'calendarSession:{' in contexts and 'eventMap:new Map()' in contexts and 'syncPromise:null' in contexts and 'pollTimer:null' in contexts and 'authResumePromise:null' in contexts,'calendar composition: view/focus plus UI/session state are initialized before the controller starts')
@@ -78,7 +78,9 @@ controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',c
 registered_actions=set(re.findall(r"'(calendar-[^']+)'\s*:\s*\(",(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')))
 ok(bool(controller_actions) and controller_actions <= registered_actions,'calendar actions: every calendar button/change action rendered by the controller is registered in delegated UI actions')
 ok('calendarAuthAction' in main and "'calendar-auth':" in (SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8'),'calendar auth action: composition-root adapter is reachable from the delegated action registry')
-ok('domainsCalendarController.start();' in main and 'export const appReady=lifecycle.boot();' in main and main.index('domainsCalendarController.start();') < main.index('export const appReady=lifecycle.boot();'),'calendar startup contract: controller start precedes lifecycle boot and therefore must be safe with initialized context')
+ok('export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true})' in main
+   and "!tab.primaryTab&&ui.currentView!=='calendar'" in controller,
+   'calendar startup contract: remembered reconnect starts only after primary-tab election, while an explicitly opened Calendar may still connect')
 ok('accountVerified=false' in auth and 'accountVerified=true' in controller and 'אימות חשבון Google' in controller,'calendar account guard: mutations cannot race a newly connected, not-yet-verified Google account')
 ok('connectionPreference' in storage and 'saveConnectionPreference' in storage and 'orders.google-calendar.connection.v1' in storage,'calendar reconnect preference: only non-secret account/intent metadata is persisted across browser restarts')
 ok('resumeKnownConnectionSilently' in controller and 'calendarAuth.restore()' in controller and 'resumeKnownConnectionFromGesture' not in controller and "prompt:'none'" not in controller and 'expected!==accountId' in controller,'calendar reconnect: startup refreshes through the server with no popup or gesture fallback and still rejects account mismatch')

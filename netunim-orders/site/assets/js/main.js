@@ -91,12 +91,18 @@ const stateNormalization=createStateNormalization({
 const storageBrowser=createStorageBrowser({
   model,
   files,
+  session,
   prepareState:(...args)=>stateSelectors.prepareState(...args),
+  prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
 const storageChecks=createStorageChecks({
   checksSession,
+  model,
+  idbPut:(...args)=>storageBrowser.idbSyncPut(...args),
+  idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
+  idbDelete:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
 
 const cloudAuth=createCloudAuth({
@@ -263,6 +269,7 @@ const syncChecksPersistence=createSyncChecksPersistence({
   checksSession,
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
+  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
   toast:(...args)=>uiStatus.toast(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
@@ -510,6 +517,7 @@ const uiBackup=createUiBackup({
   modal:(...args)=>uiModal.modal(...args),
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
+  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
   persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
   markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
@@ -648,6 +656,7 @@ const syncDocument=createSyncDocument({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
+  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
   clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
   toast:(...args)=>uiStatus.toast(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
@@ -706,6 +715,7 @@ const uiCloud=createUiCloud({
 
 const domainsCalendarController=createDomainsCalendarController({
   ui,
+  tab,
   calendarUi,
   calendarSession,
   calendarStorage,
@@ -752,7 +762,9 @@ const lifecycle=createLifecycle({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
+  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
   loadCloudPendingState:(...args)=>storageBrowser.loadCloudPendingState(...args),
+  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
   checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
@@ -982,5 +994,4 @@ document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.r
 uiEvents.bindActionEvents(document.getElementById('main'),uiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
-domainsCalendarController.start();
-export const appReady=lifecycle.boot();
+export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true});

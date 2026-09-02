@@ -35,6 +35,8 @@ const REDIRECT_URI=`${SUPABASE_URL}/functions/v1/google-calendar-oauth/callback`
 const admin=createClient(SUPABASE_URL,SECRET_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
 
 function json(body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:{...corsHeaders,'Content-Type':'application/json','Cache-Control':'no-store'}})}
+function dataApiUnavailable(error:any){const status=Number(error?.status||error?.context?.status||0),code=String(error?.code||'').toUpperCase(),message=String(error?.message||'').toUpperCase();return [502,503,504].includes(status)||['PGRST002','PGRST003'].includes(code)||message.includes('PGRST002')||message.includes('PGRST003')}
+function adminError(error:any,fallbackCode:string){if(dataApiUnavailable(error))return json({code:'calendar_data_api_unavailable',message:'Calendar storage is temporarily unavailable'},503);return json({code:fallbackCode,message:String(error?.message||error||fallbackCode)},500)}
 function randomState(){const bytes=crypto.getRandomValues(new Uint8Array(32));return Array.from(bytes,value=>value.toString(16).padStart(2,'0')).join('')}
 async function sha256(value:string){const bytes=new TextEncoder().encode(value);const digest=await crypto.subtle.digest('SHA-256',bytes);return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
 function appendOAuthResult(returnUrl:string,status:string,code=''){const url=new URL(returnUrl);url.searchParams.set('calendar_oauth',status);if(code)url.searchParams.set('calendar_oauth_code',code);else url.searchParams.delete('calendar_oauth_code');return url.toString()}
@@ -50,9 +52,10 @@ async function start(req:Request,userId:string,body:any){
   let returnUrl='';
   try{returnUrl=safeReturnUrl(body?.return_url,origin)}catch{return json({code:'calendar_invalid_return_url',message:'כתובת החזרה של Google Calendar אינה תקינה'},400)}
   const state=randomState(),stateHash=await sha256(state),expiresAt=new Date(Date.now()+STATE_TTL_MS).toISOString();
-  await admin.from('google_calendar_oauth_states').delete().lt('expires_at',new Date().toISOString());
+  const {error:cleanupError}=await admin.from('google_calendar_oauth_states').delete().lt('expires_at',new Date().toISOString());
+  if(cleanupError&&dataApiUnavailable(cleanupError))return adminError(cleanupError,'calendar_state_cleanup_failed');
   const {error}=await admin.from('google_calendar_oauth_states').insert({state_hash:stateHash,owner_id:userId,return_url:returnUrl,expires_at:expiresAt});
-  if(error)return json({code:'calendar_state_store_failed',message:error.message},500);
+  if(error)return adminError(error,'calendar_state_store_failed');
   const url=new URL(GOOGLE_AUTH_URL);
   url.searchParams.set('client_id',CLIENT_ID);
   url.searchParams.set('redirect_uri',REDIRECT_URI);
@@ -68,7 +71,7 @@ async function start(req:Request,userId:string,body:any){
 async function token(userId:string){
   if(!GOOGLE_CLIENT_SECRET)return json({code:'calendar_backend_not_configured',message:'GOOGLE_CALENDAR_CLIENT_SECRET חסר ב-Supabase Edge Function'},503);
   const {data:connection,error}=await admin.from('google_calendar_connections').select('google_account_id,refresh_token').eq('owner_id',userId).maybeSingle();
-  if(error)return json({code:'calendar_connection_read_failed',message:error.message},500);
+  if(error)return adminError(error,'calendar_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'calendar_not_connected'},404);
   try{
     const refreshed=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
@@ -86,10 +89,11 @@ async function token(userId:string){
 }
 
 async function disconnect(userId:string){
-  const {data:connection}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',userId).maybeSingle();
+  const {data:connection,error:readError}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',userId).maybeSingle();
+  if(readError)return adminError(readError,'calendar_connection_read_failed');
   if(connection?.refresh_token)await revokeGoogleToken(String(connection.refresh_token));
   const {error}=await admin.from('google_calendar_connections').delete().eq('owner_id',userId);
-  if(error)return json({code:'calendar_disconnect_failed',message:error.message},500);
+  if(error)return adminError(error,'calendar_disconnect_failed');
   return json({ok:true});
 }
 
@@ -97,8 +101,10 @@ async function callback(url:URL){
   const state=String(url.searchParams.get('state')||''),stateHash=state?await sha256(state):'';
   if(!stateHash)return new Response('Invalid OAuth state',{status:400});
   const {data:stateRow,error:stateError}=await admin.from('google_calendar_oauth_states').select('owner_id,return_url,expires_at').eq('state_hash',stateHash).maybeSingle();
-  if(stateError||!stateRow)return new Response('Invalid or expired OAuth state',{status:400});
-  await admin.from('google_calendar_oauth_states').delete().eq('state_hash',stateHash);
+  if(stateError){if(dataApiUnavailable(stateError))return json({code:'calendar_data_api_unavailable',message:'Calendar storage is temporarily unavailable'},503);return new Response('Invalid or expired OAuth state',{status:400})}
+  if(!stateRow)return new Response('Invalid or expired OAuth state',{status:400});
+  const {error:consumeError}=await admin.from('google_calendar_oauth_states').delete().eq('state_hash',stateHash);
+  if(consumeError)return adminError(consumeError,'calendar_state_consume_failed');
   const returnUrl=String(stateRow.return_url||'');
   if(new Date(String(stateRow.expires_at||0)).getTime()<Date.now())return Response.redirect(appendOAuthResult(returnUrl,'error','state_expired'),303);
   const oauthError=String(url.searchParams.get('error')||'');
@@ -111,9 +117,10 @@ async function callback(url:URL){
     const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim();
     if(!refreshToken||!accessToken)throw new Error('Google did not return the required offline credentials');
     const accountId=await googleAccountId(accessToken);
-    const {data:previous}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',stateRow.owner_id).maybeSingle();
+    const {data:previous,error:previousError}=await admin.from('google_calendar_connections').select('refresh_token').eq('owner_id',stateRow.owner_id).maybeSingle();
+    if(previousError)return adminError(previousError,'calendar_connection_read_failed');
     const {error:upsertError}=await admin.from('google_calendar_connections').upsert({owner_id:stateRow.owner_id,google_account_id:accountId,refresh_token:refreshToken,scope:String(exchanged?.scope||SCOPES),updated_at:new Date().toISOString()},{onConflict:'owner_id'});
-    if(upsertError)throw new Error(upsertError.message);
+    if(upsertError){if(dataApiUnavailable(upsertError))return json({code:'calendar_data_api_unavailable',message:'Calendar storage is temporarily unavailable'},503);throw new Error(upsertError.message)}
     if(previous?.refresh_token&&previous.refresh_token!==refreshToken)await revokeGoogleToken(String(previous.refresh_token));
     return Response.redirect(appendOAuthResult(returnUrl,'connected'),303);
   }catch(error){
