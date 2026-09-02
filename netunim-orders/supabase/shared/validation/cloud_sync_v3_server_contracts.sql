@@ -11,76 +11,74 @@ select set_config('request.jwt.claim.sub', :'owner_id', true);
 select set_config('request.jwt.claims', jsonb_build_object('sub', :'owner_id', 'role', 'authenticated')::text, true);
 
 do $orders$
-declare v_revision bigint; v_written bigint; v_replayed bigint; v_state jsonb; v_probe jsonb;
+declare v_revision bigint;v_state jsonb;v_probe jsonb;v_remote jsonb;v_operation text:=gen_random_uuid()::text;v_first record;v_replay record;v_remote_revision bigint;
 begin
   select revision,state into v_revision,v_state from public.order_management_documents where owner_id=auth.uid() and document_name='suppliers';
   if v_state is null then raise exception 'orders_test_document_missing'; end if;
   v_probe:=jsonb_set(v_state,'{_syncV3Probe}',to_jsonb(gen_random_uuid()::text),true);
-  select revision into v_written from public.save_order_management_document('suppliers',v_revision,v_probe);
-  select revision into v_replayed from public.save_order_management_document('suppliers',v_revision,v_probe);
-  if v_replayed<>v_written then raise exception 'orders_lost_ack_replay_bumped_revision'; end if;
-  begin
-    perform public.save_order_management_document('suppliers',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true));
-    raise exception 'orders_expected_conflict_missing';
-  exception when sqlstate 'PT409' then null; end;
-  raise notice 'PASS orders replay revision=%',v_written;
+  select * into v_first from public.save_order_management_document_v3('suppliers',v_revision,v_probe,v_operation);
+  v_remote:=jsonb_set(v_probe,'{_syncV3Remote}',to_jsonb(gen_random_uuid()::text),true);
+  select revision into v_remote_revision from public.save_order_management_document('suppliers',v_first.revision,v_remote);
+  select * into v_replay from public.save_order_management_document_v3('suppliers',v_revision,v_probe,v_operation);
+  if not v_replay.operation_replayed or v_replay.operation_revision<>v_first.revision or v_replay.revision<>v_remote_revision or v_replay.state<>v_remote then
+    raise exception 'orders_intervening_write_replay_failed';
+  end if;
+  begin perform public.save_order_management_document_v3('suppliers',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true),v_operation);raise exception 'orders_idempotency_reuse_missing';exception when sqlstate 'PT422' then null;end;
+  begin perform public.save_order_management_document_v3('suppliers',v_revision,v_probe,gen_random_uuid()::text);raise exception 'orders_expected_conflict_missing';exception when sqlstate 'PT409' then null;end;
+  raise notice 'PASS orders operation replay applied=% current=%',v_first.revision,v_replay.revision;
 end
 $orders$;
 
 do $kupa$
-declare v_revision bigint; v_written bigint; v_replayed bigint; v_state jsonb; v_probe jsonb;
+declare v_revision bigint;v_state jsonb;v_probe jsonb;v_remote jsonb;v_operation text:=gen_random_uuid()::text;v_first record;v_replay record;v_remote_revision bigint;
 begin
   select revision,state into v_revision,v_state from public.kupa_documents where owner_id=auth.uid() and document_name='main';
   if v_state is null then raise exception 'kupa_test_document_missing'; end if;
   v_probe:=jsonb_set(v_state,'{_syncV3Probe}',to_jsonb(gen_random_uuid()::text),true);
-  select revision into v_written from public.save_kupa_document('main',v_revision,v_probe);
-  select revision into v_replayed from public.save_kupa_document('main',v_revision,v_probe);
-  if v_replayed<>v_written then raise exception 'kupa_lost_ack_replay_bumped_revision'; end if;
-  begin
-    perform public.save_kupa_document('main',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true));
-    raise exception 'kupa_expected_conflict_missing';
-  exception when sqlstate 'PT409' then null; end;
-  raise notice 'PASS kupa replay revision=%',v_written;
+  select * into v_first from public.save_kupa_document_v3('main',v_revision,v_probe,v_operation);
+  v_remote:=jsonb_set(v_probe,'{_syncV3Remote}',to_jsonb(gen_random_uuid()::text),true);
+  select revision into v_remote_revision from public.save_kupa_document('main',v_first.revision,v_remote);
+  select * into v_replay from public.save_kupa_document_v3('main',v_revision,v_probe,v_operation);
+  if not v_replay.operation_replayed or v_replay.operation_revision<>v_first.revision or v_replay.revision<>v_remote_revision or v_replay.state<>v_remote then raise exception 'kupa_intervening_write_replay_failed'; end if;
+  begin perform public.save_kupa_document_v3('main',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true),v_operation);raise exception 'kupa_idempotency_reuse_missing';exception when sqlstate 'PT422' then null;end;
+  begin perform public.save_kupa_document_v3('main',v_revision,v_probe,gen_random_uuid()::text);raise exception 'kupa_expected_conflict_missing';exception when sqlstate 'PT409' then null;end;
+  raise notice 'PASS kupa operation replay applied=% current=%',v_first.revision,v_replay.revision;
 end
 $kupa$;
 
 do $checks$
-declare v_revision bigint; v_written bigint; v_replayed bigint; v_state jsonb; v_probe jsonb;
+declare v_revision bigint;v_state jsonb;v_probe jsonb;v_remote jsonb;v_operation text:=gen_random_uuid()::text;v_first record;v_replay record;v_remote_revision bigint;
 begin
   select revision,state into v_revision,v_state from public.shared_checks_documents where owner_id=auth.uid() and document_name='main';
   if v_state is null then raise exception 'shared_checks_test_document_missing'; end if;
   if jsonb_array_length(v_state->'checks')=0 then
-    v_probe:=jsonb_set(v_state,'{checks}',jsonb_build_array(jsonb_build_object(
-      'id','sync-v3-contract-check','amount',0,'dueDate','2026-01-01','status','בקופה','_syncV3Probe',gen_random_uuid()::text
-    )),true);
-  else
-    v_probe:=jsonb_set(v_state,'{checks,0,_syncV3Probe}',to_jsonb(gen_random_uuid()::text),true);
-  end if;
-  select revision into v_written from public.save_shared_checks_document('main',v_revision,v_probe);
-  select revision into v_replayed from public.save_shared_checks_document('main',v_revision,v_probe);
-  if v_replayed<>v_written then raise exception 'checks_lost_ack_replay_bumped_revision'; end if;
-  begin
-    perform public.save_shared_checks_document('main',v_revision,jsonb_set(v_probe,'{checks,0,_syncV3Probe}',to_jsonb('different'::text),true));
-    raise exception 'checks_expected_conflict_missing';
-  exception when sqlstate 'PT409' then null; end;
-  raise notice 'PASS checks replay revision=%',v_replayed;
+    v_probe:=jsonb_set(v_state,'{checks}',jsonb_build_array(jsonb_build_object('id','sync-v3-contract-check','amount',0,'dueDate','2026-01-01','status','בקופה','_syncV3Probe',gen_random_uuid()::text)),true);
+  else v_probe:=jsonb_set(v_state,'{checks,0,_syncV3Probe}',to_jsonb(gen_random_uuid()::text),true);end if;
+  select * into v_first from public.save_shared_checks_document_v3('main',v_revision,v_probe,v_operation);
+  v_remote:=jsonb_set(v_probe,'{checks,0,_syncV3Remote}',to_jsonb(gen_random_uuid()::text),true);
+  select revision into v_remote_revision from public.save_shared_checks_document('main',v_first.revision,v_remote);
+  select * into v_replay from public.save_shared_checks_document_v3('main',v_revision,v_probe,v_operation);
+  if not v_replay.operation_replayed or v_replay.operation_revision<>v_first.revision or v_replay.revision<>v_remote_revision or v_replay.state<>v_remote then raise exception 'checks_intervening_write_replay_failed'; end if;
+  begin perform public.save_shared_checks_document_v3('main',v_revision,jsonb_set(v_probe,'{checks,0,_syncV3Probe}',to_jsonb('different'::text),true),v_operation);raise exception 'checks_idempotency_reuse_missing';exception when sqlstate 'PT422' then null;end;
+  begin perform public.save_shared_checks_document_v3('main',v_revision,v_probe,gen_random_uuid()::text);raise exception 'checks_expected_conflict_missing';exception when sqlstate 'PT409' then null;end;
+  raise notice 'PASS checks operation replay applied=% current=%',v_first.revision,v_replay.revision;
 end
 $checks$;
 
 do $finance$
-declare v_revision bigint; v_written bigint; v_replayed bigint; v_state jsonb; v_probe jsonb;
+declare v_revision bigint;v_state jsonb;v_probe jsonb;v_remote jsonb;v_operation text:=gen_random_uuid()::text;v_first record;v_replay record;v_remote_revision bigint;
 begin
   select revision,state into v_revision,v_state from public.finance_sync_documents where owner_id=auth.uid() and document_name='main';
   if v_state is null then raise exception 'finance_test_document_missing'; end if;
   v_probe:=jsonb_set(v_state,'{_syncV3Probe}',to_jsonb(gen_random_uuid()::text),true);
-  select revision into v_written from public.save_finance_sync_document('main',v_revision,v_probe);
-  select revision into v_replayed from public.save_finance_sync_document('main',v_revision,v_probe);
-  if v_replayed<>v_written then raise exception 'finance_lost_ack_replay_bumped_revision'; end if;
-  begin
-    perform public.save_finance_sync_document('main',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true));
-    raise exception 'finance_expected_conflict_missing';
-  exception when sqlstate 'PT409' then null; end;
-  raise notice 'PASS finance replay revision=%',v_written;
+  select * into v_first from public.save_finance_sync_document_v3('main',v_revision,v_probe,v_operation);
+  v_remote:=jsonb_set(v_probe,'{_syncV3Remote}',to_jsonb(gen_random_uuid()::text),true);
+  select revision into v_remote_revision from public.save_finance_sync_document('main',v_first.revision,v_remote);
+  select * into v_replay from public.save_finance_sync_document_v3('main',v_revision,v_probe,v_operation);
+  if not v_replay.operation_replayed or v_replay.operation_revision<>v_first.revision or v_replay.revision<>v_remote_revision or v_replay.state<>v_remote then raise exception 'finance_intervening_write_replay_failed'; end if;
+  begin perform public.save_finance_sync_document_v3('main',v_revision,jsonb_set(v_probe,'{_syncV3Probe}',to_jsonb('different'::text),true),v_operation);raise exception 'finance_idempotency_reuse_missing';exception when sqlstate 'PT422' then null;end;
+  begin perform public.save_finance_sync_document_v3('main',v_revision,v_probe,gen_random_uuid()::text);raise exception 'finance_expected_conflict_missing';exception when sqlstate 'PT409' then null;end;
+  raise notice 'PASS finance operation replay applied=% current=%',v_first.revision,v_replay.revision;
 end
 $finance$;
 

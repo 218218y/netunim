@@ -10,24 +10,30 @@ const SUPA_DATA_API_BACKOFF_MS=[15_000,30_000,60_000,120_000];
 const SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504]);
 let supaDataApiFailureCount=0;
 let supaDataApiBlockedUntil=0;
+let supaDataApiBlockCode='';
 let refreshPromise=null;
 
 function isSupaDataApiPath(path){return /^\/rest\/v1(?:\/|\?|$)/.test(String(path||''))}
-function supaDataApiBackoffError(){const retryAfterMs=Math.max(0,supaDataApiBlockedUntil-Date.now()),e=new Error(`Supabase Data API במצב התאוששות. ניסיון נוסף יתבצע בעוד ${Math.max(1,Math.ceil(retryAfterMs/1000))} שניות.`);e.code='SUPABASE_DATA_API_BACKOFF';e.retryAfterMs=retryAfterMs;return e}
-function resetSupaDataApiBreaker(){supaDataApiFailureCount=0;supaDataApiBlockedUntil=0}
-function tripSupaDataApiBreaker(){const index=Math.min(supaDataApiFailureCount,SUPA_DATA_API_BACKOFF_MS.length-1),delay=SUPA_DATA_API_BACKOFF_MS[index];supaDataApiFailureCount=Math.min(supaDataApiFailureCount+1,SUPA_DATA_API_BACKOFF_MS.length);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);return delay}
+function responseRetryAfterMs(response){const raw=String(response?.headers?.get?.('retry-after')||'').trim();if(!raw)return 0;const seconds=Number(raw);if(Number.isFinite(seconds)&&seconds>=0)return Math.round(seconds*1000);const at=Date.parse(raw);return Number.isFinite(at)?Math.max(0,at-Date.now()):0}
+function supaDataApiBlockedError(){const retryAfterMs=Math.max(0,supaDataApiBlockedUntil-Date.now()),rateLimited=supaDataApiBlockCode==='SUPABASE_DATA_API_RATE_LIMIT',e=new Error(rateLimited?`Supabase ביקש להאט בקשות. ניסיון נוסף יתבצע בעוד ${Math.max(1,Math.ceil(retryAfterMs/1000))} שניות.`:`Supabase Data API במצב התאוששות. ניסיון נוסף יתבצע בעוד ${Math.max(1,Math.ceil(retryAfterMs/1000))} שניות.`);e.code=rateLimited?'SUPABASE_DATA_API_RATE_LIMIT':'SUPABASE_DATA_API_BACKOFF';e.retryAfterMs=retryAfterMs;return e}
+function resetSupaDataApiBreaker(){supaDataApiFailureCount=0;supaDataApiBlockedUntil=0;supaDataApiBlockCode=''}
+function tripSupaDataApiBreaker(){const index=Math.min(supaDataApiFailureCount,SUPA_DATA_API_BACKOFF_MS.length-1),delay=SUPA_DATA_API_BACKOFF_MS[index];supaDataApiFailureCount=Math.min(supaDataApiFailureCount+1,SUPA_DATA_API_BACKOFF_MS.length);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);supaDataApiBlockCode='SUPABASE_DATA_API_BACKOFF';return delay}
+function tripSupaDataApiRateLimit(response){const delay=Math.max(1_000,responseRetryAfterMs(response)||SUPA_DATA_API_BACKOFF_MS[0]);supaDataApiBlockedUntil=Math.max(supaDataApiBlockedUntil,Date.now()+delay);supaDataApiBlockCode='SUPABASE_DATA_API_RATE_LIMIT';return delay}
 function isSupaDataApiTransportFailure(error){return ['SUPABASE_NETWORK_TIMEOUT','SUPABASE_NETWORK_UNAVAILABLE'].includes(String(error?.code||''))}
+async function responseIsAppBusy(response){if(Number(response?.status)!==429)return false;try{const body=await response.clone().json();return String(body?.code||'')==='PT429'||String(body?.message||'').toLowerCase().includes('save_busy')}catch{return false}}
 const supaDataApiScheduler=createDataApiScheduler({maxHighBurst:4,canRun:()=>Date.now()>=supaDataApiBlockedUntil});
 async function withSupaDataApiSlot(path,request,{priority='low',coalesceKey=''}={}){
   if(!isSupaDataApiPath(path))return request();
   const scheduled=supaDataApiScheduler.schedule(async()=>{
-    if(Date.now()<supaDataApiBlockedUntil)throw supaDataApiBackoffError();
+    if(Date.now()<supaDataApiBlockedUntil)throw supaDataApiBlockedError();
     try{
-      const response=await request();
-      if(SUPA_DATA_API_RETRY_STATUSES.has(Number(response?.status)))tripSupaDataApiBreaker();else resetSupaDataApiBreaker();
+      const response=await request(),status=Number(response?.status);
+      if(SUPA_DATA_API_RETRY_STATUSES.has(status))tripSupaDataApiBreaker();
+      else if(status===429){if(await responseIsAppBusy(response))resetSupaDataApiBreaker();else tripSupaDataApiRateLimit(response)}
+      else resetSupaDataApiBreaker();
       return response;
     }catch(error){if(isSupaDataApiTransportFailure(error))tripSupaDataApiBreaker();throw error}
-  },{priority,key:coalesceKey,blockedError:supaDataApiBackoffError});
+  },{priority,key:coalesceKey,blockedError:supaDataApiBlockedError});
   return scheduled.then(response=>typeof response?.clone==='function'?response.clone():response);
 }
 

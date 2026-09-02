@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-03b6370ea8c6';
+const CACHE='orders-app-shell-esm-566a519d9593';
 const SHELL=[
   './',
   './index.html',

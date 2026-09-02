@@ -95,11 +95,11 @@ test('Orders rebase and empty fields follow the record conflict contract',()=>{
 test('shared check transport validates revisions and preserves RPC request contract',async()=>{
  const calls=[];
  const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
- assert.equal((await api.rpcSaveSharedChecks([check],7)).row.revision,8);
- assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document');
- assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_document_name','p_expected_revision','p_state']);
- assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_state.version,1);
- await assert.rejects(api.rpcSaveSharedChecks([check],-1));
+ assert.equal((await api.rpcSaveSharedChecks([check],7,'test:checks:1')).row.revision,8);
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v3');
+ assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_document_name','p_expected_revision','p_operation_id','p_state']);
+ assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_operation_id,'test:checks:1');assert.equal(calls[0][1].p_state.version,1);
+ await assert.rejects(api.rpcSaveSharedChecks([check],-1,'test:checks:2'));
  assert.equal(calls.length,1);
 });
 

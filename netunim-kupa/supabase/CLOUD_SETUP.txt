@@ -55,5 +55,6 @@
 1. גבה את מסמכי הענן והר revisions ובצע את השינוי תחילה ב-staging.
 2. ודא ש-core_rpc_contention_hardening_upgrade.sql כבר הוחל.
 3. הרץ migration יחיד: netunim-kupa/supabase/cloud_sync_lossless_v3_upgrade.sql.
+   ה-migration מוסיף RPCs ייחודיים save_*_v3 ו-operation ledgers; יש להחילו לפני פריסת לקוחות v3. ה-RPCs הישנים נשארים זמינים בזמן המעבר.
 4. הרץ את בדיקות החוזה server-side ואת benchmark ה-staging לפני בחירת statement_timeout.
 5. רק לאחר שה-SQL עבר, פרוס את לקוחות Orders ו-Kupa יחד והריץ tools/sync-assets.py --check.

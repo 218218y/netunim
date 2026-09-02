@@ -78,6 +78,17 @@ export function compareOutboxFreshness(a,b){
 
 function errorMessage(input){return String(input?.j?.message||input?.message||input?.body||input?.txt||input?.original?.message||'')}
 
+function retryAfterMilliseconds(response,input){
+  const explicit=Number(input?.retryAfterMs);
+  if(Number.isFinite(explicit)&&explicit>0)return explicit;
+  const raw=String(response?.headers?.get?.('retry-after')||'').trim();
+  if(!raw)return null;
+  const seconds=Number(raw);
+  if(Number.isFinite(seconds)&&seconds>=0)return Math.round(seconds*1000);
+  const at=Date.parse(raw);
+  return Number.isFinite(at)?Math.max(0,at-Date.now()):null;
+}
+
 export function normalizeCloudError(input){
   const response=input?.r||input?.response||input;
   const status=Number(response?.status||input?.status||0)||null;
@@ -85,14 +96,15 @@ export function normalizeCloudError(input){
   const message=errorMessage(input);
   const lower=message.toLowerCase();
   let kind='fatal';
-  if(status===429||code==='PT429'||lower.includes('save_busy'))kind='busy';
-  else if(status===409||code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
+  if(code==='PT429'||lower.includes('save_busy'))kind='busy';
+  else if(code==='PT409'||lower.includes('revision_conflict'))kind='revision_conflict';
+  else if(status===429||code==='SUPABASE_DATA_API_RATE_LIMIT')kind='rate_limited';
+  else if(status===409)kind='conflict';
   else if([502,503,504].includes(status)||['PGRST002','PGRST003','SUPABASE_DATA_API_BACKOFF'].includes(code))kind='service_unavailable';
   else if(status===401||status===403||code==='42501'||code==='cloud_auth_required')kind='auth';
   else if(code==='SUPABASE_NETWORK_TIMEOUT'||String(input?.name||'')==='AbortError'||lower.includes('timeout')||lower.includes('timed out'))kind='timeout';
   else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(input?.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
-  const retryAfterHeader=Number(response?.headers?.get?.('retry-after'));
-  const retryAfterMs=Number(input?.retryAfterMs)||(Number.isFinite(retryAfterHeader)&&retryAfterHeader>0?retryAfterHeader*1000:null);
+  const retryAfterMs=retryAfterMilliseconds(response,input);
   return {kind,code:code||null,status,retryAfterMs:retryAfterMs||null,original:input};
 }
 
@@ -113,7 +125,7 @@ export async function runBusyCloudWriteWithPolicy(write,{attempts=CLOUD_WRITE_PO
 export function createDataApiScheduler({maxHighBurst=4,canRun=()=>true}={}){
   const high=[],low=[],coalesced=new Map();let running=false,highBurst=0;
   function choose(){if(high.length&&(!low.length||highBurst<maxHighBurst)){highBurst++;return high.shift()}if(low.length){highBurst=0;return low.shift()}if(high.length){highBurst=1;return high.shift()}return null}
-  async function drain(){if(running)return;running=true;try{for(;;){const item=choose();if(!item)break;if(item.key)coalesced.delete(item.key);try{if(!canRun(item))throw item.blockedError();item.resolve(await item.task())}catch(error){item.reject(error)}}}finally{running=false;if(high.length||low.length)queueMicrotask(drain)}}
+  async function drain(){if(running)return;running=true;try{for(;;){const item=choose();if(!item)break;try{if(!canRun(item))throw item.blockedError();item.resolve(await item.task())}catch(error){item.reject(error)}}}finally{running=false;if(high.length||low.length)queueMicrotask(drain)}}
   function schedule(task,{priority='low',key='',blockedError=()=>new Error('scheduler_blocked')}={}){
     const normalizedPriority=priority==='high'?'high':'low',coalesceKey=normalizedPriority==='low'&&key?String(key):'';
     if(coalesceKey&&coalesced.has(coalesceKey))return coalesced.get(coalesceKey);

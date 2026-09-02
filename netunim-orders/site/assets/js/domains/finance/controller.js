@@ -6,7 +6,7 @@ import {normalizeBankFeed} from './bank-feed.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
-import {CLOUD_WRITE_POLICY,contentionDelay,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
 const BANK_BRIDGE_VERSION=25;
 const CREDIT_BRIDGE_VERSION=24;
@@ -53,12 +53,13 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function observedChecksSequence(kupa){const floor=Number(kupa?.bank?.snapshotSeq),start=Number.isSafeInteger(floor)&&floor>=0?floor:0;return normalizeSharedBankEvents(checksSession.checksBankEvents).reduce((max,event)=>Math.max(max,event.seq),start)}
 
   async function mutateKupaCloud(mutator){
+    const operationId=createOperationId('kupa-finance');
     let row=await readKupaReadOnlyCloud();
     for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
       if(!row?.state)throw new Error('מסמך הקופה בענן לא נמצא');
       const candidate=mutator(clone(row.state));
       if(!candidate){acceptKupaCloudRow(row,{renderIfChanged:true});return {saved:false,skipped:true,row}}
-      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveKupaDocument(prepareKupaWriteState(candidate),Number(row.revision||0)));
+      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveKupaDocument(prepareKupaWriteState(candidate),Number(row.revision||0),operationId));
       if(result.r.ok){const savedRow={revision:Number(result.row?.revision||Number(row.revision||0)+1),updated_at:result.row?.updated_at||row.updated_at,state:result.row?.state||candidate};await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:savedRow}}
       if(normalizeCloudError(result).kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readKupaReadOnlyCloud();continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הקופה המשותפים נכשלה');
@@ -79,11 +80,12 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
 
   async function mutateFinanceCloud(mutator){
     if(typeof readFinanceSyncDocument!=='function'||typeof rpcSaveFinanceSync!=='function')return mutateKupaCloud(kupa=>{const finance={bank:clone(kupa.bank||{}),creditSync:clone(kupa.creditSync||{})},next=mutator(finance);if(!next)return null;if(next.bank)kupa.bank=next.bank;if(next.creditSync)kupa.creditSync=next.creditSync;return kupa});
+    const operationId=createOperationId('finance');
     let row=await readFinanceSyncDocument();
     for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
       const base=row?.state&&typeof row.state==='object'?clone(row.state):{};
       const candidate=mutator(base);if(!candidate)return {saved:false,skipped:true,row};
-      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(candidate,Number(row?.revision||0)));
+      const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync(candidate,Number(row?.revision||0),operationId));
       if(result.r.ok){await refreshKupaReadout({force:true,renderIfChanged:true});return {saved:true,skipped:false,row:result.row}}
       if(normalizeCloudError(result).kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readFinanceSyncDocument();continue}
       throw new Error(result.j?.message||result.txt||'שמירת נתוני הסינכרון הפיננסי נכשלה');

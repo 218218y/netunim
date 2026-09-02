@@ -28,17 +28,17 @@ begin
   for i in 1..v_samples loop
     select revision,state into v_revision,v_state from public.order_management_documents where owner_id=auth.uid() and document_name='suppliers';
     v_started:=clock_timestamp();
-    select * into v_result from public.save_order_management_document('suppliers',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true));
+    select * into v_result from public.save_order_management_document_v3('suppliers',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true),'bench-orders-'||i::text);
     insert into sync_v3_latency values('save_order_management_document',extract(epoch from clock_timestamp()-v_started)*1000);
 
     select revision,state into v_revision,v_state from public.kupa_documents where owner_id=auth.uid() and document_name='main';
     v_started:=clock_timestamp();
-    select * into v_result from public.save_kupa_document('main',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true));
+    select * into v_result from public.save_kupa_document_v3('main',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true),'bench-kupa-'||i::text);
     insert into sync_v3_latency values('save_kupa_document',extract(epoch from clock_timestamp()-v_started)*1000);
 
     select revision,state into v_revision,v_state from public.finance_sync_documents where owner_id=auth.uid() and document_name='main';
     v_started:=clock_timestamp();
-    select * into v_result from public.save_finance_sync_document('main',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true));
+    select * into v_result from public.save_finance_sync_document_v3('main',v_revision,jsonb_set(v_state,'{_syncV3Benchmark}',to_jsonb(i),true),'bench-finance-'||i::text);
     insert into sync_v3_latency values('save_finance_sync_document',extract(epoch from clock_timestamp()-v_started)*1000);
 
     select revision,state into v_revision,v_state from public.shared_checks_documents where owner_id=auth.uid() and document_name='main';
@@ -50,7 +50,7 @@ begin
       v_state:=jsonb_set(v_state,'{checks,0,_syncV3Benchmark}',to_jsonb(i),true);
     end if;
     v_started:=clock_timestamp();
-    select * into v_result from public.save_shared_checks_document('main',v_revision,v_state);
+    select * into v_result from public.save_shared_checks_document_v3('main',v_revision,v_state,'bench-checks-'||i::text);
     insert into sync_v3_latency values('save_shared_checks_document',extract(epoch from clock_timestamp()-v_started)*1000);
 
     select f.state->'bank',greatest(0,coalesce((k.state#>>'{bank,snapshotSeq}')::bigint,0))

@@ -359,8 +359,12 @@ for label,auth in (("Kupa",kupa_cloud_auth),("Orders",orders_cloud_auth)):
        and "SUPA_DATA_API_RETRY_STATUSES=new Set([502,503,504])" in auth
        and "withSupaDataApiSlot" in auth
        and "SUPA_BACKGROUND_TIMEOUT_MS=8*1000" in auth
-       and "SUPABASE_DATA_API_BACKOFF" in auth,
-       f"{label} Data API resilience: one priority lane and exponential circuit breaker protect PostgREST from retry storms")
+       and "SUPABASE_DATA_API_BACKOFF" in auth
+       and "SUPABASE_DATA_API_RATE_LIMIT" in auth
+       and "responseIsAppBusy" in auth
+       and "tripSupaDataApiRateLimit" in auth
+       and "retry-after" in auth.lower(),
+       f"{label} Data API resilience: one priority lane, service breaker and Retry-After rate-limit gate protect PostgREST from retry storms")
 orders_ui_cloud=(O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 kupa_ui_cloud=(K / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
 for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):

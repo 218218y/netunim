@@ -88,10 +88,10 @@ UI mutation
 
 | Writer | Optimistic / key | Idempotency | backup / side effects | advisory lock | Clients | lost ACK |
 |---|---|---|---|---|---|---|
-| `save_order_management_document` | `p_expected_revision` | equality לפני conflict | previous-state/periodic backup, state+revision | Orders lock עצמאי per owner/document | Orders | replay אותו state מחזיר revision קיים |
-| `save_kupa_document` | `p_expected_revision` | equality לפני conflict | previous-state/periodic backup, Kupa-only state+revision | financial gate per owner | Kupa וגם Kupa המוטמע ב־Orders | replay הוא no-op |
-| `save_shared_checks_document` | `p_expected_revision` | server state נבנה ואז equality לפני conflict | backup; הקצאת financial sequence ו־bank-event deltas רק לשינוי אמיתי | financial gate | שני האתרים | replay לא מקצה event/sequence נוסף |
-| `save_finance_sync_document` | `p_expected_revision` | נוסף equality לפני conflict | Finance state+revision | financial gate | Orders/Kupa finance | replay מחזיר state/revision נוכחיים |
+| `save_order_management_document_v3` | `p_expected_revision` + `operationId` | private operation ledger + payload SHA-256; legacy writer נשאר לתאימות | previous-state/periodic backup, state+revision | Orders lock עצמאי per owner/document | Orders | replay מזוהה גם אם writer אחר כבר קידם את המסמך; מוחזר current state + original operation revision |
+| `save_kupa_document_v3` | `p_expected_revision` + `operationId` | private operation ledger + payload SHA-256; legacy writer נשאר לתאימות | previous-state/periodic backup, Kupa-only state+revision | financial gate per owner | Kupa וגם Kupa המוטמע ב־Orders | replay אינו מבצע side effect ומחזיר את state העדכני גם אחרי intervening write |
+| `save_shared_checks_document_v3` | `p_expected_revision` + `operationId` | private operation ledger + payload SHA-256; legacy writer נשאר לתאימות | backup; הקצאת financial sequence ו־bank-event deltas רק לשינוי אמיתי | financial gate | שני האתרים | replay לא מקצה event/sequence נוסף ומזוהה גם אחרי שינוי מרוחק נוסף |
+| `save_finance_sync_document_v3` | `p_expected_revision` + `operationId` | private operation ledger + payload SHA-256; internal legacy path שומר equality-before-conflict | Finance state+revision | financial gate | Orders/Kupa finance | replay אינו מעלה revision ומחזיר current state + original operation revision |
 | `save_bank_sync_snapshot` | `snapshotToken` + seq + SHA-256 payload | ledger חדש owner/document/token | Finance+Kupa atomic update; אין הפעלה חוזרת של checks | financial gate; row order Kupa ואז Finance | Orders/Kupa bank | token זהה+payload זהה מחזיר revisions; payload שונה -> `PT422` |
 | `merge_bank_transactions` | owner/account/role/merge key | upsert + content verification | insert/update archive rows | financial gate | Orders/Kupa bank | אותו batch פעמיים: replay עם 0 insert/0 update |
 | `claim_finance_sync_lease` | lease token | אותו token מחדש/מאריך את אותה lease | lease row בלבד | row/UPSERT contract | Orders/Kupa | replay בטוח |
@@ -142,8 +142,10 @@ REST writes נוספים שאינם Supabase document writers הם פעולות 
 
 `normalizeCloudError()` מחזיר `kind`, `code`, `status`, `retryAfterMs` ו־`original`.
 
-- `PT429` / HTTP 429 / legacy `save_busy` -> `busy`.
-- `PT409` / HTTP 409 / legacy message `revision_conflict` -> `revision_conflict`.
+- `PT429` / legacy `save_busy` -> `busy`.
+- HTTP 429 כללי -> `rate_limited`; שכבת Data API מכבדת `Retry-After` ואינה מבלבלת אותו עם contention.
+- `PT409` / legacy message `revision_conflict` -> `revision_conflict`.
+- HTTP 409 כללי -> `conflict`; הוא אינו מומר אוטומטית לקונפליקט revision.
 - SQLSTATE `40001` כללי **אינו** מסווג אוטומטית כ־revision conflict.
 - 502/503/504 ו־PGRST002/PGRST003 -> `service_unavailable`.
 - 401/403/42501 -> `auth`.
@@ -164,7 +166,7 @@ Policy:
 - writes/recovery הם HIGH; meta/full polling הוא LOW.
 - poll זהה ממתין פעם אחת ומחזיר clone לכל caller.
 - breaker פתוח דוחה queued/background calls מקומית.
-- 429 אינו פותח service breaker.
+- `PT429` אינו פותח service breaker; HTTP 429 כללי מפעיל rate-limit gate נפרד לפי `Retry-After` (או backoff שמרני אם הכותרת חסרה).
 - background reads משתמשים בניסיון רשת יחיד וב־8 שניות לכל היותר; ה־20 שניות/3 ניסיונות נשמרו למסלולים מפורשים ובטוחים בלבד. יש לכייל את המספר מול מדידות staging לפני שינוי נוסף.
 - polling של Orders/Kupa עבר ל־12–14 שניות עם jitter.
 - refresh token הוא Promise יחיד בתוך app. Web Lock קצר מצמצם refresh כפול בין tabs, ותחת ה־lock נקרא session מחדש.
@@ -186,7 +188,9 @@ Policy:
 
 Migration v3 הוא additive ו־backward-compatible:
 
+- מוסיף private ledger `netunim_internal.document_sync_operations` ל־Orders/Kupa/Checks/Finance עם owner/domain/document/operation id, payload SHA-256, applied revision, RLS ו־REVOKE/GRANT מפורשים.
 - מוסיף private ledger `netunim_internal.bank_sync_operations` עם RLS ו־REVOKE/GRANT מפורשים.
+- מוסיף RPCs בעלי שמות ייחודיים `save_*_v3` במקום function overloading, כדי להימנע מעמימות PostgREST; ה־RPCs הישנים נשארים לתאימות בפריסה.
 - משדרג רק branch מפורש של `revision_conflict` ל־`PT409`; stale bank watermark נשאר `40001` עם semantics נפרד.
 - מחליף את private Finance/Bank functions; ה־public SECURITY INVOKER wrappers נשארים ללא שינוי.
 - משמר את ה־financial gate ואת `lock_timeout=100ms`.
@@ -200,12 +204,14 @@ Migration v3 הוא additive ו־backward-compatible:
 `node --test tests/cloud_sync_faults.test.mjs`:
 
 ```text
-13 tests; pass 13; fail 0
+15 tests; pass 15; fail 0
 v2/marker migration + exact ACK                         PASS
 machine-readable error classification                   PASS
 busy policy: same operation, exactly three attempts     PASS
 single lane + poll coalescing + bounded read starvation PASS
+in-flight identical poll remains coalesced              PASS
 503 storm: one backend request + one recovery probe     PASS
+lost ACK + intervening writer operation replay          PASS
 Orders: 50 rapid mutations                              PASS
 Kupa: 50 rapid mutations                                PASS
 ACK N cannot clear N+1                                  PASS
@@ -448,7 +454,7 @@ STAGING STRESS REFUSED: set NETUNIM_STAGING_CONFIRM=staging-only
 ## 17. Rollback plan
 
 1. אם client regression מופיע, להחזיר קודם את שני clients ואת Service Workers לגרסה הקודמת. migration השרת backward-compatible ולכן בטוח יותר להשאיר אותו.
-2. לא למחוק את `bank_sync_operations` כל עוד client v3 או outbox v3 עשוי לבצע replay.
+2. לא למחוק את `document_sync_operations` או `bank_sync_operations` כל עוד client v3 או outbox v3 עשוי לבצע replay.
 3. אם נדרש rollback DB: לעצור client v3, לשחזר את private function definitions מה־dump שלפני הפריסה, להשאיר את ledger read-only לשימור audit, ואז לבצע schema reload.
 4. `PT409` נשאר backward-compatible באמצעות message `revision_conflict`; client ישן ממשיך לזהות אותו.
 5. אין rollback נתונים אוטומטי ואין decrement revisions. אם נדרש שחזור business state, להשתמש בגיבויי ה־previous-revision הקיימים תחת runbook נפרד ובאישור אנושי.

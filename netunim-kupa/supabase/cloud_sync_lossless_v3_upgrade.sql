@@ -4,6 +4,30 @@ begin;
 
 create extension if not exists pgcrypto with schema extensions;
 
+-- Durable operation ledger for document writers. The table is in the non-exposed
+-- internal schema; authenticated receives only the minimum privileges required by
+-- SECURITY INVOKER RPCs and RLS restricts every row to its owner.
+create table if not exists netunim_internal.document_sync_operations (
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  domain text not null check (domain in ('orders','kupa','shared-checks','finance')),
+  document_name text not null,
+  operation_id text not null check (length(operation_id) between 1 and 200),
+  payload_sha256 text not null check (length(payload_sha256) = 64),
+  applied_revision bigint not null check (applied_revision >= 1),
+  created_at timestamptz not null default now(),
+  primary key (owner_id, domain, document_name, operation_id)
+);
+alter table netunim_internal.document_sync_operations enable row level security;
+drop policy if exists "document_sync_operations_select_own" on netunim_internal.document_sync_operations;
+create policy "document_sync_operations_select_own" on netunim_internal.document_sync_operations
+  for select to authenticated using ((select auth.uid()) = owner_id);
+drop policy if exists "document_sync_operations_insert_own" on netunim_internal.document_sync_operations;
+create policy "document_sync_operations_insert_own" on netunim_internal.document_sync_operations
+  for insert to authenticated with check ((select auth.uid()) = owner_id);
+revoke all on table netunim_internal.document_sync_operations from public, anon, authenticated;
+grant select, insert on table netunim_internal.document_sync_operations to authenticated;
+grant usage on schema netunim_internal to authenticated;
+
 create table if not exists netunim_internal.bank_sync_operations (
   owner_id uuid not null references auth.users(id) on delete cascade,
   document_name text not null,
@@ -253,6 +277,218 @@ begin
   values(v_owner,p_document_name,p_snapshot_token,p_snapshot_seq,v_payload_hash,v_now);
   finance_revision:=v_finance_revision;kupa_revision:=v_kupa_revision;updated_at:=v_now;return next;
 end $$;
+
+
+-- New RPC names avoid PostgREST function-overload ambiguity. Old 3-argument RPCs
+-- remain available throughout deployment; v3 clients use these operation-aware APIs.
+create or replace function public.save_order_management_document_v3(
+  p_document_name text,
+  p_expected_revision bigint,
+  p_state jsonb,
+  p_operation_id text
+)
+returns table(
+  revision bigint,
+  updated_at timestamptz,
+  state jsonb,
+  operation_replayed boolean,
+  operation_revision bigint
+)
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, netunim_internal, extensions
+as $$
+declare
+  v_owner uuid := auth.uid();
+  v_payload_hash text;
+  v_ledger_hash text;
+  v_applied_revision bigint;
+  v_saved_revision bigint;
+  v_saved_updated_at timestamptz;
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
+  if p_document_name is null or btrim(p_document_name)='' then raise exception 'invalid_document_name' using errcode='22023'; end if;
+  if p_expected_revision is null or p_expected_revision<0 then raise exception 'invalid_expected_revision' using errcode='22023'; end if;
+  if p_state is null or jsonb_typeof(p_state) is distinct from 'object' then raise exception 'invalid_order_management_state' using errcode='22023'; end if;
+  if coalesce(btrim(p_operation_id),'')='' or length(p_operation_id)>200 then raise exception 'invalid_operation_id' using errcode='22023'; end if;
+  if not pg_try_advisory_xact_lock(hashtextextended('order_management:'||v_owner::text||':'||p_document_name,0)) then
+    raise exception 'save_busy' using errcode='PT429',hint='Another save is already in progress. Retry later without refreshing the revision.';
+  end if;
+  perform set_config('lock_timeout','100ms',true);
+  v_payload_hash:=encode(extensions.digest(convert_to(p_state::text,'UTF8'),'sha256'),'hex');
+
+  select o.payload_sha256,o.applied_revision into v_ledger_hash,v_applied_revision
+  from netunim_internal.document_sync_operations o
+  where o.owner_id=v_owner and o.domain='orders' and o.document_name=p_document_name and o.operation_id=p_operation_id;
+  if found then
+    if v_ledger_hash<>v_payload_hash then
+      raise exception 'idempotency_key_reuse' using errcode='PT422',hint='An operation id cannot be reused with a different payload.';
+    end if;
+    select d.revision,d.updated_at,d.state into revision,updated_at,state
+    from public.order_management_documents d
+    where d.owner_id=v_owner and d.document_name=p_document_name;
+    if revision is null then raise exception 'operation_replay_document_missing' using errcode='P0002'; end if;
+    operation_replayed:=true;operation_revision:=v_applied_revision;return next;return;
+  end if;
+
+  begin
+    select x.revision,x.updated_at into v_saved_revision,v_saved_updated_at
+    from netunim_internal.save_order_management_document(p_document_name,p_expected_revision,p_state) x;
+  exception when lock_not_available then
+    raise exception 'save_busy' using errcode='PT429',hint='The document row is temporarily locked. Retry later without refreshing the revision.';
+  end;
+  if v_saved_revision is null then raise exception 'save_result_missing' using errcode='P0002'; end if;
+  insert into netunim_internal.document_sync_operations(owner_id,domain,document_name,operation_id,payload_sha256,applied_revision,created_at)
+  values(v_owner,'orders',p_document_name,p_operation_id,v_payload_hash,v_saved_revision,coalesce(v_saved_updated_at,now()));
+  select d.revision,d.updated_at,d.state into revision,updated_at,state
+  from public.order_management_documents d
+  where d.owner_id=v_owner and d.document_name=p_document_name;
+  operation_replayed:=false;operation_revision:=v_saved_revision;return next;
+end $$;
+
+create or replace function public.save_shared_checks_document_v3(
+  p_document_name text,
+  p_expected_revision bigint,
+  p_state jsonb,
+  p_operation_id text
+)
+returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, netunim_internal, extensions
+as $$
+declare
+  v_owner uuid:=auth.uid();v_payload_hash text;v_ledger_hash text;v_applied_revision bigint;
+  v_saved_revision bigint;v_saved_updated_at timestamptz;v_saved_state jsonb;
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
+  if p_document_name is null or btrim(p_document_name)='' then raise exception 'invalid_document_name' using errcode='22023'; end if;
+  if p_expected_revision is null or p_expected_revision<0 then raise exception 'invalid_expected_revision' using errcode='22023'; end if;
+  if p_state is null or jsonb_typeof(p_state) is distinct from 'object' then raise exception 'invalid_shared_checks_state' using errcode='22023'; end if;
+  if coalesce(btrim(p_operation_id),'')='' or length(p_operation_id)>200 then raise exception 'invalid_operation_id' using errcode='22023'; end if;
+  if not pg_try_advisory_xact_lock(hashtextextended('netunim_financial_write:'||v_owner::text,0)) then
+    raise exception 'save_busy' using errcode='PT429',hint='Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout','100ms',true);
+  v_payload_hash:=encode(extensions.digest(convert_to(p_state::text,'UTF8'),'sha256'),'hex');
+  select o.payload_sha256,o.applied_revision into v_ledger_hash,v_applied_revision
+  from netunim_internal.document_sync_operations o
+  where o.owner_id=v_owner and o.domain='shared-checks' and o.document_name=p_document_name and o.operation_id=p_operation_id;
+  if found then
+    if v_ledger_hash<>v_payload_hash then raise exception 'idempotency_key_reuse' using errcode='PT422',hint='An operation id cannot be reused with a different payload.'; end if;
+    select d.revision,d.updated_at,d.state into revision,updated_at,state from public.shared_checks_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+    if revision is null then raise exception 'operation_replay_document_missing' using errcode='P0002'; end if;
+    operation_replayed:=true;operation_revision:=v_applied_revision;return next;return;
+  end if;
+  begin
+    select x.revision,x.updated_at,x.state into v_saved_revision,v_saved_updated_at,v_saved_state
+    from netunim_internal.save_shared_checks_document(p_document_name,p_expected_revision,p_state) x;
+  exception when lock_not_available then raise exception 'save_busy' using errcode='PT429',hint='A financial row is temporarily locked. Retry later.'; end;
+  if v_saved_revision is null then raise exception 'save_result_missing' using errcode='P0002'; end if;
+  insert into netunim_internal.document_sync_operations(owner_id,domain,document_name,operation_id,payload_sha256,applied_revision,created_at)
+  values(v_owner,'shared-checks',p_document_name,p_operation_id,v_payload_hash,v_saved_revision,coalesce(v_saved_updated_at,now()));
+  select d.revision,d.updated_at,d.state into revision,updated_at,state from public.shared_checks_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+  operation_replayed:=false;operation_revision:=v_saved_revision;return next;
+end $$;
+
+create or replace function public.save_kupa_document_v3(
+  p_document_name text,
+  p_expected_revision bigint,
+  p_state jsonb,
+  p_operation_id text
+)
+returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, netunim_internal, extensions
+as $$
+declare
+  v_owner uuid:=auth.uid();v_payload_hash text;v_ledger_hash text;v_applied_revision bigint;
+  v_saved_revision bigint;v_saved_updated_at timestamptz;v_saved_state jsonb;
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
+  if p_document_name is null or btrim(p_document_name)='' then raise exception 'invalid_document_name' using errcode='22023'; end if;
+  if p_expected_revision is null or p_expected_revision<0 then raise exception 'invalid_expected_revision' using errcode='22023'; end if;
+  if p_state is null or jsonb_typeof(p_state) is distinct from 'object' then raise exception 'invalid_kupa_state' using errcode='22023'; end if;
+  if coalesce(btrim(p_operation_id),'')='' or length(p_operation_id)>200 then raise exception 'invalid_operation_id' using errcode='22023'; end if;
+  if not pg_try_advisory_xact_lock(hashtextextended('netunim_financial_write:'||v_owner::text,0)) then
+    raise exception 'save_busy' using errcode='PT429',hint='Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout','100ms',true);
+  v_payload_hash:=encode(extensions.digest(convert_to(p_state::text,'UTF8'),'sha256'),'hex');
+  select o.payload_sha256,o.applied_revision into v_ledger_hash,v_applied_revision
+  from netunim_internal.document_sync_operations o
+  where o.owner_id=v_owner and o.domain='kupa' and o.document_name=p_document_name and o.operation_id=p_operation_id;
+  if found then
+    if v_ledger_hash<>v_payload_hash then raise exception 'idempotency_key_reuse' using errcode='PT422',hint='An operation id cannot be reused with a different payload.'; end if;
+    select d.revision,d.updated_at,d.state into revision,updated_at,state from public.kupa_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+    if revision is null then raise exception 'operation_replay_document_missing' using errcode='P0002'; end if;
+    operation_replayed:=true;operation_revision:=v_applied_revision;return next;return;
+  end if;
+  begin
+    select x.revision,x.updated_at,x.state into v_saved_revision,v_saved_updated_at,v_saved_state
+    from netunim_internal.save_kupa_document(p_document_name,p_expected_revision,p_state) x;
+  exception when lock_not_available then raise exception 'save_busy' using errcode='PT429',hint='A financial row is temporarily locked. Retry later.'; end;
+  if v_saved_revision is null then raise exception 'save_result_missing' using errcode='P0002'; end if;
+  insert into netunim_internal.document_sync_operations(owner_id,domain,document_name,operation_id,payload_sha256,applied_revision,created_at)
+  values(v_owner,'kupa',p_document_name,p_operation_id,v_payload_hash,v_saved_revision,coalesce(v_saved_updated_at,now()));
+  select d.revision,d.updated_at,d.state into revision,updated_at,state from public.kupa_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+  operation_replayed:=false;operation_revision:=v_saved_revision;return next;
+end $$;
+
+create or replace function public.save_finance_sync_document_v3(
+  p_document_name text,
+  p_expected_revision bigint,
+  p_state jsonb,
+  p_operation_id text
+)
+returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
+language plpgsql
+security invoker
+set search_path = pg_catalog, public, netunim_internal, extensions
+as $$
+declare
+  v_owner uuid:=auth.uid();v_payload_hash text;v_ledger_hash text;v_applied_revision bigint;
+  v_saved_revision bigint;v_saved_updated_at timestamptz;v_saved_state jsonb;
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
+  if p_document_name is null or btrim(p_document_name)='' then raise exception 'invalid_document_name' using errcode='22023'; end if;
+  if p_expected_revision is null or p_expected_revision<0 then raise exception 'invalid_expected_revision' using errcode='22023'; end if;
+  if p_state is null or jsonb_typeof(p_state) is distinct from 'object' then raise exception 'invalid_finance_sync_state' using errcode='22023'; end if;
+  if coalesce(btrim(p_operation_id),'')='' or length(p_operation_id)>200 then raise exception 'invalid_operation_id' using errcode='22023'; end if;
+  if not pg_try_advisory_xact_lock(hashtextextended('netunim_financial_write:'||v_owner::text,0)) then
+    raise exception 'save_busy' using errcode='PT429',hint='Another financial save is already in progress. Retry later.';
+  end if;
+  perform set_config('lock_timeout','100ms',true);
+  v_payload_hash:=encode(extensions.digest(convert_to(p_state::text,'UTF8'),'sha256'),'hex');
+  select o.payload_sha256,o.applied_revision into v_ledger_hash,v_applied_revision
+  from netunim_internal.document_sync_operations o
+  where o.owner_id=v_owner and o.domain='finance' and o.document_name=p_document_name and o.operation_id=p_operation_id;
+  if found then
+    if v_ledger_hash<>v_payload_hash then raise exception 'idempotency_key_reuse' using errcode='PT422',hint='An operation id cannot be reused with a different payload.'; end if;
+    select d.revision,d.updated_at,d.state into revision,updated_at,state from public.finance_sync_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+    if revision is null then raise exception 'operation_replay_document_missing' using errcode='P0002'; end if;
+    operation_replayed:=true;operation_revision:=v_applied_revision;return next;return;
+  end if;
+  begin
+    select x.revision,x.updated_at,x.state into v_saved_revision,v_saved_updated_at,v_saved_state
+    from netunim_internal.save_finance_sync_document(p_document_name,p_expected_revision,p_state) x;
+  exception when lock_not_available then raise exception 'save_busy' using errcode='PT429',hint='A financial row is temporarily locked. Retry later.'; end;
+  if v_saved_revision is null then raise exception 'save_result_missing' using errcode='P0002'; end if;
+  insert into netunim_internal.document_sync_operations(owner_id,domain,document_name,operation_id,payload_sha256,applied_revision,created_at)
+  values(v_owner,'finance',p_document_name,p_operation_id,v_payload_hash,v_saved_revision,coalesce(v_saved_updated_at,now()));
+  select d.revision,d.updated_at,d.state into revision,updated_at,state from public.finance_sync_documents d where d.owner_id=v_owner and d.document_name=p_document_name;
+  operation_replayed:=false;operation_revision:=v_saved_revision;return next;
+end $$;
+
+revoke all on function public.save_order_management_document_v3(text,bigint,jsonb,text) from public,anon;
+revoke all on function public.save_shared_checks_document_v3(text,bigint,jsonb,text) from public,anon;
+revoke all on function public.save_kupa_document_v3(text,bigint,jsonb,text) from public,anon;
+revoke all on function public.save_finance_sync_document_v3(text,bigint,jsonb,text) from public,anon;
+grant execute on function public.save_order_management_document_v3(text,bigint,jsonb,text) to authenticated;
+grant execute on function public.save_shared_checks_document_v3(text,bigint,jsonb,text) to authenticated;
+grant execute on function public.save_kupa_document_v3(text,bigint,jsonb,text) to authenticated;
+grant execute on function public.save_finance_sync_document_v3(text,bigint,jsonb,text) to authenticated;
 
 revoke all on function netunim_internal.save_finance_sync_document(text,bigint,jsonb) from public, anon;
 revoke all on function netunim_internal.save_bank_sync_snapshot(text,jsonb,text,bigint) from public, anon;

@@ -49,7 +49,7 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
         for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts&&!savedChecks;conflictAttempt++){
           const remote=normalizeSharedChecks(row.state?.checks||[]),merged=mergeSharedChecks(base,local,remote);
           if(merged.conflicts.length){markChecksPending(local,msg,{kind:'entity-conflict',items:merged.conflicts});checksSession.checksCloudLastError='אותו צ\'ק שונה במקביל';allOk=false;break}
-          const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks(merged.checks,Number(row.revision||0)));
+          const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks(merged.checks,Number(row.revision||0),pending.operationId));
           if(result?.r?.ok){savedChecks=normalizeSharedChecks(result.row?.state?.checks||merged.checks);checksSession.checksBankEvents=normalizeSharedBankEvents(result.row?.state?.bankEvents||row.state.bankEvents);savedRevision=Number(result.row?.revision||Number(row.revision||0)+1);savedUpdatedAt=result.row?.updated_at||row.updated_at||savedUpdatedAt;break}
           const normalized=normalizeCloudError(result);
           if(normalized.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readSharedChecksCloud();if(!row)throw new Error('shared_checks_missing_during_merge');continue}

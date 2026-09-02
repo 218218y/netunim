@@ -45,6 +45,19 @@ ok("primary key (owner_id, document_name, operation_id)" in lower
    and "revoke all on table netunim_internal.bank_sync_operations" in lower
    and "grant select, insert on table netunim_internal.bank_sync_operations to authenticated" in lower,
    "bank idempotency ledger has owner-scoped uniqueness, RLS and explicit grants")
+ok("netunim_internal.document_sync_operations" in lower
+   and "primary key (owner_id, domain, document_name, operation_id)" in lower
+   and "grant select, insert on table netunim_internal.document_sync_operations to authenticated" in lower
+   and "enable row level security" in lower,
+   "document operation ledger is owner-scoped, internal, RLS-protected and minimally granted")
+ok(all(name in lower for name in (
+    "save_order_management_document_v3", "save_kupa_document_v3",
+    "save_shared_checks_document_v3", "save_finance_sync_document_v3"))
+   and lower.count("p_operation_id text") >= 4
+   and lower.count("operation_replayed boolean") >= 4
+   and lower.count("operation_revision bigint") >= 4
+   and lower.count("idempotency_key_reuse") >= 5,
+   "v3 RPCs use explicit non-overloaded names and durable operation acknowledgements")
 ok("netunim_financial_write:" in lower and "lock_timeout', '100ms'" in lower,
    "financial advisory gate and 100ms row-lock timeout are preserved")
 ok("statement_timeout" not in lower,
@@ -56,6 +69,30 @@ shared = (ROOT / "shared/cloud-sync.js").read_text(encoding="utf-8")
 for site in (ORDERS, KUPA):
     copied = (site / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
     ok(copied == shared, f"{site.name}: shared outbox/error/scheduler primitive is deterministic")
+ok("status===429||code==='SUPABASE_DATA_API_RATE_LIMIT'" in shared
+   and "else if(status===409)kind='conflict'" in shared
+   and "code==='PT429'" in shared and "code==='PT409'" in shared,
+   "generic HTTP 429/409 are not misclassified as application busy/revision conflict")
+ok("if(item.key)coalesced.delete(item.key)" not in shared
+   and "promise.finally" in shared and "coalesced.delete(coalesceKey)" in shared,
+   "poll coalescing remains active until the in-flight promise settles")
+
+for label, site in (("Orders", ORDERS), ("Kupa", KUPA)):
+    auth = (site / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
+    ok("SUPABASE_DATA_API_RATE_LIMIT" in auth
+       and "responseIsAppBusy" in auth
+       and "tripSupaDataApiRateLimit" in auth
+       and "retry-after" in auth.lower(),
+       f"{label}: generic Data API 429 honors Retry-After while PT429 remains app contention")
+
+for label, path in (("Orders transport", ORDERS / "site/assets/js/cloud/transport.js"),
+                    ("Kupa transport", KUPA / "site/assets/js/cloud/transport.js")):
+    source = path.read_text(encoding="utf-8")
+    ok("_v3" in source and "p_operation_id" in source, f"{label}: operation-aware v3 RPC transport is present")
+for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.js"),
+                    ("Kupa document", KUPA / "site/assets/js/sync/document.js")):
+    source = path.read_text(encoding="utf-8")
+    ok("operationId" in source and "rpcSave" in source, f"{label}: durable operation id is preserved through document retries")
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
 orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
@@ -86,9 +123,11 @@ server_contracts = (ORDERS / "supabase/shared/validation/cloud_sync_v3_server_co
 benchmark = (ORDERS / "supabase/shared/validation/cloud_sync_v3_benchmark.sql").read_text(encoding="utf-8").lower()
 stress = (ROOT / "tools/cloud-sync-staging-stress.mjs").read_text(encoding="utf-8")
 ok(all(name in server_contracts for name in (
-    "save_order_management_document", "save_kupa_document", "save_shared_checks_document",
-    "save_finance_sync_document", "save_bank_sync_snapshot", "merge_bank_transactions",
+    "save_order_management_document_v3", "save_kupa_document_v3", "save_shared_checks_document_v3",
+    "save_finance_sync_document_v3", "save_bank_sync_snapshot", "merge_bank_transactions",
     "claim_finance_sync_lease", "release_finance_sync_lease"))
+   and server_contracts.count("intervening_write_replay_failed") == 4
+   and "operation_replayed" in server_contracts and "operation_revision" in server_contracts
    and server_contracts.rstrip().endswith("pass cloud sync v3 server contracts (transaction rolled back)'")
    and "rollback;" in server_contracts,
    "staging SQL contracts cover every critical writer and always roll back")
@@ -98,6 +137,9 @@ ok(all(metric in benchmark for metric in ("p50_ms", "p95_ms", "p99_ms", "max_ms"
 ok("PRODUCTION_PROJECT_REF='bupoidcurcxuypfrjqio'" in stress
    and "NETUNIM_STAGING_CONFIRM!=='staging-only'" in stress
    and "Promise.all([" in stress
+   and "p_operation_id:operationId" in stress
+   and "save_order_management_document_v3" in stress
+   and "save_kupa_document_v3" in stress
    and "stressDocument({label:'orders'" in stress
    and "stressDocument({label:'kupa'" in stress,
    "HTTP concurrency harness refuses production and runs Orders plus Kupa together")

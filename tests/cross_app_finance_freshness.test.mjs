@@ -135,7 +135,7 @@ let pendingPersist=null,persistRenders=0,persistRpcRevision=4;
 const persistSync=createSyncDocument({
   model:persistModel,session:persistSession,checksSession:{},tab:{primaryTab:true},
   prepareKupaCloudState:(...args)=>persistNormalization.prepareKupaCloudState(...args),applyKupaCloudState:(...args)=>persistNormalization.applyKupaCloudState(...args),
-  getCloudPending:async()=>pendingPersist,stageCloudPendingLocal:(snapshot,msg,baseRevision,baseState,generation,conflict=false)=>(pendingPersist={snapshot:structuredClone(snapshot),msg,baseRevision,baseState:structuredClone(baseState),generation,conflict}),
+  getCloudPending:async()=>pendingPersist,stageCloudPendingLocal:(snapshot,msg,baseRevision,baseState,generation,conflict=false)=>(pendingPersist={snapshot:structuredClone(snapshot),msg,baseRevision,baseState:structuredClone(baseState),generation,conflict,operationId:`test:kupa:${generation}`}),
   clearCloudPending:async()=>{pendingPersist=null;return true},rebaseNewerPending:async()=>false,lastSavedCloudState:()=>structuredClone(persistedBase),
   supaRest:async(path,{body})=>{assert.match(path,/save_kupa_document/);const payload=JSON.parse(body);return {ok:true,text:async()=>JSON.stringify({revision:++persistRpcRevision,state:payload.p_state,updated_at:'2026-09-01T04:05:00.000Z'})}},
   persistImmediateBrowserSnapshot:()=>{},backupSnapshotToComputer:async()=>{},render:()=>{persistRenders++},toast:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},reportError:()=>{},pollSharedChecks:async()=>{},

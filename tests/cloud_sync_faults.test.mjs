@@ -28,11 +28,14 @@ test('v2/marker migration produces a complete v3 record and ACK is generation-ex
   assert.equal(acknowledgedGenerationMatches(marker,Infinity),false);
 });
 
-test('machine-readable errors distinguish contention, conflict, outage and generic 40001',()=>{
+test('machine-readable errors distinguish app contention from generic HTTP throttling/conflicts',()=>{
   assert.equal(normalizeCloudError({r:{status:429},j:{code:'PT429',message:'save_busy'}}).kind,'busy');
   assert.equal(normalizeCloudError({r:{status:409},j:{code:'PT409',message:'revision_conflict'}}).kind,'revision_conflict');
-  assert.equal(normalizeCloudError({r:{status:400},j:{code:'40001',message:'revision_conflict'}}).kind,'revision_conflict');
+  assert.equal(normalizeCloudError({r:{status:400},j:{code:'40001',message:'revision_conflict'}}).kind,'revision_conflict'); // one-release legacy fallback
   assert.equal(normalizeCloudError({r:{status:400},j:{code:'40001',message:'stale_bank_snapshot_watermark'}}).kind,'fatal');
+  const rateLimited=normalizeCloudError({r:{status:429,headers:{get:name=>name==='retry-after'?'7':null}},j:{code:'gateway_rate_limit',message:'too many requests'}});
+  assert.equal(rateLimited.kind,'rate_limited');assert.equal(rateLimited.retryAfterMs,7000);
+  assert.equal(normalizeCloudError({r:{status:409},j:{code:'23505',message:'unique conflict'}}).kind,'conflict');
   assert.equal(normalizeCloudError({r:{status:503},j:{code:'PGRST002'}}).kind,'service_unavailable');
   assert.equal(normalizeCloudError({code:'SUPABASE_NETWORK_TIMEOUT'}).kind,'timeout');
 });
@@ -55,6 +58,16 @@ test('priority scheduler is single-lane, coalesces polls and bounds write starva
   assert.equal(maxActive,1);
   assert.deepEqual(order.slice(0,5),['write-1','write-2','write-3','write-4','poll']);
   assert.equal(order.includes('duplicate-poll'),false);
+});
+
+test('identical low-priority poll coalesces while the first request is already in flight',async()=>{
+  const scheduler=createDataApiScheduler();let backendCalls=0,release;
+  const gate=new Promise(resolve=>{release=resolve});
+  const first=scheduler.schedule(async()=>{backendCalls++;await gate;return 'same-result'},{priority:'low',key:'versions'});
+  await Promise.resolve();await Promise.resolve();
+  const second=scheduler.schedule(async()=>{backendCalls++;return 'duplicate'},{priority:'low',key:'versions'});
+  assert.equal(first,second);assert.equal(backendCalls,1);
+  release();assert.equal(await first,'same-result');assert.equal(await second,'same-result');assert.equal(backendCalls,1);
 });
 
 test('503 breaker storm executes one backend request, then one recovery probe; 429 does not trip it',async()=>{
@@ -85,6 +98,30 @@ class IdempotentSnapshotServer{
   }
   external(value){this.state.remote.push(value);this.revision++;this.commits++}
 }
+
+class OperationLedgerServer{
+  constructor(){this.state={value:'base',remote:null};this.revision=0;this.commits=0;this.operations=new Map()}
+  save(operationId,snapshot,expected,{lostAck=false}={}){
+    const fingerprint=canonical(snapshot),previous=this.operations.get(operationId);
+    if(previous){if(previous.fingerprint!==fingerprint)throw Object.assign(new Error('idempotency_key_reuse'),{code:'PT422'});return {revision:this.revision,state:structuredClone(this.state),operationReplayed:true,operationRevision:previous.revision}}
+    if(expected!==this.revision)return {conflict:true,revision:this.revision,state:structuredClone(this.state)};
+    this.state=structuredClone(snapshot);this.revision++;this.commits++;this.operations.set(operationId,{fingerprint,revision:this.revision});
+    if(lostAck)throw Object.assign(new Error('ACK lost'),{code:'SUPABASE_NETWORK_UNAVAILABLE',committed:true});
+    return {revision:this.revision,state:structuredClone(this.state),operationReplayed:false,operationRevision:this.revision};
+  }
+  external(snapshot){this.state=structuredClone(snapshot);this.revision++;this.commits++}
+}
+
+test('operation ledger acknowledges lost ACK even after an intervening remote write',()=>{
+  const server=new OperationLedgerServer(),operationId='orders-op-1',original={value:'local-A',remote:null};
+  assert.throws(()=>server.save(operationId,original,0,{lostAck:true}),error=>error.committed===true);
+  assert.equal(server.revision,1);
+  server.external({value:'local-A',remote:'remote-B'});assert.equal(server.revision,2);
+  const replay=server.save(operationId,original,0);
+  assert.equal(replay.operationReplayed,true);assert.equal(replay.operationRevision,1);assert.equal(replay.revision,2);
+  assert.deepEqual(replay.state,{value:'local-A',remote:'remote-B'});assert.equal(server.revision,2);assert.equal(server.commits,2);
+  assert.throws(()=>server.save(operationId,{value:'different',remote:null},0),error=>error.code==='PT422');
+});
 
 function stage(current,intended,generation,domain,base={revision:0,state:{changes:[],remote:[]}}){
   return createOutboxRecord({domain,documentName:'main',operationId:`${domain}-${generation}`,generation,baseRevision:current?.baseRevision??base.revision,baseState:current?.baseState??base.state,snapshot:intended,createdAt:current?.createdAt,updatedAt:new Date(1_700_000_000_000+generation).toISOString()});
