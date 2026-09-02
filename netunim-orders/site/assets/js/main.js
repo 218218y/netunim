@@ -594,6 +594,7 @@ const syncChecks=createSyncChecks({
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
   markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
+  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
   clearChecksPending:(...args)=>storageChecks.clearChecksPending(...args),
   toast:(...args)=>uiStatus.toast(...args),
   recomputeKupaNetFromCache:(...args)=>domainsBankCache.recomputeKupaNetFromCache(...args),
