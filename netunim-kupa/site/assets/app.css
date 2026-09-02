@@ -205,3 +205,6 @@ table{width:100%;border-collapse:collapse}th{padding:11px 12px;text-align:right;
 @media(max-width:600px){.rights-calculated-date{position:static;max-width:none;margin-top:8px;justify-content:space-between}.rights-calculated-date input{width:140px}.rights-kpi-wrap>.kpi{min-height:108px}}
 
 @media(max-width:620px){.checks-forecast-columns{grid-template-columns:1fr}.checks-forecast .bar-row{grid-template-columns:92px 1fr 82px}.checks-forecast .section-head .muted{white-space:normal}}
+
+.expenses-hub-toolbar{margin-bottom:14px}.expenses-hub-tabs{width:max-content}.expenses-hub-tabs button{min-width:112px}.dashboard-net-summary{margin-top:0;margin-bottom:16px}
+@media(max-width:520px){.expenses-hub-tabs{width:100%}.expenses-hub-tabs button{flex:1;min-width:0}}

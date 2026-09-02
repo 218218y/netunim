@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {num, money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 
-export function createDomainsBankView({model,ui,bankAsOfDate,bankCurrentBalance,bankNextCycleCommitments,bankLongTermPosition,bankProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
+export function createDomainsBankView({model,ui,bankAsOfDate,bankCurrentBalance,bankNextCycleCommitments,bankProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
@@ -156,9 +156,8 @@ function updateBridgePanel(){
 }
 
 function renderBank(){
-  const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth);
-  const targetExpenseRows=cycle.targetExpenseRows.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
-  const allRows=[...model.state.expenses].sort((a,b)=>(a.description||'').localeCompare(b.description||''));
+  const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth);
+  const targetExpenseRows=cycle.targetExpenseRows;
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses;
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
@@ -205,9 +204,7 @@ function renderBank(){
     <div class="bank-transactions-region">${bankTransactionsMarkup(bridgeUi)}</div>
   </section>
   ${staleTotal>0?`<div class="notice warn" style="margin-bottom:16px"><b>צילום העו״ש העסקי ישן ביחס להיום.</b> לצורך חישוב נכון נגרעו גם חיובים שכבר עברו מאז הצילום בסך ${money(staleTotal)}. מומלץ לרענן את היתרה מהבנק.</div>`:''}
-  <section class="section"><div class="section-head"><div><h3>הוצאות מחזור ${esc(cycleLabel)}</h3></div><button type="button" class="btn primary" data-action="open-expense-modal">+ הוצאה חדשה</button></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>סכום</th><th>מועד</th><th>סוג</th><th>חוזרת</th><th></th></tr></thead><tbody>${targetExpenseRows.length?targetExpenseRows.map(r=>`<tr><td><b>${esc(r.description)}</b><div class="muted">${esc(r.account)}</div></td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.dueDate)}</td><td>${esc(r.type)}</td><td><span class="badge ${esc(r.recurring!==false?'green':'')}">${r.recurring!==false?'כל חודש':'חד־פעמית'}</span></td><td><button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">אין הוצאות במחזור הזה.</div></td></tr>'}</tbody></table></div></section>
-  <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>הגדרת הוצאות קבועות ונוספות</h3></div></div><div style="overflow:auto"><table><thead><tr><th>תיאור</th><th>חשבון</th><th>סכום</th><th>יום / תאריך בסיס</th><th>סוג</th><th>חוזרת</th><th>פעיל</th><th></th></tr></thead><tbody>${allRows.map(r=>`<tr><td><b>${esc(r.description)}</b></td><td>${esc(r.account)}</td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.date)}</td><td>${esc(r.type)}</td><td>${r.recurring!==false?'כן':'לא'}</td><td>${r.active?'כן':'לא'}</td><td><button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join('')}</tbody></table></div></section>
-  <div class="net-summary"><div class="net-mini"><span>עו״ש עסקי מעודכן</span><b>${formatNullableMoney(long.bank)}</b></div><div class="net-mini"><span>כל האשראי העסקי שנותר</span><b>− ${money(long.credit)}</b></div><div class="net-mini"><span>הוצאות חודש אחד</span><b>− ${money(long.expenses)}</b><small>${monthLabel(long.targetMonth)}</small></div><div class="net-mini"><span>סה״כ קופה</span><b>+ ${money(long.kupa)}</b><small>מזומן + צקים שטרם הופקדו</small></div><div class="net-total"><span>מאזן כולל נטו</span><b>${formatNullableMoney(long.net)}</b><small>עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות + קופה</small></div></div>`;
+`;
   updateBridgePanel();
   for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm'])document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
   refreshBankBridgeStatus().then(updateBridgePanel).catch(()=>updateBridgePanel());

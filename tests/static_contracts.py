@@ -213,6 +213,7 @@ orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(e
 orders_checks_view = (O / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 kupa_dashboard_view = (K / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
+kupa_credit_view = (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
@@ -260,6 +261,23 @@ ok("6 חודשים קדימה — אשראי עסקי והוצאות" not in kup
    and "monthSumBusinessInstallments" not in kupa_dashboard_view
    and "monthSumExpenses" not in kupa_dashboard_view,
    "kupa dashboard: obsolete six-month business-credit-and-expenses panel is removed at the source")
+ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-8")
+   and "credit:['הוצאות','']" in (K / "site/assets/js/state/constants.js").read_text(encoding="utf-8")
+   and 'data-action="expenses-hub-tab"' in kupa_credit_view
+   and 'data-click-arg0="credit">אשראי</button>' in kupa_credit_view
+   and 'data-click-arg0="expenses">הוצאות</button>' in kupa_credit_view
+   and "ui.expensesTab==='expenses'" in kupa_credit_view,
+   "kupa expenses hub: the former Credit navigation is labeled Expenses and defaults to an internal Credit/Expenses surface")
+expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding="utf-8")
+bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
+ok('הוצאות מחזור' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
+   and 'הוצאות מחזור' not in bank_view and 'הגדרת הוצאות קבועות ונוספות' not in bank_view
+   and '<div class="net-summary">' not in bank_view,
+   "kupa expense ownership: editable expense sections live in the Expenses domain and are removed from the Bank tail")
+ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
+   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות חודש אחד','סה״כ קופה','מאזן כולל נטו'))
+   and 'class="grid kpis"' not in kupa_dashboard_view,
+   "kupa dashboard: the five long-term bank summary calculations replace all eight legacy KPI cards at the top")
 ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
    and "const task=controller.refreshCredit({interactive});renderKupa();await task;renderKupa()" in orders_finance_view,
    "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")

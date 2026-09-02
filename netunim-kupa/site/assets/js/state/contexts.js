@@ -27,6 +27,7 @@ return {
     checkTab:'open',
     checkYear:'all',
     checkFocus:'all',
+    expensesTab:'credit',
     creditView:'rolling12',
     creditAccountFilter:'all',
     creditProviderFilter:'all',

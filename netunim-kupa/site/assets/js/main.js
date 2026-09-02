@@ -23,6 +23,7 @@ import {createDomainsChecksSelectors} from './domains/checks/selectors.js';
 import {createDomainsCashSelectors} from './domains/cash/selectors.js';
 import {createDomainsCreditSelectors} from './domains/credit/selectors.js';
 import {createDomainsExpensesSelectors} from './domains/expenses/selectors.js';
+import {createDomainsExpensesView} from './domains/expenses/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
@@ -390,13 +391,7 @@ const domainsDashboardView=createDomainsDashboardView({
   model,
   activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
   depositedChecks:(...args)=>domainsChecksSelectors.depositedChecks(...args),
-  cashBalance:(...args)=>domainsCashSelectors.cashBalance(...args),
-  checksBalance:(...args)=>domainsChecksSelectors.checksBalance(...args),
-  depositedBalance:(...args)=>domainsChecksSelectors.depositedBalance(...args),
-  pendingBusinessInstallments:(...args)=>domainsCreditSelectors.pendingBusinessInstallments(...args),
-  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
-  bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
 });
 
 const uiBulk=createUiBulk({
@@ -409,6 +404,11 @@ const uiBulk=createUiBulk({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
+const domainsExpensesView=createDomainsExpensesView({
+  model,
+  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
+});
+
 const domainsCreditView=createDomainsCreditView({
   model,
   ui,
@@ -419,6 +419,7 @@ const domainsCreditView=createDomainsCreditView({
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
   creditSyncUiState:(...args)=>domainsCreditController.creditSyncUiState(...args),
   refreshCreditBridgeStatus:(...args)=>domainsCreditController.refreshCreditBridgeStatus(...args),
+  expensesMarkup:(...args)=>domainsExpensesView.expensesMarkup(...args),
 });
 
 const domainsCashView=createDomainsCashView({
@@ -496,7 +497,6 @@ const domainsBankView=createDomainsBankView({
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-  bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
   bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
   bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
   refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),

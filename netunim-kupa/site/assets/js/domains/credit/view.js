@@ -83,7 +83,7 @@ function cardFilterMarkup(ui,cards){
   return `<div class="credit-filter-chip-row"><span class="credit-filter-label">כרטיסים</span><div class="credit-filter-chips"><button type="button" class="credit-filter-chip ${ui.creditCardFilter==='all'?'active':''}" data-action="credit-card-filter" data-click-arg0="all"><span>כל הכרטיסים</span><small>${esc(scoped.length)}</small></button>${scoped.map(card=>`<button type="button" class="credit-filter-chip card ${ui.creditCardFilter===card.creditAccountKey?'active':''}" data-action="credit-card-filter" data-click-arg0="${esc(card.creditAccountKey)}"><span>${esc(card.name)}</span><small>${esc(card.account)}${card.ownerLabel?` · ${esc(card.ownerLabel)}`:''}</small></button>`).join('')}</div></div>`;
 }
 
-export function createDomainsCreditView({model, ui, pendingInstallments, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus}){
+export function createDomainsCreditView({model, ui, pendingInstallments, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup}){
 function creditDetailState(){
   const detailData=creditMonthlyDetailData(model.state);
   const detailMonths=detailData.months.map(month=>{
@@ -128,7 +128,13 @@ function toggleCreditSyncOptions(){
   if(panel)panel.hidden=!ui.creditSyncOpen;
   if(toggle){toggle.setAttribute('aria-expanded',String(ui.creditSyncOpen));toggle.classList.toggle('open',ui.creditSyncOpen)}
 }
+function expensesHubTabsMarkup(){
+  const tab=ui.expensesTab==='expenses'?'expenses':'credit';
+  return `<div class="toolbar expenses-hub-toolbar"><div class="segmented expenses-hub-tabs" role="tablist" aria-label="אשראי והוצאות"><button type="button" role="tab" aria-selected="${tab==='credit'}" class="${tab==='credit'?'active':''}" data-action="expenses-hub-tab" data-click-arg0="credit">אשראי</button><button type="button" role="tab" aria-selected="${tab==='expenses'}" class="${tab==='expenses'?'active':''}" data-action="expenses-hub-tab" data-click-arg0="expenses">הוצאות</button></div></div>`;
+}
 function renderCredit(){
+  if(!['credit','expenses'].includes(ui.expensesTab))ui.expensesTab='credit';
+  if(ui.expensesTab==='expenses'){document.getElementById('content').innerHTML=`${expensesHubTabsMarkup()}${expensesMarkup()}`;return}
   const allFuture=pendingInstallments(),summary=creditSyncSummary(model.state),syncUi=creditSyncUiState(),includedCards=includedCardModels(summary);
   if(!['all','עסקי','ביתי'].includes(ui.creditAccountFilter))ui.creditAccountFilter='all';
   const filterCards=includedCards.filter(card=>primaryCardFilterMatch(ui,card));
@@ -161,6 +167,7 @@ function renderCredit(){
   const mappingRows=summary.sync.profiles.flatMap(profile=>profile.accounts.map(account=>creditMappingRow(profile,account,summary.sync.cardMappings)));
 
   document.getElementById('content').innerHTML=`
+    ${expensesHubTabsMarkup()}
     <section class="section credit-sync-section">
       <div class="credit-command-row">
         <div class="credit-view-tools"><input class="credit-search" type="search" value="${esc(ui.creditSearchValue||'')}" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="credit-search"></div>

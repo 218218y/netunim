@@ -28,6 +28,7 @@ return {
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},
+  'expenses-hub-tab':(element,event)=>{ui.expensesTab=element.dataset.clickArg0==='expenses'?'expenses':'credit';renderCredit()},
   'credit-search':(element,event)=>{setCreditSearch(element.value)},
   'toggle-credit-sync-options':(element,event)=>{toggleCreditSyncOptions()},
   'credit-view':(element,event)=>{ui.creditView=element.value;ui.creditDetailFocus=null;renderCredit()},

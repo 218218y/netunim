@@ -3,7 +3,7 @@ import {money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({model, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingBusinessInstallments, bankNextCycleCommitments, bankLongTermPosition, bankProjectedThisMonth}){
+export function createDomainsDashboardView({model, activeChecks, depositedChecks, bankLongTermPosition}){
 function renderDashboard(){
   const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const overdue=activeChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
@@ -17,25 +17,14 @@ function renderDashboard(){
   });
   const upcomingAlerts=due7.map(c=>({kind:'open',id:c.id,c:'#c59661',t:`${c.name} — ${money(c.amount)}`,s:`פירעון קרוב ${dateFmt(c.dueDate)}`}));
   const alerts=[...criticalAlerts,...upcomingAlerts];
-  const cycle=bankNextCycleCommitments(),bankAfter=bankProjectedThisMonth(),long=bankLongTermPosition(),cycleLabel=monthLabel(cycle.targetMonth),futureCreditRows=pendingBusinessInstallments(),futureCreditTotal=futureCreditRows.reduce((a,x)=>a+x.amount,0);
+  const long=bankLongTermPosition();
   document.getElementById('content').innerHTML=`
-  <div class="grid kpis">
-   ${kpi('מזומן בקופה',cashBalance(),'#edf4f1','#638f87','יתרת תנועות המזומן',{page:'cash',tab:''})}
-   ${kpi('צקים בקופה',checksBalance(),'#eef2f3','#76929a',`${activeChecks().length} צקים פתוחים`,{page:'checks',tab:'open'})}
-   ${kpi('סה״כ קופה',cashBalance()+checksBalance(),'#eff4ef','#72957b','מזומן + צקים שטרם הופקדו',{page:'checks',tab:'open'})}
-   ${kpi('הופקדו במעקב',depositedBalance(),'#f7f1e8','#b78b57',`${depositedChecks().length} צקים ממתינים`,{page:'checks',tab:'deposited'})}
-  </div>
-  <div class="grid kpis" style="margin-top:16px">
-   ${kpi('סה״כ אשראי עסקי עתידי',futureCreditTotal,'#f7efe7','#c59661',futureCreditRows.length?`${futureCreditRows.length} חיובים עתידיים שנותרו`:'אין חיובי אשראי עתידיים',{page:'credit',tab:''})}
-   ${kpi('אשראי עסקי במחזור הקרוב',cycle.nextCreditTotal,'#edf4f1','#638f87',cycle.nextCreditRows.length?`החיובים הקרובים עד ${dateFmt(cycle.end)} · ${cycleLabel}`:'אין חיוב אשראי עתידי',{page:'credit',tab:''})}
-   ${kpiDisplay('עו״ש אחרי המחזור הקרוב',bankAfter,'#eff3f0','#5f7c77',bankAfter===null?'יש להזין יתרת עו״ש בטאב בנק':`כולל אשראי עסקי קרוב + הוצאות ${cycleLabel}`,{page:'bank',tab:''})}
-   ${kpiDisplay('מאזן כולל נטו',long.net,'#edf3ef','#557a68',long.net===null?'יש להזין יתרת עו״ש':`עו״ש − כל האשראי העסקי העתידי − חודש הוצאות + קופה`,{page:'bank',tab:''})}
-  </div>
+  <div class="net-summary dashboard-net-summary"><div class="net-mini"><span>עו״ש עסקי מעודכן</span><b>${formatNullableMoney(long.bank)}</b></div><div class="net-mini"><span>כל האשראי העסקי שנותר</span><b>− ${money(long.credit)}</b></div><div class="net-mini"><span>הוצאות חודש אחד</span><b>− ${money(long.expenses)}</b><small>${monthLabel(long.targetMonth)}</small></div><div class="net-mini"><span>סה״כ קופה</span><b>+ ${money(long.kupa)}</b><small>מזומן + צקים שטרם הופקדו</small></div><div class="net-total"><span>מאזן כולל נטו</span><b>${formatNullableMoney(long.net)}</b><small>עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות + קופה</small></div></div>
   <div class="grid two" style="margin-top:16px">
    <section class="section"><div class="section-head"><div><h3>פעולות מהירות</h3></div></div><div class="section-body"><div class="quick">
     <button data-action="open-check-modal"><b>+ צק חדש</b><span>שם, סכום ותאריך פירעון</span></button>
     <button data-action="open-credit-modal"><b>+ עסקת אשראי</b><span>סכום, כרטיס ומספר תשלומים</span></button>
-    <button data-action="set-page"><b>בנק ועו״ש</b><span>יתרה, מחזור קרוב ומאזן כולל</span></button>
+    <button data-action="set-page"><b>בנק ועו״ש</b><span>יתרה, סנכרון ותנועות בנק</span></button>
    </div></div></section>
    <section class="section"><div class="section-head"><div><h3>דורש תשומת לב</h3></div><span class="badge ${esc(criticalAlerts.length?'red':'green')}">${esc(criticalAlerts.length)} חריגים${upcomingAlerts.length?` · ${upcomingAlerts.length} קרובים`:''}</span></div><div class="section-body"><div class="alert-list">${alerts.length?alerts.map(a=>`<div class="alert" style="--c:${esc(a.c)}"><div><b>${esc(a.t)}</b><small>${esc(a.s)}</small></div><div class="alert-actions">${a.kind==='deposited'?`<button class="iconbtn" data-action="mark-cleared" data-click-arg0="${esc(a.id)}">נפרע</button>`:`<button class="iconbtn" data-action="mark-deposited" data-click-arg0="${esc(a.id)}">הופקד</button>`}<button class="iconbtn" data-action="open-check-modal-2" data-click-arg0="${esc(a.id)}">עריכה</button></div></div>`).join(''):'<div class="empty">אין כרגע חריגים או פירעונות קרובים.</div>'}</div></div></section>
   </div>`}
