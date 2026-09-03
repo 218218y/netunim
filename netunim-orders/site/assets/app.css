@@ -453,6 +453,7 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 
 /* ===== מרכז אזהרות קבוע: חריגות תזרים + צ׳קים שהגיעו להפקדה ===== */
 .alert-center-trigger{position:relative;flex:0 0 auto;width:34px;height:34px;padding:0!important;display:grid;place-items:center;border:1px solid transparent!important;border-radius:999px!important;background:transparent!important;color:#8d7f72!important;box-shadow:none!important;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease!important}
+.alert-center-trigger[hidden]{display:none!important}
 .alert-center-trigger:hover{background:rgba(255,255,255,.9)!important;border-color:var(--line)!important;color:#69584b!important;transform:none!important}
 .alert-center-trigger svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .alert-center-trigger.active{background:#fff3df!important;border-color:#ead0a1!important;color:#9a6411!important;box-shadow:0 5px 14px rgba(133,91,24,.11)!important}

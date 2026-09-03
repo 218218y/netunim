@@ -27,6 +27,9 @@ async function restoreBrowserStateFallback(){const record=await loadBrowserState
 
 function readPendingCache(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null')}catch(e){console.error('cloud pending cache load',e);return null}}
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
+function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
+function mergeDeleteIntents(...values){const out={};for(const value of values){for(const [key,ids] of Object.entries(normalizeDeleteIntents(value))){out[key]=[...new Set([...(out[key]||[]),...ids])].sort()}}return out}
+function migrateOrdersOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);return record}
 
 function markCloudPending(snapshot=prepareCloudState(),message='',progress=null){
   const cached=readPendingCache(),canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(session.cloudRevision||0)>Number(cached?.baseRevision||0),record=createOutboxRecord({
@@ -37,6 +40,7 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),
     conflict:progress?.conflict===undefined?(cached?.conflict||null):progress.conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
   });
+  record.deleteIntents=mergeDeleteIntents(cached?.deleteIntents,progress?.deleteIntents);
   const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;
   const previous=session.ordersOutboxCommitPromise||Promise.resolve();
   session.ordersOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{
@@ -51,8 +55,8 @@ function cloudPendingExists(){return !!(session.ordersOutboxCached||localStorage
 async function getCloudPending(){
   try{await session.ordersOutboxCommitPromise}catch(e){console.error('orders outbox commit',e)}
   const fallbackSnapshot=prepareCloudState(loadLocal()||model.state),migration={domain:'orders',documentName:'suppliers',baseRevision:session.cloudRevision||0,baseState:session.lastCloudState||fallbackSnapshot,snapshot:fallbackSnapshot,generation:Math.max(1,Number(session.localGeneration||0))};
-  const local=migrateOutboxRecord(readPendingCache(),migration);let durable=null;
-  try{durable=migrateOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration)}catch(e){console.error('orders outbox load',e)}
+  const local=migrateOrdersOutboxRecord(readPendingCache(),migration);let durable=null;
+  try{durable=migrateOrdersOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration)}catch(e){console.error('orders outbox load',e)}
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
   if(!chosen){session.ordersOutboxCached=null;return null}
   session.ordersOutboxCached=chosen;session.localGeneration=Math.max(Number(session.localGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);

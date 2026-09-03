@@ -29,7 +29,7 @@ async function deleteCustomerOrder(id){
   if(confirmDialog&&!await confirmDialog('מחיקת שורת מעקב',`למחוק את ${label}?`,{confirmText:'מחק שורה'}))return;
   model.state.customerOrders=model.state.customerOrders.filter(x=>x.id!==id);
   customerUi?.customerBulkSelected?.delete(id);
-  scheduleSave('שורת מעקב ההזמנה נמחקה');renderCustomers()
+  scheduleSave('שורת מעקב ההזמנה נמחקה',{deleteIntents:{customerOrders:[id]}});renderCustomers()
 }
 
 function openDebtModal(id=null){
@@ -48,7 +48,7 @@ function saveDebt(id=''){
   closeModal();scheduleSave(d?'חוב הלקוח עודכן':'חוב הלקוח נוסף');renderCustomers()
 }
 
-async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק');renderCustomers()}
+async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]}});renderCustomers()}
 
 return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, deleteDebt };
 }

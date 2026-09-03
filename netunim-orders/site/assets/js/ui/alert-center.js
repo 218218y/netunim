@@ -32,6 +32,7 @@ export function createUiAlertCenter({model,financeSnapshot,modal}){
     const button=document.getElementById('alertCenterButton'),countEl=document.getElementById('alertCenterCount');
     if(!button||!countEl)return currentAlerts();
     const alerts=currentAlerts(),count=alerts.length,active=count>0;
+    button.hidden=!active;
     button.classList.toggle('active',active);
     button.setAttribute('aria-label',active?`${count} אזהרות פעילות`:'אין אזהרות פעילות');
     button.title=active?`${count} אזהרות פעילות`:'אין אזהרות פעילות';

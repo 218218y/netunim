@@ -44,10 +44,11 @@ function normalizeState(d){
   n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
-  const before=(n.credits||[]).length;
+  const rawCredits=(Array.isArray(n.credits)?n.credits:[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')})),before=rawCredits.length;
   // v3 was the one-time synchronized-primary cutover. Later schema upgrades (including
   // v4 monthly LKG) must never repeat that destructive migration.
-  n.credits=creditSyncSourceVersion<3?[]:(n.credits||[]).map(x=>({...x,totalAmount:wholeMoney(x.totalAmount),ownerLabel:String(x.ownerLabel||'')})).filter(cr=>!inactiveCreditExpired(cr));
+  n.credits=creditSyncSourceVersion<3?[]:rawCredits.filter(cr=>!inactiveCreditExpired(cr));
+  const keptCreditIds=new Set(n.credits.map(x=>String(x?.id||'')));model.lastNormalizeRemovedCreditIds=creditSyncSourceVersion<3?[]:rawCredits.map(x=>String(x?.id||'')).filter(id=>id&&!keptCreditIds.has(id));
   model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);
   return n;
 }

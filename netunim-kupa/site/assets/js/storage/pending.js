@@ -2,6 +2,8 @@ import {CLOUD_PENDING_LOCAL_KEY, CLOUD_PENDING_KEY} from '../state/constants.js'
 import {acknowledgedGenerationMatches,compareOutboxFreshness,migrateOutboxRecord} from '../shared/cloud-sync.js';
 
 const CLOUD_OUTBOX_V3_KEY='cloud-pending-v3';
+function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
+function migrateKupaOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);return record}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePending({session, idbPut, idbGet, idbDelete}){
@@ -15,14 +17,14 @@ async function getCloudPending(){
   try{await session.cloudOutboxCommitPromise}catch(e){console.error('pending commit',e)}
   const rawLocal=loadCloudPendingSync();let rawV3=null,rawV2=null;
   try{rawV3=await idbGet('sync',CLOUD_OUTBOX_V3_KEY);rawV2=await idbGet('sync',CLOUD_PENDING_KEY)}catch(e){console.error('pending idb load',e)}
-  const candidates=[rawLocal,rawV3,rawV2].filter(Boolean).map(value=>migrateOutboxRecord(value,migrationDefaults(value))).filter(Boolean).sort(compareOutboxFreshness);
+  const candidates=[rawLocal,rawV3,rawV2].filter(Boolean).map(value=>migrateKupaOutboxRecord(value,migrationDefaults(value))).filter(Boolean).sort(compareOutboxFreshness);
   const chosen=candidates.at(-1)||null;if(!chosen)return null;
   session.localGeneration=Math.max(session.localGeneration,Number(chosen.generation||0));persistCloudPendingSync(chosen);
   try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,chosen);if(rawV2)await idbDelete('sync',CLOUD_PENDING_KEY);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('pending idb repair',e)}
   return chosen;
 }
 
-async function putCloudPending(p){const record=migrateOutboxRecord(p,migrationDefaults(p));if(!record)throw new Error('invalid_outbox_record');let durable=false,idbError=null;try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,record);durable=true;session.cloudDurabilityDegraded=false}catch(e){idbError=e;session.cloudDurabilityDegraded=true;console.error('pending idb save failed',e)}const localOk=persistCloudPendingSync(record);if(!durable&&!localOk)throw new Error('kupa_outbox_persistence_failed',{cause:idbError});return {record,durable,localOk}}
+async function putCloudPending(p){const record=migrateKupaOutboxRecord(p,migrationDefaults(p));if(!record)throw new Error('invalid_outbox_record');let durable=false,idbError=null;try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,record);durable=true;session.cloudDurabilityDegraded=false}catch(e){idbError=e;session.cloudDurabilityDegraded=true;console.error('pending idb save failed',e)}const localOk=persistCloudPendingSync(record);if(!durable&&!localOk)throw new Error('kupa_outbox_persistence_failed',{cause:idbError});return {record,durable,localOk}}
 
 function cloudPendingExistsSync(){return !!loadCloudPendingSync()}
 

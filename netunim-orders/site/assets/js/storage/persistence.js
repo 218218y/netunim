@@ -4,10 +4,10 @@
 export function createStoragePersistence({model, tab, session, ui, normalizeState, loadLocal, showSecondaryTabGuard, render, localSnapshot, markCloudPending, setSave, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, writeStateToFolder, cloudEnabled, requestCloudSave, cloudPendingExists, toast, setCloud, folderPermissionPending, sameBusinessData, cloudHasLocalWork, checksHaveLocalWork, loadSession, saveSharedChecksToCloud}){
 function rejectSecondaryMutation(){if(tab.primaryTab)return false;const saved=loadLocal();if(saved)model.state=normalizeState(saved);render();showSecondaryTabGuard();return true}
 
-function scheduleSave(message='השינויים נשמרו'){
+function scheduleSave(message='השינויים נשמרו',{deleteIntents={}}={}){
   if(rejectSecondaryMutation())return;
   const generation=++session.localGeneration,localOk=localSnapshot();
-  if(cloudEnabled()){if(localOk)markCloudPending();session.cloudSaveRequested=true;session.cloudSaveMessage=message}
+  if(cloudEnabled()){if(localOk)markCloudPending(undefined,'',{deleteIntents});session.cloudSaveRequested=true;session.cloudSaveMessage=message}
   setSave(localOk?'מקומי: שומר…':'מקומי: שגיאה',localOk?'':'error',folderSaveTitle());
   clearTimeout(session.saveTimer);session.saveTimer=setTimeout(async()=>{session.saveTimer=null;try{if(folderBackupAvailable())await writeStateToFolder();else syncFolderAccessButton()}catch(e){console.error('folder save',e)}if(generation===session.localGeneration&&localOk)setSave('מקומי: שמור','',folderSaveTitle());if(cloudEnabled())await requestCloudSave(message)},180);
 }

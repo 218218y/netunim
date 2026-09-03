@@ -159,3 +159,31 @@ test('Kupa notes sheet merges rows and column configuration independently',()=>{
  assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.notesSheet.rows.length,1);assert.equal(merged.state.notesSheet.columns[0].title,'סכום');assert.equal(merged.state.notesSheet.columns[0].type,'number');
  const cloud=k.prepareKupaCloudState(merged.state);assert.equal(validKupaCloudState(cloud),true);assert.equal(cloud.notesSheet.rows[0].cells['sheet-col-1'],'100');
 });
+
+test('Orders main merge never treats a stale partial snapshot as deletion without explicit intent',()=>{
+ const base=o.normalizeState({suppliers:[{id:'S',name:'Supplier'}],transactions:[{id:'T',supplierId:'S',action:'base'}],customerDebts:[{id:'D',customerName:'Debt'}],serviceCalls:[{id:'SV',customerName:'Service'}],notes:[{id:'N',content:'note'}]});
+ const stale=structuredClone(base);stale.transactions=[];stale.customerDebts=[];stale.serviceCalls=[];stale.notes=[];
+ const safe=om.merge3(base,stale,base);assert.deepEqual(safe.conflicts,[]);assert.equal(safe.state.transactions.length,1);assert.equal(safe.state.customerDebts.length,1);assert.equal(safe.state.serviceCalls.length,1);assert.equal(safe.state.notes.length,1);
+ const intentional=om.merge3(base,stale,base,{deleteIntents:{transactions:['T'],customerDebts:['D'],serviceCalls:['SV'],notes:['N']}});assert.deepEqual(intentional.conflicts,[]);assert.equal(intentional.state.transactions.length,0);assert.equal(intentional.state.customerDebts.length,0);assert.equal(intentional.state.serviceCalls.length,0);assert.equal(intentional.state.notes.length,0);
+});
+
+test('Kupa main merge protects expenses, notes and ledgers from implicit deletion while honoring explicit intent',()=>{
+ const base=k.normalizeState({version:4,checks:[],creditSync:{version:4,profiles:[],cardMappings:{}},credits:[{id:'CR',totalAmount:100,active:true}],cash:[{id:'C',amount:10}],rights:[{id:'R',amount:5}],notes:[{id:'N',content:'note'}],expenses:[{id:'E',amount:20}],cards:[],bank:{adjustments:[]}}),stale=structuredClone(base);
+ stale.credits=[];stale.cash=[];stale.rights=[];stale.notes=[];stale.expenses=[];
+ const safe=km.mergeState3Way(base,stale,base);assert.deepEqual(safe.conflicts,[]);for(const key of ['credits','cash','rights','notes','expenses'])assert.equal(safe.state[key].length,1,key+' is preserved');
+ const intentional=km.mergeState3Way(base,stale,base,{deleteIntents:{credits:['CR'],cash:['C'],rights:['R'],notes:['N'],expenses:['E']}});assert.deepEqual(intentional.conflicts,[]);for(const key of ['credits','cash','rights','notes','expenses'])assert.equal(intentional.state[key].length,0,key+' explicit delete is honored');
+});
+
+test('Orders transport sends explicit delete intents through the v4 document RPC',async()=>{
+ const calls=[];const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:10,state:{}}])}}});
+ await api.rpcSave({suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],notes:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[]},9,'orders:test:v4',{transactions:['T1']});
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_order_management_document_v4');assert.deepEqual(calls[0][1].p_delete_intents,{transactions:['T1']});
+});
+
+test('Orders cloud poll silently advances a revision when remote business data already equals local state',async()=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(k,v)=>store.set(k,String(v)),getItem:k=>store.get(k)??null,removeItem:k=>store.delete(k)},configurable:true});
+ let applied=0,toasts=0,renders=0;const model={state:{suppliers:[{id:'S'}]}},session={cloudBusy:false,cloudRevision:5,cloudUpdatedAt:null,lastCloudState:null};
+ const api=orderDocumentSync({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:x=>x,localSnapshot:()=>{},markCloudPending:()=>{},getCloudPending:async()=>null,clearCloudPending:async()=>true,toast:()=>{toasts++},setCloud:()=>{},prepareCloudState:x=>structuredClone(x||model.state),writeStateToFolder:async()=>{},readCloud:async()=>({revision:6,updated_at:'2026-09-03T19:00:00Z',state:structuredClone(model.state)}),rpcSave:async()=>{},merge3:()=>({state:model.state,conflicts:[]}),applyOrderCloudState:()=>{applied++},cloudPendingExists:()=>false,setSave:()=>{},cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:()=>true,cloudHasLocalWork:()=>false,render:()=>{renders++},readCloudMeta:async()=>({revision:6,updated_at:'2026-09-03T19:00:00Z'}),refreshKupaReadout:async()=>false,pollSharedChecks:async()=>{},refreshCloudTimestamp:()=>{}});
+ await api.cloudPoll();assert.equal(session.cloudRevision,6);assert.equal(applied,0);assert.equal(toasts,0);assert.equal(renders,0);
+});

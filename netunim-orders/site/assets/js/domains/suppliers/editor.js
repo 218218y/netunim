@@ -33,7 +33,7 @@ async function saveTransaction(id,insertAfterId=''){
   if(!keepAllSuppliers)supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה');if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
 }
 
-async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה');if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
+async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה',{deleteIntents:{transactions:[id]}});if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
 
 function openSelectedSupplierEditor(){const id=$('#settingsSupplierEdit')?.value;if(!id)return toast('יש לבחור ספק לעריכה');openSupplierModal(id)}
 

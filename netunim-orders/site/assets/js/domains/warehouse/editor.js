@@ -9,7 +9,7 @@ function saveWarehouseOrder(id=''){const name=$('#whName').value.trim();if(!name
 
 function setWarehouseOrderStatus(id,status){const o=model.state.warehouseOrders.find(x=>x.id===id);if(!o)return;o.status=status;o.pickedUp=status==='picked';o.reserved=status==='arrived';o.updatedAt=new Date().toISOString();scheduleSave('מצב הזמנת המחסן עודכן');renderWarehouse()}
 
-async function deleteWarehouseOrder(id){const o=model.state.warehouseOrders.find(x=>x.id===id);if(!o)return;if(!await confirmDialog('מחיקת הזמנת מחסן',`למחוק את הזמנת המחסן של ${o.customerName}?`,{confirmText:'מחק הזמנה'}))return;model.state.warehouseOrders=model.state.warehouseOrders.filter(x=>x.id!==id);closeModal();scheduleSave('הזמנת המחסן נמחקה');renderWarehouse()}
+async function deleteWarehouseOrder(id){const o=model.state.warehouseOrders.find(x=>x.id===id);if(!o)return;if(!await confirmDialog('מחיקת הזמנת מחסן',`למחוק את הזמנת המחסן של ${o.customerName}?`,{confirmText:'מחק הזמנה'}))return;model.state.warehouseOrders=model.state.warehouseOrders.filter(x=>x.id!==id);closeModal();scheduleSave('הזמנת המחסן נמחקה',{deleteIntents:{warehouseOrders:[id]}});renderWarehouse()}
 
 return { openWarehouseOrderModal, saveWarehouseOrder, setWarehouseOrderStatus, deleteWarehouseOrder };
 }
