@@ -2,11 +2,12 @@ import {checkNum, money} from '../../core/money.js';
 import {esc} from '../../core/values.js';
 import {checkUrgency, futureCheckMonthsData} from './model.js';
 import {checkMonthKey, checkMonthLabel, checkDateFmt, checkTodayISO} from '../../core/dates.js';
+import {searchMatch} from '../../core/search.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsChecksView({model, ui, checksSession, loadSession, mountViewLayout}){
-function visibleChecks(){let rows=[...model.state.checks];if(ui.checkTab==='open')rows=rows.filter(x=>x.status==='בקופה');if(ui.checkTab==='deposited')rows=rows.filter(x=>x.status==='הופקד - במעקב');if(ui.checkTab==='closed')rows=rows.filter(x=>['נפרע','חזר','בוטל'].includes(x.status));if(ui.checkYear!=='all')rows=rows.filter(x=>x.dueDate?.startsWith(ui.checkYear+'-'));const q=ui.checkSearchValue.trim();if(q)rows=rows.filter(x=>`${x.name||''} ${x.checkNumber||''} ${x.note||''}`.includes(q));return rows.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''))}
+function visibleChecks(){let rows=[...model.state.checks];if(ui.checkTab==='open')rows=rows.filter(x=>x.status==='בקופה');if(ui.checkTab==='deposited')rows=rows.filter(x=>x.status==='הופקד - במעקב');if(ui.checkTab==='closed')rows=rows.filter(x=>['נפרע','חזר','בוטל'].includes(x.status));if(ui.checkYear!=='all')rows=rows.filter(x=>x.dueDate?.startsWith(ui.checkYear+'-'));const q=ui.checkSearchValue.trim();if(q)rows=rows.filter(x=>searchMatch(q,[x.name,x.checkNumber,x.note,x.status,x.amount,x.dueDate,x.depositDate,x.clearedDate,x.createdAt],[x.dueDate,x.depositDate,x.clearedDate,x.createdAt]));return rows.sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''))}
 
 function visibleChecksTotal(rows=visibleChecks()){return rows.reduce((a,x)=>a+checkNum(x.amount),0)}
 

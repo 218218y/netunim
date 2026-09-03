@@ -446,3 +446,7 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 @media(max-width:480px){.bank-caption-account>b{font-size:11px}.bank-caption-account small{font-size:9px}.bank-primary-balance>b,.bank-available-balance>b,.bank-cashflow-metric>b{font-size:15px}.bank-balance-delta{font-size:13px}.bank-primary-balance>span,.bank-available-balance>span,.bank-cashflow-metric>span{font-size:9px}.bank-balance-separator{min-height:19px}.finance-sync-quick-actions{max-width:100%}}
 
 @media(max-width:560px){.cashflow-settings-grid{grid-template-columns:1fr}}
+
+/* Bank transaction date scope */
+.bank-date-filter{display:flex;align-items:center;gap:6px;min-width:0}.bank-date-mode,.bank-date-range input{height:30px;border:1px solid #d5dee4;border-radius:8px;background:#fff;color:var(--text);font:inherit;font-size:10px;padding:4px 7px;outline:none}.bank-date-mode:focus,.bank-date-range input:focus{border-color:#b8c9d3;box-shadow:0 0 0 3px rgba(143,109,85,.08)}.bank-date-range{display:flex;align-items:center;gap:5px}.bank-date-range[hidden]{display:none}.bank-date-range label{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:9px;font-weight:750;white-space:nowrap}.bank-date-range input{width:124px;direction:ltr}.bank-date-mode{min-width:88px}
+@media(max-width:760px){.bank-transactions-caption>.bank-caption-account{flex-wrap:wrap}.bank-date-filter{flex:1 1 100%}.bank-date-range{flex-wrap:wrap}}

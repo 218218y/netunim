@@ -42,6 +42,10 @@ assert.equal(pageRequests.length,2);
 assert.match(pageRequests[0],/account_role=eq\.business/);
 assert.match(pageRequests[0],/offset=0/);
 assert.match(pageRequests[1],/offset=1000/);
+pageRequests.length=0;
+const allArchive=await kupa.readBankTransactions('12-655-1','business',{days:null,maxRows:3000});
+assert.equal(allArchive.length,1002,'all-years archive reader keeps deterministic pagination');
+assert.equal(pageRequests.some(path=>path.includes('transaction_date=gte.')),false,'all-years archive reader does not impose the legacy 370-day cutoff');
 
 let ordersMerge=null;
 const orders=createOrdersTransport({supaFetch:async(path,options={})=>{if(path.includes('/rpc/merge_bank_transactions')){ordersMerge=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}throw new Error('unexpected request '+path)}});

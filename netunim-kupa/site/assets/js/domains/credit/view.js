@@ -4,6 +4,7 @@ import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/
 import {creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
 import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
+import {searchMatch} from '../../core/search.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
@@ -49,12 +50,7 @@ function filterMatch(ui,row){
   if(card!=='all'&&rowCardKey(row)!==card)return false;
   return true;
 }
-function creditSearchMatch(query,row){
-  const q=String(query||'').trim().toLocaleLowerCase('he-IL');
-  if(!q)return true;
-  const values=[row?.card,row?.account,row?.ownerLabel,row?.description,row?.transactionDate,row?.date,row?.part,row?.totalParts,row?.amount,row?.totalAmount,row?.provider,row?.source,CREDIT_PROVIDER_LABELS[row?.provider]||'',row?.record?.id];
-  return values.map(value=>String(value??'')).join(' ').toLocaleLowerCase('he-IL').includes(q);
-}
+function creditSearchMatch(query,row){return searchMatch(query,[row?.card,row?.account,row?.ownerLabel,row?.description,row?.transactionDate,row?.date,row?.part,row?.totalParts,row?.amount,row?.totalAmount,row?.provider,row?.source,CREDIT_PROVIDER_LABELS[row?.provider]||'',row?.record?.id],[row?.transactionDate,row?.date])}
 function summaryCard(row){return row.hidden?'כרטיסים מוסתרים':row.card}
 function cardDisplayName(profile,account,mapping={}){return mapping.cardName||`${CREDIT_PROVIDER_LABELS[profile.provider]||profile.label} ••${String(account.accountNumber||'').slice(-4)}`}
 function includedCardModels(summary){

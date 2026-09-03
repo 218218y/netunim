@@ -3,8 +3,9 @@ import {esc} from '../../core/values.js';
 import {money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 import {syncEventCurrent} from '../../shared/sync-status.js';
+import {dateInRange,searchMatch} from '../../core/search.js';
 
-export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
+export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
@@ -46,8 +47,10 @@ function bankDateLabel(value){
   return `${weekday} ${dd}/${mm}/${yy}`;
 }
 
-function bankSearchMatch(query,values){const q=String(query||'').trim().toLocaleLowerCase('he-IL');if(!q)return true;return values.map(value=>String(value??'')).join(' ').toLocaleLowerCase('he-IL').includes(q)}
-function bankRowMatchesSearch(row,query){return bankSearchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,JSON.stringify(row?.checkDetails||{})])}
+function bankRowMatchesSearch(row,query){return searchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,JSON.stringify(row?.checkDetails||{})],[row?.date,row?.processedDate])}
+function bankDateFilterActive(){return ui.bankDateMode==='range'}
+function bankRowMatchesDateRange(row){return !bankDateFilterActive()||dateInRange(row?.date||row?.processedDate,ui.bankDateFrom||'',ui.bankDateTo||'')}
+function bankDateFilterMarkup(){const range=bankDateFilterActive();return `<span class="bank-date-filter"><select class="bank-date-mode" data-change="bank-date-mode" aria-label="טווח תאריכים לתנועות הבנק"><option value="all" ${range?'':'selected'}>כל השנים</option><option value="range" ${range?'selected':''}>טווח תאריכים</option></select><span class="bank-date-range" ${range?'':'hidden'}><label>מ־<input type="date" value="${esc(ui.bankDateFrom||'')}" data-change="bank-date-from" aria-label="תאריך התחלה לתנועות הבנק"></label><label>עד<input type="date" value="${esc(ui.bankDateTo||'')}" data-change="bank-date-to" aria-label="תאריך סיום לתנועות הבנק"></label></span></span>`}
 
 function currentBankError(s){return s?.lastError&&syncEventCurrent(s.lastErrorAt,s.sharedLastSyncAt)?s.lastError:''}
 function currentBankWarning(s){return s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
@@ -110,13 +113,14 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const allRows=feed?.transactions||[],query=ui.bankSearchValue||'',rows=query.trim()?allRows.filter(row=>bankRowMatchesSearch(row,query)):allRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
-  const countLabel=query.trim()?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
+  const allRows=feed?.transactions||[],periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
+  const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),limit=feed?.creditLimit===null||feed?.creditLimit===undefined?null:Number(feed.creditLimit);
   const balanceFacts=[Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:'',Number.isFinite(available)?`<div class="bank-current-balance"><span>יתרה זמינה למשיכה</span><b>${money(available)}</b></div>`:'',Number.isFinite(limit)&&limit>0?`<div class="bank-current-balance"><span>מסגרת אשראי</span><b>${money(limit)}</b></div>`:''].filter(Boolean).join('');
-  const caption=`<div class="bank-transactions-caption"><div><b>תנועות בחשבון ${roleLabel}</b><small>${feed?.accountNumber?`חשבון ${esc(feed.accountNumber)} · `:''}${countLabel} · הארכיון נשמר בענן; מוצג חלון אחרון</small></div><div class="bank-balance-facts">${balanceFacts}</div></div>`;
+  const accountTitle=feed?.accountNumber?`חשבון ${roleLabel} ${esc(feed.accountNumber)}`:`חשבון ${roleLabel}`;
+  const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small>${bankDateFilterMarkup()}</div><div class="bank-balance-facts">${balanceFacts}</div></div>`;
   if(!feed)return `${caption}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן. הגדר אותו בחיבור לבנק ולחץ „רענן”.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
-  if(!rows.length)return `${caption}<div class="empty bank-feed-empty">${query.trim()&&allRows.length?'אין תנועות המתאימות לחיפוש.':'לא התקבלו תנועות אחרונות בחלון הזמן שנבדק.'}${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`;
+  if(!rows.length){const empty=periodRows.length&&query.trim()?'אין תנועות המתאימות לחיפוש בתקופה שנבחרה.':allRows.length&&bankDateFilterActive()?'אין תנועות בטווח התאריכים שנבחר.':'לא התקבלו תנועות בנק להצגה.';return `${caption}<div class="empty bank-feed-empty">${empty}${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`}
   const body=rows.map(row=>{
     const amount=Number(row.amount)||0,when=row.date||row.processedDate;
     const valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'';
@@ -147,7 +151,10 @@ function setBankAccountView(role){
   ui.bankAccountView=role==='home'?'home':'business';syncBankAccountTabs();
   const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup();
 }
-function setBankSearch(value){ui.bankSearchValue=String(value||'');const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup()}
+function rerenderBankTransactions(){const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup()}
+function setBankSearch(value){ui.bankSearchValue=String(value||'');rerenderBankTransactions()}
+function setBankDateMode(value){ui.bankDateMode=value==='range'?'range':'all';if(ui.bankDateMode==='all'){ui.bankDateFrom='';ui.bankDateTo=''}rerenderBankTransactions()}
+function setBankDateBoundary(side,value){const key=side==='to'?'bankDateTo':'bankDateFrom',other=side==='to'?'bankDateFrom':'bankDateTo',next=/^\d{4}-\d{2}-\d{2}$/.test(String(value||''))?String(value):'';ui.bankDateMode='range';ui[key]=next;if(next&&ui[other]){if(side==='from'&&next>ui[other])ui.bankDateTo=next;if(side==='to'&&next<ui[other])ui.bankDateFrom=next}rerenderBankTransactions()}
 function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=document.getElementById('bankSyncPanel'),button=document.getElementById('bankSyncHeadline');if(panel)panel.hidden=!ui.bankSyncOpen;if(button){button.classList.toggle('open',ui.bankSyncOpen);button.setAttribute('aria-expanded',String(ui.bankSyncOpen))}}
 
 function updateBridgePanel(){
@@ -230,7 +237,8 @@ function renderBank(){
   updateBridgePanel();
   for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm'])document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
   refreshBankBridgeStatus().then(updateBridgePanel).catch(()=>updateBridgePanel());
+  ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {renderBank,setBankAccountView,setBankSearch,toggleBankSyncOptions};
+return {renderBank,setBankAccountView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

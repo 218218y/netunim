@@ -544,6 +544,7 @@ const domainsBankView=createDomainsBankView({
   bankHomeProjectedThisMonth:(...args)=>domainsBankSelectors.bankHomeProjectedThisMonth(...args),
   bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
   refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
+  ensureBankDisplayArchive:(...args)=>domainsBankController.ensureBankDisplayArchive(...args),
 });
 
 const uiSettings=createUiSettings({
@@ -734,6 +735,8 @@ const uiActions=createUiActions({
   selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
   setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),
   setBankSearch:(...args)=>domainsBankView.setBankSearch(...args),
+  setBankDateMode:(...args)=>domainsBankView.setBankDateMode(...args),
+  setBankDateBoundary:(...args)=>domainsBankView.setBankDateBoundary(...args),
   toggleBankSyncOptions:(...args)=>domainsBankView.toggleBankSyncOptions(...args),
   refreshBankBalance:(...args)=>domainsBankController.refreshBankBalance(...args),
   deleteBankBridgeCredentials:(...args)=>domainsBankController.deleteBankBridgeCredentials(...args),

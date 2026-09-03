@@ -31,6 +31,8 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
+const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null},home:{accountKey:'',syncKey:'',rows:null}};
+let bankDisplayArchivePromise=null;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function sharedBankLastSyncAt(state=model.state){const feed=normalizeBankFeed(state?.bank?.feed);return feed?.syncedAt||state?.bank?.bankSyncAt||(state?.bank?.source==='hapoalim'?state?.bank?.updatedAt:null)||null}
@@ -70,11 +72,22 @@ async function saveBankBalance(){
   try{await commitBankSnapshot(el.value,{source:'manual'})}catch(e){toast(e.message||String(e))}
 }
 
+function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows}):normalized}
 function bankBridgeUiState(){
-  const feed=normalizeBankFeed(model.state.bank?.feed),homeFeed=normalizeBankFeed(model.state.bank?.homeFeed);
+  const feed=displayArchiveFeed('business',model.state.bank?.feed),homeFeed=displayArchiveFeed('home',model.state.bank?.homeFeed);
   const sharedLastSyncAt=sharedBankLastSyncAt();
   const homeLastSyncAt=homeFeed?.syncedAt||null;
   return {...bridgeState,tokenConfigured:!!bridge.getBridgeToken(),autoEnabled:bridge.autoEnabled(),sharedLastSyncAt,homeLastSyncAt,feed,homeFeed};
+}
+
+async function ensureBankDisplayArchive(){
+  if(session.connectionMode!=='supabase'||typeof readBankTransactions!=='function')return false;
+  if(bankDisplayArchivePromise)return bankDisplayArchivePromise;
+  const targets=[['business',normalizeBankFeed(model.state.bank?.feed)],['home',normalizeBankFeed(model.state.bank?.homeFeed)]].filter(([,feed])=>feed?.accountNumber);
+  const pending=targets.filter(([role,feed])=>{const cache=bankDisplayArchive[role];return cache.accountKey!==String(feed.accountNumber||'')||cache.syncKey!==String(feed.syncedAt||'')||!Array.isArray(cache.rows)});
+  if(!pending.length)return false;
+  bankDisplayArchivePromise=(async()=>{let changed=false;for(const [role,feed] of pending){try{const rows=await readBankTransactions(feed.accountNumber,role,{days:null});bankDisplayArchive[role]={accountKey:String(feed.accountNumber||''),syncKey:String(feed.syncedAt||''),rows};changed=true}catch(error){console.error(`bank display archive ${role}`,error)}}return changed})();
+  try{const changed=await bankDisplayArchivePromise;if(changed)render();return changed}finally{bankDisplayArchivePromise=null}
 }
 
 async function refreshBankBridgeStatus(){
@@ -223,5 +236,5 @@ function maybeAutoRefreshBankBalance(){
   autoTimer=setTimeout(()=>{autoTimer=null;refreshBankBalance({interactive:false,auto:true}).catch(e=>console.error('bank auto refresh',e))},300);
 }
 
-return {saveBankBalance,bankBridgeUiState,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,setBankAutoRefresh,refreshBankBalance,maybeAutoRefreshBankBalance,commitBankSnapshot};
+return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,setBankAutoRefresh,refreshBankBalance,maybeAutoRefreshBankBalance,commitBankSnapshot};
 }

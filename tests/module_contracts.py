@@ -13,6 +13,7 @@ for command in (
     ['node', '--test', 'tests/business_models.test.mjs'],
     ['node', '--test', 'tests/global_search.test.mjs'],
     ['node', '--test', 'tests/global_search_navigation.test.mjs'],
+    ['node', '--test', 'tests/date_search_filters.test.mjs'],
     ['node', '--test', 'tests/shared_contracts.test.mjs'],
     ['node', '--test', 'tests/sync_models.test.mjs'],
     ['node', '--test', 'tests/cash_rights.test.mjs'],
