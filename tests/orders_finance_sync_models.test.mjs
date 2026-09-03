@@ -119,6 +119,7 @@ const ordersStorage=new Map();globalThis.localStorage={getItem:key=>ordersStorag
 const ordersBridgePreference=createDomainsFinanceBridge();assert.equal(ordersBridgePreference.creditAutoMode(),'daily');ordersBridgePreference.setCreditAutoMode('full');assert.equal(ordersBridgePreference.creditAutoMode(),'full','Orders stores a selectable automatic full/fast credit horizon');
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+const testDateEditorMarkup=()=>'<input type="date">';
 
 const probeChecksSession={kupaCloudReadState:{version:4,bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[]},checksBankEvents:[]};
 let bankProbeCalls=0,creditProbeCalls=0;
@@ -153,7 +154,7 @@ const financeView=createDomainsFinanceView({
     snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:viewProbeChecked,creditStatusChecked:false,bankBridgeError:viewProbeChecked?'bridge offline':'',creditBridgeError:''}),
     refreshBankBridgeStatus:async()=>{viewProbeCalls++;viewProbeChecked=true;return null},
   },
-  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 financeView.renderKupa();
 await Promise.resolve();await Promise.resolve();
@@ -166,7 +167,7 @@ const creditFinanceView=createDomainsFinanceView({
     snapshot:()=>({kupa:{bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[]},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:creditViewProbeChecked,bankBridgeError:'',creditBridgeError:creditViewProbeChecked?'credit bridge offline':''}),
     refreshCreditBridgeStatus:async()=>{creditViewProbeCalls++;creditViewProbeChecked=true;return null},
   },
-  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 creditFinanceView.renderKupa();
 await Promise.resolve();await Promise.resolve();
@@ -178,7 +179,7 @@ Object.defineProperty(globalThis,'requestAnimationFrame',{value:callback=>{callb
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?drilldownMain:id==='ordersCreditDetailRegion'?{scrollIntoView:()=>{drilldownScrolled++}}:null,querySelector:()=>null},configurable:true});
 const drilldownCreditSync=normalizeCreditSync({version:3,mode:'synced',profiles:[{profileId:'p1',provider:'max',label:'MAX',ownerLabel:'',defaultAccount:'עסקי',accounts:[{accountNumber:'1234',txns:[{id:'tx1',processedDate:'2026-09-15',transactionDate:'2026-08-20',chargedAmount:120,originalAmount:120,status:'completed',description:'בדיקת מיקוד'}]}]}],cardMappings:{'p1:1234':{included:true,hidden:false,account:'עסקי',cardName:'כרטיס בדיקה'}}});
 const drilldownUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
-const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:drilldownCreditSync,cards:[],credits:[]},bank:{},creditSync:drilldownCreditSync,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false});
+const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:drilldownCreditSync,cards:[],credits:[]},bank:{},creditSync:drilldownCreditSync,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
 drilldownView.renderKupa();
 assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-focus"[^>]*data-click-arg0="2026-09"[^>]*data-click-arg1="sync:p1:1234"/,'Orders forecast rows expose the same month/card drilldown identity as Kupa');
 drilldownView.setCreditDetailFocus('2026-09','sync:p1:1234');
@@ -193,7 +194,7 @@ const frameUiMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?frameUiMain:null,querySelector:()=>null},configurable:true});
 const frameUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
 const frameMountCalls=[];
-const frameView=createDomainsFinanceView({ui:frameUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:selectionFeed,cards:[],credits:[]},bank:{},creditSync:selectionFeed,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(options){frameMountCalls.push(options)},modal(){},closeModal(){},confirmDialog:async()=>false});
+const frameView=createDomainsFinanceView({ui:frameUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:selectionFeed,cards:[],credits:[]},bank:{},creditSync:selectionFeed,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(options){frameMountCalls.push(options)},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
 frameView.renderKupa();
 assert.equal(frameMountCalls.at(-1).resetTop,false,'ordinary Kupa rerenders preserve the remembered viewport');
 assert.doesNotMatch(frameUiMain.innerHTML,/credit-available-total/,'Orders removes the all-card available-frame pill from the top credit toolbar');
@@ -211,7 +212,7 @@ Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='mai
 const disclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:true,bankSearchValue:''},
   controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:25,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
-  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 disclosureView.renderKupa();
 assert.match(disclosureMain.innerHTML,/data-action="toggle-orders-bank-sync-options"[^>]*aria-expanded="true"/,'Kupa rerenders preserve the UI-owned open synchronization state on the status button');
@@ -225,7 +226,7 @@ Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='mai
 const closedDisclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:false,bankSearchValue:''},
   controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:25,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
-  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,
+  checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 closedDisclosureView.renderKupa();
 assert.match(closedDisclosureMain.innerHTML,/id="ordersBankSyncPanel" class="finance-sync-settings-body finance-sync-settings-page" hidden/,'closed bank synchronization settings are explicitly hidden on first render');

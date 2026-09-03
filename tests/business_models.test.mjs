@@ -19,6 +19,9 @@ import {createDomainsCustomersBulk} from '../netunim-orders/site/assets/js/domai
 import {money} from '../netunim-orders/site/assets/js/core/money.js';
 import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {createStateNormalization as createOrderNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
+import {cashflowWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
+import {dueCheckWarningItems} from '../netunim-orders/site/assets/js/domains/checks/alerts.js';
+import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 
 test('Orders restore rejects future metadata even with a supported top-level version',()=>{
  const {normalizeState,validateRestoreJson}=createOrderNormalization({});
@@ -65,6 +68,34 @@ test('future check forecast starts at the current month, fills internal gaps, tr
   assert.deepEqual(futureCheckMonthsData({checks:[]},{fromMonth:'2026-09',year:'2026'}),[]);
  }
 });
+test('warning models expose only active cashflow breaches and checks whose deposit date has arrived',()=>{
+ const cashflow=cashflowWarningItems({bank:{currentBalance:400,adjustments:[]},cashflowSettings:{businessMinimum:500},credits:[],expenses:[]});
+ assert.equal(cashflow.length,1);assert.equal(cashflow[0].kind,'cashflow');assert.equal(cashflow[0].account,'עסקי');assert.equal(cashflow[0].reason,'minimum');
+ const checks=dueCheckWarningItems([
+  {id:'OVER',name:'עבר',amount:100,dueDate:'2026-09-02',status:'בקופה'},
+  {id:'TODAY',name:'היום',amount:200,dueDate:'2026-09-03',status:'בקופה'},
+  {id:'FUTURE',name:'עתיד',amount:300,dueDate:'2026-09-04',status:'בקופה'},
+  {id:'DEPOSITED',name:'הופקד',amount:400,dueDate:'2026-09-01',status:'הופקד - במעקב'},
+  {id:'BAD',name:'לא תקין',amount:500,dueDate:'03/09/2026',status:'בקופה'},
+ ],'2026-09-03');
+ assert.deepEqual(checks.map(row=>row.checkId),['OVER','TODAY']);
+ assert.equal(checks[0].isToday,false);assert.equal(checks[1].isToday,true);
+});
+
+test('alert center presents readable cashflow/check cards and updates the persistent header indicator',()=>{
+ const classState=new Set(),button={classList:{toggle:(name,on)=>on?classState.add(name):classState.delete(name)},attrs:{},setAttribute(name,value){this.attrs[name]=value},title:''},count={textContent:'',hidden:true};
+ const model={state:{checks:[{id:'DUE',name:'לקוח לבדיקה',amount:780,dueDate:'2000-01-01',status:'בקופה',checkNumber:'12345',note:'להפקיד בסניף'}]}};
+ const previousDocument=globalThis.document;let captured=null;
+ globalThis.document={getElementById:id=>id==='alertCenterButton'?button:id==='alertCenterCount'?count:null};
+ try{
+  const center=createUiAlertCenter({model,financeSnapshot:()=>({kupa:{bank:{currentBalance:-250,adjustments:[]},credits:[],expenses:[],cashflowSettings:{}}}),modal:(title,body,foot)=>{captured={title,body,foot}}});
+  assert.equal(center.refreshIndicator().length,2);assert.equal(count.textContent,'2');assert.equal(count.hidden,false);assert.equal(classState.has('active'),true);
+  assert.equal(center.showStartupAlerts(),true);assert.equal(captured.title,'התראות בפתיחת המערכת');assert.match(captured.body,/alert-center-card cashflow-warning/);assert.match(captured.body,/יתרה צפויה/);assert.match(captured.body,/alert-center-card check-warning/);assert.match(captured.body,/לקוח לבדיקה/);assert.match(captured.body,/מס׳ צ׳ק 12345/);assert.match(captured.body,/להפקיד בסניף/);assert.match(captured.body,/סימן האזהרה בראש המסך/);
+  model.state.checks[0].status='הופקד - במעקב';center.refreshIndicator();assert.equal(count.textContent,'1','depositing a due check removes only its alert immediately');
+  assert.equal(center.showStartupAlerts(),false,'startup warnings are shown once per app boot');
+ }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
+});
+
 test('bank balance remains the authoritative snapshot regardless of check workflow status',()=>{
  const state={bank:{currentBalance:1000,snapshotSeq:5,adjustments:[]},checks:[{id:'C',amount:100,status:'בקופה'}]};
  assert.equal(bankCurrentBalanceData(state),1000);

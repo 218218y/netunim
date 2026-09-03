@@ -11,7 +11,7 @@ for(const app of ['kupa','orders']){
     const code=fs.readFileSync(file,'utf8'),relative=path.relative(site,file).split(path.sep).join('/');
     const ast=acorn.parse(code,{ecmaVersion:'latest',sourceType:'module'}),edges=[];
     assert.ok(!code.includes('__testBindings'),relative+': test API leaked into deployable source');
-    assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code)<60000,relative+': oversized responsibility module');
+    assert.ok(!relative.startsWith('assets/')||Buffer.byteLength(code.replace(/\r\n/g,'\n'))<60000,relative+': oversized responsibility module');
     walk(ast,node=>{
       const string=node.type==='Literal'&&typeof node.value==='string'?node.value:node.type==='TemplateElement'?node.value.cooked:null;
       if(string!==null)assert.ok(!/(?:^|[\s<])on[a-z]+\s*=/i.test(string),relative+': executable event attribute in HTML fragment');

@@ -15,7 +15,7 @@ import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
-import {createDomainsBankAlerts} from './domains/bank/alerts.js';
+import {createUiAlertCenter} from './ui/alert-center.js';
 import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
@@ -218,7 +218,7 @@ const uiNavigation=createUiNavigation({
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
+  refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
 });
 
 const domainsChecksView=createDomainsChecksView({
@@ -243,6 +243,7 @@ const domainsBankCache=createDomainsBankCache({
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   readKupaReadOnlyCloud:(...args)=>cloudTransport.readKupaReadOnlyCloud(...args),
   readKupaReadOnlyMeta:(...args)=>cloudTransport.readKupaReadOnlyMeta(...args),
+  refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
 });
 
 const uiDateEditor=createUiDateEditor({
@@ -279,6 +280,7 @@ const syncChecksPersistence=createSyncChecksPersistence({
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
+  refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -645,7 +647,8 @@ const domainsFinanceView=createDomainsFinanceView({
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
-const domainsBankAlerts=createDomainsBankAlerts({
+const uiAlertCenter=createUiAlertCenter({
+  model,
   financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
   modal:(...args)=>uiModal.modal(...args),
 });
@@ -792,6 +795,7 @@ const lifecycle=createLifecycle({
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   openCloud:(...args)=>uiCloud.openCloud(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+  showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
 
 const uiEvents={bindActionEvents};
@@ -999,6 +1003,7 @@ window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const ok=stora
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 document.getElementById('saveNowButton').addEventListener('click',storagePersistence.manualSaveNow);
 document.getElementById('folderAccessButton').addEventListener('click',uiFolders.handleTopFolderAccess);
+document.getElementById('alertCenterButton').addEventListener('click',()=>uiAlertCenter.openAlertCenter());
 document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);
 uiEvents.bindActionEvents(document.getElementById('main'),uiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
