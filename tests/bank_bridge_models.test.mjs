@@ -187,6 +187,13 @@ const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoali
 assert.equal(inbound.amount,250,'incoming Hapoalim transaction is positive');
 assert.equal(outbound.amount,-80,'outgoing Hapoalim transaction is negative');
 assert.equal(outbound.status,'pending','serial number zero maps to pending like the pinned scraper');
+const pendingTransfer=normalizeHapoalimTransaction({referenceNumber:0,eventDate:'20260902',valueDate:'20260902',eventAmount:20000,eventActivityTypeCode:2,activityDescription:'העברה',serialNumber:0,currentBalance:121212.34,beneficiaryDetailsData:{}});
+const settledTransfer=normalizeHapoalimTransaction({referenceNumber:0,eventDate:'20260902',valueDate:'20260902',eventAmount:20000,eventActivityTypeCode:2,activityDescription:'העברה',serialNumber:481,currentBalance:121212.34,beneficiaryDetailsData:{partyName:'ויס חנה',partyHeadline:'המבצע:'}});
+assert.equal(pendingTransfer.status,'pending','the transfer is exposed as pending while Hapoalim serial is zero');
+assert.equal(settledTransfer.status,'completed','the same transfer becomes completed once Hapoalim assigns a real serial');
+assert.equal(pendingTransfer.memo,'','pending transfer may legitimately have no beneficiary text');
+assert.match(settledTransfer.memo,/ויס חנה/,'settled transfer may gain beneficiary text that did not exist on the pending placeholder');
+assert.deepEqual([pendingTransfer.amount,pendingTransfer.description,pendingTransfer.balanceAfter,pendingTransfer.activityTypeCode],[settledTransfer.amount,settledTransfer.description,settledTransfer.balanceAfter,settledTransfer.activityTypeCode],'pending-to-completed reconciliation has connector-preserved bank facts even when serial and beneficiary text change');
 assert.match(inbound.memo,/לקוח/,'beneficiary details are normalized into a compact memo');
 assert.equal(inbound.balanceAfter,4321.5,'raw Hapoalim currentBalance is preserved as the authoritative balance after the transaction');
 assert.equal(normalizeHapoalimTransaction({...rawInbound,currentBalance:null}).balanceAfter,null,'missing bank row balance stays unknown instead of being coerced to zero');
