@@ -285,10 +285,13 @@ ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
    and 'חודש הוצאות עסקיות' in kupa_dashboard_view and 'class="grid kpis"' not in kupa_dashboard_view,
    "kupa dashboard: the five long-term business summary calculations remain explicit and label expenses as business-only")
 bank_model=(K / "site/assets/js/domains/bank/model.js").read_text(encoding="utf-8")
+shared_kupa_cashflow=(ROOT / "shared/kupa-cashflow.js").read_text(encoding="utf-8")
+orders_bank_readout=(O / "site/assets/js/domains/bank/readout.js").read_text(encoding="utf-8")
 kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
 kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
-ok("bankAccountNextCycleCommitmentsData" in bank_model and "expenseBelongsTo(x,role)" in bank_model
-   and "bankHomeNextCycleCommitmentsData" in bank_model and "bankHomeProjectedThisMonthData" in bank_model
+ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowData(state,account,reference)" in bank_model
+   and "from '../../shared/kupa-cashflow.js'" in bank_model and "from '../../shared/kupa-cashflow.js'" in orders_bank_readout
+   and "account.months" in shared_kupa_cashflow and "bankHomeNextCycleCommitmentsData" in bank_model and "bankHomeProjectedThisMonthData" in bank_model
    and all(label in bank_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי במחזור הקרוב','הוצאות עסקיות למחזור הקרוב','עו״ש עסקי אחרי המחזור הקרוב','אשראי ביתי במחזור הקרוב','הוצאות ביתיות למחזור הקרוב','עו״ש ביתי אחרי המחזור הקרוב'))
    and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
    "kupa account ownership: business/home bank, credit and expenses are calculated by one role-aware model and rendered as two explicit four-card groups with separated expense tables")

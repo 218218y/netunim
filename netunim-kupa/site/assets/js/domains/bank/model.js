@@ -2,8 +2,9 @@ import {num} from '../../core/money.js';
 import {todayISO, monthKey} from '../../core/dates.js';
 import {normalizeSharedBankEvents, checksBalanceData} from '../checks/model.js';
 import {accountInstallmentsData, nextAccountCreditCycleData} from '../credit/model.js';
-import {expenseOccurrencesForMonthData, expenseRowsBetweenData} from '../expenses/model.js';
+import {expenseOccurrencesForMonthData} from '../expenses/model.js';
 import {cashBalanceData} from '../cash/model.js';
+import {kupaAccountCashflowData} from '../../shared/kupa-cashflow.js';
 
 function accountRole(account){return account==='ביתי'?'ביתי':'עסקי'}
 function expenseBelongsTo(row,account){return accountRole(row?.account)===accountRole(account)}
@@ -31,20 +32,14 @@ export function bankAccountBalanceData(state,account='עסקי'){return accountR
 
 export function bankAccountAsOfDateData(state,account='עסקי'){return accountRole(account)==='ביתי'?bankHomeAsOfDateData(state):bankAsOfDateData(state)}
 
-export function bankAccountNextCycleCommitmentsData(state,account='עסקי'){
-  const role=accountRole(account),balance=bankAccountBalanceData(state,role),start=bankAccountAsOfDateData(state,role),today=todayISO(),cycle=nextAccountCreditCycleData(state,role,today);
-  const elapsedCreditRows=accountInstallmentsData(state,role).filter(x=>x.date>=start&&x.date<today);
-  const elapsedExpenseRows=expenseRowsBetweenData(state,start,today).filter(x=>x.dueDate<today&&expenseBelongsTo(x,role));
-  const targetExpenseRows=expenseOccurrencesForMonthData(state,cycle.targetMonth,false).filter(x=>x.dueDate>=today&&expenseBelongsTo(x,role));
-  const creditRows=[...elapsedCreditRows,...cycle.rows].filter((x,i,a)=>a.findIndex(y=>y.creditId===x.creditId&&y.part===x.part)===i);
-  const expenseRows=[...elapsedExpenseRows,...targetExpenseRows].filter((x,i,a)=>a.findIndex(y=>y.id===x.id&&y.dueDate===x.dueDate)===i);
-  const credit=creditRows.reduce((a,x)=>a+x.amount,0),expenses=expenseRows.reduce((a,x)=>a+num(x.amount),0),targetExpenseTotal=targetExpenseRows.reduce((a,x)=>a+num(x.amount),0);
-  return {account:role,balance,credit,expenses,total:credit+expenses,start,end:cycle.targetEnd,targetMonth:cycle.targetMonth,nextCreditRows:cycle.rows,nextCreditTotal:cycle.total,elapsedCredit:elapsedCreditRows.reduce((a,x)=>a+x.amount,0),elapsedExpenses:elapsedExpenseRows.reduce((a,x)=>a+num(x.amount),0),targetExpenseRows,targetExpenseTotal};
+export function bankAccountNextCycleCommitmentsData(state,account='עסקי',reference=todayISO()){
+  const {projected,alert,...commitments}=kupaAccountCashflowData(state,account,reference);
+  return commitments;
 }
 
-export function bankNextCycleCommitmentsData(state){return bankAccountNextCycleCommitmentsData(state,'עסקי')}
+export function bankNextCycleCommitmentsData(state,reference=todayISO()){return bankAccountNextCycleCommitmentsData(state,'עסקי',reference)}
 
-export function bankHomeNextCycleCommitmentsData(state){return bankAccountNextCycleCommitmentsData(state,'ביתי')}
+export function bankHomeNextCycleCommitmentsData(state,reference=todayISO()){return bankAccountNextCycleCommitmentsData(state,'ביתי',reference)}
 
 export function bankLongTermPositionData(state){
   const b=bankCurrentBalanceData(state),start=bankAsOfDateData(state),cycle=nextAccountCreditCycleData(state,'עסקי',todayISO());
@@ -55,8 +50,8 @@ export function bankLongTermPositionData(state){
   return {bank:b,credit,expenses,cash,checks,kupa,net:b===null?null:b-credit-expenses+kupa,targetMonth:cycle.targetMonth};
 }
 
-export function bankProjectedAccountCycleData(state,account='עסקי'){const b=bankAccountBalanceData(state,account);if(b===null)return null;return b-bankAccountNextCycleCommitmentsData(state,account).total}
+export function bankProjectedAccountCycleData(state,account='עסקי',reference=todayISO()){return kupaAccountCashflowData(state,account,reference).projected}
 
-export function bankProjectedThisMonthData(state){return bankProjectedAccountCycleData(state,'עסקי')}
+export function bankProjectedThisMonthData(state,reference=todayISO()){return bankProjectedAccountCycleData(state,'עסקי',reference)}
 
-export function bankHomeProjectedThisMonthData(state){return bankProjectedAccountCycleData(state,'ביתי')}
+export function bankHomeProjectedThisMonthData(state,reference=todayISO()){return bankProjectedAccountCycleData(state,'ביתי',reference)}

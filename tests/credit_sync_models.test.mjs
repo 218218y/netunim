@@ -262,6 +262,14 @@ assert.equal(bankProjectedThisMonthData(billingCashflowState),-11455.96,'Kupa pr
 assert.equal(billingOrdersCycle.credit,19305.96,'Orders future checking reads the same synchronized monthly credit debit');
 assert.equal(billingOrdersCycle.projected,-11455.96);assert.equal(billingOrdersCycle.alert.active,true);assert.equal(billingOrdersCycle.alert.reason,'negative','the existing cash-flow alert fires once the missing current-cycle credit is restored');
 
+const persistedBillingCashflowState=JSON.parse(JSON.stringify(billingCashflowState));
+assert.equal(persistedBillingCashflowState.creditSync.profiles[0].accounts[0].txns,undefined,'finance persistence intentionally omits the derived txns cache');
+assert.equal(persistedBillingCashflowState.creditSync.profiles[0].accounts[0].months[0].transactions.length,1,'the durable finance document keeps the monthly transaction slice');
+const persistedKupaCycle=bankNextCycleCommitmentsData(persistedBillingCashflowState,billingReference),persistedOrdersCycle=kupaAccountCashflowData(persistedBillingCashflowState,'עסקי',billingReference);
+assert.equal(persistedKupaCycle.credit,19305.96,'Kupa cash-flow reconstructs credit directly from durable monthly slices after a cloud round-trip');
+assert.equal(persistedOrdersCycle.credit,persistedKupaCycle.credit,'Orders uses the same shared monthly-slice cash-flow source as Kupa after persistence');
+assert.equal(persistedOrdersCycle.projected,-11455.96);assert.equal(persistedOrdersCycle.alert.reason,'negative','Orders cannot lose synchronized credit merely because the derived txns cache was not serialized');
+
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');
 assert(allInstallmentsData(legacyModeState).some(r=>r.source==='credit_sync'),'legacy mode flags cannot disable issuer calculations');
