@@ -813,6 +813,7 @@ const uiActions=createUiActions({
   refreshOrdersCredit:(...args)=>domainsFinanceView.refreshCredit(...args),
   copyOrdersSafeCreditDiagnostics:(...args)=>domainsFinanceView.copySafeCreditDiagnostics(...args),
   setOrdersCreditAuto:(...args)=>domainsFinanceView.setCreditAuto(...args),
+  setOrdersCreditAutoMode:(...args)=>domainsFinanceView.setCreditAutoMode(...args),
   setOrdersCreditView:(...args)=>domainsFinanceView.setCreditView(...args),
   setOrdersCreditAccountFilter:(...args)=>domainsFinanceView.setCreditAccountFilter(...args),
   setOrdersCreditProviderFilter:(...args)=>domainsFinanceView.setCreditProviderFilter(...args),

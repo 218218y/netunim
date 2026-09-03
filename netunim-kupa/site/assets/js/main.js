@@ -732,6 +732,7 @@ const uiActions=createUiActions({
   copySafeCreditDiagnostics:(...args)=>domainsCreditController.copySafeCreditDiagnostics(...args),
   setCreditCardMapping:(...args)=>domainsCreditController.setCreditCardMapping(...args),
   setCreditAutoRefresh:(...args)=>domainsCreditController.setCreditAutoRefresh(...args),
+  setCreditAutoMode:(...args)=>domainsCreditController.setCreditAutoMode(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   openCheckModal:(...args)=>domainsChecksEditor.openCheckModal(...args),
   markCheckSeriesManual:(...args)=>domainsChecksEditor.markCheckSeriesManual(...args),

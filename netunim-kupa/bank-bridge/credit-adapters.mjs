@@ -130,7 +130,7 @@ export function parseVisaCalMonthData(data,{startDate=null}={}){
     const regular=Array.isArray(account?.debitDates)?account.debitDates:[],immediate=Array.isArray(account?.immidiateDebits?.debitDays)?account.immidiateDebits.debitDays:[];
     for(const debitDay of [...regular,...immediate]){
       if(!Array.isArray(debitDay?.transactions))throw safeError('כאל החזירה debit day ללא מערך עסקאות.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Transactions'});
-      for(const raw of debitDay.transactions){const tx=normalizeVisaCalTransaction(raw);if(!startDate||!tx.date||Date.parse(tx.date)>=Date.parse(startDate))rows.push(tx)}
+      for(const raw of debitDay.transactions){const tx=normalizeVisaCalTransaction(raw),billingDate=tx.processedDate||tx.date;if(!startDate||!billingDate||Date.parse(billingDate)>=Date.parse(startDate))rows.push(tx)}
     }
   }
   return rows;
@@ -225,16 +225,22 @@ export class VisaCalAdapter extends CreditProviderAdapter {
   }
 }
 
-function transactionMonth(tx){const value=tx?.processedDate||tx?.date;return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
+function transactionBillingDate(tx){return tx?.processedDate||tx?.date||''}
+function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
 function genericMonthlyAccount(account,provider,{startDate,futureMonths,now}){
-  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],unassigned=[];
-  for(const tx of normalized.txns){const key=transactionMonth(tx);if(tx.status==='pending'&&!tx.processedDate){pending.push(tx);continue}if(byMonth.has(key))byMonth.get(key).push(tx);else unassigned.push(tx)}
+  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],unassigned=[],cutoff=Date.parse(startDate);
+  for(const tx of normalized.txns){
+    if(tx.status==='pending'&&!tx.processedDate){pending.push(tx);continue}
+    const billingDate=transactionBillingDate(tx),billingTime=Date.parse(billingDate),key=transactionMonth(tx);
+    if(Number.isFinite(cutoff)&&Number.isFinite(billingTime)&&billingTime<cutoff)continue;
+    if(byMonth.has(key))byMonth.get(key).push(tx);else if(!key)unassigned.push(tx);
+  }
   return normalizeCreditScrapeAccount({...normalized,txns:undefined,pendingTransactions:pending,pendingStatus:'success',pendingFetchedAt:now.toISOString(),unassignedTransactions:unassigned,months:plan.map(entry=>monthlyCoverageSuccess(entry,byMonth.get(entry.month),now.toISOString(),CREDIT_PROVIDER_SCHEMA_VERSION))},provider);
 }
 
 export class GenericScraperAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive})}
-  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){this.event({stage:error?.stage||'Scrape',durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus});throw creditThrownScrapeFailure(error,profile)}}
+  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false,outputData:{enableTransactionsFilterByDate:false}}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){this.event({stage:error?.stage||'Scrape',durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus});throw creditThrownScrapeFailure(error,profile)}}
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 

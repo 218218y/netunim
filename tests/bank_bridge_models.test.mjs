@@ -9,6 +9,7 @@ import {
   isCamoufoxRetryableNativeFailure,
   normalizeIsracardFamilyTransaction,
   parseIsracardDate,
+  transactionInBillingWindow,
 } from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {
   HAPOALIM_POST_LOGIN_TIMEOUT_MS,
@@ -46,6 +47,8 @@ assert.equal(amexInstallment.originalAmount,-100.5,'Camoufox adapter explicitly 
 assert.equal(amexInstallment.date,'2026-07-12T00:00:00.000Z','Camoufox adapter preserves upstream installment date-fixing semantics');
 assert.equal(amexInstallment.transactionDate,'2026-06-12T00:00:00.000Z','Camoufox keeps the exact issuer purchase date separately from the installment/billing timeline');
 assert.equal(amexInstallment.originalCurrency,'ILS','Camoufox adapter normalizes NIS/shekel issuer currency to ILS');
+const priorPurchaseCurrentBill=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'billing-window',voucherNumberRatzOutbound:'0',dealSumOutbound:'0',fullPurchaseDate:'28/08/2026',fullPaymentDate:'10/09/2026',dealSum:'100',paymentSum:'100',currencyId:'ש"ח',fullSupplierNameHeb:'חיוב ספטמבר',moreInfo:''},null);
+assert.equal(transactionInBillingWindow(priorPurchaseCurrentBill,new Date('2026-09-01T00:00:00Z')),true,'Camoufox fast sync filters by payment/billing date, not purchase date');
 const endOfMonthInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'654321',voucherNumberRatzOutbound:'000000001',dealSumOutbound:'0',fullPurchaseDate:'31/01/2026',fullPaymentDate:'15/02/2026',dealSum:'50',paymentSum:'50',currencyId:'ש"ח',fullSupplierNameHeb:'בדיקת סוף חודש',moreInfo:'תשלום 2 מתוך 2'},null);
 assert.equal(endOfMonthInstallment.date,'2026-02-28T00:00:00.000Z','installment month shifting clamps to the target month end, matching moment.add semantics instead of overflowing into March');
 const loginHtml=classifyCamoufoxProviderResponse({stage:'ValidateIdData',status:200,text:'<!DOCTYPE html><html><body>challenge</body></html>'});

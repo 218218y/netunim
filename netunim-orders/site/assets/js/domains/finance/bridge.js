@@ -2,6 +2,7 @@ const BRIDGE_URL='http://127.0.0.1:8765';
 const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1';
 const BANK_AUTO_KEY='netunim_orders_bank_auto_daily_v1';
 const CREDIT_AUTO_KEY='netunim_orders_credit_auto_daily_v1';
+const CREDIT_AUTO_MODE_KEY='netunim_orders_credit_auto_mode_v1';
 const BANK_ATTEMPT_KEY='netunim_orders_bank_auto_attempt_v1';
 const CREDIT_ATTEMPT_KEY='netunim_orders_credit_auto_attempt_v1';
 export const BANK_AUTO_INTERVAL_MS=4*60*60*1000;
@@ -27,8 +28,10 @@ function setBridgeToken(value){const token=String(value||'').trim();if(token)loc
 async function request(path,{method='GET',body=null,timeoutMs=5000}={}){const token=getBridgeToken();if(!token)throw bridgeError('חסר מפתח Bank Bridge במחשב זה.','BRIDGE_NOT_PAIRED');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);try{const r=await fetch(BRIDGE_URL+path,{method,headers:{Authorization:`Bearer ${token}`,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:controller.signal,cache:'no-store'});const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch{}if(!r.ok||data.ok===false)throw bridgeError(data.message||`Bank Bridge החזיר שגיאה (${r.status})`,data.code||`HTTP_${r.status}`,data.stage||'',{httpStatus:data.httpStatus,availableAccounts:data.availableAccounts,accountRole:data.accountRole,creditErrors:data.creditErrors});return data}catch(e){if(e?.name==='AbortError')throw bridgeError('Bank Bridge לא הגיב בזמן.','BRIDGE_TIMEOUT');if(e?.code)throw e;throw bridgeError('לא ניתן להתחבר ל-Bank Bridge המקומי.','BRIDGE_UNAVAILABLE')}finally{clearTimeout(timer)}}
 function bankAutoEnabled(){return enabled(BANK_AUTO_KEY)}
 function creditAutoEnabled(){return enabled(CREDIT_AUTO_KEY)}
+function creditAutoMode(){return localStorage.getItem(CREDIT_AUTO_MODE_KEY)==='full'?'full':'daily'}
 function setBankAutoEnabled(value){setEnabled(BANK_AUTO_KEY,!!value)}
 function setCreditAutoEnabled(value){setEnabled(CREDIT_AUTO_KEY,!!value)}
+function setCreditAutoMode(value){localStorage.setItem(CREDIT_AUTO_MODE_KEY,value==='full'?'full':'daily')}
 function markBankAttempt(){markAttempt(BANK_ATTEMPT_KEY)}
 function markCreditAttempt(){markAttempt(CREDIT_ATTEMPT_KEY)}
 function bankAttemptDelayMs(){return attemptDelayMs(BANK_ATTEMPT_KEY)}
@@ -47,5 +50,5 @@ function deleteCreditProfile(profileId){return creditRequest('/profiles',{method
 function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
 function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
-return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }

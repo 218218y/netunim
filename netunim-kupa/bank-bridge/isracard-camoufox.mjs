@@ -57,6 +57,8 @@ function shiftInstallmentDate(iso,installments){
   const lastDay=new Date(Date.UTC(targetFirst.getUTCFullYear(),targetFirst.getUTCMonth()+1,0)).getUTCDate();
   return new Date(Date.UTC(targetFirst.getUTCFullYear(),targetFirst.getUTCMonth(),Math.min(date.getUTCDate(),lastDay))).toISOString();
 }
+export function transactionInBillingWindow(tx,startDate){const cutoff=Date.parse(startDate),billing=Date.parse(tx?.processedDate||tx?.date||'');return !Number.isFinite(cutoff)||!Number.isFinite(billing)||billing>=cutoff}
+
 export function normalizeIsracardFamilyTransaction(txn={},processedDate=null){
   if(String(txn?.dealSumType)==='1'||String(txn?.voucherNumberRatz)==='000000000'||String(txn?.voucherNumberRatzOutbound)==='000000000')return null;
   const outboundAmount=finiteNumber(txn?.dealSumOutbound,0),isOutbound=outboundAmount!==0;
@@ -126,10 +128,10 @@ async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
   const data=await pageFetchJson(page,{url:transactionsUrl(servicesUrl,month),stage:`CardsTransactionsList ${monthKey(month)}`});
   if(data?.Header?.Status!=='1')throw safeError('חברת האשראי לא אישרה את קריאת העסקאות לחודש.','CREDIT_PROVIDER_DATA_ERROR',{stage:`CardsTransactionsList ${monthKey(month)}`});
   const bean=data?.CardsTransactionsListBean;if(!bean||typeof bean!=='object')throw safeError('חברת האשראי החזירה מבנה עסקאות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:`CardsTransactionsList ${monthKey(month)}`});
-  const result={},startMs=new Date(startDate).getTime();
+  const result={};
   for(const account of accounts){
     const groups=bean?.[`Index${account.index}`]?.CurrentCardTransactions;if(!Array.isArray(groups))continue;
-    const txns=[];for(const group of groups){for(const row of [...(Array.isArray(group?.txnIsrael)?group.txnIsrael:[]),...(Array.isArray(group?.txnAbroad)?group.txnAbroad:[])]){const tx=normalizeIsracardFamilyTransaction(row,account.processedDate);if(tx&&new Date(tx.date).getTime()>=startMs)txns.push(tx)}}
+    const txns=[];for(const group of groups){for(const row of [...(Array.isArray(group?.txnIsrael)?group.txnIsrael:[]),...(Array.isArray(group?.txnAbroad)?group.txnAbroad:[])]){const tx=normalizeIsracardFamilyTransaction(row,account.processedDate);if(tx&&transactionInBillingWindow(tx,startDate))txns.push(tx)}}
     result[account.accountNumber]=txns;
   }
   return result;

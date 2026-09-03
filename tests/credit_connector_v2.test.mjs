@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   CREDIT_CONNECTOR_CONTRACT_VERSION,
   VisaCalAdapter,
+  MaxAdapter,
   buildCreditMonthPlan,
   classifyCreditHttpResponse,
   parseRetryAfter,
@@ -33,6 +34,19 @@ const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dail
 assert.equal(dailyRequests.length,8,'daily Cal sync performs exactly Frames + Pending + current/next month for each of two cards');
 assert.deepEqual([...new Set(dailyRequests.filter(row=>row.url.includes('transactionsDetails')).map(row=>`${row.body.year}-${String(row.body.month).padStart(2,'0')}`))],['2026-09','2026-10'],'daily Cal sync requests exactly the current and next month');
 assert.equal(dailyResult.accounts.every(account=>account.months.map(row=>row.month).join(',')==='2026-09,2026-10'),true,'daily account coverage contains only the two fresh core months');
+
+const billedInSeptember=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{...transaction('card-a','2026-08'),trnPurchaseDate:'2026-08-28T00:00:00.000Z',debCrdDate:'2026-09-10T00:00:00.000Z',amtBeforeConvAndIndex:19305.96}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date('2026-09-01T00:00:00.000Z')});
+assert.equal(billedInSeptember.length,1,'fast Cal sync keeps a prior-month purchase when its issuer debit date belongs to the current billing month');
+assert.equal(billedInSeptember[0].date.slice(0,10),'2026-08-28','Cal purchase date stays exact and separate');
+assert.equal(billedInSeptember[0].processedDate.slice(0,10),'2026-09-10','Cal current-month ownership is determined by the issuer debit date');
+const billedBeforeCutoff=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{...transaction('card-a','2026-08'),trnPurchaseDate:'2026-08-20T00:00:00.000Z',debCrdDate:'2026-08-25T00:00:00.000Z'}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date('2026-09-01T00:00:00.000Z')});
+assert.equal(billedBeforeCutoff.length,0,'the historical cutoff still applies to the billing date and does not leak older debit cycles');
+
+let genericOptions=null;
+const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS'}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
+const genericResult=await genericAdapter.scrape();
+assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'native MAX/Isracard purchase-date filtering is disabled so Netunim can apply the canonical billing-date boundary');
+assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
 
 const excludedFixture=fakeScraper(),excludedRequests=[],excludedFetch=fetchFixture(),excludedResult=await adapterFor(excludedFixture.scraper,async(url,options)=>{excludedRequests.push({url,body:JSON.parse(options.body)});return excludedFetch(url,options)},'full',{excludedAccountNumbers:['1111']}).scrape();
 assert.equal(excludedRequests.length,20,'a known excluded Cal card sends zero Frames/Pending/month requests while one included card keeps the complete full horizon');

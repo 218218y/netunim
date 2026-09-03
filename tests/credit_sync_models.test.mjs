@@ -27,6 +27,7 @@ import {
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
+import {parseVisaCalMonthData} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
@@ -250,6 +251,17 @@ assert.equal(staleKupaCycle.elapsedCredit,100);assert.equal(staleKupaCycle.elaps
 assert.equal(staleOrders.elapsedCredit,staleKupaCycle.elapsedCredit);assert.equal(staleOrders.elapsedExpenses,staleKupaCycle.elapsedExpenses,'Orders preserves the stale-snapshot correction instead of using a simplified current-month formula');
 assert.equal(staleOrders.total,staleKupaCycle.total);assert.equal(staleOrders.projected,bankProjectedThisMonthData(staleSnapshotState));
 
+const billingReference=todayISO(),billingDate=shiftDay(billingReference,7),purchaseDate=addMonthsISO(billingReference,-1),billingMonthStart=`${billingReference.slice(0,7)}-01T00:00:00.000Z`;
+const billingRows=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{trnIntId:'cal-current-cycle-regression',trnTypeCode:'5',trnPurchaseDate:`${purchaseDate}T00:00:00.000Z`,debCrdDate:`${billingDate}T00:00:00.000Z`,trnAmt:19305.96,amtBeforeConvAndIndex:19305.96,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'חיוב שנקנה בחודש קודם'}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date(billingMonthStart)});
+assert.equal(billingRows.length,1,'the fast-source regression row survives the current-cycle billing boundary before it reaches cash-flow');
+const billingCashflowState={version:4,checks:[],cash:[],cards:[],credits:[],bank:{currentBalance:10000,asOfDate:billingReference,adjustments:[]},cashflowSettings:{businessMinimum:0,homeMinimum:null},expenses:[{id:'fixed-2150',description:'הוצאות קבועות',account:'עסקי',date:billingDate,amount:2150,recurring:true,active:true}],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'cal-current-cycle',provider:'visaCal',accounts:[{accountNumber:'9715',txns:billingRows}]}],cardMappings:{'cal-current-cycle:9715':{included:true,hidden:false,account:'עסקי'}}})};
+const billingKupaCycle=bankNextCycleCommitmentsData(billingCashflowState),billingOrdersCycle=kupaAccountCashflowData(billingCashflowState,'עסקי',billingReference);
+assert.equal(billingKupaCycle.credit,19305.96,'Kupa future checking includes the issuer monthly credit debit after a fast refresh');
+assert.equal(billingKupaCycle.expenses,2150,'Kupa keeps fixed expenses alongside the monthly credit debit');
+assert.equal(bankProjectedThisMonthData(billingCashflowState),-11455.96,'Kupa projected checking subtracts both credit and fixed expenses');
+assert.equal(billingOrdersCycle.credit,19305.96,'Orders future checking reads the same synchronized monthly credit debit');
+assert.equal(billingOrdersCycle.projected,-11455.96);assert.equal(billingOrdersCycle.alert.active,true);assert.equal(billingOrdersCycle.alert.reason,'negative','the existing cash-flow alert fires once the missing current-cycle credit is restored');
+
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');
 assert(allInstallmentsData(legacyModeState).some(r=>r.source==='credit_sync'),'legacy mode flags cannot disable issuer calculations');
@@ -342,19 +354,21 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
-for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
+for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','setCreditAutoMode','maybeAutoRefreshCreditSync']){
   assert.equal(typeof creditController[method],'function',`credit controller exposes ${method}`);
 }
 assert.equal('setCreditSyncMode' in creditController,false,'credit controller no longer exposes a manual/synchronized source switch');
 await creditController.refreshCreditBridgeStatus();
-creditController.setCreditAutoRefresh(false);
+creditController.setCreditAutoMode('full');assert.equal(creditController.creditSyncUiState().autoMode,'full','Kupa stores the selected automatic credit horizon independently of the on/off toggle');creditController.setCreditAutoRefresh(false);
+
+let automaticSyncOptions=null;const automaticModel={state:{creditSync:normalizeCreditSync({})}},automaticController=createDomainsCreditController({model:automaticModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'auto-profile'}]}),syncCreditCards:async options=>{automaticSyncOptions=structuredClone(options);return {syncedAt:new Date().toISOString(),attemptedCount:1,deferredCount:0,profiles:[{profileId:'auto-profile',provider:'max',coreComplete:true,accounts:[]}],errors:[]}}},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:normalizeCreditSync({})}}),claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>true});automaticController.setCreditAutoMode('full');assert.equal(await automaticController.refreshCreditSync({auto:true}),undefined);assert.equal(automaticSyncOptions.syncMode,'full','Kupa once-per-day automatic refresh sends the user-selected full horizon instead of hard-coding daily');automaticController.setCreditAutoRefresh(false);
 
 const deferredToasts=[],deferredModel={state:{creditSync:normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'deferred-profile',provider:'amex',attemptedAt:'2026-09-01T00:00:00Z',accounts:[]}]})}},deferredController=createDomainsCreditController({
   model:deferredModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:false}),toast:message=>deferredToasts.push(message),render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 const beforeDeferredAttempt=deferredModel.state.creditSync.profiles[0].attemptedAt;await deferredController.refreshCreditSync({interactive:true,auto:false});
@@ -365,7 +379,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

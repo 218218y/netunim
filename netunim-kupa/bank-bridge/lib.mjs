@@ -396,7 +396,7 @@ export function normalizeCreditProfileInput(value={},existing=null){
 }
 export function normalizeCreditScrapeTransaction(tx={}){
   const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
-  return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
+  return {id:creditText(tx.id||tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
 }
 export function normalizeCreditMonthSlice(slice={}){
   const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice?.month||''))?String(slice.month):'';
