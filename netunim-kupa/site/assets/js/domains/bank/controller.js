@@ -29,7 +29,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 
 
 export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
-const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:''};
+const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
@@ -79,15 +79,15 @@ function bankBridgeUiState(){
 
 async function refreshBankBridgeStatus(){
   if(!bridge.getBridgeToken()){
-    Object.assign(bridgeState,{checked:true,available:null,configured:false,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:'יש להזין מפתח Bridge כדי לחבר את הקופה לתוכנה המקומית.'});
+    Object.assign(bridgeState,{checked:true,available:null,configured:false,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'יש להזין מפתח Bridge כדי לחבר את הקופה לתוכנה המקומית.'});
     return bankBridgeUiState();
   }
   try{
     const s=await bridge.status(),bridgeVersion=Number(s.bridgeVersion||0),upgradeRequired=bridgeVersion<BANK_BRIDGE_VERSION;
-    const common={checked:true,available:true,configured:!!s.configured,upgradeRequired,bridgeVersion,availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],accountSelectionRole:s.accountRole||'',lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorAt:s.lastErrorAt||null,lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',lastWarningCode:s.lastWarningCode||'',lastWarningStage:s.lastWarningStage||'',lastWarningHttpStatus:Number(s.lastWarningHttpStatus)||0};
+    const common={checked:true,available:true,configured:!!s.configured,upgradeRequired,bridgeVersion,availableAccounts:Array.isArray(s.availableAccounts)?s.availableAccounts:[],accountSelectionRole:s.accountRole||'',lastScrapeAt:s.lastScrapeAt||null,lastError:s.lastError||'',lastErrorAt:s.lastErrorAt||null,lastErrorCode:s.lastErrorCode||'',lastErrorStage:s.lastErrorStage||'',lastErrorHttpStatus:Number(s.lastErrorHttpStatus)||0,lastWarning:s.lastWarning||'',lastWarningCode:s.lastWarningCode||'',lastWarningStage:s.lastWarningStage||'',lastWarningHttpStatus:Number(s.lastWarningHttpStatus)||0,availabilityError:'',availabilityErrorAt:null};
     Object.assign(bridgeState,common);applyBridgeAccountFields(bridgeState,s);
     bridgeState.message=upgradeRequired?'מותקנת במחשב גרסת Bank Bridge ישנה. יש להריץ מחדש install_bank_bridge.bat כדי להפעיל סנכרון בטוח של החשבון העסקי והביתי יחד.':s.configured?'החיבור המקומי מוכן.':'Bank Bridge פעיל, אך עדיין לא נשמרו בו פרטי בנק הפועלים.';
-  }catch(e){Object.assign(bridgeState,{checked:true,available:false,configured:false,upgradeRequired:false,bridgeVersion:0,availableAccounts:Array.isArray(e.availableAccounts)?e.availableAccounts:[],accountSelectionRole:e.accountRole||'',lastError:e.message||String(e),lastErrorAt:new Date().toISOString(),lastErrorCode:e.code||'',lastErrorStage:e.stage||'',lastErrorHttpStatus:Number(e.httpStatus)||0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,message:e.message||String(e)})}
+  }catch(e){const availabilityError=e.message||String(e);Object.assign(bridgeState,{checked:true,available:false,upgradeRequired:false,availableAccounts:Array.isArray(e.availableAccounts)?e.availableAccounts:[],accountSelectionRole:e.accountRole||'',availabilityError,availabilityErrorAt:new Date().toISOString(),message:availabilityError})}
   return bankBridgeUiState();
 }
 
@@ -96,7 +96,7 @@ async function saveBankBridgeToken(){
   if(!token)return toast('יש להדביק את מפתח ה-Bridge של המחשב הנוכחי');
   bridge.setBridgeToken(token);
   const input=document.getElementById('bankBridgeTokenInput');if(input)input.value='';
-  Object.assign(bridgeState,{checked:false,available:null,availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,message:'מפתח המחשב נשמר בדפדפן זה. בודק את ה-Bridge…'});
+  Object.assign(bridgeState,{checked:false,available:null,availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'מפתח המחשב נשמר בדפדפן זה. בודק את ה-Bridge…'});
   render();
   await refreshBankBridgeStatus();render();
   if(bridgeState.available)toast('מפתח ה-Bridge נשמר והמחשב מחובר');

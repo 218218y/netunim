@@ -33,6 +33,11 @@ import {
   scraperFailureMessage,
   waitForTerminalLoginResult,
   ymdDate,
+  creditScrapeFailure,
+  creditThrownScrapeFailure,
+  creditAutomaticRetryAfterAt,
+  deferredCreditProfileError,
+  CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
 
 const amexInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'123456',voucherNumberRatzOutbound:'777777',dealSumOutbound:'0',fullPurchaseDate:'12/06/2026',fullPaymentDate:'02/07/2026',dealSum:'100.50',paymentSum:'100.50',currencyId:'ש"ח',fullSupplierNameHeb:'  חנות בדיקה  ',moreInfo:'תשלום 2 מתוך 3'},null);
@@ -57,6 +62,25 @@ assert.equal(camoufoxOptions.enable_cache,true,'qualified issuer sessions may re
 assert.deepEqual(buildCreditMonths(new Date('2026-05-03T00:00:00Z'),2,new Date('2026-08-31T00:00:00Z')).map(x=>x.toISOString().slice(0,7)),['2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'],'Camoufox adapter requests every billing month from the lookback through the configured future horizon');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_HTML_RESPONSE'}),true,'Isracard native HTML/WAF failures are eligible for one Camoufox fallback');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),false,'invalid credentials never trigger a second browser engine attempt');
+
+
+const calProfile={profileId:'cal-a',provider:'visaCal',label:'כאל-9715'};
+const calMonthlyFailure=creditThrownScrapeFailure(new Error('failed to fetch transactions for card 9715. Message: service temporarily unavailable'),calProfile);
+assert.equal(calMonthlyFailure.code,'CREDIT_PROVIDER_DATA_ERROR','Cal monthly API failures retain a provider-data classification instead of collapsing to generic scrape failure');
+assert.equal(calMonthlyFailure.stage,'Transactions','Cal monthly API failures identify the proven transactions stage');
+assert.match(calMonthlyFailure.message,/9715/,'Cal diagnostics retain only the safe card suffix from the upstream error');
+const calLoginTimeout=creditThrownScrapeFailure(new Error('Timeout while waiting for #ccLoginDesktopBtn in login iframe'),calProfile);
+assert.equal(calLoginTimeout.code,'CREDIT_SCRAPE_FAILED','ordinary thrown timeout text is not misclassified unless the scraper reports TIMEOUT explicitly');
+const reportedCalLoginTimeout=creditScrapeFailure({errorType:'TIMEOUT',errorMessage:'Timeout while waiting for #ccLoginDesktopBtn in login iframe'},calProfile);
+assert.equal(reportedCalLoginTimeout.code,'CREDIT_TIMEOUT','the official scraper TIMEOUT class remains explicit');
+assert.equal(reportedCalLoginTimeout.stage,'LoginFlow','a TIMEOUT is assigned to LoginFlow only when the upstream message explicitly proves a login/iframe wait');
+const blockedAt=Date.parse('2026-09-03T05:05:00+03:00'),blockedError={profileId:'amex-a',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',at:new Date(blockedAt).toISOString()};
+const retryAfterAt=creditAutomaticRetryAfterAt(blockedError,blockedAt);
+assert.equal(Date.parse(retryAfterAt)-blockedAt,CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,'automation blocks receive exactly one 24-hour automatic retry cooldown');
+const deferred=deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+60*60*1000);
+assert.equal(deferred?.deferred,true,'a blocked Amex profile is deferred without opening another automatic browser session during cooldown');
+assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'cal-a',provider:'visaCal'},blockedAt+60*60*1000),null,'cooldown is profile-specific and never suppresses another issuer/profile');
+assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'automatic retry becomes eligible exactly when the cooldown expires');
 
 const now=Date.parse('2026-08-30T06:00:00+03:00');
 assert.equal(bankAutoRefreshDue(null,now),true,'missing successful bank sync is due');

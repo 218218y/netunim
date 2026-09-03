@@ -8,6 +8,8 @@ import * as kupaChecks from '../netunim-kupa/site/assets/js/domains/checks/model
 import * as orderChecks from '../netunim-orders/site/assets/js/domains/checks/model.js';
 import * as kupaCashflow from '../netunim-kupa/site/assets/js/shared/cashflow.js';
 import * as orderCashflow from '../netunim-orders/site/assets/js/shared/cashflow.js';
+import * as kupaSyncStatus from '../netunim-kupa/site/assets/js/shared/sync-status.js';
+import * as orderSyncStatus from '../netunim-orders/site/assets/js/shared/sync-status.js';
 
 test('HTML escaping contracts agree for text and quoted attributes',()=>{
  for(const value of ['',null,undefined,0,123,`'"<&>`,['a','b'],'שלום😀']){
@@ -46,5 +48,16 @@ test('shared cashflow thresholds and alert semantics agree across both apps',()=
    assert.equal(api.cashflowAlertForAccount(5500,raw,'עסקי').active,false);
    assert.equal(api.cashflowAlertForAccount(2500,raw,'ביתי').active,true,'home uses its own independent threshold');
    assert.equal(api.cashflowAlertForAccount(4000,raw,'ביתי').active,false);
+ }
+});
+
+
+test('shared sync status prefers newer cloud success over stale local failures',()=>{
+ const stale='2026-09-02T23:18:00+03:00',success='2026-09-03T03:20:00+03:00',sameAttempt='2026-09-03T03:20:03+03:00';
+ for(const api of [kupaSyncStatus,orderSyncStatus]){
+   assert.equal(api.syncEventSuperseded(stale,success),true,'an older computer-local failure is superseded by the newer shared successful sync');
+   assert.equal(api.syncEventCurrent(stale,success),false);
+   assert.equal(api.syncEventCurrent(sameAttempt,success),true,'events within the same sync skew window stay current for partial-success diagnostics');
+   assert.deepEqual(api.filterCurrentSyncEvents([{id:'old',at:stale},{id:'partial',at:sameAttempt}],success).map(x=>x.id),['partial']);
  }
 });

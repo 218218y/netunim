@@ -2,7 +2,7 @@ import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=24;
+const CREDIT_BRIDGE_VERSION=26;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=60*60*1000;
@@ -11,7 +11,7 @@ function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !N
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
-  const local={busy:false,status:null,error:'',errorAt:null,autoTimer:null};
+  const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
   function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
@@ -21,11 +21,11 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   async function refreshCreditBridgeStatus({quiet=true}={}){
     try{
       const status=await bridge.creditStatus();
-      local.status=status;local.error='';local.errorAt=null;
-      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)local.error='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';
+      local.status=status;local.bridgeError='';local.bridgeErrorAt=null;
+      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION){local.bridgeError='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';local.bridgeErrorAt=new Date().toISOString()}
       if(!quiet)render();
       return status;
-    }catch(e){local.status=null;local.error=e?.message||String(e);local.errorAt=new Date().toISOString();if(!quiet)render();return null}
+    }catch(e){local.status=null;local.bridgeError=e?.message||String(e);local.bridgeErrorAt=new Date().toISOString();if(!quiet)render();return null}
   }
 
   function profileFromState(profileId){return normalizeCreditSync(model.state.creditSync).profiles.find(p=>p.profileId===profileId)||null}
@@ -71,7 +71,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     local.busy=true;local.error='';local.errorAt=null;render();
     try{
       const status=local.status||await refreshCreditBridgeStatus();
-      if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
+      if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
       await bridge.resetCreditProfiles();
       localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
@@ -100,10 +100,11 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
       if(auto){const latest=await refreshFinanceCloudSnapshot();if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');if(!due(latest.state?.creditSync?.syncedAt))return true}
       const status=local.status||await refreshCreditBridgeStatus();
-      if(!status)throw new Error(local.error||'Bank Bridge אינו זמין');
+      if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
+      if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();if(!auto)toast('החיבור החסום נמצא בתקופת המתנה בטוחה. רענון עם חלון אבחון יכול לנסות ידנית לפני המועד.');return true}
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
       await saveState(result.errors?.length?'האשראי עודכן חלקית ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');

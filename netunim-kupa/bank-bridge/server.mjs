@@ -34,12 +34,14 @@ import {
   normalizeCreditScrapeAccount,
   creditScrapeFailure,
   creditThrownScrapeFailure,
+  creditAutomaticRetryAfterAt,
+  deferredCreditProfileError,
 } from './lib.mjs';
 import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWithCamoufox} from './isracard-camoufox.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=25;
+const BRIDGE_VERSION=26;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -478,20 +480,28 @@ async function scrapeCreditProfile(profile,{interactive=false}={}){
     throw failure;
   }
 }
-async function scrapeAllCreditProfiles(profiles,{interactive=false}={}){
+async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[]}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
   scrapeBusy=true;
   try{
     const enabled=(Array.isArray(profiles)?profiles:[]).filter(p=>p?.active!==false&&creditProviderSupported(p?.provider));
     if(!enabled.length)throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'),{code:'CREDIT_NOT_CONFIGURED'});
-    const success=[],errors=[];
+    const success=[],errors=[];let attemptedCount=0,deferredCount=0;
     // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
     for(const profile of enabled){
+      if(!interactive){
+        const deferred=deferredCreditProfileError(previousErrors,profile);
+        if(deferred){errors.push(deferred);deferredCount++;continue}
+      }
+      attemptedCount++;
       try{success.push(await scrapeCreditProfile(profile,{interactive}))}
-      catch(error){errors.push({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at:new Date().toISOString()})}
+      catch(error){
+        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at));
+        errors.push(retryAfterAt?{...base,retryAfterAt}:base);
+      }
     }
     const syncedAt=success.length?new Date().toISOString():null;
-    return {profiles:success,errors,syncedAt};
+    return {profiles:success,errors,syncedAt,attemptedCount,deferredCount};
   }finally{scrapeBusy=false}
 }
 
@@ -527,10 +537,10 @@ async function handler(req,res,token){
       const next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profiles:publicCreditProfiles(next)});return;
     }
     if(req.method==='POST'&&req.url==='/credit/sync'){
-      const body=await readJson(req),profiles=await readCreditProfiles();
-      const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive});
+      const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta();
+      const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors});
       await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors});
-      if(!result.profiles.length&&result.errors.length){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
+      if(!result.profiles.length&&result.errors.length&&result.attemptedCount>0){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
       sendJson(req,res,200,{ok:true,...result});return;
     }
     if(req.method==='POST'&&req.url==='/credentials'){

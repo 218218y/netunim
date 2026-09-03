@@ -2,6 +2,7 @@ import {cashflowAlertForAccount} from '../../shared/cashflow.js';
 import {esc} from '../../core/values.js';
 import {money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
+import {syncEventCurrent} from '../../shared/sync-status.js';
 
 export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus}){
 function bankSnapshotLabel(){
@@ -22,7 +23,7 @@ function bridgeStatusText(s){
   if(s.busy)return s.message||'מתבצע עדכון מול Bank Bridge…';
   if(!s.tokenConfigured)return 'החיבור המקומי עדיין לא הותאם למחשב זה.';
   if(s.upgradeRequired)return s.message||'נדרש לשדרג את Bank Bridge במחשב זה.';
-  if(s.available===false)return s.lastError||'Bank Bridge המקומי אינו זמין.';
+  if(s.available===false)return s.availabilityError||'Bank Bridge המקומי אינו זמין.';
   if(s.available===true&&s.configured){
     const business=accountLabel(s.businessBranchNumber||s.branchNumber,s.businessAccountNumber||s.accountNumber),home=accountLabel(s.homeBranchNumber,s.homeAccountNumber);
     return `Bank Bridge מחובר${business?` · עסקי: ${business}`:''}${home?` · ביתי: ${home}`:' · חשבון ביתי טרם הוגדר'}`;
@@ -48,15 +49,17 @@ function bankDateLabel(value){
 function bankSearchMatch(query,values){const q=String(query||'').trim().toLocaleLowerCase('he-IL');if(!q)return true;return values.map(value=>String(value??'')).join(' ').toLocaleLowerCase('he-IL').includes(q)}
 function bankRowMatchesSearch(row,query){return bankSearchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,JSON.stringify(row?.checkDetails||{})])}
 
+function currentBankError(s){return s?.lastError&&syncEventCurrent(s.lastErrorAt,s.sharedLastSyncAt)?s.lastError:''}
+function currentBankWarning(s){return s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
 function bankSyncHeadlineState(s){
-  const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt;
+  const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt,error=currentBankError(s),warning=currentBankWarning(s);
   if(s?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(s?.upgradeRequired)return {tone:'error',icon:'!',title:'נדרש עדכון',meta:`Bridge v${String(s.bridgeVersion||'?')}`};
-  if(s?.lastError)return {tone:'error',icon:'!',title:'נכשל',meta:lastFailure?syncTimeLabel(lastFailure):'זמן הכשל לא זמין'};
-  if(s?.lastWarning&&lastSync)return {tone:'warn',icon:'!',title:'הושלם חלקית',meta:syncTimeLabel(lastSync)};
+  if(error)return {tone:'error',icon:'!',title:'נכשל',meta:lastFailure?syncTimeLabel(lastFailure):'זמן הכשל לא זמין'};
+  if(warning&&lastSync)return {tone:'warn',icon:'!',title:'הושלם חלקית',meta:syncTimeLabel(lastSync)};
   if(lastSync)return {tone:'ok',icon:'✓',title:'הצליח',meta:syncTimeLabel(lastSync)};
   if(!s?.tokenConfigured)return {tone:'idle',icon:'•',title:'טרם הוגדר',meta:'לחץ להגדרה'};
-  if(s?.available===false)return {tone:'error',icon:'!',title:'לא זמין',meta:lastFailure?syncTimeLabel(lastFailure):'Bridge מקומי'};
+  if(s?.available===false)return {tone:'error',icon:'!',title:'לא זמין',meta:s?.availabilityErrorAt?syncTimeLabel(s.availabilityErrorAt):'Bridge מקומי'};
   return {tone:'idle',icon:'•',title:'טרם סונכרן',meta:s?.configured?'מוכן לרענון':'נדרשת הגדרה'};
 }
 
@@ -81,11 +84,12 @@ function bankAccountChoicesMarkup(accounts,role=''){
 }
 
 function bankBridgeDiagnosticsMarkup(s){
-  const stage=errorStageLabel(s?.lastErrorStage),role=s?.accountSelectionRole==='home'?'הביתי':s?.accountSelectionRole==='business'?'העסקי':'';
-  const error=s?.lastError?`<div class="bank-sync-detail error"><b>העדכון האחרון נכשל${stage?` בשלב: ${esc(stage)}`:''}${role?` · החשבון ${role}`:''}</b><span>${esc(s.lastError)}</span>${s.lastErrorCode||s.lastErrorHttpStatus?`<small>${s.lastErrorCode?`קוד: ${esc(s.lastErrorCode)}`:''}${s.lastErrorCode&&s.lastErrorHttpStatus?' · ':''}${s.lastErrorHttpStatus?`HTTP מהבנק: ${esc(s.lastErrorHttpStatus)}`:''}</small>`:''}${s.availableAccounts?.length?'<small>פתח את הגדרות החיבור למטה כדי לבחור את החשבון המדויק.</small>':''}</div>`:'';
-  const homePartial=s?.lastWarning&&s?.accountSelectionRole==='home'&&s?.lastWarningCode;
-  const warning=s?.lastWarning?homePartial?`<div class="bank-sync-detail warn"><b>החשבון העסקי נשמר; החשבון הביתי לא עודכן${s.lastWarningStage?` בשלב: ${esc(errorStageLabel(s.lastWarningStage))}`:''}</b><span>${esc(s.lastWarning)}</span><small>קוד: ${esc(s.lastWarningCode)}${s.lastWarningHttpStatus?` · HTTP מהבנק: ${esc(s.lastWarningHttpStatus)}`:''}</small>${s.availableAccounts?.length?'<small>בחר למטה את החשבון הביתי המדויק מתוך החשבונות הפעילים שהבנק החזיר.</small>':''}</div>`:`<div class="bank-sync-detail warn"><b>היתרות נשמרו, אך קיימת אזהרה לגבי התנועות</b><span>${esc(s.lastWarning)}</span></div>`:'';
-  return error+warning;
+  const stage=errorStageLabel(s?.lastErrorStage),role=s?.accountSelectionRole==='home'?'הביתי':s?.accountSelectionRole==='business'?'העסקי':'',currentError=currentBankError(s),currentWarning=currentBankWarning(s);
+  const error=currentError?`<div class="bank-sync-detail error"><b>העדכון האחרון נכשל${stage?` בשלב: ${esc(stage)}`:''}${role?` · החשבון ${role}`:''}</b><span>${esc(currentError)}</span>${s.lastErrorCode||s.lastErrorHttpStatus?`<small>${s.lastErrorCode?`קוד: ${esc(s.lastErrorCode)}`:''}${s.lastErrorCode&&s.lastErrorHttpStatus?' · ':''}${s.lastErrorHttpStatus?`HTTP מהבנק: ${esc(s.lastErrorHttpStatus)}`:''}</small>`:''}${s.availableAccounts?.length?'<small>פתח את הגדרות החיבור למטה כדי לבחור את החשבון המדויק.</small>':''}</div>`:'';
+  const availability=s?.availabilityError?`<div class="bank-sync-detail warn"><b>Bank Bridge המקומי אינו זמין כרגע</b><span>${esc(s.availabilityError)}</span><small>זו בדיקת זמינות במחשב הזה; היא אינה מבטלת סינכרון חדש יותר שכבר נשמר בענן.</small></div>`:'';
+  const homePartial=currentWarning&&s?.accountSelectionRole==='home'&&s?.lastWarningCode;
+  const warning=currentWarning?homePartial?`<div class="bank-sync-detail warn"><b>החשבון העסקי נשמר; החשבון הביתי לא עודכן${s.lastWarningStage?` בשלב: ${esc(errorStageLabel(s.lastWarningStage))}`:''}</b><span>${esc(currentWarning)}</span><small>קוד: ${esc(s.lastWarningCode)}${s.lastWarningHttpStatus?` · HTTP מהבנק: ${esc(s.lastWarningHttpStatus)}`:''}</small>${s.availableAccounts?.length?'<small>בחר למטה את החשבון הביתי המדויק מתוך החשבונות הפעילים שהבנק החזיר.</small>':''}</div>`:`<div class="bank-sync-detail warn"><b>היתרות נשמרו, אך קיימת אזהרה לגבי התנועות</b><span>${esc(currentWarning)}</span></div>`:'';
+  return error+availability+warning;
 }
 
 function bankChequeDetailsMarkup(row){
@@ -149,7 +153,7 @@ function toggleBankSyncOptions(){ui.bankSyncOpen=!ui.bankSyncOpen;const panel=do
 function updateBridgePanel(){
   const s=bankBridgeUiState(),headline=document.getElementById('bankSyncHeadline'),status=document.getElementById('bankBridgeStatus');
   if(headline){const state=bankSyncHeadlineState(s);headline.innerHTML=`${bankSyncHeadlineMarkup(s)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span>`;headline.className=`bank-sync-toggle ${state.tone} ${ui.bankSyncOpen?'open':''}`;headline.setAttribute('aria-expanded',String(ui.bankSyncOpen))}
-  if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||s.lastError?'error':s.configured?'ok':''}`}
+  if(status){status.textContent=bridgeStatusText(s);status.className=`bank-sync-status ${s.available===false||currentBankError(s)?'error':s.configured?'ok':''}`}
   const diagnostics=document.getElementById('bankBridgeDiagnostics');if(diagnostics)diagnostics.innerHTML=bankBridgeDiagnosticsMarkup(s);
   const choices=document.getElementById('bankBridgeAccountChoices');if(choices)choices.innerHTML=bankAccountChoicesMarkup(s.availableAccounts,s.accountSelectionRole);
   for(const [id,value] of [['bankBusinessBranchNumberInput',s.businessBranchNumber||s.branchNumber],['bankBusinessAccountNumberInput',s.businessAccountNumber||s.accountNumber],['bankHomeBranchNumberInput',s.homeBranchNumber],['bankHomeAccountNumberInput',s.homeAccountNumber]]){const input=document.getElementById(id);if(input&&document.activeElement!==input&&!input.value)input.value=value||''}

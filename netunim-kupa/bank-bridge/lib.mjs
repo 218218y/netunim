@@ -398,27 +398,59 @@ export function normalizeCreditScrapeAccount(account={},provider=''){
   const maxAvailable=provider==='max'&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
   return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
 }
+function creditFailureContext(typeValue,rawValue,profile){
+  const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
+  const providerMonth=raw.match(/failed to fetch transactions for card\s+([^\.\s]+)\.\s*Message:\s*([^\r\n]+)/i);
+  if(providerMonth){
+    const cardSuffix=creditText(providerMonth[1]||'',16),providerMessage=creditText(providerMonth[2]||'',160);
+    return {code:'CREDIT_PROVIDER_DATA_ERROR',stage:'Transactions',message:`החברה דחתה או לא השלימה את קריאת העסקאות${cardSuffix?` לכרטיס ${cardSuffix}`:''}${providerMessage?`. הודעת החברה: ${providerMessage}`:''}`};
+  }
+  if(/could not find ["']?init["']? data in session storage/i.test(raw))return {code:'CREDIT_SESSION_INIT_MISSING',stage:'DashboardInit',message:'הכניסה הושלמה אך נתוני האתחול של אזור הלקוחות לא הופיעו. יש לפתוח רענון עם חלון אבחון; אם התקלה חוזרת, מחבר החברה דורש התאמה למסך החדש.'};
+  if(/authorization header|auth[- ]module|authorization token/i.test(raw))return {code:'CREDIT_AUTH_TOKEN_MISSING',stage:'AuthToken',message:'הכניסה לא הניבה אסימון הרשאה שנדרש לקריאת נתוני האשראי. יש לפתוח רענון עם חלון אבחון כדי לבדוק את מסלול הכניסה הנוכחי של החברה.'};
+  if(/fetch failed|networkerror|econnreset|etimedout|socket hang up/i.test(raw))return {code:'CREDIT_PROVIDER_NETWORK_ERROR',stage:'DataApi',message:'החיבור לשירות הנתונים של חברת האשראי נקטע לפני שהתקבלה תשובה תקינה.'};
+  if(type==='TIMEOUT'&&/(login|iframe|ccLoginDesktopBtn|regular-login|sign.?in)/i.test(raw))return {code:'CREDIT_TIMEOUT',stage:'LoginFlow',message:'מסלול הכניסה של חברת האשראי לא הגיע לשלב הבא בזמן שהוגדר.'};
+  if(type==='TIMEOUT')return {code:'CREDIT_TIMEOUT',stage:'',message:'החיבור לא הסתיים בזמן'};
+  if(type==='INVALID_PASSWORD')return {code:'CREDIT_INVALID_PASSWORD',stage:'Login',message:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים'};
+  if(type==='CHANGE_PASSWORD')return {code:'CREDIT_CHANGE_PASSWORD',stage:'Login',message:'החברה דורשת החלפת סיסמה'};
+  if(type==='ACCOUNT_BLOCKED')return {code:'CREDIT_ACCOUNT_BLOCKED',stage:'Login',message:'החשבון חסום'};
+  if(type==='UNKNOWN_ERROR')return {code:'CREDIT_UNKNOWN_ERROR',stage:'',message:isIsracardGroup?'שירות הסיסמה הקבועה החזיר תשובה שלא זוהתה. מסך ה-SMS שנשאר פתוח בחלון אינו מדד להצלחת החיבור':'החברה החזירה מסך או תשובה שלא זוהו'};
+  return null;
+}
 function safeCreditScrapeFailure(typeValue,rawValue,profile){
   const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),label=creditText(profile?.label||CREDIT_PROVIDER_CONFIG[profile?.provider]?.label||'חברת האשראי',100),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
-  let code=`CREDIT_${type}`,message='סנכרון האשראי נכשל';
+  let code=`CREDIT_${type}`,stage='',message='סנכרון האשראי נכשל';
   if(/fetchPostWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
-    code='CREDIT_LOGIN_HTML_RESPONSE';
+    code='CREDIT_LOGIN_HTML_RESPONSE';stage='LoginApi';
     const validateStage=/reqName=ValidateIdData/i.test(raw);
     if(profile?.provider==='amex'&&validateStage)message='American Express החזירה דף HTML כבר בשלב ValidateIdData, לפני שלב בדיקת הסיסמה. זו תגובת אתר/הגנת אוטומציה של החברה למחבר הנוכחי ולא כשל בנתוני הקופה; חלון האבחון נסגר מיד משום שאין שלב כניסה נוסף שניתן להשלים.';
     else if(profile?.provider==='isracard'&&validateStage)message='ישראכרט החזירה דף HTML בשלב ValidateIdData במקום JSON. החיבור לא הגיע לשלב בדיקת הסיסמה; נסה שוב בחלון אבחון ובזמן אחר, בלי ליצור חיבור נוסף לאותה זהות.';
     else message=isIsracardGroup?'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת JSON. החיבור הזה לא הושלם; ודא שקיים רק חיבור אחד לאותה זהות בחברה ונסה שוב. אם התקלה חוזרת, השתמש ברענון עם חלון אבחון.':'שירות ההתחברות של החברה החזיר דף HTML במקום תשובת נתונים. נסה שוב עם חלון אבחון.';
   }else if(/fetchGetWithinPage parse error/i.test(raw)&&/(?:<!DOCTYPE|<html)/i.test(raw)){
-    code='CREDIT_DATA_HTML_RESPONSE';
+    code='CREDIT_DATA_HTML_RESPONSE';stage='DataApi';
     message='שירות הנתונים של החברה החזיר דף HTML במקום תשובת JSON. החיבור נשמר אך לא התקבלו ממנו נתונים תקינים.';
   }else if(/automation detected and blocked|block automation|bot detection/i.test(raw)){
-    code='CREDIT_AUTOMATION_BLOCKED';
+    code='CREDIT_AUTOMATION_BLOCKED';stage='LoginPage';
     message='אתר חברת האשראי חסם זמנית את הגישה האוטומטית. נסה מאוחר יותר או ברענון עם חלון אבחון.';
   }else{
-    const messages={INVALID_PASSWORD:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים',CHANGE_PASSWORD:'החברה דורשת החלפת סיסמה',ACCOUNT_BLOCKED:'החשבון חסום',TIMEOUT:'החיבור לא הסתיים בזמן',UNKNOWN_ERROR:isIsracardGroup?'שירות הסיסמה הקבועה החזיר תשובה שלא זוהתה. מסך ה-SMS שנשאר פתוח בחלון אינו מדד להצלחת החיבור':'החברה החזירה מסך או תשובה שלא זוהו'};
-    message=messages[type]||'החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.';
-    if(!messages[type])code='CREDIT_SCRAPE_FAILED';
+    const context=creditFailureContext(type,raw,profile);
+    if(context){code=context.code;stage=context.stage;message=context.message}
+    else{code='CREDIT_SCRAPE_FAILED';message='החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.'}
   }
-  const e=new Error(`${label}: ${message}`);e.code=code;return e;
+  const e=new Error(`${label}: ${message}`);e.code=code;if(stage)e.stage=stage;return e;
+}
+
+export const CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS=24*60*60*1000;
+export function creditAutomaticRetryAfterAt(error,now=Date.now()){
+  if(String(error?.code||'')!=='CREDIT_AUTOMATION_BLOCKED')return null;
+  const base=Number(now);if(!Number.isFinite(base))return null;
+  return new Date(base+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS).toISOString();
+}
+export function deferredCreditProfileError(errors,profile,now=Date.now()){
+  const profileId=String(profile?.profileId||''),provider=String(profile?.provider||''),time=Number(now);
+  if(!Number.isFinite(time)||(!profileId&&!provider))return null;
+  const matching=(Array.isArray(errors)?errors:[]).filter(error=>error&&(!profileId||String(error.profileId||'')===profileId)&&(!provider||String(error.provider||'')===provider)).sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
+  for(const error of matching){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time)return {...error,deferred:true}}
+  return null;
 }
 export function creditScrapeFailure(result,profile){return safeCreditScrapeFailure(result?.errorType,result?.errorMessage,profile)}
 export function creditThrownScrapeFailure(error,profile){if(String(error?.code||'').startsWith('CREDIT_'))return error;return safeCreditScrapeFailure('SCRAPE_FAILED',error?.message||error,profile)}
