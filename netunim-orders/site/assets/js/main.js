@@ -425,6 +425,7 @@ const domainsServiceEditor=createDomainsServiceEditor({
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderService:(...args)=>domainsServiceView.renderService(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsInventorySelectors=createDomainsInventorySelectors({
@@ -641,6 +642,7 @@ const domainsFinanceView=createDomainsFinanceView({
   modal:(...args)=>uiModal.modal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsBankAlerts=createDomainsBankAlerts({
@@ -730,6 +732,7 @@ const domainsCalendarController=createDomainsCalendarController({
   toast:(...args)=>uiStatus.toast(...args),
   requestCloudLogin:()=>uiCloud.loginModal('calendar'),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsNotesController=createDomainsNotesController({

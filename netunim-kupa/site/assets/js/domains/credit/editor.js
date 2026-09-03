@@ -6,7 +6,7 @@ import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,normalizeCreditSync} from '.
 function uniqueSorted(values){return [...new Set(values.map(v=>String(v||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'he'))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCreditEditor({model, armModalDraftGuard, modal, nextChargeDate, deleteRecord, saveState, toast, closeModal}){
+export function createDomainsCreditEditor({model, armModalDraftGuard, modal, nextChargeDate, deleteRecord, saveState, toast, closeModal, dateEditorMarkup, setDateValue}){
 function suggestions(){
   const sync=normalizeCreditSync(model.state.creditSync),cards=(model.state.cards||[]).filter(x=>x.active).map(x=>x.name),owners=sync.profiles.map(p=>p.ownerLabel);
   for(const profile of sync.profiles)for(const account of profile.accounts){
@@ -25,8 +25,8 @@ function openCreditModal(id){
     <div class="form-group"><label>בעל הכרטיס</label><input id="cOwner" list="creditOwnerSuggestions" value="${esc(cr.ownerLabel||'')}" placeholder="רשות"><datalist id="creditOwnerSuggestions">${opts.owners.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
     <div class="form-group"><label>כרטיס</label><input id="cCard" list="creditCardSuggestions" data-change="prefill-charge-date" value="${esc(cr.card||'')}" placeholder="שם הכרטיס"><datalist id="creditCardSuggestions">${opts.cards.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
     <div class="form-group full"><label>תיאור</label><input id="cDesc" value="${esc(cr.description)}" placeholder="למשל: חיוב שלא התקבל מהחברה"></div>
-    <div class="form-group"><label>תאריך עסקה</label><input id="cTx" type="date" value="${esc(cr.transactionDate||todayISO())}" data-change="prefill-charge-date"></div>
-    <div class="form-group"><label>תאריך חיוב ראשון</label><input id="cFirst" type="date" value="${esc(defaultFirst)}"></div>
+    <div class="form-group"><label>תאריך עסקה</label>${dateEditorMarkup('cTx',cr.transactionDate||todayISO(),{label:'תאריך עסקה',change:'prefill-charge-date'})}</div>
+    <div class="form-group"><label>תאריך חיוב ראשון</label>${dateEditorMarkup('cFirst',defaultFirst,{label:'תאריך חיוב ראשון'})}</div>
     <div class="form-group"><label>סכום כולל</label><input id="cTotal" type="number" step="1" inputmode="numeric" min="0" value="${esc(cr.totalAmount||'')}"></div>
     <div class="form-group"><label>מספר תשלומים</label><input id="cParts" type="number" min="1" max="60" step="1" inputmode="numeric" value="${esc(cr.installments||1)}"></div>
     <div class="form-group"><label>פעיל</label><select id="cActive"><option ${cr.active?'selected':''}>כן</option><option ${!cr.active?'selected':''}>לא</option></select></div>
@@ -35,7 +35,7 @@ function openCreditModal(id){
   </div>`,id?'שמור שינויים':'הוסף תוספת',()=>saveCredit(id||''),id?()=>deleteRecord('credits',id):null);armModalDraftGuard()
 }
 
-function prefillChargeDate(){const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;document.getElementById('cFirst').value=nextChargeDate(card,tx)}
+function prefillChargeDate(){const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;setDateValue(document.getElementById('cFirst'),nextChargeDate(card,tx))}
 
 function saveCredit(id){const rec={id:id||uid('CR'),account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:id?model.state.credits.find(x=>x.id===id)?.createdAt:todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');if(id)model.state.credits[model.state.credits.findIndex(x=>x.id===id)]=rec;else model.state.credits.push(rec);closeModal(true);saveState(id?'התוספת הידנית עודכנה':'התוספת הידנית נוספה')}
 

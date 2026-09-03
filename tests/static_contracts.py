@@ -282,7 +282,7 @@ expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding=
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
 orders_actions=(O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
-ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and 'data-bank-date-from' in source and 'data-bank-date-to' in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
+ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and "'bank-date-from'" in source and "'bank-date-to'" in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
    and "setOrdersBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in orders_actions
    and "setBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in kupa_actions,
    "bank date scope: both apps use a compact disclosure menu, call the all-time option 'כל התנועות', and apply the two date fields atomically instead of rerendering after each field change")
@@ -589,3 +589,51 @@ if errors:
     for item in errors:
         print("-", item)
     sys.exit(1)
+
+# 17. Date entry is centralized on the two-digit-year editor. Native date inputs
+# remain only as hidden calendar-picker plumbing, never as keyboard-entry fields.
+for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
+    visible_native_dates = []
+    for path in site.rglob("*.js"):
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"type\s*=\s*[\"']date[\"']", text):
+            line = text[text.rfind("\n", 0, match.start()) + 1:text.find("\n", match.end()) if "\n" in text[match.end():] else len(text)]
+            if "data-date-picker" not in line or "aria-hidden=\"true\"" not in line:
+                visible_native_dates.append(str(path.relative_to(ROOT)))
+    ok(not visible_native_dates,
+       f"{label}: keyboard date entry never uses native four-digit-year inputs")
+
+for label, module_path in [
+    ("kupa", "./netunim-kupa/site/assets/js/ui/date-editor.js"),
+    ("orders", "./netunim-orders/site/assets/js/ui/date-editor.js"),
+]:
+    script = f"""
+      import {{twoDigitDatePartsToIso}} from {module_path!r};
+      const cases = [
+        ['1','9','26','2026-09-01'],
+        ['01','09','26','2026-09-01'],
+        ['31','12','99','2099-12-31'],
+        ['29','02','24','2024-02-29'],
+        ['31','02','26',''],
+        ['1','9','2',''],
+      ];
+      for (const [d,m,y,want] of cases) {{
+        const got = twoDigitDatePartsToIso(d,m,y);
+        if (got !== want) throw new Error(`${{d}}/${{m}}/${{y}} => ${{got}}, wanted ${{want}}`);
+      }}
+    """
+    result = subprocess.run(["node", "--input-type=module", "-e", script], cwd=ROOT, capture_output=True, text=True)
+    if result.returncode:
+        print(result.stderr)
+    ok(result.returncode == 0, f"{label}: two-digit year entry resolves to 20xx and validates calendar dates")
+
+kupa_date_sources = "\n".join((K / "site/assets/js/domains" / rel).read_text(encoding="utf-8") for rel in [
+    "cash/view.js", "cash/editor.js", "expenses/editor.js", "bank/view.js", "credit/editor.js"
+])
+orders_date_sources = "\n".join((O / "site/assets/js/domains" / rel).read_text(encoding="utf-8") for rel in [
+    "finance/view.js", "calendar/controller.js", "service/editor.js"
+])
+ok(all(token in kupa_date_sources for token in ["dateEditorMarkup('mDate'", "dateEditorMarkup('eDate'", "dateEditorMarkup('cTx'", "dateEditorMarkup('cFirst'", "'bank-date-from'", "'bank-date-to'", "set-rights-last-calculated-date"]),
+   "kupa: all editable date surfaces use the centralized editor")
+ok(all(token in orders_date_sources for token in ["dateEditorMarkup('calendarStartDate'", "dateEditorMarkup('calendarEndDate'", "dateEditorMarkup('svcOpened'", "dateEditorMarkup('svcNext'", "'bank-date-from'", "'bank-date-to'"]),
+   "orders: all editable date surfaces use the centralized editor")

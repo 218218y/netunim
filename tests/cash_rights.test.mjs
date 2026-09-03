@@ -5,15 +5,17 @@ import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash
 import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/cash/editor.js';
 import {createDomainsCashController} from '../netunim-kupa/site/assets/js/domains/cash/controller.js';
 import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
+import {createUiDateEditor} from '../netunim-kupa/site/assets/js/ui/date-editor.js';
 
 function fakeKpi(label,value){return `<article class="test-kpi" data-label="${label}" data-value="${value}"></article>`}
+const {dateEditorMarkup}=createUiDateEditor({markCheckSeriesManual:()=>{},syncCheckSeriesFromFirst:()=>{},toast:()=>{}});
 
 test('cash page renders only the two requested independent ledger columns',()=>{
   const content={innerHTML:''};
   Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='content'?content:null},configurable:true});
   const synced=[];
   const model={state:{rightsLastCalculatedDate:'2026-08-30',cash:[{id:'C1',date:'2026-09-01',type:'הכנסה',description:'מזומן',amount:100,note:''}],rights:[{id:'R1',date:'2026-08-31',type:'הכנסה',description:'זכות',amount:40,note:''}]}};
-  const view=createDomainsCashView({model,ui:{bulkSelected:new Set()},cashBalance:()=>100,rightsBalance:()=>40,kpi:fakeKpi,syncBulkUi:c=>synced.push(c),bulkControls:()=>'',bulkHeader:()=>'',bulkCell:()=>''});
+  const view=createDomainsCashView({model,ui:{bulkSelected:new Set()},cashBalance:()=>100,rightsBalance:()=>40,kpi:fakeKpi,syncBulkUi:c=>synced.push(c),bulkControls:()=>'',bulkHeader:()=>'',bulkCell:()=>'',dateEditorMarkup});
   view.renderCash();
   assert.match(content.innerHTML,/cash-ledgers/);
   assert.ok(content.innerHTML.indexOf('cash-ledger-cash')<content.innerHTML.indexOf('cash-ledger-rights'),'cash is the first RTL grid item (right column)');
@@ -43,7 +45,7 @@ test('rights editor writes only to rights and routes add/edit actions independen
   Object.defineProperty(globalThis,'document',{value:{getElementById:id=>fields[id]},configurable:true});
   let modalSave=null,saved='',cashOpened=0,rightOpened=0;
   const model={state:{cash:[],rights:[]}};
-  const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,_b,_s,onSave)=>{modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{}});
+  const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,_b,_s,onSave)=>{modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup});
   editor.openRightModal();modalSave();
   assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].amount,75);assert.equal(saved,'תנועת הזכות נשמרה');
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});

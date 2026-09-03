@@ -452,6 +452,7 @@ const domainsCashView=createDomainsCashView({
   bulkControls:(...args)=>uiBulk.bulkControls(...args),
   bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsCashController=createDomainsCashController({
@@ -545,6 +546,7 @@ const domainsBankView=createDomainsBankView({
   bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
   refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
   ensureBankDisplayArchive:(...args)=>domainsBankController.ensureBankDisplayArchive(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const uiSettings=createUiSettings({
@@ -592,6 +594,8 @@ const domainsCreditEditor=createDomainsCreditEditor({
   saveState:(...args)=>storagePersistence.saveState(...args),
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
 });
 
 const domainsCashEditor=createDomainsCashEditor({
@@ -602,6 +606,7 @@ const domainsCashEditor=createDomainsCashEditor({
   saveState:(...args)=>storagePersistence.saveState(...args),
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsExpensesEditor=createDomainsExpensesEditor({
@@ -612,6 +617,7 @@ const domainsExpensesEditor=createDomainsExpensesEditor({
   saveState:(...args)=>storagePersistence.saveState(...args),
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
 const domainsRecordsCommands=createDomainsRecordsCommands({
