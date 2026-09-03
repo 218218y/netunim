@@ -17,6 +17,8 @@ if errorlevel 1 (
 set "APPROOT=%LOCALAPPDATA%\NetunimKupaBankBridge"
 set "APPDIR=%APPROOT%\app"
 set "STAGING=%APPROOT%\app-staging"
+set "APPBACKUP=%APPROOT%\app-rollback"
+set "APPFAILED=%APPROOT%\app-failed-install"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "AUTOSTART=%STARTUP%\NetunimKupaBankBridge.vbs"
 set "CAMOUFOX_INSTALL_DIR=%APPROOT%\camoufox"
@@ -30,7 +32,7 @@ mkdir "%STAGING%" >nul 2>nul || (
 )
 
 rem Build the new runtime first. The currently installed bridge stays untouched until all checks pass.
-for %%F in (server.mjs lib.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
+for %%F in (server.mjs lib.mjs credit-adapters.mjs credit-diagnostics.mjs credit-identity.mjs isracard-camoufox.mjs provision-camoufox.mjs package.json package-lock.json start_bank_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || (
     echo ERROR: Could not copy %%F into the Bank Bridge staging folder.
     rmdir /S /Q "%STAGING%" >nul 2>nul
@@ -97,15 +99,23 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if exist "%APPDIR%" rmdir /S /Q "%APPDIR%" >nul 2>nul
-if exist "%APPDIR%" (
+if exist "%APPBACKUP%" rmdir /S /Q "%APPBACKUP%" >nul 2>nul
+if exist "%APPBACKUP%" (
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: The previous Bank Bridge runtime could not be removed.
+  echo ERROR: The previous rollback runtime could not be removed.
+  echo Close any antivirus/file-manager process holding: %APPBACKUP%
+  pause
+  exit /b 1
+)
+if exist "%APPDIR%" move "%APPDIR%" "%APPBACKUP%" >nul || (
+  rmdir /S /Q "%STAGING%" >nul 2>nul
+  echo ERROR: The previous Bank Bridge runtime could not be preserved for rollback.
   echo Close any antivirus/file-manager process holding: %APPDIR%
   pause
   exit /b 1
 )
 move "%STAGING%" "%APPDIR%" >nul || (
+  if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul
   echo ERROR: Could not activate the new Bank Bridge runtime.
   pause
   exit /b 1
@@ -115,7 +125,9 @@ pushd "%APPDIR%"
 node server.mjs --init
 if errorlevel 1 (
   popd
-  echo ERROR: Bank Bridge initialization failed.
+  if exist "%APPDIR%" rmdir /S /Q "%APPDIR%" >nul 2>nul
+  if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul
+  echo ERROR: Bank Bridge initialization failed. The previous runtime was restored.
   pause
   exit /b 1
 )
@@ -127,12 +139,22 @@ copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || (
   pause
   exit /b 1
 )
+copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nul || (
+  echo ERROR: Could not install the Bank Bridge rollback helper.
+  pause
+  exit /b 1
+)
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=27))process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=28)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
-  echo ERROR: Bank Bridge did not start correctly.
+  node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
+  if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
+  if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
+  if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
+  if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
+  echo ERROR: Bank Bridge v28 did not start correctly. The previous runtime was restored when available.
   echo See: %APPROOT%\bridge.log
   pause
   exit /b 1
@@ -145,5 +167,6 @@ echo The Bank Bridge key was copied to the clipboard. Paste it into Kupa on THIS
 echo Install the Bridge separately on every other computer that should refresh bank or credit-card data.
 echo Hapoalim and credit-card credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
 echo American Express uses a local Camoufox browser installed under %CAMOUFOX_INSTALL_DIR% to pass the issuer WAF with a real browser fingerprint.
+echo The previous runtime is retained at %APPBACKUP% for rollback until the next successful upgrade.
 echo.
 pause

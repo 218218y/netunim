@@ -314,8 +314,8 @@ ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and
    "orders Kupa UI: composition root and state own the new financial surface")
 ok("const BANK_BRIDGE_VERSION=25" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v25 contract")
-ok("const CREDIT_BRIDGE_VERSION=27" in orders_finance_controller,
-   "orders Kupa UI: credit controls require the current Bridge v27 contract")
+ok("const CREDIT_BRIDGE_VERSION=28" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
+   "orders Kupa UI: credit controls require Bridge v28 / Credit Connector contract v2, with explicit v27 rollback compatibility")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")

@@ -166,6 +166,19 @@ Bridge v18 removes that duplicate local fingerprint sanitizer/validator. It uses
 The installer also no longer prints the misleading Chrome/Edge-only advice for a Camoufox doctor failure; the exact diagnostic printed immediately above is authoritative and the previously installed Bridge remains untouched on any doctor failure.
 
 
+Bridge v28 — Credit Connector contract v2 (supersedes older credit retry behavior)
+-----------------------------------------------------------------------------------
+Bridge v28 separates Visa Cal, MAX, Isracard and American Express behind explicit provider adapters. Visa Cal uses one login/session and independent card+month reads. Coverage from the 130-day history through next month is required Core coverage; later issuer-supplied months through +12 are forecast enrichment. A failed forecast month does not discard another month/card, while an incomplete Core refresh does not advance the shared successful-sync timestamp.
+
+Kupa/Orders credit feed v4 stores and merges Last Known Good data per profile/card/month. The UI distinguishes fresh, stale and missing coverage. It never creates an installment or future month that the issuer did not return. Existing v1-v3 feeds remain readable and the original v2-to-v3 manual-row cleanup is not repeated during the v4 upgrade.
+
+Camoufox now uses one local persistent identity per provider + login identity under %LOCALAPPDATA%\NetunimKupaBankBridge\credit-identities. Both its persistent browser context and generated config/seeds are reused. The staged installer doctor launches the real pinned Camoufox 0.12.0 runtime twice and fails installation if observable identity fields change. A LoginPage 403 gets exactly one anonymous attempt and then a 24-hour per-profile automatic circuit breaker; there is no fingerprint rotation. HTTP 429 preserves Retry-After and otherwise uses a conservative 24-hour fallback.
+
+Sanitized credit diagnostics are kept locally as bounded rotating JSONL and exposed only through the authenticated loopback summary endpoint. Credentials, cookies, authorization tokens, login bodies and raw issuer HTML are excluded. The installer retains the previous runtime in app-rollback and installs %LOCALAPPDATA%\NetunimKupaBankBridge\rollback_bank_bridge.bat. Web clients prefer /v2/credit/* and use the v27 route only after an explicit 404, so an emergency runtime rollback remains usable without deleting profiles or shared snapshots.
+
+The detailed implementation, rollout, rollback and live-verification boundaries are documented in CREDIT_CONNECTOR_V2_REPORT.md at the repository root.
+
+
 Bridge v20 — unified monthly credit detail and purchase dates
 -----------------------------------------------------------
 The credit detail screen is now driven by actual normalized charge rows instead of collapsing each purchase series to only its next payment. One month selector combines current/future obligations and recent completed history; each month button shows the filtered monthly total and opens the rows billed in that month. The default is the nearest known charge month, while the three preceding calendar months remain available in the same frame.

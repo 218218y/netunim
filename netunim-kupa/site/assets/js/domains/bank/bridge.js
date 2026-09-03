@@ -55,11 +55,18 @@ async function selectAccount({role='business',branchNumber,accountNumber}){retur
 async function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
 async function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:240000})}
 
-async function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
-async function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
-async function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
-async function resetCreditProfiles(){return request('/credit/reset',{method:'POST',body:{},timeoutMs:15000})}
-async function syncCreditCards({interactive=false}={}){return request('/credit/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
+async function creditRequest(path,options){
+  try{return await request(`/v2/credit${path}`,options)}catch(error){
+    if(!['HTTP_404','NOT_FOUND'].includes(String(error?.code||'')))throw error;
+    const legacy=await request(`/credit${path}`,options);return {...legacy,rollbackMode:true};
+  }
+}
+async function creditStatus(){return creditRequest('/status',{timeoutMs:5000})}
+async function saveCreditProfile(profile){return creditRequest('/profiles',{method:'POST',body:profile,timeoutMs:15000})}
+async function deleteCreditProfile(profileId){return creditRequest('/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
+async function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
+async function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
+async function syncCreditCards({interactive=false}={}){return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,syncCreditCards};
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }

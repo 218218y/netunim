@@ -81,7 +81,7 @@ const calLoginTimeout=creditThrownScrapeFailure(new Error('Timeout while waiting
 assert.equal(calLoginTimeout.code,'CREDIT_LOGIN_UI_UNAVAILABLE','Cal selector/iframe failures are classified from the proven upstream UI marker even when BaseScraper reports GENERIC');
 assert.equal(calLoginTimeout.stage,'LoginFlow','Cal selector/iframe generic failures retain the exact login stage');
 const reportedCalLoginTimeout=creditScrapeFailure({errorType:'TIMEOUT',errorMessage:'Timeout while waiting for #ccLoginDesktopBtn in login iframe'},calProfile);
-assert.equal(reportedCalLoginTimeout.code,'CREDIT_TIMEOUT','the official scraper TIMEOUT class remains explicit');
+assert.equal(reportedCalLoginTimeout.code,'CREDIT_LOGIN_TIMEOUT','the official scraper TIMEOUT class maps to the v2 login-timeout taxonomy');
 assert.equal(reportedCalLoginTimeout.stage,'LoginFlow','a TIMEOUT is assigned to LoginFlow only when the upstream message explicitly proves a login/iframe wait');
 const blockedAt=Date.parse('2026-09-03T05:05:00+03:00'),blockedError={profileId:'amex-a',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',at:new Date(blockedAt).toISOString()};
 const retryAfterAt=creditAutomaticRetryAfterAt(blockedError,blockedAt);

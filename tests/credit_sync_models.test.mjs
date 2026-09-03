@@ -33,7 +33,7 @@ import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/nor
 import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {todayISO,localISO,dObj,addMonthsISO} from '../netunim-kupa/site/assets/js/core/dates.js';
 
-assert.equal(CREDIT_SYNC_VERSION,3,'credit feed v3 is the synced-primary/additive-manual model');
+assert.equal(CREDIT_SYNC_VERSION,4,'credit feed v4 adds monthly Last Known Good coverage without changing the synced-primary/additive-manual calculation model');
 assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['amex','isracard','max','visaCal'],'bridge exposes Cal, MAX, Isracard and Amex issuer connections; Mastercard is not a separate login provider');
 assert.equal(creditProviderSupported('visaCal'),true);
 assert.equal(creditProviderSupported('max'),true);
@@ -144,6 +144,20 @@ assert.equal(merged.cardMappings[keyA]?.hidden,false,'existing cards migrate as 
 const allFailed=mergeCreditSyncResult(merged,{profiles:[],errors:[{profileId:'p-max-a',provider:'max',code:'CREDIT_TIMEOUT',message:'כשל'}]});
 assert.equal(allFailed.syncedAt,merged.syncedAt,'all-failed refresh preserves last successful sync timestamp');
 assert.equal(allFailed.profiles.length,2,'all-failed refresh preserves every last successful profile slice');
+const monthlyBase=normalizeCreditSync({version:4,contractVersion:2,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',syncedAt:'2026-09-01T00:00:00Z',accounts:[{accountNumber:'1111',months:[{month:'2026-11',tier:'forecast',status:'fresh',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',providerSchemaVersion:'cal-v2',transactions:[{id:'lkg',processedDate:'2026-11-10',chargedAmount:-90,status:'completed'}]}]}]}]});
+const monthlyMerged=mergeCreditSyncResult(monthlyBase,{contractVersion:2,syncedAt:'2026-09-02T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',coreComplete:true,accounts:[{accountNumber:'1111',months:[{month:'2026-11',tier:'forecast',fetchStatus:'provider_error',lastErrorCode:'CREDIT_PROVIDER_DATA_ERROR',lastErrorAt:'2026-09-02T00:00:00Z',transactions:[]},{month:'2026-12',tier:'forecast',fetchStatus:'schema_error',lastErrorCode:'CREDIT_PROVIDER_SCHEMA_ERROR',lastErrorAt:'2026-09-02T00:00:00Z',transactions:[]}]}]}],errors:[]});
+const monthlyAccount=monthlyMerged.profiles[0].accounts[0],staleNovember=monthlyAccount.months.find(month=>month.month==='2026-11'),missingDecember=monthlyAccount.months.find(month=>month.month==='2026-12');
+assert.equal(staleNovember.status,'stale','a failed monthly refresh keeps the prior successful slice and marks it stale');
+assert.equal(staleNovember.transactions[0].id,'lkg','monthly Last Known Good transactions are not deleted by partial issuer failure');
+assert.equal(missingDecember.status,'missing','a never-successful failed month is explicitly missing instead of being presented as fresh or synthesized');
+assert.equal(monthlyAccount.txns.some(tx=>tx.id==='lkg'),true,'legacy consumers read the canonical monthly LKG data without a second persisted transaction copy');
+assert.equal(JSON.stringify(monthlyAccount).includes('"txns"'),false,'cloud serialization stores transactions once inside their monthly slices');
+const monthlyCoreFailed=mergeCreditSyncResult(monthlyBase,{contractVersion:2,profiles:[{profileId:'monthly',provider:'visaCal',attemptedAt:'2026-09-02T00:00:00Z',coreComplete:false,accounts:[{accountNumber:'1111',balance:-999,months:[{month:'2026-10',tier:'core',fetchStatus:'schema_error',lastErrorCode:'CREDIT_PROVIDER_SCHEMA_ERROR',lastErrorAt:'2026-09-02T00:00:00Z',transactions:[]},{month:'2026-11',tier:'forecast',fetchStatus:'success',fetchedAt:'2026-09-02T00:00:00Z',transactions:[{id:'uncommitted',processedDate:'2026-11-10',chargedAmount:-999,status:'completed'}]}]}]}],errors:[]});
+const coreFailedAccount=monthlyCoreFailed.profiles[0].accounts[0];
+assert.equal(monthlyCoreFailed.syncedAt,monthlyBase.syncedAt,'an incomplete Core attempt cannot advance the shared successful timestamp');
+assert.equal(coreFailedAccount.balance,null,'an incomplete Core attempt cannot replace existing business metadata');
+assert.equal(coreFailedAccount.txns[0].id,'lkg','an incomplete Core attempt preserves the complete prior profile snapshot instead of committing sibling slices');
+assert.equal(coreFailedAccount.months.find(month=>month.month==='2026-10').status,'missing','the failed Core month is still exposed as missing for diagnosis');
 const sanitizedHistoricalError=normalizeCreditSync({errors:[{profileId:'p-isra',message:`fetchPostWithinPage parse error <!DOCTYPE html> password=${secretMarker}`}]}).errors[0];
 assert.equal(sanitizedHistoricalError.message.includes(secretMarker),false,'historical technical bridge errors are scrubbed before display/re-persistence');
 const discoveredLater=mergeCreditSyncResult(merged,{syncedAt:'2026-08-30T11:00:00.000Z',profiles:[{profileId:'p-max-a',provider:'max',label:'MAX א',ownerLabel:'אדם א',defaultAccount:'עסקי',accounts:[normalizedAccount,{accountNumber:'7777',txns:[{id:'new',processedDate:'2026-10-10T00:00:00.000Z',chargedAmount:-77,chargedCurrency:'ILS',description:'חדש'}]}]}],errors:[]});
@@ -288,11 +302,13 @@ assert.equal(syncedInstallmentsData({creditSync:originalFallback})[0].amount,12,
 const normalizationModel={state:{},lastNormalizeRemovedCredits:0};
 const stateNormalization=createStateNormalization({model:normalizationModel});
 const migratedState=stateNormalization.normalizeState({version:4,creditSync:{version:2,profiles:[],cardMappings:{}},credits:[{id:'old-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:100,installments:1,card:'ישן',account:'עסקי'}]});
-assert.equal(migratedState.creditSync.version,3);
+assert.equal(migratedState.creditSync.version,4);
 assert.equal(migratedState.credits.length,0,'v2 -> v3 migration removes the historical manual dataset exactly once as requested');
 migratedState.credits.push({id:'new-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:100,installments:1,card:'חדש',account:'עסקי'});
 const normalizedAgain=stateNormalization.normalizeState(migratedState);
 assert.equal(normalizedAgain.credits[0].id,'new-manual','manual additions created after v3 migration survive future normalization/saves');
+const v3ManualPreserved=stateNormalization.normalizeState({version:4,creditSync:{version:3,profiles:[],cardMappings:{}},credits:[{id:'v3-manual',active:true,firstChargeDate:'2026-09-10',totalAmount:42,installments:1,card:'חדש',account:'עסקי'}]});
+assert.equal(v3ManualPreserved.credits[0].id,'v3-manual','the v4 monthly-LKG upgrade never repeats the destructive v2-to-v3 migration');
 
 const bridgeApi=createDomainsBankBridge();
 for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','resetCreditProfiles','syncCreditCards']){

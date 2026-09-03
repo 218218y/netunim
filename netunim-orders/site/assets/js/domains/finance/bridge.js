@@ -7,14 +7,15 @@ const CREDIT_ATTEMPT_KEY='netunim_orders_credit_auto_attempt_v1';
 export const BANK_AUTO_INTERVAL_MS=4*60*60*1000;
 export const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const AUTO_RETRY_MS=60*60*1000;
+const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 const INTERACTIVE_TIMEOUT_MS=15*60*1000;
 
 function bridgeError(message,code='BRIDGE_ERROR',stage='',extra={}){const e=new Error(message);e.code=code;e.stage=stage;e.httpStatus=Number(extra?.httpStatus)||0;e.availableAccounts=Array.isArray(extra?.availableAccounts)?extra.availableAccounts:[];e.accountRole=extra?.accountRole==='home'?'home':extra?.accountRole==='business'?'business':'';e.creditErrors=Array.isArray(extra?.creditErrors)?extra.creditErrors:[];return e}
 function enabled(key){return localStorage.getItem(key)!=='0'}
 function setEnabled(key,value){localStorage.setItem(key,value?'1':'0')}
 function markAttempt(key,now=Date.now()){localStorage.setItem(key,String(now))}
-function attemptDelayMs(key,now=Date.now()){const last=Number(localStorage.getItem(key)||0);return last?Math.max(0,last+AUTO_RETRY_MS-now):0}
-function attemptReady(key,now=Date.now()){return attemptDelayMs(key,now)===0}
+function attemptDelayMs(key,now=Date.now(),retryMs=AUTO_RETRY_MS){const last=Number(localStorage.getItem(key)||0);return last?Math.max(0,last+retryMs-now):0}
+function attemptReady(key,now=Date.now(),retryMs=AUTO_RETRY_MS){return attemptDelayMs(key,now,retryMs)===0}
 
 function refreshDue(updatedAt,intervalMs,now=Date.now()){const t=updatedAt?Date.parse(updatedAt):NaN;return !Number.isFinite(t)||now-t>=intervalMs}
 export function bankRefreshDue(updatedAt,now=Date.now()){return refreshDue(updatedAt,BANK_AUTO_INTERVAL_MS,now)}
@@ -31,18 +32,20 @@ function setCreditAutoEnabled(value){setEnabled(CREDIT_AUTO_KEY,!!value)}
 function markBankAttempt(){markAttempt(BANK_ATTEMPT_KEY)}
 function markCreditAttempt(){markAttempt(CREDIT_ATTEMPT_KEY)}
 function bankAttemptDelayMs(){return attemptDelayMs(BANK_ATTEMPT_KEY)}
-function creditAttemptDelayMs(){return attemptDelayMs(CREDIT_ATTEMPT_KEY)}
+function creditAttemptDelayMs(){return attemptDelayMs(CREDIT_ATTEMPT_KEY,Date.now(),CREDIT_AUTO_RETRY_MS)}
 function bankAttemptReady(){return attemptReady(BANK_ATTEMPT_KEY)}
-function creditAttemptReady(){return attemptReady(CREDIT_ATTEMPT_KEY)}
+function creditAttemptReady(){return attemptReady(CREDIT_ATTEMPT_KEY,Date.now(),CREDIT_AUTO_RETRY_MS)}
 function status(){return request('/status',{timeoutMs:3500})}
 function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){if(token)setBridgeToken(token);return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000})}
 function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
 function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_TIMEOUT_MS:240000})}
-function creditStatus(){return request('/credit/status',{timeoutMs:5000})}
-function saveCreditProfile(profile){return request('/credit/profiles',{method:'POST',body:profile,timeoutMs:15000})}
-function deleteCreditProfile(profileId){return request('/credit/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
-function resetCreditProfiles(){return request('/credit/reset',{method:'POST',body:{},timeoutMs:15000})}
-function syncCreditCards({interactive=false}={}){return request('/credit/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
-return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,syncCreditCards};
+async function creditRequest(path,options){try{return await request(`/v2/credit${path}`,options)}catch(error){if(!['HTTP_404','NOT_FOUND'].includes(String(error?.code||'')))throw error;const legacy=await request(`/credit${path}`,options);return {...legacy,rollbackMode:true}}}
+function creditStatus(){return creditRequest('/status',{timeoutMs:5000})}
+function saveCreditProfile(profile){return creditRequest('/profiles',{method:'POST',body:profile,timeoutMs:15000})}
+function deleteCreditProfile(profileId){return creditRequest('/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
+function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
+function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
+function syncCreditCards({interactive=false}={}){return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
+return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }

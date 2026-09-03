@@ -1,6 +1,7 @@
 import {todayISO} from '../../core/dates.js';
 
-export const CREDIT_SYNC_VERSION=3;
+export const CREDIT_SYNC_VERSION=4;
+export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישראכרט',amex:'American Express'};
 
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
@@ -30,18 +31,28 @@ export function normalizeCreditTransaction(txn={}){
   };
 }
 
-export function normalizeCreditAccount(account={}){
-  const txns=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditTransaction).filter(tx=>tx.date||tx.processedDate||tx.id);
+function transactionMonth(tx){const value=tx?.processedDate||tx?.date;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}
+function normalizeCreditMonthSlice(slice={}){
+  const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice.month||''))?String(slice.month):'',fetchStatus=['success','provider_error','schema_error','network_error'].includes(String(slice.fetchStatus))?String(slice.fetchStatus):slice.status==='fresh'?'success':'provider_error',status=['fresh','stale','missing'].includes(String(slice.status))?String(slice.status):fetchStatus==='success'?'fresh':'missing';
+  return {month,tier:slice.tier==='forecast'?'forecast':'core',status,fetchStatus,fetchedAt:iso(slice.fetchedAt),transactions:(Array.isArray(slice.transactions)?slice.transactions:[]).map(normalizeCreditTransaction),providerSchemaVersion:text(slice.providerSchemaVersion||'',80),lastErrorCode:fetchStatus==='success'?'':text(slice.lastErrorCode||'CREDIT_PROVIDER_DATA_ERROR',80),lastErrorAt:fetchStatus==='success'?null:iso(slice.lastErrorAt)};
+}
+function legacyMonthSlices(txns,fetchedAt){const groups=new Map(),unassigned=[];for(const tx of txns){const key=transactionMonth(tx);if(!key){unassigned.push(tx);continue}if(!groups.has(key))groups.set(key,[]);groups.get(key).push(tx)}return {months:[...groups.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([month,transactions])=>({month,tier:'core',status:'stale',fetchStatus:'success',fetchedAt,transactions,providerSchemaVersion:'legacy-credit-feed',lastErrorCode:'',lastErrorAt:null})),unassigned}}
+function withAccountTransactions(account,txns){account.txns=txns;Object.defineProperty(account,'toJSON',{value(){const serialized={};for(const [key,value] of Object.entries(this))if(key!=='txns')serialized[key]=value;return serialized},configurable:true,enumerable:false});return account}
+
+export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
+  const legacyTxns=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditTransaction).filter(tx=>tx.date||tx.processedDate||tx.id),legacyPending=legacyTxns.filter(tx=>tx.status==='pending'&&!tx.processedDate),hasMonthly=Array.isArray(account.months)&&account.months.length>0,legacy=hasMonthly?{months:[],unassigned:[]}:legacyMonthSlices(legacyTxns.filter(tx=>!legacyPending.includes(tx)),iso(fallbackFetchedAt)),months=(hasMonthly?account.months:legacy.months).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:legacyPending).map(normalizeCreditTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:legacy.unassigned).map(normalizeCreditTransaction);
+  const txns=[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions].filter(tx=>tx.date||tx.processedDate||tx.id);
   const seen=new Set();
-  return {
+  const result={
     accountNumber:text(account.accountNumber||'',80),
     balance:finite(account.balance),
     balanceDate:iso(account.balanceDate),
     cardType:text(account.cardType||'',80),
     cardFrame:finite(account.cardFrame),
     availableCredit:finite(account.availableCredit),
-    txns:txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}),
+    months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:iso(account.pendingFetchedAt),pendingErrorCode:text(account.pendingErrorCode||'',80),pendingErrorAt:iso(account.pendingErrorAt),unassignedTransactions,
   };
+  return withAccountTransactions(result,txns.filter(tx=>{if(!tx.id)return true;const key=`${tx.id}|${tx.date}|${tx.processedDate}|${tx.chargedAmount}|${tx.description}|${tx.installments?.number||0}`;if(seen.has(key))return false;seen.add(key);return true}).sort((a,b)=>String(b.processedDate||b.date||'').localeCompare(String(a.processedDate||a.date||''))));
 }
 
 export function normalizeCreditProfile(profile={}){
@@ -51,8 +62,8 @@ export function normalizeCreditProfile(profile={}){
     label:text(profile.label||CREDIT_PROVIDER_LABELS[provider]||'חיבור אשראי',100),
     ownerLabel:text(profile.ownerLabel||'',100),
     defaultAccount:profile.defaultAccount==='ביתי'?'ביתי':'עסקי',
-    syncedAt:iso(profile.syncedAt),
-    accounts:(Array.isArray(profile.accounts)?profile.accounts:[]).map(normalizeCreditAccount).filter(x=>x.accountNumber||x.txns.length),
+    syncedAt:iso(profile.syncedAt),attemptedAt:iso(profile.attemptedAt),coreComplete:profile.coreComplete===false?false:profile.coreComplete===true?true:null,
+    accounts:(Array.isArray(profile.accounts)?profile.accounts:[]).map(account=>normalizeCreditAccount(account,profile.syncedAt)).filter(x=>x.accountNumber||x.txns.length),
   };
 }
 
@@ -82,12 +93,12 @@ export function normalizeCreditSync(value={}){
     }
   }
   return {
-    version:CREDIT_SYNC_VERSION,
+    version:CREDIT_SYNC_VERSION,contractVersion:Math.max(1,Math.trunc(Number(source.contractVersion)||1)),correlationId:text(source.correlationId||'',80),
     // Kept as a compatibility marker only. From v3 the issuer feed is always active and manual rows are additive.
     mode:'synced',
     syncedAt:iso(source.syncedAt),
     profiles,
-    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,20).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),stage:text(e?.stage||'',80),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true})),
+    errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,40).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||source.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)})),
     cardMappings:mappings,
   };
 }
@@ -95,15 +106,25 @@ export function normalizeCreditSync(value={}){
 export function mergeCreditSyncResult(current,payload={}){
   const base=normalizeCreditSync(current),successes=(Array.isArray(payload.profiles)?payload.profiles:[]).map(normalizeCreditProfile).filter(x=>x.profileId);
   const byId=new Map(base.profiles.map(p=>[p.profileId,p]));
-  successes.forEach(p=>byId.set(p.profileId,p));
+  function mergeAccount(previous,incoming){
+    if(!previous)return incoming;const old=normalizeCreditAccount(previous),next=normalizeCreditAccount(incoming),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));
+    for(const slice of next.months){const prior=monthMap.get(slice.month);if(slice.fetchStatus==='success')monthMap.set(slice.month,{...slice,status:'fresh'});else if(prior?.fetchedAt)monthMap.set(slice.month,{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt});else monthMap.set(slice.month,{...slice,status:'missing'})}
+    const pendingOk=next.pendingStatus==='success',pendingTransactions=pendingOk?next.pendingTransactions:old.pendingTransactions,pendingStatus=pendingOk?'success':next.pendingStatus,pendingFetchedAt=pendingOk?next.pendingFetchedAt:old.pendingFetchedAt;
+    return normalizeCreditAccount({...old,...next,balance:next.balance??old.balance,balanceDate:next.balanceDate??old.balanceDate,cardType:next.cardType||old.cardType,cardFrame:next.cardFrame??old.cardFrame,availableCredit:next.availableCredit??old.availableCredit,months:[...monthMap.values()],pendingTransactions,pendingStatus,pendingFetchedAt,pendingErrorCode:pendingOk?'':next.pendingErrorCode,pendingErrorAt:pendingOk?null:next.pendingErrorAt,unassignedTransactions:next.unassignedTransactions.length?next.unassignedTransactions:old.unassignedTransactions});
+  }
+  function preserveCoreLastKnownGood(previous,incoming){
+    const attempts=new Map(incoming.accounts.map(account=>[account.accountNumber,account]));
+    const accounts=previous.accounts.map(account=>{const attempt=attempts.get(account.accountNumber);if(!attempt)return account;const old=normalizeCreditAccount(account),monthMap=new Map(old.months.map(slice=>[slice.month,slice]));for(const slice of attempt.months){if(slice.fetchStatus==='success')continue;const prior=monthMap.get(slice.month);monthMap.set(slice.month,prior?.fetchedAt?{...prior,status:'stale',fetchStatus:slice.fetchStatus,lastErrorCode:slice.lastErrorCode,lastErrorAt:slice.lastErrorAt}:{...slice,status:'missing'})}return normalizeCreditAccount({...old,months:[...monthMap.values()]})});
+    return normalizeCreditProfile({...previous,attemptedAt:incoming.attemptedAt,coreComplete:false,accounts});
+  }
+  successes.forEach(incoming=>{const previous=byId.get(incoming.profileId);if(previous&&incoming.coreComplete===false){byId.set(incoming.profileId,preserveCoreLastKnownGood(previous,incoming));return}const accounts=new Map((previous?.accounts||[]).map(account=>[account.accountNumber,account]));for(const account of incoming.accounts)accounts.set(account.accountNumber,mergeAccount(accounts.get(account.accountNumber),account));byId.set(incoming.profileId,normalizeCreditProfile({...previous,...incoming,syncedAt:incoming.syncedAt||previous?.syncedAt||null,accounts:[...accounts.values()]}))});
   const mappings={...base.cardMappings};
   for(const profile of successes)for(const account of profile.accounts){
     const key=creditCardMappingKey(profile.profileId,account.accountNumber);
     if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null};
   }
-  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'SCRAPE_FAILED',80),stage:text(e?.stage||'',80),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true}));
-  const syncedAt=successes.length?(iso(payload.syncedAt)||new Date().toISOString()):base.syncedAt;
-  return normalizeCreditSync({...base,syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
+  const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||payload.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)}));
+  return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:payload.syncedAt?iso(payload.syncedAt):base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 
 export function creditSyncHasData(state){return !!normalizeCreditSync(state?.creditSync).profiles.some(p=>p.accounts.some(a=>a.txns.length||a.balance!==null||a.cardFrame!==null||a.availableCredit!==null))}
@@ -235,5 +256,6 @@ export function creditSyncSummary(state){
   const sync=normalizeCreditSync(state?.creditSync),today=todayISO(),accounts=sync.profiles.flatMap(p=>p.accounts.map(a=>({profile:p,account:a}))),txns=accounts.reduce((n,x)=>n+x.account.txns.length,0);
   const included=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.included===true),hiddenAccountCount=accounts.filter(x=>sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]?.hidden===true).length;
   const availability=included.map(x=>creditFrameStatus(x.account,sync.cardMappings[creditCardMappingKey(x.profile.profileId,x.account.accountNumber)]||{},today)),known=availability.filter(x=>x.available!==null);
-  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount:included.length,hiddenAccountCount,transactionCount:txns,availableCreditTotal:Math.round(known.reduce((sum,x)=>sum+x.available,0)*100)/100,availableCreditKnownCount:known.length,availableCreditUnknownCount:availability.length-known.length,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null||x.account.cardFrame!==null||x.account.availableCredit!==null),today};
+  const slices=accounts.flatMap(x=>x.account.months),freshMonthCount=slices.filter(slice=>slice.status==='fresh').length,staleMonthCount=slices.filter(slice=>slice.status==='stale').length,missingMonthCount=slices.filter(slice=>slice.status==='missing').length;
+  return {sync,profileCount:sync.profiles.length,accountCount:accounts.length,includedAccountCount:included.length,hiddenAccountCount,transactionCount:txns,availableCreditTotal:Math.round(known.reduce((sum,x)=>sum+x.available,0)*100)/100,availableCreditKnownCount:known.length,availableCreditUnknownCount:availability.length-known.length,freshMonthCount,staleMonthCount,missingMonthCount,hasCoverageGaps:staleMonthCount+missingMonthCount>0,hasData:accounts.some(x=>x.account.txns.length||x.account.balance!==null||x.account.cardFrame!==null||x.account.availableCredit!==null),today};
 }

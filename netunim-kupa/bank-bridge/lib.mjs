@@ -398,13 +398,19 @@ export function normalizeCreditScrapeTransaction(tx={}){
   const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
   return {id:creditText(tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
 }
+export function normalizeCreditMonthSlice(slice={}){
+  const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice?.month||''))?String(slice.month):'';
+  const fetchStatus=['success','provider_error','schema_error','network_error'].includes(String(slice?.fetchStatus))?String(slice.fetchStatus):'provider_error';
+  return {month,tier:slice?.tier==='forecast'?'forecast':'core',status:fetchStatus==='success'?'fresh':'missing',fetchStatus,fetchedAt:fetchStatus==='success'&&slice?.fetchedAt?String(slice.fetchedAt):null,transactions:(Array.isArray(slice?.transactions)?slice.transactions:[]).map(normalizeCreditScrapeTransaction),providerSchemaVersion:creditText(slice?.providerSchemaVersion||'',80),lastErrorCode:fetchStatus==='success'?'':creditText(slice?.lastErrorCode||'CREDIT_PROVIDER_DATA_ERROR',80),lastErrorAt:fetchStatus==='success'?null:(slice?.lastErrorAt||null)};
+}
 export function normalizeCreditScrapeAccount(account={},provider=''){
   const balance=creditNumber(account.balance),cardFrame=creditNumber(account.cardFrame),directAvailable=creditNumber(account.availableCredit);
   // israeli-bank-scrapers defines MAX balance as -(CreditLimit - OpenToBuy), so
   // CreditLimit + balance is the issuer's exact OpenToBuy value. Cal's balance is
   // only the next debit, therefore applying the same formula there would be false.
   const maxAvailable=provider==='max'&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
-  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,txns:(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction)};
+  const months=(Array.isArray(account.months)?account.months:[]).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:[]).map(normalizeCreditScrapeTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:[]).map(normalizeCreditScrapeTransaction),legacyTransactions=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction),txns=months.length?[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions]:legacyTransactions;
+  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:account.pendingFetchedAt||null,pendingErrorCode:creditText(account.pendingErrorCode||'',80),pendingErrorAt:account.pendingErrorAt||null,unassignedTransactions,txns};
 }
 function creditFailureContext(typeValue,rawValue,profile){
   const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
@@ -414,13 +420,13 @@ function creditFailureContext(typeValue,rawValue,profile){
     return {code:'CREDIT_PROVIDER_DATA_ERROR',stage:'Transactions',message:`החברה דחתה או לא השלימה את קריאת העסקאות${cardSuffix?` לכרטיס ${cardSuffix}`:''}${providerMessage?`. הודעת החברה: ${providerMessage}`:''}`};
   }
   if(profile?.provider==='visaCal'&&/monthData is not of type CardTransactionDetails/i.test(raw))return {code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',message:'כאל החזירה באחת מקריאות החודש מבנה נתונים שונה מהחוזה שהמחבר מכיר. אין להתייחס לזה ככשל סיסמה; מחבר כאל דורש התאמת schema או בידוד של החודש הבעייתי.'};
-  if(profile?.provider==='visaCal'&&/(failed to extract login iframe|#ccLoginDesktopBtn|#regular-login|regular-login)/i.test(raw))return {code:type==='TIMEOUT'?'CREDIT_TIMEOUT':'CREDIT_LOGIN_UI_UNAVAILABLE',stage:'LoginFlow',message:type==='TIMEOUT'?'מסלול הכניסה של כאל לא הגיע לשלב הבא בזמן שהוגדר.':'מסלול הכניסה של כאל לא הציג את רכיב ההתחברות שהמחבר מצפה לו. זה מתאים לשינוי UI/הגנת אתר ולא לכשל בנתוני הכרטיס.'};
+  if(profile?.provider==='visaCal'&&/(failed to extract login iframe|#ccLoginDesktopBtn|#regular-login|regular-login)/i.test(raw))return {code:type==='TIMEOUT'?'CREDIT_LOGIN_TIMEOUT':'CREDIT_LOGIN_UI_UNAVAILABLE',stage:'LoginFlow',message:type==='TIMEOUT'?'מסלול הכניסה של כאל לא הגיע לשלב הבא בזמן שהוגדר.':'מסלול הכניסה של כאל לא הציג את רכיב ההתחברות שהמחבר מצפה לו. זה מתאים לשינוי UI/הגנת אתר ולא לכשל בנתוני הכרטיס.'};
   if(/could not find ["']?init["']? data in session storage|get init data in session storage/i.test(raw))return {code:'CREDIT_SESSION_INIT_MISSING',stage:'DashboardInit',message:'הכניסה הושלמה אך נתוני האתחול של אזור הלקוחות לא הופיעו. יש לפתוח רענון עם חלון אבחון; אם התקלה חוזרת, מחבר החברה דורש התאמה למסך החדש.'};
   if(/authorization header|auth[- ]module|authorization token/i.test(raw))return {code:'CREDIT_AUTH_TOKEN_MISSING',stage:'AuthToken',message:'הכניסה לא הניבה אסימון הרשאה שנדרש לקריאת נתוני האשראי. יש לפתוח רענון עם חלון אבחון כדי לבדוק את מסלול הכניסה הנוכחי של החברה.'};
   if(profile?.provider==='visaCal'&&/(unexpected (?:token|end).*json|not valid json|json parse|json\.parse)/i.test(raw))return {code:'CREDIT_PROVIDER_RESPONSE_NOT_JSON',stage:'DataApi',message:'כאל החזירה באחת מקריאות ה-API תשובה שאינה JSON תקין. זהו כשל תגובת שירות/הגנת אתר ולא כשל בפרטי ההתחברות.'};
   if(/fetch failed|networkerror|econnreset|etimedout|socket hang up/i.test(raw))return {code:'CREDIT_PROVIDER_NETWORK_ERROR',stage:'DataApi',message:'החיבור לשירות הנתונים של חברת האשראי נקטע לפני שהתקבלה תשובה תקינה.'};
-  if(type==='TIMEOUT'&&/(login|iframe|ccLoginDesktopBtn|regular-login|sign.?in)/i.test(raw))return {code:'CREDIT_TIMEOUT',stage:'LoginFlow',message:'מסלול הכניסה של חברת האשראי לא הגיע לשלב הבא בזמן שהוגדר.'};
-  if(type==='TIMEOUT')return {code:'CREDIT_TIMEOUT',stage:'',message:'החיבור לא הסתיים בזמן'};
+  if(type==='TIMEOUT'&&/(login|iframe|ccLoginDesktopBtn|regular-login|sign.?in)/i.test(raw))return {code:'CREDIT_LOGIN_TIMEOUT',stage:'LoginFlow',message:'מסלול הכניסה של חברת האשראי לא הגיע לשלב הבא בזמן שהוגדר.'};
+  if(type==='TIMEOUT')return {code:'CREDIT_PROVIDER_NETWORK_ERROR',stage:'DataApi',message:'החיבור לשירות חברת האשראי לא הסתיים בזמן'};
   if(type==='INVALID_PASSWORD')return {code:'CREDIT_INVALID_PASSWORD',stage:'Login',message:isIsracardGroup?'פרטי ההתחברות הקבועים נדחו. יש להשתמש בתעודת זהות + 6 ספרות אחרונות של כרטיס מהסוג שנבחר + סיסמה קבועה':'פרטי ההתחברות אינם נכונים'};
   if(type==='CHANGE_PASSWORD')return {code:'CREDIT_CHANGE_PASSWORD',stage:'Login',message:'החברה דורשת החלפת סיסמה'};
   if(type==='ACCOUNT_BLOCKED')return {code:'CREDIT_ACCOUNT_BLOCKED',stage:'Login',message:'החשבון חסום'};
@@ -455,10 +461,13 @@ function safeCreditScrapeFailure(typeValue,rawValue,profile){
 }
 
 export const CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS=24*60*60*1000;
+export const CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS=24*60*60*1000;
 export function creditAutomaticRetryAfterAt(error,now=Date.now()){
-  if(String(error?.code||'')!=='CREDIT_AUTOMATION_BLOCKED')return null;
+  const code=String(error?.code||''),explicit=Date.parse(error?.retryAfterAt||'');
+  if(Number.isFinite(explicit)&&explicit>Number(now))return new Date(explicit).toISOString();
+  if(code!=='CREDIT_AUTOMATION_BLOCKED'&&code!=='CREDIT_PROVIDER_RATE_LIMITED')return null;
   const base=Number(now);if(!Number.isFinite(base))return null;
-  return new Date(base+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS).toISOString();
+  return new Date(base+(code==='CREDIT_AUTOMATION_BLOCKED'?CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS:CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS)).toISOString();
 }
 export function deferredCreditProfileError(errors,profile,now=Date.now()){
   const profileId=String(profile?.profileId||''),provider=String(profile?.provider||''),time=Number(now);

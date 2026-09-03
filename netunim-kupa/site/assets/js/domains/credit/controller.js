@@ -1,13 +1,14 @@
 import {esc,uid} from '../../core/values.js';
-import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS} from './sync-feed.js';
+import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=27;
+const CREDIT_BRIDGE_VERSION=28;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
-const CREDIT_AUTO_RETRY_MS=60*60*1000;
+const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
 function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !Number.isFinite(t)||now-t>=CREDIT_AUTO_INTERVAL_MS}
+function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION||version===27&&contract===0}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
@@ -22,7 +23,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     try{
       const status=await bridge.creditStatus();
       local.status=status;local.bridgeError='';local.bridgeErrorAt=null;
-      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION){local.bridgeError='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';local.bridgeErrorAt=new Date().toISOString()}
+      if(!supportedCreditBridge(status)){local.bridgeError='Bank Bridge ישן. יש להריץ שוב install_bank_bridge.bat במחשב זה.';local.bridgeErrorAt=new Date().toISOString()}
       if(!quiet)render();
       return status;
     }catch(e){local.status=null;local.bridgeError=e?.message||String(e);local.bridgeErrorAt=new Date().toISOString();if(!quiet)render();return null}
@@ -72,7 +73,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     try{
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
-      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
+      if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
       await bridge.resetCreditProfiles();
       localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
       model.state.creditSync=normalizeCreditSync({});
@@ -101,7 +102,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(auto){const latest=await refreshFinanceCloudSnapshot();if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');if(!due(latest.state?.creditSync?.syncedAt))return true}
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
-      if(Number(status.bridgeVersion||0)<CREDIT_BRIDGE_VERSION)throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
+      if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();if(!auto)toast('החיבור החסום נמצא בתקופת המתנה בטוחה. רענון עם חלון אבחון יכול לנסות ידנית לפני המועד.');return true}

@@ -24,24 +24,21 @@ import {
   selectAccountDescriptor,
   waitForTerminalLoginResult,
   ymdDate,
-  CREDIT_PROVIDER_CONFIG,
-  CREDIT_HISTORY_DAYS,
-  CREDIT_FUTURE_MONTHS,
   creditProviderSupported,
   creditProfilePublic,
   creditProfilesShareLoginIdentity,
   normalizeCreditProfileInput,
-  normalizeCreditScrapeAccount,
-  creditScrapeFailure,
-  creditThrownScrapeFailure,
   creditAutomaticRetryAfterAt,
   deferredCreditProfileError,
 } from './lib.mjs';
-import {doctorCamoufox,isCamoufoxRetryableNativeFailure,scrapeIsracardFamilyWithCamoufox} from './isracard-camoufox.mjs';
+import {doctorCamoufox} from './isracard-camoufox.mjs';
+import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
+import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
+import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=27;
+const BRIDGE_VERSION=28;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -51,6 +48,8 @@ const CREDIT_META_FILE=path.join(APP_DIR,'credit-card-status.json');
 const META_FILE=path.join(APP_DIR,'status.json');
 const BROWSER_PROFILE_DIR=path.join(APP_DIR,'browser-profile');
 const CAMOUFOX_INSTALL_DIR=path.join(APP_DIR,'camoufox');
+const CREDIT_IDENTITIES_DIR=path.join(APP_DIR,'credit-identities');
+const creditDiagnostics=createCreditDiagnosticLog({directory:path.join(APP_DIR,'diagnostics'),bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});
 process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
 let scrapeBusy=false;
 let activeServer=null;
@@ -116,7 +115,7 @@ async function readCreditProfiles(){
   }catch(e){if(e?.code==='ENOENT')return [];throw e}
 }
 async function writeCreditProfiles(profiles){await ensureAppDir();const encrypted=await protectText(JSON.stringify(Array.isArray(profiles)?profiles:[]));await fs.writeFile(CREDIT_PROFILES_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
-async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true})])}
+async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true}),resetCreditIdentities(CREDIT_IDENTITIES_DIR)])}
 async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
 async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
 function publicCreditProfiles(profiles){return (Array.isArray(profiles)?profiles:[]).map(creditProfilePublic).filter(x=>x.profileId&&creditProviderSupported(x.provider))}
@@ -442,43 +441,10 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
   }
 }
 
-function creditStartDate(){const d=new Date();d.setDate(d.getDate()-CREDIT_HISTORY_DAYS);return d}
-function scraperCompanyId(CompanyTypes,provider){const map={visaCal:CompanyTypes.visaCal,max:CompanyTypes.max,isracard:CompanyTypes.isracard,amex:CompanyTypes.amex};return map[provider]}
-async function scrapeCreditWithCamoufox(profile,{interactive=false}={}){
-  const result=await scrapeIsracardFamilyWithCamoufox({provider:profile.provider,credentials:profile.credentials,startDate:creditStartDate(),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,interactive:!!interactive});
-  if(!result?.success)throw Object.assign(new Error('Camoufox לא החזיר תוצאת סנכרון תקינה'),{code:'CREDIT_CAMOUFOX_FAILED'});
-  return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider))};
-}
-async function scrapeCreditProfile(profile,{interactive=false}={}){
-  // American Express is known to reject the upstream Puppeteer/Chromium fingerprint before ValidateIdData.
-  // Use the locally-installed Camoufox engine directly; this is the same browser class proven live against Amex.
-  if(profile.provider==='amex'){
-    try{return await scrapeCreditWithCamoufox(profile,{interactive})}
-    catch(e){throw creditThrownScrapeFailure(e,profile)}
-  }
-  const browserPath=await findInstalledBrowser();
-  const {CompanyTypes,createScraper}=await import('israeli-bank-scrapers');
-  const companyId=scraperCompanyId(CompanyTypes,profile.provider);
-  if(!companyId)throw Object.assign(new Error('גרסת israeli-bank-scrapers המותקנת אינה תומכת בחברת האשראי שנבחרה'),{code:'CREDIT_PROVIDER_UNAVAILABLE'});
-  const scraper=createScraper({
-    companyId,startDate:creditStartDate(),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,combineInstallments:false,
-    showBrowser:!!interactive,executablePath:browserPath,navigationRetryCount:2,defaultTimeout:45000,timeout:90000,
-    additionalTransactionInformation:false,includeRawTransaction:false,
-  });
-  try{
-    const result=await scraper.scrape(profile.credentials);
-    if(!result?.success)throw creditScrapeFailure(result,profile);
-    return {...creditProfilePublic(profile),syncedAt:new Date().toISOString(),accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider))};
-  }catch(e){
-    const failure=creditThrownScrapeFailure(e,profile);
-    // Isracard currently still works for many local Chrome/Edge sessions. If its WAF starts returning the same
-    // HTML/automation response as Amex, fall back once to the proven Camoufox adapter instead of retrying Chromium.
-    if(profile.provider==='isracard'&&isCamoufoxRetryableNativeFailure(failure)){
-      try{return await scrapeCreditWithCamoufox(profile,{interactive})}
-      catch(camoufoxError){throw creditThrownScrapeFailure(camoufoxError,profile)}
-    }
-    throw failure;
-  }
+async function scrapeCreditProfile(profile,{interactive=false,correlationId=''}={}){
+  const browserPath=profile.provider==='amex'?'':await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile),browserEngine=profile.provider==='amex'?'camoufox':'chromium';
+  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,correlationId,onDiagnostic:event=>creditDiagnostics.record({browserEngine,...event})});
+  return adapter.scrape();
 }
 async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[]}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
@@ -486,7 +452,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
   try{
     const enabled=(Array.isArray(profiles)?profiles:[]).filter(p=>p?.active!==false&&creditProviderSupported(p?.provider));
     if(!enabled.length)throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'),{code:'CREDIT_NOT_CONFIGURED'});
-    const success=[],errors=[];let attemptedCount=0,deferredCount=0;
+    const correlationId=randomUUID(),success=[],errors=[];let attemptedCount=0,deferredCount=0,coreSuccessCount=0;
     // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
     for(const profile of enabled){
       if(!interactive){
@@ -494,56 +460,60 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
         if(deferred){errors.push(deferred);deferredCount++;continue}
       }
       attemptedCount++;
-      try{success.push(await scrapeCreditProfile(profile,{interactive}))}
+      try{const result=await scrapeCreditProfile(profile,{interactive,correlationId});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.at||new Date().toISOString())),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}}
       catch(error){
-        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at));
-        errors.push(retryAfterAt?{...base,retryAfterAt}:base);
+        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,retryAfterAt:error?.retryAfterAt||null,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
+        errors.push({...base,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:profile.provider==='amex'?'camoufox':'chromium',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt});
       }
     }
-    const syncedAt=success.length?new Date().toISOString():null;
-    return {profiles:success,errors,syncedAt,attemptedCount,deferredCount};
+    const syncedAt=coreSuccessCount?new Date().toISOString():null;
+    return {contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,correlationId,profiles:success,errors,syncedAt,attemptedCount,deferredCount,coreSuccessCount};
   }finally{scrapeBusy=false}
 }
 
 async function handler(req,res,token){
+  const pathname=new URL(req.url||'/',`http://${HOST}:${PORT}`).pathname,route=pathname.startsWith('/v2/credit')?pathname.slice(3):pathname;
   if(req.method==='OPTIONS'){res.writeHead(204,corsHeaders(req));res.end();return}
-  if(req.method==='GET'&&req.url==='/health'){sendJson(req,res,200,{ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION});return}
+  if(req.method==='GET'&&pathname==='/health'){sendJson(req,res,200,{ok:true,service:'netunim-kupa-bank-bridge',version:BRIDGE_VERSION,creditContractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});return}
   if(!tokenEqual(token,authToken(req))){sendJson(req,res,401,{ok:false,code:'UNAUTHORIZED',message:'מפתח Bank Bridge שגוי'});return}
   try{
-    if(req.method==='GET'&&req.url==='/status'){
+    if(req.method==='GET'&&pathname==='/status'){
       const credentials=await readCredentials(),meta=await readMeta();
       sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',accountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',businessBranchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',businessAccountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',homeBranchNumber:credentials?.homeBranchNumber||'',homeAccountNumber:credentials?.homeAccountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorAt:meta.lastErrorAt||null,lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',lastWarningCode:meta.lastWarningCode||'',lastWarningStage:meta.lastWarningStage||'',lastWarningHttpStatus:Number(meta.lastWarningHttpStatus)||0,accountRole:meta.lastAccountRole==='home'?'home':meta.lastAccountRole==='business'?'business':'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
     }
-    if(req.method==='GET'&&req.url==='/credit/status'){
+    if(req.method==='GET'&&route==='/credit/status'){
       const profiles=await readCreditProfiles(),meta=await readCreditMeta();
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[]});return;
+      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[],lastCorrelationId:meta.lastCorrelationId||null});return;
     }
-    if(req.method==='POST'&&req.url==='/credit/profiles'){
+    if(req.method==='GET'&&route==='/credit/diagnostics'){
+      sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,events:await creditDiagnostics.summary({limit:100})});return;
+    }
+    if(req.method==='POST'&&route==='/credit/profiles'){
       const body=await readJson(req),profiles=await readCreditProfiles(),requestedId=String(body.profileId||'').trim();
       const existing=requestedId?profiles.find(p=>p.profileId===requestedId):null;
       const normalized=normalizeCreditProfileInput({...body,profileId:requestedId||randomUUID()},existing||null);
       const duplicate=profiles.find(p=>p.profileId!==normalized.profileId&&creditProfilesShareLoginIdentity(p,normalized));
       if(duplicate)throw Object.assign(new Error(`כבר קיים חיבור ${creditProfilePublic(duplicate).label} לאותה זהות בחברה. חיבור אחד מחזיר את כל הכרטיסים של אותה זהות; אין ליצור חיבור נפרד לכל כרטיס.`),{code:'CREDIT_DUPLICATE_LOGIN'});
       const next=existing?profiles.map(p=>p.profileId===existing.profileId?normalized:p):[...profiles,normalized];
-      await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
+      await writeCreditProfiles(next);if(existing&&creditIdentityDirectory(CREDIT_IDENTITIES_DIR,existing)!==creditIdentityDirectory(CREDIT_IDENTITIES_DIR,normalized))await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,existing);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
     }
-    if(req.method==='POST'&&req.url==='/credit/reset'){
+    if(req.method==='POST'&&route==='/credit/reset'){
       if(scrapeBusy)throw Object.assign(new Error('לא ניתן לאפס חיבורי אשראי בזמן שמתבצע סנכרון'),{code:'SCRAPE_BUSY'});
       await resetCreditProfiles();sendJson(req,res,200,{ok:true,profiles:[],lastSyncAt:null,lastErrors:[]});return;
     }
-    if(req.method==='DELETE'&&req.url==='/credit/profiles'){
+    if(req.method==='DELETE'&&route==='/credit/profiles'){
       const body=await readJson(req),profileId=String(body.profileId||'').trim(),profiles=await readCreditProfiles();
       if(!profileId)throw Object.assign(new Error('חסר מזהה חיבור אשראי למחיקה'),{code:'MISSING_PROFILE_ID'});
-      const next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);sendJson(req,res,200,{ok:true,profiles:publicCreditProfiles(next)});return;
+      const removed=profiles.find(p=>p.profileId===profileId),next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);if(removed)await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,removed);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(next)});return;
     }
-    if(req.method==='POST'&&req.url==='/credit/sync'){
+    if(req.method==='POST'&&route==='/credit/sync'){
       const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta();
       const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors});
-      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors});
+      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors,lastCorrelationId:result.correlationId});
       if(!result.profiles.length&&result.errors.length&&result.attemptedCount>0){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
       sendJson(req,res,200,{ok:true,...result});return;
     }
-    if(req.method==='POST'&&req.url==='/credentials'){
+    if(req.method==='POST'&&pathname==='/credentials'){
       const body=await readJson(req),userCode=String(body.userCode||'').trim(),password=String(body.password||'');
       const businessBranchNumber=String(body.businessBranchNumber??body.branchNumber??'').replace(/\D/g,''),businessAccountNumber=String(body.businessAccountNumber??body.accountNumber??'').replace(/\D/g,'');
       const homeBranchNumber=String(body.homeBranchNumber||'').replace(/\D/g,''),homeAccountNumber=String(body.homeAccountNumber||'').replace(/\D/g,'');
@@ -555,7 +525,7 @@ async function handler(req,res,token){
       await writeMeta({lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});
       sendJson(req,res,200,{ok:true,configured:true,branchNumber:businessBranchNumber,accountNumber:businessAccountNumber,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber});return;
     }
-    if(req.method==='POST'&&req.url==='/account-selection'){
+    if(req.method==='POST'&&pathname==='/account-selection'){
       const body=await readJson(req),role=body.role==='home'?'home':'business',branchNumber=String(body.branchNumber||'').replace(/\D/g,''),accountNumber=String(body.accountNumber||'').replace(/\D/g,'');
       if(!branchNumber||!accountNumber)throw Object.assign(new Error('יש לבחור גם סניף וגם מספר חשבון'),{code:'INCOMPLETE_ACCOUNT_SELECTOR',accountRole:role});
       const credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
@@ -566,10 +536,10 @@ async function handler(req,res,token){
       await writeMeta({lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});
       sendJson(req,res,200,{ok:true,configured:true,role,branchNumber,accountNumber,businessBranchNumber:next.businessBranchNumber,businessAccountNumber:next.businessAccountNumber,homeBranchNumber:next.homeBranchNumber,homeAccountNumber:next.homeAccountNumber});return;
     }
-    if(req.method==='DELETE'&&req.url==='/credentials'){
+    if(req.method==='DELETE'&&pathname==='/credentials'){
       await deleteCredentials();await writeMeta({lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});sendJson(req,res,200,{ok:true,configured:false});return;
     }
-    if(req.method==='POST'&&req.url==='/balance'){
+    if(req.method==='POST'&&pathname==='/balance'){
       const body=await readJson(req),credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});
       try{
         const historyDays=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,Number(body.historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
@@ -580,7 +550,7 @@ async function handler(req,res,token){
         sendJson(req,res,200,{ok:true,...result});return;
       }catch(e){await writeMeta({lastError:e?.message||String(e),lastErrorAt:new Date().toISOString(),lastErrorCode:e?.code||'BRIDGE_ERROR',lastErrorStage:e?.stage||'',lastErrorHttpStatus:Number(e?.httpStatus)||0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:Array.isArray(e?.availableAccounts)?e.availableAccounts:[],lastAccountRole:e?.accountRole==='home'?'home':e?.accountRole==='business'?'business':''});throw e}
     }
-    if(req.method==='POST'&&req.url==='/shutdown'){
+    if(req.method==='POST'&&pathname==='/shutdown'){
       sendJson(req,res,200,{ok:true});setTimeout(()=>activeServer?.close(()=>process.exit(0)),50);return;
     }
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב Bank Bridge לא קיים'});
