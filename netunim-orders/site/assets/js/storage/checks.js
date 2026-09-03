@@ -1,6 +1,6 @@
 import {normalizeSharedChecks, normalizeSharedBankEvents} from '../domains/checks/model.js';
 import {CHECKS_BASE_KEY, LEGACY_CHECKS_BASE_KEY, CHECKS_EVENTS_KEY, CHECKS_PENDING_KEY, LEGACY_CHECKS_PENDING_KEY, SHARED_CHECKS_DOC} from '../state/constants.js';
-import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord} from '../shared/cloud-sync.js';
+import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
 
 const CHECKS_OUTBOX_KEY='shared-checks-outbox-v3';
 
@@ -16,11 +16,11 @@ function readPendingCache(){try{const raw=localStorage.getItem(CHECKS_PENDING_KE
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CHECKS_PENDING_KEY,text);if(localStorage.getItem(CHECKS_PENDING_KEY)!==text)throw new Error('checks pending verification failed');return true}catch(e){console.error('checks pending cache',e);return false}}
 
 function markChecksPending(snapshot=model.state.checks,message='',conflict=undefined,progress=null){
-  const cached=readPendingCache(),canonical=normalizeSharedChecks(snapshot),sameSnapshot=!!cached&&JSON.stringify(normalizeSharedChecks(cached.snapshot))===JSON.stringify(canonical),advanced=Number(checksSession.checksCloudRevision||0)>Number(cached?.baseRevision||0),base=normalizeSharedChecks(progress?.baseState||(advanced?checksSession.checksCloudBase:cached?.baseState)||checksSession.checksCloudBase||canonical),record=createOutboxRecord({
-    domain:'shared-checks',documentName:SHARED_CHECKS_DOC,operationId:sameSnapshot?(cached.operationId||cached.id):undefined,
-    generation:Math.max(Number(checksSession.checksGeneration||0),Number(cached?.generation||0),1),
+  const cached=readPendingCache(),canonical=normalizeSharedChecks(snapshot),generation=Math.max(Number(checksSession.checksGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(checksSession.checksCloudRevision||0)>Number(cached?.baseRevision||0),base=normalizeSharedChecks(progress?.baseState||(advanced?checksSession.checksCloudBase:cached?.baseState)||checksSession.checksCloudBase||canonical),record=createOutboxRecord({
+    domain:'shared-checks',documentName:SHARED_CHECKS_DOC,operationId:sameGeneration?(cached.operationId||cached.id):undefined,
+    generation,
     baseRevision:progress?.baseRevision??(advanced?checksSession.checksCloudRevision:cached?.baseRevision??checksSession.checksCloudRevision??0),baseState:base,snapshot:canonical,
-    createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:progress?.retry??(sameSnapshot?cached?.retry:null),
+    createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
   });
   const cacheOk=writePendingCache(record);checksSession.checksOutboxCached=record;
   const previous=checksSession.checksOutboxCommitPromise||Promise.resolve();

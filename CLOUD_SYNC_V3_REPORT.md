@@ -1,6 +1,6 @@
 # דוח שדרוג מנגנון השמירה והסנכרון לענן — Lossless Sync v3
 
-תאריך אימות מקומי: 2026-09-02  
+תאריך אימות מקומי אחרון: 2026-09-03
 פרויקט: `netunim` (`netunim-orders`, `netunim-kupa`)  
 סטטוס קוד: היישום ובדיקות ה־client הושלמו. ה־migration לא הוחל על production ולא בוצע stress על נתוני production. מדידות SQL וקבלת עומס שרת מסומנות במפורש כ־**ממתין ל־staging ייעודי**.
 
@@ -466,3 +466,63 @@ STAGING STRESS REFUSED: set NETUNIM_STAGING_CONFIRM=staging-only
 כל תנאי ה־client correctness, recovery, multi-tab, Calendar traffic ו־request-storm שניתן להוכיח ללא כתיבה לשרת production הוכח בבדיקות דטרמיניסטיות וב־Chromium אמיתי. הקוד מוכן לשלב staging.
 
 אין לאשר deployment production כ־“הושלם” לפני השלמת שלושת התנאים התפעוליים שנותרו: SQL contracts ב־staging, benchmark P50/P95/P99/MAX, ו־concurrency/`pg_stat_activity` ללא convoy או pool exhaustion. הדוח משאיר אותם גלויים בכוונה ואינו מציג בדיקות שלא בוצעו כאילו עברו.
+
+## 19. Hardening סופי לאחר Production Verification — 2026-09-03
+
+השינויים בסבב זה הם additive וממוקדים. לא שוכתבה הארכיטקטורה, לא שונו migrations קודמים, לא הורץ `setup.sql`, לא בוצעה כתיבה ל־production ולא שונו business documents.
+
+### Durable not-before ו־operationId
+
+- `retry.nextAttemptAt` נאכף כעת על ידי primitive משותף לפני כל recovery של Orders, Kupa ושני מסלולי Shared Checks.
+- generic HTTP 429 נשמר ל־outbox כבר בכשל הראשון יחד עם `Retry-After`; wrapping של שגיאת RPC אינו מאבד עוד status/header/retry metadata.
+- reload או runtime חדש טוען את ה־timestamp מה־outbox ואינו מבצע backend access של אותו writer לפני המועד.
+- לכל writer יש לכל היותר timer אחד; generation חדש מחליף את timer הישן ואינו עוקף את ה־not-before.
+- snapshot חדש נשמר מיד כ־generation חדש. הוא מקבל operationId חדש אך יורש רק not-before עתידי; attempts ושגיאות של הדור הקודם אינם מועתקים.
+- `crypto.randomUUID()` משמש כאשר הוא זמין. fallback timestamp/random נשמר לסביבות ישנות וניתן להזרקה דטרמיניסטית בבדיקות.
+- ACK עדיין מנקה רק generation זהה; ACK ישן אינו מוחק generation חדש יותר.
+
+### Retention policy ו־maintenance
+
+- maximum supported offline/recovery horizon מוגדר ל־365 ימים.
+- ledger retention מוגדר ל־730 ימים — פי שניים מאופק ההתאוששות הנתמך.
+- defense in depth משאיר לפחות 100 operations אחרונות לכל `owner/domain/document`; ב־Bank החלוקה היא `owner/document`.
+- כל invocation מוחק לכל היותר 10,000 רשומות מכל ledger, מחוץ ל־user write path.
+- `netunim_internal.prune_sync_operation_ledgers()` אינה מקבלת `owner_id`, cutoff או פרמטר לקוח אחר.
+- הפונקציה היא `SECURITY DEFINER` עם `search_path` נעול. `EXECUTE` ניתן רק ל־`service_role`; `anon` ו־`authenticated` נשללו במפורש, וגם `DELETE/TRUNCATE` על שתי טבלאות ה־ledger נשלל מהם.
+- המיגרציה רק מתקינה את primitive. היא אינה מריצה cleanup ואינה יוצרת schedule. schedule שבועי יתווסף רק לאחר review תפעולי.
+- לא נוסף index: אין סביבת staging זמינה להרצת `EXPLAIN (ANALYZE, BUFFERS)`, והנפח הנוכחי אינו מצדיק ניחוש. ההחלטה נשארת תלויה במדידה.
+
+המיגרציה הנפרדת נמצאת בשני האתרים והיא byte-identical:
+
+- `netunim-orders/supabase/cloud_sync_operation_ledger_retention_upgrade.sql`
+- `netunim-kupa/supabase/cloud_sync_operation_ledger_retention_upgrade.sql`
+
+חוזה staging חדש: `netunim-orders/supabase/shared/validation/cloud_sync_v3_ledger_retention_contracts.sql`. הוא בודק הרשאות, fresh rows, keep floor, אי־נגיעה במסמכי business, replay, `PT422` והמשך פעולת ארבעת RPCs; כל השינויים עטופים ב־transaction עם `ROLLBACK`.
+
+### תוצאות בדיקות הסבב
+
+```text
+node --test tests/cloud_sync_faults.test.mjs     18 pass / 0 fail
+python tests/cloud_sync_v3_contracts.py          42 pass / 0 errors
+python tests/run_all.py --core-only              ALL CORE VERIFICATION SUITES PASSED
+python tests/run_all.py                          ALL VERIFICATION SUITES PASSED
+python tools/sync-assets.py --check              PASS
+git diff --check                                 PASS
+```
+
+בדיקת ה־Retry-After החדשה מדמה 429 עם 60 שניות, serialization של IndexedDB, runtime חדש, recovery ב־T+10 וב־T+59 עם 0 backend requests, request יחיד ב־T+60, ACK וניקוי generation מדויק. וריאנט נוסף יוצר generation חדש בתוך החלון ומוכיח שה־cloud state הסופי הוא ה־snapshot החדש ביותר ללא request מוקדם. בדיקה נוספת מוכיחה timer יחיד והחלפתו בעת generation חדש.
+
+ה־full gate כלל static contracts, Cloud Sync v3, fault injection, sync/business/storage models, cross-app finance, module graph, Bank Bridge, Calendar, Calendar OAuth backend, Service Worker, deploy preflight, sync-assets וכל 12 סוויטות Chromium runtime, כולל sync recovery ו־multitab.
+
+### Staging ו־statement_timeout
+
+לא קיימים בסביבה משתני `NETUNIM_STAGING_*` או credentials ל־staging ייעודי. לכן לא הורץ stress על production ולא הומצאו מדדי שרת. P50/P95/P99/MAX, PT409/PT429 תחת עומס, lock waits, PostgREST sessions/pool waiters ו־PGRST002/PGRST003 הם **לא נמדדו בסבב זה**.
+
+החלטה: אין להוסיף כעת `statement_timeout`, אין לפצל את `netunim_financial_write` advisory gate ואין להוסיף index ל־cleanup. החלטות אלה ייפתחו מחדש רק לאחר benchmark staging אמיתי.
+
+### Rollback של hardening זה
+
+1. client rollback: לפרוס יחד את גרסאות Orders/Kupa וה־Service Workers הקודמות. ה־outbox נשאר backward-compatible; אין למחוק pending או ledgers.
+2. maintenance rollback לפני הרצה ראשונה: `REVOKE EXECUTE ... FROM service_role; DROP FUNCTION netunim_internal.prune_sync_operation_ledgers();`. אין צורך לשנות business data.
+3. אם cleanup כבר רץ, מחיקת acknowledgements ישנים אינה הפיכה ללא backup; לכן יש לגבות ledgers לפני ההפעלה הראשונה. operations חדשות ו־100 האחרונות לכל partition אינן אמורות להימחק לפי החוזה.
+4. אין להחזיר migrations קודמים, אין למחוק ledgers ואין לבצע decrement ל־revisions.

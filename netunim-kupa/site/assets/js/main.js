@@ -291,7 +291,6 @@ const syncDocument=createSyncDocument({
   getCloudPending:(...args)=>storagePending.getCloudPending(...args),
   readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
   supaRest:(...args)=>cloudAuth.supaRest(...args),
-  loadCloudPendingSync:(...args)=>storagePending.loadCloudPendingSync(...args),
   putCloudPending:(...args)=>storagePending.putCloudPending(...args),
   clearCloudPending:(...args)=>storagePending.clearCloudPending(...args),
   mergeKupaCloudState3Way:(...args)=>syncMerge.mergeKupaCloudState3Way(...args),

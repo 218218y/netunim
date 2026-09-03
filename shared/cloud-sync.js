@@ -5,8 +5,13 @@ function copy(value){return value==null?value:structuredClone(value)}
 function finiteRevision(value){const n=Number(value);return Number.isSafeInteger(n)&&n>=0?n:0}
 function finiteGeneration(value){const n=Number(value);return Number.isSafeInteger(n)&&n>=0?n:0}
 function iso(value,now){const parsed=Date.parse(String(value||''));return Number.isFinite(parsed)?new Date(parsed).toISOString():new Date(now()).toISOString()}
+function nowMilliseconds(now=Date.now){const value=Number(typeof now==='function'?now():now);return Number.isFinite(value)?value:Date.now()}
+function futureIso(value,now=Date.now){const parsed=Date.parse(String(value||'')),current=nowMilliseconds(now);return Number.isFinite(parsed)&&parsed>current?new Date(parsed).toISOString():null}
 
-export function createOperationId(domain='sync',now=Date.now,random=Math.random){
+export function createOperationId(domain='sync',options={}){
+  const settings=typeof options==='function'?{now:options,random:arguments[2]}:(options||{}),now=settings.now||Date.now,random=settings.random||Math.random;
+  const randomUUID=Object.hasOwn(settings,'randomUUID')?settings.randomUUID:globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  if(typeof randomUUID==='function')return `${String(domain||'sync')}:${randomUUID()}`;
   return `${String(domain||'sync')}:${now().toString(36)}:${random().toString(36).slice(2,10)}`;
 }
 
@@ -16,7 +21,7 @@ export function createOutboxRecord({domain,documentName,operationId,generation,b
     schemaVersion:OUTBOX_SCHEMA_VERSION,
     domain:String(domain||'unknown'),
     documentName:String(documentName||'main'),
-    operationId:String(operationId||createOperationId(domain,now,options.random||Math.random)),
+    operationId:String(operationId||createOperationId(domain,{now,random:options.random||Math.random,...(Object.hasOwn(options,'randomUUID')?{randomUUID:options.randomUUID}:{})})),
     generation:finiteGeneration(generation),
     baseRevision:finiteRevision(baseRevision),
     baseState:copy(baseState??{}),
@@ -31,6 +36,39 @@ export function createOutboxRecord({domain,documentName,operationId,generation,b
       nextAttemptAt:retry?.nextAttemptAt?iso(retry.nextAttemptAt,now):null,
     },
   };
+}
+
+export function getOutboxRetryDelay(record,now=Date.now){
+  const nextAttempt=Date.parse(String(record?.retry?.nextAttemptAt||''));
+  if(!Number.isFinite(nextAttempt))return 0;
+  return Math.max(0,nextAttempt-nowMilliseconds(now));
+}
+
+export function outboxRetryForGeneration(existing,{sameGeneration=false,retry=undefined,now=Date.now}={}){
+  const selected=retry===undefined?(sameGeneration?existing?.retry:null):retry,current=nowMilliseconds(now);
+  const previousNotBefore=futureIso(existing?.retry?.nextAttemptAt,current),selectedNotBefore=futureIso(selected?.nextAttemptAt,current);
+  const nextAttemptAt=!previousNotBefore?selectedNotBefore:!selectedNotBefore?previousNotBefore:(Date.parse(previousNotBefore)>=Date.parse(selectedNotBefore)?previousNotBefore:selectedNotBefore);
+  return {
+    attempts:finiteGeneration(selected?.attempts),
+    lastErrorCode:selected?.lastErrorCode==null?null:String(selected.lastErrorCode),
+    lastAttemptAt:selected?.lastAttemptAt?iso(selected.lastAttemptAt,()=>current):null,
+    nextAttemptAt,
+  };
+}
+
+export function createOutboxRetryScheduler({now=Date.now,setTimer=(callback,delay)=>setTimeout(callback,delay),clearTimer=timer=>clearTimeout(timer),onError=error=>console.error('outbox retry callback',error)}={}){
+  const MAX_TIMER_DELAY=2_147_483_647;let timer=null,key='',dueAt=0;
+  function cancel(){if(timer!==null)clearTimer(timer);timer=null;key='';dueAt=0}
+  function schedule(record,resume){
+    const delay=getOutboxRetryDelay(record,now);if(delay<=0){if(timer!==null&&dueAt<=nowMilliseconds(now))cancel();return 0}
+    const nextKey=[record?.domain,record?.documentName,finiteGeneration(record?.generation),record?.operationId,record?.retry?.nextAttemptAt].map(value=>String(value??'')).join('|');
+    if(timer!==null&&key===nextKey)return delay;
+    cancel();key=nextKey;dueAt=nowMilliseconds(now)+delay;
+    const arm=()=>{const remaining=getOutboxRetryDelay(record,now);if(remaining>0){timer=setTimer(arm,Math.min(remaining,MAX_TIMER_DELAY));return}timer=null;key='';dueAt=0;try{const result=resume();if(result&&typeof result.catch==='function')result.catch(onError)}catch(error){onError(error)}};
+    timer=setTimer(arm,Math.min(delay,MAX_TIMER_DELAY));return delay;
+  }
+  function stats(){return {scheduled:timer!==null,key,dueAt}}
+  return {schedule,cancel,stats};
 }
 
 export function migrateOutboxRecord(value,{domain,documentName,baseRevision=0,baseState={},snapshot={},generation=1,now=Date.now}={}){
@@ -106,6 +144,12 @@ export function normalizeCloudError(input){
   else if(code==='SUPABASE_NETWORK_UNAVAILABLE'||String(input?.name||'')==='TypeError'||lower.includes('failed to fetch')||lower.includes('networkerror')||lower.includes('load failed'))kind='network';
   const retryAfterMs=retryAfterMilliseconds(response,input);
   return {kind,code:code||null,status,retryAfterMs:retryAfterMs||null,original:input};
+}
+
+export function cloudWriteError(input,fallbackMessage='cloud_write_failed'){
+  const normalized=normalizeCloudError(input),error=new Error(errorMessage(input)||fallbackMessage);
+  error.name='CloudWriteError';error.kind=normalized.kind;error.code=normalized.code;error.status=normalized.status;error.retryAfterMs=normalized.retryAfterMs;error.response=input?.r||input?.response||null;error.cause=input;
+  return error;
 }
 
 export function contentionDelay(attempt=0,{baseMs=300,maxMs=2400,jitterMs=200,random=Math.random}={}){

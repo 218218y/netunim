@@ -1,12 +1,13 @@
 import {mergeArray, eq} from './merge-records.js';
 import {normalizeSharedChecks, normalizeSharedBankEvents} from '../domains/checks/model.js';
 import {clone} from '../core/values.js';
-import {CLOUD_WRITE_POLICY,contentionDelay,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncChecks({model, files, checksSession, tab, localSnapshot, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp}){
+const outboxRetryScheduler=createOutboxRetryScheduler();
 function mergeSharedChecks(base,local,remote){const conflicts=[];const checks=mergeArray(base||[],local||[],remote||[],'id',conflicts,'check');return {checks:normalizeSharedChecks(checks),conflicts}}
 function mergeSharedChecksPreferLocal(base,local,remote){const conflicts=[];const checks=mergeArray(base||[],local||[],remote||[],'id',conflicts,'check',true);return{checks:normalizeSharedChecks(checks),conflicts}}
 
@@ -14,6 +15,7 @@ async function mirrorChecksLocally(){localSnapshot();try{if(files.dirHandle)awai
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
   if(!loadSession()||checksSession.checksCloudBusy||!navigator.onLine)return false;
+  const deferred=await getChecksPending();if(deferred&&outboxRetryScheduler.schedule(deferred,()=>saveSharedChecksToCloud(checksSession.checksSaveMessage||checksSession.sharedChecksSaveMessage))>0){checksSession.checksSaveRequested=false;checksSession.checksCloudLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';if(!quiet)renderKupaDependentView();return false}
   checksSession.checksCloudBusy=true;
   try{
     const row=await readSharedChecksCloud();
@@ -42,6 +44,7 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
     while(checksSession.checksSaveRequested&&loadSession()&&navigator.onLine){
       checksSession.checksSaveRequested=false;const msg=checksSession.checksSaveMessage||message;checksSession.checksSaveMessage='';
       let pending=await getChecksPending();if(!pending){markChecksPending(model.state.checks,msg);pending=await getChecksPending()}if(!pending)throw new Error('checks_outbox_persistence_failed');
+      const retryDelay=outboxRetryScheduler.schedule(pending,()=>saveSharedChecksToCloud(msg));if(retryDelay>0){checksSession.checksCloudLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';allOk=false;renderKupaDependentView();break}
       const generation=Number(pending.generation),local=normalizeSharedChecks(pending.snapshot),base=normalizeSharedChecks(pending.baseState);checksSession.checksCloudBusy=true;
       try{
         let row=await readSharedChecksCloud();if(!row)throw new Error('מאגר הצ\'קים המשותף חסר.');
@@ -54,15 +57,15 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
           const normalized=normalizeCloudError(result);
           if(normalized.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readSharedChecksCloud();if(!row)throw new Error('shared_checks_missing_during_merge');continue}
           if(normalized.kind==='busy')throw new Error('save_busy');
-          throw new Error(result?.j?.message||result?.txt||'שמירת הצ\'קים המשותפים נכשלה');
+          throw cloudWriteError(result,'שמירת הצ\'קים המשותפים נכשלה');
         }
         if(!savedChecks){allOk=false;break}
-        checksSession.checksCloudBase=clone(savedChecks);persistChecksBase(savedChecks,checksSession.checksBankEvents);checksSession.checksCloudRevision=savedRevision;checksSession.checksCloudUpdatedAt=savedUpdatedAt;checksSession.checksCloudLastError='';
+        outboxRetryScheduler.cancel();checksSession.checksCloudBase=clone(savedChecks);persistChecksBase(savedChecks,checksSession.checksBankEvents);checksSession.checksCloudRevision=savedRevision;checksSession.checksCloudUpdatedAt=savedUpdatedAt;checksSession.checksCloudLastError='';
         const newest=await getChecksPending();
         if(Number(newest?.generation||0)===generation){model.state.checks=clone(savedChecks);recomputeKupaNetFromCache();const cleared=await clearChecksPending(generation);if(!cleared){const latest=await getChecksPending();if(Number(latest?.generation||0)>generation)checksSession.checksSaveRequested=true;else{checksSession.checksCloudLastError='השינוי אושר בענן; ניקוי האחסון המקומי ממתין להתאוששות';allOk=false}}}
         else if(newest){const rebased=mergeSharedChecksPreferLocal(local,normalizeSharedChecks(newest.snapshot),savedChecks);model.state.checks=clone(rebased.checks);checksSession.checksCloudBase=clone(savedChecks);checksSession.checksCloudRevision=savedRevision;markChecksPending(rebased.checks,msg);checksSession.checksSaveRequested=true}
         await mirrorChecksLocally();refreshCloudTimestamp();renderKupaDependentView();if(!checksSession.checksSaveRequested&&!checksPendingExists()&&msg)toast(msg);
-      }catch(error){console.error('shared checks save',error);checksSession.checksCloudLastError=error.message||String(error);const current=await getChecksPending(),normalized=normalizeCloudError(error),attempts=Number(current?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null;markChecksPending(model.state.checks,msg,undefined,{retry:{attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt}});allOk=false;renderKupaDependentView();break}
+      }catch(error){console.error('shared checks save',error);checksSession.checksCloudLastError=error.message||String(error);const current=await getChecksPending(),normalized=normalizeCloudError(error),attempts=Number(current?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null;markChecksPending(model.state.checks,msg,undefined,{retry:{attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt}});const retryPending=await getChecksPending();if(retryPending)outboxRetryScheduler.schedule(retryPending,()=>saveSharedChecksToCloud(msg));allOk=false;renderKupaDependentView();break}
       finally{checksSession.checksCloudBusy=false}
     }
     return allOk&&!checksPendingExists();

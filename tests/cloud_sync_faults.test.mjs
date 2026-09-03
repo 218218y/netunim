@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import {
   OUTBOX_SCHEMA_VERSION,
   acknowledgedGenerationMatches,
+  cloudWriteError,
   createDataApiScheduler,
+  createOperationId,
   createOutboxRecord,
+  createOutboxRetryScheduler,
+  getOutboxRetryDelay,
   migrateOutboxRecord,
   normalizeCloudError,
+  outboxRetryForGeneration,
   runBusyCloudWriteWithPolicy,
 } from '../shared/cloud-sync.js';
 import {createSyncChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
@@ -38,6 +43,49 @@ test('machine-readable errors distinguish app contention from generic HTTP throt
   assert.equal(normalizeCloudError({r:{status:409},j:{code:'23505',message:'unique conflict'}}).kind,'conflict');
   assert.equal(normalizeCloudError({r:{status:503},j:{code:'PGRST002'}}).kind,'service_unavailable');
   assert.equal(normalizeCloudError({code:'SUPABASE_NETWORK_TIMEOUT'}).kind,'timeout');
+});
+
+test('operation IDs prefer injected UUIDs, stay stable within a generation and change for a new generation',()=>{
+  const ids=['11111111-1111-4111-8111-111111111111','22222222-2222-4222-8222-222222222222'];
+  const first=createOutboxRecord({domain:'orders',documentName:'suppliers',generation:7,snapshot:{value:'A'}},{now:()=>1_700_000_000_000,randomUUID:()=>ids.shift()});
+  const retry=createOutboxRecord({...first,retry:{attempts:1,lastErrorCode:'rate_limited',nextAttemptAt:'2026-09-03T10:01:00.000Z'}},{randomUUID:()=>{throw new Error('retry must not allocate an ID')}});
+  const next=createOutboxRecord({...first,operationId:undefined,generation:8,snapshot:{value:'B'}},{now:()=>1_700_000_000_100,randomUUID:()=>ids.shift()});
+  assert.equal(first.operationId,'orders:11111111-1111-4111-8111-111111111111');
+  assert.equal(retry.operationId,first.operationId);assert.notEqual(next.operationId,first.operationId);
+  const legacy=createOperationId('kupa',{now:()=>1234,random:()=>0.5,randomUUID:null});
+  assert.equal(legacy,`kupa:${(1234).toString(36)}:${(0.5).toString(36).slice(2,10)}`);
+  const migrated=migrateOutboxRecord({generation:3,snapshot:{legacy:true}},{domain:'kupa',documentName:'main',now:()=>1_700_000_000_000});
+  assert.ok(migrated.operationId.startsWith('kupa:'));
+});
+
+test('persisted Retry-After survives restart and blocks all recovery traffic until the exact not-before',async()=>{
+  const started=Date.parse('2026-09-03T10:00:00.000Z'),response={r:{ok:false,status:429,headers:{get:name=>name==='retry-after'?'60':null}},j:{code:'gateway_rate_limit',message:'too many requests'}};
+  const failure=cloudWriteError(response);assert.equal(failure.kind,'rate_limited');assert.equal(failure.retryAfterMs,60_000);
+  let durable=createOutboxRecord({domain:'orders',documentName:'suppliers',operationId:'orders:stable-op',generation:1,baseRevision:4,baseState:{value:'base'},snapshot:{value:'A'},retry:{attempts:1,lastErrorCode:failure.kind,lastAttemptAt:new Date(started).toISOString(),nextAttemptAt:new Date(started+failure.retryAfterMs).toISOString()}},{now:()=>started});
+  const indexedDbBytes=JSON.stringify(durable);let backendRequests=0,cloudState=null;
+  async function recover(at){const record=migrateOutboxRecord(JSON.parse(indexedDbBytes),{domain:'orders',documentName:'suppliers',now:()=>at});if(getOutboxRetryDelay(record,()=>at)>0)return record;backendRequests++;cloudState=structuredClone(record.snapshot);return acknowledgedGenerationMatches(record,record.generation)?null:record}
+  assert.equal(getOutboxRetryDelay(durable,()=>started+10_000),50_000);
+  assert.ok(await recover(started+10_000));assert.equal(backendRequests,0);
+  assert.ok(await recover(started+59_000));assert.equal(backendRequests,0);
+  assert.equal(await recover(started+60_000),null);assert.equal(backendRequests,1);assert.deepEqual(cloudState,{value:'A'});
+
+  durable=JSON.parse(indexedDbBytes);
+  const retry=outboxRetryForGeneration(durable,{sameGeneration:false,now:()=>started+10_000});
+  const newest=createOutboxRecord({...durable,operationId:undefined,generation:2,snapshot:{value:'B'},retry},{now:()=>started+10_000,randomUUID:()=> '33333333-3333-4333-8333-333333333333'});
+  assert.equal(newest.retry.nextAttemptAt,durable.retry.nextAttemptAt);assert.notEqual(newest.operationId,durable.operationId);backendRequests=0;cloudState=null;
+  async function recoverNewest(at){if(getOutboxRetryDelay(newest,()=>at)>0)return newest;backendRequests++;cloudState=structuredClone(newest.snapshot);return null}
+  assert.ok(await recoverNewest(started+10_000));assert.ok(await recoverNewest(started+59_000));assert.equal(backendRequests,0);
+  assert.equal(await recoverNewest(started+60_000),null);assert.equal(backendRequests,1);assert.deepEqual(cloudState,{value:'B'});
+});
+
+test('outbox retry scheduling keeps at most one timer for the current pending generation',()=>{
+  const started=Date.parse('2026-09-03T10:00:00.000Z');let now=started,resumes=0,nextTimer=0;const active=new Map();
+  const scheduler=createOutboxRetryScheduler({now:()=>now,setTimer:(callback,delay)=>{const id=++nextTimer;active.set(id,{callback,delay});return id},clearTimer:id=>active.delete(id),onError:error=>{throw error}});
+  const make=(generation,operationId)=>createOutboxRecord({domain:'kupa',documentName:'main',operationId,generation,snapshot:{generation},retry:{nextAttemptAt:new Date(started+60_000).toISOString()}},{now:()=>started});
+  const first=make(1,'kupa:one');assert.equal(scheduler.schedule(first,()=>{resumes++}),60_000);assert.equal(scheduler.schedule(first,()=>{resumes++}),60_000);assert.equal(active.size,1);
+  const newer=make(2,'kupa:two');assert.equal(scheduler.schedule(newer,()=>{resumes++}),60_000);assert.equal(active.size,1);
+  now=started+60_000;active.values().next().value.callback();assert.equal(active.size,1); // fake timer remains registered until the harness consumes it
+  assert.equal(resumes,1);assert.equal(scheduler.stats().scheduled,false);
 });
 
 test('shared write policy retries the identical busy operation exactly three times',async()=>{

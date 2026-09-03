@@ -55,8 +55,9 @@
 --------------------------------------------------------
 1. גבה את מסמכי הענן והר revisions ובצע את השינוי תחילה ב-staging.
 2. ודא ש-core_rpc_contention_hardening_upgrade.sql כבר הוחל.
-3. הרץ migration יחיד: netunim-orders/supabase/cloud_sync_lossless_v3_upgrade.sql.
-   ה-migration מוסיף RPCs ייחודיים save_*_v3 ו-operation ledgers; יש להחילו לפני פריסת לקוחות v3. ה-RPCs הישנים נשארים זמינים בזמן המעבר.
-4. הרץ את בדיקות החוזה server-side ואת benchmark ה-staging לפני בחירת statement_timeout.
-5. רק לאחר שה-SQL עבר, פרוס את לקוחות Orders ו-Kupa יחד והריץ tools/sync-assets.py --check.
-6. האינדקס google_calendar_oauth_states_owner_index_upgrade.sql הוא migration נפרד ומורץ מחוץ ל-transaction.
+3. אם Cloud Sync v3 טרם הוחל, הרץ פעם אחת בלבד את netunim-orders/supabase/cloud_sync_lossless_v3_upgrade.sql. אין להריץ אותו מחדש במערכת שבה v3 כבר קיים.
+4. לאחר ביקורת נפרדת, הרץ פעם אחת את cloud_sync_operation_ledger_retention_upgrade.sql. הוא יוצר פונקציית maintenance בלבד; הוא אינו מריץ cleanup ואינו מתזמן job.
+5. מדיניות התחזוקה: אופק offline/recovery נתמך של 365 ימים, retention של 730 ימים, ולפחות 100 acknowledgements אחרונים לכל owner/domain/document. רק service_role רשאי להפעיל את הפונקציה; anon/authenticated אינם רשאים להפעילה או למחוק מה-ledgers.
+6. הרץ ב-staging את cloud_sync_v3_server_contracts.sql, את cloud_sync_v3_ledger_retention_contracts.sql ואת benchmark העומס לפני בחירת statement_timeout או הוספת index ל-cleanup.
+7. רק לאחר שה-SQL עבר, פרוס את לקוחות Orders ו-Kupa יחד והריץ tools/sync-assets.py --check.
+8. האינדקס google_calendar_oauth_states_owner_index_upgrade.sql הוא migration נפרד ומורץ מחוץ ל-transaction.

@@ -1,14 +1,14 @@
 import {clone} from '../core/values.js';
-import {createOutboxRecord} from '../shared/cloud-sync.js';
+import {createOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncPending({session, prepareKupaCloudState, setSaveStatus, setCloudHeaderStatus, loadCloudPendingSync, persistCloudPendingSync, putCloudPending, lastSavedCloudState, getCloudPending, rebaseKupaCloudProgress}){
 function stageCloudPendingLocal(snapshot,msg,baseRevision=session.dbRevision,baseState=null,generation=session.localGeneration,conflict=false,retry=undefined){
-  const existing=loadCloudPendingSync(),sameSnapshot=!!existing&&JSON.stringify(existing.snapshot)===JSON.stringify(snapshot),base=existing?.baseState||baseState||lastSavedCloudState()||prepareKupaCloudState(snapshot),record=createOutboxRecord({
-    domain:'kupa',documentName:session.cloudDocumentName,operationId:sameSnapshot?(existing.operationId||existing.id):undefined,
-    generation:Math.max(Number(generation||0),Number(existing?.generation||0),1),baseRevision:Number(existing?.baseRevision??baseRevision??0),
+  const existing=loadCloudPendingSync(),nextGeneration=Math.max(Number(generation||0),Number(existing?.generation||0),1),sameGeneration=!!existing&&Number(existing.generation||0)===nextGeneration,base=existing?.baseState||baseState||lastSavedCloudState()||prepareKupaCloudState(snapshot),record=createOutboxRecord({
+    domain:'kupa',documentName:session.cloudDocumentName,operationId:sameGeneration?(existing.operationId||existing.id):undefined,
+    generation:nextGeneration,baseRevision:Number(existing?.baseRevision??baseRevision??0),
     baseState:clone(base),snapshot:clone(snapshot),createdAt:existing?.createdAt||existing?.savedAt,updatedAt:new Date().toISOString(),
-    conflict:conflict===true?{kind:'entity-conflict'}:(conflict||existing?.conflict||null),retry:retry===undefined?(sameSnapshot?existing?.retry:null):retry,
+    conflict:conflict===true?{kind:'entity-conflict'}:(conflict||existing?.conflict||null),retry:outboxRetryForGeneration(existing,{sameGeneration,retry}),
   });
   const cacheOk=persistCloudPendingSync(record),previous=session.cloudOutboxCommitPromise||Promise.resolve();
   session.cloudOutboxCommitPromise=previous.catch(()=>{}).then(()=>putCloudPending(record));

@@ -1,16 +1,18 @@
 import {esc, clone} from '../core/values.js';
+import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
 
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, closeModal, showFirstRun, confirmDialog}){
+export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, closeModal, showFirstRun, confirmDialog}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(SUPA_AUTO_KEY)!=='1'||!loadSupaSession()||session.cloudRecoveryTimer)return;
   const index=Math.min(Number(session.cloudRecoveryAttempt||0),CLOUD_RECOVERY_DELAYS_MS.length-1),delay=CLOUD_RECOVERY_DELAYS_MS[index];session.cloudRecoveryAttempt=Math.min(index+1,CLOUD_RECOVERY_DELAYS_MS.length-1);
   session.cloudRecoveryTimer=setTimeout(()=>{session.cloudRecoveryTimer=null;void tryAutoOpenSupabase()},delay);
 }
+async function deferPendingRecovery(){const pending=await getCloudPending();if(!pending||getOutboxRetryDelay(pending)<=0)return false;session.connectionMode='supabase';session.backendReady=true;document.getElementById('connectScreen').style.display='none';await reconcileCloudPending();render();startCloudPolling();return true}
 async function discardCloudPendingAndLoadRemote(){if(!session.cloudConflictPending)return loadSupabaseState();if(!await confirmDialog('טעינת גרסת הענן','פעולה זו תוותר על השינוי המקומי שממתין ותטען את גרסת הענן. מומלץ קודם ללחוץ על ייצא JSON.',{confirmText:'טען גרסת ענן',cancelText:'ביטול',tone:'danger'}))return;const pending=await getCloudPending();if(pending&&!await clearCloudPending(pending.generation))throw new Error('לא ניתן היה למחוק בבטחה את השינוי המקומי');session.cloudConflictPending=false;await loadSupabaseState();toast('נטענה גרסת הענן')}
 
 function openSupabaseLoginModal(mode='open'){
@@ -31,7 +33,7 @@ async function openCloudUsingSavedSession({interactive=true}={}){
   if(!supaConfigured())return false;
   const saved=await restoreSupaSession();if(!saved){if(interactive)openSupabaseLoginModal('open');return false}
   try{
-    setCloudHeaderStatus('syncing','ענן: בודק…');await supaEnsureSession();const row=await readSupabaseDocument();
+    setCloudHeaderStatus('syncing','ענן: בודק…');if(await deferPendingRecovery()){clearCloudRecovery();return true}await supaEnsureSession();const row=await readSupabaseDocument();
     if(!row){clearCloudRecovery();await showCloudNoDocument();return false}
     const pending=await getCloudPending();if(pending){session.connectionMode='supabase';session.backendReady=true;document.getElementById('connectScreen').style.display='none';session.dbRevision=Number(row.revision||0);session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));await reconcileCloudPending(row);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});render();startCloudPolling();clearCloudRecovery();return true}
     await applyCloudRow(row);clearCloudRecovery();return true
@@ -43,7 +45,7 @@ async function enableCloudFromCurrentState(){
   if(!supaConfigured())return alert('קובץ הגדרת Supabase חסר או לא תקין.');
   const saved=await restoreSupaSession();if(!saved)return openSupabaseLoginModal('upload');
   try{
-    setCloudHeaderStatus('syncing','ענן: בודק…');await supaEnsureSession();const existing=await readSupabaseDocument();
+    setCloudHeaderStatus('syncing','ענן: בודק…');if(await deferPendingRecovery())return;await supaEnsureSession();const existing=await readSupabaseDocument();
     if(existing){const pending=await getCloudPending();if(pending){session.connectionMode='supabase';session.backendReady=true;session.dbRevision=Number(existing.revision||0);session.serverInfo.lastSavedAt=existing.updated_at||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(existing.state));document.getElementById('connectScreen').style.display='none';await reconcileCloudPending(existing);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});render()}else await applyCloudRow(existing);toast('כבר קיימת קופה בענן — נטענה הגרסה הקיימת');return}
     const localSnapshot=clone(model.state);session.connectionMode='supabase';session.backendReady=true;session.dbRevision=0;session.serverInfo={schemaVersion:6,lastSavedAt:null,databaseFile:'Supabase',backups:[]};localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');await persistSupabaseState(localSnapshot,'הקופה הועלתה לענן והסנכרון הופעל');checksSession.sharedChecksBase=loadSharedChecksBase();await ensureSharedChecksForNewCloud('מאגר הצקים המשותף נוצר וסונכרן');setConnectedStatus('Supabase מחובר');setCloudHeaderStatus('synced','ענן: מסונכרן');document.getElementById('connectScreen').style.display='none'
   }catch(e){console.error(e);if(isSupabaseAuthError(e)){storeSupaSession(null);setCloudHeaderStatus('off','ענן: נדרשת התחברות');openSupabaseLoginModal('upload');return}alert('לא ניתן להפעיל את הענן: '+friendlySupabaseError(e))}
@@ -53,6 +55,7 @@ async function connectSupabaseFromLogin(mode){
   const email=document.getElementById('supaEmail')?.value.trim(),password=document.getElementById('supaPassword')?.value||'';if(!email||!password)return toast('יש להזין אימייל וסיסמה');
   try{
     await supaAuthPassword(email,password);
+    if(await deferPendingRecovery()){closeModal();return}
     if(mode==='upload'){
       const existing=await readSupabaseDocument();
       if(existing){closeModal();await applyCloudRow(existing);toast('כבר קיימת קופה בענן — נטענה הגרסה הקיימת');return}
@@ -70,7 +73,7 @@ async function connectSupabaseFromLogin(mode){
 async function tryAutoOpenSupabase(){
   if(!tab.primaryTab)return false;if(!supaConfigured())return false;const s=await restoreSupaSession();if(!s)return false;
   try{
-    setCloudHeaderStatus('syncing','ענן: בודק…');await supaEnsureSession();const row=await readSupabaseDocument();
+    setCloudHeaderStatus('syncing','ענן: בודק…');if(await deferPendingRecovery()){clearCloudRecovery();return true}await supaEnsureSession();const row=await readSupabaseDocument();
     if(!row){clearCloudRecovery();session.cloudAuthNoDocument=true;setCloudHeaderStatus('auth','ענן: מחובר · אין קופה');return false}
     const pending=await getCloudPending();if(pending){session.connectionMode='supabase';session.backendReady=true;document.getElementById('connectScreen').style.display='none';session.dbRevision=Number(row.revision||0);session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));await reconcileCloudPending(row);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});render();startCloudPolling();clearCloudRecovery();return true}
     await applyCloudRow(row);clearCloudRecovery();return true

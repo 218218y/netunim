@@ -381,7 +381,7 @@ ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
    and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy
    and "if(normalizeCloudError(result).kind!=='busy')return result" in kupa_cloud_policy
    and "if(saveBusy(res))throw new Error('save_busy')" in kupa_sync_document
-   and "if(!revisionConflict(res))throw new Error(em)" in kupa_sync_document,
+   and "if(!revisionConflict(res))throw cloudWriteError(res,em)" in kupa_sync_document,
    "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts trigger revision reads/merges")
 
 # 4. SQL and migration contracts.

@@ -1,6 +1,6 @@
 import {clone} from '../core/values.js';
 import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
-import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord} from '../shared/cloud-sync.js';
+import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
 
 const LOCAL_SYNC_STORE='sync';
 const ORDERS_OUTBOX_KEY='orders-outbox-v3';
@@ -29,13 +29,13 @@ function readPendingCache(){try{return JSON.parse(localStorage.getItem(CLOUD_PEN
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
 
 function markCloudPending(snapshot=prepareCloudState(),message='',progress=null){
-  const cached=readPendingCache(),canonical=clone(snapshot),sameSnapshot=!!cached&&JSON.stringify(cached.snapshot)===JSON.stringify(canonical),advanced=Number(session.cloudRevision||0)>Number(cached?.baseRevision||0),record=createOutboxRecord({
-    domain:'orders',documentName:'suppliers',operationId:sameSnapshot?(cached.operationId||cached.id):undefined,
-    generation:Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),
+  const cached=readPendingCache(),canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(session.cloudRevision||0)>Number(cached?.baseRevision||0),record=createOutboxRecord({
+    domain:'orders',documentName:'suppliers',operationId:sameGeneration?(cached.operationId||cached.id):undefined,
+    generation,
     baseRevision:progress?.baseRevision??(advanced?session.cloudRevision:cached?.baseRevision??session.cloudRevision??0),
     baseState:progress?.baseState??(advanced?session.lastCloudState:cached?.baseState??session.lastCloudState??canonical),snapshot:canonical,
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),
-    conflict:progress?.conflict===undefined?(cached?.conflict||null):progress.conflict,retry:progress?.retry??(sameSnapshot?cached?.retry:null),
+    conflict:progress?.conflict===undefined?(cached?.conflict||null):progress.conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
   });
   const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;
   const previous=session.ordersOutboxCommitPromise||Promise.resolve();

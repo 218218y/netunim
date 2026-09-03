@@ -15,6 +15,9 @@ def ok(condition: bool, label: str):
 orders_migration = (ORDERS / "supabase/cloud_sync_lossless_v3_upgrade.sql").read_text(encoding="utf-8")
 kupa_migration = (KUPA / "supabase/cloud_sync_lossless_v3_upgrade.sql").read_text(encoding="utf-8")
 lower = orders_migration.lower()
+orders_retention = (ORDERS / "supabase/cloud_sync_operation_ledger_retention_upgrade.sql").read_text(encoding="utf-8")
+kupa_retention = (KUPA / "supabase/cloud_sync_operation_ledger_retention_upgrade.sql").read_text(encoding="utf-8")
+retention_lower = orders_retention.lower()
 
 ok(orders_migration == kupa_migration, "lossless v3 migration is byte-identical in Orders and Kupa")
 ok("security definer" not in lower and lower.count("security invoker") >= 2,
@@ -64,6 +67,28 @@ ok("statement_timeout" not in lower,
    "statement timeout is not guessed before staging percentile measurements")
 ok("notify pgrst,'reload schema'" in lower and lower.rstrip().endswith("commit;"),
    "migration is transactional and requests a PostgREST schema reload")
+ok(orders_retention == kupa_retention,
+   "operation-ledger retention migration is byte-identical in Orders and Kupa")
+ok("prune_sync_operation_ledgers()" in retention_lower
+   and "interval '730 days'" in retention_lower
+   and "v_keep_per_document constant integer := 100" in retention_lower
+   and "v_batch_size constant integer := 10000" in retention_lower,
+   "ledger maintenance has a fixed two-year cutoff, per-document keep floor and bounded batches")
+ok("security definer" in retention_lower
+   and "set search_path = pg_catalog, netunim_internal" in retention_lower
+   and "revoke all on function netunim_internal.prune_sync_operation_ledgers() from public, anon, authenticated" in retention_lower
+   and "grant usage on schema netunim_internal to service_role" in retention_lower
+   and "grant execute on function netunim_internal.prune_sync_operation_ledgers() to service_role" in retention_lower,
+   "ledger maintenance is server-only with a pinned search path and no browser execution grant")
+ok("revoke delete, truncate on table netunim_internal.document_sync_operations" in retention_lower
+   and "revoke delete, truncate on table netunim_internal.bank_sync_operations" in retention_lower
+   and "public.order_management_documents" not in retention_lower
+   and "public.kupa_documents" not in retention_lower
+   and "public.shared_checks_documents" not in retention_lower
+   and "public.finance_sync_documents" not in retention_lower,
+   "maintenance deletes only ledger rows and browser roles retain no delete/truncate capability")
+ok("create index" not in retention_lower and "prune_sync_operation_ledgers" not in lower,
+   "no unmeasured index or cleanup call is added to the user-write migration")
 
 shared = (ROOT / "shared/cloud-sync.js").read_text(encoding="utf-8")
 for site in (ORDERS, KUPA):
@@ -76,6 +101,11 @@ ok("status===429||code==='SUPABASE_DATA_API_RATE_LIMIT'" in shared
 ok("if(item.key)coalesced.delete(item.key)" not in shared
    and "promise.finally" in shared and "coalesced.delete(coalesceKey)" in shared,
    "poll coalescing remains active until the in-flight promise settles")
+ok("crypto?.randomUUID" in shared
+   and "getOutboxRetryDelay" in shared
+   and "createOutboxRetryScheduler" in shared
+   and "outboxRetryForGeneration" in shared,
+   "shared outbox owns UUID generation, durable not-before calculation and single-timer scheduling")
 
 for label, site in (("Orders", ORDERS), ("Kupa", KUPA)):
     auth = (site / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
@@ -92,7 +122,14 @@ for label, path in (("Orders transport", ORDERS / "site/assets/js/cloud/transpor
 for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.js"),
                     ("Kupa document", KUPA / "site/assets/js/sync/document.js")):
     source = path.read_text(encoding="utf-8")
-    ok("operationId" in source and "rpcSave" in source, f"{label}: durable operation id is preserved through document retries")
+    ok("operationId" in source and "rpcSave" in source and "createOutboxRetryScheduler" in source,
+       f"{label}: durable operation id and persisted retry gate are preserved through document retries")
+
+for label, path in (("Orders checks", ORDERS / "site/assets/js/sync/checks.js"),
+                    ("Kupa checks", KUPA / "site/assets/js/sync/checks.js")):
+    source = path.read_text(encoding="utf-8")
+    ok("createOutboxRetryScheduler" in source and "outboxRetryScheduler.schedule(pending" in source,
+       f"{label}: Shared Checks recovery is gated before backend access")
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
 orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
@@ -121,6 +158,7 @@ ok("calendar_data_api_unavailable" in edge and "PGRST002" in edge and "PGRST003"
 
 server_contracts = (ORDERS / "supabase/shared/validation/cloud_sync_v3_server_contracts.sql").read_text(encoding="utf-8").lower()
 benchmark = (ORDERS / "supabase/shared/validation/cloud_sync_v3_benchmark.sql").read_text(encoding="utf-8").lower()
+retention_contracts = (ORDERS / "supabase/shared/validation/cloud_sync_v3_ledger_retention_contracts.sql").read_text(encoding="utf-8").lower()
 stress = (ROOT / "tools/cloud-sync-staging-stress.mjs").read_text(encoding="utf-8")
 ok(all(name in server_contracts for name in (
     "save_order_management_document_v3", "save_kupa_document_v3", "save_shared_checks_document_v3",
@@ -134,6 +172,16 @@ ok(all(name in server_contracts for name in (
 ok(all(metric in benchmark for metric in ("p50_ms", "p95_ms", "p99_ms", "max_ms", "minimum_5x_p99_ms"))
    and "rollback;" in benchmark and "staging only" in benchmark,
    "staging benchmark reports required percentiles without persisting its mutations")
+ok("has_function_privilege('authenticated'" in retention_contracts
+   and "has_table_privilege('authenticated'" in retention_contracts
+   and "fresh_document_operation_deleted" in retention_contracts
+   and "fresh_bank_operation_deleted" in retention_contracts
+   and "cleanup_touched_business_documents" in retention_contracts
+   and "retained_operation_replay_not_idempotent" in retention_contracts
+   and "retained_operation_payload_reuse_not_rejected" in retention_contracts
+   and retention_contracts.rstrip().endswith("pass cloud sync v3 ledger retention contracts (transaction rolled back)'")
+   and "rollback;" in retention_contracts,
+   "staging retention contracts prove authorization, freshness, isolation and replay after cleanup")
 ok("PRODUCTION_PROJECT_REF='bupoidcurcxuypfrjqio'" in stress
    and "NETUNIM_STAGING_CONFIRM!=='staging-only'" in stress
    and "Promise.all([" in stress
