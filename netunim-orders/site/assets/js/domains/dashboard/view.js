@@ -35,7 +35,7 @@ function summaryMarkup({embedded=false}={}){
   <div class="finance-side-grid">
     <div class="kpi"><div class="label">חוב לקוחות פתוח</div><div class="value goodtext">${money(cst.openTotal)}</div><div class="sub">${esc(cst.open)} חובות שטרם שולמו</div></div>
     <div class="kpi"><div class="label">נטו ספקים</div><div class="value ${esc(supplierNetWhole<0?'badtext':'goodtext')}">${moneyWhole(supplierNetWhole)}</div><div class="sub">זכות אצל ספקים פחות חוב לספקים</div></div>
-    <div class="kpi kupa-net-kpi"><div class="label">מאזן קופה נטו</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש − כל האשראי העתידי − חודש הוצאות + קופה מזומן וצ'קים${kupaNet===null?' · ממתין לקריאה מהענן':''}</div></div>
+    <div class="kpi kupa-net-kpi"><div class="label">מאזן קופה נטו</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש − כל האשראי העתידי − חודש הוצאות + קופה צ'קים${kupaNet===null?' · ממתין לקריאה מהענן':''}</div></div>
   </div>
 </section>
 <section class="summary-section customer-summary-section"><div class="summary-section-head"><div><h2>סיכום חובות לקוחות</h2><p>הסיכום כולל רק חובות שטרם שולמו; חוב שסומן כשולם יוצא מהחישוב.</p></div></div><div class="customer-summary-grid">

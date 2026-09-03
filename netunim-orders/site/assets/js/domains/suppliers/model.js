@@ -1,3 +1,5 @@
+import {ordersSupplierBalanceSummaryData} from '../../shared/orders-finance.js';
+
 export const ALL_SUPPLIERS_ID='__all_suppliers__';
 
 export function supplierTxData(state,id){return state.transactions.filter(t=>t.supplierId===id).sort((a,b)=>Number(a.sequence||0)-Number(b.sequence||0))}
@@ -52,7 +54,7 @@ export function supplierViewRowsData(state,supplierIds=[],yearView='current',fil
   return rows;
 }
 
-export function totalStatsData(state){let debt=0,credit=0,pending=0,missing=0,hm=0;for(const s of state.suppliers){const b=supplierBalanceData(state,s.id);if(b<0)debt+=-b;else credit+=b}for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++;if(t.hmIssued)hm++}return{debt,credit,pending,missing,hm,net:credit-debt}}
+export function totalStatsData(state){const financial=ordersSupplierBalanceSummaryData(state);let pending=0,missing=0,hm=0;for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++;if(t.hmIssued)hm++}return{debt:financial.debt,credit:financial.credit,pending,missing,hm,net:financial.net}}
 
 export function supplierSortValue(s){return Number.isFinite(Number(s?.sortOrder))?Number(s.sortOrder):999999}
 

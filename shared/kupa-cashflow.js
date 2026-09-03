@@ -5,6 +5,7 @@ function finite(value){if(value===null||value===undefined||value==='')return nul
 function num(value){const n=Number(value);return Number.isFinite(n)?n:0}
 function accountRole(value){return value==='ביתי'||value==='home'?'ביתי':'עסקי'}
 function expenseBelongsTo(row,account){return accountRole(row?.account)===accountRole(account)}
+export function kupaExpenseBelongsToAccountData(row,account='עסקי'){return expenseBelongsTo(row,account)}
 function pad2(value){return String(value).padStart(2,'0')}
 function isoDay(value){const raw=String(value||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(raw)?raw:''}
 function monthKey(value){const day=isoDay(value);return day?day.slice(0,7):''}

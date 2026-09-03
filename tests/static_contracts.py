@@ -285,14 +285,31 @@ ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות
    and 'הגדרת הוצאות קבועות ונוספות' not in bank_view and '<div class="net-summary">' not in bank_view,
    "kupa expense ownership: editable expense sections live in the Expenses domain and render explicit business/home groups instead of depending on Bank markup")
 ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
-   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד','סה״כ קופה','מאזן כולל נטו'))
-   and 'חודש הוצאות עסקיות' in kupa_dashboard_view and 'class="grid kpis"' not in kupa_dashboard_view,
-   "kupa dashboard: the five long-term business summary calculations remain explicit and label expenses as business-only")
+   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד','סה״כ קופה','חוב לקוחות פתוח','נטו ספקים','מאזן כולל נטו'))
+   and 'עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות עסקיות + קופה + חוב לקוחות פתוח + נטו ספקים' in kupa_dashboard_view
+   and 'class="grid kpis"' not in kupa_dashboard_view,
+   "kupa dashboard: cash-inclusive Kupa position is extended by canonical open-customer and supplier-net balances before the combined total")
 bank_model=(K / "site/assets/js/domains/bank/model.js").read_text(encoding="utf-8")
 shared_kupa_cashflow=(ROOT / "shared/kupa-cashflow.js").read_text(encoding="utf-8")
 orders_bank_readout=(O / "site/assets/js/domains/bank/readout.js").read_text(encoding="utf-8")
+orders_dashboard_view=(O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
+orders_finance_shared=(ROOT / "shared/orders-finance.js").read_text(encoding="utf-8")
+kupa_dashboard_controller=(K / "site/assets/js/domains/dashboard/controller.js").read_text(encoding="utf-8")
+kupa_cloud_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
 kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
+ok("kupaExpenseBelongsToAccountData(x,'עסקי')" in orders_bank_readout
+   and 'net:bank-credit-expenses+checks' in orders_bank_readout and 'kupa:checks' in orders_bank_readout
+   and "עו״ש − כל האשראי העתידי − חודש הוצאות + קופה צ'קים" in orders_dashboard_view
+   and "קופה מזומן וצ'קים" not in orders_dashboard_view,
+   "Orders balance: only business expenses reduce the Kupa readout and cash is excluded while shared checks remain included")
+ok("ordersFinanceSummaryData" in orders_finance_shared
+   and (K / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
+   and (O / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
+   and "ORDERS_TABLE='order_management_documents'" in kupa_cloud_transport
+   and 'readOrdersReadOnlyMeta' in kupa_cloud_transport and 'readOrdersReadOnlyCloud' in kupa_cloud_transport
+   and 'ordersFinanceSummaryData(row.state)' in kupa_dashboard_controller,
+   "cross-app dashboard balances: Kupa reads Orders read-only and both apps share one customer/supplier summary definition")
 ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowData(state,account,reference)" in bank_model
    and "from '../../shared/kupa-cashflow.js'" in bank_model and "from '../../shared/kupa-cashflow.js'" in orders_bank_readout
    and "account.months" in shared_kupa_cashflow and "bankHomeNextCycleCommitmentsData" in bank_model and "bankHomeProjectedThisMonthData" in bank_model

@@ -13,6 +13,9 @@ import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
 import {validKupaCloudState} from '../netunim-kupa/site/assets/js/state/validation.js';
+import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
+import {ordersFinanceSummaryData} from '../shared/orders-finance.js';
+import {dashboardNetPositionData} from '../netunim-kupa/site/assets/js/domains/dashboard/model.js';
 
 const k=kupaNormalizer({model:{}}),o=ordersNormalizer({});
 const km=kupaMerge(k),om=ordersMerge(o);
@@ -127,6 +130,22 @@ test('Orders polling asks Kupa refresh to invalidate a visible balance when a ne
  await api.cloudPoll();assert.deepEqual(refreshArgs,[{renderIfChanged:true}]);
 });
 
+
+
+test('Orders Kupa net uses business expenses only and excludes cash while keeping checks',()=>{
+ const ordersState={checks:[{id:'CHK',name:'לקוח',amount:300,dueDate:'2099-09-20',status:'בקופה'}]};
+ const kupa={bank:{currentBalance:5000,asOfDate:'2099-09-01',adjustments:[]},credits:[{id:'CR',active:true,totalAmount:100,installments:1,firstChargeDate:'2099-09-15',card:'עסקי',account:'עסקי'}],creditSync:{profiles:[],cardMappings:{}},expenses:[{id:'EXP-B',active:true,recurring:false,date:'2099-09-10',amount:100,account:'עסקי'},{id:'EXP-H',active:true,recurring:false,date:'2099-09-11',amount:2150,account:'ביתי'}],cash:[{id:'CASH',amount:1000}]};
+ const readout=computeKupaNetReadoutData(ordersState,kupa);
+ assert.equal(readout.credit,100);assert.equal(readout.expenses,100,'home expenses must not reduce the Orders balance');assert.equal(readout.cash,1000);assert.equal(readout.checks,300);assert.equal(readout.kupa,300);assert.equal(readout.net,5100,'Orders balance is bank - future business credit - one month business expenses + checks only');
+});
+
+test('Kupa dashboard adds the canonical Orders customer and supplier balances to its cash-inclusive base net',()=>{
+ const orders={suppliers:[{id:'S1'},{id:'S2'}],transactions:[{supplierId:'S1',debit:100,credit:0},{supplierId:'S2',debit:0,credit:40}],customerDebts:[{amount:500,paid:false},{amount:700,paid:true}]};
+ const summary=ordersFinanceSummaryData(orders);assert.equal(summary.customerOpen,500);assert.equal(summary.supplierNet,-60);
+ const combined=dashboardNetPositionData({bank:2000,credit:500,expenses:200,cash:400,checks:300,kupa:700,net:2000},summary);
+ assert.equal(combined.customerOpen,500);assert.equal(combined.supplierNet,-60);assert.equal(combined.net,2440,'Kupa total keeps cash/checks in its base and then adds open customers and supplier net');
+ assert.equal(dashboardNetPositionData({net:2000},null).net,null,'Kupa does not present a falsely complete total before the Orders summary is known');
+});
 
 test('Kupa notes sheet merges rows and column configuration independently',()=>{
  const k=kupaNormalizer({model:{lastNormalizeRemovedCredits:0}}),m=kupaMerge({normalizeState:k.normalizeState,prepareKupaCloudState:k.prepareKupaCloudState});

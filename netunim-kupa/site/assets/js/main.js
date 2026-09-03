@@ -28,6 +28,7 @@ import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
+import {createDomainsDashboardController} from './domains/dashboard/controller.js';
 import {createUiBulk} from './ui/bulk.js';
 import {createDomainsCreditView} from './domains/credit/view.js';
 import {createDomainsCashView} from './domains/cash/view.js';
@@ -226,6 +227,14 @@ const cloudTransport=createCloudTransport({
   supaRest:(...args)=>cloudAuth.supaRest(...args),
 });
 
+const domainsDashboardController=createDomainsDashboardController({
+  session,
+  ui,
+  readOrdersReadOnlyMeta:(...args)=>cloudTransport.readOrdersReadOnlyMeta(...args),
+  readOrdersReadOnlyCloud:(...args)=>cloudTransport.readOrdersReadOnlyCloud(...args),
+  renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
+});
+
 const syncChecks=createSyncChecks({
   checksSession,
   model,
@@ -300,6 +309,7 @@ const syncDocument=createSyncDocument({
   stageCloudPendingLocal:(...args)=>syncPending.stageCloudPendingLocal(...args),
   toast:(...args)=>uiStatus.toast(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
+  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
 });
 
 const uiCloud=createUiCloud({
@@ -399,6 +409,8 @@ const domainsDashboardView=createDomainsDashboardView({
   activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
   depositedChecks:(...args)=>domainsChecksSelectors.depositedChecks(...args),
   bankLongTermPosition:(...args)=>domainsBankSelectors.bankLongTermPosition(...args),
+  ordersFinanceSummary:(...args)=>domainsDashboardController.summary(...args),
+  refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
 });
 
 const uiBulk=createUiBulk({

@@ -5,6 +5,8 @@ import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError
 
 const FINANCE_DOC='main';
 const FINANCE_TABLE='finance_sync_documents';
+const ORDERS_DOC='suppliers';
+const ORDERS_TABLE='order_management_documents';
 const FINANCE_RPC='save_finance_sync_document';
 const FINANCE_LEASE_TTL_SECONDS=20*60;
 
@@ -12,6 +14,20 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest}){
+async function readOrdersReadOnlyMeta(){
+  const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
+  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת סטטוס ניהול ההזמנות נכשלה');
+  return Array.isArray(j)&&j.length?j[0]:null;
+}
+async function readOrdersReadOnlyCloud(){
+  const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,state,updated_at`;
+  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת נתוני ניהול ההזמנות נכשלה');
+  const row=Array.isArray(j)&&j.length?j[0]:null;
+  if(row){const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1||!row.state||typeof row.state!=='object')throw new Error('מסמך ניהול ההזמנות בענן אינו תקין')}
+  return row;
+}
 async function readFinanceSyncDocument(){
   const q=`/rest/v1/${FINANCE_TABLE}?document_name=eq.${encodeURIComponent(FINANCE_DOC)}&select=document_name,revision,state,updated_at`;
   const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
@@ -107,5 +123,5 @@ async function readSharedChecksDocument(){
 }
 async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
 async function rpcSaveSharedChecks(checks,expectedRevision,operationId){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const r=await supaRest(`/rest/v1/rpc/${SHARED_CHECKS_RPC}_v3`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
-return {readSupabaseDocument,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions};
+return {readSupabaseDocument,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions};
 }
