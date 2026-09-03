@@ -9,7 +9,7 @@ import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
 const BANK_BRIDGE_VERSION=25;
-const CREDIT_BRIDGE_VERSION=26;
+const CREDIT_BRIDGE_VERSION=27;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
 function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''})}

@@ -361,6 +361,14 @@ export const CREDIT_FUTURE_MONTHS=12;
 
 function creditText(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function creditNumber(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
+function safeCreditProviderDiagnostic(rawValue,profile){
+  if(profile?.provider!=='visaCal')return '';
+  let value=String(rawValue||'').replace(/https?:\/\/[^\s,]+/gi,url=>url.split('?')[0]);
+  value=value.replace(/\b(?:Bearer|CALAuthScheme)\s+[A-Za-z0-9._~+\/=-]+/gi,'[authorization]');
+  value=value.replace(/(\"(?:password|username|userName|authorization|token|calConnectToken)\"\s*:\s*\")[^\"]*(\")/gi,'$1[redacted]$2');
+  value=value.replace(/\b\d{6,}\b/g,'[number]').replace(/<[^>]{0,500}>/g,'[html]');
+  return creditText(value,220);
+}
 export function creditProviderSupported(value){return Object.prototype.hasOwnProperty.call(CREDIT_PROVIDER_CONFIG,String(value||''))}
 export function creditProfilePublic(profile){return {profileId:creditText(profile?.profileId,80),provider:creditText(profile?.provider,30),label:creditText(profile?.label,100),ownerLabel:creditText(profile?.ownerLabel,100),defaultAccount:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',active:profile?.active!==false,configured:true}}
 export function creditProfilesShareLoginIdentity(a,b){
@@ -405,8 +413,11 @@ function creditFailureContext(typeValue,rawValue,profile){
     const cardSuffix=creditText(providerMonth[1]||'',16),providerMessage=creditText(providerMonth[2]||'',160);
     return {code:'CREDIT_PROVIDER_DATA_ERROR',stage:'Transactions',message:`החברה דחתה או לא השלימה את קריאת העסקאות${cardSuffix?` לכרטיס ${cardSuffix}`:''}${providerMessage?`. הודעת החברה: ${providerMessage}`:''}`};
   }
-  if(/could not find ["']?init["']? data in session storage/i.test(raw))return {code:'CREDIT_SESSION_INIT_MISSING',stage:'DashboardInit',message:'הכניסה הושלמה אך נתוני האתחול של אזור הלקוחות לא הופיעו. יש לפתוח רענון עם חלון אבחון; אם התקלה חוזרת, מחבר החברה דורש התאמה למסך החדש.'};
+  if(profile?.provider==='visaCal'&&/monthData is not of type CardTransactionDetails/i.test(raw))return {code:'CREDIT_PROVIDER_SCHEMA_ERROR',stage:'Transactions',message:'כאל החזירה באחת מקריאות החודש מבנה נתונים שונה מהחוזה שהמחבר מכיר. אין להתייחס לזה ככשל סיסמה; מחבר כאל דורש התאמת schema או בידוד של החודש הבעייתי.'};
+  if(profile?.provider==='visaCal'&&/(failed to extract login iframe|#ccLoginDesktopBtn|#regular-login|regular-login)/i.test(raw))return {code:type==='TIMEOUT'?'CREDIT_TIMEOUT':'CREDIT_LOGIN_UI_UNAVAILABLE',stage:'LoginFlow',message:type==='TIMEOUT'?'מסלול הכניסה של כאל לא הגיע לשלב הבא בזמן שהוגדר.':'מסלול הכניסה של כאל לא הציג את רכיב ההתחברות שהמחבר מצפה לו. זה מתאים לשינוי UI/הגנת אתר ולא לכשל בנתוני הכרטיס.'};
+  if(/could not find ["']?init["']? data in session storage|get init data in session storage/i.test(raw))return {code:'CREDIT_SESSION_INIT_MISSING',stage:'DashboardInit',message:'הכניסה הושלמה אך נתוני האתחול של אזור הלקוחות לא הופיעו. יש לפתוח רענון עם חלון אבחון; אם התקלה חוזרת, מחבר החברה דורש התאמה למסך החדש.'};
   if(/authorization header|auth[- ]module|authorization token/i.test(raw))return {code:'CREDIT_AUTH_TOKEN_MISSING',stage:'AuthToken',message:'הכניסה לא הניבה אסימון הרשאה שנדרש לקריאת נתוני האשראי. יש לפתוח רענון עם חלון אבחון כדי לבדוק את מסלול הכניסה הנוכחי של החברה.'};
+  if(profile?.provider==='visaCal'&&/(unexpected (?:token|end).*json|not valid json|json parse|json\.parse)/i.test(raw))return {code:'CREDIT_PROVIDER_RESPONSE_NOT_JSON',stage:'DataApi',message:'כאל החזירה באחת מקריאות ה-API תשובה שאינה JSON תקין. זהו כשל תגובת שירות/הגנת אתר ולא כשל בפרטי ההתחברות.'};
   if(/fetch failed|networkerror|econnreset|etimedout|socket hang up/i.test(raw))return {code:'CREDIT_PROVIDER_NETWORK_ERROR',stage:'DataApi',message:'החיבור לשירות הנתונים של חברת האשראי נקטע לפני שהתקבלה תשובה תקינה.'};
   if(type==='TIMEOUT'&&/(login|iframe|ccLoginDesktopBtn|regular-login|sign.?in)/i.test(raw))return {code:'CREDIT_TIMEOUT',stage:'LoginFlow',message:'מסלול הכניסה של חברת האשראי לא הגיע לשלב הבא בזמן שהוגדר.'};
   if(type==='TIMEOUT')return {code:'CREDIT_TIMEOUT',stage:'',message:'החיבור לא הסתיים בזמן'};
@@ -434,7 +445,11 @@ function safeCreditScrapeFailure(typeValue,rawValue,profile){
   }else{
     const context=creditFailureContext(type,raw,profile);
     if(context){code=context.code;stage=context.stage;message=context.message}
-    else{code='CREDIT_SCRAPE_FAILED';message='החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.'}
+    else{
+      code='CREDIT_SCRAPE_FAILED';
+      const diagnostic=safeCreditProviderDiagnostic(raw,profile);
+      message=`החברה החזירה תשובה שלא ניתן לעבד. נסה שוב עם חלון אבחון; אם התקלה חוזרת יש לעדכן את מחבר החברה.${diagnostic?` אבחון טכני בטוח: ${diagnostic}`:''}`;
+    }
   }
   const e=new Error(`${label}: ${message}`);e.code=code;if(stage)e.stage=stage;return e;
 }

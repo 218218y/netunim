@@ -69,8 +69,17 @@ const calMonthlyFailure=creditThrownScrapeFailure(new Error('failed to fetch tra
 assert.equal(calMonthlyFailure.code,'CREDIT_PROVIDER_DATA_ERROR','Cal monthly API failures retain a provider-data classification instead of collapsing to generic scrape failure');
 assert.equal(calMonthlyFailure.stage,'Transactions','Cal monthly API failures identify the proven transactions stage');
 assert.match(calMonthlyFailure.message,/9715/,'Cal diagnostics retain only the safe card suffix from the upstream error');
+const calSchemaFailure=creditThrownScrapeFailure(new Error('monthData is not of type CardTransactionDetails'),calProfile);
+assert.equal(calSchemaFailure.code,'CREDIT_PROVIDER_SCHEMA_ERROR','Cal month schema drift is distinguished from an unknown scrape failure');
+assert.equal(calSchemaFailure.stage,'Transactions','Cal month schema drift is pinned to the upstream monthly-transactions stage');
+const calUnknownFailure=creditThrownScrapeFailure(new Error('new provider failure 123456789 with endpoint https://api.cal-online.co.il/path?secret=x'),calProfile);
+assert.equal(calUnknownFailure.code,'CREDIT_SCRAPE_FAILED','truly unknown Cal failures remain generic instead of being guessed into a known stage');
+assert.match(calUnknownFailure.message,/אבחון טכני בטוח:/,'unknown Cal failures retain a bounded safe diagnostic so the next occurrence is actionable');
+assert.equal(calUnknownFailure.message.includes('123456789'),false,'safe Cal diagnostics redact long numeric identifiers');
+assert.equal(calUnknownFailure.message.includes('?secret=x'),false,'safe Cal diagnostics strip URL query strings');
 const calLoginTimeout=creditThrownScrapeFailure(new Error('Timeout while waiting for #ccLoginDesktopBtn in login iframe'),calProfile);
-assert.equal(calLoginTimeout.code,'CREDIT_SCRAPE_FAILED','ordinary thrown timeout text is not misclassified unless the scraper reports TIMEOUT explicitly');
+assert.equal(calLoginTimeout.code,'CREDIT_LOGIN_UI_UNAVAILABLE','Cal selector/iframe failures are classified from the proven upstream UI marker even when BaseScraper reports GENERIC');
+assert.equal(calLoginTimeout.stage,'LoginFlow','Cal selector/iframe generic failures retain the exact login stage');
 const reportedCalLoginTimeout=creditScrapeFailure({errorType:'TIMEOUT',errorMessage:'Timeout while waiting for #ccLoginDesktopBtn in login iframe'},calProfile);
 assert.equal(reportedCalLoginTimeout.code,'CREDIT_TIMEOUT','the official scraper TIMEOUT class remains explicit');
 assert.equal(reportedCalLoginTimeout.stage,'LoginFlow','a TIMEOUT is assigned to LoginFlow only when the upstream message explicitly proves a login/iframe wait');

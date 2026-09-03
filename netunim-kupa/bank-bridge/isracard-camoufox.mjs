@@ -10,9 +10,7 @@ const RATE_DELAY_MIN_MS=2_500;
 const RATE_DELAY_MAX_MS=3_000;
 const INSTALLMENTS_KEYWORD='תשלום';
 const CAMOUFOX_SCREEN={minWidth:1280,maxWidth:1920,minHeight:720,maxHeight:1200};
-const CAMOUFOX_LOGIN_SESSION_ATTEMPTS=3;
-const CAMOUFOX_LOGIN_RETRY_MIN_MS=1_000;
-const CAMOUFOX_LOGIN_RETRY_MAX_MS=2_000;
+const CAMOUFOX_LOGIN_SESSION_ATTEMPTS=1;
 
 function cleanText(value,max=260){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
@@ -172,8 +170,11 @@ async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false}={}){
       const status=Number(response?.status?.()||0);lastStatus=status;
       if(status===429)throw safeError('חברת האשראי הגבילה זמנית את קצב הבקשות כבר בטעינת דף הכניסה.','CREDIT_PROVIDER_RATE_LIMITED',{stage:'LoginPage',httpStatus:status});
       if(status===403){
-        if(attempt<CAMOUFOX_LOGIN_SESSION_ATTEMPTS){await closeCamoufoxSession(browser,page);browser=null;page=null;await sleep(CAMOUFOX_LOGIN_RETRY_MIN_MS+Math.floor(Math.random()*(CAMOUFOX_LOGIN_RETRY_MAX_MS-CAMOUFOX_LOGIN_RETRY_MIN_MS+1)));continue}
-        throw safeError('אתר חברת האשראי דחה את כל סשני Camoufox האנונימיים שנבדקו לפני שליחת פרטי ההתחברות.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
+        // A 403 happens before credentials. Do not rotate through fresh anonymous
+        // fingerprints: repeated immediate identities add issuer/WAF pressure but
+        // provide no new authenticated state. The outer per-profile circuit breaker
+        // owns the next automatic attempt; interactive diagnostics may still bypass it.
+        throw safeError('אתר חברת האשראי דחה את סשן Camoufox לפני שליחת פרטי ההתחברות. ניסיון אוטומטי נוסף יידחה על ידי מנגנון ההשהיה במקום ליצור זהויות דפדפן חדשות ברצף.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
       }
       if(status>=400)throw safeError(`אתר חברת האשראי לא נטען (HTTP ${status}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage:'LoginPage',httpStatus:status});
       return {browser,page};
