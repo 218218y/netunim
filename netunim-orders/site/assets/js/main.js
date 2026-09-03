@@ -811,6 +811,7 @@ const uiActions=createUiActions({
   setOrdersBankAuto:(...args)=>domainsFinanceView.setBankAuto(...args),
   saveOrdersCashflowMinimum:(...args)=>domainsFinanceController.saveCashflowMinimum(...args),
   refreshOrdersCredit:(...args)=>domainsFinanceView.refreshCredit(...args),
+  copyOrdersSafeCreditDiagnostics:(...args)=>domainsFinanceView.copySafeCreditDiagnostics(...args),
   setOrdersCreditAuto:(...args)=>domainsFinanceView.setCreditAuto(...args),
   setOrdersCreditView:(...args)=>domainsFinanceView.setCreditView(...args),
   setOrdersCreditAccountFilter:(...args)=>domainsFinanceView.setCreditAccountFilter(...args),

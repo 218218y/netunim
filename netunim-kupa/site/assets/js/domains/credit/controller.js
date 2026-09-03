@@ -2,13 +2,13 @@ import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=28;
+const CREDIT_BRIDGE_VERSION=29;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
 
 function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !Number.isFinite(t)||now-t>=CREDIT_AUTO_INTERVAL_MS}
-function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION||version===27&&contract===0}
+function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION||version===28&&contract===2||version===27&&contract===0}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
@@ -18,6 +18,9 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}
   function creditSyncUiState(){return {...local,autoEnabled:autoEnabled(),sync:normalizeCreditSync(model.state.creditSync)}}
+  async function copySafeCreditDiagnostics(){
+    try{const result=await bridge.creditDiagnostics(),events=Array.isArray(result?.events)?result.events:[],content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);if(!navigator?.clipboard?.writeText)throw new Error('הדפדפן אינו מאפשר העתקה מאובטחת ללוח');await navigator.clipboard.writeText(content);toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);return true}catch(error){toast(error?.message||'העתקת האבחון נכשלה');return false}
+  }
 
   async function refreshCreditBridgeStatus({quiet=true}={}){
     try{
@@ -105,21 +108,22 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
       const result=await bridge.syncCreditCards({interactive});
-      if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();if(!auto)toast('החיבור החסום נמצא בתקופת המתנה בטוחה. רענון עם חלון אבחון יכול לנסות ידנית לפני המועד.');return true}
+      if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
-      await saveState(result.errors?.length?'האשראי עודכן חלקית ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');
+      const deferredOnly=Array.isArray(result.errors)&&result.errors.length>0&&result.errors.every(error=>error?.severity==='deferred'||error?.deferred===true);
+      await saveState(deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');
       await refreshCreditBridgeStatus();
-      if(!auto)toast(result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו');
+      if(!auto)toast(deferredOnly?'החיבור מושהה עקב 403/429; לא יישלח ניסיון נוסף לפני המועד.':result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו');
     }catch(e){
-      local.error=e?.message||String(e);local.errorAt=new Date().toISOString();
+      const deferredOnly=Array.isArray(e?.creditErrors)&&e.creditErrors.length>0&&e.creditErrors.every(error=>error?.severity==='deferred'||error?.deferred===true);local.error=deferredOnly?'':e?.message||String(e);local.errorAt=deferredOnly?null:new Date().toISOString();
       // If every local profile failed, the Bridge returns HTTP 400 with structured per-profile errors.
       // Persist those diagnostics without deleting the last successful profile data.
       if(Array.isArray(e?.creditErrors)&&e.creditErrors.length){
         model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,{profiles:[],errors:e.creditErrors});
         await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
       }
-      if(!auto)toast(local.error)
+      if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.error)
     }
     finally{if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('credit sync lease release',error)}local.busy=false;render();scheduleAuto()}
   }
@@ -148,5 +152,5 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     refreshCreditSync({interactive:false,auto:true}).catch(()=>{});
   }
 
-  return {creditSyncUiState,refreshCreditBridgeStatus,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditCardMapping,setCreditAutoRefresh,maybeAutoRefreshCreditSync};
+  return {creditSyncUiState,refreshCreditBridgeStatus,copySafeCreditDiagnostics,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditCardMapping,setCreditAutoRefresh,maybeAutoRefreshCreditSync};
 }

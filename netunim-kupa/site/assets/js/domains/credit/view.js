@@ -8,17 +8,20 @@ import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
 function creditErrorRows(syncUi,summary){
-  const localErrors=filterCurrentSyncEvents(syncUi?.status?.lastErrors,summary?.sync?.syncedAt);
+  const statusErrors=Array.isArray(syncUi?.status?.lastErrors)?syncUi.status.lastErrors:[],localErrors=[...filterCurrentSyncEvents(statusErrors,summary?.sync?.syncedAt),...statusErrors.filter(error=>error?.severity==='deferred'||error?.deferred===true)];
   const rows=[...localErrors,...(Array.isArray(summary?.sync?.errors)?summary.sync.errors:[])],seen=new Set(),out=[];
   for(const row of rows){const key=[row?.profileId,row?.provider,row?.code,row?.stage,row?.message,row?.at].map(x=>String(x||'')).join('|');if(seen.has(key))continue;seen.add(key);out.push(row)}
   return out.sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
 }
-function creditSyncHeadlineState(syncUi,summary){
+export function creditSyncHeadlineState(syncUi,summary){
   const errors=creditErrorRows(syncUi,summary),latestError=errors[0]||null,lastSync=summary?.sync?.syncedAt||null;
   const errorAt=syncUi?.errorAt||latestError?.at||null,lastSyncTime=Date.parse(lastSync||'')||0,errorTime=Date.parse(errorAt||'')||0;
   if(syncUi?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(syncUi?.error&&syncEventCurrent(syncUi.errorAt,lastSync))return {tone:'error',icon:'!',title:'נכשל',meta:errorAt?syncDate(errorAt):'כעת'};
-  if(errors.length){const partial=lastSyncTime&&(!errorTime||lastSyncTime>=errorTime-5000);return {tone:partial?'warn':'error',icon:'!',title:partial?'הושלם חלקית':'נכשל',meta:(partial?lastSync:errorAt)?syncDate(partial?lastSync:errorAt):'זמן לא זמין'};}
+  const hard=errors.find(error=>error?.severity==='error'),warnings=errors.filter(error=>error?.severity==='warning'),deferred=errors.find(error=>error?.severity==='deferred'||error?.deferred===true);
+  if(hard){const partial=lastSyncTime&&(!errorTime||lastSyncTime>=errorTime-5000);return {tone:partial?'warn':'error',icon:'!',title:partial?'הושלם עם אזהרות':'נכשל',meta:(partial?lastSync:errorAt)?syncDate(partial?lastSync:errorAt):'זמן לא זמין'};}
+  if(deferred)return {tone:'warn',icon:'⏸',title:'מושהה',meta:deferred.retryAfterAt?`עד ${syncDate(deferred.retryAfterAt)}`:'עקב חסימה קודמת'};
+  if(warnings.length)return {tone:'warn',icon:'!',title:'הושלם עם אזהרות',meta:lastSync?syncDate(lastSync):'ללא הצלחת Core קודמת'};
   if(lastSync)return {tone:'ok',icon:'✓',title:'הצליח',meta:syncDate(lastSync)};
   return {tone:'idle',icon:'•',title:'טרם סונכרן',meta:'מוכן להגדרה'};
 }
@@ -29,7 +32,8 @@ function creditSyncDiagnosticsMarkup(syncUi,summary){
   if(currentLocalError&&!localCovered)rows.push(`<div class="credit-sync-detail error"><b>הסנכרון האחרון נכשל</b><span>${esc(currentLocalError)}</span>${syncUi.errorAt?`<small>${esc(syncDate(syncUi.errorAt))}</small>`:''}</div>`);
   if(syncUi?.bridgeError)rows.push(`<div class="credit-sync-detail warn"><b>Bank Bridge המקומי אינו זמין כרגע</b><span>${esc(syncUi.bridgeError)}</span><small>זו בדיקת זמינות במחשב הזה; היא אינה מבטלת תוצאה חדשה יותר שכבר נשמרה בענן.</small></div>`);
   if(summary?.hasCoverageGaps)rows.push(`<div class="credit-sync-detail warn"><b>כיסוי חודשי חלקי</b><span>${esc(summary.staleMonthCount)} חודשים מוצגים מ־Last Known Good ו־${esc(summary.missingMonthCount)} חודשים ללא נתון.</span><small>נתון ישן אינו מסומן כרענן, וחודש חסר אינו מושלם באמצעות תחזית מומצאת.</small></div>`);
-  for(const error of errors){const label=error?.label||CREDIT_PROVIDER_LABELS[error?.provider]||error?.provider||'חברת אשראי',meta=[error?.code?`קוד: ${error.code}`:'',error?.stage?`שלב: ${error.stage}`:'',error?.month?`חודש: ${error.month}`:'',error?.accountSuffix?`כרטיס: ••${error.accountSuffix}`:'',error?.httpStatus?`HTTP: ${error.httpStatus}`:'',error?.retryAfterAt?`ניסיון אוטומטי הבא: ${syncDate(error.retryAfterAt)}`:'',error?.diagnosticFingerprint?`אבחון: ${error.diagnosticFingerprint}`:'',error?.at?syncDate(error.at):''].filter(Boolean).join(' · ');rows.push(`<div class="credit-sync-detail ${error?.code==='CREDIT_PARTIAL_FORECAST'?'warn':'error'}"><b>${esc(label)}</b><span>${esc(error?.message||'סנכרון האשראי נכשל')}</span>${meta?`<small>${esc(meta)}</small>`:''}</div>`)}
+  for(const error of errors){const label=error?.label||CREDIT_PROVIDER_LABELS[error?.provider]||error?.provider||'חברת אשראי',severity=['warning','deferred','info'].includes(error?.severity)?'warn':'error',meta=[error?.code?`קוד: ${error.code}`:'',error?.component?`רכיב: ${error.component}`:'',error?.stage?`שלב: ${error.stage}`:'',error?.month?`חודש: ${error.month}`:'',error?.accountSuffix?`כרטיס: ••${error.accountSuffix}`:'',error?.httpStatus?`HTTP: ${error.httpStatus}`:'',error?.retryAfterAt?`מושהה עד: ${syncDate(error.retryAfterAt)}`:'',error?.diagnosticFingerprint?`אבחון: ${error.diagnosticFingerprint}`:'',error?.originalFailureAt?`הכשל המקורי: ${syncDate(error.originalFailureAt)}`:error?.at?syncDate(error.at):''].filter(Boolean).join(' · ');rows.push(`<div class="credit-sync-detail ${severity}"><b>${esc(error?.severity==='deferred'?'מושהה — '+label:label)}</b><span>${esc(error?.message||'סנכרון האשראי נכשל')}</span>${meta?`<small>${esc(meta)}</small>`:''}</div>`)}
+  if(Number(syncUi?.status?.lastAttemptedCount)===0&&Number(syncUi?.status?.lastDeferredCount)>0)rows.push(`<div class="credit-sync-detail warn"><b>לא בוצע ניסיון חדש</b><span>${esc(syncUi.status.lastDeferredCount)} חיבורים דולגו בגלל cooldown פעיל.</span></div>`);
   return rows.join('');
 }
 function rowCardKey(row){
@@ -178,7 +182,7 @@ function renderCredit(){
         <div class="credit-sync-quick-actions"><button id="creditSyncToggle" type="button" class="credit-sync-toggle ${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button><button class="btn primary credit-sync-refresh" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן'}</button></div>
       </div>
       <div id="creditSyncPanel" class="credit-sync-settings-body" ${ui.creditSyncOpen?'':'hidden'}>
-          <div class="credit-sync-settings-top"><div><b>אפשרויות סינכרון אשראי</b><small>פירוט מלא של כשל מופיע כאן. חלון אבחון נפתח רק ברענון יזום.</small></div><div class="credit-sync-panel-actions"><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>רענן עם חלון אבחון</button></div></div>
+          <div class="credit-sync-settings-top"><div><b>אפשרויות סינכרון אשראי</b><small>פירוט מלא של כשל מופיע כאן. חלון אבחון נפתח רק ברענון יזום ואינו עוקף cooldown.</small></div><div class="credit-sync-panel-actions"><button class="btn" type="button" data-action="refresh-credit-sync-interactive" ${syncUi.busy?'disabled':''}>רענן עם חלון אבחון</button><button class="btn" type="button" data-action="copy-safe-credit-diagnostics" ${syncUi.busy?'disabled':''}>העתק אבחון טכני בטוח</button></div></div>
           ${syncDiagnostics?`<div class="credit-sync-diagnostics">${syncDiagnostics}</div>`:''}
           <div class="credit-sync-mode-card"><div><b>מודל נתונים: סנכרון חברות האשראי + תוספות ידניות</b><small>״כלול״ קובע אם הכרטיס מופיע בדוחות האשראי. שיוך ״עסקי״ קובע אם החיובים שלו נכנסים לחישובי הקופה, העו״ש והמאזן; כרטיס ביתי נשאר גלוי בדוחות אך אינו נגרע מהקופה העסקית.</small></div><span class="badge blue">הפרדה מלאה</span></div>
           <div class="credit-sync-settings-grid">

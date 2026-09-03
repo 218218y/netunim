@@ -410,7 +410,8 @@ export function normalizeCreditScrapeAccount(account={},provider=''){
   // only the next debit, therefore applying the same formula there would be false.
   const maxAvailable=provider==='max'&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
   const months=(Array.isArray(account.months)?account.months:[]).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:[]).map(normalizeCreditScrapeTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:[]).map(normalizeCreditScrapeTransaction),legacyTransactions=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction),txns=months.length?[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions]:legacyTransactions;
-  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:account.pendingFetchedAt||null,pendingErrorCode:creditText(account.pendingErrorCode||'',80),pendingErrorAt:account.pendingErrorAt||null,unassignedTransactions,txns};
+  const hasFrameValue=balance!==null||cardFrame!==null||directAvailable!==null,frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):hasFrameValue?'fresh':'missing',frameFetchStatus=['success','unavailable','provider_error','schema_error','network_error'].includes(String(account.frameFetchStatus))?String(account.frameFetchStatus):frameStatus==='fresh'?'success':'unavailable';
+  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,frameStatus,frameFetchStatus,frameFetchedAt:account.frameFetchedAt||null,frameErrorCode:creditText(account.frameErrorCode||'',80),frameErrorAt:account.frameErrorAt||null,months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:account.pendingFetchedAt||null,pendingErrorCode:creditText(account.pendingErrorCode||'',80),pendingErrorAt:account.pendingErrorAt||null,unassignedTransactions,txns};
 }
 function creditFailureContext(typeValue,rawValue,profile){
   const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';
@@ -447,7 +448,7 @@ function safeCreditScrapeFailure(typeValue,rawValue,profile){
     message='שירות הנתונים של החברה החזיר דף HTML במקום תשובת JSON. החיבור נשמר אך לא התקבלו ממנו נתונים תקינים.';
   }else if(/automation detected and blocked|block automation|bot detection/i.test(raw)){
     code='CREDIT_AUTOMATION_BLOCKED';stage='LoginPage';
-    message='אתר חברת האשראי חסם זמנית את הגישה האוטומטית. נסה מאוחר יותר או ברענון עם חלון אבחון.';
+    message='אתר חברת האשראי חסם זמנית את הגישה האוטומטית. יש להמתין עד תום ההשהיה; גם רענון ידני או חלון אבחון אינם עוקפים אותה.';
   }else{
     const context=creditFailureContext(type,raw,profile);
     if(context){code=context.code;stage=context.stage;message=context.message}
@@ -473,8 +474,10 @@ export function deferredCreditProfileError(errors,profile,now=Date.now()){
   const profileId=String(profile?.profileId||''),provider=String(profile?.provider||''),time=Number(now);
   if(!Number.isFinite(time)||(!profileId&&!provider))return null;
   const matching=(Array.isArray(errors)?errors:[]).filter(error=>error&&(!profileId||String(error.profileId||'')===profileId)&&(!provider||String(error.provider||'')===provider)).sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
-  for(const error of matching){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time)return {...error,deferred:true}}
+  for(const error of matching){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time){const originalFailureAt=error.originalFailureAt||error.at||null,reason=String(error.code||'').includes('RATE_LIMITED')?'429':'403';return {...error,severity:'deferred',deferred:true,originalFailureAt,at:originalFailureAt,message:`מושהה עד ${new Date(retryAt).toISOString()} עקב ${reason} קודם. לא נשלחה בקשה חדשה לחברת האשראי.`}}}
   return null;
 }
+export function creditErrorSeverity(error={}){const code=String(error?.code||''),stage=String(error?.stage||''),given=String(error?.severity||'');if(error?.deferred===true||code==='CREDIT_AUTOMATION_BLOCKED'||code==='CREDIT_PROVIDER_RATE_LIMITED')return 'deferred';if(['error','warning','deferred','info'].includes(given))return given;if(error?.tier==='forecast'||stage==='Frames'||stage==='Pending')return 'warning';return 'error'}
+export function creditErrorComponent(error={}){const given=String(error?.component||'');if(['core_transactions','forecast_transactions','pending','frames','profile'].includes(given))return given;if(error?.tier==='core')return 'core_transactions';if(error?.tier==='forecast')return 'forecast_transactions';if(String(error?.stage||'')==='Frames')return 'frames';if(String(error?.stage||'')==='Pending')return 'pending';return 'profile'}
 export function creditScrapeFailure(result,profile){return safeCreditScrapeFailure(result?.errorType,result?.errorMessage,profile)}
 export function creditThrownScrapeFailure(error,profile){if(String(error?.code||'').startsWith('CREDIT_'))return error;return safeCreditScrapeFailure('SCRAPE_FAILED',error?.message||error,profile)}

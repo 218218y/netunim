@@ -10,6 +10,23 @@ function text(value,max=120){return String(value??'').trim().replace(/\s+/g,' ')
 function iso(value){const d=new Date(value||Date.now());return Number.isFinite(d.getTime())?d.toISOString():new Date().toISOString()}
 function suffix(value){const digits=String(value??'').replace(/\D/g,'');return digits?digits.slice(-4):text(value,4)}
 function safeMonth(value){return /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(value||''))?String(value):''}
+function valueType(value){if(value===undefined)return 'absent';if(value===null)return 'null';if(Array.isArray(value))return 'array';return typeof value==='object'?'object':typeof value}
+function safeKeys(value){return Array.isArray(value)?[...new Set(value.map(key=>text(key,64)).filter(Boolean))].sort().slice(0,40):[]}
+function safeCount(value){const n=Math.trunc(Number(value));return Number.isFinite(n)&&n>=0?Math.min(n,10000):0}
+function rawNode(value,present){return {present:!!present,type:valueType(present?value:undefined),count:Array.isArray(value)?value.length:present&&value&&typeof value==='object'?1:0}}
+function rawGroup(result,key){
+  const present=!!result&&typeof result==='object'&&Object.prototype.hasOwnProperty.call(result,key),value=present?result[key]:undefined,framesPresent=!!value&&typeof value==='object'&&Object.prototype.hasOwnProperty.call(value,'cardLevelFrames'),framesValue=framesPresent?value.cardLevelFrames:undefined;
+  return {...rawNode(value,present),cardLevelFrames:rawNode(framesValue,framesPresent)};
+}
+function sanitizeNode(value={}){return {present:value?.present===true,type:['absent','null','array','object','string','number','boolean','bigint','symbol','function','undefined'].includes(String(value?.type))?String(value.type):'unknown',count:safeCount(value?.count)}}
+function sanitizeStoredResponseShape(value={}){return {topLevelKeys:safeKeys(value?.topLevelKeys),resultType:['absent','null','array','object','string','number','boolean','bigint','symbol','function','undefined'].includes(String(value?.resultType))?String(value.resultType):'unknown',hasStatusCode:value?.hasStatusCode===true,hasTitle:value?.hasTitle===true,hasStatusTitle:value?.hasStatusTitle===true,bankIssuedCards:{...sanitizeNode(value?.bankIssuedCards),cardLevelFrames:sanitizeNode(value?.bankIssuedCards?.cardLevelFrames)},calIssuedCards:{...sanitizeNode(value?.calIssuedCards),cardLevelFrames:sanitizeNode(value?.calIssuedCards?.cardLevelFrames)}}}
+
+export function safeCreditResponseShape(value){
+  const object=value&&typeof value==='object'&&!Array.isArray(value)?value:{},resultPresent=Object.prototype.hasOwnProperty.call(object,'result'),result=resultPresent?object.result:undefined;
+  return sanitizeStoredResponseShape({topLevelKeys:Object.keys(object),resultType:valueType(result),hasStatusCode:Object.prototype.hasOwnProperty.call(object,'statusCode'),hasTitle:Object.prototype.hasOwnProperty.call(object,'title'),hasStatusTitle:Object.prototype.hasOwnProperty.call(object,'statusTitle'),bankIssuedCards:rawGroup(result,'bankIssuedCards'),calIssuedCards:rawGroup(result,'calIssuedCards')});
+}
+
+export function responseShapeFingerprint(value={}){return createHash('sha256').update(JSON.stringify(sanitizeStoredResponseShape(value))).digest('hex').slice(0,24)}
 
 export function diagnosticFingerprint(value={}){
   const stable=[value.provider,value.stage,value.month,value.errorClass||value.code,value.httpStatus].map(item=>text(item,80)).join('|');
@@ -17,12 +34,14 @@ export function diagnosticFingerprint(value={}){
 }
 
 export function sanitizeCreditDiagnosticEvent(value={}){
+  const responseShape=value?.responseShape&&typeof value.responseShape==='object'?sanitizeStoredResponseShape(value.responseShape):null;
   const event={
     timestamp:iso(value.timestamp),correlationId:text(value.correlationId,80),provider:text(value.provider,30),profileId:text(value.profileId,80),
     bridgeVersion:Math.max(0,Math.trunc(Number(value.bridgeVersion)||0)),contractVersion:Math.max(0,Math.trunc(Number(value.contractVersion)||0)),connectorVersion:text(value.connectorVersion,80),browserEngine:text(value.browserEngine,40),
     stage:text(value.stage,80),accountSuffix:suffix(value.accountSuffix||value.accountNumber),month:safeMonth(value.month),durationMs:Math.max(0,Math.trunc(Number(value.durationMs)||0)),
     errorClass:text(value.errorClass||value.code,80),httpStatus:Math.max(0,Math.trunc(Number(value.httpStatus)||0)),retryAfterAt:value.retryAfterAt?iso(value.retryAfterAt):null,
   };
+  if(responseShape){event.responseShape=responseShape;event.responseShapeFingerprint=responseShapeFingerprint(responseShape)}
   event.fingerprint=diagnosticFingerprint(event);return event;
 }
 

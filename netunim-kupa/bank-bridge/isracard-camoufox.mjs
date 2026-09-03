@@ -203,7 +203,8 @@ async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false,identit
         // A 403 happens before credentials. Do not rotate through fresh anonymous
         // fingerprints: repeated immediate identities add issuer/WAF pressure but
         // provide no new authenticated state. The outer per-profile circuit breaker
-        // owns the next automatic attempt; interactive diagnostics may still bypass it.
+        // owns the next attempt. Ordinary interactive diagnostics obey the same
+        // hard not-before time and never rotate the persisted identity.
         throw safeError('אתר חברת האשראי דחה את סשן Camoufox לפני שליחת פרטי ההתחברות. ניסיון אוטומטי נוסף יידחה על ידי מנגנון ההשהיה במקום ליצור זהויות דפדפן חדשות ברצף.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
       }
       if(status>=400)throw safeError(`אתר חברת האשראי לא נטען (HTTP ${status}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage:'LoginPage',httpStatus:status});

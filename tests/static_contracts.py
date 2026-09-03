@@ -314,8 +314,8 @@ ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and
    "orders Kupa UI: composition root and state own the new financial surface")
 ok("const BANK_BRIDGE_VERSION=25" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v25 contract")
-ok("const CREDIT_BRIDGE_VERSION=28" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
-   "orders Kupa UI: credit controls require Bridge v28 / Credit Connector contract v2, with explicit v27 rollback compatibility")
+ok("const CREDIT_BRIDGE_VERSION=29" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "version===28&&contract===2" in orders_finance_controller,
+   "orders Kupa UI: credit controls prefer Bridge v29 / Credit Connector contract v2, with explicit v28/v27 rollback compatibility")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
@@ -539,6 +539,7 @@ orders_customer_bulk=(ROOT/'netunim-orders/site/assets/js/domains/customers/bulk
 orders_service_view=(ROOT/'netunim-orders/site/assets/js/domains/service/view.js').read_text(encoding='utf-8')
 orders_warehouse_view=(ROOT/'netunim-orders/site/assets/js/domains/warehouse/view.js').read_text(encoding='utf-8')
 orders_finance_view=(ROOT/'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
 orders_actions=(ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
 kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
 kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
@@ -546,6 +547,8 @@ ok('data-view="customers">לקוחות וחובות</button>' in orders_index an
 ok('<h1>קריאות שירות</h1>' not in orders_service_view and 'module-toolbar service-toolbar' in orders_service_view and 'module-toolbar-actions' in orders_service_view and "headCount:1,className:'service-view-shell'" in orders_service_view, 'orders service: search, filters, selection and open-call action share one fixed toolbar without the redundant title row')
 ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolbar warehouse-toolbar' in orders_warehouse_view and 'open-inventory-item-modal-2' in orders_warehouse_view and 'open-warehouse-order-modal' in orders_warehouse_view and "headCount:1,className:'warehouse-view-shell'" in orders_warehouse_view, 'orders warehouse: search, tabs and item/customer actions share one fixed toolbar without the redundant title row')
 ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל</button>' in source and 'data-click-arg0="עסקי">עסקי</button>' in source and 'data-click-arg0="ביתי">ביתי</button>' in source and 'עסקי + ביתי' not in source for source in (orders_finance_view,kupa_credit_view)) and "element.dataset.clickArg0||element.value||'all'" in kupa_actions and "element.dataset.clickArg0||element.value||'all'" in orders_actions, 'credit account scope: embedded Orders Kupa and standalone Kupa both use three direct chip buttons backed by the existing all/business/home filter state')
+
+ok('data-action="copy-orders-safe-credit-diagnostics"' in orders_finance_view and 'copySafeCreditDiagnostics' in orders_finance_controller and "JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events}" in orders_finance_controller and "'copy-orders-safe-credit-diagnostics'" in orders_actions, 'Orders credit diagnostics: the UI copies only sanitized loopback events and their contract version')
 
 print("\nERRORS", len(errors))
 if errors:

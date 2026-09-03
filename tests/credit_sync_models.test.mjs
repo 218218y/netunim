@@ -25,6 +25,7 @@ import {
   syncedInstallmentsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
+import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
 import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,nextCreditCycleData,nextBusinessCreditCycleData,nextHomeCreditCycleData,creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
@@ -158,6 +159,20 @@ assert.equal(monthlyCoreFailed.syncedAt,monthlyBase.syncedAt,'an incomplete Core
 assert.equal(coreFailedAccount.balance,null,'an incomplete Core attempt cannot replace existing business metadata');
 assert.equal(coreFailedAccount.txns[0].id,'lkg','an incomplete Core attempt preserves the complete prior profile snapshot instead of committing sibling slices');
 assert.equal(coreFailedAccount.months.find(month=>month.month==='2026-10').status,'missing','the failed Core month is still exposed as missing for diagnosis');
+const frameBase=normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{
+  profileId:'frame-lkg',provider:'visaCal',syncedAt:'2026-09-01T00:00:00Z',accounts:[{
+    accountNumber:'4444',balance:-220,balanceDate:'2026-09-10T00:00:00Z',cardFrame:9000,frameStatus:'fresh',frameFetchStatus:'success',frameFetchedAt:'2026-09-01T00:00:00Z',
+    months:[{month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',transactions:[]}],
+  }],
+}]}),frameMerged=mergeCreditSyncResult(frameBase,{syncedAt:'2026-09-02T00:00:00Z',profiles:[{
+  profileId:'frame-lkg',provider:'visaCal',coreComplete:true,accounts:[{
+    accountNumber:'4444',balance:null,cardFrame:null,frameStatus:'missing',frameFetchStatus:'unavailable',frameErrorCode:'CREDIT_FRAMES_UNAVAILABLE',frameErrorAt:'2026-09-02T00:00:00Z',
+    months:[{month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-02T00:00:00Z',transactions:[]}],
+  }],
+}],errors:[{profileId:'frame-lkg',provider:'visaCal',component:'frames',severity:'warning',code:'CREDIT_FRAMES_UNAVAILABLE',stage:'Frames',at:'2026-09-02T00:00:00Z'}]});
+const frameLkg=frameMerged.profiles[0].accounts[0];
+assert.equal(frameLkg.cardFrame,9000,'Frames warning preserves the previous issuer frame as Last Known Good');assert.equal(frameLkg.balance,-220);assert.equal(frameLkg.frameStatus,'stale','preserved frame data is explicitly stale rather than fresh');assert.equal(frameMerged.syncedAt,'2026-09-02T00:00:00.000Z','successful Core transactions still advance the profile clock when Frames is unavailable');assert.equal(frameMerged.errors[0].severity,'warning');
+assert.equal(creditSyncHeadlineState({status:{lastErrors:[]},busy:false,error:''},{sync:frameMerged}).title,'הושלם עם אזהרות','successful Core plus a Frames warning is never rendered as a failed profile');
 const sanitizedHistoricalError=normalizeCreditSync({errors:[{profileId:'p-isra',message:`fetchPostWithinPage parse error <!DOCTYPE html> password=${secretMarker}`}]}).errors[0];
 assert.equal(sanitizedHistoricalError.message.includes(secretMarker),false,'historical technical bridge errors are scrubbed before display/re-persistence');
 const discoveredLater=mergeCreditSyncResult(merged,{syncedAt:'2026-08-30T11:00:00.000Z',profiles:[{profileId:'p-max-a',provider:'max',label:'MAX א',ownerLabel:'אדם א',defaultAccount:'עסקי',accounts:[normalizedAccount,{accountNumber:'7777',txns:[{id:'new',processedDate:'2026-10-10T00:00:00.000Z',chargedAmount:-77,chargedCurrency:'ILS',description:'חדש'}]}]}],errors:[]});
@@ -311,7 +326,7 @@ const v3ManualPreserved=stateNormalization.normalizeState({version:4,creditSync:
 assert.equal(v3ManualPreserved.credits[0].id,'v3-manual','the v4 monthly-LKG upgrade never repeats the destructive v2-to-v3 migration');
 
 const bridgeApi=createDomainsBankBridge();
-for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','resetCreditProfiles','syncCreditCards']){
+for(const method of ['creditStatus','saveCreditProfile','deleteCreditProfile','resetCreditProfiles','creditDiagnostics','syncCreditCards']){
   assert.equal(typeof bridgeApi[method],'function',`browser bridge exposes ${method} as a callable local API method`);
 }
 
@@ -324,12 +339,20 @@ const creditController=createDomainsCreditController({
   bridge:{creditStatus:async()=>({bridgeVersion:27,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
-for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
+for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
   assert.equal(typeof creditController[method],'function',`credit controller exposes ${method}`);
 }
 assert.equal('setCreditSyncMode' in creditController,false,'credit controller no longer exposes a manual/synchronized source switch');
 await creditController.refreshCreditBridgeStatus();
 creditController.setCreditAutoRefresh(false);
+
+const deferredToasts=[],deferredModel={state:{creditSync:normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'deferred-profile',provider:'amex',attemptedAt:'2026-09-01T00:00:00Z',accounts:[]}]})}},deferredController=createDomainsCreditController({
+  model:deferredModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:false}),toast:message=>deferredToasts.push(message),render:()=>{},
+  bridge:{creditStatus:async()=>({bridgeVersion:29,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
+  modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
+});
+const beforeDeferredAttempt=deferredModel.state.creditSync.profiles[0].attemptedAt;await deferredController.refreshCreditSync({interactive:true,auto:false});
+assert.equal(deferredModel.state.creditSync.profiles[0].attemptedAt,beforeDeferredAttempt,'interactive diagnostic refresh cannot stamp attemptedAt when the profile is deferred before any issuer request');assert(deferredToasts.some(message=>message.includes('לא נשלחה בקשה חדשה')));
 
 let resetBridgeCalls=0,resetSaveCalls=0;
 const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'old',provider:'max',accounts:[{accountNumber:'1234',txns:[{id:'old-tx',processedDate:'2026-09-01T00:00:00.000Z',chargedAmount:-10,chargedCurrency:'ILS'}]}]}]})}};

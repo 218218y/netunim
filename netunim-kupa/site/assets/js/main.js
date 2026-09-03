@@ -729,6 +729,7 @@ const uiActions=createUiActions({
   deleteCreditConnection:(...args)=>domainsCreditController.deleteCreditConnection(...args),
   resetCreditSync:(...args)=>domainsCreditController.resetCreditSync(...args),
   refreshCreditSync:(...args)=>domainsCreditController.refreshCreditSync(...args),
+  copySafeCreditDiagnostics:(...args)=>domainsCreditController.copySafeCreditDiagnostics(...args),
   setCreditCardMapping:(...args)=>domainsCreditController.setCreditCardMapping(...args),
   setCreditAutoRefresh:(...args)=>domainsCreditController.setCreditAutoRefresh(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),

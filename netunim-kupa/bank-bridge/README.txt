@@ -199,6 +199,16 @@ The remaining Amex failure was isolated to the anonymous GET of /personalarea/Lo
 
 Bridge v24 removes request interception entirely from the Isracard-family Camoufox adapter. The login/data protocol does not require interception, so no substitute blocker or header rewrite is added. Anonymous Login qualification, bounded 403 session rotation, 429 handling, safe diagnostics, and the rule that credentials are sent only after an accepted Login document remain unchanged. The web app now requires Bridge v24 so a stale local Bridge cannot silently keep the old interception behavior after deployment.
 
+Bridge v29 — Cal Frames contract, component severity and hard cooldown semantics
+
+Bridge v29 keeps Credit Connector contract v2 and the v28 monthly Last Known Good storage. It does not require a Supabase migration and does not replace existing business data. Visa Cal Frames now follows the exact optional FramesResponse contract embedded in israeli-bank-scrapers 6.9.0: result, bankIssuedCards, calIssuedCards and cardLevelFrames may be absent. Missing frame data is a component warning, not a transaction schema failure. A sole issuer group may provide its account-level next debit/date and frame limit when no card-level frame matches; no amount, limit or available credit is synthesized.
+
+Core Transactions, Forecast Transactions, Pending and Frames have explicit component/severity metadata. Only Core Transactions advance the successful profile clock. Frames/Pending failures and forecast gaps are warnings; a previous frame or pending result is retained as Last Known Good and marked stale where applicable. Kupa and Orders display successful Core with component warnings as "הושלם עם אזהרות".
+
+The rotating local diagnostics now store a response-shape fingerprint plus key names, result type and presence/type/count metadata for the two Cal frame groups and cardLevelFrames. Values, cardUniqueId, amounts, authorization, cookies, raw JSON and raw HTML are not stored. Both apps expose "העתק אבחון טכני בטוח", which copies only events returned by the authenticated loopback diagnostics endpoint.
+
+403 and 429 cooldowns are hard not-before gates for automatic, manual and ordinary interactive diagnostic refreshes. A deferred check sends no issuer request, does not update attemptedAt, retains the original failure timestamp and reports attemptedCount=0. No force-bypass action is connected to the normal diagnostic button. The installer doctor proves only local Camoufox runtime and persistent identity continuity; it does not prove issuer WAF acceptance. WAF acceptance requires an authorized live canary, and two successful live launches are required before trusted-device/session continuity can be marked verified.
+
 
 
 Bridge v25 — Hapoalim navigation-race recovery and cloud lease resilience

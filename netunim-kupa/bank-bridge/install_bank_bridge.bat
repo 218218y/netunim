@@ -147,14 +147,14 @@ copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nu
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=28)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=29)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
   if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
   if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
   if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
   if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
-  echo ERROR: Bank Bridge v28 did not start correctly. The previous runtime was restored when available.
+  echo ERROR: Bank Bridge v29 did not start correctly. The previous runtime was restored when available.
   echo See: %APPROOT%\bridge.log
   pause
   exit /b 1
@@ -166,7 +166,8 @@ echo Bank Bridge was installed successfully in a stable local folder and added t
 echo The Bank Bridge key was copied to the clipboard. Paste it into Kupa on THIS computer.
 echo Install the Bridge separately on every other computer that should refresh bank or credit-card data.
 echo Hapoalim and credit-card credentials stay encrypted by Windows DPAPI on each computer and are never uploaded to Kupa or Supabase.
-echo American Express uses a local Camoufox browser installed under %CAMOUFOX_INSTALL_DIR% to pass the issuer WAF with a real browser fingerprint.
+echo American Express uses a local Camoufox browser under %CAMOUFOX_INSTALL_DIR% with a persistent anti-fingerprinting identity.
+echo Issuer WAF acceptance is not proven by installation and must be verified only by an authorized live canary.
 echo The previous runtime is retained at %APPBACKUP% for rollback until the next successful upgrade.
 echo.
 pause

@@ -88,6 +88,12 @@ const retryAfterAt=creditAutomaticRetryAfterAt(blockedError,blockedAt);
 assert.equal(Date.parse(retryAfterAt)-blockedAt,CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,'automation blocks receive exactly one 24-hour automatic retry cooldown');
 const deferred=deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+60*60*1000);
 assert.equal(deferred?.deferred,true,'a blocked Amex profile is deferred without opening another automatic browser session during cooldown');
+assert.equal(deferred?.severity,'deferred','403 cooldown is a deferred state rather than a new failed event');
+assert.equal(deferred?.at,blockedError.at,'a defer check never stamps an old 403 as a new attempt');
+assert.equal(deferred?.originalFailureAt,blockedError.at,'the original issuer failure time remains explicit');
+assert.match(deferred?.message,/מושהה עד .* עקב 403 קודם/);
+const rateFailure={profileId:'amex-a',provider:'amex',code:'CREDIT_PROVIDER_RATE_LIMITED',at:blockedError.at,retryAfterAt:new Date(blockedAt+2*60*60*1000).toISOString()},rateDeferred=deferredCreditProfileError([rateFailure],{profileId:'amex-a',provider:'amex'},blockedAt+1000);
+assert.equal(rateDeferred?.severity,'deferred');assert.equal(rateDeferred?.at,rateFailure.at,'Retry-After hard not-before is unchanged for manual/interactive callers because the gate has no mode bypass');assert.match(rateDeferred?.message,/עקב 429 קודם/);
 assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'cal-a',provider:'visaCal'},blockedAt+60*60*1000),null,'cooldown is profile-specific and never suppresses another issuer/profile');
 assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'automatic retry becomes eligible exactly when the cooldown expires');
 

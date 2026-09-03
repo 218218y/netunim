@@ -30,6 +30,8 @@ import {
   normalizeCreditProfileInput,
   creditAutomaticRetryAfterAt,
   deferredCreditProfileError,
+  creditErrorSeverity,
+  creditErrorComponent,
 } from './lib.mjs';
 import {doctorCamoufox} from './isracard-camoufox.mjs';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
@@ -38,7 +40,7 @@ import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=28;
+const BRIDGE_VERSION=29;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -455,15 +457,13 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
     const correlationId=randomUUID(),success=[],errors=[];let attemptedCount=0,deferredCount=0,coreSuccessCount=0;
     // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
     for(const profile of enabled){
-      if(!interactive){
-        const deferred=deferredCreditProfileError(previousErrors,profile);
-        if(deferred){errors.push(deferred);deferredCount++;continue}
-      }
+      const deferred=deferredCreditProfileError(previousErrors,profile);
+      if(deferred){errors.push(deferred);deferredCount++;continue}
       attemptedCount++;
-      try{const result=await scrapeCreditProfile(profile,{interactive,correlationId});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.at||new Date().toISOString())),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}}
+      try{const result=await scrapeCreditProfile(profile,{interactive,correlationId});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}}
       catch(error){
-        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,retryAfterAt:error?.retryAfterAt||null,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
-        errors.push({...base,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:profile.provider==='amex'?'camoufox':'chromium',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt});
+        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
+        errors.push({...base,severity,component,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:profile.provider==='amex'?'camoufox':'chromium',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt});
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;
@@ -483,7 +483,7 @@ async function handler(req,res,token){
     }
     if(req.method==='GET'&&route==='/credit/status'){
       const profiles=await readCreditProfiles(),meta=await readCreditMeta();
-      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[],lastCorrelationId:meta.lastCorrelationId||null});return;
+      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(profiles),lastSyncAt:meta.lastSyncAt||null,lastErrors:Array.isArray(meta.lastErrors)?meta.lastErrors:[],lastCorrelationId:meta.lastCorrelationId||null,lastAttemptedCount:Math.max(0,Math.trunc(Number(meta.lastAttemptedCount)||0)),lastDeferredCount:Math.max(0,Math.trunc(Number(meta.lastDeferredCount)||0))});return;
     }
     if(req.method==='GET'&&route==='/credit/diagnostics'){
       sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,events:await creditDiagnostics.summary({limit:100})});return;
@@ -509,7 +509,7 @@ async function handler(req,res,token){
     if(req.method==='POST'&&route==='/credit/sync'){
       const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta();
       const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors});
-      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors,lastCorrelationId:result.correlationId});
+      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors,lastCorrelationId:result.correlationId,lastAttemptedCount:result.attemptedCount,lastDeferredCount:result.deferredCount});
       if(!result.profiles.length&&result.errors.length&&result.attemptedCount>0){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
       sendJson(req,res,200,{ok:true,...result});return;
     }
