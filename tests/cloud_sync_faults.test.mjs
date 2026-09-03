@@ -285,4 +285,6 @@ test('Shared Checks merges independent cross-app edits and fails closed on same-
   assert.deepEqual(disjoint.checks.map(check=>[check.id,check.amount]),[['A',110],['B',220]]);
   const conflict=mergeSharedChecks(base,[{...base[0],amount:111},base[1]],[{...base[0],amount:112},base[1]]);
   assert.ok(conflict.conflicts.some(item=>item.includes('A')));
+  const stalePartial=mergeSharedChecks(base,[base[0]],base);assert.deepEqual(stalePartial.checks.map(check=>check.id),['A','B'],'stale incomplete snapshots cannot imply deletion');
+  const explicitDelete=mergeSharedChecks(base,[base[0]],base,{deleteIds:['B']});assert.deepEqual(explicitDelete.checks.map(check=>check.id),['A'],'explicit deletion intent is honored');
 });

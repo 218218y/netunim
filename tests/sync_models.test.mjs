@@ -28,14 +28,16 @@ test('optional undefined fields survive merge and rebase without JSON.parse(unde
  assert.deepEqual(conflicts,['optional']);
 });
 for(const [app,api]of [['kupa',kupaChecks({checksSession:{sharedChecksBootstrapActive:false}})],['orders',orderChecks({})]]){
- test(app+' shared checks: independent edits, conflicts, deletion and no input mutation',()=>{
+ test(app+' shared checks: independent edits, conflicts, explicit deletion and no input mutation',()=>{
    const base=[check],local=[check,{...check,id:'L'}],remote=[check,{...check,id:'R'}],before=JSON.stringify([base,local,remote]);
    const merged=api.mergeSharedChecks(base,local,remote);
    assert.equal(merged.conflicts.length,0);assert.deepEqual(merged.checks.map(c=>c.id).sort(),['C','L','R']);
    assert.equal(JSON.stringify([base,local,remote]),before);
    assert.ok(api.mergeSharedChecks(base,[{...check,amount:110}],[{...check,amount:120}]).conflicts.length);
-   assert.ok(api.mergeSharedChecks(base,[],[{...check,note:'edited'}]).conflicts.length);
-   assert.equal(api.mergeSharedChecks(base,[],base).checks.length,0);
+   const staleVsRemoteEdit=api.mergeSharedChecks(base,[],[{...check,note:'edited'}]);assert.equal(staleVsRemoteEdit.conflicts.length,0);assert.equal(staleVsRemoteEdit.checks[0].note,'edited');
+   assert.ok(api.mergeSharedChecks(base,[],[{...check,note:'edited'}],{deleteIds:['C']}).conflicts.length,'explicit delete conflicts with a concurrent edit of the same check');
+   assert.equal(api.mergeSharedChecks(base,[],base).checks.length,1,'missing records without explicit delete intent are preserved');
+   assert.equal(api.mergeSharedChecks(base,[],base,{deleteIds:['C']}).checks.length,0,'an explicitly deleted check is removed');
  });
 }
 test('Kupa bank sync keeps business and home feeds independent across normalization, merge and rebase',()=>{
@@ -98,10 +100,10 @@ test('Orders rebase and empty fields follow the record conflict contract',()=>{
 test('shared check transport validates revisions and preserves RPC request contract',async()=>{
  const calls=[];
  const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
- assert.equal((await api.rpcSaveSharedChecks([check],7,'test:checks:1')).row.revision,8);
- assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v3');
- assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_document_name','p_expected_revision','p_operation_id','p_state']);
- assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_operation_id,'test:checks:1');assert.equal(calls[0][1].p_state.version,1);
+ assert.equal((await api.rpcSaveSharedChecks([check],7,'test:checks:1',['C2'])).row.revision,8);
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v4');
+ assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_deleted_check_ids','p_document_name','p_expected_revision','p_operation_id','p_state']);
+ assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_operation_id,'test:checks:1');assert.equal(calls[0][1].p_state.version,1);assert.deepEqual(calls[0][1].p_deleted_check_ids,['C2']);
  await assert.rejects(api.rpcSaveSharedChecks([check],-1,'test:checks:2'));
  assert.equal(calls.length,1);
 });

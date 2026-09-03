@@ -4,6 +4,9 @@ import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,
 
 const CHECKS_OUTBOX_KEY='shared-checks-outbox-v3';
 
+function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?value:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort()}
+function migrateChecksOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIds=normalizeDeleteIds(value?.deleteIds);return record}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageChecks({checksSession,model,idbPut,idbGet,idbDelete}){
 function loadChecksBase(){try{const raw=localStorage.getItem(CHECKS_BASE_KEY)||localStorage.getItem(LEGACY_CHECKS_BASE_KEY),x=JSON.parse(raw||'null');return Array.isArray(x)?normalizeSharedChecks(x):null}catch(e){console.error('checks base load',e);return null}}
@@ -22,6 +25,7 @@ function markChecksPending(snapshot=model.state.checks,message='',conflict=undef
     baseRevision:progress?.baseRevision??(advanced?checksSession.checksCloudRevision:cached?.baseRevision??checksSession.checksCloudRevision??0),baseState:base,snapshot:canonical,
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
   });
+  record.deleteIds=normalizeDeleteIds([...(cached?.deleteIds||[]),...(progress?.deleteIds||[])]);
   const cacheOk=writePendingCache(record);checksSession.checksOutboxCached=record;
   const previous=checksSession.checksOutboxCommitPromise||Promise.resolve();
   checksSession.checksOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{
@@ -34,8 +38,8 @@ function markChecksPending(snapshot=model.state.checks,message='',conflict=undef
 async function getChecksPending(){
   try{await checksSession.checksOutboxCommitPromise}catch(e){console.error('checks outbox commit',e)}
   const snapshot=normalizeSharedChecks(model.state.checks),base=normalizeSharedChecks(checksSession.checksCloudBase||loadChecksBase()||snapshot),migration={domain:'shared-checks',documentName:SHARED_CHECKS_DOC,baseRevision:checksSession.checksCloudRevision||0,baseState:base,snapshot,generation:Math.max(1,Number(checksSession.checksGeneration||0))};
-  const local=migrateOutboxRecord(readPendingCache(),migration);let durable=null;
-  try{durable=migrateOutboxRecord(await idbGet(CHECKS_OUTBOX_KEY),migration)}catch(e){console.error('checks outbox load',e)}
+  const local=migrateChecksOutboxRecord(readPendingCache(),migration);let durable=null;
+  try{const raw=await idbGet(CHECKS_OUTBOX_KEY);durable=migrateChecksOutboxRecord(raw,migration)}catch(e){console.error('checks outbox load',e)}
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
   if(!chosen){checksSession.checksOutboxCached=null;return null}
   chosen.baseState=normalizeSharedChecks(chosen.baseState);chosen.snapshot=normalizeSharedChecks(chosen.snapshot);

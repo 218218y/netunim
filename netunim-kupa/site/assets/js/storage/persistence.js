@@ -15,11 +15,11 @@ function saveState(msg='נשמר'){
   return session.saveQueue
 }
 
-function saveChecksState(msg='הצק נשמר'){
+function saveChecksState(msg='הצק נשמר',{deletedIds=[]}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg);
   const fullSnapshot=normalizeState(clone(model.state)),localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision);
-  checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending();
+  checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds});
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
   if(files.backupsDirHandle)backupSnapshotToComputer(fullSnapshot,session.dbRevision).catch(e=>console.error('shared checks local backup',e));
   clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(()=>{checksSession.sharedChecksSaveTimer=null;saveSharedChecksToCloud(msg)},220);

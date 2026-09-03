@@ -26,9 +26,9 @@ function markCheckDeposited(id){const c=model.state.checks.find(x=>x.id===id);if
 
 function markCheckCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=checkTodayISO();if(!c.depositDate)c.depositDate=checkTodayISO();if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}scheduleCheckSave('הצ\'ק סומן כנפרע')}
 
-async function deleteCheck(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;if(!await confirmDialog('מחיקת צ׳ק',`למחוק את הצ'ק של ${c.name}?`,{confirmText:'מחק צ׳ק'}))return;model.state.checks=model.state.checks.filter(x=>x.id!==id);closeModal();scheduleCheckSave('הצ\'ק נמחק')}
+async function deleteCheck(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;if(!await confirmDialog('מחיקת צ׳ק',`למחוק את הצ'ק של ${c.name}?`,{confirmText:'מחק צ׳ק'}))return;model.state.checks=model.state.checks.filter(x=>x.id!==id);closeModal();scheduleCheckSave('הצ\'ק נמחק',{deletedIds:[id]})}
 
-async function deleteChecksBulkSelected(){const ids=[...ui.checksBulkSelected].filter(id=>model.state.checks.some(x=>x.id===id));if(!ids.length)return toast('לא נבחרו צ\'קים למחיקה');if(!await confirmDialog('מחיקת צ׳קים',`למחוק ${ids.length} צ'קים שנבחרו?\n\nהמחיקה תסונכרן למאגר הצ'קים המשותף כאשר הענן פעיל.`,{confirmText:'מחק צ׳קים'}))return;const set=new Set(ids);model.state.checks=model.state.checks.filter(x=>!set.has(x.id));ui.checksBulkSelected.clear();scheduleCheckSave(`${ids.length} צ'קים נמחקו`)}
+async function deleteChecksBulkSelected(){const ids=[...ui.checksBulkSelected].filter(id=>model.state.checks.some(x=>x.id===id));if(!ids.length)return toast('לא נבחרו צ\'קים למחיקה');if(!await confirmDialog('מחיקת צ׳קים',`למחוק ${ids.length} צ'קים שנבחרו?\n\nהמחיקה תסונכרן למאגר הצ'קים המשותף כאשר הענן פעיל.`,{confirmText:'מחק צ׳קים'}))return;const set=new Set(ids);model.state.checks=model.state.checks.filter(x=>!set.has(x.id));ui.checksBulkSelected.clear();scheduleCheckSave(`${ids.length} צ'קים נמחקו`,{deletedIds:ids})}
 
 return { openCheckModal, checkSeriesDrafts, renderCheckSeriesRows, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markCheckDeposited, markCheckCleared, deleteCheck, deleteChecksBulkSelected };
 }

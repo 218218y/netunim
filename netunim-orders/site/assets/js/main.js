@@ -266,6 +266,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
 });
 
 const syncChecksPersistence=createSyncChecksPersistence({
+  model,
   session,
   checksSession,
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),

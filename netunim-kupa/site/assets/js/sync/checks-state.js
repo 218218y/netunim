@@ -5,6 +5,9 @@ import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,
 
 const SHARED_CHECKS_OUTBOX_KEY='shared-checks-outbox-v3';
 
+function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?value:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort()}
+function migrateChecksOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIds=normalizeDeleteIds(value?.deleteIds);return record}
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncChecksState({session, checksSession, model, normalizeState, prepareKupaCloudState, idbPut, idbGet, idbDelete}){
 function lastSavedState(){try{return session.lastSavedSnapshot?normalizeState(JSON.parse(session.lastSavedSnapshot)):null}catch(e){return null}}
@@ -22,6 +25,7 @@ function markSharedChecksPending(snapshot=model.state.checks,message='',conflict
     generation,baseRevision:progress?.baseRevision??(advanced?checksSession.sharedChecksRevision:cached?.baseRevision??checksSession.sharedChecksRevision??0),baseState:base,snapshot:canonical,
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
   });
+  record.deleteIds=normalizeDeleteIds([...(cached?.deleteIds||[]),...(progress?.deleteIds||[])]);
   const cacheOk=writePendingCache(record),previous=checksSession.sharedChecksOutboxCommitPromise||Promise.resolve();checksSession.sharedChecksOutboxCached=record;
   checksSession.sharedChecksOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{try{await idbPut('sync',SHARED_CHECKS_OUTBOX_KEY,record);checksSession.sharedChecksDurabilityDegraded=false;return {record,durable:true}}catch(error){checksSession.sharedChecksDurabilityDegraded=true;console.error('shared checks outbox IndexedDB',error);if(!cacheOk)throw new Error('shared_checks_outbox_persistence_failed',{cause:error});return {record,durable:false}}});
   return cacheOk;
@@ -30,7 +34,7 @@ function markSharedChecksPending(snapshot=model.state.checks,message='',conflict
 async function getSharedChecksPending(){
   try{await checksSession.sharedChecksOutboxCommitPromise}catch(e){console.error('shared checks outbox commit',e)}
   const snapshot=normalizeSharedChecks(model.state.checks),base=normalizeSharedChecks(checksSession.sharedChecksBase||loadSharedChecksBase()||snapshot),migration={domain:'shared-checks',documentName:SHARED_CHECKS_DOC,baseRevision:checksSession.sharedChecksRevision||0,baseState:base,snapshot,generation:Math.max(1,Number(checksSession.sharedChecksGeneration||0))};
-  const local=migrateOutboxRecord(readPendingCache(),migration);let durable=null;try{durable=migrateOutboxRecord(await idbGet('sync',SHARED_CHECKS_OUTBOX_KEY),migration)}catch(e){console.error('shared checks outbox load',e)}
+  const local=migrateChecksOutboxRecord(readPendingCache(),migration);let durable=null;try{const raw=await idbGet('sync',SHARED_CHECKS_OUTBOX_KEY);durable=migrateChecksOutboxRecord(raw,migration)}catch(e){console.error('shared checks outbox load',e)}
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);if(!chosen){checksSession.sharedChecksOutboxCached=null;return null}
   chosen.baseState=normalizeSharedChecks(chosen.baseState);chosen.snapshot=normalizeSharedChecks(chosen.snapshot);checksSession.sharedChecksOutboxCached=chosen;checksSession.sharedChecksGeneration=Math.max(Number(checksSession.sharedChecksGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
   try{await idbPut('sync',SHARED_CHECKS_OUTBOX_KEY,chosen);checksSession.sharedChecksDurabilityDegraded=false}catch(e){checksSession.sharedChecksDurabilityDegraded=true;console.error('shared checks outbox repair',e)}return chosen;

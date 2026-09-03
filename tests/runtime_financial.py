@@ -35,7 +35,8 @@ kexpr = r"""(()=>{
  const repairRemote=[{id:'R1',amount:75,status:'בקופה',dueDate:'2026-09-02'}];
  localStorage.removeItem(SHARED_CHECKS_PENDING_KEY);sharedChecksBootstrapActive=true;
  const repaired=mergeSharedChecks(repairRemote,[],repairRemote);out.bootRepairCount=repaired.checks.length;out.bootRepairApplied=repaired.repairedEmptyBootstrap;
- const laterDelete=mergeSharedChecks(repairRemote,[],repairRemote);out.postRepairDeleteCount=laterDelete.checks.length;
+ const laterProtected=mergeSharedChecks(repairRemote,[],repairRemote);out.postRepairProtectedCount=laterProtected.checks.length;
+ const explicitDelete=mergeSharedChecks(repairRemote,[],repairRemote,{deleteIds:['R1']});out.explicitDeleteCount=explicitDelete.checks.length;
  return out;
 })()"""
 kexpected = {
@@ -46,7 +47,8 @@ kexpected = {
     "pendingReturn": 1000,
     "bootRepairCount": 1,
     "bootRepairApplied": True,
-    "postRepairDeleteCount": 0,
+    "postRepairProtectedCount": 1,
+    "explicitDeleteCount": 0,
 }
 
 oexpr = r"""(()=>{

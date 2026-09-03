@@ -106,8 +106,8 @@ ok("shared_checks_documents" in ks and "save_shared_checks_document" in ks,
 ok("shared_checks_documents" in os and "save_shared_checks_document" in os,
    "orders: shared checks endpoint configured")
 ok("ensureSharedChecksForNewCloud" in ks, "kupa: explicit greenfield shared-checks onboarding exists")
-ok("checksSession.sharedChecksBootstrapActive&&!l.length&&r.length>0&&b.length>0&&jsonEq(b,r)" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
-   "kupa: shared bootstrap protection is state-based, not stale-marker based")
+ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.length>0&&jsonEq(b,r)&&!normalizeDeleteIds(deleteIds).length" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
+   "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
 ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
    "clients: missing shared store fails safe outside greenfield setup")
 ok("Array.isArray(d.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
@@ -549,6 +549,18 @@ for token, message in [
     ok(token in shared, "shared RPC: " + message)
 ok("bulk_delete_all_shared_checks_forbidden" in shared,
    "shared RPC: stale empty bootstrap cannot delete the complete shared list")
+
+checks_delete_v4=(O/'supabase/shared_checks_delete_intent_v4_upgrade.sql').read_text(encoding='utf-8')
+kupa_checks_delete_v4=(K/'supabase/shared_checks_delete_intent_v4_upgrade.sql').read_text(encoding='utf-8')
+ok(checks_delete_v4 == kupa_checks_delete_v4, 'shared-check delete-intent migration is byte-identical across Orders and Kupa')
+for token,message in [
+    ('shared_checks_delete_intent_guard','low-level trigger guards every shared-check document update'),
+    ('shared_checks_delete_intent_required','deletions without explicit intent fail closed'),
+    ('shared_checks_delete_intent_mismatch','declared delete IDs must exactly match removed records'),
+    ('save_shared_checks_document_v4','v4 RPC carries explicit deletion intent'),
+    ("set_config('app.shared_checks_delete_ids'",'v4 RPC passes delete intent transaction-locally to the trigger'),
+    ("nullif(current_setting(''app.shared_checks_delete_ids'', true), '''') is null",'legacy all-delete guard remains for old clients but yields to validated v4 intent'),
+]: ok(token in checks_delete_v4, 'shared checks v4: '+message)
 
 ksetup = sqls["kupa_setup"]
 ok("bank_snapshot_watermark_ahead_of_server" in ksetup and "stale_bank_snapshot_watermark" in ksetup,
