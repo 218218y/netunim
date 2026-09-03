@@ -200,6 +200,10 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, sett
    and folder_slot_pos < save_pill_pos < cloud_pill_pos < save_now_pos < settings_pos,
    "orders: reserved folder-access slot is beside local-save status, not between action buttons")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
+ok('<div class="brand">ניהול הזמנות</div>' not in orders_html
+   and 'grid-template-areas:"nav actions"' in orders_css
+   and '.nav{grid-area:nav;min-width:0;max-width:100%;display:flex;gap:4px;justify-self:start;margin:0;' in orders_css,
+   "orders: redundant top-right title is removed and primary tabs occupy the RTL start edge")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
 ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css

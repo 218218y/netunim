@@ -73,18 +73,26 @@ function captureSheetInteraction(){
   return {scrollLeft:scroll.scrollLeft,scrollTop:scroll.scrollTop,focus};
 }
 
+function applySheetScrollPosition(scroll,state){
+  scroll.scrollLeft=state.scrollLeft;scroll.scrollTop=state.scrollTop;
+}
+
 function restoreSheetInteraction(state){
   if(!state)return;
   const scroll=document.querySelector?.('.notes-sheet-scroll');if(!scroll)return;
-  scroll.scrollLeft=state.scrollLeft;scroll.scrollTop=state.scrollTop;
+  applySheetScrollPosition(scroll,state);
   const focusState=state.focus;if(!focusState)return;
   const target=focusState.kind==='cell'?findSheetCell(focusState.rowId,focusState.columnId):findSheetTitle(focusState.columnId);if(!target)return;
   if(focusState.preserveValue)target.value=focusState.value;
   try{target.focus({preventScroll:true})}catch(e){target.focus?.()}
   if(Number.isInteger(focusState.selectionStart)&&Number.isInteger(focusState.selectionEnd))try{target.setSelectionRange(focusState.selectionStart,focusState.selectionEnd,focusState.selectionDirection||'none')}catch(e){}
-  // Some RTL engines still nudge a scroll container while restoring focus.
-  // Re-applying the exact logical scroll offset after focus makes rerenders inert.
-  scroll.scrollLeft=state.scrollLeft;scroll.scrollTop=state.scrollTop;
+  applySheetScrollPosition(scroll,state);
+  // Chromium can perform a deferred RTL focus adjustment after the synchronous focus call.
+  // Restore once more on the next frame, but only while this exact sheet/focus is still current.
+  requestAnimationFrame?.(()=>{
+    if(document.querySelector?.('.notes-sheet-scroll')!==scroll||document.activeElement!==target)return;
+    applySheetScrollPosition(scroll,state);
+  });
 }
 
 function refreshSheetColumnTotal(columnId){

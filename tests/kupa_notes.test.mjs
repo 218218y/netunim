@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
 
 function makeDocument(){
@@ -71,8 +72,8 @@ test('Kupa notes sheet arrow navigation follows the visual RTL grid',()=>{
   assert.deepEqual(focused,['R1:C2','R1:C1','R2:C2','R1:C2']);assert.equal(prevented,4);
 });
 
-test('Kupa notes sheet rerender preserves exact scroll offset and active cell',()=>{
-  let html='',focusOptions=null,selection=null;
+test('Kupa notes sheet rerender preserves exact scroll offset and active cell after deferred browser focus scrolling',()=>{
+  let html='',focusOptions=null,selection=null;const frames=[];
   const scrollBefore={scrollLeft:-347,scrollTop:19};let scroll=scrollBefore;
   const oldCell={dataset:{sheetRowId:'R1',sheetColumnId:'C1'},value:'abc',selectionStart:2,selectionEnd:2,selectionDirection:'none',matches:selector=>selector==='[data-sheet-cell]'};
   const doc={activeElement:oldCell,querySelector:selector=>selector==='.notes-sheet-scroll'?scroll:null,querySelectorAll:selector=>selector==='[data-sheet-cell]'?[doc.currentCell].filter(Boolean):[],getElementById:id=>id==='content'?content:null,currentCell:oldCell};
@@ -81,9 +82,17 @@ test('Kupa notes sheet rerender preserves exact scroll offset and active cell',(
     doc.currentCell={dataset:{sheetRowId:'R1',sheetColumnId:'C1'},value:'abc',selectionStart:0,selectionEnd:0,matches:selector=>selector==='[data-sheet-cell]',focus:opts=>{focusOptions=opts;doc.activeElement=doc.currentCell},setSelectionRange:(start,end,direction)=>{selection=[start,end,direction]}};
     doc.activeElement=null;
   }});
-  Object.defineProperty(globalThis,'document',{value:doc,configurable:true});Object.defineProperty(globalThis,'requestAnimationFrame',{value:fn=>fn(),configurable:true});
+  Object.defineProperty(globalThis,'document',{value:doc,configurable:true});Object.defineProperty(globalThis,'requestAnimationFrame',{value:fn=>{frames.push(fn);return frames.length},configurable:true});
   const model={state:{notes:[],notesSheet:{version:1,columns:[{id:'C1',title:'א',type:'text',width:180}],rows:[{id:'R1',cells:{C1:'abc'},createdAt:'2026-09-03T10:00:00Z',updatedAt:'2026-09-03T10:00:00Z'}]}}};
   const notes=createDomainsNotesController({model,ui:{notesTab:'sheet'},saveState:()=>{},confirmDialog:async()=>true});
   notes.renderNotes();
   assert.equal(scroll.scrollLeft,-347);assert.equal(scroll.scrollTop,19);assert.deepEqual(focusOptions,{preventScroll:true});assert.deepEqual(selection,[2,2,'none']);assert.equal(doc.activeElement,doc.currentCell);
+  scroll.scrollLeft=-331;scroll.scrollTop=27;for(const frame of frames.splice(0))frame();
+  assert.equal(scroll.scrollLeft,-347);assert.equal(scroll.scrollTop,19);
+});
+
+test('Kupa notes sheet uses a horizontal-only scroller without a reserved RTL scrollbar gutter',()=>{
+  const css=readFileSync(new URL('../netunim-kupa/site/assets/app.css',import.meta.url),'utf8');
+  const rule=css.match(/\.notes-sheet-scroll\{([^}]*)\}/)?.[1]||'';
+  assert.match(rule,/overflow-x:auto/);assert.match(rule,/overflow-y:hidden/);assert.match(rule,/scrollbar-gutter:auto/);assert.doesNotMatch(rule,/scrollbar-gutter:stable/);
 });
