@@ -280,6 +280,15 @@ ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-
    "kupa expenses hub: the former Credit navigation is labeled Expenses and defaults to an internal Credit/Expenses surface")
 expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding="utf-8")
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
+orders_actions=(O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and 'data-bank-date-from' in source and 'data-bank-date-to' in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
+   and "setOrdersBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in orders_actions
+   and "setBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in kupa_actions,
+   "bank date scope: both apps use a compact disclosure menu, call the all-time option 'כל התנועות', and apply the two date fields atomically instead of rerendering after each field change")
+ok('.bank-date-menu{position:absolute' in orders_css and '.bank-transactions-region{overflow:visible}' in orders_css and 'flex-wrap:wrap;overflow:visible' in orders_css
+   and '.bank-date-menu{position:absolute' in (K / 'site/assets/app.css').read_text(encoding='utf-8') and '.bank-transactions-caption{position:relative;overflow:visible}' in (K / 'site/assets/app.css').read_text(encoding='utf-8'),
+   "bank date scope layout: the date picker is an anchored floating panel that cannot consume caption-row width or be clipped behind balance/cashflow content")
 ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
    and "cycleAccountRows('עסקי',businessCycle)" in expense_view and "cycleAccountRows('ביתי',homeCycle)" in expense_view
    and 'הגדרת הוצאות קבועות ונוספות' not in bank_view and '<div class="net-summary">' not in bank_view,
