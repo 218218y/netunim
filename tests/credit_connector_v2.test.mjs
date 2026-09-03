@@ -27,12 +27,17 @@ function transaction(card,month){return {trnIntId:`${card}-${month}`,trnTypeCode
 function calMonth(card,month){return {statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[transaction(card,month)]}],immidiateDebits:{debitDays:[]}}]}}}
 function fakeScraper(overrides={}){const calls={initialize:0,login:0,cards:0,auth:0,terminate:0};return {calls,scraper:{initialize:async()=>{calls.initialize++},login:async()=>{calls.login++;return {success:true}},getCards:async()=>{calls.cards++;return [{cardUniqueId:'card-a',last4Digits:'1111'},{cardUniqueId:'card-b',last4Digits:'2222'}]},getAuthorizationHeader:async()=>{calls.auth++;return 'CALAuthScheme safe-test-token'},getXSiteId:async()=> 'site-id',terminate:async()=>{calls.terminate++},...overrides}}}
 function fetchFixture({failureMonth='',failureCard='',failureKind='provider',framesBody=null,pendingBody=null}={}){return async(url,options)=>{const body=JSON.parse(options.body);if(url.includes('/Frames/'))return response(framesBody??{result:{calIssuedCards:{cardLevelFrames:[{cardUniqueId:body.cardsForFrameData[0].cardUniqueId,nextTotalDebit:100,nextDebitDate:'2026-09-10'}],frameLimitForCardAmount:10000}}});if(url.includes('/approvals/'))return response(pendingBody??{statusCode:96});const month=`${body.year}-${String(body.month).padStart(2,'0')}`,card=body.cardUniqueId;if(month===failureMonth&&card===failureCard){if(failureKind==='schema')return response({statusCode:1,result:{changed:true}});if(failureKind==='html')return response('<!doctype html><html>maintenance</html>');return response({statusCode:9,title:'temporary issuer failure'})}return response(calMonth(card,month))}}
-function adapterFor(scraper,fetchImpl,syncMode='full'){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow),syncMode})}
+function adapterFor(scraper,fetchImpl,syncMode='full',options={}){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow),syncMode,...options})}
 
 const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dailyResult=await adapterFor(dailyFixture.scraper,async(url,options)=>{dailyRequests.push({url,body:JSON.parse(options.body)});return dailyFetch(url,options)},'daily').scrape();
 assert.equal(dailyRequests.length,8,'daily Cal sync performs exactly Frames + Pending + current/next month for each of two cards');
 assert.deepEqual([...new Set(dailyRequests.filter(row=>row.url.includes('transactionsDetails')).map(row=>`${row.body.year}-${String(row.body.month).padStart(2,'0')}`))],['2026-09','2026-10'],'daily Cal sync requests exactly the current and next month');
 assert.equal(dailyResult.accounts.every(account=>account.months.map(row=>row.month).join(',')==='2026-09,2026-10'),true,'daily account coverage contains only the two fresh core months');
+
+const excludedFixture=fakeScraper(),excludedRequests=[],excludedFetch=fetchFixture(),excludedResult=await adapterFor(excludedFixture.scraper,async(url,options)=>{excludedRequests.push({url,body:JSON.parse(options.body)});return excludedFetch(url,options)},'full',{excludedAccountNumbers:['1111']}).scrape();
+assert.equal(excludedRequests.length,20,'a known excluded Cal card sends zero Frames/Pending/month requests while one included card keeps the complete full horizon');
+assert.equal(excludedRequests.some(row=>JSON.stringify(row.body).includes('card-a')),false,'excluded Cal suffix is filtered before every issuer data request');
+assert.deepEqual(excludedResult.accounts.map(account=>account.accountNumber),['2222'],'the profile result contains only cards that were actually refreshed; the browser merge preserves previously known excluded cards');
 
 const forecastFixture=fakeScraper(),forecastResult=await adapterFor(forecastFixture.scraper,fetchFixture({failureMonth:'2026-11',failureCard:'card-a'})).scrape();
 assert.equal(forecastFixture.calls.login,1,'all Cal cards and months share exactly one login');
@@ -61,6 +66,8 @@ const missingFrames=parseVisaCalFrame({}, {cardUniqueId:'card-a'}),nullFrames=pa
 assert.equal(missingFrames.frameStatus,'missing','Frames without result is optional/unavailable under the official 6.9.0 contract');
 assert.equal(nullFrames.frameStatus,'missing','Frames result:null is treated as unavailable rather than an invented schema change');
 assert.equal(missingFrames.warning.code,'CREDIT_FRAMES_UNAVAILABLE');
+const irrelevantFrames=parseVisaCalFrame({statusCode:87,statusTitle:'לא נמצאו כרטיסים רלוונטיים להצגה',result:null},{cardUniqueId:'card-a'});
+assert.equal(irrelevantFrames.frameStatus,'missing');assert.equal(irrelevantFrames.frameFetchStatus,'unavailable');assert.equal(irrelevantFrames.warning,null,'Cal Frames status 87 is non-applicable frame data, not a failed card synchronization');
 assert.throws(()=>parseVisaCalFrame({statusCode:17,title:'issuer rejected'},{cardUniqueId:'card-a'}),error=>error.code==='CREDIT_PROVIDER_DATA_ERROR'&&error.stage==='Frames');
 const bankOnly=parseVisaCalFrame({result:{bankIssuedCards:{cardLevelFrames:[{cardUniqueId:'card-a',nextTotalDebit:125,nextDebitDate:'2026-09-15'}],frameLimitForCardAmount:7000}}},{cardUniqueId:'card-a'});
 assert.deepEqual({balance:bankOnly.balance,cardFrame:bankOnly.cardFrame,cardType:bankOnly.cardType},{balance:-125,cardFrame:7000,cardType:'bankIssued'});
@@ -75,6 +82,9 @@ assert.equal(framesWarningResult.coreComplete,true,'Frames unavailable never cha
 assert.equal(framesWarningResult.accounts[0].frameStatus,'missing');
 assert(framesWarningResult.errors.some(error=>error.component==='frames'&&error.severity==='warning'&&error.code==='CREDIT_FRAMES_UNAVAILABLE'));
 assert.equal(framesWarningResult.errors.some(error=>error.severity==='error'),false,'successful Core plus a Frames warning contains no profile error');
+const irrelevantFramesFixture=fakeScraper(),irrelevantFramesResult=await adapterFor(irrelevantFramesFixture.scraper,fetchFixture({framesBody:{statusCode:87,statusTitle:'לא נמצאו כרטיסים רלוונטיים להצגה',result:null}}),'daily').scrape();
+assert.equal(irrelevantFramesResult.coreComplete,true);assert.equal(irrelevantFramesResult.errors.length,0,'Frames status 87 cannot create a false provider error when monthly transactions succeed');
+assert.equal(irrelevantFramesResult.accounts.every(account=>account.frameFetchStatus==='unavailable'&&account.months.every(month=>month.fetchStatus==='success')),true,'status 87 leaves frame unavailable while transaction synchronization remains fully successful');
 const pendingWarningFixture=fakeScraper(),pendingWarningResult=await adapterFor(pendingWarningFixture.scraper,fetchFixture({pendingBody:{statusCode:17,title:'pending unavailable'}})).scrape();
 assert.equal(pendingWarningResult.coreComplete,true,'Pending is a warning component and never changes Core transaction coverage');assert(pendingWarningResult.errors.some(error=>error.component==='pending'&&error.severity==='warning'));
 

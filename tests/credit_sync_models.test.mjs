@@ -16,6 +16,7 @@ import {
   creditCardMappingKey,
   creditSyncHasData,
   creditSyncHasIncludedCards,
+  creditSyncScrapeSelection,
   creditKnownFutureCommitment,
   creditUpcomingCharge,
   creditFrameStatus,
@@ -35,6 +36,8 @@ import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/
 import {todayISO,localISO,dObj,addMonthsISO} from '../netunim-kupa/site/assets/js/core/dates.js';
 
 assert.equal(CREDIT_SYNC_VERSION,4,'credit feed v4 adds monthly Last Known Good coverage without changing the synced-primary/additive-manual calculation model');
+const scrapeSelectionFeed=normalizeCreditSync({version:4,profiles:[{profileId:'selection',provider:'visaCal',accounts:[{accountNumber:'1111'},{accountNumber:'2222'}]}],cardMappings:{'selection:1111':{included:false,hidden:true},'selection:2222':{included:true,hidden:true}}});
+assert.deepEqual(creditSyncScrapeSelection(scrapeSelectionFeed),[{profileId:'selection',excludedAccounts:['1111']}],'scrape selection excludes only known not-included cards; hidden included cards still synchronize because they affect totals');
 assert.deepEqual(Object.keys(CREDIT_PROVIDER_CONFIG).sort(),['amex','isracard','max','visaCal'],'bridge exposes Cal, MAX, Isracard and Amex issuer connections; Mastercard is not a separate login provider');
 assert.equal(creditProviderSupported('visaCal'),true);
 assert.equal(creditProviderSupported('max'),true);
@@ -145,9 +148,12 @@ assert.equal(merged.cardMappings[keyA]?.hidden,false,'existing cards migrate as 
 const allFailed=mergeCreditSyncResult(merged,{profiles:[],errors:[{profileId:'p-max-a',provider:'max',code:'CREDIT_TIMEOUT',message:'כשל'}]});
 assert.equal(allFailed.syncedAt,merged.syncedAt,'all-failed refresh preserves last successful sync timestamp');
 assert.equal(allFailed.profiles.length,2,'all-failed refresh preserves every last successful profile slice');
-const monthlyBase=normalizeCreditSync({version:4,contractVersion:2,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',syncedAt:'2026-09-01T00:00:00Z',accounts:[{accountNumber:'1111',months:[{month:'2026-11',tier:'forecast',status:'fresh',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',providerSchemaVersion:'cal-v2',transactions:[{id:'lkg',processedDate:'2026-11-10',chargedAmount:-90,status:'completed'}]}]}]}]});
+const monthlyBase=normalizeCreditSync({version:4,contractVersion:2,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',syncedAt:'2026-09-01T00:00:00Z',accounts:[{accountNumber:'1111',months:[{month:'2026-11',tier:'forecast',status:'fresh',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',providerSchemaVersion:'cal-v2',transactions:[{id:'lkg',processedDate:'2026-11-10',chargedAmount:-90,status:'completed'}]}]}]}],cardMappings:{'monthly:1111':{included:true,hidden:false,account:'עסקי'}}});
 const monthlyMerged=mergeCreditSyncResult(monthlyBase,{contractVersion:2,syncedAt:'2026-09-02T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',coreComplete:true,accounts:[{accountNumber:'1111',months:[{month:'2026-11',tier:'forecast',fetchStatus:'provider_error',lastErrorCode:'CREDIT_PROVIDER_DATA_ERROR',lastErrorAt:'2026-09-02T00:00:00Z',transactions:[]},{month:'2026-12',tier:'forecast',fetchStatus:'schema_error',lastErrorCode:'CREDIT_PROVIDER_SCHEMA_ERROR',lastErrorAt:'2026-09-02T00:00:00Z',transactions:[]}]}]}],errors:[]});
 const monthlyAccount=monthlyMerged.profiles[0].accounts[0],staleNovember=monthlyAccount.months.find(month=>month.month==='2026-11'),missingDecember=monthlyAccount.months.find(month=>month.month==='2026-12');
+const dailyOmittedForecast=mergeCreditSyncResult(monthlyBase,{contractVersion:2,syncedAt:'2026-09-03T00:00:00Z',profiles:[{profileId:'monthly',provider:'visaCal',coreComplete:true,accounts:[{accountNumber:'1111',months:[{month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-03T00:00:00Z',transactions:[]},{month:'2026-10',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-03T00:00:00Z',transactions:[]}]}]}],errors:[]});
+const preservedForecast=dailyOmittedForecast.profiles[0].accounts[0].months.find(month=>month.month==='2026-11');
+assert.equal(preservedForecast.transactions[0].id,'lkg','daily current+next payload cannot delete a farther future month that was previously fetched successfully');assert.equal(preservedForecast.status,'fresh','an untouched Last Known Good month keeps its prior freshness marker rather than being fabricated or erased');assert.equal(syncedInstallmentsData({creditSync:dailyOmittedForecast}).some(row=>row.date==='2026-11-10'&&row.amount===90),true,'the preserved farther-future LKG row remains visible to the actual Kupa installments consumer after a daily refresh');
 assert.equal(staleNovember.status,'stale','a failed monthly refresh keeps the prior successful slice and marks it stale');
 assert.equal(staleNovember.transactions[0].id,'lkg','monthly Last Known Good transactions are not deleted by partial issuer failure');
 assert.equal(missingDecember.status,'missing','a never-successful failed month is explicitly missing instead of being presented as fresh or synthesized');
@@ -336,7 +342,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:30,contractVersion:2,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','maybeAutoRefreshCreditSync']){
@@ -348,7 +354,7 @@ creditController.setCreditAutoRefresh(false);
 
 const deferredToasts=[],deferredModel={state:{creditSync:normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'deferred-profile',provider:'amex',attemptedAt:'2026-09-01T00:00:00Z',accounts:[]}]})}},deferredController=createDomainsCreditController({
   model:deferredModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:false}),toast:message=>deferredToasts.push(message),render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:30,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 const beforeDeferredAttempt=deferredModel.state.creditSync.profiles[0].attemptedAt;await deferredController.refreshCreditSync({interactive:true,auto:false});
@@ -359,7 +365,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:30,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

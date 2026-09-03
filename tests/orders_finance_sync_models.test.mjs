@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import {bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
-import {creditFrameStatus,creditUpcomingCharge,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
+import {creditFrameStatus,creditUpcomingCharge,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
 import {creditAccountAggregate,creditDetailMonths,creditFilterAccountModels,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {createUiLayout} from '../netunim-orders/site/assets/js/ui/layout.js';
 
 
+
+const ordersSelectionFeed=normalizeCreditSync({version:4,profiles:[{profileId:'selection',provider:'visaCal',accounts:[{accountNumber:'1111'},{accountNumber:'2222'}]}],cardMappings:{'selection:1111':{included:false,hidden:true},'selection:2222':{included:true,hidden:true}}});
+assert.deepEqual(creditSyncScrapeSelection(ordersSelectionFeed),[{profileId:'selection',excludedAccounts:['1111']}],'Orders sends the same explicit excluded-card selection as Kupa');
 
 const scrollUi={scrollViewportMemory:new Map()};
 const layout=createUiLayout({ui:scrollUi,supplierUi:{supplierViewportMemory:new Map()}});
@@ -52,6 +55,9 @@ const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00
 const mergedCredit=mergeCreditSyncResult(initialCredit,{syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'p2',provider:'visaCal',accounts:[{accountNumber:'2222',txns:[{id:'new',date:'2026-09-01T00:00:00Z',chargedAmount:-20}]}]}],errors:[{profileId:'p1',message:'temporary'}]});
 assert.equal(mergedCredit.profiles.length,2,'partial issuer success preserves previous profiles');
 assert.equal(mergedCredit.cardMappings['p1:1111'].included,true,'existing card classification survives cross-app refresh');
+const ordersForecastBase=normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'orders-daily',provider:'visaCal',accounts:[{accountNumber:'9191',months:[{month:'2026-11',tier:'forecast',status:'fresh',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',transactions:[{id:'orders-future-lkg',processedDate:'2026-11-10',chargedAmount:-90}]}]}]}],cardMappings:{'orders-daily:9191':{included:true,hidden:false,account:'עסקי'}}});
+const ordersDailyMerged=mergeCreditSyncResult(ordersForecastBase,{syncedAt:'2026-09-03T00:00:00Z',profiles:[{profileId:'orders-daily',provider:'visaCal',coreComplete:true,accounts:[{accountNumber:'9191',months:[{month:'2026-09',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-03T00:00:00Z',transactions:[]},{month:'2026-10',tier:'core',fetchStatus:'success',fetchedAt:'2026-09-03T00:00:00Z',transactions:[]}]}]}],errors:[]});
+assert.equal(ordersDailyMerged.profiles[0].accounts[0].months.find(month=>month.month==='2026-11').transactions[0].id,'orders-future-lkg','Orders daily merge preserves previously fetched future installments that are outside the daily scope');assert.equal(creditMonthBuckets({creditSync:ordersDailyMerged},{view:'all',asOf:'2026-09-03'}).months.some(month=>month.key==='2026-11'&&month.total===90),true,'the preserved farther-future LKG row remains visible to the actual Orders forecast consumer after a daily refresh');
 const ordersLkg=normalizeCreditSync({version:4,syncedAt:'2026-08-31T00:00:00Z',profiles:[{profileId:'p-lkg',provider:'visaCal',syncedAt:'2026-08-31T00:00:00Z',accounts:[{accountNumber:'3333',months:[{month:'2026-10',tier:'core',fetchStatus:'success',fetchedAt:'2026-08-31T00:00:00Z',transactions:[{id:'old-core',processedDate:'2026-10-10',chargedAmount:-30}]}]}]}]});
 const ordersCoreFailed=mergeCreditSyncResult(ordersLkg,{profiles:[{profileId:'p-lkg',provider:'visaCal',coreComplete:false,attemptedAt:'2026-09-01T00:00:00Z',accounts:[{accountNumber:'3333',months:[{month:'2026-10',tier:'core',fetchStatus:'schema_error',lastErrorCode:'CREDIT_PROVIDER_SCHEMA_ERROR',lastErrorAt:'2026-09-01T00:00:00Z',transactions:[]},{month:'2026-11',tier:'forecast',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',transactions:[{id:'uncommitted',processedDate:'2026-11-10',chargedAmount:-999}]}]}]}]});
 assert.equal(ordersCoreFailed.profiles[0].accounts[0].txns[0].id,'old-core','Orders preserves the complete LKG profile when the connector reports incomplete Core coverage');
@@ -245,7 +251,7 @@ let lastCreditSyncOptions=null;
 const bridge={
   getBridgeToken:()=> 'paired',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,setBankAutoEnabled(){},setCreditAutoEnabled(){},setBridgeToken:v=>v,
   markBankAttempt(){},markCreditAttempt(){},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
-  status:async()=>({bridgeVersion:25,configured:true}),creditStatus:async()=>({bridgeVersion:30,contractVersion:2,profiles:[{profileId:'p1'}]}),
+  status:async()=>({bridgeVersion:25,configured:true}),creditStatus:async()=>({bridgeVersion:31,contractVersion:2,profiles:[{profileId:'p1'}]}),
   fetchBalance:async()=>{bankFetchCalls++;return {fetchedAt:'2026-09-01T02:30:00Z',accounts:{business:{balance:1500,branchNumber:'1',accountNumber:'10',transactions:[{id:'b1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-10,description:'עסקי',status:'completed'}]},home:{balance:400,branchNumber:'1',accountNumber:'20',transactions:[{id:'h1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-5,description:'ביתי',status:'completed'}]}}}},
   syncCreditCards:async options=>{lastCreditSyncOptions=structuredClone(options);creditFetchCalls++;return {syncedAt:'2026-09-01T03:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'fresh',date:'2026-09-01T03:00:00Z',chargedAmount:-75}]}]}],errors:[]}},
 };
@@ -290,7 +296,7 @@ assert.equal(await controller.refreshCredit({auto:false}),true);
 assert.equal(saveCalls,bankSaveCalls,'credit refresh does not write the Kupa backup document');
 assert.equal(financeSaveCalls,bankFinanceSaveCalls+1,'credit refresh writes only the isolated revision-checked finance document');
 assert.equal(creditFetchCalls,1);
-assert.deepEqual(lastCreditSyncOptions,{interactive:false,syncMode:'daily'},'ordinary Orders credit refresh sends the narrow daily scope explicitly');
+assert.deepEqual(lastCreditSyncOptions,{interactive:false,syncMode:'full',selection:[]},'ordinary Orders manual credit refresh sends the complete 12-month scope plus the explicit excluded-card selection');
 assert.equal(financeRow.state.creditSync.profiles.find(p=>p.profileId==='p1').accounts[0].txns[0].id,'fresh');
 assert.equal(financeRow.state.creditSync.cardMappings['p1:1111'].included,true,'Orders refresh keeps credit card mapping choices in finance state');
 

@@ -1,8 +1,8 @@
 import {esc,uid} from '../../core/values.js';
-import {creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
+import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
-const CREDIT_BRIDGE_VERSION=30;
+const CREDIT_BRIDGE_VERSION=31;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
@@ -88,7 +88,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     finally{local.busy=false;render();scheduleAuto()}
   }
 
-  async function refreshCreditSync({interactive=false,auto=false,syncMode='daily'}={}){
+  async function refreshCreditSync({interactive=false,auto=false,syncMode='full'}={}){
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(!auto)render();
     let leaseToken='',leaseHeld=false;
@@ -107,7 +107,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
-      const result=await bridge.syncCreditCards({interactive,syncMode:auto?'daily':syncMode==='full'?'full':'daily'});
+      const result=await bridge.syncCreditCards({interactive,syncMode:auto?'daily':syncMode==='full'?'full':'daily',selection:creditSyncScrapeSelection(model.state.creditSync)});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));

@@ -136,6 +136,11 @@ export function creditSyncHasData(state){return !!normalizeCreditSync(state?.cre
 export function creditSyncHasIncludedCards(state){const sync=normalizeCreditSync(state?.creditSync);return sync.profiles.some(p=>p.accounts.some(a=>sync.cardMappings[creditCardMappingKey(p.profileId,a.accountNumber)]?.included===true))}
 export function creditCardIncluded(sync,profileId,accountNumber){return normalizeCreditSync(sync).cardMappings[creditCardMappingKey(profileId,accountNumber)]?.included===true}
 export function creditCardHidden(sync,profileId,accountNumber){return normalizeCreditSync(sync).cardMappings[creditCardMappingKey(profileId,accountNumber)]?.hidden===true}
+export function creditSyncScrapeSelection(value={}){
+  const sync=normalizeCreditSync(value),rows=[];
+  for(const profile of sync.profiles){const excludedAccounts=profile.accounts.map(account=>account.accountNumber).filter(accountNumber=>sync.cardMappings[creditCardMappingKey(profile.profileId,accountNumber)]?.included===false);if(excludedAccounts.length)rows.push({profileId:profile.profileId,excludedAccounts})}
+  return rows;
+}
 
 function transactionForecastAmount(tx){
   const amount=tx.chargedAmount!==null?tx.chargedAmount:tx.originalAmount;

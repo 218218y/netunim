@@ -3,13 +3,13 @@ import {checkTodayISO} from '../../core/dates.js';
 import {kupaWholeMoney} from '../../core/money.js';
 import {normalizeSharedBankEvents} from '../checks/model.js';
 import {normalizeBankFeed} from './bank-feed.js';
-import {CREDIT_CONNECTOR_CONTRACT_VERSION,creditCardMappingKey,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
+import {CREDIT_CONNECTOR_CONTRACT_VERSION,creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from './credit-feed.js';
 import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefreshDue} from './bridge.js';
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
 const BANK_BRIDGE_VERSION=25;
-const CREDIT_BRIDGE_VERSION=30;
+const CREDIT_BRIDGE_VERSION=31;
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
@@ -172,7 +172,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     finally{if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('orders bank sync lease release',error)}local.bankBusy=false;scheduleBankAuto()}
   }
 
-  async function refreshCredit({interactive=false,auto=false,syncMode='daily'}={}){
+  async function refreshCredit({interactive=false,auto=false,syncMode='full'}={}){
     if(local.creditBusy||local.bankBusy)return false;
     if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
     if(!bridge.getBridgeToken()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
@@ -188,7 +188,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       const status=await bridge.creditStatus();local.creditStatus=status;local.creditStatusChecked=true;local.creditBridgeError='';
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון האשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
-      const result=await bridge.syncCreditCards({interactive,syncMode:auto?'daily':syncMode==='full'?'full':'daily'});
+      const result=await bridge.syncCreditCards({interactive,syncMode:auto?'daily':syncMode==='full'?'full':'daily',selection:creditSyncScrapeSelection(checksSession.kupaCloudReadState?.creditSync)});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus({quiet:true});local.creditError='';local.creditErrorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       const saved=await mutateFinanceCloud(finance=>{if(auto&&!creditRefreshDue(creditLastSyncAt({creditSync:finance.creditSync})))return null;finance.creditSync=mergeCreditSyncResult(finance.creditSync,result);return finance});
       await refreshCreditBridgeStatus({quiet:true});
