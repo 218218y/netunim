@@ -1,7 +1,7 @@
 export function createContexts(){
 return {
   model:{
-    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:4,contractVersion:2,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],rights:[],rightsLastCalculatedDate:null,notes:[],expenses:[],cards:[],cashflowSettings:{version:1,businessMinimum:null,homeMinimum:null},bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[],homeFeed:null}},
+    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:4,contractVersion:2,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],rights:[],rightsLastCalculatedDate:null,notes:[],notesSheet:{version:1,columns:[{id:'sheet-col-1',title:'עמודה 1',type:'text',width:180},{id:'sheet-col-2',title:'עמודה 2',type:'text',width:180},{id:'sheet-col-3',title:'עמודה 3',type:'text',width:180},{id:'sheet-col-4',title:'עמודה 4',type:'text',width:180},{id:'sheet-col-5',title:'עמודה 5',type:'text',width:180}],rows:[]},expenses:[],cards:[],cashflowSettings:{version:1,businessMinimum:null,homeMinimum:null},bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[],homeFeed:null}},
     lastNormalizeRemovedCredits:0
   },
   session:{
@@ -45,7 +45,8 @@ return {
     bulkCollection:null,
     bulkSelected:new Set(),
     modalDraftGuard:null,
-    checkSearchValue:''
+    checkSearchValue:'',
+    notesTab:'notes'
   },
   files:{
     rootDirHandle:null,

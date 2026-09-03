@@ -450,6 +450,7 @@ const domainsCashController=createDomainsCashController({
 
 const domainsNotesController=createDomainsNotesController({
   model,
+  ui,
   saveState:(...args)=>storagePersistence.saveState(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -749,6 +750,14 @@ const uiActions=createUiActions({
   updateStickyNote:(...args)=>domainsNotesController.updateStickyNote(...args),
   blurStickyNote:(...args)=>domainsNotesController.blurStickyNote(...args),
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
+  setNotesWorkspaceTab:(...args)=>domainsNotesController.setNotesWorkspaceTab(...args),
+  addSheetRow:(...args)=>domainsNotesController.addSheetRow(...args),
+  saveSheetCell:(...args)=>domainsNotesController.saveSheetCell(...args),
+  deleteSheetRow:(...args)=>domainsNotesController.deleteSheetRow(...args),
+  addSheetColumn:(...args)=>domainsNotesController.addSheetColumn(...args),
+  renameSheetColumn:(...args)=>domainsNotesController.renameSheetColumn(...args),
+  setSheetColumnNumeric:(...args)=>domainsNotesController.setSheetColumnNumeric(...args),
+  deleteSheetColumn:(...args)=>domainsNotesController.deleteSheetColumn(...args),
   openExpenseModal:(...args)=>domainsExpensesEditor.openExpenseModal(...args),
   updateCard:(...args)=>uiSettings.updateCard(...args),
   updateCashflowMinimum:(...args)=>uiSettings.updateCashflowMinimum(...args),

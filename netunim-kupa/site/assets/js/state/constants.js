@@ -19,5 +19,5 @@ export const BACKUP_PREFIX='kupa-backup_';
 export const AUTO_BACKUP_INTERVAL_MS=12*60*60*1000;
 export const AUTO_BACKUP_PREFIX='kupa-backup-auto_';
 export const AUTO_BACKUP_KEEP=60;
-export const INITIAL_STATE={"version":4,"businessName":"ניהול קופה","checks":[],"credits":[],"cash":[],"rights":[],"rightsLastCalculatedDate":null,"notes":[],"expenses":[],"cards":[],"cashflowSettings":{"version":1,"businessMinimum":null,"homeMinimum":null},"bank":{"currentBalance":null,"updatedAt":null,"asOfDate":null,"adjustments":[],"homeFeed":null}};
+export const INITIAL_STATE={"version":4,"businessName":"ניהול קופה","checks":[],"credits":[],"cash":[],"rights":[],"rightsLastCalculatedDate":null,"notes":[],"notesSheet":{"version":1,"columns":[{"id":"sheet-col-1","title":"עמודה 1","type":"text","width":180},{"id":"sheet-col-2","title":"עמודה 2","type":"text","width":180},{"id":"sheet-col-3","title":"עמודה 3","type":"text","width":180},{"id":"sheet-col-4","title":"עמודה 4","type":"text","width":180},{"id":"sheet-col-5","title":"עמודה 5","type":"text","width":180}],"rows":[]},"expenses":[],"cards":[],"cashflowSettings":{"version":1,"businessMinimum":null,"homeMinimum":null},"bank":{"currentBalance":null,"updatedAt":null,"asOfDate":null,"adjustments":[],"homeFeed":null}};
 export const CLOUD_PENDING_KEY='cloud-pending-v2';

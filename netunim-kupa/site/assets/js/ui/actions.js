@@ -1,7 +1,7 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, setBankAccountView, setBankSearch, toggleBankSyncOptions, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, copySafeCreditDiagnostics, setCreditSearch, toggleCreditSyncOptions, setCreditCardMapping, setCreditAutoRefresh, setCreditAutoMode, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openRightModal, setRightsLastCalculatedDate, addStickyNote, updateStickyNote, blurStickyNote, deleteStickyNote, openExpenseModal, updateCard, updateCashflowMinimum, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
+export function createUiActions({ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, saveBankBalance, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, setBankAccountView, setBankSearch, toggleBankSyncOptions, refreshBankBalance, deleteBankBridgeCredentials, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, copySafeCreditDiagnostics, setCreditSearch, toggleCreditSyncOptions, setCreditCardMapping, setCreditAutoRefresh, setCreditAutoMode, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openRightModal, setRightsLastCalculatedDate, addStickyNote, updateStickyNote, blurStickyNote, deleteStickyNote, setNotesWorkspaceTab, addSheetRow, saveSheetCell, deleteSheetRow, addSheetColumn, renameSheetColumn, setSheetColumnNumeric, deleteSheetColumn, openExpenseModal, updateCard, updateCashflowMinimum, manualBackup, downloadJsonBackup, restoreBackup, switchFolder, exportCSV}){
 return {
   'select-input':(element,event)=>{element.select()},
   'handle-check-date-part-input':(element,event)=>{handleCheckDatePartInput(element)},
@@ -46,6 +46,16 @@ return {
   'update-kupa-sticky-note':(element,event)=>{updateStickyNote(element.dataset.inputArg0,element)},
   'blur-kupa-sticky-note':(element,event)=>{blurStickyNote()},
   'delete-kupa-sticky-note':(element,event)=>{deleteStickyNote(element.dataset.clickArg0)},
+  'notes-workspace-notes':(element,event)=>{setNotesWorkspaceTab('notes')},
+  'notes-workspace-sheet':(element,event)=>{setNotesWorkspaceTab('sheet')},
+  'add-notes-sheet-row':(element,event)=>{addSheetRow()},
+  'add-notes-sheet-row-after':(element,event)=>{addSheetRow(element.dataset.clickArg0)},
+  'save-notes-sheet-cell':(element,event)=>{saveSheetCell(element.dataset.blurArg0,element.dataset.blurArg1,element)},
+  'delete-notes-sheet-row':(element,event)=>{deleteSheetRow(element.dataset.clickArg0)},
+  'add-notes-sheet-column':(element,event)=>{addSheetColumn()},
+  'rename-notes-sheet-column':(element,event)=>{renameSheetColumn(element.dataset.blurArg0,element)},
+  'set-notes-sheet-column-numeric':(element,event)=>{setSheetColumnNumeric(element.dataset.changeArg0,element.checked)},
+  'delete-notes-sheet-column':(element,event)=>{deleteSheetColumn(element.dataset.clickArg0)},
   'save-bank-balance':(element,event)=>{saveBankBalance()},
   'save-bank-bridge-token':(element,event)=>{saveBankBridgeToken()},
   'configure-bank-bridge':(element,event)=>{configureBankBridge()},

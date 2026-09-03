@@ -13,6 +13,7 @@ function mergeState3Way(base,local,remote){
   out.rights=mergeRecordArray(base.rights,local.rights,remote.rights,'id','rights',conflicts);
   out.rightsLastCalculatedDate=mergeValue(base.rightsLastCalculatedDate,local.rightsLastCalculatedDate,remote.rightsLastCalculatedDate,'rightsLastCalculatedDate',conflicts);
   out.notes=mergeRecordArray(base.notes,local.notes,remote.notes,'id','notes',conflicts);
+  {const bs=base.notesSheet||{},ls=local.notesSheet||{},rs=remote.notesSheet||{};out.notesSheet={version:1,columns:mergeRecordArray(bs.columns,ls.columns,rs.columns,'id','notesSheet.columns',conflicts),rows:mergeRecordArray(bs.rows,ls.rows,rs.rows,'id','notesSheet.rows',conflicts)}}
   out.expenses=mergeRecordArray(base.expenses,local.expenses,remote.expenses,'id','expenses',conflicts);
   out.cards=mergeRecordArray(base.cards,local.cards,remote.cards,'name','cards',conflicts);
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
@@ -48,6 +49,7 @@ function rebaseLocalProgress(base,local,remote){
   out.rights=mergeRecordArrayPreferLocal(base.rights,local.rights,remote.rights,'id');
   out.rightsLastCalculatedDate=mergeValuePreferLocal(base.rightsLastCalculatedDate,local.rightsLastCalculatedDate,remote.rightsLastCalculatedDate);
   out.notes=mergeRecordArrayPreferLocal(base.notes,local.notes,remote.notes,'id');
+  {const bs=base.notesSheet||{},ls=local.notesSheet||{},rs=remote.notesSheet||{};out.notesSheet={version:1,columns:mergeRecordArrayPreferLocal(bs.columns,ls.columns,rs.columns,'id'),rows:mergeRecordArrayPreferLocal(bs.rows,ls.rows,rs.rows,'id')}}
   out.expenses=mergeRecordArrayPreferLocal(base.expenses,local.expenses,remote.expenses,'id');
   out.cards=mergeRecordArrayPreferLocal(base.cards,local.cards,remote.cards,'name');
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};

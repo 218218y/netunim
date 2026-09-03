@@ -126,3 +126,15 @@ test('Orders polling asks Kupa refresh to invalidate a visible balance when a ne
  const refreshArgs=[];const api=orderDocumentSync({model:{state:{}},files:{},session:{cloudBusy:false,cloudRevision:7},ui:{},tab:{primaryTab:true},normalizeState:x=>x,localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},toast:()=>{},setCloud:()=>{},prepareCloudState:()=>({}),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>{},merge3:()=>({}),applyOrderCloudState:()=>{},cloudPendingExists:()=>false,setSave:()=>{},cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:()=>true,cloudHasLocalWork:()=>false,render:()=>{},readCloudMeta:async()=>({revision:7,updated_at:'2026-08-27T10:00:00Z'}),refreshKupaReadout:async opts=>{refreshArgs.push(opts);return true},pollSharedChecks:async()=>{},refreshCloudTimestamp:()=>{}});
  await api.cloudPoll();assert.deepEqual(refreshArgs,[{renderIfChanged:true}]);
 });
+
+
+test('Kupa notes sheet merges rows and column configuration independently',()=>{
+ const k=kupaNormalizer({model:{lastNormalizeRemovedCredits:0}}),m=kupaMerge({normalizeState:k.normalizeState,prepareKupaCloudState:k.prepareKupaCloudState});
+ const base=k.normalizeState({version:4,checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[],cards:[],bank:{adjustments:[]}});
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.notesSheet.rows.push({id:'ROW-1',cells:{'sheet-col-1':'100'},createdAt:'2026-09-03T08:00:00Z',updatedAt:'2026-09-03T08:00:00Z'});
+ remote.notesSheet.columns[0].title='סכום';remote.notesSheet.columns[0].type='number';
+ const merged=m.mergeState3Way(base,local,remote);
+ assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.notesSheet.rows.length,1);assert.equal(merged.state.notesSheet.columns[0].title,'סכום');assert.equal(merged.state.notesSheet.columns[0].type,'number');
+ const cloud=k.prepareKupaCloudState(merged.state);assert.equal(validKupaCloudState(cloud),true);assert.equal(cloud.notesSheet.rows[0].cells['sheet-col-1'],'100');
+});
