@@ -13,20 +13,21 @@ function safeMonth(value){return /^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(value||
 function valueType(value){if(value===undefined)return 'absent';if(value===null)return 'null';if(Array.isArray(value))return 'array';return typeof value==='object'?'object':typeof value}
 function safeKeys(value){return Array.isArray(value)?[...new Set(value.map(key=>text(key,64)).filter(Boolean))].sort().slice(0,40):[]}
 function safeCount(value){const n=Math.trunc(Number(value));return Number.isFinite(n)&&n>=0?Math.min(n,10000):0}
+function safeStatusCode(value){const n=Number(value);return Number.isFinite(n)?Math.trunc(n):null}
 function rawNode(value,present){return {present:!!present,type:valueType(present?value:undefined),count:Array.isArray(value)?value.length:present&&value&&typeof value==='object'?1:0}}
 function rawGroup(result,key){
   const present=!!result&&typeof result==='object'&&Object.prototype.hasOwnProperty.call(result,key),value=present?result[key]:undefined,framesPresent=!!value&&typeof value==='object'&&Object.prototype.hasOwnProperty.call(value,'cardLevelFrames'),framesValue=framesPresent?value.cardLevelFrames:undefined;
   return {...rawNode(value,present),cardLevelFrames:rawNode(framesValue,framesPresent)};
 }
 function sanitizeNode(value={}){return {present:value?.present===true,type:['absent','null','array','object','string','number','boolean','bigint','symbol','function','undefined'].includes(String(value?.type))?String(value.type):'unknown',count:safeCount(value?.count)}}
-function sanitizeStoredResponseShape(value={}){return {topLevelKeys:safeKeys(value?.topLevelKeys),resultType:['absent','null','array','object','string','number','boolean','bigint','symbol','function','undefined'].includes(String(value?.resultType))?String(value.resultType):'unknown',hasStatusCode:value?.hasStatusCode===true,hasTitle:value?.hasTitle===true,hasStatusTitle:value?.hasStatusTitle===true,bankIssuedCards:{...sanitizeNode(value?.bankIssuedCards),cardLevelFrames:sanitizeNode(value?.bankIssuedCards?.cardLevelFrames)},calIssuedCards:{...sanitizeNode(value?.calIssuedCards),cardLevelFrames:sanitizeNode(value?.calIssuedCards?.cardLevelFrames)}}}
+function sanitizeStoredResponseShape(value={}){return {topLevelKeys:safeKeys(value?.topLevelKeys),resultType:['absent','null','array','object','string','number','boolean','bigint','symbol','function','undefined'].includes(String(value?.resultType))?String(value.resultType):'unknown',hasStatusCode:value?.hasStatusCode===true,statusCode:value?.hasStatusCode===true?safeStatusCode(value?.statusCode):null,hasTitle:value?.hasTitle===true,hasStatusTitle:value?.hasStatusTitle===true,bankIssuedCards:{...sanitizeNode(value?.bankIssuedCards),cardLevelFrames:sanitizeNode(value?.bankIssuedCards?.cardLevelFrames)},calIssuedCards:{...sanitizeNode(value?.calIssuedCards),cardLevelFrames:sanitizeNode(value?.calIssuedCards?.cardLevelFrames)}}}
 
 export function safeCreditResponseShape(value){
   const object=value&&typeof value==='object'&&!Array.isArray(value)?value:{},resultPresent=Object.prototype.hasOwnProperty.call(object,'result'),result=resultPresent?object.result:undefined;
-  return sanitizeStoredResponseShape({topLevelKeys:Object.keys(object),resultType:valueType(result),hasStatusCode:Object.prototype.hasOwnProperty.call(object,'statusCode'),hasTitle:Object.prototype.hasOwnProperty.call(object,'title'),hasStatusTitle:Object.prototype.hasOwnProperty.call(object,'statusTitle'),bankIssuedCards:rawGroup(result,'bankIssuedCards'),calIssuedCards:rawGroup(result,'calIssuedCards')});
+  return sanitizeStoredResponseShape({topLevelKeys:Object.keys(object),resultType:valueType(result),hasStatusCode:Object.prototype.hasOwnProperty.call(object,'statusCode'),statusCode:object.statusCode,hasTitle:Object.prototype.hasOwnProperty.call(object,'title'),hasStatusTitle:Object.prototype.hasOwnProperty.call(object,'statusTitle'),bankIssuedCards:rawGroup(result,'bankIssuedCards'),calIssuedCards:rawGroup(result,'calIssuedCards')});
 }
 
-export function responseShapeFingerprint(value={}){return createHash('sha256').update(JSON.stringify(sanitizeStoredResponseShape(value))).digest('hex').slice(0,24)}
+export function responseShapeFingerprint(value={}){const shape=sanitizeStoredResponseShape(value),{statusCode:_,...structural}=shape;return createHash('sha256').update(JSON.stringify(structural)).digest('hex').slice(0,24)}
 
 export function diagnosticFingerprint(value={}){
   const stable=[value.provider,value.stage,value.month,value.errorClass||value.code,value.httpStatus].map(item=>text(item,80)).join('|');

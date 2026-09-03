@@ -27,7 +27,12 @@ function transaction(card,month){return {trnIntId:`${card}-${month}`,trnTypeCode
 function calMonth(card,month){return {statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[transaction(card,month)]}],immidiateDebits:{debitDays:[]}}]}}}
 function fakeScraper(overrides={}){const calls={initialize:0,login:0,cards:0,auth:0,terminate:0};return {calls,scraper:{initialize:async()=>{calls.initialize++},login:async()=>{calls.login++;return {success:true}},getCards:async()=>{calls.cards++;return [{cardUniqueId:'card-a',last4Digits:'1111'},{cardUniqueId:'card-b',last4Digits:'2222'}]},getAuthorizationHeader:async()=>{calls.auth++;return 'CALAuthScheme safe-test-token'},getXSiteId:async()=> 'site-id',terminate:async()=>{calls.terminate++},...overrides}}}
 function fetchFixture({failureMonth='',failureCard='',failureKind='provider',framesBody=null,pendingBody=null}={}){return async(url,options)=>{const body=JSON.parse(options.body);if(url.includes('/Frames/'))return response(framesBody??{result:{calIssuedCards:{cardLevelFrames:[{cardUniqueId:body.cardsForFrameData[0].cardUniqueId,nextTotalDebit:100,nextDebitDate:'2026-09-10'}],frameLimitForCardAmount:10000}}});if(url.includes('/approvals/'))return response(pendingBody??{statusCode:96});const month=`${body.year}-${String(body.month).padStart(2,'0')}`,card=body.cardUniqueId;if(month===failureMonth&&card===failureCard){if(failureKind==='schema')return response({statusCode:1,result:{changed:true}});if(failureKind==='html')return response('<!doctype html><html>maintenance</html>');return response({statusCode:9,title:'temporary issuer failure'})}return response(calMonth(card,month))}}
-function adapterFor(scraper,fetchImpl){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow)})}
+function adapterFor(scraper,fetchImpl,syncMode='full'){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow),syncMode})}
+
+const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dailyResult=await adapterFor(dailyFixture.scraper,async(url,options)=>{dailyRequests.push({url,body:JSON.parse(options.body)});return dailyFetch(url,options)},'daily').scrape();
+assert.equal(dailyRequests.length,8,'daily Cal sync performs exactly Frames + Pending + current/next month for each of two cards');
+assert.deepEqual([...new Set(dailyRequests.filter(row=>row.url.includes('transactionsDetails')).map(row=>`${row.body.year}-${String(row.body.month).padStart(2,'0')}`))],['2026-09','2026-10'],'daily Cal sync requests exactly the current and next month');
+assert.equal(dailyResult.accounts.every(account=>account.months.map(row=>row.month).join(',')==='2026-09,2026-10'),true,'daily account coverage contains only the two fresh core months');
 
 const forecastFixture=fakeScraper(),forecastResult=await adapterFor(forecastFixture.scraper,fetchFixture({failureMonth:'2026-11',failureCard:'card-a'})).scrape();
 assert.equal(forecastFixture.calls.login,1,'all Cal cards and months share exactly one login');
@@ -50,6 +55,7 @@ assert.equal(blockedFailure.code,'CREDIT_AUTOMATION_BLOCKED','403 is a durable a
 assert.equal(blockedFailure.message.includes('forbidden body'),false,'the 403 response body never enters a public error');
 assert.throws(()=>parseVisaCalMonthData({statusCode:1,result:{newSchema:true}}),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR');
 assert.throws(()=>parseVisaCalMonthData({statusCode:17,title:'failed month'}),error=>error.code==='CREDIT_PROVIDER_DATA_ERROR');
+assert.throws(()=>parseVisaCalMonthData({statusCode:17,statusTitle:'provider title',statusDescription:'provider description'}),error=>error.code==='CREDIT_PROVIDER_DATA_ERROR'&&error.message==='provider title','Cal provider statusTitle is preserved instead of collapsing into a generic parser error');
 
 const missingFrames=parseVisaCalFrame({}, {cardUniqueId:'card-a'}),nullFrames=parseVisaCalFrame({result:null},{cardUniqueId:'card-a'});
 assert.equal(missingFrames.frameStatus,'missing','Frames without result is optional/unavailable under the official 6.9.0 contract');
@@ -78,6 +84,7 @@ assert.equal(rateLimitedResult.coreComplete,false);assert(rateLimitedResult.erro
 
 const shape=safeCreditResponseShape({statusCode:1,title:'secret title',authorization:'Bearer secret-token',result:{bankIssuedCards:{nextTotalDebitForAccount:987654,cardLevelFrames:[{cardUniqueId:'full-sensitive-card-id',nextTotalDebit:123456}]}}}),shapeSerialized=JSON.stringify(shape),shapeHash=responseShapeFingerprint(shape);
 assert.deepEqual(shape.topLevelKeys,['authorization','result','statusCode','title']);
+assert.equal(shape.statusCode,1,'safe diagnostics retain only the numeric Cal provider status code needed to distinguish semantic null responses');
 assert.equal(shape.bankIssuedCards.cardLevelFrames.count,1);assert.equal(shape.bankIssuedCards.cardLevelFrames.type,'array');
 for(const secret of ['Bearer secret-token','full-sensitive-card-id','987654','123456'])assert.equal(shapeSerialized.includes(secret),false,`safe response shape excludes response value ${secret}`);
 assert.equal(shapeHash.length,24);assert.equal(shapeHash,responseShapeFingerprint(safeCreditResponseShape({statusCode:2,title:'different values',authorization:'changed',result:{bankIssuedCards:{nextTotalDebitForAccount:1,cardLevelFrames:[{cardUniqueId:'other'}]}}})),'shape fingerprints depend only on structure/presence, never response values');
@@ -96,7 +103,7 @@ assert.equal(classifyCreditHttpResponse({status:429,text:'',stage:'Pending',retr
 const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',stage:'LoginPage',httpStatus:403,responseShape:shape,username:'secret-user',password:'secret-password',rawHtml:'<html>secret</html>',authorization:'Bearer secret'}),serializedDiagnostic=JSON.stringify(diagnostic);
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
 assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);
-assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
+assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
 
 const identityRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-v2-'));
 try{

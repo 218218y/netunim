@@ -46,6 +46,6 @@ function saveCreditProfile(profile){return creditRequest('/profiles',{method:'PO
 function deleteCreditProfile(profileId){return creditRequest('/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
 function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
 function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
-function syncCreditCards({interactive=false}={}){return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
+function syncCreditCards({interactive=false,syncMode='daily'}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
 return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,setBankAutoEnabled,setCreditAutoEnabled,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }

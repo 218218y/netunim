@@ -18,6 +18,8 @@ export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.9.0';
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-6.9.0-netunim-v2';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
+export const CREDIT_SYNC_MODE_DAILY='daily';
+export const CREDIT_SYNC_MODE_FULL='full';
 
 const CAL_ENDPOINTS={
   frames:'https://api.cal-online.co.il/Frames/api/Frames/GetFrameStatus',
@@ -60,6 +62,14 @@ export function buildCreditMonthPlan({startDate=creditStartDate(),futureMonths=C
   const start=monthStart(startDate),current=monthStart(now),coreEnd=addMonths(current,CREDIT_CORE_FUTURE_MONTHS),end=addMonths(current,Math.max(CREDIT_CORE_FUTURE_MONTHS,Math.trunc(Number(futureMonths)||0))),months=[];
   for(let cursor=start;cursor<=end;cursor=addMonths(cursor,1))months.push({month:monthKey(cursor),tier:cursor<=coreEnd?'core':'forecast'});
   return months;
+}
+
+export function normalizeCreditSyncMode(value){return value===CREDIT_SYNC_MODE_FULL?CREDIT_SYNC_MODE_FULL:CREDIT_SYNC_MODE_DAILY}
+export function creditSyncScope({syncMode=CREDIT_SYNC_MODE_DAILY,now=new Date()}={}){
+  const mode=normalizeCreditSyncMode(syncMode);
+  return mode===CREDIT_SYNC_MODE_FULL
+    ?{syncMode:mode,startDate:creditStartDate(now),futureMonths:CREDIT_FUTURE_MONTHS}
+    :{syncMode:mode,startDate:monthStart(now),futureMonths:CREDIT_CORE_FUTURE_MONTHS};
 }
 
 export function parseRetryAfter(value,now=Date.now()){
@@ -109,8 +119,10 @@ export function normalizeVisaCalTransaction(transaction={}){
   });
 }
 
+function visaCalProviderMessage(data,fallback){return text(data?.statusTitle,160)||text(data?.statusDescription,160)||text(data?.title,160)||fallback}
+
 export function parseVisaCalMonthData(data,{startDate=null}={}){
-  if(data?.statusCode!==1)throw safeError(text(data?.title,160)||'כאל לא אישרה את קריאת החודש.','CREDIT_PROVIDER_DATA_ERROR',{stage:'Transactions'});
+  if(data?.statusCode!==1)throw safeError(visaCalProviderMessage(data,'כאל לא אישרה את קריאת החודש.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:'Transactions'});
   if(!data?.result||!Array.isArray(data.result.bankAccounts))throw safeError('כאל החזירה מבנה חודשי שאינו תואם לחוזה המחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Transactions'});
   const rows=[];
   for(const account of data.result.bankAccounts){
@@ -125,7 +137,7 @@ export function parseVisaCalMonthData(data,{startDate=null}={}){
 
 function parseVisaCalPending(data){
   if(data?.statusCode===96)return [];
-  if(data?.statusCode!==1)throw safeError(text(data?.title,160)||'כאל לא אישרה את קריאת העסקאות הממתינות.','CREDIT_PROVIDER_DATA_ERROR',{stage:'Pending'});
+  if(data?.statusCode!==1)throw safeError(visaCalProviderMessage(data,'כאל לא אישרה את קריאת העסקאות הממתינות.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:'Pending'});
   if(!Array.isArray(data?.result?.cardsList))throw safeError('כאל החזירה מבנה עסקאות ממתינות שאינו תואם לחוזה המחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Pending'});
   return data.result.cardsList.flatMap(card=>Array.isArray(card?.authDetalisList)?card.authDetalisList:[]).map(normalizeVisaCalTransaction);
 }
@@ -133,7 +145,7 @@ function parseVisaCalPending(data){
 function hasOwn(value,key){return !!value&&typeof value==='object'&&Object.prototype.hasOwnProperty.call(value,key)}
 function visaCalFrameProviderError(data){
   if(!data||typeof data!=='object'||Array.isArray(data))return false;
-  const resultMissing=data.result===undefined||data.result===null,statusCodeError=hasOwn(data,'statusCode')&&Number(data.statusCode)!==1,status=data.status,statusError=hasOwn(data,'status')&&(status===false||(typeof status==='number'&&![0,1,200].includes(status))||(typeof status==='string'&&!['','0','1','200','ok','success','successful'].includes(status.trim().toLowerCase()))),titledMissing=resultMissing&&(text(data.title,1)||text(data.statusTitle,1));
+  const resultMissing=data.result===undefined||data.result===null,statusCodeError=hasOwn(data,'statusCode')&&Number(data.statusCode)!==1,status=data.status,statusError=hasOwn(data,'status')&&(status===false||(typeof status==='number'&&![0,1,200].includes(status))||(typeof status==='string'&&!['','0','1','200','ok','success','successful'].includes(status.trim().toLowerCase()))),titledMissing=resultMissing&&(text(data.statusTitle,1)||text(data.statusDescription,1)||text(data.title,1));
   return statusCodeError||statusError||!!titledMissing;
 }
 function frameUnavailable(){return safeError('כאל לא סיפקה נתון מסגרת עבור הכרטיס; העסקאות יישמרו ונתון המסגרת האחרון, אם קיים, יישאר כ־Last Known Good.','CREDIT_FRAMES_UNAVAILABLE',{stage:'Frames'})}
@@ -149,7 +161,7 @@ function validateFrameGroup(group,name){
 }
 
 export function parseVisaCalFrame(data,card={}){
-  if(visaCalFrameProviderError(data))throw safeError('כאל החזירה שגיאת provider מפורשת בקריאת Frames.','CREDIT_PROVIDER_DATA_ERROR',{stage:'Frames'});
+  if(visaCalFrameProviderError(data))throw safeError(visaCalProviderMessage(data,'כאל החזירה שגיאת provider מפורשת בקריאת Frames.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:'Frames'});
   if(data?.result===undefined||data?.result===null)return {balance:null,balanceDate:null,cardType:'',cardFrame:null,frameStatus:'missing',frameFetchStatus:'unavailable',warning:frameUnavailable()};
   if(typeof data.result!=='object'||Array.isArray(data.result))throw safeError('כאל החזירה result מסוג שאינו תואם לחוזה Frames 6.9.0.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Frames'});
   const bankGroup=validateFrameGroup(data.result.bankIssuedCards,'bankIssuedCards'),calGroup=validateFrameGroup(data.result.calIssuedCards,'calIssuedCards'),bankFrame=bankGroup?.cardLevelFrames?.find(item=>item.cardUniqueId===card.cardUniqueId),calFrame=calGroup?.cardLevelFrames?.find(item=>item.cardUniqueId===card.cardUniqueId);
@@ -166,7 +178,7 @@ function monthlyCoverageSuccess(plan,transactions,at,schemaVersion=VISA_CAL_PROV
 function coverageError(profile,error,{month='',tier='',accountNumber='',at=new Date().toISOString(),component='',severity=''}={}){const stage=String(error?.stage||'Transactions').slice(0,80),resolvedComponent=component||(tier==='core'?'core_transactions':tier==='forecast'?'forecast_transactions':stage==='Frames'?'frames':stage==='Pending'?'pending':'profile'),resolvedSeverity=severity||(resolvedComponent==='core_transactions'?'error':'warning');return {profileId:profile.profileId,provider:profile.provider,label:profile.label,code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage,httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת נתוני האשראי נכשלה',at,originalFailureAt:error?.originalFailureAt||at,retryAfterAt:error?.retryAfterAt||null,month,tier,component:resolvedComponent,severity:resolvedSeverity,accountSuffix:safeSuffix(accountNumber)}}
 
 export class CreditProviderAdapter {
-  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date()}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now}
+  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_DAILY}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode)}
   event(event){diagnostic(this.onDiagnostic,{correlationId:this.correlationId,provider:this.profile?.provider,profileId:this.profile?.profileId,...event})}
   async scrape(){throw new Error('CreditProviderAdapter.scrape must be implemented')}
 }
@@ -175,7 +187,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,browserPath:options.browserPath,interactive:!!options.interactive,fetchImpl:options.fetchImpl||globalThis.fetch,requestDelayMs:Number.isFinite(options.requestDelayMs)?options.requestDelayMs:650})}
   async request(url,data,stage){if(this.blockingError)throw this.blockingError;const started=Date.now();try{const result=await postJson(this.fetchImpl,url,data,{headers:this.headers,stage,now:this.now().getTime()});this.event({stage,durationMs:Date.now()-started,responseShape:safeCreditResponseShape(result)});return result}catch(error){if(['CREDIT_AUTOMATION_BLOCKED','CREDIT_PROVIDER_RATE_LIMITED'].includes(String(error?.code||''))){error.originalFailureAt=error.originalFailureAt||this.now().toISOString();this.blockingError=error}this.event({stage,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt});throw error}}
   async scrape(){
-    const profile=this.profile,startDate=creditStartDate(this.now()),plan=buildCreditMonthPlan({startDate,now:this.now()}),scraper=this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false});let initialized=false,success=false;
+    const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:this.now()}),scraper=this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false});let initialized=false,success=false;
     try{
       await scraper.initialize();initialized=true;this.event({stage:'BrowserInit'});
       let loginResult;try{loginResult=await scraper.login(profile.credentials)}catch(error){throw creditThrownScrapeFailure(error,profile)}
@@ -208,35 +220,35 @@ export class VisaCalAdapter extends CreditProviderAdapter {
 }
 
 function transactionMonth(tx){const value=tx?.processedDate||tx?.date;return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
-function genericMonthlyAccount(account,provider,{startDate,now}){
-  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],unassigned=[];
+function genericMonthlyAccount(account,provider,{startDate,futureMonths,now}){
+  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],unassigned=[];
   for(const tx of normalized.txns){const key=transactionMonth(tx);if(tx.status==='pending'&&!tx.processedDate){pending.push(tx);continue}if(byMonth.has(key))byMonth.get(key).push(tx);else unassigned.push(tx)}
   return normalizeCreditScrapeAccount({...normalized,txns:undefined,pendingTransactions:pending,pendingStatus:'success',pendingFetchedAt:now.toISOString(),unassignedTransactions:unassigned,months:plan.map(entry=>monthlyCoverageSuccess(entry,byMonth.get(entry.month),now.toISOString(),CREDIT_PROVIDER_SCHEMA_VERSION))},provider);
 }
 
 export class GenericScraperAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive})}
-  async scrape(){const profile=this.profile,startDate=creditStartDate(this.now()),scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:CREDIT_FUTURE_MONTHS,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,now:this.now()})),errors:[]}}catch(error){this.event({stage:error?.stage||'Scrape',durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus});throw creditThrownScrapeFailure(error,profile)}}
+  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){this.event({stage:error?.stage||'Scrape',durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus});throw creditThrownScrapeFailure(error,profile)}}
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 
 export class IsracardAdapter extends GenericScraperAdapter {
   constructor(options={}){super(options);this.identityDir=options.identityDir}
   async scrape(){try{return await super.scrape()}catch(error){if(!isCamoufoxRetryableNativeFailure(error))throw error;return this.scrapeCamoufox()}}
-  async scrapeCamoufox(){return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:creditStartDate(this.now()),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
+  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
 }
 
 export class AmexAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);this.interactive=!!options.interactive;this.identityDir=options.identityDir}
-  async scrape(){if(!camoufoxCreditSupported(this.profile.provider))throw safeError('Camoufox אינו תומך בחברת האשראי שנבחרה.','CREDIT_PROVIDER_UNAVAILABLE');return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:creditStartDate(this.now()),futureMonthsToScrape:CREDIT_FUTURE_MONTHS,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
+  async scrape(){if(!camoufoxCreditSupported(this.profile.provider))throw safeError('Camoufox אינו תומך בחברת האשראי שנבחרה.','CREDIT_PROVIDER_UNAVAILABLE');const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
 }
 
 async function camoufoxProfileResult(adapter,options){
   try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString();return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label}))}}catch(error){throw creditThrownScrapeFailure(error,adapter.profile)}
 }
 
-export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs}={}){
-  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs};
+export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY}={}){
+  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode};
   if(profile.provider==='visaCal')return new VisaCalAdapter(common);
   if(profile.provider==='max')return new MaxAdapter({...common,companyId:CompanyTypes.max});
   if(profile.provider==='isracard')return new IsracardAdapter({...common,companyId:CompanyTypes.isracard});
