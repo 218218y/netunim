@@ -21,7 +21,7 @@ function mergeState3Way(base,local,remote,{deleteIntents={}}={}){
   out.notes=mergeRecordArray(base.notes,protectImplicitDeletes(base.notes,local.notes,deleteIntents.notes),remote.notes,'id','notes',conflicts);
   {const bs=base.notesSheet||{},ls=local.notesSheet||{},rs=remote.notesSheet||{};out.notesSheet={version:1,columns:mergeRecordArray(bs.columns,protectImplicitDeletes(bs.columns,ls.columns,deleteIntents['notesSheet.columns']),rs.columns,'id','notesSheet.columns',conflicts),rows:mergeRecordArray(bs.rows,protectImplicitDeletes(bs.rows,ls.rows,deleteIntents['notesSheet.rows']),rs.rows,'id','notesSheet.rows',conflicts)}}
   out.expenses=mergeRecordArray(base.expenses,protectImplicitDeletes(base.expenses,local.expenses,deleteIntents.expenses),remote.expenses,'id','expenses',conflicts);
-  out.cards=mergeRecordArray(base.cards,local.cards,remote.cards,'name','cards',conflicts);
+  out.cards=mergeRecordArray(base.cards,protectImplicitDeletes(base.cards,local.cards,deleteIntents.cards),remote.cards,'id','cards',conflicts);
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
   out.cashflowSettings={version:2,businessMinimum:mergeValue(bc.businessMinimum,lc.businessMinimum,rc.businessMinimum,'cashflowSettings.businessMinimum',conflicts),homeMinimum:mergeValue(bc.homeMinimum,lc.homeMinimum,rc.homeMinimum,'cashflowSettings.homeMinimum',conflicts),businessCheckCutoffDay:mergeValue(bc.businessCheckCutoffDay,lc.businessCheckCutoffDay,rc.businessCheckCutoffDay,'cashflowSettings.businessCheckCutoffDay',conflicts),homeCheckCutoffDay:mergeValue(bc.homeCheckCutoffDay,lc.homeCheckCutoffDay,rc.homeCheckCutoffDay,'cashflowSettings.homeCheckCutoffDay',conflicts)};
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};
@@ -40,7 +40,7 @@ function rebaseLocalProgress(base,local,remote,{deleteIntents={}}={}){
   out.notes=mergeRecordArrayPreferLocal(base.notes,protectImplicitDeletes(base.notes,local.notes,deleteIntents.notes),remote.notes,'id');
   {const bs=base.notesSheet||{},ls=local.notesSheet||{},rs=remote.notesSheet||{};out.notesSheet={version:1,columns:mergeRecordArrayPreferLocal(bs.columns,protectImplicitDeletes(bs.columns,ls.columns,deleteIntents['notesSheet.columns']),rs.columns,'id'),rows:mergeRecordArrayPreferLocal(bs.rows,protectImplicitDeletes(bs.rows,ls.rows,deleteIntents['notesSheet.rows']),rs.rows,'id')}}
   out.expenses=mergeRecordArrayPreferLocal(base.expenses,protectImplicitDeletes(base.expenses,local.expenses,deleteIntents.expenses),remote.expenses,'id');
-  out.cards=mergeRecordArrayPreferLocal(base.cards,local.cards,remote.cards,'name');
+  out.cards=mergeRecordArrayPreferLocal(base.cards,protectImplicitDeletes(base.cards,local.cards,deleteIntents.cards),remote.cards,'id');
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
   out.cashflowSettings={version:2,businessMinimum:mergeValuePreferLocal(bc.businessMinimum,lc.businessMinimum,rc.businessMinimum),homeMinimum:mergeValuePreferLocal(bc.homeMinimum,lc.homeMinimum,rc.homeMinimum),businessCheckCutoffDay:mergeValuePreferLocal(bc.businessCheckCutoffDay,lc.businessCheckCutoffDay,rc.businessCheckCutoffDay),homeCheckCutoffDay:mergeValuePreferLocal(bc.homeCheckCutoffDay,lc.homeCheckCutoffDay,rc.homeCheckCutoffDay)};
   const bb=base.bank||{},lb=local.bank||{},rb=remote.bank||{};

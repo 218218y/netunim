@@ -1,7 +1,7 @@
 import {mergeArray, eq} from './merge-records.js';
 import {normalizeSharedChecks, normalizeSharedBankEvents} from '../domains/checks/model.js';
 import {clone} from '../core/values.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
@@ -11,6 +11,7 @@ const outboxRetryScheduler=createOutboxRetryScheduler();
 function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?value:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort()}
 function protectImplicitDeletes(base,local,deleteIds){const allowed=new Set(normalizeDeleteIds(deleteIds)),safe=normalizeSharedChecks(local||[]),present=new Set(safe.map(x=>x.id));for(const item of normalizeSharedChecks(base||[])){if(item?.id&&!present.has(item.id)&&!allowed.has(item.id)){safe.push(clone(item));present.add(item.id)}}return safe}
 function effectiveDeletedIds(remote,merged,deleteIds){const allowed=new Set(normalizeDeleteIds(deleteIds)),kept=new Set(normalizeSharedChecks(merged||[]).map(x=>x.id));return normalizeSharedChecks(remote||[]).map(x=>x.id).filter(id=>allowed.has(id)&&!kept.has(id)).sort()}
+function checksAudit(pending,before,after,baseRevision,deletedIds){return operationAuditMetadata({site:'orders',mutationType:pending?.mutationType||'autosave',surface:pending?.surface||'orders.checks',baseRevision,beforeState:{checks:before},afterState:{checks:after},collections:['checks'],deleteCount:deletedIds.length,restoreGroupId:pending?.restoreGroupId})}
 function mergeSharedChecks(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check');return {checks:normalizeSharedChecks(checks),conflicts}}
 function mergeSharedChecksPreferLocal(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check',true);return{checks:normalizeSharedChecks(checks),conflicts}}
 
@@ -55,7 +56,7 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
         for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts&&!savedChecks;conflictAttempt++){
           const remote=normalizeSharedChecks(row.state?.checks||[]),merged=mergeSharedChecks(base,local,remote,{deleteIds:pending.deleteIds});
           if(merged.conflicts.length){markChecksPending(local,msg,{kind:'entity-conflict',items:merged.conflicts});checksSession.checksCloudLastError='אותו צ\'ק שונה במקביל';allOk=false;break}
-          const result=await runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks(merged.checks,Number(row.revision||0),pending.operationId,effectiveDeletedIds(remote,merged.checks,pending.deleteIds)));
+          const deletedIds=effectiveDeletedIds(remote,merged.checks,pending.deleteIds),expected=Number(row.revision||0),result=await runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks(merged.checks,expected,pending.operationId,deletedIds,checksAudit(pending,remote,merged.checks,expected,deletedIds)));
           if(result?.r?.ok){savedChecks=normalizeSharedChecks(result.row?.state?.checks||merged.checks);checksSession.checksBankEvents=normalizeSharedBankEvents(result.row?.state?.bankEvents||row.state.bankEvents);savedRevision=Number(result.row?.revision||Number(row.revision||0)+1);savedUpdatedAt=result.row?.updated_at||row.updated_at||savedUpdatedAt;break}
           const normalized=normalizeCloudError(result);
           if(normalized.kind==='revision_conflict'){await contentionBackoff(conflictAttempt);row=await readSharedChecksCloud();if(!row)throw new Error('shared_checks_missing_during_merge');continue}

@@ -1,6 +1,7 @@
 import {clone} from '../core/values.js';
 import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
 import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
+import {assertOrderEntityInvariants,assertValidOrderCloudState} from '../state/validation.js';
 
 const LOCAL_SYNC_STORE='sync';
 const ORDERS_OUTBOX_KEY='orders-outbox-v3';
@@ -9,7 +10,7 @@ const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 export function createStorageBrowser({model, files, session, prepareState, prepareCloudState, normalizeState}){
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
-function localSnapshot(source=model.state){const payload=prepareState(source);let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
+function localSnapshot(source=model.state){assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
 
 async function openLocalStateDb(){return await new Promise((resolve,reject)=>{const r=indexedDB.open(LOCAL_DB,2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(LOCAL_STORE))r.result.createObjectStore(LOCAL_STORE);if(!r.result.objectStoreNames.contains(LOCAL_SYNC_STORE))r.result.createObjectStore(LOCAL_SYNC_STORE)};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 
@@ -32,13 +33,15 @@ function mergeDeleteIntents(...values){const out={};for(const value of values){f
 function migrateOrdersOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);return record}
 
 function markCloudPending(snapshot=prepareCloudState(),message='',progress=null){
+  assertValidOrderCloudState(snapshot,'Orders outbox snapshot');
   const cached=readPendingCache(),canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(session.cloudRevision||0)>Number(cached?.baseRevision||0),record=createOutboxRecord({
     domain:'orders',documentName:'suppliers',operationId:sameGeneration?(cached.operationId||cached.id):undefined,
-    generation,
+    generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),
     baseRevision:progress?.baseRevision??(advanced?session.cloudRevision:cached?.baseRevision??session.cloudRevision??0),
     baseState:progress?.baseState??(advanced?session.lastCloudState:cached?.baseState??session.lastCloudState??canonical),snapshot:canonical,
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),
     conflict:progress?.conflict===undefined?(cached?.conflict||null):progress.conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
+    mutationType:progress?.mutationType||cached?.mutationType||'autosave',surface:progress?.surface||cached?.surface||'orders',restoreGroupId:progress?.restoreGroupId||cached?.restoreGroupId||null,
   });
   record.deleteIntents=mergeDeleteIntents(cached?.deleteIntents,progress?.deleteIntents);
   const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;

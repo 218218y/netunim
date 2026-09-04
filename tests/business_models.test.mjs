@@ -362,7 +362,7 @@ test('service status has explicit precedence when several flags are set',()=>{
 });
 test('normalization keeps the Orders legacy invoice marker and category order',()=>{
  const {normalizeState}=createOrderNormalization({});
- const value=normalizeState({customerDebts:[{source:{sheet:'חובות_וזכויות',row:32},note:'יצאה ח״מ'}],inventoryItems:[{category:'אביזרים'},{category:'מיטות'}]});
+ const value=normalizeState({customerDebts:[{id:'D1',source:{sheet:'חובות_וזכויות',row:32},note:'יצאה ח״מ'}],inventoryItems:[{id:'I1',category:'אביזרים'},{id:'I2',category:'מיטות'}]});
  assert.equal(value.customerDebts[0].invoiceIssued,true);
  assert.deepEqual(value.inventoryCategoryOrder,['מיטות','אביזרים']);
 });

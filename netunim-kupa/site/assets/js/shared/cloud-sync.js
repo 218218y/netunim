@@ -1,4 +1,4 @@
-export const OUTBOX_SCHEMA_VERSION=3;
+export const OUTBOX_SCHEMA_VERSION=4;
 export const CLOUD_WRITE_POLICY=Object.freeze({busyAttempts:3,conflictAttempts:3});
 
 function copy(value){return value==null?value:structuredClone(value)}
@@ -15,20 +15,25 @@ export function createOperationId(domain='sync',options={}){
   return `${String(domain||'sync')}:${now().toString(36)}:${random().toString(36).slice(2,10)}`;
 }
 
-export function createOutboxRecord({domain,documentName,operationId,generation,baseRevision,baseState,snapshot,createdAt,updatedAt,conflict=null,retry=null},options={}){
+export function createOutboxRecord({domain,documentName,operationId,generation,mutationSeq,baseRevision,baseState,snapshot,createdAt,updatedAt,conflict=null,retry=null,mutationType='autosave',surface='unknown',restoreGroupId=null},options={}){
   const now=options.now||Date.now,created=iso(createdAt,now),updated=iso(updatedAt||created,now);
+  const normalizedGeneration=finiteGeneration(generation),normalizedMutationSeq=Math.max(normalizedGeneration,finiteGeneration(mutationSeq));
   return {
     schemaVersion:OUTBOX_SCHEMA_VERSION,
     domain:String(domain||'unknown'),
     documentName:String(documentName||'main'),
     operationId:String(operationId||createOperationId(domain,{now,random:options.random||Math.random,...(Object.hasOwn(options,'randomUUID')?{randomUUID:options.randomUUID}:{})})),
-    generation:finiteGeneration(generation),
+    generation:normalizedGeneration,
+    mutationSeq:normalizedMutationSeq,
     baseRevision:finiteRevision(baseRevision),
     baseState:copy(baseState??{}),
     snapshot:copy(snapshot??{}),
     createdAt:created,
     updatedAt:updated,
     conflict:conflict?copy(conflict):null,
+    mutationType:String(mutationType||'autosave').slice(0,80),
+    surface:String(surface||'unknown').slice(0,120),
+    restoreGroupId:restoreGroupId==null?null:String(restoreGroupId),
     retry:{
       attempts:finiteGeneration(retry?.attempts),
       lastErrorCode:retry?.lastErrorCode==null?null:String(retry.lastErrorCode),
@@ -82,6 +87,7 @@ export function migrateOutboxRecord(value,{domain,documentName,baseRevision=0,ba
     documentName:value.documentName||documentName,
     operationId:value.operationId||value.id,
     generation:Math.max(finiteGeneration(value.generation),finiteGeneration(generation)),
+    mutationSeq:Math.max(finiteGeneration(value.mutationSeq),finiteGeneration(value.commitSeq),finiteGeneration(value.generation),finiteGeneration(generation)),
     baseRevision:value.baseRevision??baseRevision,
     baseState:sourceBase,
     snapshot:sourceSnapshot,
@@ -89,14 +95,18 @@ export function migrateOutboxRecord(value,{domain,documentName,baseRevision=0,ba
     updatedAt:value.updatedAt||value.savedAt,
     conflict:sourceConflict,
     retry:value.retry,
+    mutationType:value.mutationType,
+    surface:value.surface,
+    restoreGroupId:value.restoreGroupId,
   },{now});
 }
 
-export function updateOutboxSnapshot(existing,{snapshot,generation,updatedAt,conflict,retry}={}){
+export function updateOutboxSnapshot(existing,{snapshot,generation,mutationSeq,updatedAt,conflict,retry}={}){
   if(!existing)throw new Error('outbox_record_required');
   return createOutboxRecord({...existing,
     snapshot:snapshot??existing.snapshot,
     generation:Math.max(finiteGeneration(existing.generation),finiteGeneration(generation)),
+    mutationSeq:Math.max(finiteGeneration(existing.mutationSeq),finiteGeneration(mutationSeq),finiteGeneration(generation)),
     updatedAt:updatedAt||new Date().toISOString(),
     conflict:conflict===undefined?existing.conflict:conflict,
     retry:retry||existing.retry,
@@ -111,7 +121,23 @@ export function acknowledgedGenerationMatches(record,acknowledgedGeneration){
 export function compareOutboxFreshness(a,b){
   const generationDelta=finiteGeneration(a?.generation)-finiteGeneration(b?.generation);
   if(generationDelta)return generationDelta;
-  return Date.parse(a?.updatedAt||a?.savedAt||0)-Date.parse(b?.updatedAt||b?.savedAt||0);
+  const sequenceDelta=finiteGeneration(a?.mutationSeq??a?.commitSeq)-finiteGeneration(b?.mutationSeq??b?.commitSeq);
+  if(sequenceDelta)return sequenceDelta;
+  const operationDelta=String(a?.operationId||a?.id||'').localeCompare(String(b?.operationId||b?.id||''));
+  if(operationDelta)return operationDelta;
+  return JSON.stringify(a??null).localeCompare(JSON.stringify(b??null));
+}
+
+const CLIENT_INSTANCE_KEY='netunim.sync.client-instance.v1';
+let ephemeralClientInstanceId='';
+export function clientInstanceId(){
+  if(ephemeralClientInstanceId)return ephemeralClientInstanceId;
+  try{const existing=localStorage.getItem(CLIENT_INSTANCE_KEY);if(existing)return ephemeralClientInstanceId=existing;const id=globalThis.crypto?.randomUUID?.()||createOperationId('client');localStorage.setItem(CLIENT_INSTANCE_KEY,id);return ephemeralClientInstanceId=id}catch{return ephemeralClientInstanceId=globalThis.crypto?.randomUUID?.()||createOperationId('client-ephemeral')}
+}
+
+export function operationAuditMetadata({site,build='sync-v5',mutationType='autosave',surface='unknown',baseRevision=0,beforeState={},afterState={},collections=[],deleteCount=0,restoreGroupId=null}={}){
+  const counts=source=>Object.fromEntries(collections.map(path=>{const value=String(path).split('.').reduce((x,key)=>x?.[key],source);return [path,Array.isArray(value)?value.length:0]}));
+  return {clientInstanceId:clientInstanceId(),app:String(site||'unknown'),build:String(build),mutationType:String(mutationType),surface:String(surface),baseRevision:finiteRevision(baseRevision),beforeCount:counts(beforeState),afterCount:counts(afterState),deleteCount:finiteGeneration(deleteCount),restoreGroupId:restoreGroupId==null?null:String(restoreGroupId),timestamp:new Date().toISOString()};
 }
 
 function errorMessage(input){return String(input?.j?.message||input?.message||input?.body||input?.txt||input?.original?.message||'')}

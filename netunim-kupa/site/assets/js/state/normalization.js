@@ -4,7 +4,8 @@ import {wholeMoney,decimalMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
 import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
-import {assertPortablePayload} from './validation.js';
+import {assertKupaEntityInvariants,assertPortablePayload} from './validation.js';
+import {stableLegacyEntityId} from '../shared/data-invariants.js';
 import {normalizeCashflowSettings} from '../shared/cashflow.js';
 import {normalizeNotesSheet} from '../domains/notes/sheet-model.js';
 
@@ -15,6 +16,7 @@ function prepareKupaCloudState(source=model.state){const x=normalizeState(clone(
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
 
 function normalizeState(d){
+  assertKupaEntityInvariants(d||{},{includeChecks:true,required:false,allowLegacyCards:true});
   const n=clone(d||{});
   n.version=Math.max(Number(n.version||1),4);
   n.bank=(n.bank&&typeof n.bank==='object')?n.bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[]};
@@ -41,6 +43,7 @@ function normalizeState(d){
   n.notes=(Array.isArray(n.notes)?n.notes:[]).filter(x=>x&&x.id).map(x=>({...x,id:String(x.id),content:String(x.content||''),createdAt:String(x.createdAt||''),updatedAt:String(x.updatedAt||x.createdAt||'')}));
   n.notesSheet=normalizeNotesSheet(n.notesSheet);
   n.expenses=(Array.isArray(n.expenses)?n.expenses:[]).map(x=>({...x,account:x.account==='ביתי'?'ביתי':'עסקי',amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
+  n.cards=(Array.isArray(n.cards)?n.cards:[]).map((card,index)=>({...card,id:card.id||stableLegacyEntityId('CARD',card,index)}));
   n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);
@@ -49,7 +52,7 @@ function normalizeState(d){
   // v4 monthly LKG) must never repeat that destructive migration.
   n.credits=creditSyncSourceVersion<3?[]:rawCredits.filter(cr=>!inactiveCreditExpired(cr));
   const keptCreditIds=new Set(n.credits.map(x=>String(x?.id||'')));model.lastNormalizeRemovedCreditIds=creditSyncSourceVersion<3?[]:rawCredits.map(x=>String(x?.id||'')).filter(id=>id&&!keptCreditIds.has(id));
-  model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);
+  model.lastNormalizeRemovedCredits=Math.max(0,before-n.credits.length);assertKupaEntityInvariants(n,{includeChecks:true,required:true});
   return n;
 }
 

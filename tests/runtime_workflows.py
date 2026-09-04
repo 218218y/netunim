@@ -25,7 +25,7 @@ flows={
 'kupa':r"""
  state=normalizeState({version:4,businessName:'workflow',checks:[],credits:[],cash:[],expenses:[],cards:[{name:'VISA',active:true,chargeDay:10}],bank:{currentBalance:1000,snapshotSeq:0,adjustments:[]}});
  backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));sharedChecksBase=[];
- setPage('cash');click('open-cash-modal');fill({mDate:'2026-08-27',mDesc:'Cash receipt',mAmount:'120',mNote:'workflow'});saveModal();await saved();
+ setPage('cash');click('open-cash-modal');fill({mDate:'2026-08-27',mDesc:'Cash receipt',mAmount:'120',mNote:'workflow'});saveModal();await waitFor(()=>state.cash.length===1&&!!document.querySelector('[data-action="open-cash-modal-2"]'),'Cash save did not render');
  assert(state.cash.length===1&&state.cash[0].amount===120,'cash create');
  click('open-cash-modal-2');fill({mAmount:'125'});saveModal();await saved();assert(cashBalance()===125,'cash edit');
  setPage('credit');element('[data-action="expenses-hub-tab"][data-click-arg0="expenses"]').click();await waitFor(()=>!!document.querySelector('[data-action="open-expense-modal"]'),'Expenses tab did not render');click('open-expense-modal');fill({eDesc:'Rent',eAmount:'50',eDate:'2026-09-10'});saveModal();await saved();assert(state.expenses.length===1,'expense create');
@@ -39,11 +39,13 @@ flows={
  click('mark-deposited');await saved();assert(state.checks[0].status==='הופקד - במעקב'&&bankCurrentBalance()===1000,'deposit preserves authoritative bank balance');
  checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1000,'cleared preserves authoritative bank balance');
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
- const backup=payloadFromState(state,dbRevision);state.expenses=[];
- setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await saved();
+ const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
+ const mainPending=await getCloudPending(),checksPending=await getSharedChecksPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');assert(checksPending&&await clearSharedChecksPending(checksPending.generation),'checks pending exact ACK');
+ Object.defineProperty(navigator,'onLine',{value:true,configurable:true});cloudTransport.readSupabaseDocument=async()=>({state:remoteMain,revision:1});cloudTransport.readSharedChecksDocument=async()=>({state:remoteChecks,revision:1});cloudTransport.stageRestoreGroup=async()=>({staged:true});cloudTransport.applyRestoreGroup=async()=>({main_revision:2,checks_revision:2});
+ setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await waitFor(()=>state.expenses.length===1&&state.credits.length===1,'Restore group did not apply locally after ACK');
  assert(state.expenses.length===1&&state.credits.length===1,'file restore');
  assert(!!loadBrowserStateSync(),'actual offline browser snapshot');
- assert(cloudPendingExistsSync(),'actual pending marker');
+ assert(hadOfflinePending,'actual pending marker');
  return {cash:true,expense:true,credit:true,checks:true,depositClear:true,delete:true,backupRestore:true,offlinePersistence:true};
 """,
 'orders':r"""
@@ -76,7 +78,7 @@ flows={
 for label,flow in flows.items():
     isolated_download_dir=None
     with BrowserSession(ROOT/f'netunim-{label}/site',label+'-workflow') as browser:
-        result=browser.evaluate('(async()=>{'+helpers+flow+'})()')
+        result=browser.evaluate('(async()=>{'+helpers+flow+'})()',timeout=60)
         print(label,json.dumps(result))
         assert result and all(result.values())
         if label=='orders':

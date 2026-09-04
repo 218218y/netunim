@@ -36,7 +36,7 @@ async function deleteBulkSelected(collection){
   if(!ids.length)return toast('לא נבחרו רשומות למחיקה');
   const labels={checks:'צקים',credits:'עסקאות אשראי',cash:'תנועות מזומן',rights:'תנועות מעשר'};
   if(!await confirmDialog('מחיקת רשומות',`למחוק ${ids.length} ${labels[collection]} שנבחרו?\n\nהמחיקה תישמר במקור הנתונים ולא ניתן לבטל אותה מתוך המסך.`,{confirmText:`מחק ${ids.length}`,cancelText:'ביטול',tone:'danger'}))return;
-  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));ui.bulkSelected.clear();if(collection==='checks')saveChecksState(`${ids.length} רשומות נמחקו`);else saveState(`${ids.length} רשומות נמחקו`);render()
+  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));ui.bulkSelected.clear();if(collection==='checks')saveChecksState(`${ids.length} רשומות נמחקו`,{deletedIds:ids,mutationType:'bulk-delete',surface:`kupa.bulk.${collection}`});else saveState(`${ids.length} רשומות נמחקו`,{deleteIntents:{[collection]:ids},mutationType:'bulk-delete',surface:`kupa.bulk.${collection}`});render()
 }
 
 return { bulkModeFor, toggleBulkMode, toggleBulkRow, visibleBulkIds, toggleBulkVisible, syncBulkUi, bulkControls, bulkHeader, bulkCell, deleteBulkSelected };

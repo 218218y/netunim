@@ -2,7 +2,7 @@ import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
@@ -10,6 +10,7 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
 function collectionRows(state,key){if(key==='notesSheet.rows')return state?.notesSheet?.rows||[];if(key==='notesSheet.columns')return state?.notesSheet?.columns||[];return state?.[key]||[]}
 function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=Array.isArray(collectionRows(base,key))?collectionRows(base,key):[],after=Array.isArray(collectionRows(candidate,key))?collectionRows(candidate,key):[],kept=new Set(after.map(x=>String(x?.id||''))),removed=before.map(x=>String(x?.id||'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
+function cloudAudit(pending,before,after,baseRevision,intents){return operationAuditMetadata({site:'kupa',mutationType:pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns'],deleteCount:Object.values(intents).reduce((sum,ids)=>sum+ids.length,0),restoreGroupId:pending?.restoreGroupId})}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, persistImmediateBrowserSnapshot, loadSharedChecksBase, loadSharedChecksBankEvents, listBackups, backupSnapshotToComputer, saveState, syncSharedChecksFromCloud, render, getCloudPending, readSupabaseDocument, supaRest, putCloudPending, clearCloudPending, mergeKupaCloudState3Way, rebaseNewerPending, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false}){
@@ -33,7 +34,7 @@ function applyFinanceOnlyRow(row){
   persistImmediateBrowserSnapshot(model.state,session.dbRevision);render();return model.state
 }
 async function applyCloudRow(row,{renderNow=true}={}){
-  const localChecks=normalizeSharedChecks(model.state.checks);model.state=applyKupaCloudState(row.state,localChecks);const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];session.dbRevision=Number(row.revision||0);session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null;session.connectionMode='supabase';session.backendReady=true;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));session.serverInfo={schemaVersion:6,lastSavedAt:row.updated_at||null,databaseFile:'Supabase',backups:await listBackups()};checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});persistImmediateBrowserSnapshot(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);localStorage.setItem(STORAGE_PREF_KEY,'supabase');setConnectedStatus('Supabase מחובר');setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');session.cloudAuthNoDocument=false;localStorage.setItem(SUPA_AUTO_KEY,'1');hideConnectScreen();session.cloudConflictPending=false;if(renderNow)render();if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds}}),0);startCloudPolling();return model.state
+  const legacyCards=Array.isArray(row?.state?.cards)&&row.state.cards.some(card=>typeof card?.id!=='string'||!card.id.trim()),localChecks=normalizeSharedChecks(model.state.checks);model.state=applyKupaCloudState(row.state,localChecks);const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];session.dbRevision=Number(row.revision||0);session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null;session.connectionMode='supabase';session.backendReady=true;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));session.serverInfo={schemaVersion:6,lastSavedAt:row.updated_at||null,databaseFile:'Supabase',backups:await listBackups()};checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});persistImmediateBrowserSnapshot(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);localStorage.setItem(STORAGE_PREF_KEY,'supabase');setConnectedStatus('Supabase מחובר');setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');session.cloudAuthNoDocument=false;localStorage.setItem(SUPA_AUTO_KEY,'1');hideConnectScreen();session.cloudConflictPending=false;if(renderNow)render();if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds}}),0);if(legacyCards)setTimeout(()=>saveState('נשמרו מזהים יציבים לכרטיסים קיימים',{mutationType:'migration',surface:'kupa.cards-id-migration'}),0);startCloudPolling();return model.state
 }
 
 async function loadSupabaseState(){
@@ -44,12 +45,12 @@ async function loadSupabaseState(){
   return applyCloudRow(row)
 }
 
-async function rpcSaveCloud(snapshot,expectedRevision,operationId,deleteIntents={}){
+async function rpcSaveCloud(snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
   assertValidCloudState(snapshot,'הנתונים המקומיים');
   const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
   if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision מקומי אינו תקין. השמירה לענן נעצרה.');
   if(!op)throw new Error('מזהה פעולת הקופה חסר');
-  const r=await supaRest('/rest/v1/rpc/save_kupa_document_v4',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents})});
+  const rpc=audit?.mutationType==='bulk-delete'?'bulk_delete_save_kupa_document_v5':'save_kupa_document_v5',r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}
   return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
@@ -71,7 +72,7 @@ async function reconcileCloudPending(remoteRow=null){
         if(merged.conflicts.length){const conflicted={...pending,conflict:true,savedAt:new Date().toISOString()};await putCloudPending(conflicted);session.cloudConflictPending=true;model.state=applyKupaCoreState(pending.snapshot,model.state.checks);session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));persistImmediateBrowserSnapshot(model.state,session.dbRevision);setConnectedStatus('Supabase — נדרשת הכרעה');setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();reportError('יש התנגשות אמיתית: אותה רשומה שונתה גם במחשב הזה וגם במקור אחר. השינוי המקומי נשמר ולא נדרס. ייצא גיבוי JSON ובדוק את הרשומה לפני המשך הסנכרון.');return false}
         candidate=merged.state
       }
-      session.cloudWriteBusy=true;const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,expected,pending.operationId,effectiveDeleteIntents(row.state,candidate,pending.deleteIntents)));session.cloudWriteBusy=false;
+      const exactIntents=effectiveDeleteIntents(row.state,candidate,pending.deleteIntents);session.cloudWriteBusy=true;const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,expected,pending.operationId,exactIntents,cloudAudit(pending,row.state,candidate,expected,exactIntents)));session.cloudWriteBusy=false;
       if(!res.r.ok){if(saveBusy(res))throw new Error('save_busy');if(revisionConflict(res)){await contentionBackoff(attempt);row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');session.serverInfo.lastSavedAt=row.updated_at||session.serverInfo.lastSavedAt||null;continue}throw cloudWriteError(res,'שמירה לענן נכשלה')}
       const completedGeneration=Number(pending.generation||0),newRev=Number(res.row?.revision||expected+1),authoritative=prepareKupaCloudState(res.row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
       outboxRetryScheduler.cancel();
@@ -99,7 +100,7 @@ async function persistSupabaseState(snapshot,msg,generation=session.localGenerat
   try{
     let baseRevision=session.dbRevision,baseState=lastSavedCloudState()||pending.baseState||prepareKupaCloudState(snapshot),candidate=prepareKupaCloudState(snapshot),res=null;
     for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
-      session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,baseRevision,pending.operationId,effectiveDeleteIntents(baseState,candidate,pending.deleteIntents)));session.cloudWriteBusy=false;
+      const exactIntents=effectiveDeleteIntents(baseState,candidate,pending.deleteIntents);session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,baseRevision,pending.operationId,exactIntents,cloudAudit(pending,baseState,candidate,baseRevision,exactIntents)));session.cloudWriteBusy=false;
       if(res.r.ok)break;
       const em=res.j?.message||res.body||'שמירה לענן נכשלה';
       if(saveBusy(res))throw new Error('save_busy')

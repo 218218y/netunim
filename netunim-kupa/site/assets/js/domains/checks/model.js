@@ -2,6 +2,7 @@ import {nextSeriesCheckNumber} from '../../shared/check-series.js';
 export {nextSeriesCheckNumber};
 import {wholeMoney, num} from '../../core/money.js';
 import {daysFromToday, addMonthsISO} from '../../core/dates.js';
+import {assertEntityCollection} from '../../shared/data-invariants.js';
 export {futureCheckMonthsData} from '../../shared/check-forecast.js';
 
 export function normalizeSharedBankEvents(events){return (Array.isArray(events)?events:[]).map(e=>{const seq=Number(e?.seq),delta=wholeMoney(e?.delta);return{seq:Number.isSafeInteger(seq)&&seq>0?seq:null,at:e?.at||null,delta,kind:String(e?.kind||'check_effect_delta'),checkId:String(e?.checkId||'')}}).filter(e=>e.seq&&e.checkId)}
@@ -10,7 +11,7 @@ export function checkAccountData(check){return check?.account==='ביתי'?'בי
 
 export function checkBelongsToAccountData(check,account='עסקי'){return checkAccountData(check)===(account==='ביתי'?'ביתי':'עסקי')}
 
-export function normalizeSharedChecks(checks){return (Array.isArray(checks)?checks:[]).filter(x=>x&&x.id).map(x=>{const seq=Number(x.depositSeq);return {...x,id:String(x.id),name:String(x.name||''),account:checkAccountData(x),amount:wholeMoney(x.amount),dueDate:String(x.dueDate||''),status:String(x.status||'בקופה'),depositDate:x.depositDate||null,depositedAt:x.depositedAt||null,depositSeq:Number.isSafeInteger(seq)&&seq>0?seq:null,clearedDate:x.clearedDate||null,checkNumber:String(x.checkNumber||''),note:String(x.note||''),createdAt:x.createdAt||''}})}
+export function normalizeSharedChecks(checks){const source=Array.isArray(checks)?checks:[];assertEntityCollection(source,'checks');return source.map(x=>{const seq=Number(x.depositSeq);return {...x,id:String(x.id),name:String(x.name||''),account:checkAccountData(x),amount:wholeMoney(x.amount),dueDate:String(x.dueDate||''),status:String(x.status||'בקופה'),depositDate:x.depositDate||null,depositedAt:x.depositedAt||null,depositSeq:Number.isSafeInteger(seq)&&seq>0?seq:null,clearedDate:x.clearedDate||null,checkNumber:String(x.checkNumber||''),note:String(x.note||''),createdAt:x.createdAt||''}})}
 
 export function checkUrgency(c){if(c.status!=='בקופה')return '';const d=daysFromToday(c.dueDate);if(d<0)return 'overdue';if(d<=7)return 'week';if(d<=30)return 'month';return ''}
 

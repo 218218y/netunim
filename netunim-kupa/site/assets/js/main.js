@@ -52,6 +52,7 @@ import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
+import {createRestoreGroupStore} from './shared/restore-groups.js';
 
 
 
@@ -111,6 +112,13 @@ const storageBrowser=createStorageBrowser({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
+});
+
+const restoreGroupStore=createRestoreGroupStore({
+  localKey:'kupa.restore.group.v1',
+  put:(key,value)=>storageIndexedDb.idbPut('sync',key,value),
+  get:key=>storageIndexedDb.idbGet('sync',key),
+  remove:key=>storageIndexedDb.idbDelete('sync',key),
 });
 
 const syncChecksState=createSyncChecksState({
@@ -646,9 +654,19 @@ const uiBackup=createUiBackup({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
   persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
-  markSharedChecksPending:(...args)=>syncChecksState.markSharedChecksPending(...args),
+  persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
+  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
+  readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
+  readSharedChecksDocument:(...args)=>cloudTransport.readSharedChecksDocument(...args),
+  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
+  getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
+  restoreGroupStore,
+  stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
+  applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
+  listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
+  loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
+  render:(...args)=>uiNavigation.render(...args),
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -705,6 +723,7 @@ const lifecycle=createLifecycle({
   restoreRememberedBackupTarget:(...args)=>uiFolders.restoreRememberedBackupTarget(...args),
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   restoreSupaSession:(...args)=>cloudAuth.restoreSupaSession(...args),
+  resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
   showCloudNoDocument:(...args)=>uiCloud.showCloudNoDocument(...args),
   tryAutoOpenSupabase:(...args)=>uiCloud.tryAutoOpenSupabase(...args),
   setConnectUI:(...args)=>uiConnection.setConnectUI(...args),

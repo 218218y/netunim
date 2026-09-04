@@ -115,10 +115,13 @@ for label, site in (("Orders", ORDERS), ("Kupa", KUPA)):
        and "retry-after" in auth.lower(),
        f"{label}: generic Data API 429 honors Retry-After while PT429 remains app contention")
 
-for label, path in (("Orders transport", ORDERS / "site/assets/js/cloud/transport.js"),
-                    ("Kupa transport", KUPA / "site/assets/js/cloud/transport.js")):
-    source = path.read_text(encoding="utf-8")
-    ok("_v3" in source and "p_operation_id" in source, f"{label}: operation-aware v3 RPC transport is present")
+for label, site in (("Orders transport", ORDERS), ("Kupa transport", KUPA)):
+    source = "\n".join((
+        (site / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8"),
+        (site / "site/assets/js/sync/document.js").read_text(encoding="utf-8"),
+    ))
+    ok("_v5" in source and "p_operation_id" in source and "p_audit" in source,
+       f"{label}: operation-aware v5 RPC transport preserves idempotency and audit metadata")
 for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.js"),
                     ("Kupa document", KUPA / "site/assets/js/sync/document.js")):
     source = path.read_text(encoding="utf-8")

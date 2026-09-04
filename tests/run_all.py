@@ -15,6 +15,7 @@ DEV_NODE_MODULES = Path(os.environ.get("NETUNIM_OFFLINE_NODE_MODULES", ROOT / "n
 CORE_SUITES = [
     "static_contracts.py",
     "cloud_sync_v3_contracts.py",
+    "sync_integrity_v5_contracts.py",
     "offline_dependencies_contracts.py",
     "confirmation_contracts.py",
     "asset_contracts.py",

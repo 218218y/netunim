@@ -66,6 +66,7 @@ import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
+import {createRestoreGroupStore} from './shared/restore-groups.js';
 import {INITIAL_STATE, $} from "./state/constants.js";
 
 
@@ -95,6 +96,13 @@ const storageBrowser=createStorageBrowser({
   prepareState:(...args)=>stateSelectors.prepareState(...args),
   prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+});
+
+const restoreGroupStore=createRestoreGroupStore({
+  localKey:'orders.restore.group.v1',
+  put:(...args)=>storageBrowser.idbSyncPut(...args),
+  get:(...args)=>storageBrowser.idbSyncGet(...args),
+  remove:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
 
 const storageChecks=createStorageChecks({
@@ -522,6 +530,7 @@ const uiBackup=createUiBackup({
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
+  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
   persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
   markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
@@ -536,8 +545,10 @@ const uiBackup=createUiBackup({
   readCloud:(...args)=>cloudTransport.readCloud(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   readSharedChecksCloud:(...args)=>cloudTransport.readSharedChecksCloud(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
+  restoreGroupStore,
+  stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
+  applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
+  listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
   balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
   boolText:(...args)=>domainsSuppliersView.boolText(...args),
@@ -774,6 +785,7 @@ const lifecycle=createLifecycle({
   checksSession,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
+  resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
   loadCloudPendingState:(...args)=>storageBrowser.loadCloudPendingState(...args),

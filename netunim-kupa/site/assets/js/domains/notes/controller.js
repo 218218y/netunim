@@ -52,7 +52,7 @@ function blurStickyNote(){flushNoteSave()}
 async function deleteStickyNote(id){
   const note=model.state.notes.find(x=>x.id===id);if(!note)return;
   if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;
-  cancelScheduledNoteSave();model.state.notes=model.state.notes.filter(x=>x.id!==id);saveState('הפתק נמחק',{deleteIntents:{notes:[id]}});renderNotes();
+  cancelScheduledNoteSave();model.state.notes=model.state.notes.filter(x=>x.id!==id);saveState('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'kupa.delete.notes'});renderNotes();
 }
 
 function stickyNoteCard(note){return `<article class="sticky-note" data-note-id="${esc(note.id)}"><div class="sticky-note-paper"><textarea aria-label="תוכן הפתק" placeholder="כתוב כאן הערה או תזכורת…" data-input="update-kupa-sticky-note" data-input-arg0="${esc(note.id)}" data-blur="blur-kupa-sticky-note">${esc(note.content)}</textarea></div><footer class="sticky-note-footer"><span class="sticky-note-date" data-note-date>${esc(noteDisplayDate(note))}</span><button class="btn danger small" data-action="delete-kupa-sticky-note" data-click-arg0="${esc(note.id)}">מחק</button></footer></article>`}
@@ -150,7 +150,7 @@ function handleSheetCellKeydown(rowId,columnId,el,event){
 async function deleteSheetRow(id){
   const sheet=ensureSheet();if(!sheet.rows.some(x=>x.id===id))return;
   if(!await confirmDialog('מחיקת שורה','למחוק את השורה הזו מהגיליון?',{confirmText:'מחק שורה'}))return;
-  sheet.rows=sheet.rows.filter(x=>x.id!==id);for(const key of dirtySheetCells)if(key.startsWith(`${id}\u0000`))dirtySheetCells.delete(key);saveState('שורה נמחקה מהגיליון',{deleteIntents:{'notesSheet.rows':[id]}});renderNotes();
+  sheet.rows=sheet.rows.filter(x=>x.id!==id);for(const key of dirtySheetCells)if(key.startsWith(`${id}\u0000`))dirtySheetCells.delete(key);saveState('שורה נמחקה מהגיליון',{deleteIntents:{'notesSheet.rows':[id]},mutationType:'delete',surface:'kupa.delete.notesSheet.rows'});renderNotes();
 }
 
 function addSheetColumn(){
@@ -173,7 +173,7 @@ function setSheetColumnNumeric(id,checked){
 async function deleteSheetColumn(id){
   const sheet=ensureSheet(),column=sheet.columns.find(x=>x.id===id);if(!column||sheet.columns.length<=1)return;
   if(!await confirmDialog('מחיקת עמודה',`למחוק את העמודה „${column.title}” ואת התוכן שבה?`,{confirmText:'מחק עמודה'}))return;
-  sheet.columns=sheet.columns.filter(x=>x.id!==id);for(const row of sheet.rows)if(row.cells)delete row.cells[id];for(const key of dirtySheetCells)if(key.endsWith(`\u0000${id}`))dirtySheetCells.delete(key);sheetTitleDrafts.delete(id);saveState('עמודה נמחקה מהגיליון',{deleteIntents:{'notesSheet.columns':[id]}});renderNotes();
+  sheet.columns=sheet.columns.filter(x=>x.id!==id);for(const row of sheet.rows)if(row.cells)delete row.cells[id];for(const key of dirtySheetCells)if(key.endsWith(`\u0000${id}`))dirtySheetCells.delete(key);sheetTitleDrafts.delete(id);saveState('עמודה נמחקה מהגיליון',{deleteIntents:{'notesSheet.columns':[id]},mutationType:'delete',surface:'kupa.delete.notesSheet.columns'});renderNotes();
 }
 
 function bindSheetColumnResizeHandles(){

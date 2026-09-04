@@ -110,7 +110,7 @@ ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.l
    "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
 ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
    "clients: missing shared store fails safe outside greenfield setup")
-ok("Array.isArray(d.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
+ok("Array.isArray(state.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
 ok("!Array.isArray(d)" in os, "orders: cloud state rejects arrays")
 
 # 3. Repository verifier and deployment gates.

@@ -21,9 +21,9 @@ function writePendingCache(record){try{const text=JSON.stringify(record);localSt
 function markChecksPending(snapshot=model.state.checks,message='',conflict=undefined,progress=null){
   const cached=readPendingCache(),canonical=normalizeSharedChecks(snapshot),generation=Math.max(Number(checksSession.checksGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(checksSession.checksCloudRevision||0)>Number(cached?.baseRevision||0),base=normalizeSharedChecks(progress?.baseState||(advanced?checksSession.checksCloudBase:cached?.baseState)||checksSession.checksCloudBase||canonical),record=createOutboxRecord({
     domain:'shared-checks',documentName:SHARED_CHECKS_DOC,operationId:sameGeneration?(cached.operationId||cached.id):undefined,
-    generation,
+    generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),
     baseRevision:progress?.baseRevision??(advanced?checksSession.checksCloudRevision:cached?.baseRevision??checksSession.checksCloudRevision??0),baseState:base,snapshot:canonical,
-    createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
+    createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),conflict:conflict===undefined?(cached?.conflict||null):conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),mutationType:progress?.mutationType||cached?.mutationType||'autosave',surface:progress?.surface||cached?.surface||'orders.checks',restoreGroupId:progress?.restoreGroupId||cached?.restoreGroupId||null,
   });
   record.deleteIds=normalizeDeleteIds([...(cached?.deleteIds||[]),...(progress?.deleteIds||[])]);
   const cacheOk=writePendingCache(record);checksSession.checksOutboxCached=record;

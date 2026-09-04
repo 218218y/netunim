@@ -1,6 +1,6 @@
 import {clone} from '../core/values.js';
 import {CLOUD_BASE_KEY} from '../state/constants.js';
-import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
@@ -16,7 +16,8 @@ async function saveCloudSnapshot(snapshot,startGeneration,pendingRecord=null){
   const operationId=String(pendingRecord?.operationId||'').trim();
   if(!operationId)throw new Error('orders_operation_id_missing');
   for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){
-    res=await runBusyCloudWriteWithPolicy(()=>rpcSave(serverSnapshot,expected,operationId,effectiveDeleteIntents(base,serverSnapshot,deleteIntents)));
+    const exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents),deleteCount=Object.values(exactIntents).reduce((sum,ids)=>sum+ids.length,0),audit=operationAuditMetadata({site:'orders',mutationType:pendingRecord?.mutationType||'autosave',surface:pendingRecord?.surface||'orders',baseRevision:expected,beforeState:base,afterState:serverSnapshot,collections:['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders'],deleteCount,restoreGroupId:pendingRecord?.restoreGroupId});
+    res=await runBusyCloudWriteWithPolicy(()=>rpcSave(serverSnapshot,expected,operationId,exactIntents,audit));
     if(saveBusy(res))throw new Error('save_busy');
     if(!revisionConflict(res))break;
     await contentionBackoff(conflictAttempt);

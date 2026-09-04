@@ -102,8 +102,8 @@ test('shared check transport validates revisions and preserves RPC request contr
  const calls=[];
  const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
  assert.equal((await api.rpcSaveSharedChecks([check],7,'test:checks:1',['C2'])).row.revision,8);
- assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v4');
- assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_deleted_check_ids','p_document_name','p_expected_revision','p_operation_id','p_state']);
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v5');
+ assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_audit','p_deleted_check_ids','p_document_name','p_expected_revision','p_operation_id','p_state']);
  assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_operation_id,'test:checks:1');assert.equal(calls[0][1].p_state.version,1);assert.deepEqual(calls[0][1].p_deleted_check_ids,['C2']);
  await assert.rejects(api.rpcSaveSharedChecks([check],-1,'test:checks:2'));
  assert.equal(calls.length,1);
@@ -188,10 +188,10 @@ test('Kupa main merge protects expenses, notes and ledgers from implicit deletio
  const intentional=km.mergeState3Way(base,stale,base,{deleteIntents:{credits:['CR'],cash:['C'],rights:['R'],notes:['N'],expenses:['E']}});assert.deepEqual(intentional.conflicts,[]);for(const key of ['credits','cash','rights','notes','expenses'])assert.equal(intentional.state[key].length,0,key+' explicit delete is honored');
 });
 
-test('Orders transport sends explicit delete intents through the v4 document RPC',async()=>{
+test('Orders transport sends explicit delete intents and audit through the v5 document RPC',async()=>{
  const calls=[];const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:10,state:{}}])}}});
  await api.rpcSave({suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],notes:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[]},9,'orders:test:v4',{transactions:['T1']});
- assert.equal(calls[0][0],'/rest/v1/rpc/save_order_management_document_v4');assert.deepEqual(calls[0][1].p_delete_intents,{transactions:['T1']});
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_order_management_document_v5');assert.deepEqual(calls[0][1].p_delete_intents,{transactions:['T1']});assert.deepEqual(calls[0][1].p_audit,{});
 });
 
 test('Orders cloud poll silently advances a revision when remote business data already equals local state',async()=>{

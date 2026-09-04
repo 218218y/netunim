@@ -52,7 +52,7 @@ async function deleteSelectedTransactions(){
   if(boundaryRows.length)return toast(`יש להסיר קודם את סימון סוף השנה מהשורה המסומנת (${boundaryRows.map(t=>t.yearEnd).join(', ')})`);
   const supplier=model.state.suppliers.find(s=>s.id===supplierUi.currentSupplierId);
   if(!await confirmDialog('מחיקת תנועות',`למחוק ${ids.length} תנועות מהכרטיס של ${supplier?.name||'הספק'}?\n\nהפעולה תמחק את השורות שנבחרו והיתרות יחושבו מחדש.`,{confirmText:'מחק תנועות'}))return;
-  const idSet=new Set(ids);model.state.transactions=model.state.transactions.filter(t=>!idSet.has(t.id));resequenceSupplier(supplierUi.currentSupplierId);supplierUi.supplierBulkSelected.clear();scheduleSave(`${ids.length} תנועות נמחקו`,{deleteIntents:{transactions:ids}});renderSupplier({scrollMode:'preserve'})
+  const idSet=new Set(ids);model.state.transactions=model.state.transactions.filter(t=>!idSet.has(t.id));resequenceSupplier(supplierUi.currentSupplierId);supplierUi.supplierBulkSelected.clear();scheduleSave(`${ids.length} תנועות נמחקו`,{deleteIntents:{transactions:ids},mutationType:'bulk-delete',surface:'orders.bulk.transactions'});renderSupplier({scrollMode:'preserve'})
 }
 
 return { toggleSupplierBulkMode, toggleSupplierBulkRow, supplierVisibleBulkIds, toggleSupplierBulkVisible, syncSupplierBulkUi, openSelectedSupplierMove, cancelSupplierMoveTarget, supplierMovePreview, supplierMoveTargetRow, openSupplierMoveConfirm, executeSupplierTransactionMove, openSelectedSupplierYearBoundary, openSupplierYearBoundaryModal, saveSupplierYearBoundary, removeSupplierYearBoundary, deleteSelectedTransactions };
