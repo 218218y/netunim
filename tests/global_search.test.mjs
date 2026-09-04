@@ -8,7 +8,7 @@ const state={
  customerDebts:[{id:'D1',customerName:'משה כהן',orderNumber:'8123',phone:'050-123-4567',amount:900,note:'יתרה אחרונה',paid:false,supplied:true,invoiceIssued:false}],
  customerOrders:[{id:'O1',customerName:'משה כהן',orderNumber:'8123',mark3:'VVV-מיוחד',mattresses:'זוגי',note:'מזרן זוגי'}],
  serviceCalls:[{id:'SV1',customerName:'משה כהן',orderNumber:'8123',phone:'050-123-4567',description:'תיקון דלת',address:'ירושלים',closed:false}],
- checks:[{id:'C1',name:'משה כהן',amount:900,dueDate:'2026-09-10',status:'בקופה',checkNumber:'00177',note:'עבור 8123'}],
+ checks:[{id:'C1',name:'משה כהן',amount:900,dueDate:'2026-09-10',status:'בקופה',account:'ביתי',checkNumber:'00177',note:'עבור 8123'}],
  inventoryItems:[{id:'I1',name:'מזרן אורטופדי',category:'מזרנים',defaultLocation:'מחסן גדול',active:true,note:''}],
  inventoryEvents:[{id:'E1',itemId:'I1',type:'reserve',quantity:1,customerName:'משה כהן',location:'מחסן גדול',note:'עבור הזמנה 8123',createdAt:'2026-08-29'}],
  warehouseOrders:[{id:'W1',customerName:'משה כהן',phone:'0501234567',details:'מזרן אורטופדי',location:'מחסן קטן',status:'ordered',note:'8123'}],
@@ -20,6 +20,14 @@ test('global search builds entries for every operational Orders repository',()=>
  assert.deepEqual(new Set(entries.map(x=>x.group)),new Set(['suppliers','customers','service','checks','warehouse','notes']));
  assert.ok(entries.some(x=>x.kind==='supplier-transaction'&&x.id==='T1'));
  assert.ok(entries.some(x=>x.kind==='inventory-event'&&x.id==='E1'));
+});
+
+
+test('global check search preserves home/business classification for correct navigation',()=>{
+ const entry=buildGlobalSearchEntries(state).find(x=>x.kind==='check'&&x.id==='C1');
+ assert.equal(entry.account,'ביתי');
+ assert.equal(entry.badge,"צ'ק ביתי");
+ assert.ok(searchGlobalData(state,'ביתי').groups.find(x=>x.key==='checks').items.some(x=>x.id==='C1'));
 });
 
 test('global search spans modules for the same customer and keeps repository grouping',()=>{

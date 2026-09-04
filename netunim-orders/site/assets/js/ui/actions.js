@@ -59,6 +59,7 @@ return {
   'check-tab-2':(element,event)=>{ui.checkTab='deposited';renderChecks()},
   'check-tab-3':(element,event)=>{ui.checkTab='closed';renderChecks()},
   'check-tab-4':(element,event)=>{ui.checkTab='all';renderChecks()},
+  'check-account':(element,event)=>{ui.checkAccount=element.dataset.clickArg0==='ביתי'?'ביתי':'עסקי';ui.checksBulkSelected.clear();renderChecks()},
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'open-check-modal':(element,event)=>{openCheckModal()},

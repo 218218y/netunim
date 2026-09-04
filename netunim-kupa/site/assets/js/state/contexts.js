@@ -35,6 +35,7 @@ return {
   ui:{
     currentPage:'checks',
     checkTab:'open',
+    checkAccount:'עסקי',
     checkYear:'all',
     checkFocus:'all',
     expensesTab:'credit',

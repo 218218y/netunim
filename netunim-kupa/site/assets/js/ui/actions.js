@@ -23,6 +23,7 @@ return {
   'check-tab-2':(element,event)=>{ui.checkTab='deposited';ui.checkFocus='all';renderChecks()},
   'check-tab-3':(element,event)=>{ui.checkTab='closed';ui.checkFocus='all';renderChecks()},
   'check-tab-4':(element,event)=>{ui.checkTab='all';ui.checkFocus='all';renderChecks()},
+  'check-account':(element,event)=>{ui.checkAccount=element.dataset.clickArg0==='ביתי'?'ביתי':'עסקי';ui.checkFocus='all';ui.bulkSelected.clear();renderChecks()},
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},

@@ -259,7 +259,7 @@ ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
 ok("checkForecastMarkup()" in orders_checks_view
-   and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear})" in orders_checks_view
+   and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear,account:ui.checkAccount})" in orders_checks_view
    and "צ׳קים בקופה לפי חודשים קדימה" not in orders_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in orders_checks_view
    and "צ׳קים בקופה לפי חודשים קדימה" not in kupa_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in kupa_checks_view
    and "checks-forecast-head" not in orders_checks_view and 'class="section-head"' not in kupa_checks_view.split("function checkForecastMarkup(){",1)[1].split("function checkForecastBarRow",1)[0]

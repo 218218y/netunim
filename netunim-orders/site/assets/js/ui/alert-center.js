@@ -15,7 +15,7 @@ function alertCard(item){
   if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה ובהפחתת חיובי האשראי וההוצאות של אותו חשבון.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
   const dueText=item.isToday?`מועד ההפקדה הוא היום · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
   const facts=[item.checkNumber?`מס׳ צ׳ק ${item.checkNumber}`:'',item.note?item.note:''].filter(Boolean);
-  return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
+  return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
 }
 
 export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{}}){
@@ -61,7 +61,7 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
     const item=currentAlerts().find(row=>row.id===String(alertId||''));
     if(!item)return false;
     closeModal();
-    if(item.kind==='check_due'){navigateToChecks(item.checkId);return true}
+    if(item.kind==='check_due'){navigateToChecks(item.checkId,item.account);return true}
     if(item.kind==='cashflow'){navigateToCashflow(item.account);return true}
     return false;
   }

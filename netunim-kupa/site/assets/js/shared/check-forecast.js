@@ -14,14 +14,16 @@ function monthKeysBetween(startKey,endKey){
   return out;
 }
 
-export function futureCheckMonthsData(state,{fromMonth,year='all'}={}){
+export function futureCheckMonthsData(state,{fromMonth,year='all',account='עסקי'}={}){
   const startKey=String(fromMonth||'');
   if(!validMonthKey(startKey))return [];
   const currentYear=Number(startKey.slice(0,4)),selectedYear=year==='all'?null:Number(year);
   if(year!=='all'&&(!/^\d{4}$/.test(String(year))||!Number.isFinite(selectedYear)||selectedYear<currentYear))return [];
   const rangeStart=year==='all'||selectedYear===currentYear?startKey:`${selectedYear}-01`;
+  const accountRole=account==='ביתי'?'ביתי':'עסקי';
   const futureRows=(Array.isArray(state?.checks)?state.checks:[]).filter(row=>{
     if(row?.status!=='בקופה')return false;
+    if((row?.account==='ביתי'?'ביתי':'עסקי')!==accountRole)return false;
     const key=dueMonthKey(row?.dueDate);
     if(!validMonthKey(key)||key<rangeStart)return false;
     return year==='all'||key.startsWith(`${selectedYear}-`);

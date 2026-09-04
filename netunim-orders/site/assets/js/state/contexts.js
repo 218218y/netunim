@@ -20,6 +20,7 @@ return {
     creditCardFilter:'all',
     creditDetailFocus:null,
     checkTab:'open',
+    checkAccount:'עסקי',
     checkYear:'all',
     checkSearchValue:'',
     summarySupplierYearView:'current',

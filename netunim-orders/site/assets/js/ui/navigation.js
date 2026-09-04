@@ -26,10 +26,11 @@ function revealAlertTarget(selector){
   });
 }
 
-function openKupaChecks(checkId=''){
+function openKupaChecks(checkId='',account='עסקי'){
   prepareView('kupa');
   ui.kupaSubView='checks';
   ui.checkTab='open';
+  ui.checkAccount=account==='ביתי'?'ביתי':'עסקי';
   ui.checkYear='all';
   ui.checkSearchValue='';
   render();

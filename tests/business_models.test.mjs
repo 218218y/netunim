@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {rawCreditSchedule, creditProgress, inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
-import {futureCheckMonthsData as kupaFutureCheckMonthsData} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
-import {futureCheckMonthsData as ordersFutureCheckMonthsData} from '../netunim-orders/site/assets/js/domains/checks/model.js';
+import {futureCheckMonthsData as kupaFutureCheckMonthsData, normalizeSharedChecks as normalizeKupaChecks, checksBalanceData} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
+import {futureCheckMonthsData as ordersFutureCheckMonthsData, normalizeSharedChecks as normalizeOrdersChecks} from '../netunim-orders/site/assets/js/domains/checks/model.js';
 import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/domains/expenses/model.js';
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {computeKupaNetReadoutData, kupaAllInstallments, kupaBusinessInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
@@ -48,6 +48,7 @@ test('future check forecast starts at the current month, fills internal gaps, tr
  const state={checks:[
   {id:'PAST',amount:10,dueDate:'2026-08-20',status:'בקופה'},
   {id:'SEP',amount:100,dueDate:'2026-09-10',status:'בקופה'},
+  {id:'HOME',account:'ביתי',amount:700,dueDate:'2026-09-12',status:'בקופה'},
   {id:'NOV1',amount:200,dueDate:'2026-11-01',status:'בקופה'},
   {id:'NOV2',amount:50,dueDate:'2026-11-20',status:'בקופה'},
   {id:'CLOSED',amount:999,dueDate:'2026-12-01',status:'נפרע'},
@@ -58,6 +59,9 @@ test('future check forecast starts at the current month, fills internal gaps, tr
   assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2026'}),[
    {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250}
   ]);
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2026',account:'ביתי'}),[
+   {key:'2026-09',total:700}
+  ]);
   assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'all'}),[
    {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250},{key:'2026-12',total:0},{key:'2027-01',total:0},{key:'2027-02',total:300}
   ]);
@@ -67,6 +71,16 @@ test('future check forecast starts at the current month, fills internal gaps, tr
   assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2025'}),[]);
   assert.deepEqual(futureCheckMonthsData({checks:[]},{fromMonth:'2026-09',year:'2026'}),[]);
  }
+});
+test('check account classification is backward compatible and business balances exclude home checks',()=>{
+ const raw=[
+  {id:'LEGACY',amount:100,dueDate:'2026-09-10',status:'בקופה'},
+  {id:'HOME',account:'ביתי',amount:250,dueDate:'2026-09-11',status:'בקופה'},
+  {id:'BUS',account:'עסקי',amount:75,dueDate:'2026-09-12',status:'בקופה'},
+ ];
+ for(const normalize of [normalizeKupaChecks,normalizeOrdersChecks])assert.deepEqual(normalize(raw).map(x=>x.account),['עסקי','ביתי','עסקי']);
+ assert.equal(checksBalanceData({checks:normalizeKupaChecks(raw)}),175);
+ assert.equal(checksBalanceData({checks:normalizeKupaChecks(raw)},'ביתי'),250);
 });
 test('warning models expose only active cashflow breaches and checks whose deposit date has arrived',()=>{
  const cashflow=cashflowWarningItems({bank:{currentBalance:400,adjustments:[]},cashflowSettings:{businessMinimum:500},credits:[],expenses:[]});
@@ -107,15 +121,15 @@ test('bank balance remains the authoritative snapshot regardless of check workfl
  state.bank.adjustments=[{type:'manual',amount:25},{type:'check_deposit',amount:500}];
  assert.equal(bankCurrentBalanceData(state),1025,'manual corrections remain supported while legacy check adjustments stay excluded');
 });
-test('Orders readout includes only business synchronized credit in Kupa net and never adds check events to bank',()=>{
+test('Orders readout includes only business synchronized credit and business checks in Kupa net and never adds check events to bank',()=>{
  const businessKey='P:1111',homeKey='P:2222',kupa={bank:{currentBalance:1000,asOfDate:'2020-01-01',adjustments:[]},credits:[],expenses:[],cash:[],creditSync:{version:3,profiles:[{profileId:'P',provider:'max',accounts:[
   {accountNumber:'1111',txns:[{id:'T',processedDate:'2099-01-10',chargedAmount:-75,chargedCurrency:'ILS',status:'completed'}]},
   {accountNumber:'2222',txns:[{id:'H',processedDate:'2099-01-10',chargedAmount:-125,chargedCurrency:'ILS',status:'completed'}]},
  ]}],cardMappings:{[businessKey]:{included:true,account:'עסקי'},[homeKey]:{included:true,account:'ביתי'}}}};
  assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),200,'credit reporting still sees both included cards');
  assert.equal(kupaBusinessInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75,'business readout excludes the included home card');
- const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,status:'הופקד - במעקב'}]},kupa);
- assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.net,925);
+ const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,status:'בקופה'},{id:'H',account:'ביתי',amount:500,status:'בקופה'}]},kupa);
+ assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.checks,40);assert.equal(readout.net,965);
 });
 test('merge preserves independent changes and detects deletion versus edit',()=>{
  const base=[{id:'A',value:1},{id:'B',value:2}],local=[{id:'A',value:3},{id:'B',value:2}],remote=[{id:'A',value:1},{id:'B',value:4}];

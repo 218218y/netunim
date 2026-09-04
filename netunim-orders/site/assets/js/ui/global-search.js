@@ -38,7 +38,7 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
 
   function navigateService(item){prepareView('service');serviceUi.serviceSearch='';const call=model.state.serviceCalls.find(x=>x.id===item.id);serviceUi.serviceFilter=call?.closed?'closed':'all';render();reveal('data-service-bulk-id',item.id)}
 
-  function navigateCheck(item){ui.kupaSubView='checks';prepareView('kupa');ui.checkTab='all';ui.checkYear='all';ui.checkSearchValue='';render();reveal('data-check-id',item.id)}
+  function navigateCheck(item){ui.kupaSubView='checks';prepareView('kupa');ui.checkTab='all';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkSearchValue='';render();reveal('data-check-id',item.id)}
 
   function navigateWarehouse(item){prepareView('warehouse');warehouseUi.warehouseSearch='';if(item.kind==='inventory-item'){const inventoryItem=model.state.inventoryItems.find(x=>x.id===item.id);if(inventoryItem?.active===false){warehouseUi.warehouseTab='history';render();openInventoryItemModal(item.id);return}warehouseUi.warehouseTab='stock';render();reveal('data-stock-bulk-id',item.id);return}if(item.kind==='warehouse-order'){warehouseUi.warehouseTab='orders';render();reveal('data-warehouse-order-id',item.id);return}warehouseUi.warehouseTab='history';render();reveal('data-inventory-event-id',item.id)}
 

@@ -14,6 +14,7 @@ export function dueCheckWarningItems(checks,today=checkTodayISO()){
       checkId:String(check.id||''),
       name:String(check.name||''),
       amount:Number(check.amount)||0,
+      account:check.account==='ביתי'?'ביתי':'עסקי',
       dueDate:String(check.dueDate||''),
       checkNumber:String(check.checkNumber||''),
       note:String(check.note||''),
