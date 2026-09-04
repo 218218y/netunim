@@ -85,12 +85,14 @@ test('warning models expose only active cashflow breaches and checks whose depos
 test('alert center presents readable cashflow/check cards and updates the persistent header indicator',()=>{
  const classState=new Set(),button={classList:{toggle:(name,on)=>on?classState.add(name):classState.delete(name)},attrs:{},setAttribute(name,value){this.attrs[name]=value},title:''},count={textContent:'',hidden:true};
  const model={state:{checks:[{id:'DUE',name:'לקוח לבדיקה',amount:780,dueDate:'2000-01-01',status:'בקופה',checkNumber:'12345',note:'להפקיד בסניף'}]}};
- const previousDocument=globalThis.document;let captured=null;
+ const previousDocument=globalThis.document;let captured=null,closed=0,checkTarget='',cashflowTarget='';
  globalThis.document={getElementById:id=>id==='alertCenterButton'?button:id==='alertCenterCount'?count:null};
  try{
-  const center=createUiAlertCenter({model,financeSnapshot:()=>({kupa:{bank:{currentBalance:-250,adjustments:[]},credits:[],expenses:[],cashflowSettings:{}}}),modal:(title,body,foot)=>{captured={title,body,foot}}});
+  const center=createUiAlertCenter({model,financeSnapshot:()=>({kupa:{bank:{currentBalance:-250,adjustments:[]},credits:[],expenses:[],cashflowSettings:{}}}),modal:(title,body,foot)=>{captured={title,body,foot}},closeModal:()=>{closed++},navigateToChecks:id=>{checkTarget=id},navigateToCashflow:account=>{cashflowTarget=account}});
   assert.equal(center.refreshIndicator().length,2);assert.equal(count.textContent,'2');assert.equal(count.hidden,false);assert.equal(classState.has('active'),true);
-  assert.equal(center.showStartupAlerts(),true);assert.equal(captured.title,'התראות בפתיחת המערכת');assert.match(captured.body,/alert-center-card cashflow-warning/);assert.match(captured.body,/יתרה צפויה/);assert.match(captured.body,/alert-center-card check-warning/);assert.match(captured.body,/לקוח לבדיקה/);assert.match(captured.body,/מס׳ צ׳ק 12345/);assert.match(captured.body,/להפקיד בסניף/);assert.match(captured.body,/סימן האזהרה בראש המסך/);
+  assert.equal(center.showStartupAlerts(),true);assert.equal(captured.title,'התראות בפתיחת המערכת');assert.match(captured.body,/alert-center-card cashflow-warning alert-center-card-action/);assert.match(captured.body,/data-action="open-alert-target"/);assert.match(captured.body,/יתרה צפויה/);assert.match(captured.body,/alert-center-card check-warning alert-center-card-action/);assert.match(captured.body,/לקוח לבדיקה/);assert.match(captured.body,/מס׳ צ׳ק 12345/);assert.match(captured.body,/להפקיד בסניף/);assert.match(captured.body,/סימן האזהרה בראש המסך/);
+  assert.equal(center.openAlertTarget('check:DUE'),true);assert.equal(checkTarget,'DUE');assert.equal(closed,1,'opening a check warning closes the alert modal before navigation');
+  assert.equal(center.openAlertTarget('cashflow:עסקי'),true);assert.equal(cashflowTarget,'עסקי');assert.equal(closed,2,'opening a cashflow warning closes the alert modal before navigation');
   model.state.checks[0].status='הופקד - במעקב';center.refreshIndicator();assert.equal(count.textContent,'1','depositing a due check removes only its alert immediately');
   assert.equal(center.showStartupAlerts(),false,'startup warnings are shown once per app boot');
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}

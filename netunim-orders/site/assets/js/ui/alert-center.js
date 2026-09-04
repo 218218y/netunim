@@ -11,13 +11,14 @@ function cashflowReason(item){
 }
 
 function alertCard(item){
-  if(item.kind==='cashflow')return `<article class="alert-center-card cashflow-warning"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה ובהפחתת חיובי האשראי וההוצאות של אותו חשבון.</small></div></article>`;
+  const actionAttrs=`type="button" class="alert-center-card ${item.kind==='cashflow'?'cashflow-warning':'check-warning'} alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"`;
+  if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה ובהפחתת חיובי האשראי וההוצאות של אותו חשבון.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
   const dueText=item.isToday?`מועד ההפקדה הוא היום · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
   const facts=[item.checkNumber?`מס׳ צ׳ק ${item.checkNumber}`:'',item.note?item.note:''].filter(Boolean);
-  return `<article class="alert-center-card check-warning"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div></article>`;
+  return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
 }
 
-export function createUiAlertCenter({model,financeSnapshot,modal}){
+export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{}}){
   let startupHandled=false;
 
   function currentAlerts(today=checkTodayISO()){
@@ -56,6 +57,15 @@ export function createUiAlertCenter({model,financeSnapshot,modal}){
     return alerts.length;
   }
 
+  function openAlertTarget(alertId){
+    const item=currentAlerts().find(row=>row.id===String(alertId||''));
+    if(!item)return false;
+    closeModal();
+    if(item.kind==='check_due'){navigateToChecks(item.checkId);return true}
+    if(item.kind==='cashflow'){navigateToCashflow(item.account);return true}
+    return false;
+  }
+
   function showStartupAlerts(){
     if(startupHandled)return false;
     startupHandled=true;
@@ -65,5 +75,5 @@ export function createUiAlertCenter({model,financeSnapshot,modal}){
     return true;
   }
 
-  return {currentAlerts,refreshIndicator,openAlertCenter,showStartupAlerts};
+  return {currentAlerts,refreshIndicator,openAlertCenter,openAlertTarget,showStartupAlerts};
 }

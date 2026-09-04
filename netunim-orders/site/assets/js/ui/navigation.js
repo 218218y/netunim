@@ -2,6 +2,7 @@
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiNavigation({ui, model, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, renderKupa, renderChecks, renderSummary, renderSupplier, renderCustomers, renderService, renderWarehouse, renderNotes, renderCalendar, renderSettings, refreshAlertCenter=()=>{}}){
+let alertTargetTimer=null;
 function syncActiveNav(){document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===ui.currentView))}
 
 function render({supplierScrollMode='auto'}={}){syncActiveNav();if(ui.currentView==='dashboard')renderDashboard();else if(ui.currentView==='supplier')renderSupplier({scrollMode:supplierScrollMode});else if(ui.currentView==='customers'||ui.currentView==='customer-orders')renderCustomers();else if(ui.currentView==='service')renderService();else if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='warehouse')renderWarehouse();else if(ui.currentView==='summary')renderSummary();else if(ui.currentView==='notes')renderNotes();else if(ui.currentView==='calendar')renderCalendar();else renderSettings();refreshAlertCenter()}
@@ -14,5 +15,34 @@ function setCustomerRoute(tab){ui.currentView=tab==='orders'?'customer-orders':'
 
 function switchView(view){prepareView(view);render()}
 
-return { render, renderDashboard, prepareView, setCustomerRoute, switchView };
+function revealAlertTarget(selector){
+  requestAnimationFrame(()=>{
+    const target=document.querySelector(selector);
+    if(!target)return;
+    target.scrollIntoView?.({block:'center',inline:'nearest',behavior:'smooth'});
+    target.classList.add('global-search-target');
+    if(alertTargetTimer)clearTimeout(alertTargetTimer);
+    alertTargetTimer=setTimeout(()=>{target.classList.remove('global-search-target');alertTargetTimer=null},2600);
+  });
+}
+
+function openKupaChecks(checkId=''){
+  prepareView('kupa');
+  ui.kupaSubView='checks';
+  ui.checkTab='open';
+  ui.checkYear='all';
+  ui.checkSearchValue='';
+  render();
+  if(checkId)revealAlertTarget(`[data-check-id="${CSS.escape(String(checkId))}"]`);
+}
+
+function openKupaBank(account='עסקי'){
+  prepareView('kupa');
+  ui.kupaSubView='bank';
+  ui.bankAccountView=account==='ביתי'||account==='home'?'home':'business';
+  render();
+  revealAlertTarget('.bank-transactions-region');
+}
+
+return { render, renderDashboard, prepareView, setCustomerRoute, switchView, openKupaChecks, openKupaBank };
 }

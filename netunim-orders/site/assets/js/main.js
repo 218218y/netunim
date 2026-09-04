@@ -652,6 +652,9 @@ const uiAlertCenter=createUiAlertCenter({
   model,
   financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
   modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  navigateToChecks:(...args)=>uiNavigation.openKupaChecks(...args),
+  navigateToCashflow:(...args)=>uiNavigation.openKupaBank(...args),
 });
 
 const syncDocument=createSyncDocument({
@@ -807,6 +810,7 @@ const uiActions=createUiActions({
   serviceUi,
   warehouseUi,
   ui,
+  openAlertTarget:(...args)=>uiAlertCenter.openAlertTarget(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankSearch:(...args)=>domainsFinanceView.setBankSearch(...args),
