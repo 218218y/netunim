@@ -1,5 +1,7 @@
 import {uid, esc} from '../../core/values.js';
 import {NOTES_SHEET_DEFAULT_WIDTH,clampNotesSheetWidth,formatSheetNumber,normalizeNotesSheet,sheetColumnTotal} from './sheet-model.js';
+import {searchMatch} from '../../core/search.js';
+import {localSearchMarkup} from '../../ui/search.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsNotesController({model, ui={}, saveState, confirmDialog}){
@@ -17,6 +19,8 @@ function noteDisplayDate(note){
 }
 
 function noteSortRows(){return [...(model.state.notes||[])].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))}
+function visibleNoteRows(){const q=String(ui.notesSearchValue||'').trim(),rows=noteSortRows();return q?rows.filter(note=>searchMatch(q,[note.content],[note.createdAt,note.updatedAt])):rows}
+function visibleSheetRows(sheet){const q=String(ui.notesSheetSearchValue||'').trim(),rows=sheet.rows||[];if(!q)return rows;return rows.filter(row=>searchMatch(q,(sheet.columns||[]).map(c=>row.cells?.[c.id]??''),[row.createdAt,row.updatedAt]))}
 function resizeStickyNoteTextarea(el){if(!el)return;el.style.height='auto';el.style.height=Math.max(132,el.scrollHeight)+'px'}
 function resizeAllStickyNotes(){document.querySelectorAll('.sticky-note textarea').forEach(resizeStickyNoteTextarea)}
 
@@ -187,22 +191,28 @@ function bindSheetColumnResizeHandles(){
 function sheetTabs(){return `<div class="notes-tabs" role="tablist" aria-label="תצוגת הערות"><button class="notes-tab ${ui.notesTab==='sheet'?'':'active'}" role="tab" aria-selected="${ui.notesTab==='sheet'?'false':'true'}" data-action="notes-workspace-notes">הערות</button><button class="notes-tab ${ui.notesTab==='sheet'?'active':''}" role="tab" aria-selected="${ui.notesTab==='sheet'?'true':'false'}" data-action="notes-workspace-sheet">גיליון</button></div>`}
 
 function sheetMarkup(){
-  const sheet=ensureSheet(),cols=sheet.columns,rows=sheet.rows;
+  const sheet=ensureSheet(),cols=sheet.columns,rows=visibleSheetRows(sheet);
   const colgroup=cols.map(c=>`<col data-sheet-col="${esc(c.id)}" style="width:${esc(c.width)}px">`).join('')+'<col class="notes-sheet-actions-col">';
   const headers=cols.map(c=>`<th data-sheet-column-id="${esc(c.id)}"><div class="notes-sheet-column-head"><input class="notes-sheet-title-input" aria-label="שם עמודה" value="${esc(c.title)}" data-sheet-column-id="${esc(c.id)}" data-input="draft-notes-sheet-column-title" data-input-arg0="${esc(c.id)}" data-blur="rename-notes-sheet-column" data-blur-arg0="${esc(c.id)}"><label class="notes-sheet-sum-toggle" title="חשב סה״כ בתחתית העמודה"><input type="checkbox" ${c.type==='number'?'checked':''} data-change="set-notes-sheet-column-numeric" data-change-arg0="${esc(c.id)}"><span>סכום</span></label>${cols.length>1?`<button class="notes-sheet-column-delete" title="מחק עמודה" aria-label="מחק עמודה ${esc(c.title)}" data-action="delete-notes-sheet-column" data-click-arg0="${esc(c.id)}">×</button>`:''}</div><span class="notes-sheet-resizer" data-sheet-resize-column="${esc(c.id)}" title="גרור לשינוי רוחב"></span></th>`).join('');
   const body=rows.map(row=>`<tr data-sheet-row-id="${esc(row.id)}">${cols.map(c=>`<td><input data-sheet-cell data-sheet-row-id="${esc(row.id)}" data-sheet-column-id="${esc(c.id)}" class="notes-sheet-cell ${c.type==='number'?'numeric':''}" inputmode="${c.type==='number'?'decimal':'text'}" value="${esc(row.cells?.[c.id]??'')}" data-input="update-notes-sheet-cell" data-input-arg0="${esc(row.id)}" data-input-arg1="${esc(c.id)}" data-blur="save-notes-sheet-cell" data-blur-arg0="${esc(row.id)}" data-blur-arg1="${esc(c.id)}" data-keydown="navigate-notes-sheet-cell" data-keydown-arg0="${esc(row.id)}" data-keydown-arg1="${esc(c.id)}"></td>`).join('')}<td class="notes-sheet-row-actions"><button class="notes-sheet-row-add" title="הוסף שורה אחרי שורה זו" aria-label="הוסף שורה" data-action="add-notes-sheet-row-after" data-click-arg0="${esc(row.id)}">＋</button><button class="notes-sheet-row-delete" title="מחק שורה" aria-label="מחק שורה" data-action="delete-notes-sheet-row" data-click-arg0="${esc(row.id)}">×</button></td></tr>`).join('');
-  const empty=!rows.length?`<tr class="notes-sheet-empty-row"><td colspan="${cols.length+1}">אין עדיין שורות. לחץ על „+ שורה” כדי להתחיל.</td></tr>`:'';
+  const searching=String(ui.notesSheetSearchValue||'').trim(),empty=!rows.length?`<tr class="notes-sheet-empty-row"><td colspan="${cols.length+1}">${searching?'אין שורות המתאימות לחיפוש.':'אין עדיין שורות. לחץ על „+ שורה” כדי להתחיל.'}</td></tr>`:'';
   const totals=cols.map(c=>`<td ${c.type==='number'?`data-sheet-total-column="${esc(c.id)}"`:''} class="${c.type==='number'?'notes-sheet-total-cell':''}">${c.type==='number'?`<span>סה״כ</span><b>${esc(formatSheetNumber(sheetColumnTotal(sheet,c.id)))}</b>`:''}</td>`).join('');
   return `<section class="notes-sheet-panel"><div class="notes-sheet-scroll"><table class="notes-sheet-table"><colgroup>${colgroup}</colgroup><thead><tr>${headers}<th class="notes-sheet-actions-head"><button title="הוסף שורה" aria-label="הוסף שורה" data-action="add-notes-sheet-row">＋</button></th></tr></thead><tbody>${body}${empty}</tbody><tfoot><tr>${totals}<td></td></tr></tfoot></table></div></section>`;
 }
 
+function notesWorkspaceMarkup(sheetActive){
+  if(sheetActive)return sheetMarkup();
+  const rows=visibleNoteRows(),searching=String(ui.notesSearchValue||'').trim();
+  return `<div class="notes-grid">${rows.map(stickyNoteCard).join('')||`<div class="notes-empty"><b>${searching?'לא נמצאו פתקים':'אין עדיין פתקים'}</b>${searching?'נסה ניסוח אחר או נקה את החיפוש.':'לחץ על „פתק חדש” כדי לרשום תזכורת ראשונה.'}</div>`}</div>`;
+}
+function setNotesSearch(value){const sheetActive=ui.notesTab==='sheet';if(sheetActive)ui.notesSheetSearchValue=String(value||'');else ui.notesSearchValue=String(value||'');const region=document.getElementById('notesWorkspaceResults');if(!region)return;region.innerHTML=notesWorkspaceMarkup(sheetActive);if(sheetActive)bindSheetColumnResizeHandles();else requestAnimationFrame(resizeAllStickyNotes)}
 function renderNotes(){
   const interaction=ui.notesTab==='sheet'?captureSheetInteraction():null;
   if(ui.notesTab!=='sheet')ui.notesTab='notes';
-  const rows=noteSortRows(),sheetActive=ui.notesTab==='sheet';
-  document.getElementById('content').innerHTML=`<div class="notes-view"><section class="notes-hero"><div><div class="notes-title-row">${sheetTabs()}</div><p>${sheetActive?'גיליון חופשי עם שורות, עמודות ברוחב מותאם וסיכום אוטומטי לעמודות מספריות.':'פתקים מהירים שנשמרים ומסתנכרנים יחד עם נתוני הקופה.'}</p></div><div class="notes-actions">${sheetActive?'<button class="btn" data-action="add-notes-sheet-column">+ עמודה</button><button class="btn primary" data-action="add-notes-sheet-row">+ שורה</button>':'<button class="btn primary" data-action="add-kupa-sticky-note">+ פתק חדש</button>'}</div></section>${sheetActive?sheetMarkup():`<div class="notes-grid">${rows.map(stickyNoteCard).join('')||`<div class="notes-empty"><b>אין עדיין פתקים</b>לחץ על „פתק חדש” כדי לרשום תזכורת ראשונה.</div>`}</div>`}</div>`;
+  const sheetActive=ui.notesTab==='sheet';
+  document.getElementById('content').innerHTML=`<div class="notes-view"><section class="notes-hero"><div class="notes-hero-main"><div class="notes-title-row">${sheetTabs()}</div><p>${sheetActive?'גיליון חופשי עם שורות, עמודות ברוחב מותאם וסיכום אוטומטי לעמודות מספריות.':'פתקים מהירים שנשמרים ומסתנכרנים יחד עם נתוני הקופה.'}</p>${localSearchMarkup({value:sheetActive?(ui.notesSheetSearchValue||''):(ui.notesSearchValue||''),placeholder:sheetActive?'חיפוש בתוכן הגיליון…':'חיפוש בפתקים…',label:sheetActive?'חיפוש בגיליון':'חיפוש בפתקים',inputAction:'notes-search',className:'notes-search-field'})}</div><div class="notes-actions">${sheetActive?'<button class="btn" data-action="add-notes-sheet-column">+ עמודה</button><button class="btn primary" data-action="add-notes-sheet-row">+ שורה</button>':'<button class="btn primary" data-action="add-kupa-sticky-note">+ פתק חדש</button>'}</div></section><div id="notesWorkspaceResults">${notesWorkspaceMarkup(sheetActive)}</div></div>`;
   if(sheetActive){bindSheetColumnResizeHandles();restoreSheetInteraction(interaction)}else requestAnimationFrame(resizeAllStickyNotes);
 }
 
-return {noteDisplayDate,noteSortRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,setNotesWorkspaceTab,addSheetRow,updateSheetCell,saveSheetCell,updateSheetColumnTitleDraft,handleSheetCellKeydown,deleteSheetRow,addSheetColumn,renameSheetColumn,setSheetColumnNumeric,deleteSheetColumn,renderNotes,flushNoteSave};
+return {noteDisplayDate,noteSortRows,visibleNoteRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,setNotesWorkspaceTab,setNotesSearch,addSheetRow,updateSheetCell,saveSheetCell,updateSheetColumnTitleDraft,handleSheetCellKeydown,deleteSheetRow,addSheetColumn,renameSheetColumn,setSheetColumnNumeric,deleteSheetColumn,renderNotes,flushNoteSave};
 }

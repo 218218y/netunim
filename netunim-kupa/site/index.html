@@ -32,7 +32,8 @@
     <header class="topbar">
       <div class="topbar-title">
         <button class="btn mobile-menu" id="mobileMenu" type="button" aria-label="פתח תפריט" aria-controls="sidebar" aria-expanded="false">☰</button>
-        <div><h2 id="pageTitle">צקים</h2><div class="sub" id="pageSub"></div></div>
+        <div class="topbar-heading"><h2 id="pageTitle">צקים</h2><div class="sub" id="pageSub"></div></div>
+        <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל נתוני הקופה" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל הקופה (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg><span>חיפוש</span></button>
       </div>
       <div class="top-actions">
         <span class="cloud-head-status hide-mobile" id="cloudHeaderStatus" title="מצב סנכרון ענן"><i></i> ענן: לא מחובר</span><span class="file-status off hide-mobile" id="dbStatus"><i></i> קובץ לא נבחר</span><span class="save-indicator hide-mobile" id="saveIndicator"></span><button class="btn hide-mobile" id="backupTop">גיבוי עכשיו</button>
@@ -41,6 +42,21 @@
     </header>
     <div class="page" id="content"></div>
   </main>
+</div>
+
+<div class="global-search-backdrop" id="globalSearchBackdrop" hidden aria-hidden="true">
+  <section class="global-search-dialog" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
+    <div class="global-search-head">
+      <div><h2 id="globalSearchTitle">חיפוש בכל הקופה</h2><span id="globalSearchMeta">כל נתוני הקופה במקום אחד</span></div>
+      <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
+    </div>
+    <label class="global-search-input-wrap" for="globalSearchInput">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
+      <input id="globalSearchInput" type="search" autocomplete="off" placeholder="צ׳ק, אשראי, הוצאה, בנק, מזומן, הערה…">
+      <kbd>Ctrl K</kbd>
+    </label>
+    <div class="global-search-results" id="globalSearchResults"></div>
+  </section>
 </div>
 
 <div class="connect-screen" id="connectScreen">

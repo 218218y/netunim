@@ -27,6 +27,7 @@ import {createDomainsExpensesView} from './domains/expenses/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
+import {createUiGlobalSearch} from './ui/global-search.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createDomainsDashboardController} from './domains/dashboard/controller.js';
 import {createUiBulk} from './ui/bulk.js';
@@ -404,6 +405,8 @@ const uiNavigation=createUiNavigation({
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
 });
 
+const uiGlobalSearch=createUiGlobalSearch({model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
+
 const domainsDashboardView=createDomainsDashboardView({
   model,
   activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
@@ -425,6 +428,7 @@ const uiBulk=createUiBulk({
 
 const domainsExpensesView=createDomainsExpensesView({
   model,
+  ui,
   bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
   bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
 });
@@ -734,6 +738,9 @@ const uiActions=createUiActions({
   renderChecksSearch:(...args)=>domainsChecksView.renderChecksSearch(...args),
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
   setCreditSearch:(...args)=>domainsCreditView.setCreditSearch(...args),
+  setExpenseSearch:(...args)=>domainsExpensesView.setExpenseSearch(...args),
+  setCashSearch:(...args)=>domainsCashView.setCashSearch(...args),
+  setNotesSearch:(...args)=>domainsNotesController.setNotesSearch(...args),
   toggleCreditSyncOptions:(...args)=>domainsCreditView.toggleCreditSyncOptions(...args),
   saveBankBalance:(...args)=>domainsBankController.saveBankBalance(...args),
   saveBankBridgeToken:(...args)=>domainsBankController.saveBankBridgeToken(...args),
@@ -813,4 +820,5 @@ window.addEventListener('beforeunload',e=>{if(!tab.primaryTab)return;const unsav
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
+uiGlobalSearch.bind();
 export const appReady=lifecycle.boot();

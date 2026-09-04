@@ -1,4 +1,5 @@
-function normalizedText(value){return String(value??'').normalize('NFKC').toLocaleLowerCase('he-IL')}
+export function normalizeSearchText(value){return String(value??'').normalize('NFKD').replace(/[\u0591-\u05C7]/g,'').toLocaleLowerCase('he-IL').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ')}
+function compactSearchText(value){return normalizeSearchText(value).replace(/\s+/g,'')}
 
 function dateParts(value){
   const raw=String(value??'').trim();if(!raw)return null;
@@ -23,9 +24,11 @@ export function dateSearchAliases(value){
 }
 
 export function searchMatch(query,values=[],dateValues=[]){
-  const q=normalizedText(query).trim();if(!q)return true;
-  const hay=[...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].map(normalizedText).join(' ');
-  return hay.includes(q);
+  const q=normalizeSearchText(query);if(!q)return true;
+  const hay=normalizeSearchText([...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].filter(value=>value!==undefined&&value!==null).join(' ')),hayCompact=hay.replace(/\s+/g,''),qCompact=compactSearchText(query);
+  if(qCompact&&hayCompact.includes(qCompact))return true;
+  const words=hay.split(' ').filter(Boolean);
+  return q.split(' ').filter(Boolean).every(token=>/^\d{1,2}$/.test(token)?words.includes(token):(hay.includes(token)||hayCompact.includes(token)));
 }
 
 export function dateInRange(value,from='',to=''){

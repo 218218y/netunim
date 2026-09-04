@@ -4,6 +4,8 @@ import {money, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 import {syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
+import {localSearchMarkup} from '../../ui/search.js';
+import {bankTransactionIdentity} from './feed.js';
 
 export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,dateEditorMarkup}){
 function bankSnapshotLabel(){
@@ -122,10 +124,10 @@ function bankTransactionsTableMarkup(feed,role){
   const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small>${bankDateFilterMarkup()}</div><div class="bank-balance-facts">${balanceFacts}</div></div>`;
   if(!feed)return `${caption}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן. הגדר אותו בחיבור לבנק ולחץ „רענן”.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
   if(!rows.length){const empty=periodRows.length&&query.trim()?'אין תנועות המתאימות לחיפוש בתקופה שנבחרה.':allRows.length&&bankDateFilterActive()?'אין תנועות בטווח התאריכים שנבחר.':'לא התקבלו תנועות בנק להצגה.';return `${caption}<div class="empty bank-feed-empty">${empty}${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}</div>`}
-  const body=rows.map(row=>{
+  const body=rows.map((row,index)=>{
     const amount=Number(row.amount)||0,when=row.date||row.processedDate;
     const valueDate=row.processedDate&&row.processedDate!==row.date?bankDateLabel(row.processedDate):'';
-    return `<tr class="${row.status==='pending'?'pending':''}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${bankChequeDetailsMarkup(row)}</td><td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>0?money(amount):''}</td><td class="bank-transaction-money balance-after">${row.balanceAfter!==null&&row.balanceAfter!==undefined&&row.balanceAfter!==''&&Number.isFinite(Number(row.balanceAfter))?money(Number(row.balanceAfter)):'—'}</td></tr>`;
+    return `<tr class="${row.status==='pending'?'pending':''}" data-bank-search-id="${esc(bankTransactionIdentity(row,role,index))}"><td class="bank-transaction-date"><b>${esc(bankDateLabel(when))}</b>${valueDate?`<small>ערך ${esc(valueDate)}</small>`:''}</td><td class="bank-transaction-description"><div><b>${esc(row.description||'תנועת בנק')}</b>${row.status==='pending'?'<span class="bank-transaction-pending">ממתינה</span>':''}</div>${row.memo?`<small>${esc(row.memo)}</small>`:''}${bankChequeDetailsMarkup(row)}</td><td class="bank-transaction-money debit">${amount<0?money(Math.abs(amount)):''}</td><td class="bank-transaction-money credit">${amount>0?money(amount):''}</td><td class="bank-transaction-money balance-after">${row.balanceAfter!==null&&row.balanceAfter!==undefined&&row.balanceAfter!==''&&Number.isFinite(Number(row.balanceAfter))?money(Number(row.balanceAfter)):'—'}</td></tr>`;
   }).join('');
   return `${caption}<div class="bank-transactions-table-wrap"><table class="bank-transactions-table"><thead><tr><th>תאריך</th><th>פעולה</th><th>חובה</th><th>זכות</th><th>יתרה לאחר תנועה</th></tr></thead><tbody>${body}</tbody></table></div>${feed.transactionWarning?`<div class="bank-feed-warning">${esc(feed.transactionWarning)}</div>`:''}`;
 }
@@ -203,7 +205,7 @@ function renderBank(){
   </div>
   <section class="section bank-sync-section">
     <div class="bank-command-row">
-      <div class="bank-view-tools">${bankAccountTabsMarkup()}<input class="bank-search" type="search" value="${esc(ui.bankSearchValue||'')}" placeholder="חיפוש בתנועות המוצגות…" aria-label="חיפוש בתנועות הבנק המוצגות" data-input="bank-search"></div>
+      <div class="bank-view-tools">${bankAccountTabsMarkup()}${localSearchMarkup({value:ui.bankSearchValue||'',placeholder:'חיפוש בתנועות המוצגות…',label:'חיפוש בתנועות הבנק המוצגות',inputAction:'bank-search',className:'bank-search-field'})}</div>
       <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></div>
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>

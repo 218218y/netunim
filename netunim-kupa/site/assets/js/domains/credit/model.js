@@ -4,6 +4,11 @@ import {syncedInstallmentsData, syncedCreditSeries} from './sync-feed.js';
 
 export const CREDIT_DETAIL_HISTORY_MONTHS=3;
 
+export function creditDetailItemIdentity(item={}){
+  if(item.source==='manual')return `manual:${String(item.record?.id||'')}:${String(item.date||'')}:${Number(item.part||1)}`;
+  return `sync:${String(item.series?.id||'')}:${String(item.date||'')}:${Number(item.part||1)}`;
+}
+
 export function rawCreditSchedule(cr){if(!cr.firstChargeDate||num(cr.installments)<1)return[];const total=num(cr.totalAmount),n=Number(cr.installments);const base=Math.round((total/n)*100)/100;let rows=[];let used=0;for(let i=0;i<n;i++){let amt=i===n-1?Math.round((total-used)*100)/100:base;used+=amt;rows.push({creditId:cr.id,date:addMonthsISO(cr.firstChargeDate,i),amount:amt,part:i+1,totalParts:n,card:cr.card,account:cr.account==='ביתי'?'ביתי':'עסקי',ownerLabel:String(cr.ownerLabel||''),hidden:false,description:cr.description,source:'manual'})}return rows}
 
 export function creditSchedule(cr){return cr.active?rawCreditSchedule(cr):[]}

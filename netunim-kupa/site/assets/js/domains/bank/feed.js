@@ -1,6 +1,11 @@
 export const BANK_FEED_VERSION=4;
 export const BANK_FEED_TRANSACTION_LIMIT=1000;
 
+export function bankTransactionIdentity(row={},role='business',index=0){
+  const side=role==='home'?'home':'business',when=String(row.date||row.processedDate||'').slice(0,10),stable=String(row.id||row.bankSerial||row.bankReference||'').trim(),fallback=stable||`${String(row.description||'').trim()}|${Number(row.amount||0)}|${index}`;
+  return `${side}:${fallback}:${when}:${Number(row.amount||0)}`;
+}
+
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function cleanText(value,max=260){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
 function cleanIso(value){const s=String(value||'').trim();return s&&Number.isFinite(Date.parse(s))?new Date(s).toISOString():null}

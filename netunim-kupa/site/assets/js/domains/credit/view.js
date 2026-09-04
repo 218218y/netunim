@@ -1,10 +1,11 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
-import {creditMonthlyDetailData,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
+import {creditMonthlyDetailData,creditDetailItemIdentity,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
 import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
 import {searchMatch} from '../../core/search.js';
+import {localSearchMarkup} from '../../ui/search.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
@@ -174,7 +175,7 @@ function renderCredit(){
     ${expensesHubTabsMarkup()}
     <section class="section credit-sync-section">
       <div class="credit-command-row">
-        <div class="credit-view-tools"><input class="credit-search" type="search" value="${esc(ui.creditSearchValue||'')}" placeholder="חיפוש בעסקאות ותשלומים…" aria-label="חיפוש בעסקאות ותשלומי האשראי המוצגים" data-input="credit-search"></div>
+        <div class="credit-view-tools">${localSearchMarkup({value:ui.creditSearchValue||'',placeholder:'חיפוש בעסקאות ותשלומים…',label:'חיפוש בעסקאות ותשלומי האשראי המוצגים',inputAction:'credit-search',className:'credit-search-field'})}</div>
         <div class="credit-sync-quick-actions"><button id="creditSyncToggle" type="button" class="credit-sync-toggle ${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button><button class="btn primary credit-sync-refresh" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן'}</button></div>
       </div>
       <div id="creditSyncPanel" class="credit-sync-settings-body" ${ui.creditSyncOpen?'':'hidden'}>
@@ -267,11 +268,11 @@ function creditCardDetailCell(item,sourceLabel){
 function syncedBulkPlaceholder(){return ui.bulkCollection==='credits'?'<td class="bulk-check-col"></td>':''}
 function syncedMonthlyCreditRow(item){
   const series=item.series,status=chargeStatus(item.date),partial=series.partial&&item.date>=todayISO();
-  return `<tr class="credit-synced-detail-row">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}<td class="credit-detail-description" title="${esc(item.description||'')}">${esc(item.description)||'—'}</td><td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">${money(item.amount)}</div></td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(series.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span>${partial?'<div class="muted credit-detail-partial">אופק חלקי</div>':''}</td><td class="credit-detail-actions"></td></tr>`;
+  return `<tr class="credit-synced-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}<td class="credit-detail-description" title="${esc(item.description||'')}">${esc(item.description)||'—'}</td><td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">${money(item.amount)}</div></td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(series.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span>${partial?'<div class="muted credit-detail-partial">אופק חלקי</div>':''}</td><td class="credit-detail-actions"></td></tr>`;
 }
 function manualMonthlyCreditRow(item){
   const record=item.record,status=chargeStatus(item.date);
-  return `<tr data-bulk-collection="credits" data-bulk-id="${esc(record.id)}" class="${esc(ui.bulkSelected.has(record.id)?'bulk-selected-row':'')}">${bulkCell('credits',record.id)}${creditCardDetailCell(item,'תוספת ידנית')}<td class="credit-detail-description" title="${esc(item.description||'')}">${esc(item.description)||'—'}</td><td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">${money(item.amount)}</div></td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(record.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span></td><td class="credit-detail-actions"><button class="iconbtn" data-action="open-credit-modal-2" data-click-arg0="${esc(record.id)}">עריכה</button></td></tr>`;
+  return `<tr data-bulk-collection="credits" data-bulk-id="${esc(record.id)}" data-credit-search-id="${esc(creditDetailItemIdentity(item))}" class="${esc(ui.bulkSelected.has(record.id)?'bulk-selected-row':'')}">${bulkCell('credits',record.id)}${creditCardDetailCell(item,'תוספת ידנית')}<td class="credit-detail-description" title="${esc(item.description||'')}">${esc(item.description)||'—'}</td><td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">${money(item.amount)}</div></td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(record.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span></td><td class="credit-detail-actions"><button class="iconbtn" data-action="open-credit-modal-2" data-click-arg0="${esc(record.id)}">עריכה</button></td></tr>`;
 }
 function creditForecastColumns(months,max){
   if(!months.length)return '<div class="empty">אין חיובי אשראי עתידיים.</div>';
