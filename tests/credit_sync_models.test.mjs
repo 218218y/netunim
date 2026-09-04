@@ -231,6 +231,23 @@ assert.equal(ordersBusinessCashflow.total,businessCycle.total,'Orders uses the e
 assert.equal(ordersBusinessCashflow.projected,bankProjectedThisMonthData(splitAccountState),'Orders business projected checking is numerically identical to Kupa');
 assert.equal(ordersHomeCashflow.total,homeCycle.total,'Orders uses the exact same home next-cycle commitment total as Kupa');
 assert.equal(ordersHomeCashflow.projected,bankHomeProjectedThisMonthData(splitAccountState),'Orders home projected checking is numerically identical to Kupa');
+const checkCashflowState={...structuredClone(splitAccountState),cashflowSettings:{businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9},checks:[
+  {id:'biz-in',account:'עסקי',status:'בקופה',dueDate:'2999-09-14',amount:100},
+  {id:'biz-out',account:'עסקי',status:'בקופה',dueDate:'2999-09-15',amount:200},
+  {id:'biz-deposited',account:'עסקי',status:'הופקד - במעקב',dueDate:'2999-09-12',amount:500},
+  {id:'home-in',account:'ביתי',status:'בקופה',dueDate:'2999-09-09',amount:300},
+  {id:'home-out',account:'ביתי',status:'בקופה',dueDate:'2999-09-10',amount:400},
+]};
+const businessCheckCashflow=bankNextCycleCommitmentsData(checkCashflowState,'2999-09-01'),homeCheckCashflow=bankHomeNextCycleCommitmentsData(checkCashflowState,'2999-09-01');
+assert.equal(businessCheckCashflow.checkCutoffDay,14);assert.equal(businessCheckCashflow.checkCutoffDate,'2999-09-14');assert.deepEqual(businessCheckCashflow.checkRows.map(row=>row.id),['biz-in'],'business cash-flow includes only still-held business checks through day 14 inclusive');assert.equal(businessCheckCashflow.checks,100);assert.equal(bankProjectedThisMonthData(checkCashflowState,'2999-09-01'),960,'business projected checking adds qualifying business checks after subtracting credit and expenses');
+assert.equal(homeCheckCashflow.checkCutoffDay,9);assert.equal(homeCheckCashflow.checkCutoffDate,'2999-09-09');assert.deepEqual(homeCheckCashflow.checkRows.map(row=>row.id),['home-in'],'home cash-flow includes only still-held home checks through day 9 inclusive');assert.equal(homeCheckCashflow.checks,300);assert.equal(bankHomeProjectedThisMonthData(checkCashflowState,'2999-09-01'),1990,'home projected checking adds qualifying home checks without leaking business checks');
+const overdueHeldCheckState={...structuredClone(checkCashflowState),checks:[{id:'biz-overdue',account:'עסקי',status:'בקופה',dueDate:'2999-08-31',amount:25}]};
+assert.equal(bankNextCycleCommitmentsData(overdueHeldCheckState,'2999-09-01').checks,25,'a still-held overdue business check remains a real expected deposit before the upcoming cutoff instead of disappearing because its due date already passed');
+const customCutoffState={...structuredClone(checkCashflowState),cashflowSettings:{businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:13,homeCheckCutoffDay:8}};
+assert.equal(bankNextCycleCommitmentsData(customCutoffState,'2999-09-01').checks,0,'changing the business cutoff immediately changes the projected check inflow');assert.equal(bankHomeNextCycleCommitmentsData(customCutoffState,'2999-09-01').checks,0,'changing the home cutoff is independent');
+const ordersBusinessChecks=kupaAccountCashflowData(checkCashflowState,'עסקי','2999-09-01'),ordersHomeChecks=kupaAccountCashflowData(checkCashflowState,'ביתי','2999-09-01');
+assert.equal(ordersBusinessChecks.projected,bankProjectedThisMonthData(checkCashflowState,'2999-09-01'),'Orders and Kupa share the exact business check cash-flow formula');assert.equal(ordersHomeChecks.projected,bankHomeProjectedThisMonthData(checkCashflowState,'2999-09-01'),'Orders and Kupa share the exact home check cash-flow formula');
+
 assert.equal(splitLong.expenses,40,'dashboard business position excludes the home mortgage from business expenses');
 assert.equal(splitLong.net,860,'dashboard business net cannot be reduced by a home expense or home card');
 const noBusinessBalance={...structuredClone(splitAccountState),bank:{...structuredClone(splitAccountState.bank),currentBalance:null,updatedAt:null,asOfDate:null,source:null,feed:null}};

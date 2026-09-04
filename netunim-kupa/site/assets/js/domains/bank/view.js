@@ -184,20 +184,22 @@ function renderBank(){
     <div class="bank-entry">
       <label>עובר ושב עסקי בבנק — היתרה לחישובי הקופה</label>
       <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש עסקי" value="${esc(bank===null?'':bank)}"><button type="button" class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
-      <small>${esc(bankSnapshotLabel())} · החשבון העסקי מחושב רק מול אשראי והוצאות שסווגו עסקיים</small>
+      <small>${esc(bankSnapshotLabel())} · החשבון העסקי מחושב מול אשראי והוצאות עסקיים ובתוספת צ׳קים עסקיים צפויים</small>
     </div>
     <div class="bank-mini"><div class="bank-label">אשראי עסקי במחזור הקרוב</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${cycleLabel}`:'אין חיובי אשראי עסקיים עתידיים'}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות עסקיות למחזור הקרוב</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">הוצאות עסקיות של ${esc(cycleLabel)} בלבד</div></div>
-    <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש עסקי פחות חיובים שעברו מאז, אשראי עסקי והוצאות עסקיות במחזור הקרוב</div></div>
+    <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד יום ${esc(cycle.checkCutoffDay)} בחודש החיוב הקרוב</div></div>
+    <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש עסקי פחות אשראי והוצאות, ובתוספת צ׳קים עסקיים הצפויים להפקדה לפני יום החיתוך</div></div>
     <div class="bank-account-summary-label home"><b>חשבון ביתי</b><span>התחייבויות ביתיות בלבד</span></div>
     <div class="bank-entry bank-home-entry">
       <label>עובר ושב ביתי בבנק — היתרה לחישובי הבית</label>
       <div class="bank-readonly-value">${formatNullableMoney(homeBank)}</div>
-      <small>${esc(homeBankSnapshotLabel())} · החשבון הביתי מחושב רק מול אשראי והוצאות שסווגו ביתיים</small>
+      <small>${esc(homeBankSnapshotLabel())} · החשבון הביתי מחושב מול אשראי והוצאות ביתיים ובתוספת צ׳קים ביתיים צפויים</small>
     </div>
     <div class="bank-mini"><div class="bank-label">אשראי ביתי במחזור הקרוב</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${homeCycleLabel}`:'אין חיובי אשראי ביתיים עתידיים'}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות ביתיות למחזור הקרוב</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">הוצאות ביתיות של ${esc(homeCycleLabel)} בלבד</div></div>
-    <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש ביתי פחות חיובים שעברו מאז, אשראי ביתי והוצאות ביתיות במחזור הקרוב</div></div>
+    <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד יום ${esc(homeCycle.checkCutoffDay)} בחודש החיוב הקרוב</div></div>
+    <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש ביתי פחות אשראי והוצאות, ובתוספת צ׳קים ביתיים הצפויים להפקדה לפני יום החיתוך</div></div>
   </div>
   <section class="section bank-sync-section">
     <div class="bank-command-row">

@@ -15,7 +15,7 @@ export function createDomainsBankAlerts({model,bankProjectedThisMonth,bankHomePr
     if(!active.length){if(business!==null&&home!==null)resolved=true;return false}
     shown=true;resolved=true;
     const rows=active.map(row=>`<div class="notice danger" style="margin-top:9px"><b>חשבון ${row.account}</b> · עו״ש תזרימי צפוי: <b>${money(row.projected)}</b><br>${alertReason(row)}.</div>`).join('');
-    modal('אזהרת עו״ש תזרימי',`<div class="soft-note">התחזית מבוססת על יתרת העו״ש האחרונה פחות סליקות אשראי והוצאות השייכות לאותו חשבון.</div>${rows}`,'הבנתי',()=>closeModal(true));
+    modal('אזהרת עו״ש תזרימי',`<div class="soft-note">התחזית מבוססת על יתרת העו״ש האחרונה פחות סליקות אשראי והוצאות של אותו חשבון, ובתוספת הצ׳קים מאותו חשבון שעדיין בקופה ונכנסים עד יום החיתוך שהוגדר.</div>${rows}`,'הבנתי',()=>closeModal(true));
     return true;
   }
   return {maybeShowStartupCashflowAlert};

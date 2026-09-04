@@ -268,8 +268,9 @@ const controller=createDomainsFinanceController({
   readFinanceSyncDocument:async()=>structuredClone(financeRow),
   rpcSaveFinanceSync:async(state,expected)=>{financeSaveCalls++;assert.equal(expected,financeRow.revision);financeRow={revision:financeRow.revision+1,updated_at:'2026-09-01T02:30:30Z',state:structuredClone(state)};return {r:{ok:true},row:structuredClone(financeRow)}},
   saveBankSyncSnapshot,mergeBankTransactions,readBankTransactions,
-  syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,toast:()=>{},
+  syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,getSharedChecks:()=>[{id:'orders-shared-check',account:'עסקי',status:'בקופה',dueDate:'2026-09-14',amount:125}],toast:()=>{},
 });
+assert.equal(controller.snapshot().kupa.checks[0].id,'orders-shared-check','Orders finance snapshot joins the independently synchronized shared checks only for read-side cash-flow');
 assert.equal(await controller.refreshBank({interactive:false,auto:false}),true);
 assert.equal(atomicBankSaveCalls,1,'bank finance payload and Kupa watermark are committed by one atomic RPC');
 assert.equal(saveCalls,0,'atomic bank sync does not issue a second full Kupa document write');
@@ -314,6 +315,11 @@ assert.equal(refreshKupaCalls,refreshesBeforeThreshold+1,'a successful Kupa core
 assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessMinimum,5000);
 assert.equal(checksSession.kupaCloudReadState.bank.feed.balance,1500,'bank feed remains visible immediately after saving the shared threshold');
 assert.equal(checksSession.kupaCloudReadState.creditSync.profiles[0].accounts[0].txns[0].id,'fresh','credit feed remains visible immediately after saving the shared threshold');
+const savesBeforeCutoff=saveCalls,refreshesBeforeCutoff=refreshKupaCalls;
+assert.equal(await controller.saveCashflowCheckCutoff('business','16'),true,'Orders can persist the shared business check cutoff day');
+assert.equal(saveCalls,savesBeforeCutoff+1);assert.equal(cloudRow.state.cashflowSettings.businessCheckCutoffDay,16);assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessCheckCutoffDay,16);assert.equal(refreshKupaCalls,refreshesBeforeCutoff+1);
+assert.equal(await controller.saveCashflowCheckCutoff('home','0'),false,'invalid cutoff days are rejected instead of silently normalized');
+assert.equal(saveCalls,savesBeforeCutoff+1,'invalid cutoff never writes the cloud document');
 
 Date.now=realDateNow;
 console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, atomic bank snapshot + archive read-back verification, dual-account feed, newest-first transaction detail and credit mapping preservation');

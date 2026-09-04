@@ -785,6 +785,7 @@ const uiActions=createUiActions({
   openExpenseModal:(...args)=>domainsExpensesEditor.openExpenseModal(...args),
   updateCard:(...args)=>uiSettings.updateCard(...args),
   updateCashflowMinimum:(...args)=>uiSettings.updateCashflowMinimum(...args),
+  updateCashflowCheckCutoff:(...args)=>uiSettings.updateCashflowCheckCutoff(...args),
   manualBackup:(...args)=>uiBackup.manualBackup(...args),
   downloadJsonBackup:(...args)=>uiBackup.downloadJsonBackup(...args),
   restoreBackup:(...args)=>uiBackup.restoreBackup(...args),
