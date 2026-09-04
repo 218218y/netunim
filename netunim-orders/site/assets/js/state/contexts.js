@@ -125,7 +125,15 @@ return {
     cloudSaveRequested:false,
     cloudSavePromise:null,
     cloudSaveMessage:'',
-    cloudConflictBlocked:false
+    cloudConflictBlocked:false,
+    startupSync:{
+      active:false,
+      domains:{
+        orders:{required:false,state:'idle',error:''},
+        checks:{required:false,state:'idle',error:''},
+        finance:{required:false,state:'idle',error:''}
+      }
+    }
   },
   checksSession:{
     checksGeneration:0,

@@ -14,22 +14,44 @@ function scheduleCloudRecovery(){
 }
 function loginModal(mode='open'){if(!supaConfigured())return alert('הגדרת Supabase חסרה. בדוק supabase/config.js');const email=localStorage.getItem(CLOUD_EMAIL_KEY)||'',calendarMode=mode==='calendar',title=calendarMode?'התחברות לענן לצורך Google Calendar':mode==='upload'?'הפעלת ענן נפרד לניהול הזמנות':'פתיחת ניהול הזמנות מהענן',notice=calendarMode?'השרת המקומי הוא כתובת נפרדת מהאתר שברשת, ולכן הדפדפן דורש כאן התחברות חד-פעמית ל-Supabase. ההתחברות מזהה את המשתמש לצורך Google Calendar בלבד ואינה מפעילה מעצמה את סנכרון מסמך ניהול ההזמנות.':`ניהול ההזמנות נשמר בטבלאות <b>order_management_*</b>. טאב הצ'קים קורא וכותב ישירות למאגר הצ'קים המשותף <b>shared_checks_documents/main</b>. בנוסף, נתוני העו״ש והאשראי נקראים מאותו מסמך קופה <b>kupa_documents/main</b>, וסנכרון בנק/אשראי מניהול ההזמנות מעדכן בו רק את התחומים הפיננסיים המתאימים דרך מנגנון ה-revision של הקופה. הוצאות ומזומן נשארים בבעלות ניהול הקופה, ואין עותק פיננסי נוסף בניהול ההזמנות.`;modal(title,`<div class="form-grid"><div class="field full"><div class="notice">${notice}</div></div><div class="field full"><label>אימייל Supabase Auth</label><input id="cEmail" type="email" value="${esc(email)}"></div><div class="field full"><label>סיסמה</label><input id="cPassword" type="password"></div></div>`,`<button class="btn primary" data-action="finish-cloud-login" data-click-arg0="${esc(mode)}">התחבר</button><button class="btn" data-action="close-modal">ביטול</button>`)}
 
-async function deferPendingRecovery(){const pending=await getCloudPending();if(!pending||getOutboxRetryDelay(pending)<=0)return false;localStorage.setItem(CLOUD_AUTO_KEY,'1');setCloud('ענן: ממתין למועד הסנכרון');await requestCloudSave('שינויים מקומיים ממתינים לסנכרון');startPolling();return true}
+async function deferPendingRecovery({manageStatus=true,startPoll=true}={}){const pending=await getCloudPending();if(!pending||getOutboxRetryDelay(pending)<=0)return false;localStorage.setItem(CLOUD_AUTO_KEY,'1');if(manageStatus)setCloud('ענן: ממתין למועד הסנכרון');await requestCloudSave('שינויים מקומיים ממתינים לסנכרון');if(startPoll)startPolling();return true}
 
 async function finishCloudLogin(mode){const email=$('#cEmail').value.trim(),pass=$('#cPassword').value;if(!email||!pass)return toast('יש להזין אימייל וסיסמה');try{await authPassword(email,pass)}catch(e){console.error(e);toast('התחברות נכשלה: '+e.message);return}closeModal();try{if(mode==='calendar'){if(typeof resumeCalendarAfterCloudLogin!=='function')throw new Error('המשך החיבור ליומן אינו זמין');await resumeCalendarAfterCloudLogin();return}if(mode==='upload')await enableCloud(true);else await openCloud()}catch(e){console.error(e);toast((mode==='calendar'?'חיבור Google Calendar נכשל: ':'פתיחת הענן נכשלה: ')+e.message)} }
 
-async function enableCloud(afterLogin=false){if(!tab.primaryTab)return showSecondaryTabGuard();if(!supaConfigured())return alert('הגדרת Supabase חסרה');if(!loadSession()&&!afterLogin)return loginModal('upload');try{setCloud('ענן: בודק…');if(await deferPendingRecovery())return;const existing=await readCloud();localStorage.setItem(CLOUD_AUTO_KEY,'1');if(existing){if(!(await restorePendingAgainstCloud(existing))){session.cloudConflictBlocked=false;applyOrderCloudState(existing.state);session.cloudRevision=Number(existing.revision||0);session.cloudUpdatedAt=existing.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}setCloud('ענן: מסונכרן','synced');render();toast('כבר היה מסמך ניהול הזמנות בענן — נטענה גרסת הענן ולא נדרסה.')}}else{session.cloudRevision=0;session.lastCloudState=clone(prepareCloudState());localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));markCloudPending();session.localGeneration=Math.max(session.localGeneration,1);await requestCloudSave('נתוני ניהול ההזמנות הועלו לענן הנפרד')}await syncSharedChecksFromCloud({quiet:true,required:true});await refreshKupaReadout({force:true,renderIfChanged:true});startPolling();startFinanceAutoSync();clearCloudRecovery()}catch(e){console.error(e);toast('לא ניתן להפעיל ענן: '+e.message);setCloud('ענן: שגיאה','error')}}
+async function enableCloud(afterLogin=false){if(!tab.primaryTab)return showSecondaryTabGuard();if(!supaConfigured())return alert('הגדרת Supabase חסרה');if(!loadSession()&&!afterLogin)return loginModal('upload');try{setCloud('ענן: בודק…');if(await deferPendingRecovery())return;const existing=await readCloud();localStorage.setItem(CLOUD_AUTO_KEY,'1');if(existing){if(!(await restorePendingAgainstCloud(existing))){session.cloudConflictBlocked=false;applyOrderCloudState(existing.state);session.cloudRevision=Number(existing.revision||0);session.cloudUpdatedAt=existing.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}setCloud('ענן: מסנכרן צ׳קים…');render();toast('כבר היה מסמך ניהול הזמנות בענן — נטענה גרסת הענן ולא נדרסה.')}}else{session.cloudRevision=0;session.lastCloudState=clone(prepareCloudState());localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));markCloudPending();session.localGeneration=Math.max(session.localGeneration,1);await requestCloudSave('נתוני ניהול ההזמנות הועלו לענן הנפרד');setCloud('ענן: מסנכרן צ׳קים…')}await syncSharedChecksFromCloud({quiet:true,required:true});setCloud('ענן: מסנכרן בנק ואשראי…');const financeOk=await refreshKupaReadout({force:true,renderIfChanged:true});if(financeOk)setCloud('ענן: מסונכרן','synced');else setCloud('ענן: סנכרון חלקי ⚠','error','ניהול הזמנות וצ׳קים סונכרנו; נתוני בנק ואשראי נשארו מהעותק האחרון התקין.');startPolling();startFinanceAutoSync();clearCloudRecovery()}catch(e){console.error(e);toast('לא ניתן להפעיל ענן: '+e.message);setCloud('ענן: שגיאה','error')}}
 
-async function openCloud({renderAfter=true,quiet=false}={}){
+async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,manageStatus=true,startPoll=true}={}){
   if(!tab.primaryTab)return false;
   if(!loadSession()){if(!quiet)loginModal('open');return false}
   try{
-    setCloud('ענן: פותח…');if(await deferPendingRecovery())return true;const row=await readCloud();
-    if(!row){clearCloudRecovery();setCloud('ענן: אין מסמך','error');if(!quiet)toast('אין עדיין מסמך ניהול הזמנות בענן. השתמש ב"הפעל ענן והעלה".');return false}
-    localStorage.setItem(CLOUD_AUTO_KEY,'1');const restored=await restorePendingAgainstCloud(row);
-    if(!restored){session.cloudConflictBlocked=false;applyOrderCloudState(row.state);session.cloudRevision=Number(row.revision||0);session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}setCloud('ענן: מסונכרן','synced')}
-    await syncSharedChecksFromCloud({quiet:true,required:true});await refreshKupaReadout({force:true});closeModal();if(renderAfter)render();startPolling();startFinanceAutoSync();clearCloudRecovery();if(!quiet&&!session.cloudConflictBlocked)toast(restored?'ניהול ההזמנות שוחזר וסונכרן':'ניהול ההזמנות נטען מהענן');return true
-  }catch(e){console.error(e);if(!quiet)toast('פתיחת הענן נכשלה: '+e.message);setCloud(navigator.onLine?'ענן: ממתין להתאוששות':'ענן: אופליין',navigator.onLine?'':'offline');scheduleCloudRecovery();return false}
+    if(manageStatus)setCloud('ענן: מאמת נתוני הזמנות…');
+    if(await deferPendingRecovery({manageStatus,startPoll}))return true;
+    const row=await readCloud();
+    if(!row){clearCloudRecovery();if(manageStatus)setCloud('ענן: אין מסמך','error');if(!quiet)toast('אין עדיין מסמך ניהול הזמנות בענן. השתמש ב"הפעל ענן והעלה".');return false}
+    localStorage.setItem(CLOUD_AUTO_KEY,'1');
+    const restored=await restorePendingAgainstCloud(row);
+    if(!restored){
+      session.cloudConflictBlocked=false;applyOrderCloudState(row.state);session.cloudRevision=Number(row.revision||0);session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));localSnapshot();
+      try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
+    }
+    closeModal();if(renderAfter)render();clearCloudRecovery();
+    if(hydrateSecondary){
+      if(manageStatus)setCloud('ענן: מסנכרן צ׳קים…');
+      await syncSharedChecksFromCloud({quiet:true,required:true});
+      if(manageStatus)setCloud('ענן: מסנכרן בנק ואשראי…');
+      const financeOk=await refreshKupaReadout({force:true,renderIfChanged:true});
+      if(manageStatus){if(financeOk)setCloud('ענן: מסונכרן','synced');else setCloud('ענן: סנכרון חלקי ⚠','error','ניהול הזמנות וצ׳קים סונכרנו; נתוני בנק ואשראי נשארו מהעותק האחרון התקין.')}
+      if(startPoll)startPolling();
+      startFinanceAutoSync();
+    }else{
+      if(startPoll)startPolling();
+      if(manageStatus){
+        setCloud(session.cloudConflictBlocked?'ענן: התנגשות':'ענן: נתוני הזמנות אומתו',session.cloudConflictBlocked?'error':'');
+      }
+    }
+    if(!quiet&&!session.cloudConflictBlocked)toast(restored?'ניהול ההזמנות שוחזר וסונכרן':'ניהול ההזמנות נטען מהענן');
+    return true
+  }catch(e){console.error(e);if(!quiet)toast('פתיחת הענן נכשלה: '+e.message);if(manageStatus)setCloud(navigator.onLine?'ענן: ממתין להתאוששות':'ענן: אופליין',navigator.onLine?'':'offline');scheduleCloudRecovery();return false}
 }
 
 function logoutCloud(){clearCloudRecovery();saveSession(null);localStorage.removeItem(CLOUD_AUTO_KEY);session.cloudRevision=0;session.cloudUpdatedAt=null;checksSession.checksCloudRevision=0;checksSession.checksCloudUpdatedAt=null;session.cloudConflictBlocked=false;session.cloudSaveRequested=false;session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer);setCloud('ענן: לא פעיל');renderSettings();toast('נותקת מהענן; העותק המקומי ונתוני השחזור נשמרו')}

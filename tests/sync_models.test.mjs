@@ -10,6 +10,7 @@ import {createCloudTransport as orderTransport} from '../netunim-orders/site/ass
 import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {createLifecycle as orderLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
 import {validKupaCloudState} from '../netunim-kupa/site/assets/js/state/validation.js';
@@ -118,12 +119,25 @@ test('Orders Kupa readout refresh invalidates the visible dependent view only wh
  metaRevision=2;assert.equal(await api.refreshKupaReadout({renderIfChanged:true}),true);assert.equal(checksSession.kupaNetReadout.net,402);assert.equal(summaryRenders,2);assert.equal(fullReads,2);
 });
 
-test('Orders cloud open loads shared checks and Kupa readout before the first requested render',async()=>{
+test('Orders cloud open renders the verified Orders core before secondary checks and finance hydration',async()=>{
  Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
  const store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(k,v)=>store.set(k,String(v)),getItem:k=>store.get(k)??null,removeItem:k=>store.delete(k)},configurable:true});
  const order=[];const model={state:{checks:[]}},session={cloudRevision:0,cloudUpdatedAt:null,lastCloudState:null,cloudConflictBlocked:false},checksSession={},ui={};
- const api=orderUiCloud({model,files:{dirHandle:null},tab:{primaryTab:true},session,checksSession,ui,modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>{},authPassword:async()=>{},localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},setCloud:()=>{},showSecondaryTabGuard:()=>{},prepareCloudState:()=>({suppliers:[]}),render:()=>order.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,updated_at:'2026-08-27T10:00:00Z',state:{suppliers:[]}}),applyOrderCloudState:()=>{},refreshKupaReadout:async opts=>{order.push('kupa');assert.deepEqual(opts,{force:true});return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:()=>order.push('poll'),saveSession:()=>{},renderSettings:()=>{}});
- await api.openCloud();assert.deepEqual(order,['checks','kupa','render','poll']);
+ const api=orderUiCloud({model,files:{dirHandle:null},tab:{primaryTab:true},session,checksSession,ui,modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>{},authPassword:async()=>{},localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},setCloud:()=>{},showSecondaryTabGuard:()=>{},prepareCloudState:()=>({suppliers:[]}),render:()=>order.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,updated_at:'2026-08-27T10:00:00Z',state:{suppliers:[]}}),applyOrderCloudState:()=>{},refreshKupaReadout:async opts=>{order.push('kupa');assert.deepEqual(opts,{force:true,renderIfChanged:true});return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:()=>order.push('poll'),saveSession:()=>{},renderSettings:()=>{}});
+ await api.openCloud();assert.deepEqual(order,['render','checks','kupa','poll']);
+ order.length=0;await api.openCloud({hydrateSecondary:false,manageStatus:false});assert.deepEqual(order,['render','poll'],'startup core open must not wait for checks or finance');
+});
+
+test('Orders startup paints recovered local data before cloud verification and hydrates checks/finance only after core safety',async()=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(k,v)=>store.set(k,String(v)),getItem:k=>store.get(k)??null,removeItem:k=>store.delete(k)},configurable:true});
+ const order=[],session={localGeneration:0,cloudSaveRequested:false,cloudConflictBlocked:false,cloudDurabilityDegraded:false},checksSession={checksGeneration:0,checksSaveRequested:false},model={state:{suppliers:[{id:'S1'}],checks:[]}},files={},tab={primaryTab:true},ui={currentView:'supplier'};
+ let resolveCore;const coreGate=new Promise(resolve=>{resolveCore=resolve});
+ const api=orderLifecycle({model,files,tab,ui,session,checksSession,normalizeState:x=>x,restoreBrowserStateFallback:async()=>order.push('restore'),markCloudPending:()=>{},getCloudPending:async()=>null,loadCloudPendingState:()=>null,getChecksPending:async()=>null,checksPendingExists:()=>false,setSave:()=>{},setCloud:()=>{},beginStartupSync:()=>order.push('startup-begin'),setStartupDomain:(domain,state)=>order.push(`${domain}:${state}`),syncFolderAccessButton:()=>{},folderBackupAvailable:()=>false,folderSaveTitle:()=>'',showSecondaryTabGuard:()=>{},acquirePrimaryTabLock:async()=>order.push('lock'),sameOrderCloudData:()=>true,hasMeaningfulLocalData:()=>true,render:()=>order.push('render'),prepareState:()=>model.state,maybeCreateAutomaticFolderBackup:async()=>{},loadDirHandle:async()=>null,requestPersistentBrowserStorage:async()=>{},refreshDirPermission:async()=>{},loadSession:()=>({access_token:'x'}),cloudEnabled:()=>true,refreshKupaReadout:async()=>{order.push('finance');return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},openCloud:async opts=>{assert.equal(opts.hydrateSecondary,false);assert.equal(opts.startPoll,false);order.push('core-start');await coreGate;order.push('core-end');return true},startOrderPolling:()=>order.push('poll'),startFinanceAutoSync:()=>order.push('finance-auto'),showStartupAlerts:()=>order.push('alerts')});
+ const bootPromise=api.boot();await new Promise(resolve=>setTimeout(resolve,5));
+ assert.ok(order.indexOf('render')>=0,'local render should happen');assert.ok(order.indexOf('render')<order.indexOf('core-start'),'first render must precede the network core read');assert.equal(order.includes('checks'),false);assert.equal(order.includes('finance'),false);
+ resolveCore();await bootPromise;await session.startupHydrationPromise;
+ assert.ok(order.indexOf('core-end')<order.indexOf('checks'));assert.ok(order.indexOf('checks')<order.indexOf('finance'));assert.ok(order.indexOf('finance')<order.indexOf('poll'));assert.ok(order.indexOf('poll')<order.indexOf('alerts'));
 });
 
 test('Orders polling asks Kupa refresh to invalidate a visible balance when a new Kupa revision arrives',async()=>{

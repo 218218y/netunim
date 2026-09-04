@@ -781,6 +781,8 @@ const lifecycle=createLifecycle({
   checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
+  beginStartupSync:(...args)=>uiStatus.beginStartupSync(...args),
+  setStartupDomain:(...args)=>uiStatus.setStartupDomain(...args),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
   folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
@@ -799,6 +801,7 @@ const lifecycle=createLifecycle({
   refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   openCloud:(...args)=>uiCloud.openCloud(...args),
+  startOrderPolling:(...args)=>syncDocument.startPolling(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
   showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
@@ -1003,16 +1006,21 @@ bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.dismissModal());
 document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>uiNavigation.switchView(b.dataset.view)));
 document.addEventListener('click',e=>{const menu=$('#supplierMenu');if(menu&&!menu.contains(e.target))domainsSuppliersNavigation.closeSupplierMenu()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavigation.closeSupplierMenu()});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,120);domainsFinanceController.startAutoSync()});
-window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession())setTimeout(syncChecks.pollSharedChecks,300);domainsFinanceController.startAutoSync()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,120);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
+window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,300);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
 window.addEventListener('offline',()=>{if(cloudAuth.cloudEnabled())uiStatus.setCloud('ענן: אופליין','offline')});
 window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const ok=storageBrowser.localSnapshot();if(cloudAuth.cloudEnabled()&&ok&&stateSnapshots.cloudHasLocalWork())storageBrowser.markCloudPending();if(cloudAuth.loadSession()&&stateSnapshots.checksHaveLocalWork())storageChecks.markChecksPending()});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
-document.getElementById('saveNowButton').addEventListener('click',storagePersistence.manualSaveNow);
+document.getElementById('saveNowButton').addEventListener('click',()=>{if(uiStatus.guardStartupMutation('all'))storagePersistence.manualSaveNow()});
 document.getElementById('folderAccessButton').addEventListener('click',uiFolders.handleTopFolderAccess);
 document.getElementById('alertCenterButton').addEventListener('click',()=>uiAlertCenter.openAlertCenter());
 document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);
-uiEvents.bindActionEvents(document.getElementById('main'),uiActions);
-uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
+const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,action])=>{
+  const domain=action.startupMutationDomain;
+  if(!domain)return [name,action];
+  return [name,(element,event)=>{if(uiStatus.guardStartupMutation(domain))return action(element,event)}];
+}));
+uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
+uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true});
