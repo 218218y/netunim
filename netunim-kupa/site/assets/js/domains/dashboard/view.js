@@ -32,7 +32,7 @@ function renderDashboard(){
   refreshOrdersFinanceSummary({renderIfChanged:true})
 }
 
-function kpi(label,value,accent,dot,hint){return `<div class="kpi" style="--accent:${esc(accent)};--dot:${esc(dot)}"><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${money(value)}</div><div class="hint">${esc(hint)}</div></div>`}
+function kpi(label,value,accent,dot,hint,formatValue=money){return `<div class="kpi" style="--accent:${esc(accent)};--dot:${esc(dot)}"><div class="label"><span class="dot"></span>${esc(label)}</div><div class="value">${formatValue(value)}</div><div class="hint">${esc(hint)}</div></div>`}
 
 return { renderDashboard, kpi };
 }

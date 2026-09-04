@@ -38,6 +38,7 @@ import {
   creditThrownScrapeFailure,
   creditAutomaticRetryAfterAt,
   deferredCreditProfileError,
+  expiredCamoufoxLoginPageBlock,
   CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
 
@@ -99,6 +100,11 @@ const rateFailure={profileId:'amex-a',provider:'amex',code:'CREDIT_PROVIDER_RATE
 assert.equal(rateDeferred?.severity,'deferred');assert.equal(rateDeferred?.at,rateFailure.at,'Retry-After hard not-before is unchanged for manual/interactive callers because the gate has no mode bypass');assert.match(rateDeferred?.message,/עקב 429 קודם/);
 assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'cal-a',provider:'visaCal'},blockedAt+60*60*1000),null,'cooldown is profile-specific and never suppresses another issuer/profile');
 assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'automatic retry becomes eligible exactly when the cooldown expires');
+const loginPageBlock={...blockedError,stage:'LoginPage',httpStatus:403,retryAfterAt};
+assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS-1),null,'Camoufox identity recovery cannot run before the hard 403 cooldown expires');
+assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS)?.at,blockedError.at,'the rejected persistent identity becomes eligible for one recovery only after its exact not-before time');
+assert.equal(expiredCamoufoxLoginPageBlock([{...loginPageBlock,stage:'ValidateIdData'}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'authenticated-stage blocks never trigger browser-identity replacement');
+assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'cal-a',provider:'visaCal'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'non-Camoufox providers never enter Camoufox identity recovery');
 
 const now=Date.parse('2026-08-30T06:00:00+03:00');
 assert.equal(bankAutoRefreshDue(null,now),true,'missing successful bank sync is due');

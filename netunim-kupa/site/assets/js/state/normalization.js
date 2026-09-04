@@ -1,6 +1,6 @@
 import {clone} from '../core/values.js';
 import {normalizeSharedChecks} from '../domains/checks/model.js';
-import {wholeMoney} from '../core/money.js';
+import {wholeMoney,decimalMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
 import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
@@ -32,7 +32,7 @@ function normalizeState(d){
   n.bank.adjustments=Array.isArray(n.bank.adjustments)?n.bank.adjustments.map(x=>({...x,amount:wholeMoney(x.amount)})):[];
   n.checks=normalizeSharedChecks(n.checks);
   n.cash=(Array.isArray(n.cash)?n.cash:[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
-  n.rights=(Array.isArray(n.rights)?n.rights:[]).map(x=>({...x,amount:wholeMoney(x.amount)}));
+  n.rights=(Array.isArray(n.rights)?n.rights:[]).map(x=>({...x,amount:decimalMoney(x.amount)}));
   {
     const raw=String(n.rightsLastCalculatedDate||'').trim();
     const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);

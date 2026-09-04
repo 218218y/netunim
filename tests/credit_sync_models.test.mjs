@@ -362,7 +362,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:33,contractVersion:2,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','setCreditAutoMode','maybeAutoRefreshCreditSync']){
@@ -372,11 +372,11 @@ assert.equal('setCreditSyncMode' in creditController,false,'credit controller no
 await creditController.refreshCreditBridgeStatus();
 creditController.setCreditAutoMode('full');assert.equal(creditController.creditSyncUiState().autoMode,'full','Kupa stores the selected automatic credit horizon independently of the on/off toggle');creditController.setCreditAutoRefresh(false);
 
-let automaticSyncOptions=null;const automaticModel={state:{creditSync:normalizeCreditSync({})}},automaticController=createDomainsCreditController({model:automaticModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'auto-profile'}]}),syncCreditCards:async options=>{automaticSyncOptions=structuredClone(options);return {syncedAt:new Date().toISOString(),attemptedCount:1,deferredCount:0,profiles:[{profileId:'auto-profile',provider:'max',coreComplete:true,accounts:[]}],errors:[]}}},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:normalizeCreditSync({})}}),claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>true});automaticController.setCreditAutoMode('full');assert.equal(await automaticController.refreshCreditSync({auto:true}),undefined);assert.equal(automaticSyncOptions.syncMode,'full','Kupa once-per-day automatic refresh sends the user-selected full horizon instead of hard-coding daily');automaticController.setCreditAutoRefresh(false);
+let automaticSyncOptions=null;const automaticModel={state:{creditSync:normalizeCreditSync({})}},automaticController=createDomainsCreditController({model:automaticModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},bridge:{creditStatus:async()=>({bridgeVersion:33,contractVersion:2,profiles:[{profileId:'auto-profile'}]}),syncCreditCards:async options=>{automaticSyncOptions=structuredClone(options);return {syncedAt:new Date().toISOString(),attemptedCount:1,deferredCount:0,profiles:[{profileId:'auto-profile',provider:'max',coreComplete:true,accounts:[]}],errors:[]}}},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:normalizeCreditSync({})}}),claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>true});automaticController.setCreditAutoMode('full');assert.equal(await automaticController.refreshCreditSync({auto:true}),undefined);assert.equal(automaticSyncOptions.syncMode,'full','Kupa once-per-day automatic refresh sends the user-selected full horizon instead of hard-coding daily');automaticController.setCreditAutoRefresh(false);
 
 const deferredToasts=[],deferredModel={state:{creditSync:normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'deferred-profile',provider:'amex',attemptedAt:'2026-09-01T00:00:00Z',accounts:[]}]})}},deferredController=createDomainsCreditController({
   model:deferredModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:false}),toast:message=>deferredToasts.push(message),render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:33,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 const beforeDeferredAttempt=deferredModel.state.creditSync.profiles[0].attemptedAt;await deferredController.refreshCreditSync({interactive:true,auto:false});
@@ -387,7 +387,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:32,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:33,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

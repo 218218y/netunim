@@ -463,6 +463,11 @@ function safeCreditScrapeFailure(typeValue,rawValue,profile){
 
 export const CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS=24*60*60*1000;
 export const CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS=24*60*60*1000;
+function matchingCreditProfileErrors(errors,profile){
+  const profileId=String(profile?.profileId||''),provider=String(profile?.provider||'');
+  if(!profileId&&!provider)return [];
+  return (Array.isArray(errors)?errors:[]).filter(error=>error&&(!profileId||String(error.profileId||'')===profileId)&&(!provider||String(error.provider||'')===provider)).sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
+}
 export function creditAutomaticRetryAfterAt(error,now=Date.now()){
   const code=String(error?.code||''),explicit=Date.parse(error?.retryAfterAt||'');
   if(Number.isFinite(explicit)&&explicit>Number(now))return new Date(explicit).toISOString();
@@ -471,11 +476,18 @@ export function creditAutomaticRetryAfterAt(error,now=Date.now()){
   return new Date(base+(code==='CREDIT_AUTOMATION_BLOCKED'?CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS:CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS)).toISOString();
 }
 export function deferredCreditProfileError(errors,profile,now=Date.now()){
-  const profileId=String(profile?.profileId||''),provider=String(profile?.provider||''),time=Number(now);
-  if(!Number.isFinite(time)||(!profileId&&!provider))return null;
-  const matching=(Array.isArray(errors)?errors:[]).filter(error=>error&&(!profileId||String(error.profileId||'')===profileId)&&(!provider||String(error.provider||'')===provider)).sort((a,b)=>(Date.parse(b?.at||'')||0)-(Date.parse(a?.at||'')||0));
+  const time=Number(now);if(!Number.isFinite(time))return null;
+  const matching=matchingCreditProfileErrors(errors,profile);
   for(const error of matching){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time){const originalFailureAt=error.originalFailureAt||error.at||null,reason=String(error.code||'').includes('RATE_LIMITED')?'429':'403';return {...error,severity:'deferred',deferred:true,originalFailureAt,at:originalFailureAt,message:`מושהה עד ${new Date(retryAt).toISOString()} עקב ${reason} קודם. לא נשלחה בקשה חדשה לחברת האשראי.`}}}
   return null;
+}
+export function expiredCamoufoxLoginPageBlock(errors,profile,now=Date.now()){
+  const time=Number(now),provider=String(profile?.provider||'');
+  if(!Number.isFinite(time)||!['amex','isracard'].includes(provider))return null;
+  const latest=matchingCreditProfileErrors(errors,profile)[0];if(!latest)return null;
+  if(String(latest.code||'')!=='CREDIT_AUTOMATION_BLOCKED'||String(latest.stage||'')!=='LoginPage'||Number(latest.httpStatus)!==403)return null;
+  const retryAt=Date.parse(latest.retryAfterAt||'');
+  return Number.isFinite(retryAt)&&retryAt<=time?latest:null;
 }
 export function creditErrorSeverity(error={}){const code=String(error?.code||''),stage=String(error?.stage||''),given=String(error?.severity||'');if(error?.deferred===true||code==='CREDIT_AUTOMATION_BLOCKED'||code==='CREDIT_PROVIDER_RATE_LIMITED')return 'deferred';if(['error','warning','deferred','info'].includes(given))return given;if(error?.tier==='forecast'||stage==='Frames'||stage==='Pending')return 'warning';return 'error'}
 export function creditErrorComponent(error={}){const given=String(error?.component||'');if(['core_transactions','forecast_transactions','pending','frames','profile'].includes(given))return given;if(error?.tier==='core')return 'core_transactions';if(error?.tier==='forecast')return 'forecast_transactions';if(String(error?.stage||'')==='Frames')return 'frames';if(String(error?.stage||'')==='Pending')return 'pending';return 'profile'}

@@ -202,12 +202,13 @@ async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false,identit
       const status=Number(response?.status?.()||0);lastStatus=status;
       if(status===429){const retryAfter=response?.headers?.()?.['retry-after']||response?.headers?.()?.['Retry-After']||'';throw safeError('חברת האשראי הגבילה זמנית את קצב הבקשות כבר בטעינת דף הכניסה.','CREDIT_PROVIDER_RATE_LIMITED',{stage:'LoginPage',httpStatus:status,retryAfterAt:parseRetryAfter(retryAfter)})}
       if(status===403){
-        // A 403 happens before credentials. Do not rotate through fresh anonymous
-        // fingerprints: repeated immediate identities add issuer/WAF pressure but
-        // provide no new authenticated state. The outer per-profile circuit breaker
-        // owns the next attempt. Ordinary interactive diagnostics obey the same
-        // hard not-before time and never rotate the persisted identity.
-        throw safeError('אתר חברת האשראי דחה את סשן Camoufox לפני שליחת פרטי ההתחברות. ניסיון אוטומטי נוסף יידחה על ידי מנגנון ההשהיה במקום ליצור זהויות דפדפן חדשות ברצף.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
+        // A 403 happens before credentials. Never rotate inside this run: the durable
+        // per-profile circuit breaker owns the 24-hour not-before time. If that exact
+        // anonymous LoginPage block is still the latest profile failure after the
+        // cooldown expires, the server retires the rejected persistent Camoufox
+        // identity once before the next eligible attempt. Profile + generated config
+        // are replaced together, so cookies are never mixed with a different device.
+        throw safeError('אתר חברת האשראי דחה את סשן Camoufox לפני שליחת פרטי ההתחברות. לא יישלח ניסיון נוסף עד תום ההשהיה; בניסיון הזכאי הבא הזהות שנדחתה תוחלף פעם אחת יחד עם פרופיל הדפדפן, בלי ליצור זהויות חדשות ברצף.','CREDIT_AUTOMATION_BLOCKED',{stage:'LoginPage',httpStatus:status});
       }
       if(status>=400)throw safeError(`אתר חברת האשראי לא נטען (HTTP ${status}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage:'LoginPage',httpStatus:status});
       return {browser,page};

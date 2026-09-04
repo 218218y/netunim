@@ -3,7 +3,7 @@ import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,nor
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
 const CREDIT_AUTO_MODE_KEY='netunim_kupa_credit_auto_mode_v1';
-const CREDIT_BRIDGE_VERSION=32;
+const CREDIT_BRIDGE_VERSION=33;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
