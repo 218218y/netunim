@@ -1,9 +1,18 @@
 import {CLOUD_PENDING_LOCAL_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
 import {acknowledgedGenerationMatches,compareOutboxFreshness,migrateOutboxRecord} from '../shared/cloud-sync.js';
+import {legacyCardMigrationConflict,migrateLegacyCardPair} from '../sync/legacy-card-migration.js';
 
 const CLOUD_OUTBOX_V3_KEY='cloud-pending-v3';
 function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
-function migrateKupaOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);return record}
+export function migrateKupaOutboxRecord(value,migration){
+  const record=migrateOutboxRecord(value,migration);if(!record)return record;
+  record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);
+  const cards=migrateLegacyCardPair(record.baseState,record.snapshot,{branchLabel:'local'});
+  if(cards.conflicts.length){record.conflict=record.conflict||legacyCardMigrationConflict(cards.conflicts);return record}
+  record.baseState=cards.base;record.snapshot=cards.branch;
+  if(cards.localDeletedIds.length)record.deleteIntents=normalizeDeleteIntents({...record.deleteIntents,cards:[...(record.deleteIntents.cards||[]),...cards.localDeletedIds]});
+  return record;
+}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePending({session, idbPut, idbGet, idbDelete}){

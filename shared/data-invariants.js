@@ -37,6 +37,12 @@ export function stableLegacyEntityId(prefix,row,index){
   return `${String(prefix||'LEGACY')}-${(hash>>>0).toString(36)}-${Number(index).toString(36)}`;
 }
 
+export function stableLegacyPositionId(prefix,index){
+  const position=Number(index);
+  if(!Number.isSafeInteger(position)||position<0)throw invariantError('legacy_position_invalid',String(prefix||'LEGACY'),String(index));
+  return `${String(prefix||'LEGACY')}-LEGACY-${position.toString(36)}`;
+}
+
 export function collectionCounts(state,paths){
   const out={};for(const path of paths){const value=pathValue(state,path);if(Array.isArray(value))out[path]=value.length}return out;
 }

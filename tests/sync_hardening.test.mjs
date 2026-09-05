@@ -11,7 +11,8 @@ import {createUiBulk} from '../netunim-kupa/site/assets/js/ui/bulk.js';
 import {createDomainsRecordsCommands} from '../netunim-kupa/site/assets/js/domains/records/commands.js';
 import {createSyncMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
 import {createSyncPending} from '../netunim-kupa/site/assets/js/sync/pending.js';
-import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
+import {createStoragePending,migrateKupaOutboxRecord} from '../netunim-kupa/site/assets/js/storage/pending.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 
 class StorageMock{
   constructor(){this.items=new Map()}
@@ -65,6 +66,56 @@ test('bulk delete intent survives a failed write retry',()=>{
 test('conflict during bulk deletion is surfaced and never overwritten silently',()=>{
   const merge=createSyncMerge({normalizeState:value=>value,prepareKupaCloudState:value=>value}),base={credits:[{id:'C',amount:1}]},local={credits:[]},remote={credits:[{id:'C',amount:2}]};
   const result=merge.mergeState3Way(base,local,remote,{deleteIntents:{credits:['C']}});assert.deepEqual(result.conflicts,['credits:C']);assert.deepEqual(result.state.credits,[]);
+});
+
+function legacyKupaState(cards){return {version:4,businessName:'legacy',checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[],cards,bank:{adjustments:[]}}}
+function legacyCard(name,chargeDay=10){return {name,account:'עסקי',chargeDay,active:true}}
+function legacyMerge(){const normalization=createStateNormalization({model:{}});return {normalization,merge:createSyncMerge({normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState})}}
+
+test('pre-v5 pending card edit keeps one lineage ID across base, snapshot and ID-less remote',()=>{
+  const {merge}=legacyMerge(),base=legacyKupaState([legacyCard('VISA',10)]),local=legacyKupaState([legacyCard('VISA',15)]),remote=structuredClone(base);
+  const pending=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  const result=merge.mergeKupaCloudState3Way(pending.baseState,pending.snapshot,remote,{deleteIntents:pending.deleteIntents});
+  assert.deepEqual(result.conflicts,[]);assert.equal(result.state.cards.length,1);assert.equal(result.state.cards[0].chargeDay,15);assert.equal(result.state.cards[0].id,'CARD-LEGACY-0');
+});
+
+test('legacy card deletion is migrated to an exact ID deletion',()=>{
+  const {merge}=legacyMerge(),first=legacyCard('VISA'),second=legacyCard('AMEX',12),base=legacyKupaState([first,second]),local=legacyKupaState([second]),remote=structuredClone(base);
+  const result=merge.mergeKupaCloudState3Way(base,local,remote);
+  assert.deepEqual(result.conflicts,[]);assert.deepEqual(result.state.cards.map(card=>card.name),['AMEX']);assert.equal(result.state.cards[0].id,'CARD-LEGACY-1');
+});
+
+test('legacy card addition receives a distinct ID without changing inherited IDs',()=>{
+  const {merge}=legacyMerge(),first=legacyCard('VISA'),added=legacyCard('AMEX',12),base=legacyKupaState([first]),local=legacyKupaState([first,added]),remote=structuredClone(base);
+  const result=merge.mergeKupaCloudState3Way(base,local,remote);
+  assert.deepEqual(result.conflicts,[]);assert.deepEqual(result.state.cards.map(card=>card.id),['CARD-LEGACY-0','CARD-LOCAL-LEGACY-1']);
+});
+
+test('concurrent edit of the same legacy card becomes a record conflict, never a duplicate',()=>{
+  const {merge}=legacyMerge(),base=legacyKupaState([legacyCard('VISA',10)]),local=legacyKupaState([legacyCard('VISA',15)]),remote=legacyKupaState([legacyCard('VISA',20)]);
+  const pending=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  const result=merge.mergeKupaCloudState3Way(pending.baseState,pending.snapshot,remote,{deleteIntents:pending.deleteIntents});
+  assert.deepEqual(result.conflicts,['cards:CARD-LEGACY-0']);assert.equal(result.state.cards.length,0);
+});
+
+test('ambiguous legacy structural migration fails closed with an explicit migration conflict',()=>{
+  const duplicate=legacyCard('VISA'),base=legacyKupaState([duplicate,duplicate]),local=legacyKupaState([duplicate]),remote=structuredClone(base);
+  const migrated=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  assert.equal(migrated.conflict.kind,'legacy-card-migration-conflict');assert.deepEqual(migrated.deleteIntents,{});assert.equal(migrated.baseState.cards.some(card=>card.id),false);
+});
+
+test('restart durably upgrades a pre-v5 pending base and snapshot before remote reconcile',async()=>{
+  const storage=new StorageMock();Object.defineProperty(globalThis,'localStorage',{value:storage,configurable:true});
+  const raw={schemaVersion:3,domain:'kupa',documentName:'main',operationId:'kupa:legacy',generation:9,mutationSeq:9,baseRevision:4,baseState:legacyKupaState([legacyCard('VISA',10)]),snapshot:legacyKupaState([legacyCard('VISA',15)]),createdAt:'2026-09-01T00:00:00Z',updatedAt:'2026-09-01T00:01:00Z'};
+  const idb=new Map([['cloud-pending-v3',raw]]),make=()=>createStoragePending({session:{localGeneration:0,dbRevision:4,cloudOutboxCommitPromise:null,cloudDocumentName:'main'},idbGet:async(_store,key)=>structuredClone(idb.get(key)??null),idbPut:async(_store,key,value)=>idb.set(key,structuredClone(value)),idbDelete:async(_store,key)=>idb.delete(key)});
+  const first=await make().getCloudPending(),second=await make().getCloudPending();
+  assert.equal(first.schemaVersion,4);assert.equal(first.baseState.cards[0].id,'CARD-LEGACY-0');assert.equal(first.snapshot.cards[0].id,'CARD-LEGACY-0');assert.equal(first.snapshot.cards[0].chargeDay,15);assert.deepEqual(second,first);
+});
+
+test('an embedded card ID is preserved after every mutable field changes',()=>{
+  const {normalization}=legacyMerge(),state=legacyKupaState([{...legacyCard('VISA',10),id:'CARD-PERSISTED'}]),changed=structuredClone(state);
+  changed.cards[0]={id:'CARD-PERSISTED',name:'AMEX',account:'ביתי',chargeDay:28,active:false};
+  assert.equal(normalization.normalizeState(changed).cards[0].id,'CARD-PERSISTED');
 });
 
 test('outbox freshness uses generation then mutationSeq, never wall-clock time',()=>{

@@ -84,7 +84,6 @@ create table if not exists netunim_internal.restore_operation_groups (
   checks_operation_id text,
   phase text not null check (phase in ('staged','main_pending','main_acked','checks_pending','checks_acked','completed')),
   audit jsonb not null default '{}'::jsonb,
-  last_error_code text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   completed_at timestamptz,
@@ -462,7 +461,10 @@ begin
     restore_group_id:=v_group.restore_group_id;phase:=v_group.phase;return next;return;
   end if;
   perform set_config('app.destructive_operation_kind','restore',true);
-  update netunim_internal.restore_operation_groups set phase='main_pending',updated_at=now(),last_error_code=null where owner_id=v_owner and restore_group_id=p_restore_group_id;
+  -- Failed applies deliberately leave the last durable phase unchanged: this entire
+  -- function is atomic, so an exception also rolls back phase bookkeeping. Operators
+  -- must monitor the failed RPC/database log, not infer a durable error from this row.
+  update netunim_internal.restore_operation_groups set phase='main_pending',updated_at=now() where owner_id=v_owner and restore_group_id=p_restore_group_id;
   perform netunim_internal.capture_safety_snapshot(v_owner,v_group.app_site,v_group.main_document_name,v_group.main_operation_id,'restore',v_group.restore_group_id);
   if v_group.app_site='orders' then
     select * into v_main from public.save_order_management_document_v5(v_group.main_document_name,v_group.main_base_revision,v_group.main_state,v_group.main_operation_id,v_group.main_delete_intents,v_group.audit||jsonb_build_object('mutationType','restore','restoreGroupId',v_group.restore_group_id));

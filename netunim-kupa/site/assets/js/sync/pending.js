@@ -1,5 +1,6 @@
 import {clone} from '../core/values.js';
 import {createOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
+import {legacyCardMigrationConflict} from './legacy-card-migration.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncPending({session, prepareKupaCloudState, setSaveStatus, setCloudHeaderStatus, loadCloudPendingSync, persistCloudPendingSync, putCloudPending, lastSavedCloudState, getCloudPending, rebaseKupaCloudProgress}){
@@ -20,7 +21,7 @@ function stageCloudPendingLocal(snapshot,msg,baseRevision=session.dbRevision,bas
   setCloudHeaderStatus(record.conflict?'conflict':navigator.onLine?'syncing':'offline',record.conflict?'ענן: התנגשות':navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין');return record
 }
 
-async function rebaseNewerPending(completedGeneration,baseState,newRevision){const pending=await getCloudPending();if(!pending||Number(pending.generation||0)<=Number(completedGeneration||0))return false;const nextSnapshot=rebaseKupaCloudProgress(pending.baseState||baseState,pending.snapshot,baseState,{deleteIntents:pending.deleteIntents||{}}),next=createOutboxRecord({...pending,mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,baseRevision:Number(newRevision||0),baseState:prepareKupaCloudState(baseState),snapshot:clone(nextSnapshot),updatedAt:new Date().toISOString(),conflict:pending.conflict||null});next.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(next);session.cloudConflictPending=!!next.conflict;return true}
+async function rebaseNewerPending(completedGeneration,baseState,newRevision){const pending=await getCloudPending();if(!pending||Number(pending.generation||0)<=Number(completedGeneration||0))return false;let nextSnapshot;try{nextSnapshot=rebaseKupaCloudProgress(pending.baseState||baseState,pending.snapshot,baseState,{deleteIntents:pending.deleteIntents||{}})}catch(error){if(error?.code!=='legacy_card_migration_conflict')throw error;const blocked=createOutboxRecord({...pending,mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,updatedAt:new Date().toISOString(),conflict:legacyCardMigrationConflict(error.conflicts||[])});blocked.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(blocked);session.cloudConflictPending=true;return true}const next=createOutboxRecord({...pending,mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,baseRevision:Number(newRevision||0),baseState:prepareKupaCloudState(baseState),snapshot:clone(nextSnapshot),updatedAt:new Date().toISOString(),conflict:pending.conflict||null});next.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(next);session.cloudConflictPending=!!next.conflict;return true}
 
 return { stageCloudPendingLocal, rebaseNewerPending };
 }

@@ -1,5 +1,6 @@
 import {clone} from '../core/values.js';
 import {mergeRecordArray, mergeValue, mergeRecordArrayPreferLocal, mergeValuePreferLocal} from './merge-records.js';
+import {migrateLegacyCards3Way} from './legacy-card-migration.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncMerge({normalizeState, prepareKupaCloudState}){
@@ -10,7 +11,9 @@ function protectImplicitDeletes(base,local,deleteIds,key='id'){
   return safe;
 }
 function mergeState3Way(base,local,remote,{deleteIntents={}}={}){
-  base=base||{};local=local||{};remote=remote||{};const conflicts=[];const out=clone(remote);
+  const lineage=migrateLegacyCards3Way(base,local,remote);
+  if(lineage.conflicts.length)return {state:normalizeState(clone(remote||{})),conflicts:lineage.conflicts};
+  base=lineage.base;local=lineage.local;remote=lineage.remote;deleteIntents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};const conflicts=[];const out=clone(remote);
   out.version=Math.max(Number(base.version||1),Number(local.version||1),Number(remote.version||1));
   out.businessName=mergeValue(base.businessName,local.businessName,remote.businessName,'businessName',conflicts);
   out.checks=mergeRecordArray(base.checks,local.checks,remote.checks,'id','checks',conflicts);
@@ -29,7 +32,9 @@ function mergeState3Way(base,local,remote,{deleteIntents={}}={}){
   return {state:normalizeState(out),conflicts};
 }
 function rebaseLocalProgress(base,local,remote,{deleteIntents={}}={}){
-  base=base||{};local=local||{};remote=remote||{};const out=clone(remote);
+  const lineage=migrateLegacyCards3Way(base,local,remote);
+  if(lineage.conflicts.length){const error=new Error('legacy_card_migration_conflict');error.code='legacy_card_migration_conflict';error.conflicts=lineage.conflicts;throw error}
+  base=lineage.base;local=lineage.local;remote=lineage.remote;deleteIntents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};const out=clone(remote);
   out.version=Math.max(Number(base.version||1),Number(local.version||1),Number(remote.version||1));
   out.businessName=mergeValuePreferLocal(base.businessName,local.businessName,remote.businessName);
   out.checks=mergeRecordArrayPreferLocal(base.checks,local.checks,remote.checks,'id');
@@ -47,7 +52,12 @@ function rebaseLocalProgress(base,local,remote,{deleteIntents={}}={}){
   out.bank={currentBalance:mergeValuePreferLocal(bb.currentBalance,lb.currentBalance,rb.currentBalance),updatedAt:mergeValuePreferLocal(bb.updatedAt,lb.updatedAt,rb.updatedAt),asOfDate:mergeValuePreferLocal(bb.asOfDate,lb.asOfDate,rb.asOfDate),snapshotToken:mergeValuePreferLocal(bb.snapshotToken,lb.snapshotToken,rb.snapshotToken),snapshotSeq:mergeValuePreferLocal(bb.snapshotSeq,lb.snapshotSeq,rb.snapshotSeq),source:mergeValuePreferLocal(bb.source,lb.source,rb.source),sourceAccount:mergeValuePreferLocal(bb.sourceAccount,lb.sourceAccount,rb.sourceAccount),bankSyncAt:mergeValuePreferLocal(bb.bankSyncAt,lb.bankSyncAt,rb.bankSyncAt),feed:mergeValuePreferLocal(bb.feed,lb.feed,rb.feed),homeFeed:mergeValuePreferLocal(bb.homeFeed,lb.homeFeed,rb.homeFeed),adjustments:mergeRecordArrayPreferLocal(bb.adjustments,lb.adjustments,rb.adjustments,'id')};
   return normalizeState(out);
 }
-function mergeKupaCloudState3Way(base,local,remote,{deleteIntents={}}={}){const merged=mergeState3Way({...prepareKupaCloudState(base),checks:[]},{...prepareKupaCloudState(local),checks:[]},{...prepareKupaCloudState(remote),checks:[]},{deleteIntents});return {state:prepareKupaCloudState(merged.state),conflicts:merged.conflicts.filter(x=>!String(x).startsWith('checks:'))}}
-function rebaseKupaCloudProgress(base,local,remote,{deleteIntents={}}={}){return prepareKupaCloudState(rebaseLocalProgress({...prepareKupaCloudState(base),checks:[]},{...prepareKupaCloudState(local),checks:[]},{...prepareKupaCloudState(remote),checks:[]},{deleteIntents}))}
+function alignCloudInputs(base,local,remote){
+  const lineage=migrateLegacyCards3Way(base,local,remote);
+  if(lineage.conflicts.length)return lineage;
+  return {...lineage,base:{...prepareKupaCloudState(lineage.base),checks:[]},local:{...prepareKupaCloudState(lineage.local),checks:[]},remote:{...prepareKupaCloudState(lineage.remote),checks:[]}};
+}
+function mergeKupaCloudState3Way(base,local,remote,{deleteIntents={}}={}){const lineage=alignCloudInputs(base,local,remote);if(lineage.conflicts.length)return {state:prepareKupaCloudState(remote),conflicts:lineage.conflicts};const intents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};const merged=mergeState3Way(lineage.base,lineage.local,lineage.remote,{deleteIntents:intents});return {state:prepareKupaCloudState(merged.state),conflicts:merged.conflicts.filter(x=>!String(x).startsWith('checks:'))}}
+function rebaseKupaCloudProgress(base,local,remote,{deleteIntents={}}={}){const lineage=alignCloudInputs(base,local,remote);if(lineage.conflicts.length){const error=new Error('legacy_card_migration_conflict');error.code='legacy_card_migration_conflict';error.conflicts=lineage.conflicts;throw error}const intents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};return prepareKupaCloudState(rebaseLocalProgress(lineage.base,lineage.local,lineage.remote,{deleteIntents:intents}))}
 return { mergeState3Way, rebaseLocalProgress, mergeKupaCloudState3Way, rebaseKupaCloudProgress };
 }

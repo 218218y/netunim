@@ -90,9 +90,28 @@ bulk = (KUPA / "site/assets/js/ui/bulk.js").read_text(encoding="utf-8")
 ok("deletedIds:ids" in bulk and "deleteIntents:{[collection]:ids}" in bulk
    and "mutationType:'bulk-delete'" in bulk,
    "Kupa checks/credits/cash/rights bulk deletion forwards exact IDs")
-ok("out.cards=mergeRecordArray" in (KUPA / "site/assets/js/sync/merge.js").read_text(encoding="utf-8")
-   and "stableLegacyEntityId('CARD'" in (KUPA / "site/assets/js/state/normalization.js").read_text(encoding="utf-8"),
-   "Kupa cards are stable-ID entities with deletion protection")
+card_merge = (KUPA / "site/assets/js/sync/merge.js").read_text(encoding="utf-8")
+card_migration = (KUPA / "site/assets/js/sync/legacy-card-migration.js").read_text(encoding="utf-8")
+card_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
+ok("out.cards=mergeRecordArray" in card_merge and "migrateLegacyCards3Way" in card_merge
+   and "stableLegacyPositionId" in card_migration and "legacy-card-migration-conflict" in card_migration
+   and "migrateLegacyCardPair" in card_pending,
+   "Kupa cards use lineage-aware one-time IDs, durable outbox migration and explicit ambiguity conflicts")
+
+data_preflight = (ORDERS / "supabase/shared/validation/sync_integrity_v5_data_preflight.sql").read_text(encoding="utf-8").lower()
+data_postdeploy = (ORDERS / "supabase/shared/validation/sync_integrity_v5_data_postdeploy.sql").read_text(encoding="utf-8").lower()
+ok("transaction read only" in data_preflight and "legacy kupa cards without an id" in data_preflight
+   and "pending compatibility" in data_preflight and all(term in data_preflight for term in ("missing=", "blank_or_invalid=", "duplicate_records=")),
+   "read-only data preflight reports malformed IDs, legacy Kupa cards and pending compatibility")
+ok("transaction read only" in data_postdeploy and "postdeploy_kupa_cards_invalid" in data_postdeploy
+   and "no kupa card is missing a stable id" in data_postdeploy,
+   "post-deploy data gate rejects every remaining Kupa card without a stable ID")
+
+runbook = (ROOT / "SYNC_HARDENING_V5.md").read_text(encoding="utf-8")
+ok("last_error_code" not in runbook and "cannot durably update `phase` or an error column" in runbook
+   and "failed `apply_restore_group_v5` RPCs" in runbook
+   and "last_error_code" not in lower,
+   "restore monitoring does not claim transactional failure state is durable")
 
 contracts = (ORDERS / "supabase/shared/validation/sync_integrity_v5_server_contracts.sql").read_text(encoding="utf-8").lower()
 ok(all(fragment in contracts for fragment in (

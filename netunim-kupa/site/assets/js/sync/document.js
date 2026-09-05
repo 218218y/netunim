@@ -3,6 +3,7 @@ import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
+import {legacyCardMigrationConflict} from './legacy-card-migration.js';
 
 function revisionConflict(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='revision_conflict'}
 function saveBusy(res){return !res?.r?.ok&&normalizeCloudError(res).kind==='busy'}
@@ -10,6 +11,7 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
 function collectionRows(state,key){if(key==='notesSheet.rows')return state?.notesSheet?.rows||[];if(key==='notesSheet.columns')return state?.notesSheet?.columns||[];return state?.[key]||[]}
 function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=Array.isArray(collectionRows(base,key))?collectionRows(base,key):[],after=Array.isArray(collectionRows(candidate,key))?collectionRows(candidate,key):[],kept=new Set(after.map(x=>String(x?.id||''))),removed=before.map(x=>String(x?.id||'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
+function mergeConflict(conflicts){return conflicts.some(value=>String(value).startsWith('cards:migration:'))?legacyCardMigrationConflict(conflicts):{kind:'entity-conflict',conflicts:[...conflicts]}}
 function cloudAudit(pending,before,after,baseRevision,intents){return operationAuditMetadata({site:'kupa',mutationType:pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns'],deleteCount:Object.values(intents).reduce((sum,ids)=>sum+ids.length,0),restoreGroupId:pending?.restoreGroupId})}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -69,7 +71,7 @@ async function reconcileCloudPending(remoteRow=null){
       let candidate=prepareKupaCloudState(pending.snapshot),expected=Number(row.revision||0);
       if(Number(row.revision||0)!==Number(pending.baseRevision||0)){
         const merged=mergeKupaCloudState3Way(pending.baseState,pending.snapshot,row.state,{deleteIntents:pending.deleteIntents||{}});
-        if(merged.conflicts.length){const conflicted={...pending,conflict:true,savedAt:new Date().toISOString()};await putCloudPending(conflicted);session.cloudConflictPending=true;model.state=applyKupaCoreState(pending.snapshot,model.state.checks);session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));persistImmediateBrowserSnapshot(model.state,session.dbRevision);setConnectedStatus('Supabase — נדרשת הכרעה');setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();reportError('יש התנגשות אמיתית: אותה רשומה שונתה גם במחשב הזה וגם במקור אחר. השינוי המקומי נשמר ולא נדרס. ייצא גיבוי JSON ובדוק את הרשומה לפני המשך הסנכרון.');return false}
+        if(merged.conflicts.length){const conflicted={...pending,conflict:mergeConflict(merged.conflicts),savedAt:new Date().toISOString()};await putCloudPending(conflicted);session.cloudConflictPending=true;model.state=applyKupaCoreState(pending.snapshot,model.state.checks);session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));persistImmediateBrowserSnapshot(model.state,session.dbRevision);setConnectedStatus('Supabase — נדרשת הכרעה');setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();reportError('יש התנגשות אמיתית: אותה רשומה שונתה גם במחשב הזה וגם במקור אחר. השינוי המקומי נשמר ולא נדרס. ייצא גיבוי JSON ובדוק את הרשומה לפני המשך הסנכרון.');return false}
         candidate=merged.state
       }
       const exactIntents=effectiveDeleteIntents(row.state,candidate,pending.deleteIntents);session.cloudWriteBusy=true;const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,expected,pending.operationId,exactIntents,cloudAudit(pending,row.state,candidate,expected,exactIntents)));session.cloudWriteBusy=false;
@@ -107,7 +109,7 @@ async function persistSupabaseState(snapshot,msg,generation=session.localGenerat
       if(!revisionConflict(res))throw cloudWriteError(res,em);
       await contentionBackoff(attempt);
       const remote=await readSupabaseDocument();if(!remote)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');const merged=mergeKupaCloudState3Way(baseState,candidate,remote.state,{deleteIntents:pending.deleteIntents||{}});
-      if(merged.conflicts.length){stageCloudPendingLocal(snapshot,msg,pending.baseRevision,pending.baseState,generation,true,undefined,pending.deleteIntents||{});session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
+      if(merged.conflicts.length){stageCloudPendingLocal(snapshot,msg,pending.baseRevision,pending.baseState,generation,mergeConflict(merged.conflicts),undefined,pending.deleteIntents||{});session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
       candidate=merged.state;baseRevision=Number(remote.revision||0);baseState=prepareKupaCloudState(remote.state);res=null
     }
     if(!res?.r?.ok)throw new Error('הענן השתנה שוב בזמן השמירה; השינוי נשמר מקומית וינוסה שוב');

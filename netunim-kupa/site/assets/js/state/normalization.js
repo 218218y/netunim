@@ -5,7 +5,7 @@ import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';
 import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
 import {assertKupaEntityInvariants,assertPortablePayload} from './validation.js';
-import {stableLegacyEntityId} from '../shared/data-invariants.js';
+import {stableLegacyPositionId} from '../shared/data-invariants.js';
 import {normalizeCashflowSettings} from '../shared/cashflow.js';
 import {normalizeNotesSheet} from '../domains/notes/sheet-model.js';
 
@@ -43,7 +43,7 @@ function normalizeState(d){
   n.notes=(Array.isArray(n.notes)?n.notes:[]).filter(x=>x&&x.id).map(x=>({...x,id:String(x.id),content:String(x.content||''),createdAt:String(x.createdAt||''),updatedAt:String(x.updatedAt||x.createdAt||'')}));
   n.notesSheet=normalizeNotesSheet(n.notesSheet);
   n.expenses=(Array.isArray(n.expenses)?n.expenses:[]).map(x=>({...x,account:x.account==='ביתי'?'ביתי':'עסקי',amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
-  n.cards=(Array.isArray(n.cards)?n.cards:[]).map((card,index)=>({...card,id:card.id||stableLegacyEntityId('CARD',card,index)}));
+  n.cards=(Array.isArray(n.cards)?n.cards:[]).map((card,index)=>({...card,id:card.id||stableLegacyPositionId('CARD',index)}));
   n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);
   const creditSyncSourceVersion=Math.trunc(Number(n.creditSync?.version)||1);
   n.creditSync=normalizeCreditSync(n.creditSync);

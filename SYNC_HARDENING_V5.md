@@ -17,6 +17,8 @@ This release keeps the existing document architecture, revision concurrency, 3-w
 
 Every ID-keyed collection is validated before client staging and again in the database transaction. Missing, blank, non-canonical, or duplicate IDs are rejected; no validator normalizes or collapses duplicates.
 
+Legacy Kupa card IDs are migrated from lineage, not from mutable card JSON. A pending outbox upgrades `baseState` and `snapshot` together before either is normalized, and the 3-way merge aligns the remote branch against that same ordered legacy lineage. In-place legacy edits inherit the base slot ID; a structural addition or deletion is accepted only when the unchanged side has one unique ordered embedding. Additions on different branches receive separate namespaces. Reordering, duplicate-row ambiguity, conflicting embedded IDs, or any other non-unique mapping persists an explicit `legacy-card-migration-conflict` and performs no cloud write or deletion. Once an ID exists it is preserved verbatim across all later normalization and edits.
+
 ## Destructive-write policy
 
 Routine writes may coalesce one or two individually confirmed deletions. A regular writer is rejected when a collection loses either:
@@ -30,16 +32,16 @@ Confirmed bulk deletes use dedicated v5 RPCs. Restore uses a durable restore-gro
 
 ## Restore durability
 
-Before cloud mutation, the browser stores the restore ID, both targets, base revisions, exact intents, operation IDs, SHA-256 payload hashes, local target, before-state, and phase in LocalStorage and IndexedDB. The server then stores the same cloud targets and hashes. `apply_restore_group_v5` applies main and Shared Checks in one database transaction; failure rolls back both. Lost ACK is safe because both operation IDs and the group ID are replayable. Startup resumes a local group and also detects server-staged incomplete groups.
+Before cloud mutation, the browser stores the restore ID, both targets, base revisions, exact intents, operation IDs, SHA-256 payload hashes, local target, before-state, and phase in LocalStorage and IndexedDB. The server then stores the same cloud targets and hashes. `apply_restore_group_v5` applies main and Shared Checks in one database transaction; failure rolls back both. That same atomic rollback means a failed call cannot durably update `phase` or an error column in its own transaction: failed attempts must be monitored from PostgREST/PostgreSQL RPC logs and client diagnostics. Lost ACK is safe because both operation IDs and the group ID are replayable. Startup resumes a local group and also detects server-staged incomplete groups.
 
 Completed local restore archives remain in IndexedDB as before-restore recovery material. Only the current pointer is removed after cloud ACK and successful local application. Server safety snapshots and public backup history cannot be updated, deleted, truncated, or pruned by browser roles.
 
 ## Deployment order
 
 1. Stop writes or enter a controlled maintenance window and take a production database/safety export. Record its location and checksum outside browser storage.
-2. Apply `sync_integrity_v5_upgrade.sql` on a staging branch first. The migration is additive and transactional; it does not rewrite live business rows or historical backups.
+2. Run `sync_integrity_v5_data_preflight.sql` on staging, then apply `sync_integrity_v5_upgrade.sql`. The preflight is read-only and reports malformed IDs, legacy Kupa cards, and client-local pending compatibility expectations. The migration is additive and transactional; it does not rewrite live business rows or historical backups.
 3. Run `supabase/shared/validation/sync_integrity_v5_server_contracts.sql` with a dedicated staging user. It includes the historical 55→1 fixture and rolls back all test rows.
-4. Run `supabase/shared/validation/sync_integrity_v5_postflight.sql` and verify RPCs, triggers, RLS, grants, invariant functions, immutable backups, restore tables, and the active trusted ledger schedule.
+4. Run `supabase/shared/validation/sync_integrity_v5_postflight.sql` and verify RPCs, triggers, RLS, grants, invariant functions, immutable backups, restore tables, and the active trusted ledger schedule. After both clients have connected and synced, run `sync_integrity_v5_data_postdeploy.sql`; it fails if any Kupa card still lacks an ID.
 5. Deploy database protection before dependent clients. Deploy Kupa and Orders together because v5 Shared Checks is common. Old clients fail closed at the invariant/mass guard rather than bypassing protection.
 6. Run `python tests/run_all.py` on CI/Windows with localhost/native ESM browser runtime enabled. `--core-only` is not a deployment gate.
 7. Monitor delete-intent rejections, mass-delete rejections, revision conflicts, pending-outbox age, incomplete restore groups, and safety-snapshot failures.
@@ -91,7 +93,11 @@ Copy the dump and recorded SHA-256 to protected storage outside the browser and 
 $migration = Join-Path $repoRoot 'netunim-orders/supabase/sync_integrity_v5_upgrade.sql'
 $serverContracts = Join-Path $repoRoot 'netunim-orders/supabase/shared/validation/sync_integrity_v5_server_contracts.sql'
 $postflight = Join-Path $repoRoot 'netunim-orders/supabase/shared/validation/sync_integrity_v5_postflight.sql'
+$dataPreflight = Join-Path $repoRoot 'netunim-orders/supabase/shared/validation/sync_integrity_v5_data_preflight.sql'
+$dataPostdeploy = Join-Path $repoRoot 'netunim-orders/supabase/shared/validation/sync_integrity_v5_data_postdeploy.sql'
 
+& psql $env:NETUNIM_STAGING_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPreflight
+if ($LASTEXITCODE -ne 0) { throw 'Staging live-data preflight failed.' }
 & psql $env:NETUNIM_STAGING_DB_URL -X -v ON_ERROR_STOP=1 -f $migration
 if ($LASTEXITCODE -ne 0) { throw 'Staging v5 migration failed.' }
 & psql $env:NETUNIM_STAGING_DB_URL -X -v ON_ERROR_STOP=1 -v "owner_id=$env:NETUNIM_STAGING_TEST_OWNER" -f $serverContracts
@@ -106,11 +112,20 @@ The migration intentionally aborts if the v3 ledger, v4 exact-intent RPCs, inter
 
 Deploy both `netunim-kupa/site/` and `netunim-orders/site/` to staging from the same commit. Exercise at least one ordinary edit, single delete, confirmed bulk delete, offline edit/restart, two-tab read-only behavior, and a restore that includes Shared Checks. Then rerun the staging postflight above.
 
+Connect every staging Kupa client that may hold pending work, allow it to finish migration/sync, and then run:
+
+```powershell
+& psql $env:NETUNIM_STAGING_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPostdeploy
+if ($LASTEXITCODE -ne 0) { throw 'Staging still contains Kupa cards without stable IDs.' }
+```
+
 ### 5. Production cutover
 
 Use a controlled write-maintenance window. With the backup from step 2 already complete:
 
 ```powershell
+& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPreflight
+if ($LASTEXITCODE -ne 0) { throw 'Production live-data preflight failed; do not migrate.' }
 & psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $migration
 if ($LASTEXITCODE -ne 0) { throw 'Production v5 migration failed; clients must not be deployed.' }
 & psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $postflight
@@ -126,6 +141,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Combined client preflight failed; do not uploa
 if ($LASTEXITCODE -ne 0) { throw 'Coordinated client deployment failed; keep writes closed.' }
 & psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $postflight
 if ($LASTEXITCODE -ne 0) { throw 'Post-deploy database postflight failed; keep writes closed.' }
+& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPostdeploy
+if ($LASTEXITCODE -ne 0) { throw 'Post-deploy Kupa card ID gate failed; keep writes closed.' }
 ```
 
 Database guards must precede the clients. Reopen writes only after the second production postflight passes.
@@ -135,7 +152,7 @@ Database guards must precede the clients. Reopen writes only after the second pr
 Use Supabase/Postgres logs to alert on `kupa_delete_intent_mismatch`, `order_management_delete_intent_mismatch`, `shared_checks_delete_intent_mismatch`, `mass_delete_requires_dedicated_rpc`, `revision_conflict`, and `save_busy`. Check incomplete restores and recent destructive operations with read-only queries:
 
 ```sql
-select owner_id,restore_group_id,app_site,phase,created_at,updated_at,last_error_code
+select owner_id,restore_group_id,app_site,phase,created_at,updated_at
 from netunim_internal.restore_operation_groups
 where phase <> 'completed'
 order by created_at;
@@ -154,5 +171,7 @@ order by created_at desc;
 ```
 
 Pending outbox age is client-local by design; monitor the visible sync status and browser diagnostics on both sites. Never clear site data while an outbox or restore is pending.
+
+An unchanged restore phase proves only the last committed phase. It does not prove that no apply attempt failed: `apply_restore_group_v5` is atomic, so its own failure bookkeeping would roll back with the business writes. Alert on failed `apply_restore_group_v5` RPCs in PostgREST/PostgreSQL logs and correlate them by restore group ID.
 
 If the migration fails, its transaction rolls back automatically. After a successful production migration, prefer rolling back only the static clients while leaving the fail-safe database guards in place. A database restore is an outage procedure and should use the verified dump from step 2, not ad-hoc cleanup SQL.
