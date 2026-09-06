@@ -18,6 +18,7 @@ for command in (
     ['node', '--test', 'tests/date_search_filters.test.mjs'],
     ['node', '--test', 'tests/shared_contracts.test.mjs'],
     ['node', '--test', 'tests/sync_models.test.mjs'],
+    ['node', '--test', 'tests/shared_checks_flight.test.mjs'],
     ['node', '--test', 'tests/cash_rights.test.mjs'],
     ['node', '--test', 'tests/kupa_notes.test.mjs'],
     ['node', '--test', 'tests/storage_models.test.mjs'],

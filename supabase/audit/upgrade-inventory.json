@@ -1,0 +1,534 @@
+[
+  {
+    "file": "netunim-orders/supabase/bank_alert_center_upgrade.sql",
+    "sha256": "2d7b4dbf44c4ca7a7d909ddf38001299fe1b6a2a0c16777060a85d4e0d03f57f",
+    "kupa_copy": "netunim-kupa/supabase/bank_alert_center_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "acknowledge_bank_transaction_alert",
+            "identity": "p_transaction_id bigint, p_alert_kind text",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "acknowledge_bank_transaction_alert",
+            "identity": "p_transaction_id bigint, p_alert_kind text",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "alert_acknowledgements column/check exist; v2 deliberately changes the acknowledgement RPC to DEFINER."
+  },
+  {
+    "file": "netunim-orders/supabase/bank_alert_center_v2_upgrade.sql",
+    "sha256": "74d44847da7907d34affd9ddd8cc578747504efdc1df7b7df3d9cea79dabed0c",
+    "kupa_copy": "netunim-kupa/supabase/bank_alert_center_v2_upgrade.sql",
+    "replay_changes": {},
+    "meaning": "Idempotent on captured schema",
+    "replay_state": "applied",
+    "effective_state": "applied",
+    "review_evidence": "Acknowledgement DEFINER/search_path/grants and bank_alert_rollout_baselines schema match. Historical data baseline not inspected."
+  },
+  {
+    "file": "netunim-orders/supabase/bank_pending_reconciliation_upgrade.sql",
+    "sha256": "fa562a9fce91e4b9f4be799830936d3d5bb9aad8ed4bac9c3b6e4fb2dd3824df",
+    "kupa_copy": "netunim-kupa/supabase/bank_pending_reconciliation_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Internal merge_bank_transactions contains v_pending_id reconciliation; public path is wrapped by v6 fencing."
+  },
+  {
+    "file": "netunim-orders/supabase/bank_snapshot_reconciliation_upgrade.sql",
+    "sha256": "380a5af0402656e2bb71603a89ffdbb3d38bfead7740dc5ab03ef87441663f20",
+    "kupa_copy": "netunim-kupa/supabase/bank_snapshot_reconciliation_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "acknowledge_bank_transaction_missing",
+            "identity": "p_transaction_id bigint",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "acknowledge_bank_transaction_missing",
+            "identity": "p_transaction_id bigint",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "sync_bank_transactions_snapshot",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean",
+            "owner": "postgres"
+          }
+        ]
+      },
+      "tables": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "bank_transaction_snapshots",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "bank_transaction_snapshots",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "bank_transaction_snapshots and presence/missing columns exist; v6 wraps snapshot RPC and restricts direct table writes."
+  },
+  {
+    "file": "netunim-orders/supabase/cloud_header_status_v1_upgrade.sql",
+    "sha256": "8b108447d84fed6fe43c20241cf67dda046c1c1ff405ecc0b46af5087f4a64fe",
+    "kupa_copy": "netunim-kupa/supabase/cloud_header_status_v1_upgrade.sql",
+    "replay_changes": {},
+    "meaning": "Idempotent on captured schema",
+    "replay_state": "applied",
+    "effective_state": "applied",
+    "review_evidence": "Timestamp columns/defaults and triggers are idempotent."
+  },
+  {
+    "file": "netunim-orders/supabase/cloud_sync_lossless_v3_upgrade.sql",
+    "sha256": "ed4bad3bf1ac535c88c6ff8b401654a9bdefcc8c780ba4684fd4dbc2f71adc2e",
+    "kupa_copy": "netunim-kupa/supabase/cloud_sync_lossless_v3_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document_v3",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document_v3",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "document_sync_operations and v3 handlers exist; v5/v6 replace public finance entrypoints and preserve operation ledger."
+  },
+  {
+    "file": "netunim-orders/supabase/cloud_sync_operation_ledger_retention_upgrade.sql",
+    "sha256": "494b35f5860689be95915d95e657a31650ce6c0f494c5fb6023577a393733c2f",
+    "kupa_copy": "netunim-kupa/supabase/cloud_sync_operation_ledger_retention_upgrade.sql",
+    "replay_changes": {},
+    "meaning": "Idempotent on captured schema",
+    "replay_state": "applied",
+    "effective_state": "applied",
+    "review_evidence": "prune_sync_operation_ledgers matches; weekly cron job observed separately. No retention execution tested."
+  },
+  {
+    "file": "netunim-orders/supabase/core_rpc_contention_hardening_upgrade.sql",
+    "sha256": "d79f2ac573752ddfbb41203bce82eccbe85d9fb5d8e8259e629bf2b0556cfdd5",
+    "kupa_copy": "netunim-kupa/supabase/core_rpc_contention_hardening_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_kupa_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_shared_checks_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_kupa_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_shared_checks_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "netunim_internal",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Existing recorded migration 20260902143640; try-advisory writer gates survive in current handlers, later v3-v6 wrappers supersede public handlers."
+  },
+  {
+    "file": "netunim-orders/supabase/destructive_delete_intent_v4_upgrade.sql",
+    "sha256": "0d43bb714c7fc1eeb7636b30f5d5d0f86b597d5ec77446681f2a8ebb022bf395",
+    "kupa_copy": "netunim-kupa/supabase/destructive_delete_intent_v4_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "kupa_delete_intent_guard",
+            "identity": "",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "netunim_internal",
+            "name": "kupa_delete_intent_guard",
+            "identity": "",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Delete-intent triggers remain; kupa guard extended by v5 invariants/notesSheet checks."
+  },
+  {
+    "file": "netunim-orders/supabase/financial_sync_archive_upgrade.sql",
+    "sha256": "125ff2e0d1c65b0e2a72358c6b7c83c3d793260b7073291fd3907e33c3688a0d",
+    "kupa_copy": "netunim-kupa/supabase/financial_sync_archive_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ]
+      },
+      "tables": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "bank_transactions",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "finance_sync_documents",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "bank_transactions",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "finance_sync_documents",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "finance_sync_documents and bank_transactions exist; archive handlers are internal and browser table writes are removed by v6."
+  },
+  {
+    "file": "netunim-orders/supabase/financial_sync_distributed_lease_upgrade.sql",
+    "sha256": "0e1aea6e7eb7f83ac494f8f6fead9ad6b7eb5b77b5355d88adb87cc62f663e32",
+    "kupa_copy": "netunim-kupa/supabase/financial_sync_distributed_lease_upgrade.sql",
+    "replay_error": "NOTICE:  relation \"finance_sync_leases\" already exists, skipping\nERROR:  cannot change return type of existing function\nDETAIL:  Row type defined by OUT parameters is different.\nHINT:  Use DROP FUNCTION claim_finance_sync_lease(text,text,integer) first.\n",
+    "meaning": "Historical script cannot be replayed on current schema; review object evidence and replacement chain.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Lease table and claim/release exist; v6 adds fence_epoch return value, so old CREATE OR REPLACE is incompatible."
+  },
+  {
+    "file": "netunim-orders/supabase/financial_sync_integrity_v2_upgrade.sql",
+    "sha256": "01fcb5afb0017e27d2474fd086e5aebd8dfd18a092865790dcf0a614835c7f05",
+    "kupa_copy": "netunim-kupa/supabase/financial_sync_integrity_v2_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_kupa_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "merge_bank_transactions",
+            "identity": "p_account_key text, p_account_role text, p_transactions jsonb",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_bank_sync_snapshot",
+            "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint",
+            "owner": "postgres"
+          },
+          {
+            "schema": "public",
+            "name": "save_kupa_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Shared bank sequence and atomic snapshot handlers exist in fenced_impl functions; public API has v6 fencing."
+  },
+  {
+    "file": "netunim-orders/supabase/google_calendar_oauth_states_owner_index_upgrade.sql",
+    "sha256": "36273634b09cde2d2be6280451b2dc56b40d144c272bcceb872c95c3c2a9908e",
+    "kupa_copy": null,
+    "replay_changes": {
+      "indexes": {
+        "removed_or_changed": [],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "table": "google_calendar_oauth_states",
+            "name": "google_calendar_oauth_states_owner_id_idx"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "not-applied",
+    "review_evidence": "Named index absent from Production inventory; local replay adds it and nothing else."
+  },
+  {
+    "file": "netunim-orders/supabase/order_management_contention_upgrade.sql",
+    "sha256": "28767f1dd7d895fb31a8bc96a88803b99d67b014f697f7b11e0ff2f1a6c1c3bc",
+    "kupa_copy": null,
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_order_management_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_order_management_document",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "Recorded fail-fast writer gate migrations and current order handler use try-advisory lock; later core/v3/v5 implementations replace its definition."
+  },
+  {
+    "file": "netunim-orders/supabase/shared_checks_delete_intent_v4_upgrade.sql",
+    "sha256": "f9453c0d5fb5ace7c0073af6f8ea6fc86c64c5742933e45545df2671db95fc54",
+    "kupa_copy": "netunim-kupa/supabase/shared_checks_delete_intent_v4_upgrade.sql",
+    "replay_changes": {},
+    "meaning": "Idempotent on captured schema",
+    "replay_state": "applied",
+    "effective_state": "applied",
+    "review_evidence": "Shared delete-intent schema and guard are idempotent on current baseline."
+  },
+  {
+    "file": "netunim-orders/supabase/sync_integrity_v5_upgrade.sql",
+    "sha256": "70476380218295b90e5c3a98fee1e24cfd7c038d6e2028b7cf374818bc0c09da",
+    "kupa_copy": "netunim-kupa/supabase/sync_integrity_v5_upgrade.sql",
+    "replay_changes": {
+      "functions": {
+        "removed_or_changed": [],
+        "added_or_changed": [
+          {
+            "schema": "public",
+            "name": "save_finance_sync_document_v5",
+            "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb",
+            "owner": "postgres"
+          }
+        ]
+      }
+    },
+    "meaning": "Replay differs from current schema; inspect superseded definitions/grants. Never replay on Production.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "v5 save RPCs, invariant guards, safety snapshots and restore groups exist; finance public v5 handler is wrapped by v6."
+  },
+  {
+    "file": "netunim-orders/supabase/sync_recovery_fencing_v6_upgrade.sql",
+    "sha256": "ac01e0168f0c5f64bae176de300dce36625af65d3a7a70693cadd6d2410efc2b",
+    "kupa_copy": "netunim-kupa/supabase/sync_recovery_fencing_v6_upgrade.sql",
+    "replay_error": "NOTICE:  column \"fence_epoch\" of relation \"finance_sync_leases\" already exists, skipping\nERROR:  function public.save_bank_sync_snapshot(text, jsonb, text, bigint) does not exist\n",
+    "meaning": "Historical script cannot be replayed on current schema; review object evidence and replacement chain.",
+    "replay_state": "partially-applied",
+    "effective_state": "applied",
+    "review_evidence": "fence_epoch column, assert_finance_sync_fence and four fenced public wrappers exist; legacy signatures have already moved internally, so replay fails."
+  }
+]

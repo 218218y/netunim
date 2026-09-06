@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-63364156f071';
+const CACHE='orders-app-shell-esm-18d1833e5a56';
 const SHELL=[
   './',
   './index.html',
@@ -80,6 +80,7 @@ const SHELL=[
   './assets/js/shared/kupa-cashflow.js',
   './assets/js/shared/orders-finance.js',
   './assets/js/shared/restore-groups.js',
+  './assets/js/shared/shared-checks-flight.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-status.js',
   './assets/js/state/constants.js',

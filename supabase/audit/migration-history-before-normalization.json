@@ -1,0 +1,44 @@
+{
+  "migrations": [
+    {
+      "version": "20260826180906",
+      "name": "shared_checks_cutover_20260826"
+    },
+    {
+      "version": "20260826182721",
+      "name": "fix_revision_rpc_ambiguity_20260826"
+    },
+    {
+      "version": "20260826183010",
+      "name": "guard_bulk_empty_shared_checks_20260826"
+    },
+    {
+      "version": "20260902140209",
+      "name": "order_management_fail_fast_writer_gate_20260902"
+    },
+    {
+      "version": "20260902140237",
+      "name": "order_management_fail_fast_writer_gate_20260902"
+    },
+    {
+      "version": "20260902142007",
+      "name": "postgrest_14_nonretry_conflicts_20260902"
+    },
+    {
+      "version": "20260902143640",
+      "name": "harden_core_rpc_write_contention_20260902"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index"
+    }
+  ]
+}

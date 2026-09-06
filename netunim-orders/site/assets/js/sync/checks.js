@@ -1,3 +1,4 @@
+import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {mergeArray, eq} from './merge-records.js';
 import {normalizeSharedChecks, normalizeSharedBankEvents} from '../domains/checks/model.js';
@@ -7,8 +8,10 @@ import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetrySche
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecks({model, files, checksSession, tab, localSnapshot, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp}){
+export function createSyncChecks({model, files, checksSession={}, tab, localSnapshot, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
+const flight=createSharedChecksFlight({state:checksSession,pullKey:'checksPullPromise',saveKey:'checksSavePromise',busyKey:'checksCloudBusy'});
+function sharedChecksSyncStatus(){return flight.status({online:!!(loadSession()&&navigator.onLine),pending:checksSession.checksOutboxCached,localWork:!!checksSession.checksSaveRequested})}
 function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?value:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort()}
 function protectImplicitDeletes(base,local,deleteIds){const allowed=new Set(normalizeDeleteIds(deleteIds)),safe=normalizeSharedChecks(local||[]),present=new Set(safe.map(x=>x.id));for(const item of normalizeSharedChecks(base||[])){if(item?.id&&!present.has(item.id)&&!allowed.has(item.id)){safe.push(clone(item));present.add(item.id)}}return safe}
 function effectiveDeletedIds(remote,merged,deleteIds){const allowed=new Set(normalizeDeleteIds(deleteIds)),kept=new Set(normalizeSharedChecks(merged||[]).map(x=>x.id));return normalizeSharedChecks(remote||[]).map(x=>x.id).filter(id=>allowed.has(id)&&!kept.has(id)).sort()}
@@ -19,16 +22,9 @@ function mergeSharedChecksPreferLocal(base,local,remote,{deleteIds=[]}={}){const
 async function mirrorChecksLocally(){localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}}
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
-  if(!loadSession()||!navigator.onLine)return false;
-  if(checksSession.checksPullPromise)return checksSession.checksPullPromise;
-  if(checksSession.checksSavePromise){
-    try{await checksSession.checksSavePromise}catch(error){console.error('shared checks wait for active save',error)}
-    if(!loadSession()||!navigator.onLine)return false;
-    if(checksSession.checksPullPromise)return checksSession.checksPullPromise;
-  }
-  const pull=(async()=>{
+  return flight.pull(async()=>{
+    if(!(loadSession()&&navigator.onLine))return false;
     const deferred=await getChecksPending();if(deferred?.conflict){checksSession.checksSaveRequested=false;return false}if(deferred&&outboxRetryScheduler.schedule(deferred,()=>saveSharedChecksToCloud(checksSession.checksSaveMessage||checksSession.sharedChecksSaveMessage))>0){checksSession.checksSaveRequested=false;checksSession.checksCloudLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';if(!quiet)renderKupaDependentView();return false}
-    checksSession.checksCloudBusy=true;
     try{
       const row=await readSharedChecksCloud();
       if(!row){const error=new Error('מאגר הצ\'קים המשותף חסר. יש להשלים cutover תקין.');checksSession.checksCloudLastError=error.message;if(required)throw error;if(!quiet)renderKupaDependentView();return false}
@@ -38,30 +34,26 @@ async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
       if(merged.conflicts.length){markChecksPending(local,'merge-conflict',structuredSyncConflict({domain:'shared-checks',conflicts:merged.conflicts,base,local,remote,generation:outbox?.generation,baseRevision:outbox?.baseRevision,currentRemoteRevision:row.revision}));await checksSession.checksOutboxCommitPromise;throw new Error('הצ\'קים לא נדרסו: אותו צ\'ק שונה במקביל.')}
       model.state.checks=clone(merged.checks);checksSession.checksBankEvents=normalizeSharedBankEvents(row.state.bankEvents);recomputeKupaNetFromCache();
       checksSession.checksCloudBase=clone(remote);persistChecksBase(remote,checksSession.checksBankEvents);checksSession.checksCloudRevision=Number(row.revision||0);checksSession.checksCloudUpdatedAt=row.updated_at||checksSession.checksCloudUpdatedAt;checksSession.checksCloudLastError='';
-      await mirrorChecksLocally();
       if(!eq(merged.checks,remote)){checksSession.checksGeneration=Math.max(checksSession.checksGeneration,Number(outbox?.generation||0))+1;markChecksPending(merged.checks,'merged-local',undefined,{baseRevision:Number(row.revision),baseState:remote,deleteIds:outbox?.deleteIds||[]});checksSession.checksSaveRequested=true;queueSharedChecksSave('שינויי הצ\'קים המקומיים מוזגו לענן')}else if(outbox){const cleared=await clearChecksPending(outbox.generation);if(cleared)checksSession.checksSaveRequested=false;else{const latest=await getChecksPending();checksSession.checksSaveRequested=Number(latest?.generation||0)>Number(outbox.generation||0);if(!checksSession.checksSaveRequested)checksSession.checksCloudLastError='הצקים אושרו בענן; ניקוי האחסון המקומי ממתין להתאוששות'}}
+      await mirrorChecksLocally();
       refreshCloudTimestamp();if(!quiet)renderKupaDependentView();return true;
     }catch(error){console.error('shared checks pull',error);checksSession.checksCloudLastError=error.message||String(error);if(required)throw error;if(!quiet){toast(error.message);renderKupaDependentView()}return false}
-    finally{checksSession.checksCloudBusy=false;if(checksSession.checksSaveRequested)setTimeout(()=>saveSharedChecksToCloud(checksSession.checksSaveMessage||checksSession.sharedChecksSaveMessage),0)}
-  })();
-  const tracked=pull.finally(()=>{if(checksSession.checksPullPromise===tracked)checksSession.checksPullPromise=null});
-  checksSession.checksPullPromise=tracked;
-  return tracked;
+  });
 }
 
 async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
   if(!tab.primaryTab)return false;checksSession.checksSaveRequested=true;checksSession.checksSaveMessage=message||checksSession.checksSaveMessage;
+  return flight.save(async()=>{
   if(!loadSession()||!navigator.onLine){markChecksPending(model.state.checks,message);try{await checksSession.checksOutboxCommitPromise}catch(error){console.error('checks outbox offline commit',error)}if(checksSession.checksDurabilityDegraded)checksSession.checksCloudLastError='IndexedDB אינו זמין; הצקים נשמרו במצב תאימות מקומי';return false}
-  if(checksSession.checksSavePromise)return checksSession.checksSavePromise;
-  if(checksSession.checksPullPromise){try{await checksSession.checksPullPromise}catch(error){console.error('shared checks save waited for pull',error)}if(!loadSession()||!navigator.onLine)return false;if(checksSession.checksSavePromise)return checksSession.checksSavePromise;}
-  clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=null;
-  checksSession.checksSavePromise=(async()=>{
+    if(!tab.primaryTab||!(loadSession()&&navigator.onLine))return false;
+    checksSession.checksSaveRequested=true;
+    clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=null;
     let allOk=true;
     while(checksSession.checksSaveRequested&&loadSession()&&navigator.onLine){
       checksSession.checksSaveRequested=false;const msg=checksSession.checksSaveMessage||message;checksSession.checksSaveMessage='';
       let pending=await getChecksPending();if(!pending){markChecksPending(model.state.checks,msg);pending=await getChecksPending()}if(!pending)throw new Error('checks_outbox_persistence_failed');if(pending.conflict){checksSession.checksSaveRequested=false;checksSession.checksCloudLastError='התנגשות שמורה מקומית — נדרשת הכרעה';return false}
       const retryDelay=outboxRetryScheduler.schedule(pending,()=>saveSharedChecksToCloud(msg));if(retryDelay>0){checksSession.checksCloudLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';allOk=false;renderKupaDependentView();break}
-      const generation=Number(pending.generation),local=normalizeSharedChecks(pending.snapshot),base=normalizeSharedChecks(pending.baseState);checksSession.checksCloudBusy=true;
+      const generation=Number(pending.generation),local=normalizeSharedChecks(pending.snapshot),base=normalizeSharedChecks(pending.baseState);
       try{
         let row=await readSharedChecksCloud();if(!row)throw new Error('מאגר הצ\'קים המשותף חסר.');
         let operationRevision=null,savedChecks=null,savedRevision=Number(row.revision||0),savedUpdatedAt=row.updated_at||checksSession.checksCloudUpdatedAt;
@@ -94,11 +86,9 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
         }
         await mirrorChecksLocally();refreshCloudTimestamp();renderKupaDependentView();if(!checksSession.checksSaveRequested&&!checksPendingExists()&&msg)toast(msg);
       }catch(error){console.error('shared checks save',error);checksSession.checksCloudLastError=error.message||String(error);const current=await getChecksPending(),normalized=normalizeCloudError(error),attempts=Number(current?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null;markChecksPending(model.state.checks,msg,undefined,{retry:{attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt}});const retryPending=await getChecksPending();if(retryPending)outboxRetryScheduler.schedule(retryPending,()=>saveSharedChecksToCloud(msg));allOk=false;renderKupaDependentView();break}
-      finally{checksSession.checksCloudBusy=false}
     }
     return allOk&&!checksPendingExists();
-  })().finally(()=>{checksSession.checksSavePromise=null;if(checksSession.checksSaveRequested&&navigator.onLine&&!checksSession.checksCloudBusy)setTimeout(()=>saveSharedChecksToCloud(checksSession.checksSaveMessage||checksSession.sharedChecksSaveMessage),0)});
-  return checksSession.checksSavePromise;
+  });
 }
 
 async function pollSharedChecks(){
@@ -108,5 +98,5 @@ async function pollSharedChecks(){
   catch(error){console.error('shared checks poll',error);checksSession.checksCloudLastError=error.message||String(error)}
 }
 
-return { mergeSharedChecks, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, mergeSharedChecksPreferLocal };
+return { sharedChecksSyncStatus, mergeSharedChecks, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, mergeSharedChecksPreferLocal };
 }

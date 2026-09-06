@@ -13,6 +13,7 @@ TESTS = Path(__file__).resolve().parent
 DEV_NODE_MODULES = Path(os.environ.get("NETUNIM_OFFLINE_NODE_MODULES", ROOT / "node_modules"))
 
 CORE_SUITES = [
+    "supabase_contracts.py",
     "static_contracts.py",
     "cloud_sync_v3_contracts.py",
     "sync_integrity_v5_contracts.py",

@@ -1,0 +1,20 @@
+{
+  "migrations": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index"
+    }
+  ]
+}

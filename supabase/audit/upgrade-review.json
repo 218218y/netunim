@@ -1,0 +1,87 @@
+{
+  "bank_alert_center_upgrade.sql": {
+    "sha256": "2d7b4dbf44c4ca7a7d909ddf38001299fe1b6a2a0c16777060a85d4e0d03f57f",
+    "status": "applied",
+    "evidence": "alert_acknowledgements column/check exist; v2 deliberately changes the acknowledgement RPC to DEFINER."
+  },
+  "bank_alert_center_v2_upgrade.sql": {
+    "sha256": "74d44847da7907d34affd9ddd8cc578747504efdc1df7b7df3d9cea79dabed0c",
+    "status": "applied",
+    "evidence": "Acknowledgement DEFINER/search_path/grants and bank_alert_rollout_baselines schema match. Historical data baseline not inspected."
+  },
+  "bank_pending_reconciliation_upgrade.sql": {
+    "sha256": "fa562a9fce91e4b9f4be799830936d3d5bb9aad8ed4bac9c3b6e4fb2dd3824df",
+    "status": "applied",
+    "evidence": "Internal merge_bank_transactions contains v_pending_id reconciliation; public path is wrapped by v6 fencing."
+  },
+  "bank_snapshot_reconciliation_upgrade.sql": {
+    "sha256": "380a5af0402656e2bb71603a89ffdbb3d38bfead7740dc5ab03ef87441663f20",
+    "status": "applied",
+    "evidence": "bank_transaction_snapshots and presence/missing columns exist; v6 wraps snapshot RPC and restricts direct table writes."
+  },
+  "cloud_header_status_v1_upgrade.sql": {
+    "sha256": "8b108447d84fed6fe43c20241cf67dda046c1c1ff405ecc0b46af5087f4a64fe",
+    "status": "applied",
+    "evidence": "Timestamp columns/defaults and triggers are idempotent."
+  },
+  "cloud_sync_lossless_v3_upgrade.sql": {
+    "sha256": "ed4bad3bf1ac535c88c6ff8b401654a9bdefcc8c780ba4684fd4dbc2f71adc2e",
+    "status": "applied",
+    "evidence": "document_sync_operations and v3 handlers exist; v5/v6 replace public finance entrypoints and preserve operation ledger."
+  },
+  "cloud_sync_operation_ledger_retention_upgrade.sql": {
+    "sha256": "494b35f5860689be95915d95e657a31650ce6c0f494c5fb6023577a393733c2f",
+    "status": "applied",
+    "evidence": "prune_sync_operation_ledgers matches; weekly cron job observed separately. No retention execution tested."
+  },
+  "core_rpc_contention_hardening_upgrade.sql": {
+    "sha256": "d79f2ac573752ddfbb41203bce82eccbe85d9fb5d8e8259e629bf2b0556cfdd5",
+    "status": "applied",
+    "evidence": "Existing recorded migration 20260902143640; try-advisory writer gates survive in current handlers, later v3-v6 wrappers supersede public handlers."
+  },
+  "destructive_delete_intent_v4_upgrade.sql": {
+    "sha256": "0d43bb714c7fc1eeb7636b30f5d5d0f86b597d5ec77446681f2a8ebb022bf395",
+    "status": "applied",
+    "evidence": "Delete-intent triggers remain; kupa guard extended by v5 invariants/notesSheet checks."
+  },
+  "financial_sync_archive_upgrade.sql": {
+    "sha256": "125ff2e0d1c65b0e2a72358c6b7c83c3d793260b7073291fd3907e33c3688a0d",
+    "status": "applied",
+    "evidence": "finance_sync_documents and bank_transactions exist; archive handlers are internal and browser table writes are removed by v6."
+  },
+  "financial_sync_distributed_lease_upgrade.sql": {
+    "sha256": "0e1aea6e7eb7f83ac494f8f6fead9ad6b7eb5b77b5355d88adb87cc62f663e32",
+    "status": "applied",
+    "evidence": "Lease table and claim/release exist; v6 adds fence_epoch return value, so old CREATE OR REPLACE is incompatible."
+  },
+  "financial_sync_integrity_v2_upgrade.sql": {
+    "sha256": "01fcb5afb0017e27d2474fd086e5aebd8dfd18a092865790dcf0a614835c7f05",
+    "status": "applied",
+    "evidence": "Shared bank sequence and atomic snapshot handlers exist in fenced_impl functions; public API has v6 fencing."
+  },
+  "google_calendar_oauth_states_owner_index_upgrade.sql": {
+    "sha256": "36273634b09cde2d2be6280451b2dc56b40d144c272bcceb872c95c3c2a9908e",
+    "status": "not-applied",
+    "evidence": "Named index absent from Production inventory; local replay adds it and nothing else."
+  },
+  "order_management_contention_upgrade.sql": {
+    "sha256": "28767f1dd7d895fb31a8bc96a88803b99d67b014f697f7b11e0ff2f1a6c1c3bc",
+    "status": "applied",
+    "evidence": "Recorded fail-fast writer gate migrations and current order handler use try-advisory lock; later core/v3/v5 implementations replace its definition."
+  },
+  "shared_checks_delete_intent_v4_upgrade.sql": {
+    "sha256": "f9453c0d5fb5ace7c0073af6f8ea6fc86c64c5742933e45545df2671db95fc54",
+    "status": "applied",
+    "evidence": "Shared delete-intent schema and guard are idempotent on current baseline."
+  },
+  "sync_integrity_v5_upgrade.sql": {
+    "sha256": "70476380218295b90e5c3a98fee1e24cfd7c038d6e2028b7cf374818bc0c09da",
+    "status": "applied",
+    "evidence": "v5 save RPCs, invariant guards, safety snapshots and restore groups exist; finance public v5 handler is wrapped by v6."
+  },
+  "sync_recovery_fencing_v6_upgrade.sql": {
+    "sha256": "ac01e0168f0c5f64bae176de300dce36625af65d3a7a70693cadd6d2410efc2b",
+    "status": "applied",
+    "evidence": "fence_epoch column, assert_finance_sync_fence and four fenced public wrappers exist; legacy signatures have already moved internally, so replay fails."
+  }
+}

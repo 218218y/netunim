@@ -209,6 +209,14 @@ if /I "%~6"=="--preflight-only" (
   exit /b 0
 )
 
+rem Read-only live schema gate. PostgreSQL service/passfile environment belongs to
+rem the operator; missing access or unexplained drift must block the upload.
+python "%~dp0supabase_postflight.py"
+if errorlevel 1 (
+  echo ERROR: Supabase postflight failed. No site was uploaded.
+  exit /b 2
+)
+
 rem Use a fresh isolated working directory on every run. Cloudflare documents that a
 rem functions folder where Wrangler is run can be uploaded, and Wrangler can also discover
 rem generated configuration by walking parent directories. Isolation prevents both classes

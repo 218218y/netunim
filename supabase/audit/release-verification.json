@@ -1,0 +1,119 @@
+{
+  "supabase_project": "bupoidcurcxuypfrjqio",
+  "database_verified_at": "2026-09-06 20:56:57.608566+00",
+  "schema_drift": false,
+  "migration_history_drift": false,
+  "migration_sql_hash_drift": false,
+  "race_tests": 28,
+  "consecutive_race_runs": 100,
+  "full_local_browser_verification": "passed",
+  "production_data_writes_by_upgrade": 0,
+  "cloudflare_production_deployments": [
+    {
+      "project": "bargig-orders",
+      "Id": "9b8e6350-6a67-47c9-853e-837770266f1c",
+      "Environment": "Production",
+      "Branch": "main",
+      "Source": "",
+      "Deployment": "https://9b8e6350.bargig-orders.pages.dev",
+      "Status": "3 minutes ago",
+      "Build": "https://dash.cloudflare.com/7d352c315748f2f8c6e723c5fc46f606/pages/view/bargig-orders/9b8e6350-6a67-47c9-853e-837770266f1c"
+    },
+    {
+      "project": "bargig-kupa",
+      "Id": "4a5a23de-885d-4d9b-b41c-b36c5f301458",
+      "Environment": "Production",
+      "Branch": "main",
+      "Source": "",
+      "Deployment": "https://4a5a23de.bargig-kupa.pages.dev",
+      "Status": "1 minute ago",
+      "Build": "https://dash.cloudflare.com/7d352c315748f2f8c6e723c5fc46f606/pages/view/bargig-kupa/4a5a23de-885d-4d9b-b41c-b36c5f301458"
+    }
+  ],
+  "intended_public_assets": [
+    {
+      "app": "orders",
+      "asset": "service-worker.js",
+      "intended_sha256": "3e97de3c15c09c3d98115d26859f0516d7918740c61368eaecab97183a8219d1"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/shared/shared-checks-flight.js",
+      "intended_sha256": "c6ba394e48fd3e9a6574419ebb30c2b70e36648b33e8c1143a0e2d95ef126107"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/sync/checks.js",
+      "intended_sha256": "7a73dc1963eeda6daec54cc8221e3bb0543e7c9bcce0fc2cdb39445479a99904"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/domains/finance/controller.js",
+      "intended_sha256": "bcde4ea4fa81df8111d2c4a93b2175917977da6357ed4dd6eb2bfbc35990683e"
+    },
+    {
+      "app": "kupa",
+      "asset": "service-worker.js",
+      "intended_sha256": "8002c8d0e998194bd679d7c36d7d39259a463a7063ef5fc66bbf73f8e96417f0"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/shared/shared-checks-flight.js",
+      "intended_sha256": "c6ba394e48fd3e9a6574419ebb30c2b70e36648b33e8c1143a0e2d95ef126107"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/sync/checks.js",
+      "intended_sha256": "ffc3548fcd1939b9d4616cfe2757ecbf5a60dff68b70fe3ddfc2db45a80dd629"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/domains/bank/controller.js",
+      "intended_sha256": "6dcdf367cbffbe70eb82905f9460237de7073a7ed42e085b7d9d8e41974a3670"
+    }
+  ],
+  "live_http_verification": [
+    {
+      "app": "orders",
+      "asset": "service-worker.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/shared/shared-checks-flight.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/sync/checks.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "orders",
+      "asset": "assets/js/domains/finance/controller.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "kupa",
+      "asset": "service-worker.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/shared/shared-checks-flight.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/sync/checks.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    },
+    {
+      "app": "kupa",
+      "asset": "assets/js/domains/bank/controller.js",
+      "error": "HTTP Error 418: Blocked by NetFree"
+    }
+  ],
+  "live_http_verified": false,
+  "live_http_limitation": "Environment NetFree filter returned HTTP 418; not bypassed"
+}

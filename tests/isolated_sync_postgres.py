@@ -13,6 +13,9 @@ from browser_harness import ROOT, _free_port
 
 OWNER='11111111-1111-4111-8111-111111111111'
 class IsolatedPostgres:
+    def __init__(self, schema_files=None):
+        self.schema_files=schema_files
+
     def __enter__(self):
         binary=shutil.which('postgres')
         if not binary: raise RuntimeError('PostgreSQL server tools required on PATH')
@@ -26,6 +29,7 @@ class IsolatedPostgres:
             self.run('initdb','-D',str(self.tmp/'data'),'-U','postgres','-A','trust','--encoding=UTF8','--no-locale')
             self.run('pg_ctl','-D',str(self.tmp/'data'),'-l',str(self.tmp/'server.log'),'-o',f'-p {self.port} -h 127.0.0.1','start')
             self.sql('''create role anon;create role authenticated;create role service_role;
+create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema auth to public;grant execute on function auth.uid() to public;
@@ -34,9 +38,10 @@ create table cron.job(jobid bigint generated always as identity,jobname text,sch
 create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values($1,$2,$3) returning jobid$$;
 insert into auth.users values('''+quote(OWNER)+''');''')
             files=['netunim-kupa/supabase/setup.sql','netunim-orders/supabase/setup.sql','netunim-orders/supabase/shared/setup.sql']+['netunim-orders/supabase/'+n+'.sql' for n in ['core_rpc_contention_hardening_upgrade','cloud_sync_lossless_v3_upgrade','cloud_sync_operation_ledger_retention_upgrade','shared_checks_delete_intent_v4_upgrade','destructive_delete_intent_v4_upgrade','sync_integrity_v5_upgrade','sync_recovery_fencing_v6_upgrade']]
+            if self.schema_files is not None:files=self.schema_files
             for name in files:
                 self.sql((ROOT/name).read_text(encoding='utf-8-sig').replace('create extension if not exists pg_cron;','-- isolated scheduling catalog stub'))
-            self.sql((ROOT/'netunim-orders/supabase/shared/validation/sync_recovery_v6_postflight.sql').read_text(encoding='utf-8-sig'))
+            if self.schema_files is None:self.sql((ROOT/'netunim-orders/supabase/shared/validation/sync_recovery_v6_postflight.sql').read_text(encoding='utf-8-sig'))
             return self
         except BaseException:
             self.__exit__(None,None,None)
