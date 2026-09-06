@@ -91,6 +91,7 @@ return {
     sharedChecksBase:null,
     sharedChecksBankEvents:[],
     sharedChecksBusy:false,
+    sharedChecksPullPromise:null,
     sharedChecksSavePromise:null,
     sharedChecksSaveRequested:false,
     sharedChecksGeneration:0,

@@ -151,6 +151,7 @@ return {
     checksCloudBase:null,
     checksBankEvents:null,
     checksCloudBusy:false,
+    checksPullPromise:null,
     checksCloudLastError:'',
     checksSaveRequested:false,
     checksSavePromise:null,

@@ -56,9 +56,10 @@ async function commitBankSnapshot(balance,{source='manual',accountNumber=null,ba
   const numeric=Number(balance);
   if(!Number.isFinite(numeric))throw new Error('התקבלה יתרת בנק לא תקינה');
   if(session.connectionMode==='supabase'){
-    if(checksSession.sharedChecksBusy||sharedChecksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש');
+    if(sharedChecksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצקים סונכרנו לפני צילום יתרת הבנק');if(!saved||sharedChecksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש')}
     const synced=await syncSharedChecksFromCloud({quiet:true,required:true});
-    if(!synced||checksSession.sharedChecksBusy||sharedChecksHaveLocalWork())throw new Error('צילום היתרה נעצר: לא ניתן לאמת שהצקים מסונכרנים כרגע. נסה שוב לאחר שהענן מסונכרן.');
+    if(!synced)throw new Error('צילום היתרה נעצר: לא ניתן לאמת שהצקים מסונכרנים כרגע. נסה שוב לאחר שהענן מסונכרן.');
+    if(sharedChecksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצקים סונכרנו לפני צילום יתרת הבנק');if(!saved||sharedChecksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצקים לפני צילום יתרת עו״ש חדש')}
   }
   const observedSeq=sharedChecksObservedSequence();
   const previousSyncAt=model.state.bank?.bankSyncAt||null;

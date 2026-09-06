@@ -8,6 +8,7 @@ import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/syn
 import {createSyncChecks as orderChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createCloudTransport as orderTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
 import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
+import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 import {createLifecycle as orderLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
@@ -41,6 +42,61 @@ for(const [app,api]of [['kupa',kupaChecks({checksSession:{sharedChecksBootstrapA
    assert.equal(api.mergeSharedChecks(base,[],base,{deleteIds:['C']}).checks.length,0,'an explicitly deleted check is removed');
  });
 }
+
+test('shared checks pull is single-flight in both apps: concurrent bank verification joins startup hydration instead of returning false',async()=>{
+  const originalNavigator=globalThis.navigator;
+  if(!globalThis.navigator)Object.defineProperty(globalThis,'navigator',{value:{},configurable:true});
+  const originalOnline=Object.getOwnPropertyDescriptor(globalThis.navigator,'onLine');
+  Object.defineProperty(globalThis.navigator,'onLine',{value:true,configurable:true});
+  try{
+    for(const app of ['orders','kupa']){
+      let readCalls=0,releaseRead,markReadStarted;
+      const readStarted=new Promise(resolve=>{markReadStarted=resolve});
+      const readGate=new Promise(resolve=>{releaseRead=resolve});
+      const row={revision:7,updated_at:'2026-09-06T12:00:00.000Z',state:{checks:[],bankEvents:[]}};
+      let api,sessionState;
+      if(app==='orders'){
+        sessionState={checksCloudBase:[],checksBankEvents:[],checksCloudBusy:false,checksPullPromise:null,checksSavePromise:null,checksSaveRequested:false,checksGeneration:0,checksCloudRevision:0,checksCloudUpdatedAt:null,checksCloudLastError:'',checksOutboxCommitPromise:Promise.resolve()};
+        api=orderChecks({
+          model:{state:{checks:[]}},files:{},checksSession:sessionState,tab:{primaryTab:true},localSnapshot:()=>{},persistChecksBase:()=>{},markChecksPending:()=>{},getChecksPending:async()=>null,clearChecksPending:async()=>true,toast:()=>{},recomputeKupaNetFromCache:()=>{},renderKupaDependentView:()=>{},queueSharedChecksSave:()=>{},writeStateToFolder:async()=>{},loadSession:()=>true,
+          readSharedChecksCloud:async()=>{readCalls++;markReadStarted();await readGate;return row},checksPendingExists:()=>false,rpcSaveSharedChecks:async()=>({r:{ok:true},row}),checksHaveLocalWork:()=>false,readSharedChecksCloudMeta:async()=>null,refreshCloudTimestamp:()=>{}
+        });
+      }else{
+        sessionState={sharedChecksBase:[],sharedChecksBankEvents:[],sharedChecksBusy:false,sharedChecksPullPromise:null,sharedChecksSavePromise:null,sharedChecksSaveRequested:false,sharedChecksGeneration:0,sharedChecksRevision:0,sharedChecksUpdatedAt:null,sharedChecksLastError:'',sharedChecksBootstrapActive:false,sharedChecksOutboxCommitPromise:Promise.resolve()};
+        api=kupaChecks({
+          checksSession:sessionState,model:{state:{checks:[]}},session:{backendReady:true,connectionMode:'supabase',dbRevision:1},files:{},tab:{primaryTab:true},persistImmediateBrowserSnapshot:()=>{},persistSharedChecksBase:()=>{},markSharedChecksPending:()=>{},getSharedChecksPending:async()=>null,clearSharedChecksPending:async()=>true,
+          readSharedChecksDocument:async()=>{readCalls++;markReadStarted();await readGate;return row},toast:()=>{},render:()=>{},rpcSaveSharedChecks:async()=>({r:{ok:true},row}),setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},sharedChecksPendingExists:()=>false,backupSnapshotToComputer:async()=>{},sharedChecksHaveLocalWork:()=>false,readSharedChecksMeta:async()=>null,refreshCloudHeaderTimestamp:()=>{}
+        });
+      }
+      const startupPull=api.syncSharedChecksFromCloud({quiet:true});
+      await readStarted;
+      const bankVerification=api.syncSharedChecksFromCloud({quiet:true,required:true});
+      assert.equal(readCalls,1,`${app}: concurrent verifier must join the existing remote read`);
+      releaseRead();
+      assert.deepEqual(await Promise.all([startupPull,bankVerification]),[true,true],`${app}: both callers receive the successful shared result`);
+      assert.equal(app==='orders'?sessionState.checksPullPromise:sessionState.sharedChecksPullPromise,null,`${app}: single-flight slot is released after completion`);
+      assert.equal(app==='orders'?sessionState.checksCloudBusy:sessionState.sharedChecksBusy,false,`${app}: busy is status only and is cleared after the joined pull`);
+    }
+  }finally{
+    if(originalOnline)Object.defineProperty(globalThis.navigator,'onLine',originalOnline);else delete globalThis.navigator.onLine;
+    if(!originalNavigator)delete globalThis.navigator;
+  }
+});
+
+
+test('Kupa bank snapshot treats a shared-check pull in progress as joinable work, not as failed synchronization',async()=>{
+ const model={state:{bank:{adjustments:[]}}};let syncCalls=0,saveCalls=0;
+ const api=createKupaBankController({
+   model,session:{connectionMode:'supabase'},checksSession:{sharedChecksBusy:true},
+   sharedChecksHaveLocalWork:()=>false,saveState:async()=>{saveCalls++;return true},
+   syncSharedChecksFromCloud:async()=>{syncCalls++;return true},sharedChecksObservedSequence:()=>176,
+   toast:()=>{},render:()=>{},bridge:{}
+ });
+ assert.equal(await api.commitBankSnapshot(1234),true);
+ assert.equal(syncCalls,1,'bank snapshot must verify through the joinable shared-check pull even while the status flag is busy');
+ assert.equal(saveCalls,1);assert.equal(model.state.bank.snapshotSeq,176);
+});
+
 test('Kupa bank sync keeps business and home feeds independent across normalization, merge and rebase',()=>{
  const stamp='2026-08-31T18:00:00.000Z';
  const businessFeed={provider:'hapoalim',accountNumber:'123-111111',balance:4100,syncedAt:stamp,transactions:[{id:'B1',date:stamp,amount:-25,description:'עסקי'}]};

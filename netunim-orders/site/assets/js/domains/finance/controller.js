@@ -170,7 +170,8 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   async function prepareBankSnapshot(){
     if(checksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצ׳קים סונכרנו לפני צילום יתרת הבנק');if(!saved||checksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצ׳קים לפני צילום יתרת עו״ש חדש')}
     const synced=await syncSharedChecksFromCloud({quiet:true,required:true});
-    if(!synced||checksHaveLocalWork())throw new Error('צילום היתרה נעצר: לא ניתן לאמת שהצ׳קים מסונכרנים כרגע')
+    if(!synced)throw new Error('צילום היתרה נעצר: לא ניתן לאמת שהצ׳קים מסונכרנים כרגע');
+    if(checksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצ׳קים סונכרנו לפני צילום יתרת הבנק');if(!saved||checksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצ׳קים לפני צילום יתרת עו״ש חדש')}
   }
 
   async function refreshBank({interactive=false,auto=false}={}){

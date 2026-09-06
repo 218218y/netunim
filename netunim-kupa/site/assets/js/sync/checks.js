@@ -17,19 +17,30 @@ function mergeSharedChecks(base,local,remote,{preferLocalConflicts=false,deleteI
 async function mirror(){persistImmediateBrowserSnapshot(model.state,session.dbRevision);if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision)}
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
-  if(!navigator.onLine||checksSession.sharedChecksBusy)return false;
-  const deferred=await getSharedChecksPending();if(deferred?.conflict){checksSession.sharedChecksSaveRequested=false;return false}if(deferred&&outboxRetryScheduler.schedule(deferred,()=>saveSharedChecksToCloud())>0){checksSession.sharedChecksSaveRequested=false;checksSession.sharedChecksLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';return false}
-  checksSession.sharedChecksBusy=true;
-  try{
-    const row=await readSharedChecksDocument();if(!row){const error=new Error('מאגר הצקים המשותף חסר; יש להשלים cutover תקין.');checksSession.sharedChecksLastError=error.message;if(required)throw error;return false}
-    const outbox=await getSharedChecksPending(),remote=normalizeSharedChecks(row.state.checks),local=normalizeSharedChecks(outbox?.snapshot||model.state.checks),base=normalizeSharedChecks(outbox?.baseState||checksSession.sharedChecksBase||local);
-    if(!checksSession.sharedChecksBase&&!outbox&&local.length&&!jsonEq(local,remote)){markSharedChecksPending(local,'bootstrap-conflict',{kind:'missing-base'});throw new Error('נמצאו צקים מקומיים ללא גרסת בסיס. לא נדרס אף שינוי.')}
-    const merged=mergeSharedChecks(base,local,remote,{deleteIds:outbox?.deleteIds});if(merged.conflicts.length){markSharedChecksPending(local,'merge-conflict',structuredSyncConflict({domain:'shared-checks',conflicts:merged.conflicts,base,local,remote,generation:outbox?.generation,baseRevision:outbox?.baseRevision,currentRemoteRevision:row.revision}));await checksSession.sharedChecksOutboxCommitPromise;throw new Error('אותו צק שונה במקביל; השינוי המקומי נשמר.')}
-    model.state.checks=clone(merged.checks);checksSession.sharedChecksBase=clone(remote);checksSession.sharedChecksBankEvents=normalizeSharedBankEvents(row.state.bankEvents);persistSharedChecksBase(remote,checksSession.sharedChecksBankEvents);checksSession.sharedChecksRevision=Number(row.revision||0);checksSession.sharedChecksUpdatedAt=row.updated_at||checksSession.sharedChecksUpdatedAt;checksSession.sharedChecksLastError='';await mirror();
-    if(!jsonEq(merged.checks,remote)){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(outbox?.generation||0))+1;markSharedChecksPending(merged.checks,'merged-local',undefined,{baseRevision:Number(row.revision),baseState:remote,deleteIds:outbox?.deleteIds||[]});checksSession.sharedChecksSaveRequested=true;setTimeout(()=>saveSharedChecksToCloud('שינויי הצקים המקומיים מוזגו לענן'),0)}else if(outbox){const cleared=await clearSharedChecksPending(outbox.generation);if(cleared)checksSession.sharedChecksSaveRequested=false;else{const latest=await getSharedChecksPending();checksSession.sharedChecksSaveRequested=Number(latest?.generation||0)>Number(outbox.generation||0);if(!checksSession.sharedChecksSaveRequested)checksSession.sharedChecksLastError='הצקים אושרו בענן; ניקוי האחסון המקומי ממתין להתאוששות'}}
-    if(!quiet)render();return true;
-  }catch(error){console.error('shared checks pull',error);checksSession.sharedChecksLastError=error.message||String(error);if(required)throw error;if(!quiet)toast(error.message);return false}
-  finally{checksSession.sharedChecksBusy=false}
+  if(!navigator.onLine)return false;
+  if(checksSession.sharedChecksPullPromise)return checksSession.sharedChecksPullPromise;
+  if(checksSession.sharedChecksSavePromise){
+    try{await checksSession.sharedChecksSavePromise}catch(error){console.error('shared checks wait for active save',error)}
+    if(!navigator.onLine)return false;
+    if(checksSession.sharedChecksPullPromise)return checksSession.sharedChecksPullPromise;
+  }
+  const pull=(async()=>{
+    const deferred=await getSharedChecksPending();if(deferred?.conflict){checksSession.sharedChecksSaveRequested=false;return false}if(deferred&&outboxRetryScheduler.schedule(deferred,()=>saveSharedChecksToCloud())>0){checksSession.sharedChecksSaveRequested=false;checksSession.sharedChecksLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';return false}
+    checksSession.sharedChecksBusy=true;
+    try{
+      const row=await readSharedChecksDocument();if(!row){const error=new Error('מאגר הצקים המשותף חסר; יש להשלים cutover תקין.');checksSession.sharedChecksLastError=error.message;if(required)throw error;return false}
+      const outbox=await getSharedChecksPending(),remote=normalizeSharedChecks(row.state.checks),local=normalizeSharedChecks(outbox?.snapshot||model.state.checks),base=normalizeSharedChecks(outbox?.baseState||checksSession.sharedChecksBase||local);
+      if(!checksSession.sharedChecksBase&&!outbox&&local.length&&!jsonEq(local,remote)){markSharedChecksPending(local,'bootstrap-conflict',{kind:'missing-base'});throw new Error('נמצאו צקים מקומיים ללא גרסת בסיס. לא נדרס אף שינוי.')}
+      const merged=mergeSharedChecks(base,local,remote,{deleteIds:outbox?.deleteIds});if(merged.conflicts.length){markSharedChecksPending(local,'merge-conflict',structuredSyncConflict({domain:'shared-checks',conflicts:merged.conflicts,base,local,remote,generation:outbox?.generation,baseRevision:outbox?.baseRevision,currentRemoteRevision:row.revision}));await checksSession.sharedChecksOutboxCommitPromise;throw new Error('אותו צק שונה במקביל; השינוי המקומי נשמר.')}
+      model.state.checks=clone(merged.checks);checksSession.sharedChecksBase=clone(remote);checksSession.sharedChecksBankEvents=normalizeSharedBankEvents(row.state.bankEvents);persistSharedChecksBase(remote,checksSession.sharedChecksBankEvents);checksSession.sharedChecksRevision=Number(row.revision||0);checksSession.sharedChecksUpdatedAt=row.updated_at||checksSession.sharedChecksUpdatedAt;checksSession.sharedChecksLastError='';await mirror();
+      if(!jsonEq(merged.checks,remote)){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(outbox?.generation||0))+1;markSharedChecksPending(merged.checks,'merged-local',undefined,{baseRevision:Number(row.revision),baseState:remote,deleteIds:outbox?.deleteIds||[]});checksSession.sharedChecksSaveRequested=true;setTimeout(()=>saveSharedChecksToCloud('שינויי הצקים המקומיים מוזגו לענן'),0)}else if(outbox){const cleared=await clearSharedChecksPending(outbox.generation);if(cleared)checksSession.sharedChecksSaveRequested=false;else{const latest=await getSharedChecksPending();checksSession.sharedChecksSaveRequested=Number(latest?.generation||0)>Number(outbox.generation||0);if(!checksSession.sharedChecksSaveRequested)checksSession.sharedChecksLastError='הצקים אושרו בענן; ניקוי האחסון המקומי ממתין להתאוששות'}}
+      if(!quiet)render();return true;
+    }catch(error){console.error('shared checks pull',error);checksSession.sharedChecksLastError=error.message||String(error);if(required)throw error;if(!quiet)toast(error.message);return false}
+    finally{checksSession.sharedChecksBusy=false}
+  })();
+  const tracked=pull.finally(()=>{if(checksSession.sharedChecksPullPromise===tracked)checksSession.sharedChecksPullPromise=null});
+  checksSession.sharedChecksPullPromise=tracked;
+  return tracked;
 }
 
 async function ensureSharedChecksForNewCloud(message='מאגר הצקים המשותף נוצר וסונכרן'){
@@ -45,7 +56,8 @@ async function ensureSharedChecksForNewCloud(message='מאגר הצקים המש
 async function saveSharedChecksToCloud(message='הצקים סונכרנו'){
   if(!tab.primaryTab)return false;checksSession.sharedChecksSaveRequested=true;
   if(!session.backendReady||session.connectionMode!=='supabase'||!navigator.onLine){markSharedChecksPending(model.state.checks,message);try{await checksSession.sharedChecksOutboxCommitPromise}catch(error){console.error('shared checks outbox offline commit',error)}if(checksSession.sharedChecksDurabilityDegraded){checksSession.sharedChecksLastError='IndexedDB אינו זמין; הצקים נשמרו במצב תאימות מקומי';setSaveStatus('שמירה מקומית במצב מוגבל — נדרשת התאוששות','error');setCloudHeaderStatus('syncing','ענן: הגנה מקומית מופחתת')}return false}
-  if(checksSession.sharedChecksBusy)return checksSession.sharedChecksSavePromise||false;if(checksSession.sharedChecksSavePromise)return checksSession.sharedChecksSavePromise;
+  if(checksSession.sharedChecksSavePromise)return checksSession.sharedChecksSavePromise;
+  if(checksSession.sharedChecksPullPromise){try{await checksSession.sharedChecksPullPromise}catch(error){console.error('shared checks save waited for pull',error)}if(!session.backendReady||session.connectionMode!=='supabase'||!navigator.onLine)return false;if(checksSession.sharedChecksSavePromise)return checksSession.sharedChecksSavePromise;}
   clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=null;
   checksSession.sharedChecksSavePromise=(async()=>{let allOk=true;while(checksSession.sharedChecksSaveRequested&&navigator.onLine&&session.connectionMode==='supabase'){
     checksSession.sharedChecksSaveRequested=false;let pending=await getSharedChecksPending();if(!pending){markSharedChecksPending(model.state.checks,message);pending=await getSharedChecksPending()}if(!pending)throw new Error('shared_checks_outbox_persistence_failed');if(pending.conflict){checksSession.sharedChecksSaveRequested=false;checksSession.sharedChecksLastError='התנגשות שמורה מקומית — נדרשת הכרעה';return false}
@@ -81,7 +93,12 @@ async function saveSharedChecksToCloud(message='הצקים סונכרנו'){
   }return allOk&&!sharedChecksPendingExists()})().finally(()=>{checksSession.sharedChecksSavePromise=null;if(checksSession.sharedChecksSaveRequested&&navigator.onLine&&!checksSession.sharedChecksBusy)setTimeout(()=>saveSharedChecksToCloud(message),0)});return checksSession.sharedChecksSavePromise;
 }
 
-async function pollSharedChecks(){if(!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine||checksSession.sharedChecksBusy)return;if(sharedChecksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצקים סונכרנו');return}checksSession.sharedChecksBusy=true;try{const meta=await readSharedChecksMeta();if(!meta||Number(meta.revision||0)<=checksSession.sharedChecksRevision)return;const row=await readSharedChecksDocument();if(!row||Number(row.revision||0)<=checksSession.sharedChecksRevision)return;const remote=normalizeSharedChecks(row.state.checks);model.state.checks=clone(remote);checksSession.sharedChecksBase=clone(remote);checksSession.sharedChecksBankEvents=normalizeSharedBankEvents(row.state.bankEvents);persistSharedChecksBase(remote,checksSession.sharedChecksBankEvents);checksSession.sharedChecksRevision=Number(row.revision||0);checksSession.sharedChecksUpdatedAt=row.updated_at||meta.updated_at||checksSession.sharedChecksUpdatedAt;checksSession.sharedChecksLastError='';await mirror();render();refreshCloudHeaderTimestamp();toast('התקבל עדכון צקים ממקור אחר')}catch(error){console.error('shared checks poll',error);checksSession.sharedChecksLastError=error.message||String(error)}finally{checksSession.sharedChecksBusy=false;if(checksSession.sharedChecksSaveRequested)setTimeout(()=>saveSharedChecksToCloud(),0)}}
+async function pollSharedChecks(){
+  if(!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine||checksSession.sharedChecksSavePromise||checksSession.sharedChecksPullPromise)return;
+  if(sharedChecksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצקים סונכרנו');return}
+  try{const meta=await readSharedChecksMeta();if(!meta||Number(meta.revision||0)<=checksSession.sharedChecksRevision)return;const before=checksSession.sharedChecksRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.sharedChecksRevision>before){render();refreshCloudHeaderTimestamp();toast('התקבל עדכון צקים ממקור אחר')}}
+  catch(error){console.error('shared checks poll',error);checksSession.sharedChecksLastError=error.message||String(error)}
+}
 
 return { mergeSharedChecks, syncSharedChecksFromCloud, ensureSharedChecksForNewCloud, saveSharedChecksToCloud, pollSharedChecks };
 }
