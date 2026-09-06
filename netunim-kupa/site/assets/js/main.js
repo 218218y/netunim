@@ -680,6 +680,8 @@ const uiBackup=createUiBackup({
 });
 
 const lifecycle=createLifecycle({
+  openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
+  ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
   tab,
   checksSession,
@@ -739,7 +741,7 @@ const lifecycle=createLifecycle({
   tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
 });
 
-const uiEvents={bindActionEvents};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
 
 const uiActions=createUiActions({
   ui,

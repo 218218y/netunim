@@ -2,8 +2,9 @@ import {$} from '../state/constants.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
 
 const STARTUP_DOMAIN_ORDER=['orders','checks','finance'];
+const HEADER_DOMAIN_ORDER=['orders','checks'];
 const STARTUP_DOMAIN_LABELS={orders:'ניהול הזמנות',checks:'צ׳קים',finance:'בנק ואשראי'};
-const STARTUP_LOADING_TEXT={orders:'ענן: מאמת נתוני הזמנות…',checks:'ענן: מסנכרן צ׳קים…',finance:'ענן: מסנכרן בנק ואשראי…'};
+const STARTUP_LOADING_TEXT={orders:'ענן: מאמת נתוני הזמנות…',checks:'ענן: מסנכרן צ׳קים…'};
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiStatus({session, checksSession}){
@@ -11,7 +12,7 @@ function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('sh
 
 function setSave(text,cls='',title=''){const e=$('#savePill');if(e){e.textContent=text;e.className='save-pill '+cls;e.title=title||''}}
 
-function latestSyncedAt(){return latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt,checksSession.financeReadUpdatedAt)}
+function latestSyncedAt(){return latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)}
 function syncedCloudText(text='ענן: מסונכרן'){const at=latestSyncedAt();return at?`${text} ${formatCloudSyncTime(at)}`:text}
 function setCloud(text,cls='',title=''){const e=$('#cloudPill');if(e){e.textContent=cls==='synced'?syncedCloudText(text):text;e.className='cloud-pill '+cls;e.title=title||''}}
 function refreshCloudTimestamp(){const e=$('#cloudPill');if(e?.classList.contains('synced'))setCloud('ענן: מסונכרן','synced',e.title)}
@@ -26,7 +27,7 @@ function startupDomains(){
 }
 function startupDetail(){
   const domains=startupDomains();
-  return STARTUP_DOMAIN_ORDER.filter(domain=>domains[domain].required).map(domain=>{
+  return HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required).map(domain=>{
     const item=domains[domain],label=STARTUP_DOMAIN_LABELS[domain],state=item.state;
     if(state==='ready')return `${label} — מסונכרן`;
     if(state==='deferred')return `${label} — נשמר מקומית וממתין לסנכרון`;
@@ -36,7 +37,7 @@ function startupDetail(){
   }).join('\n');
 }
 function refreshStartupCloudStatus(){
-  const sync=session.startupSync,domains=startupDomains(),required=STARTUP_DOMAIN_ORDER.filter(domain=>domains[domain].required);
+  const sync=session.startupSync,domains=startupDomains(),required=HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required);
   if(!required.length){sync.active=false;return}
   const busy=required.find(domain=>domains[domain].state==='loading'||domains[domain].state==='pending');
   if(busy){sync.active=true;setCloud(STARTUP_LOADING_TEXT[busy],'',startupDetail());return}

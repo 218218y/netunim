@@ -1,6 +1,6 @@
+import {structuredSyncConflict} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 import {createOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
-import {legacyCardMigrationConflict} from './legacy-card-migration.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncPending({session, prepareKupaCloudState, setSaveStatus, setCloudHeaderStatus, loadCloudPendingSync, persistCloudPendingSync, putCloudPending, lastSavedCloudState, getCloudPending, rebaseKupaCloudProgress}){
@@ -16,12 +16,20 @@ function stageCloudPendingLocal(snapshot,msg,baseRevision=session.dbRevision,bas
   record.deleteIntents=mergeDeleteIntents(existing?.deleteIntents,deleteIntents);
   const cacheOk=persistCloudPendingSync(record),previous=session.cloudOutboxCommitPromise||Promise.resolve();
   session.cloudOutboxCommitPromise=previous.catch(()=>{}).then(()=>putCloudPending(record));
+  session.cloudOutboxCommitPromise.catch(()=>{});
   session.cloudConflictPending=!!record.conflict;
   setSaveStatus(record.conflict?'התנגשות שמורה מקומית':navigator.onLine?'ממתין לסנכרון':'אופליין — שינוי שמור מקומית',cacheOk?'saving':'error');
   setCloudHeaderStatus(record.conflict?'conflict':navigator.onLine?'syncing':'offline',record.conflict?'ענן: התנגשות':navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין');return record
 }
 
-async function rebaseNewerPending(completedGeneration,baseState,newRevision){const pending=await getCloudPending();if(!pending||Number(pending.generation||0)<=Number(completedGeneration||0))return false;let nextSnapshot;try{nextSnapshot=rebaseKupaCloudProgress(pending.baseState||baseState,pending.snapshot,baseState,{deleteIntents:pending.deleteIntents||{}})}catch(error){if(error?.code!=='legacy_card_migration_conflict')throw error;const blocked=createOutboxRecord({...pending,mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,updatedAt:new Date().toISOString(),conflict:legacyCardMigrationConflict(error.conflicts||[])});blocked.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(blocked);session.cloudConflictPending=true;return true}const next=createOutboxRecord({...pending,mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,baseRevision:Number(newRevision||0),baseState:prepareKupaCloudState(baseState),snapshot:clone(nextSnapshot),updatedAt:new Date().toISOString(),conflict:pending.conflict||null});next.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(next);session.cloudConflictPending=!!next.conflict;return true}
+async function rebaseNewerPending(completedGeneration,authoritative,newRevision,completedSnapshot,operationRevision){
+  const pending=await getCloudPending();if(!pending||Number(pending.generation||0)<=Number(completedGeneration||0))return false;
+  if(!completedSnapshot)throw new Error('completed_generation_lineage_missing');
+  const rebased=rebaseKupaCloudProgress(completedSnapshot,pending.snapshot,authoritative,{deleteIntents:pending.deleteIntents||{}});
+  const conflict=pending.conflict|| (rebased.conflicts.length?structuredSyncConflict({domain:'kupa',conflicts:rebased.conflicts,base:completedSnapshot,local:pending.snapshot,remote:authoritative,generation:pending.generation,baseRevision:operationRevision??newRevision,currentRemoteRevision:newRevision}):null);
+  const next=createOutboxRecord({...pending,...(conflict?{}:{operationId:undefined,generation:Number(pending.generation)+1,baseRevision:Number(newRevision),baseState:prepareKupaCloudState(authoritative),snapshot:clone(rebased.state)}),mutationSeq:Number(pending.mutationSeq||pending.generation||0)+1,updatedAt:new Date().toISOString(),conflict});
+  next.deleteIntents=normalizeDeleteIntents(pending.deleteIntents);await putCloudPending(next);session.localGeneration=Math.max(Number(session.localGeneration||0),next.generation);session.cloudConflictPending=!!next.conflict;return true;
+}
 
 return { stageCloudPendingLocal, rebaseNewerPending };
 }

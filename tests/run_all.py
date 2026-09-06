@@ -39,6 +39,7 @@ RUNTIME_SUITES = [
     "runtime_data_integrity.py",
     "runtime_sync_recovery.py",
     "runtime_sync_multitab.py",
+    "runtime_sync_two_computers.py",
     "runtime_financial.py",
 ]
 

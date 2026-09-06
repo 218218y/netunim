@@ -114,7 +114,7 @@ const storageChecks=createStorageChecks({
 });
 
 const cloudAuth=createCloudAuth({
-
+  session,
 });
 
 const domainsFinanceBridge=createDomainsFinanceBridge();
@@ -785,6 +785,7 @@ const uiSettings=createUiSettings({
 });
 
 const lifecycle=createLifecycle({
+  ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   model,
   files,
   tab,
@@ -826,7 +827,7 @@ const lifecycle=createLifecycle({
   showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
 
-const uiEvents={bindActionEvents};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
 
 const uiActions=createUiActions({
   supplierUi,
@@ -1038,7 +1039,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavi
 document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,120);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
 window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,300);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
 window.addEventListener('offline',()=>{if(cloudAuth.cloudEnabled())uiStatus.setCloud('ענן: אופליין','offline')});
-window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const ok=storageBrowser.localSnapshot();if(cloudAuth.cloudEnabled()&&ok&&stateSnapshots.cloudHasLocalWork())storageBrowser.markCloudPending();if(cloudAuth.loadSession()&&stateSnapshots.checksHaveLocalWork())storageChecks.markChecksPending()});
+window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;storageBrowser.localSnapshot();if(cloudAuth.cloudEnabled()&&stateSnapshots.cloudHasLocalWork())storageBrowser.markCloudPending();if(cloudAuth.loadSession()&&stateSnapshots.checksHaveLocalWork())storageChecks.markChecksPending()});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 document.getElementById('saveNowButton').addEventListener('click',()=>{if(uiStatus.guardStartupMutation('all'))storagePersistence.manualSaveNow()});
 document.getElementById('folderAccessButton').addEventListener('click',uiFolders.handleTopFolderAccess);

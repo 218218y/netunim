@@ -1,3 +1,4 @@
+import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
 import {todayISO} from '../../core/dates.js';
@@ -28,7 +29,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
 const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
@@ -174,7 +175,8 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
   bridgeState.busy=true;bridgeState.lastError='';bridgeState.lastErrorAt=null;bridgeState.lastErrorCode='';bridgeState.lastErrorStage='';bridgeState.lastErrorHttpStatus=0;bridgeState.lastWarning='';bridgeState.lastWarningCode='';bridgeState.lastWarningStage='';bridgeState.lastWarningHttpStatus=0;bridgeState.accountSelectionRole='';
   bridgeState.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
   render();
-  let leaseToken='',leaseHeld=false;
+  let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
+    const saveBankSyncSnapshot=typeof publishBankSyncSnapshot==='function'?(...args)=>{heartbeat?.assertCurrent();return publishBankSyncSnapshot(...args,lease)}:null;
   try{
     if(auto){
       const latest=await refreshFinanceCloudSnapshot();
@@ -183,8 +185,9 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
       bridge.markAutoAttempt();
     }
     leaseToken=uid('FINLEASE');
-    const lease=await claimFinanceSyncLease('bank',leaseToken);leaseHeld=lease?.acquired===true;
+    lease=await claimFinanceSyncLease('bank',leaseToken);leaseHeld=lease?.acquired===true;
     if(!leaseHeld){bridgeState.message='סינכרון הבנק כבר מתבצע ממחשב או חלון אחר; לא נפתחה כניסה נוספת לבנק.';if(!auto)toast(bridgeState.message);return false}
+      heartbeat=startFinanceLeaseHeartbeat(lease,claimFinanceSyncLease);
     const finance=await refreshFinanceCloudSnapshot();
     if(auto){if(!finance?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון הבנק לאחר תפיסת הנעילה');if(!bankAutoRefreshDue(sharedBankLastSyncAt(finance.state||model.state)))return true}
     const archiveInitialized=finance?.state?.bank?.archiveInitialized===true,archiveVersion=Number(finance?.state?.bank?.archiveVersion||0),archiveReady=archiveInitialized&&archiveVersion>=2;
@@ -196,7 +199,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     let businessArchive=Array.isArray(business.transactions)?business.transactions:[],homeArchive=home&&Array.isArray(home.transactions)?home.transactions:[],archiveAudit=null;
     if(cloudArchive){
       const businessCoverage=completeTransactionCoverage(business),homeCoverage=home?completeTransactionCoverage(home):null;
-      const businessMerge=await syncBankTransactionsSnapshot(businessAccount,'business',business.transactions||[],{snapshotAt:fetchedAt,coverage:businessCoverage,complete:businessCoverage.complete}),homeMerge=home&&homeAccount?await syncBankTransactionsSnapshot(homeAccount,'home',home.transactions||[],{snapshotAt:fetchedAt,coverage:homeCoverage,complete:homeCoverage?.complete===true}):null;
+      const businessMerge=await syncBankTransactionsSnapshot(businessAccount,'business',business.transactions||[],{lease,snapshotAt:fetchedAt,coverage:businessCoverage,complete:businessCoverage.complete}),homeMerge=home&&homeAccount?await syncBankTransactionsSnapshot(homeAccount,'home',home.transactions||[],{lease,snapshotAt:fetchedAt,coverage:homeCoverage,complete:homeCoverage?.complete===true}):null;
       const [nextBusinessArchive,nextBusinessDirect,nextHomeArchive,nextHomeDirect]=await Promise.all([readBankTransactions(businessAccount,'business',{days:370}),readBankTransactionSnapshot(businessAccount,'business'),homeAccount?readBankTransactions(homeAccount,'home',{days:370}):Promise.resolve([]),homeAccount?readBankTransactionSnapshot(homeAccount,'home'):Promise.resolve(null)]);
       businessArchive=nextBusinessArchive;homeArchive=nextHomeArchive;
       bankDisplayArchive.business={accountKey:String(businessAccount||''),syncKey:String(fetchedAt),rows:businessArchive,directSnapshot:nextBusinessDirect};
@@ -216,7 +219,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
       if(!refreshed?.verified)bridgeState.lastWarning='הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. פתיחה מחדש תטען את העותק בענן.';
       toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     }else{
-      await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}));
+      await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}),lease);
       model.state.bank=nextBank;
       await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
     }
@@ -229,7 +232,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';bridgeState.message=bridgeState.lastError;
     if(!auto)toast(bridgeState.lastError);
     return false;
-  }finally{if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('bank sync lease release',error)}bridgeState.busy=false;render()}
+  }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('bank sync lease release',error)}bridgeState.busy=false;render()}
 }
 
 async function acknowledgeMissingBankTransaction(transactionId){

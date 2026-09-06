@@ -1,3 +1,4 @@
+import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {CLOUD_SESSION_KEY, CLOUD_EMAIL_KEY, CLOUD_AUTO_KEY} from '../state/constants.js';
 import {createDataApiScheduler} from '../shared/cloud-sync.js';
@@ -43,14 +44,16 @@ function supaNetworkFailure(error){const timedOut=String(error?.name||'')==='Abo
 async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_TIMEOUT_MS}={}){const attempts=retry?SUPA_NETWORK_ATTEMPTS:1;let lastError=null;for(let attempt=0;attempt<attempts;attempt++){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),Math.max(1000,Number(timeoutMs)||SUPA_NETWORK_TIMEOUT_MS));try{return await fetch(url,{...options,signal:controller.signal})}catch(error){lastError=error;if(!isSupaNetworkError(error)||attempt+1>=attempts)throw supaNetworkFailure(error);await sleep(SUPA_NETWORK_BACKOFF_MS[Math.min(attempt,SUPA_NETWORK_BACKOFF_MS.length-1)])}finally{clearTimeout(timer)}}throw supaNetworkFailure(lastError)}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createCloudAuth({}){
+export function createCloudAuth({session={}}){
+const capabilityGate=createSyncCapabilityGate(async()=>{const response=await supaFetch('/rest/v1/rpc/get_netunim_sync_capabilities',{method:'POST',body:'{}',dataPriority:'high'});if(!response.ok)throw Object.assign(new Error('ה־DB אינו תואם לגרסת האתר; יש להשלים את עדכון מסד הנתונים.'),{code:'netunim_sync_capabilities_missing'});return response.json()});
+async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;try{const ready=await capabilityGate.ensure();session.syncCapabilitiesError=null;return ready}catch(error){session.syncCapabilitiesError=error;throw error}finally{session.syncCapabilitiesChecking=false}}
 function supaConfigured(){return /^https:\/\//.test(SUPA_CONFIG.url||'')&&String(SUPA_CONFIG.publishableKey||'').length>20}
 
 function supaHeaders(token){return {'Content-Type':'application/json','apikey':SUPA_CONFIG.publishableKey,...(token?{'Authorization':'Bearer '+token}:{})}}
 
 function loadSession(){try{return JSON.parse(localStorage.getItem(CLOUD_SESSION_KEY)||'null')}catch(e){return null}}
 
-function saveSession(s){if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY)}
+function saveSession(s){capabilityGate.reset();if(s)localStorage.setItem(CLOUD_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(CLOUD_SESSION_KEY)}
 
 function cloudAuthRequired(message='נדרשת התחברות לענן'){const error=new Error(message);error.code='cloud_auth_required';return error}
 
@@ -60,9 +63,9 @@ async function refreshSession({force=true,observedAccessToken=''}={}){if(refresh
 
 async function ensureSession(){let s=loadSession();if(!s)throw cloudAuthRequired();if(Number(s.expires_at||0)<Math.floor(Date.now()/1000)+60)s=await refreshSession({force:false,observedAccessToken:s.access_token});return s}
 
-async function supaFetch(path,opt={}){const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);const request=async()=>{let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs});if(r.status===401){const observed=s.access_token;s=await refreshSession({force:true,observedAccessToken:observed});r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs})}return r};return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})}
+async function supaFetch(path,opt={}){if(syncRequestNeedsCapabilities(path,opt.method))await ensureSyncCapabilities();const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,...requestOptions}=opt,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);const request=async()=>{let s=await ensureSession();let r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs});if(r.status===401){const observed=s.access_token;s=await refreshSession({force:true,observedAccessToken:observed});r=await fetchSupaNetwork(SUPA_CONFIG.url+path,{...requestOptions,headers:{...supaHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs})}return r};return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})}
 
 function cloudEnabled(){return localStorage.getItem(CLOUD_AUTO_KEY)==='1'&&!!loadSession()}
 
-return { supaConfigured, supaHeaders, loadSession, saveSession, authPassword, refreshSession, ensureSession, supaFetch, cloudEnabled };
+return { ensureSyncCapabilities, supaConfigured, supaHeaders, loadSession, saveSession, authPassword, refreshSession, ensureSession, supaFetch, cloudEnabled };
 }

@@ -1,3 +1,4 @@
+import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
@@ -93,7 +94,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   async function refreshCreditSync({interactive=false,auto=false,syncMode='full'}={}){
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(!auto)render();
-    let leaseToken='',leaseHeld=false;
+    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
     try{
       if(auto){
         const latest=await refreshFinanceCloudSnapshot();
@@ -102,8 +103,9 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
         markAutoAttempt();
       }
       leaseToken=uid('FINLEASE');
-      const lease=await claimFinanceSyncLease('credit',leaseToken);leaseHeld=lease?.acquired===true;
+      lease=await claimFinanceSyncLease('credit',leaseToken);leaseHeld=lease?.acquired===true;
       if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
+      heartbeat=startFinanceLeaseHeartbeat(lease,claimFinanceSyncLease);
       if(auto){const latest=await refreshFinanceCloudSnapshot();if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');if(!due(latest.state?.creditSync?.syncedAt))return true}
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
@@ -112,7 +114,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       const result=await bridge.syncCreditCards({interactive,syncMode:auto?autoMode():syncMode==='full'?'full':'daily',selection:creditSyncScrapeSelection(model.state.creditSync)});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
-      await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
+      await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}),lease);
       const deferredOnly=Array.isArray(result.errors)&&result.errors.length>0&&result.errors.every(error=>error?.severity==='deferred'||error?.deferred===true);
       await saveState(deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');
       await refreshCreditBridgeStatus();
@@ -123,11 +125,11 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       // Persist those diagnostics without deleting the last successful profile data.
       if(Array.isArray(e?.creditErrors)&&e.creditErrors.length){
         model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,{profiles:[],errors:e.creditErrors});
-        await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
+        await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}),lease);
       }
       if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.error)
     }
-    finally{if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('credit sync lease release',error)}local.busy=false;render();scheduleAuto()}
+    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('credit sync lease release',error)}local.busy=false;render();scheduleAuto()}
   }
 
   async function setCreditCardMapping(profileId,accountNumber,field,value){

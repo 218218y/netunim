@@ -1,3 +1,4 @@
+import {createSyncCapabilityGate,syncRequestNeedsCapabilities} from '../shared/sync-capabilities.js';
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {SUPA_SESSION_KEY, SUPA_SESSION_IDB_KEY, SUPA_EMAIL_KEY, SUPA_AUTO_KEY} from '../state/constants.js';
 import {createDataApiScheduler} from '../shared/cloud-sync.js';
@@ -53,13 +54,15 @@ async function fetchSupaNetwork(url,options,{retry=false,timeoutMs=SUPA_NETWORK_
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudAuth({session, idbGet, idbPut, idbDelete, supaProjectRef, setCloudHeaderStatus}){
+const capabilityGate=createSyncCapabilityGate(async()=>{const response=await supaRest('/rest/v1/rpc/get_netunim_sync_capabilities',{method:'POST',body:'{}',dataPriority:'high'});if(!response.ok)throw Object.assign(new Error('ה־DB אינו תואם לגרסת האתר; יש להשלים את עדכון מסד הנתונים.'),{code:'netunim_sync_capabilities_missing'});return response.json()});
+async function ensureSyncCapabilities(){session.syncCapabilitiesChecking=true;try{const ready=await capabilityGate.ensure();session.syncCapabilitiesError=null;return ready}catch(error){session.syncCapabilitiesError=error;throw error}finally{session.syncCapabilitiesChecking=false}}
 function supaConfigured(){return !!(SUPA_CONFIG.url&&SUPA_CONFIG.publishableKey)}
 
 function loadSupaSession(){if(session.supaSession)return session.supaSession;try{session.supaSession=JSON.parse(localStorage.getItem(SUPA_SESSION_KEY)||'null')}catch(e){session.supaSession=null}return session.supaSession}
 
 async function restoreSupaSession(){let s=loadSupaSession();if(s)return s;try{s=await idbGet('sync',SUPA_SESSION_IDB_KEY);if(s){session.supaSession=s;try{localStorage.setItem(SUPA_SESSION_KEY,JSON.stringify(s))}catch(e){}}}catch(e){}return s||null}
 
-function storeSupaSession(s){session.supaSession=s||null;try{if(s)localStorage.setItem(SUPA_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(SUPA_SESSION_KEY)}catch(e){};if(s)idbPut('sync',SUPA_SESSION_IDB_KEY,s).catch(()=>{});else idbDelete('sync',SUPA_SESSION_IDB_KEY).catch(()=>{})}
+function storeSupaSession(s){capabilityGate.reset();session.supaSession=s||null;try{if(s)localStorage.setItem(SUPA_SESSION_KEY,JSON.stringify(s));else localStorage.removeItem(SUPA_SESSION_KEY)}catch(e){};if(s)idbPut('sync',SUPA_SESSION_IDB_KEY,s).catch(()=>{});else idbDelete('sync',SUPA_SESSION_IDB_KEY).catch(()=>{})}
 
 function isSupabaseAuthError(e){const m=String(e?.message||e||'').toLowerCase();return m.includes('invalid login credentials')||m.includes('invalid_credentials')||m.includes('jwt')||m.includes('refresh token')||m.includes('פג תוקף')||m.includes('נדרשת התחברות')}
 
@@ -78,7 +81,7 @@ async function supaRefresh({force=true,observedAccessToken=''}={}){if(refreshPro
 
 async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
 
-async function supaRest(path,options={}){
+async function supaRest(path,options={}){if(syncRequestNeedsCapabilities(path,options.method))await ensureSyncCapabilities();
   const {networkRetry,networkTimeoutMs,dataPriority,coalesceKey,...requestOptions}=options,method=String(requestOptions.method||'GET').toUpperCase(),safeRead=method==='GET'||method==='HEAD',priority=dataPriority||(safeRead?'low':'high'),retry=networkRetry===undefined?(safeRead&&priority==='high'):!!networkRetry,timeoutMs=networkTimeoutMs??(priority==='low'?SUPA_BACKGROUND_TIMEOUT_MS:SUPA_NETWORK_TIMEOUT_MS);
   const request=async()=>{
     let s=await supaEnsureSession(),r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${path}`,{...requestOptions,headers:{...supaBaseHeaders(s.access_token),...(requestOptions.headers||{})}},{retry,timeoutMs});
@@ -88,5 +91,5 @@ async function supaRest(path,options={}){
   return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})
 }
 
-return { supaConfigured, loadSupaSession, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaBaseHeaders, supaAuthPassword, supaRefresh, supaEnsureSession, supaRest };
+return { ensureSyncCapabilities, supaConfigured, loadSupaSession, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaBaseHeaders, supaAuthPassword, supaRefresh, supaEnsureSession, supaRest };
 }

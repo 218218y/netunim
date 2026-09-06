@@ -3,7 +3,7 @@ import {BROWSER_STATE_KEY, BROWSER_STATE_IDB_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({model, session, files, normalizeState, idbPut, idbGet}){
-function browserStateRecord(snapshot=model.state,revision=session.dbRevision){return {schemaVersion:1,state:normalizeState(clone(snapshot)),revision:Number(revision||0),savedAt:new Date().toISOString()}}
+function browserStateRecord(snapshot=model.state,revision=session.dbRevision){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadBrowserStateSync()?.snapshotSeq||0))+1;return {schemaVersion:1,snapshotSeq:session.localSnapshotSeq,state:normalizeState(clone(snapshot)),revision:Number(revision||0),savedAt:new Date().toISOString()}}
 
 function persistBrowserStateSync(record){try{const text=JSON.stringify(record);localStorage.setItem(BROWSER_STATE_KEY,text);if(localStorage.getItem(BROWSER_STATE_KEY)!==text)throw new Error('אימות עותק הדפדפן נכשל');return true}catch(e){console.error('browser state localStorage',e);return false}}
 
@@ -13,7 +13,7 @@ function queueBrowserStateIdb(record){files.browserStatePendingRecord=clone(reco
 
 function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.dbRevision){const record=browserStateRecord(snapshot,revision),ok=persistBrowserStateSync(record);queueBrowserStateIdb(record);return ok}
 
-async function loadBrowserState(){const local=loadBrowserStateSync();let idb=null;try{idb=await idbGet('sync',BROWSER_STATE_IDB_KEY)}catch(e){console.error('browser state idb load',e)}const lt=Date.parse(local?.savedAt||'')||0,it=Date.parse(idb?.savedAt||'')||0;const chosen=it>lt?idb:local;if(chosen){persistBrowserStateSync(chosen);queueBrowserStateIdb(chosen)}return chosen||null}
+async function loadBrowserState(){const local=loadBrowserStateSync();let idb=null;try{idb=await idbGet('sync',BROWSER_STATE_IDB_KEY)}catch(e){console.error('browser state idb load',e)}const lt=Number(local?.snapshotSeq||0),it=Number(idb?.snapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),lt,it);const chosen=!local||it>lt?idb:local;if(chosen){persistBrowserStateSync(chosen);queueBrowserStateIdb(chosen)}return chosen||null}
 
 async function requestPersistentBrowserStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist()}catch(e){console.error('persistent storage request',e)}}
 

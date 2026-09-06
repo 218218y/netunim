@@ -23,6 +23,11 @@ for command in (
     ['node', '--test', 'tests/storage_models.test.mjs'],
     ['node', '--test', 'tests/cloud_sync_faults.test.mjs'],
     ['node', '--test', 'tests/sync_hardening.test.mjs'],
+    ['node', '--test', 'tests/sync_replay_rebase.test.mjs'],
+    ['node', '--test', 'tests/sync_durability_recovery.test.mjs'],
+    ['node', '--test', 'tests/finance_fencing.test.mjs'],
+    ['node', '--test', 'tests/sync_capabilities.test.mjs'],
+
     ['node', '--test', 'tests/tab_lock_fallback.test.mjs'],
 ):
     result = subprocess.run(command, cwd=ROOT)

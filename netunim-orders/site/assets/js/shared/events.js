@@ -1,5 +1,5 @@
 // Stable-container delegation; handlers receive the actual actionable element.
-export function bindActionEvents(root,actions){
+export function bindActionEvents(root,actions,{canRun=()=>true}={}){
   const types=['click','change','input','keydown','focus','blur','dragstart','dragover','drop','dragend'];
   for(const type of types){
     root.addEventListener(type,event=>{
@@ -10,6 +10,7 @@ export function bindActionEvents(root,actions){
         if((type==='focus'||type==='blur')&&element!==event.target)continue;
         const name=element.getAttribute(type==='click'?'data-action':'data-'+type);
         if(name){
+          if(!canRun(name,element,event)){event.preventDefault();event.stopPropagation();return}
           const action=actions[name];
           if(typeof action!=='function')throw new Error('Unknown UI action: '+name);
           if(!element.matches(':disabled'))action(element,event);

@@ -58,6 +58,6 @@ function alignCloudInputs(base,local,remote){
   return {...lineage,base:{...prepareKupaCloudState(lineage.base),checks:[]},local:{...prepareKupaCloudState(lineage.local),checks:[]},remote:{...prepareKupaCloudState(lineage.remote),checks:[]}};
 }
 function mergeKupaCloudState3Way(base,local,remote,{deleteIntents={}}={}){const lineage=alignCloudInputs(base,local,remote);if(lineage.conflicts.length)return {state:prepareKupaCloudState(remote),conflicts:lineage.conflicts};const intents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};const merged=mergeState3Way(lineage.base,lineage.local,lineage.remote,{deleteIntents:intents});return {state:prepareKupaCloudState(merged.state),conflicts:merged.conflicts.filter(x=>!String(x).startsWith('checks:'))}}
-function rebaseKupaCloudProgress(base,local,remote,{deleteIntents={}}={}){const lineage=alignCloudInputs(base,local,remote);if(lineage.conflicts.length){const error=new Error('legacy_card_migration_conflict');error.code='legacy_card_migration_conflict';error.conflicts=lineage.conflicts;throw error}const intents={...deleteIntents,cards:[...new Set([...(deleteIntents.cards||[]),...lineage.localDeletedIds])]};return prepareKupaCloudState(rebaseLocalProgress(lineage.base,lineage.local,lineage.remote,{deleteIntents:intents}))}
+function rebaseKupaCloudProgress(base,local,remote,options={}){return mergeKupaCloudState3Way(base,local,remote,options)}
 return { mergeState3Way, rebaseLocalProgress, mergeKupaCloudState3Way, rebaseKupaCloudProgress };
 }

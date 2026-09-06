@@ -15,7 +15,7 @@ function alertCard(item){
   if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה, פחות חיובי האשראי וההוצאות של אותו חשבון, ובתוספת צ׳קים מאותו חשבון שעדיין בקופה ונכנסים עד יום החיתוך שהוגדר.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
   const dueText=item.isToday?`מועד ההפקדה הוא היום · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
   const facts=[item.checkNumber?`מס׳ צ׳ק ${item.checkNumber}`:'',item.note?item.note:''].filter(Boolean);
-  return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">הופקד</button></div>`;
+  return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">הופקד</button></div></div>`;
 }
 
 export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},markCheckDeposited=()=>false}){
@@ -30,9 +30,10 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
   }
 
   function refreshIndicator(){
-    const button=document.getElementById('alertCenterButton'),countEl=document.getElementById('alertCenterCount');
+    const button=document.getElementById('alertCenterButton'),slot=document.getElementById('alertCenterSlot'),countEl=document.getElementById('alertCenterCount');
     if(!button||!countEl)return currentAlerts();
     const alerts=currentAlerts(),count=alerts.length,active=count>0;
+    if(slot)slot.hidden=!active;
     button.hidden=!active;
     button.classList.toggle('active',active);
     button.setAttribute('aria-label',active?`${count} אזהרות פעילות`:'אין אזהרות פעילות');

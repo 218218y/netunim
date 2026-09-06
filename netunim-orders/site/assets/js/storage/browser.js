@@ -10,7 +10,7 @@ const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 export function createStorageBrowser({model, files, session, prepareState, prepareCloudState, normalizeState}){
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
-function localSnapshot(source=model.state){assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
+function localSnapshot(source=model.state){assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0))+1;payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
 
 async function openLocalStateDb(){return await new Promise((resolve,reject)=>{const r=indexedDB.open(LOCAL_DB,2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(LOCAL_STORE))r.result.createObjectStore(LOCAL_STORE);if(!r.result.objectStoreNames.contains(LOCAL_SYNC_STORE))r.result.createObjectStore(LOCAL_SYNC_STORE)};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
 
@@ -24,7 +24,7 @@ function queueBrowserStateSnapshot(payload){files.browserStatePendingPayload=clo
 
 async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_STORE).objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}finally{db.close()}}catch(e){console.error('browser state load',e);return null}}
 
-async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot();if(!record?.payload)return false;const local=loadLocal(),localTime=Date.parse(local?._meta?.savedAt||'')||0,idbTime=Number(record.savedAt||Date.parse(record.payload?._meta?.savedAt||'')||0);if(!local||(localTime>0&&idbTime>localTime)){model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
+async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
 
 function readPendingCache(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null')}catch(e){console.error('cloud pending cache load',e);return null}}
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
@@ -34,11 +34,11 @@ function migrateOrdersOutboxRecord(value,migration){const record=migrateOutboxRe
 
 function markCloudPending(snapshot=prepareCloudState(),message='',progress=null){
   assertValidOrderCloudState(snapshot,'Orders outbox snapshot');
-  const cached=readPendingCache(),canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,advanced=Number(session.cloudRevision||0)>Number(cached?.baseRevision||0),record=createOutboxRecord({
+  const diskCache=readPendingCache(),cached=compareOutboxFreshness(session.ordersOutboxCached,diskCache)>0?session.ordersOutboxCached:diskCache,canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,record=createOutboxRecord({
     domain:'orders',documentName:'suppliers',operationId:sameGeneration?(cached.operationId||cached.id):undefined,
     generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),
-    baseRevision:progress?.baseRevision??(advanced?session.cloudRevision:cached?.baseRevision??session.cloudRevision??0),
-    baseState:progress?.baseState??(advanced?session.lastCloudState:cached?.baseState??session.lastCloudState??canonical),snapshot:canonical,
+    baseRevision:progress?.baseRevision??(cached?.baseRevision??session.cloudRevision??0),
+    baseState:progress?.baseState??(cached?.baseState??session.lastCloudState??canonical),snapshot:canonical,
     createdAt:cached?.createdAt||cached?.updatedAt,updatedAt:new Date().toISOString(),
     conflict:progress?.conflict===undefined?(cached?.conflict||null):progress.conflict,retry:outboxRetryForGeneration(cached,{sameGeneration,retry:progress?.retry}),
     mutationType:progress?.mutationType||cached?.mutationType||'autosave',surface:progress?.surface||cached?.surface||'orders',restoreGroupId:progress?.restoreGroupId||cached?.restoreGroupId||null,
@@ -48,26 +48,41 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
   const previous=session.ordersOutboxCommitPromise||Promise.resolve();
   session.ordersOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{
     try{await idbSyncPut(ORDERS_OUTBOX_KEY,record);session.cloudDurabilityDegraded=false;return {record,durable:true}}
-    catch(error){console.error('orders outbox IndexedDB',error);session.cloudDurabilityDegraded=true;if(!cacheOk)throw new Error('orders_outbox_persistence_failed',{cause:error});return {record,durable:false}}
+    catch(error){console.error('orders outbox IndexedDB',error);session.cloudDurabilityDegraded=true;if(!cacheOk)throw new Error('orders_outbox_persistence_failed',{cause:error});return {record,durable:true,store:'localStorage'}}
   });
+  session.ordersOutboxCommitPromise.catch(()=>{});
   return cacheOk;
 }
 
 function cloudPendingExists(){return !!(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY))}
 
 async function getCloudPending(){
-  try{await session.ordersOutboxCommitPromise}catch(e){console.error('orders outbox commit',e)}
+  const observedCommit=session.ordersOutboxCommitPromise;await observedCommit;
   const fallbackSnapshot=prepareCloudState(loadLocal()||model.state),migration={domain:'orders',documentName:'suppliers',baseRevision:session.cloudRevision||0,baseState:session.lastCloudState||fallbackSnapshot,snapshot:fallbackSnapshot,generation:Math.max(1,Number(session.localGeneration||0))};
   const local=migrateOrdersOutboxRecord(readPendingCache(),migration);let durable=null;
   try{durable=migrateOrdersOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration)}catch(e){console.error('orders outbox load',e)}
+  if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
   if(!chosen){session.ordersOutboxCached=null;return null}
   session.ordersOutboxCached=chosen;session.localGeneration=Math.max(Number(session.localGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
   try{await idbSyncPut(ORDERS_OUTBOX_KEY,chosen);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('orders outbox repair',e)}
+  if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
   return chosen;
 }
 
-async function clearCloudPending(acknowledgedGeneration){const current=await getCloudPending();if(!current)return true;if(!acknowledgedGenerationMatches(current,acknowledgedGeneration))return false;try{await idbSyncDelete(ORDERS_OUTBOX_KEY)}catch(e){console.error('orders outbox clear',e);session.cloudDurabilityDegraded=true;return false}try{localStorage.removeItem(CLOUD_PENDING_KEY)}catch(e){console.error('orders outbox cache clear',e);session.cloudDurabilityDegraded=true;return false}session.ordersOutboxCached=null;session.cloudDurabilityDegraded=false;return true}
+async function clearCloudPending(acknowledgedGeneration){
+  const current=await getCloudPending();if(!current)return true;
+  if(!acknowledgedGenerationMatches(current,acknowledgedGeneration)||Number(session.ordersOutboxCached?.generation||0)>Number(current.generation)||Number(session.ordersOutboxCached?.mutationSeq||0)>Number(current.mutationSeq||0))return false;
+  // Serialize deletion with staging: a mutation during deletion commits after it.
+  const clearing=(session.ordersOutboxCommitPromise||Promise.resolve()).then(async()=>{
+    try{await idbSyncDelete(ORDERS_OUTBOX_KEY);return true}catch(e){console.error('orders outbox clear',e);session.cloudDurabilityDegraded=true;return false}
+  });
+  session.ordersOutboxCommitPromise=clearing;
+  if(!await clearing)return false;
+  if(session.ordersOutboxCommitPromise!==clearing||!acknowledgedGenerationMatches(session.ordersOutboxCached,acknowledgedGeneration))return false;
+  try{localStorage.removeItem(CLOUD_PENDING_KEY)}catch(e){console.error('orders outbox cache clear',e);session.cloudDurabilityDegraded=true;return false}
+  session.ordersOutboxCached=null;session.cloudDurabilityDegraded=false;return true;
+}
 
 function loadCloudPendingState(){try{const pending=readPendingCache();if(!pending)return null;if(pending?.pending===true)return loadLocal();return pending?.snapshot&&typeof pending.snapshot==='object'?pending.snapshot:pending}catch(e){console.error('cloud pending load',e);return loadLocal()}}
 

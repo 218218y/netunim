@@ -202,8 +202,18 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, sett
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 ok('<div class="brand">ניהול הזמנות</div>' not in orders_html
    and 'grid-template-areas:"nav actions"' in orders_css
-   and '.nav{grid-area:nav;min-width:0;max-width:100%;display:flex;gap:4px;justify-self:start;margin:0;' in orders_css,
-   "orders: redundant top-right title is removed and primary tabs occupy the RTL start edge")
+   and '.topbar-nav-cluster{grid-area:nav;min-width:0;max-width:100%;display:flex;align-items:center;gap:7px;justify-self:start}' in orders_css
+   and '.nav{min-width:0;max-width:100%;flex:1 1 auto;display:flex;gap:4px;margin:0;' in orders_css,
+   "orders: redundant top-right title is removed and the tab cluster occupies the RTL start edge")
+nav_open = orders_html.find('<nav class="nav" id="nav">')
+nav_close = orders_html.find('</nav>', nav_open)
+alert_slot_pos = orders_html.find('id="alertCenterSlot"')
+alert_button_pos = orders_html.find('id="alertCenterButton"')
+ok(-1 not in (nav_open, nav_close, alert_slot_pos, alert_button_pos)
+   and nav_open < nav_close < alert_slot_pos < alert_button_pos
+   and '.alert-center-slot{flex:0 0 auto;display:flex;align-items:center;padding-inline-start:7px;border-inline-start:1px solid' in orders_css
+   and '.alert-center-slot[hidden]{display:none!important}' in orders_css,
+   "orders warning indicator: alerts live in a dedicated non-scrolling slot beside the tabs and disappear as a unit when empty")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
 ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css
@@ -258,13 +268,19 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in o
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+orders_alert_center = (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8")
 ok('data-action="check-tab">הכל</button>' in orders_checks_view
    and 'data-action="check-tab">הכל</button>' in kupa_checks_view
    and 'data-action="check-tab-4"' not in orders_checks_view and 'data-action="check-tab-4"' not in kupa_checks_view
    and "if(ui.checkTab==='open')rows=rows.filter(x=>!checkIsClosedStatus(x.status))" in orders_checks_view
    and "if(ui.checkTab==='open')rows=rows.filter(x=>!checkIsClosedStatus(x.status))" in kupa_checks_view
-   and 'data-action="mark-alert-check-deposited"' in (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8"),
-   "checks workflow: the first tab is the non-closed all view, the legacy all tab is removed, and due-check warnings expose a direct deposit action")
+   and 'data-action="mark-alert-check-deposited"' in orders_alert_center
+   and 'class="alert-center-check-actions"' in orders_alert_center
+   and '.alert-center-check-card{display:grid;grid-template-columns:minmax(0,1fr) auto;padding:0;align-items:stretch;gap:0;overflow:hidden}' in orders_css
+   and '.alert-center-check-open{display:flex;align-items:flex-start;gap:12px;min-width:0;width:auto;' in orders_css
+   and '.alert-center-check-actions{display:flex;align-items:center;justify-content:center;' in orders_css
+   and '@media(max-width:480px){.alert-center-check-card{grid-template-columns:1fr}' in orders_css,
+   "checks workflow: the first tab is the non-closed all view, and due-check direct deposit has its own collision-free responsive action rail")
 ok("checkForecastMarkup()" in orders_checks_view
    and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear,account:ui.checkAccount})" in orders_checks_view
    and "צ׳קים בקופה לפי חודשים קדימה" not in orders_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in orders_checks_view
@@ -424,6 +440,30 @@ ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
    and "if(!revisionConflict(res))throw cloudWriteError(res,em)" in kupa_sync_document,
    "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts trigger revision reads/merges")
 
+# Header cloud status is scoped by data ownership. Finance refreshes must never advance or degrade
+# the Orders/Kupa top header; finance keeps its own status inside Bank/Credit.
+orders_status = (O / "site/assets/js/ui/status.js").read_text(encoding="utf-8")
+orders_cloud_ui = (O / "site/assets/js/ui/cloud.js").read_text(encoding="utf-8")
+kupa_transport = (K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
+kupa_sync_document = (K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+ok("const HEADER_DOMAIN_ORDER=['orders','checks'];" in orders_status
+   and 'latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt)' in orders_status
+   and 'latestCloudUpdatedAt(session.cloudUpdatedAt,checksSession.checksCloudUpdatedAt,checksSession.financeReadUpdatedAt)' not in orders_status
+   and "HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required)" in orders_status,
+   "orders cloud header: only Orders + shared checks own the top status timestamp/state")
+ok("setCloud('ענן: מסנכרן בנק ואשראי…')" not in orders_cloud_ui
+   and "finance readout unavailable after orders cloud open; header status remains scoped to orders + checks" in orders_cloud_ui
+   and "finance readout unavailable after orders cloud enable; header status remains scoped to orders + checks" in orders_cloud_ui,
+   "orders cloud hydration: finance remains loaded but cannot turn the top header into a financial status indicator")
+ok('select=*' in kupa_transport
+   and 'row.coreUpdatedAt=resolveKupaCoreUpdatedAt(row,row.financeUpdatedAt,financeAvailable)' in kupa_transport
+   and 'if(row?.core_updated_at)return row.core_updated_at;' in kupa_transport
+   and "if(financeResult.status!=='fulfilled')throw financeResult.reason" not in kupa_transport
+   and "row.financeAvailable=financeAvailable" in kupa_transport
+   and "financeAvailable?applyKupaCloudState(row.state,localChecks):applyKupaCoreState(row.state,localChecks,model.state)" in kupa_sync_document
+   and 'lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null' in kupa_sync_document,
+   "kupa cloud header: core/check status and state hydration remain independent from finance reads and finance/bookkeeping updated_at")
+
 # 4. SQL and migration contracts.
 sqls = {
     "preflight": (S / "preflight.sql").read_text(encoding="utf-8"),
@@ -444,6 +484,18 @@ sqls = {
 for name, text in sqls.items():
     ok(dollar_balanced(text), f"{name}: dollar-quote delimiters balanced")
     ok("security definer" not in text.lower(), f"{name}: no SECURITY DEFINER")
+
+kupa_header_status = (K / "supabase/cloud_header_status_v1_upgrade.sql").read_text(encoding="utf-8")
+orders_header_status = (O / "supabase/cloud_header_status_v1_upgrade.sql").read_text(encoding="utf-8")
+ok(kupa_header_status == orders_header_status,
+   "cloud header status migration: Kupa and Orders ship the exact same additive migration")
+ok("add column if not exists core_updated_at timestamptz" in kupa_header_status
+   and "kupa_header_owned_state" in kupa_header_status
+   and "- 'bank' - 'creditSync' - 'checks'" in kupa_header_status
+   and "coalesce(p_state #> '{bank,adjustments}', '[]'::jsonb)" in kupa_header_status
+   and "new.core_updated_at := old.core_updated_at" in kupa_header_status
+   and "before insert or update of state, updated_at on public.kupa_documents" in kupa_header_status,
+   "cloud header status migration: financial bookkeeping preserves the Kupa-owned clock while user-owned state advances it")
 
 lease_sql=sqls["kupa_finance_lease"]
 ok(lease_sql==sqls["orders_finance_lease"], "distributed finance lease migration: Kupa and Orders ship the exact same additive migration")

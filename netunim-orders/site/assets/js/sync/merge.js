@@ -11,7 +11,8 @@ function protectImplicitDeletes(base,local,deleteIds,key='id'){
 }
 function merge3(base,local,remote,{preferLocalConflicts=false,deleteIntents={}}={}){
   const conflicts=[],out=clone(remote||{});out.version=4;
-  out.businessName=!eq(local?.businessName,base?.businessName)?local.businessName:remote?.businessName;
+  const scalar=key=>{const b=base?.[key],l=local?.[key],r=remote?.[key];if(!eq(l,b)&&!eq(r,b)&&!eq(l,r)){conflicts.push(key);return undefined}return clone(eq(l,b)?r:l)};
+  out.businessName=scalar('businessName');
   out.suppliers=mergeArray(base?.suppliers,protectImplicitDeletes(base?.suppliers,local?.suppliers,deleteIntents.suppliers),remote?.suppliers,'id',conflicts,'supplier',preferLocalConflicts);
   out.transactions=mergeArray(base?.transactions,protectImplicitDeletes(base?.transactions,local?.transactions,deleteIntents.transactions),remote?.transactions,'id',conflicts,'transaction',preferLocalConflicts);
   out.customerDebts=mergeArray(base?.customerDebts,protectImplicitDeletes(base?.customerDebts,local?.customerDebts,deleteIntents.customerDebts),remote?.customerDebts,'id',conflicts,'customerDebt',preferLocalConflicts);
@@ -26,7 +27,10 @@ function merge3(base,local,remote,{preferLocalConflicts=false,deleteIntents={}}=
   out.inventoryCategoryOrder=clone(categoryOrderLocalChanged?local?.inventoryCategoryOrder:(remote?.inventoryCategoryOrder??base?.inventoryCategoryOrder??[]));
   out.inventoryEvents=mergeArray(base?.inventoryEvents,protectImplicitDeletes(base?.inventoryEvents,local?.inventoryEvents,deleteIntents.inventoryEvents),remote?.inventoryEvents,'id',conflicts,'inventoryEvent',preferLocalConflicts);
   out.warehouseOrders=mergeArray(base?.warehouseOrders,protectImplicitDeletes(base?.warehouseOrders,local?.warehouseOrders,deleteIntents.warehouseOrders),remote?.warehouseOrders,'id',conflicts,'warehouseOrder',preferLocalConflicts);
-  out.importAudit=remote?.importAudit||local?.importAudit||base?.importAudit||{};out.stage2Audit=remote?.stage2Audit||local?.stage2Audit||base?.stage2Audit||{};out._meta=remote?._meta||local?._meta||{};
+  // Import audits are client-authored business data; concurrent changes require resolution.
+  out.importAudit=scalar('importAudit');out.stage2Audit=scalar('stage2Audit');
+  // _meta is transport/export metadata (schema, savedAt, mirror sequence), not business data.
+  out._meta=clone(remote?._meta||{});
   return{state:normalizeState(out),conflicts};
 }
 return { merge3 };

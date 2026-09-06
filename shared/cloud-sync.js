@@ -206,3 +206,16 @@ export function createDataApiScheduler({maxHighBurst=4,canRun=()=>true}={}){
   function stats(){return {running,highQueued:high.length,lowQueued:low.length,coalesced:coalesced.size}}
   return {schedule,stats};
 }
+
+// Capture evidence before rebasing. Missing entities are represented by null, never dropped.
+export function structuredSyncConflict({domain,conflicts,base,local,remote,generation,baseRevision,currentRemoteRevision}){
+  const aliases={supplier:'suppliers',transaction:'transactions',customerDebt:'customerDebts',customerOrder:'customerOrders',serviceCall:'serviceCalls',note:'notes',inventoryItem:'inventoryItems',inventoryEvent:'inventoryEvents',warehouseOrder:'warehouseOrders',check:'checks'};
+  const value=(state,type,id)=>{const path=aliases[type]||type;const data=Array.isArray(state)?state:path.split('.').reduce((v,k)=>v?.[k],state);return structuredClone((id&&Array.isArray(data)?data.find(row=>String(row?.id??row?.name)===id):data)??null)};
+  return {kind:'entity-conflict',domain,generation,baseRevision,currentRemoteRevision,items:conflicts.map(key=>{const [entityType,...parts]=String(key).split(':'),entityId=parts.join(':')||null;return {domain,entityType,entityId,base:value(base,entityType,entityId),local:value(local,entityType,entityId),remote:value(remote,entityType,entityId),generation,baseRevision,currentRemoteRevision}})};
+}
+// JSONB object-key ordering is not a mutation. Preserve JSON wire semantics for
+// omitted optional fields, nulls and arrays while comparing object keys canonically.
+export function equalSyncJson(a,b){
+  const canonical=value=>JSON.stringify(value??null,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
+  return canonical(a)===canonical(b);
+}

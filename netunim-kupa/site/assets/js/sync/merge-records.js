@@ -1,6 +1,7 @@
+import {equalSyncJson} from '../shared/cloud-sync.js';
 import {clone} from '../core/values.js';
 
-export function jsonEq(a,b){return JSON.stringify(a??null)===JSON.stringify(b??null)}
+export function jsonEq(a,b){return equalSyncJson(a,b)}
 
 export function mergeRecordArray(baseArr,localArr,remoteArr,keyName,path,conflicts){
   const keyOf=x=>String(x?.[keyName]??'');
