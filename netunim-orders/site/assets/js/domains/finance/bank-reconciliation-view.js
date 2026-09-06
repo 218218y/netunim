@@ -1,4 +1,5 @@
 import {esc} from '../../core/values.js';
+import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 
 export function bankMissingActive(row){return row?.presenceState==='missing'&&!row?.missingAcknowledgedAt}
 
@@ -6,7 +7,7 @@ function presenceTime(value){if(!value)return '—';const d=new Date(value);retu
 
 export function bankDataMode(ui){return ui?.bankDataView==='direct'?'direct':'history'}
 
-export function bankSmartRows(rows){return [...(Array.isArray(rows)?rows:[])].sort((a,b)=>{const alertDelta=Number(bankMissingActive(b))-Number(bankMissingActive(a));if(alertDelta)return alertDelta;return String(b?.date||b?.processedDate||'').localeCompare(String(a?.date||a?.processedDate||''))})}
+export function bankSmartRows(rows,directRows=[]){return bankSmartHistoryRows(rows,{directTransactions:directRows,isMissingActive:bankMissingActive})}
 
 export function bankDataViewToggleMarkup(mode){return `<span class="bank-data-view-tabs" role="tablist" aria-label="מקור תנועות הבנק"><button type="button" role="tab" aria-selected="${mode==='history'}" class="bank-data-view-tab ${mode==='history'?'active':''}" data-action="set-orders-bank-data-view" data-click-arg0="history">היסטוריה חכמה</button><button type="button" role="tab" aria-selected="${mode==='direct'}" class="bank-data-view-tab ${mode==='direct'?'active':''}" data-action="set-orders-bank-data-view" data-click-arg0="direct">עדכני מהבנק</button></span>`}
 

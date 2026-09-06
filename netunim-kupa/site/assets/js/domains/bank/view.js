@@ -6,6 +6,7 @@ import {syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
 import {bankTransactionIdentity} from './feed.js';
+import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 
 export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,dateEditorMarkup}){
 function bankSnapshotLabel(){
@@ -52,7 +53,7 @@ function bankDateLabel(value){
 function bankRowMatchesSearch(row,query){return searchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,row?.presenceState,row?.missingSince,row?.lastSeenAt,JSON.stringify(row?.checkDetails||{})],[row?.date,row?.processedDate])}
 function bankMissingActive(row){return row?.presenceState==='missing'&&!row?.missingAcknowledgedAt}
 function bankDataMode(){return ui.bankDataView==='direct'?'direct':'history'}
-function bankSmartRows(rows){return [...(Array.isArray(rows)?rows:[])].sort((a,b)=>{const alertDelta=Number(bankMissingActive(b))-Number(bankMissingActive(a));if(alertDelta)return alertDelta;return String(b?.date||b?.processedDate||'').localeCompare(String(a?.date||a?.processedDate||''))})}
+function bankSmartRows(rows,directRows=[]){return bankSmartHistoryRows(rows,{directTransactions:directRows,isMissingActive:bankMissingActive})}
 function bankPresenceTime(value){if(!value)return '—';const d=new Date(value);return Number.isFinite(d.getTime())?`${d.toLocaleDateString('he-IL')} · ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'—'}
 function bankDataViewToggleMarkup(){const mode=bankDataMode();return `<span class="bank-data-view-tabs" role="tablist" aria-label="מקור תנועות הבנק"><button type="button" role="tab" aria-selected="${mode==='history'}" class="bank-data-view-tab ${mode==='history'?'active':''}" data-action="set-bank-data-view" data-click-arg0="history">היסטוריה חכמה</button><button type="button" role="tab" aria-selected="${mode==='direct'}" class="bank-data-view-tab ${mode==='direct'?'active':''}" data-action="set-bank-data-view" data-click-arg0="direct">עדכני מהבנק</button></span>`}
 function bankDirectSnapshotNote(snapshot){if(!snapshot)return `<div class="bank-direct-snapshot-note empty-state"><b>עדיין אין צילום תנועות מלא ומאומת מהבנק.</b><span>צילום ישיר יישמר רק לאחר קריאת תנועות מלאה ללא אזהרה; קריאה חלקית לעולם לא תחליף אותו.</span></div>`;return `<div class="bank-direct-snapshot-note"><span><b>נתוני הבנק הישירים האחרונים</b> · ${esc(bankPresenceTime(snapshot.snapshotAt))}</span><small>כיסוי ${esc(snapshot.coverageFrom)} עד ${esc(snapshot.coverageTo)} · ${esc(snapshot.transactionCount)} תנועות. סנכרון חלקי אינו מחליף צילום זה.</small></div>`}
@@ -124,7 +125,7 @@ function bankChequeDetailsMarkup(row){
 }
 
 function bankTransactionsTableMarkup(feed,role){
-  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
+  const mode=bankDataMode(),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows,balance=Number(feed?.balance),roleLabel=role==='home'?'הביתי':'העסקי';
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),limit=feed?.creditLimit===null||feed?.creditLimit===undefined?null:Number(feed.creditLimit);
   const balanceFacts=[Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:'',Number.isFinite(available)?`<div class="bank-current-balance"><span>יתרה זמינה למשיכה</span><b>${money(available)}</b></div>`:'',Number.isFinite(limit)&&limit>0?`<div class="bank-current-balance"><span>מסגרת אשראי</span><b>${money(limit)}</b></div>`:''].filter(Boolean).join('');
