@@ -248,6 +248,10 @@ Bridge v33 keeps the hard cooldown unchanged and still permits exactly one anony
 If the replacement identity is also rejected (for example because the issuer is blocking something broader than that local browser identity), the new 403 enters the same 24-hour circuit breaker and no further identity is generated in that run. Blocks after credentials have begun (for example ValidateIdData) never trigger identity retirement. Financial data, cloud state and encrypted credit-card credentials are not touched by this recovery; only the local Camoufox identity directory for that provider/login identity is replaced. Kupa and Orders now require Credit Bridge v33 so an older v32 runtime cannot silently keep the no-recovery behavior.
 
 
+Bridge v36 — Amex monthly semantic-empty compatibility
+
+Bridge v36 aligns the Camoufox Isracard/Amex monthly data path with israeli-bank-scrapers 6.9.0: a non-success DashboardMonth or CardsTransactionsList provider status is a valid empty month, not CREDIT_PROVIDER_DATA_ERROR. HTTP/WAF/non-JSON failures remain errors, and Status=1 still requires the expected schema. The bridge also refuses to discard transaction groups that cannot be mapped safely to a card index, and records DashboardMonthEmpty / CardsTransactionsListEmpty diagnostics for future issuer-side investigation.
+
 Bridge v35 — bounded Camoufox BrowserContext startup recovery
 --------------------------------------------------------------
 Bridge v35 fixes a local startup failure mode observed immediately after IdentityRecovery: Camoufox can time out while Playwright is opening launchPersistentContext before LoginPage is reached. This is not an issuer HTTP failure and no credit-card credentials have been sent at that point.

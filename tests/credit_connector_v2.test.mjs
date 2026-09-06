@@ -12,11 +12,16 @@ import {
   parseVisaCalFrame,
   parseVisaCalMonthData,
 } from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
-import {launchCamoufox} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
+import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
+const amexMonth=new Date('2026-12-01T00:00:00.000Z');
+assert.deepEqual(parseIsracardFamilyAccountsResponse({Header:{Status:'7'}},amexMonth),[],'Amex DashboardMonth non-success is an upstream-compatible empty month, not a false provider failure');
+assert.deepEqual(parseIsracardFamilyTransactionsResponse({Header:{Status:'7'}},[],new Date('2026-09-01T00:00:00.000Z'),amexMonth),{},'Amex CardsTransactionsList non-success is an upstream-compatible empty month');
+assert.throws(()=>parseIsracardFamilyAccountsResponse({Header:{Status:'1'},DashboardMonthBean:{}},amexMonth),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage==='DashboardMonth 2026-12','a Status=1 DashboardMonth still requires the documented cardsCharges schema');
+assert.throws(()=>parseIsracardFamilyTransactionsResponse({Header:{Status:'1'},CardsTransactionsListBean:{Index1:{CurrentCardTransactions:[{txnIsrael:[{fullPurchaseDate:'01/12/2026'}]}]}}},[],new Date('2026-09-01T00:00:00.000Z'),amexMonth),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage==='CardsTransactionsList 2026-12','transactions without a safe card-index mapping cannot be silently discarded');
 const fixedNow=new Date('2026-09-03T06:00:00.000Z'),profile={profileId:'cal-profile',provider:'visaCal',label:'כאל בדיקה',credentials:{username:'local-user',password:'never-log-me'}};
 const plan=buildCreditMonthPlan({startDate:new Date('2026-05-01T00:00:00Z'),futureMonths:12,now:fixedNow});
 assert.equal(plan.at(-1).month,'2027-09','the connector keeps the full +12-month issuer horizon');

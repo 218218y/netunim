@@ -117,17 +117,28 @@ async function pageFetchJson(page,{url,method='GET',data=null,stage}){
 
 function accountsUrl(servicesUrl,month){const url=new URL(servicesUrl);url.searchParams.set('reqName','DashboardMonth');url.searchParams.set('actionCode','0');url.searchParams.set('billingDate',monthDateString(month));url.searchParams.set('format','Json');return url.toString()}
 function transactionsUrl(servicesUrl,month){const url=new URL(servicesUrl);url.searchParams.set('reqName','CardsTransactionsList');url.searchParams.set('month',two(month.getUTCMonth()+1));url.searchParams.set('year',String(month.getUTCFullYear()));url.searchParams.set('requiredDate','N');return url.toString()}
-async function fetchAccounts(page,servicesUrl,month){
-  await randomDelay();const data=await pageFetchJson(page,{url:accountsUrl(servicesUrl,month),stage:`DashboardMonth ${monthKey(month)}`});
-  if(data?.Header?.Status!=='1')throw safeError('חברת האשראי לא אישרה את קריאת רשימת הכרטיסים לחודש.','CREDIT_PROVIDER_DATA_ERROR',{stage:`DashboardMonth ${monthKey(month)}`});
-  if(!data?.DashboardMonthBean||!Array.isArray(data.DashboardMonthBean.cardsCharges))throw safeError('חברת האשראי החזירה מבנה חשבונות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:`DashboardMonth ${monthKey(month)}`});
-  return (Array.isArray(data.DashboardMonthBean.cardsCharges)?data.DashboardMonthBean.cardsCharges:[]).map(card=>({index:Number(card?.cardIndex),accountNumber:cleanText(card?.cardNumber,80),processedDate:parseIsracardDate(card?.billingDate)})).filter(card=>Number.isFinite(card.index)&&card.accountNumber);
+function providerMonthIsEmpty(data){return data?.Header?.Status!=='1'}
+export function parseIsracardFamilyAccountsResponse(data,month){
+  const stage=`DashboardMonth ${monthKey(month)}`;
+  // The upstream 6.9.0 Isracard/Amex connector treats a non-success monthly
+  // provider status as an empty month, not as a transport/provider failure.
+  if(providerMonthIsEmpty(data))return [];
+  if(!data?.DashboardMonthBean||!Array.isArray(data.DashboardMonthBean.cardsCharges))throw safeError('חברת האשראי החזירה מבנה חשבונות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
+  return data.DashboardMonthBean.cardsCharges.map(card=>({index:Number(card?.cardIndex),accountNumber:cleanText(card?.cardNumber,80),processedDate:parseIsracardDate(card?.billingDate)})).filter(card=>Number.isFinite(card.index)&&card.accountNumber);
 }
-async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
-  const accounts=await fetchAccounts(page,servicesUrl,month);await randomDelay();
-  const data=await pageFetchJson(page,{url:transactionsUrl(servicesUrl,month),stage:`CardsTransactionsList ${monthKey(month)}`});
-  if(data?.Header?.Status!=='1')throw safeError('חברת האשראי לא אישרה את קריאת העסקאות לחודש.','CREDIT_PROVIDER_DATA_ERROR',{stage:`CardsTransactionsList ${monthKey(month)}`});
-  const bean=data?.CardsTransactionsListBean;if(!bean||typeof bean!=='object')throw safeError('חברת האשראי החזירה מבנה עסקאות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:`CardsTransactionsList ${monthKey(month)}`});
+function beanContainsTransactions(value){
+  const groups=value?.CurrentCardTransactions;if(!Array.isArray(groups))return false;
+  return groups.some(group=>(Array.isArray(group?.txnIsrael)&&group.txnIsrael.length>0)||(Array.isArray(group?.txnAbroad)&&group.txnAbroad.length>0));
+}
+export function parseIsracardFamilyTransactionsResponse(data,accounts=[],startDate=null,month=new Date()){
+  const stage=`CardsTransactionsList ${monthKey(month)}`;
+  if(providerMonthIsEmpty(data))return {};
+  const bean=data?.CardsTransactionsListBean;if(!bean||typeof bean!=='object'||Array.isArray(bean))throw safeError('חברת האשראי החזירה מבנה עסקאות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
+  const accountIndexes=new Set(accounts.map(account=>Number(account?.index)).filter(Number.isFinite));
+  for(const [key,value] of Object.entries(bean)){
+    const match=/^Index(\d+)$/.exec(key);if(!match||!beanContainsTransactions(value))continue;
+    if(!accountIndexes.has(Number(match[1])))throw safeError('חברת האשראי החזירה עסקאות לחודש ללא מיפוי כרטיס בטוח; הנתון האחרון נשמר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
+  }
   const result={};
   for(const account of accounts){
     const groups=bean?.[`Index${account.index}`]?.CurrentCardTransactions;if(!Array.isArray(groups))continue;
@@ -135,6 +146,15 @@ async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
     result[account.accountNumber]=txns;
   }
   return result;
+}
+async function fetchAccounts(page,servicesUrl,month){
+  await randomDelay();const data=await pageFetchJson(page,{url:accountsUrl(servicesUrl,month),stage:`DashboardMonth ${monthKey(month)}`});
+  return {accounts:parseIsracardFamilyAccountsResponse(data,month),semanticEmpty:providerMonthIsEmpty(data)};
+}
+async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
+  const accountResult=await fetchAccounts(page,servicesUrl,month);await randomDelay();
+  const data=await pageFetchJson(page,{url:transactionsUrl(servicesUrl,month),stage:`CardsTransactionsList ${monthKey(month)}`});
+  return {data:parseIsracardFamilyTransactionsResponse(data,accountResult.accounts,startDate,month),semanticEmptyStages:[...(accountResult.semanticEmpty?['DashboardMonth']:[]),...(providerMonthIsEmpty(data)?['CardsTransactionsList']:[])]};
 }
 
 async function login(page,provider,credentials,servicesUrl){
@@ -299,8 +319,8 @@ export async function doctorCamoufox(){
   return true;
 }
 
-function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-6.9.0-camoufox-v2',lastErrorCode:code,lastErrorAt:at}}
-function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-6.9.0-camoufox-v2',lastErrorCode:'',lastErrorAt:null}}
+function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-6.9.0-camoufox-v3',lastErrorCode:code,lastErrorAt:at}}
+function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-6.9.0-camoufox-v3',lastErrorCode:'',lastErrorAt:null}}
 function publicMonthError(error,month,tier,at){return {code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage:String(error?.stage||`Transactions ${month}`).slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת חודש מחברת האשראי נכשלה',at,retryAfterAt:error?.retryAfterAt||null,month,tier}}
 
 export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,startDate,futureMonthsToScrape=1,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date()}){
@@ -311,7 +331,7 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
     ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir,onDiagnostic,correlationId,provider}));
     await login(page,provider,credentials,servicesUrl);
     const months=buildCreditMonths(startDate,futureMonthsToScrape,now()),current=addUtcMonths(new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),1),results=[],knownAccounts=new Set(),errors=[];
-    for(const month of months){const key=monthKey(month),tier=month<=current?'core':'forecast',started=Date.now();try{const data=await fetchTransactionsForMonth(page,servicesUrl,month,startDate);Object.keys(data).forEach(account=>knownAccounts.add(account));results.push({month:key,tier,data,at:now().toISOString()});onDiagnostic({correlationId,provider,stage:'Transactions',month:key,durationMs:Date.now()-started})}catch(error){const at=now().toISOString();results.push({month:key,tier,error,at});errors.push(publicMonthError(error,key,tier,at));onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}}
+    for(const month of months){const key=monthKey(month),tier=month<=current?'core':'forecast',started=Date.now();try{const monthResult=await fetchTransactionsForMonth(page,servicesUrl,month,startDate),data=monthResult.data;Object.keys(data).forEach(account=>knownAccounts.add(account));results.push({month:key,tier,data,at:now().toISOString()});for(const emptyStage of monthResult.semanticEmptyStages)onDiagnostic({correlationId,provider,stage:`${emptyStage}Empty`,month:key,durationMs:Date.now()-started});onDiagnostic({correlationId,provider,stage:'Transactions',month:key,durationMs:Date.now()-started})}catch(error){const at=now().toISOString();results.push({month:key,tier,error,at});errors.push(publicMonthError(error,key,tier,at));onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}}
     if(!knownAccounts.size&&results.some(result=>!result.error))throw safeError('חברת האשראי לא החזירה כרטיסים באף חודש תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardMonth'});
     const accounts=[...knownAccounts].map(accountNumber=>({accountNumber,months:results.map(result=>result.error?coverageFailure(result.month,result.tier,result.error,result.at):coverageSuccess(result.month,result.tier,result.data[accountNumber]||[],result.at)),pendingTransactions:[],pendingStatus:'missing'}));
     const coreComplete=!results.some(result=>result.tier==='core'&&result.error),forecastFailures=results.filter(result=>result.tier==='forecast'&&result.error).length,coreFailures=results.filter(result=>result.tier==='core'&&result.error).length;
