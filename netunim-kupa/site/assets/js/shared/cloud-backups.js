@@ -23,18 +23,27 @@ export function backupValueEqual(a,b){return JSON.stringify(stableValue(a))===JS
 function collectionAt(state,path){let value=state;for(const part of String(path||'').split('.'))value=value?.[part];return Array.isArray(value)?value:[]}
 function valueAt(state,path){let value=state;for(const part of String(path||'').split('.'))value=value?.[part];return value}
 
+export function backupChangedFields(currentRow,targetRow,{ignoreKeys=['id','createdAt','updatedAt']}={}){
+  const current=currentRow&&typeof currentRow==='object'&&!Array.isArray(currentRow)?currentRow:{},target=targetRow&&typeof targetRow==='object'&&!Array.isArray(targetRow)?targetRow:{},ignored=new Set(ignoreKeys),keys=[...new Set([...Object.keys(current),...Object.keys(target)])].filter(key=>!ignored.has(key)).sort(),changes=[];
+  for(const key of keys)if(!backupValueEqual(current[key],target[key]))changes.push({key,current:current[key],target:target[key]});
+  return changes;
+}
+
 export function diffEntityCollection(currentRows=[],targetRows=[]){
   const before=new Map((Array.isArray(currentRows)?currentRows:[]).map(row=>[String(row?.id||''),row]).filter(([id])=>id));
   const after=new Map((Array.isArray(targetRows)?targetRows:[]).map(row=>[String(row?.id||''),row]).filter(([id])=>id));
-  let restored=0,removed=0,changed=0;
-  for(const [id,row] of after){if(!before.has(id))restored++;else if(!backupValueEqual(before.get(id),row))changed++}
-  for(const id of before.keys())if(!after.has(id))removed++;
-  return {before:before.size,after:after.size,restored,removed,changed,totalChanges:restored+removed+changed};
+  let restored=0,removed=0,changed=0;const details=[];
+  for(const [id,row] of after){
+    if(!before.has(id)){restored++;details.push({id,type:'restored',current:null,target:row,fields:backupChangedFields(null,row)})}
+    else if(!backupValueEqual(before.get(id),row)){changed++;details.push({id,type:'changed',current:before.get(id),target:row,fields:backupChangedFields(before.get(id),row)})}
+  }
+  for(const [id,row] of before)if(!after.has(id)){removed++;details.push({id,type:'removed',current:row,target:null,fields:backupChangedFields(row,null)})}
+  return {before:before.size,after:after.size,restored,removed,changed,totalChanges:restored+removed+changed,details};
 }
 
 export function summarizeBackupDiff(currentState,targetState,{collections=[],config=[]}={}){
   const rows=collections.map(item=>{const diff=diffEntityCollection(collectionAt(currentState,item.path),collectionAt(targetState,item.path));return {...item,...diff}}).filter(item=>item.totalChanges>0||item.before!==item.after);
-  const settings=config.filter(item=>!backupValueEqual(valueAt(currentState,item.path),valueAt(targetState,item.path))).map(item=>({...item,changed:true}));
+  const settings=config.filter(item=>!backupValueEqual(valueAt(currentState,item.path),valueAt(targetState,item.path))).map(item=>({...item,changed:true,current:valueAt(currentState,item.path),target:valueAt(targetState,item.path)}));
   return {rows,settings,totalChanges:rows.reduce((sum,row)=>sum+row.totalChanges,0)+settings.length};
 }
 

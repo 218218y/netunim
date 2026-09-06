@@ -142,12 +142,12 @@ async function acknowledgeBankTransactionMissing(transactionId){
 }
 
 
-async function readBackupList(table,documentName,limit){
-  const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}`;
+async function readBackupList(table,documentName,limit,offset=0){
+  const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`;
   const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return Array.isArray(j)?j:[];
 }
-async function listKupaCloudBackups(){
-  const [rolling,periodic]=await Promise.all([readBackupList('kupa_document_backups',session.cloudDocumentName,8),readBackupList('kupa_periodic_backups',session.cloudDocumentName,8)]);return {rolling,periodic};
+async function listKupaCloudBackups({limit=8,rollingOffset=0,periodicOffset=0}={}){
+  const [rolling,periodic]=await Promise.all([readBackupList('kupa_document_backups',session.cloudDocumentName,limit,rollingOffset),readBackupList('kupa_periodic_backups',session.cloudDocumentName,limit,periodicOffset)]);return {rolling,periodic};
 }
 async function readBackupState(table,documentName,id){
   const safeId=Number(id);if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');

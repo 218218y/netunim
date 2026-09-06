@@ -22,7 +22,7 @@ shared = ROOT / "shared/cloud-backups.js"
 check(shared.is_file(), "shared cloud-backup catalog/diff module exists")
 
 node_test = f"""
-import {{buildBackupCatalog,diffEntityCollection,summarizeBackupDiff,backupPointKey}} from {shared.as_uri()!r};
+import {{buildBackupCatalog,diffEntityCollection,summarizeBackupDiff,backupPointKey,backupChangedFields}} from {shared.as_uri()!r};
 const rolling=[
   {{id:11,revision:7,saved_at:'2026-09-06T07:00:00Z'}},
   {{id:10,revision:6,saved_at:'2026-09-06T06:00:00Z'}},
@@ -36,6 +36,9 @@ if(catalog.length!==3) throw new Error('catalog did not dedupe same revision');
 if(catalog[0].source!=='periodic'||catalog[0].revision!==7) throw new Error('catalog ordering is not newest-first');
 const diff=diffEntityCollection([{{id:'a',v:2}},{{id:'b',v:1}}],[{{id:'a',v:1}},{{id:'c',v:1}}]);
 if(diff.changed!==1||diff.removed!==1||diff.restored!==1||diff.totalChanges!==3) throw new Error('entity diff semantics are wrong');
+if(diff.details.length!==3||!diff.details.some(x=>x.type==='changed'&&x.id==='a')) throw new Error('entity diff details are missing');
+const fields=backupChangedFields({{id:'a',v:2,updatedAt:'now'}},{{id:'a',v:1,updatedAt:'old'}});
+if(fields.length!==1||fields[0].key!=='v'||fields[0].current!==2||fields[0].target!==1) throw new Error('field-level diff is wrong');
 const summary=summarizeBackupDiff({{rows:[{{id:'a',v:2}}],mode:'new'}},{{rows:[{{id:'a',v:1}}],mode:'old'}},{{collections:[{{path:'rows',label:'Rows'}}],config:[{{path:'mode',label:'Mode'}}]}});
 if(summary.totalChanges!==2||summary.rows.length!==1||summary.settings.length!==1) throw new Error('summary diff semantics are wrong');
 if(backupPointKey('rolling',12)!=='rolling:12') throw new Error('backup point key is wrong');
@@ -57,14 +60,18 @@ for app in ("netunim-kupa", "netunim-orders"):
 kupa_transport = read("netunim-kupa/site/assets/js/cloud/transport.js")
 orders_transport = read("netunim-orders/site/assets/js/cloud/transport.js")
 check("listKupaCloudBackups" in kupa_transport and "readKupaCloudBackupPoint" in kupa_transport, "kupa: backup list and point-in-time reader are exposed")
+check("rollingOffset" in kupa_transport and "offset=${safeOffset}" in kupa_transport, "kupa: cloud backup metadata supports bounded pagination")
 check("listOrdersCloudBackups" in orders_transport and "readOrdersCloudBackupPoint" in orders_transport, "orders: backup list and point-in-time reader are exposed")
+check("rollingOffset" in orders_transport and "offset=${safeOffset}" in orders_transport, "orders: cloud backup metadata supports bounded pagination")
 check("saved_at=lte." in kupa_transport and "shared_checks_periodic_backups" in kupa_transport, "kupa: shared checks are paired at-or-before the primary backup time")
 check("saved_at=lte." in orders_transport and "shared_checks_periodic_backups" in orders_transport, "orders: shared checks are paired at-or-before the primary backup time")
 
 kupa_actions = read("netunim-kupa/site/assets/js/ui/actions.js")
 orders_actions = read("netunim-orders/site/assets/js/ui/actions.js")
 check("'restore-cloud-backup':(element,event)=>{previewCloudBackup" in kupa_actions, "kupa: list restore action is preview-first")
+check("load-more-cloud-backups" in kupa_actions, "kupa: older backup pages are explicit user actions")
 check("'restore-orders-cloud-backup':(element,event)=>{previewCloudBackup" in orders_actions, "orders: list restore action is preview-first")
+check("load-more-orders-cloud-backups" in orders_actions, "orders: older backup pages are explicit user actions")
 check("apply-orders-cloud-backup-restore" in orders_actions and "all:['apply-json-restore','apply-orders-cloud-backup-restore'" in orders_actions, "orders: destructive cloud restore is protected by the startup mutation guard")
 
 kupa_backup = read("netunim-kupa/site/assets/js/ui/backup.js")
@@ -72,6 +79,8 @@ orders_backup = read("netunim-orders/site/assets/js/ui/backup.js")
 check("financeSyncIncluded:false" in kupa_backup and "target.creditSync=clone(live.creditSync)" in kupa_backup, "kupa: historical restore preserves live finance sync and downloaded backup marks finance as excluded")
 check("bankEvents:normalizeSharedBankEvents(checksRow?.state?.bankEvents" in orders_backup, "orders: restore preserves the live shared-check bank event ledger")
 check("!point?.checksState?.checks" in orders_backup and "!point?.checksState?.checks" in kupa_backup, "both apps reject an incomplete point-in-time restore without shared checks")
+check("cloud-backup-field-change" in orders_backup and "row.details" in orders_backup, "orders: preview exposes row-level current-vs-restore details")
+check("cloud-backup-field-change" in kupa_backup and "row.details" in kupa_backup, "kupa: preview exposes row-level current-vs-restore details")
 
 if errors:
     print("\nCloud backup contracts failed:")

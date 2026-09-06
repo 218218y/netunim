@@ -982,6 +982,7 @@ const uiActions=createUiActions({
   beginJsonRestore:(...args)=>uiBackup.beginJsonRestore(...args),
   applyJsonRestore:(...args)=>uiBackup.applyJsonRestore(...args),
   refreshCloudBackups:(...args)=>uiBackup.refreshCloudBackups(...args),
+  loadMoreCloudBackups:(...args)=>uiBackup.loadMoreCloudBackups(...args),
   previewCloudBackup:(...args)=>uiBackup.previewCloudBackup(...args),
   downloadCloudBackup:(...args)=>uiBackup.downloadCloudBackup(...args),
   downloadSelectedCloudBackup:(...args)=>uiBackup.downloadSelectedCloudBackup(...args),

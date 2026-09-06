@@ -62,7 +62,11 @@ return {
     checkSearchValue:'',
     notesTab:'notes',
     cloudBackupCatalog:null,
+    cloudBackupRaw:null,
+    cloudBackupVisibleLimit:8,
+    cloudBackupHasMore:false,
     cloudBackupLoading:false,
+    cloudBackupLoadingMore:false,
     cloudBackupError:'',
     pendingCloudBackup:null
   },
