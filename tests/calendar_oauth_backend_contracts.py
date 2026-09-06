@@ -19,6 +19,7 @@ ok('[functions.google-calendar-oauth]' in config and 'verify_jwt = false' in con
 ok('stateHash=await sha256(state)' in source and "delete().eq('state_hash',stateHash)" in source,'calendar oauth callback uses hashed one-time state and consumes it')
 ok("google_calendar_connections" in source and "owner_id',userId" in source,'calendar oauth refresh credentials are keyed by the authenticated Supabase user')
 ok('GOOGLE_REVOKE_URL' in source and "action==='disconnect'" in source,'calendar oauth disconnect revokes the server refresh token')
+ok("code:'calendar_reconnect_required',reason:'google_invalid_grant'" in source,'calendar oauth backend preserves invalid_grant as a safe reconnect diagnostic')
 ok('create table if not exists public.google_calendar_connections' in sql and 'create table if not exists public.google_calendar_oauth_states' in sql,'calendar oauth SQL creates isolated credential/state tables')
 ok('enable row level security' in sql and 'revoke all on table public.google_calendar_connections from public, anon, authenticated' in sql,'calendar oauth SQL enables RLS and denies browser roles')
 ok('grant select, insert, update, delete on table public.google_calendar_connections to service_role' in sql,'calendar oauth tables are writable only by the server role')

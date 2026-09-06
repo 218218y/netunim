@@ -62,18 +62,25 @@ const controller=createDomainsCalendarController({
 
 await controller.calendarAuthAction();
 assert.equal(cloudLoginCount,1,'missing localhost Supabase session must route to cloud login UI');
-assert.equal(beginCount,1);
+assert.equal(beginCount,0,'Google authorization must not start before the required Supabase login');
 
 authMode='connected';
 await controller.resumeAfterCloudLogin();
-assert.equal(restoreCount,1,'after local cloud login the existing server-side Calendar connection must be restored first');
-assert.equal(beginCount,1,'restoring an existing connection must not send the user through Google again');
+assert.equal(restoreCount,2,'after local cloud login the existing server-side Calendar connection must be restored first');
+assert.equal(beginCount,0,'restoring an existing connection must not send the user through Google again');
 assert.equal(calendarSession.accountVerified,true);
 assert.equal(preference.autoConnect,true);
 
 tokenUsable=false;calendarSession.accessToken='';calendarSession.tokenExpiresAt=0;calendarSession.accountVerified=false;
+preference={known:true,autoConnect:false,accountId:'owner@example.com'};
+await controller.calendarAuthAction();
+assert.equal(restoreCount,3,'a manual reconnect on another computer must restore the shared server connection before starting Google consent');
+assert.equal(beginCount,0,'an already-restored shared Google connection must not rotate authorization on another computer');
+assert.equal(calendarSession.accountVerified,true);
+
+tokenUsable=false;calendarSession.accessToken='';calendarSession.tokenExpiresAt=0;calendarSession.accountVerified=false;
 authMode='not_connected';
 await controller.resumeAfterCloudLogin();
-assert.equal(beginCount,2,'only a missing server-side Calendar connection should start Google authorization');
+assert.equal(beginCount,1,'only a missing server-side Calendar connection should start Google authorization');
 
 console.log('CALENDAR LOCAL CONTROLLER TESTS PASSED');

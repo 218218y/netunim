@@ -82,7 +82,7 @@ async function token(userId:string){
     const code=String((error as Error&{code?:string})?.code||'');
     if(code==='invalid_grant'){
       await admin.from('google_calendar_connections').delete().eq('owner_id',userId);
-      return json({code:'calendar_reconnect_required'},409);
+      return json({code:'calendar_reconnect_required',reason:'google_invalid_grant'},409);
     }
     return json({code:'calendar_refresh_failed',message:String((error as Error)?.message||error)},502);
   }

@@ -13,6 +13,7 @@ async function supaFetch(path,opt={}){
   if(mode==='not_connected')return new Response(JSON.stringify({code:'calendar_not_connected'}),{status:404,headers:{'Content-Type':'application/json'}});
   if(mode==='start')return new Response(JSON.stringify({authorize_url:'https://accounts.google.com/o/oauth2/v2/auth?state=test'}),{status:200,headers:{'Content-Type':'application/json'}});
   if(mode==='disconnect')return new Response(JSON.stringify({ok:true}),{status:200,headers:{'Content-Type':'application/json'}});
+  if(mode==='reconnect_required')return new Response(JSON.stringify({code:'calendar_reconnect_required',reason:'google_invalid_grant'}),{status:409,headers:{'Content-Type':'application/json'}});
   return new Response(JSON.stringify({access_token:'server-token',expires_in:3600,account_id:'owner@example.com'}),{status:200,headers:{'Content-Type':'application/json'}});
 }
 
@@ -30,6 +31,9 @@ auth.clearToken();
 mode='not_connected';
 await assert.rejects(auth.restore(),error=>error.code==='calendar_not_connected');
 assert.equal(session.connected,false);
+
+mode='reconnect_required';
+await assert.rejects(auth.restore(),error=>error.code==='calendar_reconnect_required'&&/Testing/.test(error.message)&&/In production/.test(error.message));
 
 mode='start';
 await auth.beginConnect({returnUrl:'https://orders.example.test/'});

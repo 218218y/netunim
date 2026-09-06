@@ -61,10 +61,18 @@ Google Identity Services במסלול browser Token Model תומך ב-Dialog UX 
    https://bupoidcurcxuypfrjqio.supabase.co/functions/v1/google-calendar-oauth/callback
 5. שמור את ההגדרה.
 
-Publishing status של Google
----------------------------
-במצב Testing אפשר לבדוק את המערכת עם Test users, אבל Refresh Token של אפליקציה במצב Testing מוגבל בזמן ועלול לפוג אחרי 7 ימים.
-אם רוצים שהחיבור יישאר לאורך זמן בלי חיבור מחדש שבועי, יש להעביר את OAuth consent screen ל-In production בהתאם לכללי Google ולשימוש של האפליקציה.
+Publishing status של Google — חובה לחיבור קבוע
+-----------------------------------------------
+בפרויקט External שמוגדר Testing, Google פוקעת את הרשאת משתמש הבדיקה 7 ימים ממועד האישור. לכן גם Refresh Token תקין בצד השרת יהפוך ל-invalid_grant בערך אחרי שבוע, וכל המחשבים שמשתמשים באותו חיבור Supabase ידרשו חיבור Google מחדש יחד. זו מגבלה של Google Auth Platform ולא תקלה שניתן לעקוף בצורה נכונה בקוד.
+
+להפעלה קבועה:
+1. פתח Google Cloud Console > Google Auth Platform > Audience.
+2. תחת Publishing status לחץ Publish app והעבר את הפרויקט מ-Testing ל-In production.
+3. ודא שה-User type והקהל מתאימים לשימוש שלך. אם זה פרויקט External שמשתמש ב-Calendar scopes רגישים, Google עשויה להציג אזהרת Unverified app ולדרוש תהליך Verification בהתאם לאופן השימוש; לפריסה ציבורית יש להשלים את האימות הנדרש.
+4. אחרי המעבר ל-In production יש לבצע פעם אחת חיבור מחדש מתוך טאב "יומן". שינוי ה-Publishing status אינו מחיה Refresh Token שכבר פג.
+5. לאחר החיבור מחדש אין צורך לתת הרשאה כל שבוע. Refresh Token של Production נועד לשימוש ארוך-טווח, אך Google עדיין יכולה לבטל אותו מסיבות רגילות כגון ביטול הרשאה ידני, שינויי אבטחה בחשבון או חוסר שימוש ממושך.
+
+אין להוסיף מנגנון שמבקש consent אוטומטית פעם בשבוע. הקוד כבר משתמש ב-Authorization Code Flow עם access_type=offline ושומר את ה-Refresh Token רק בצד השרת; הפתרון השורשי למגבלת שבעת הימים הוא Publishing status נכון.
 
 מעבר מהגרסה הקודמת
 ------------------
