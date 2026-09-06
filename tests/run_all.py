@@ -18,6 +18,7 @@ CORE_SUITES = [
     "sync_integrity_v5_contracts.py",
     "offline_dependencies_contracts.py",
     "confirmation_contracts.py",
+    "cloud_backup_contracts.py",
     "asset_contracts.py",
     "deploy_preflight.py",
     "service_worker_contracts.py",

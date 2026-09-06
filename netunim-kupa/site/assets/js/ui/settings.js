@@ -5,7 +5,16 @@ import {SUPA_EMAIL_KEY} from '../state/constants.js';
 import {normalizeCashflowSettings} from '../shared/cashflow.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiSettings({model, session, checksSession, files, supaProjectRef, supaConfigured, bankCurrentBalance, saveState}){
+export function createUiSettings({model, session, checksSession, files, ui, supaProjectRef, supaConfigured, bankCurrentBalance, saveState}){
+
+function cloudBackupRowsMarkup(){
+  if(ui.cloudBackupLoading)return '<div class="cloud-backup-empty">טוען גיבויי ענן…</div>';
+  if(ui.cloudBackupError)return `<div class="notice danger"><b>לא ניתן להציג גיבויים:</b> ${esc(ui.cloudBackupError)}</div>`;
+  const rows=Array.isArray(ui.cloudBackupCatalog)?ui.cloudBackupCatalog:null;if(rows===null)return '<div class="cloud-backup-empty">לחץ על “הצג גיבויים אחרונים” כדי לטעון רשימה קצרה מהענן.</div>';
+  if(!rows.length)return '<div class="cloud-backup-empty">לא נמצאו עדיין גיבויי ענן זמינים.</div>';
+  return `<div class="cloud-backup-list">${rows.map(row=>`<div class="cloud-backup-item"><div class="cloud-backup-meta"><b>${row.source==='periodic'?'תקופתי':'לפני שינוי'}</b><span>r${esc(row.revision)} · ${formatCloudSyncTime(row.saved_at)}</span></div><div class="cloud-backup-actions"><button class="btn" data-action="preview-cloud-backup" data-click-arg0="${esc(row.source)}" data-click-arg1="${esc(row.id)}">תצוגה</button><button class="btn" data-action="download-cloud-backup" data-click-arg0="${esc(row.source)}" data-click-arg1="${esc(row.id)}">הורד</button><button class="btn danger" data-action="restore-cloud-backup" data-click-arg0="${esc(row.source)}" data-click-arg1="${esc(row.id)}">שחזר</button></div></div>`).join('')}</div>`;
+}
+
 function renderSettings(){
   const b=session.serverInfo.backups||[],cloudActive=session.connectionMode==='supabase',cloudReady=supaConfigured(),email=localStorage.getItem(SUPA_EMAIL_KEY)||'',sourceUpdatedAt=session.serverInfo.lastSavedAt||null,kupaUpdatedAt=cloudActive?sourceUpdatedAt:null,checksUpdatedAt=cloudActive?(checksSession.sharedChecksUpdatedAt||null):null,lastCloudUpdatedAt=latestCloudUpdatedAt(kupaUpdatedAt,checksUpdatedAt),cashflowSettings=normalizeCashflowSettings(model.state.cashflowSettings);
   document.getElementById('content').innerHTML=`
@@ -25,6 +34,7 @@ function renderSettings(){
       <div class="backup-actions" style="margin-top:16px"><button class="btn primary" data-action="load-supabase-state">רענן מהענן</button><button class="btn" data-action="download-json-backup">הורד גיבוי מקומי</button><button class="btn danger" data-action="logout-supabase">התנתק מהמחשב הזה</button></div>
       <div class="notice ${esc(session.cloudConflictPending?'danger':'')}" style="margin-top:14px"><b>${session.cloudConflictPending?'יש שינוי מקומי שממתין לטיפול.':'סנכרון פעיל.'}</b></div>
       <div class="backup-actions" style="margin-top:10px"><button class="btn" data-action="cloud-poll">בדוק וסנכרן עכשיו</button>${session.cloudConflictPending?`<button class="btn orange" data-action="download-json-backup">ייצא קודם את השינוי המקומי</button><button class="btn danger" data-action="discard-cloud-pending-and-load-remote">וותר על המקומי וטען ענן</button>`:''}</div>
+      <div class="cloud-backup-center" style="margin-top:18px"><div class="cloud-backup-center-head"><div><b>גיבויי ענן אחרונים</b><small>רשימה מצומצמת של נקודות עיקריות. תצוגה מקדימה מציגה מה ישתנה לפני שחזור.</small></div><button class="btn" data-action="refresh-cloud-backups" ${ui.cloudBackupLoading?'disabled':''}>${ui.cloudBackupLoading?'טוען…':'הצג גיבויים אחרונים'}</button></div>${cloudBackupRowsMarkup()}</div>
     `:`
       <div class="notice"><b>מומלץ למעבר לכמה מחשבים.</b> הענן הוא מקור נתונים מרכזי; אין העתקת תיקיות ואין “מי שמר אחרון ניצח”. הקופה המקומית נשארת זמינה כגיבוי/מצב חלופי.</div>
       <div class="backup-actions" style="margin-top:16px"><button class="btn primary" ${cloudReady?'':'disabled'} data-action="enable-cloud-from-current-state">הפעל ענן והעלה את הקופה הנוכחית</button><button class="btn" ${cloudReady?'':'disabled'} data-action="open-supabase-login-modal">פתח קופה קיימת מהענן</button></div>

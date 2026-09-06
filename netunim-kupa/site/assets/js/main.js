@@ -567,6 +567,7 @@ const domainsBankView=createDomainsBankView({
 const uiSettings=createUiSettings({
   model,
   session,
+  ui,
   checksSession,
   files,
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
@@ -668,8 +669,12 @@ const uiBackup=createUiBackup({
   stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
   applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
   listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
+  listKupaCloudBackups:(...args)=>cloudTransport.listKupaCloudBackups(...args),
+  readKupaCloudBackupPoint:(...args)=>cloudTransport.readKupaCloudBackupPoint(...args),
   loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
   render:(...args)=>uiNavigation.render(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -820,6 +825,10 @@ const uiActions=createUiActions({
   manualBackup:(...args)=>uiBackup.manualBackup(...args),
   downloadJsonBackup:(...args)=>uiBackup.downloadJsonBackup(...args),
   restoreBackup:(...args)=>uiBackup.restoreBackup(...args),
+  refreshCloudBackups:(...args)=>uiBackup.refreshCloudBackups(...args),
+  previewCloudBackup:(...args)=>uiBackup.previewCloudBackup(...args),
+  downloadCloudBackup:(...args)=>uiBackup.downloadCloudBackup(...args),
+  downloadSelectedCloudBackup:(...args)=>uiBackup.downloadSelectedCloudBackup(...args),
   switchFolder:(...args)=>uiBackup.switchFolder(...args),
   exportCSV:(...args)=>uiBackup.exportCSV(...args),
 });

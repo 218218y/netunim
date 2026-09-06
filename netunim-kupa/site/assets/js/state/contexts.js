@@ -60,7 +60,11 @@ return {
     bulkSelected:new Set(),
     modalDraftGuard:null,
     checkSearchValue:'',
-    notesTab:'notes'
+    notesTab:'notes',
+    cloudBackupCatalog:null,
+    cloudBackupLoading:false,
+    cloudBackupError:'',
+    pendingCloudBackup:null
   },
   files:{
     rootDirHandle:null,

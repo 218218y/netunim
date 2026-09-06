@@ -28,7 +28,11 @@ return {
     scrollViewportMemory:new Map(),
     checksBulkMode:false,
     checksBulkSelected:new Set(),
-    pendingJsonRestore:null
+    pendingJsonRestore:null,
+    cloudBackupCatalog:null,
+    cloudBackupLoading:false,
+    cloudBackupError:'',
+    pendingCloudBackup:null
   },
   supplierUi:{
     currentSupplierId:null,

@@ -141,6 +141,33 @@ async function acknowledgeBankTransactionMissing(transactionId){
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'סימון תנועת הבנק כנבדקה נכשל');return Array.isArray(j)?j[0]:j;
 }
 
+
+async function readBackupList(table,documentName,limit){
+  const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}`;
+  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return Array.isArray(j)?j:[];
+}
+async function listKupaCloudBackups(){
+  const [rolling,periodic]=await Promise.all([readBackupList('kupa_document_backups',session.cloudDocumentName,8),readBackupList('kupa_periodic_backups',session.cloudDocumentName,8)]);return {rolling,periodic};
+}
+async function readBackupState(table,documentName,id){
+  const safeId=Number(id);if(!Number.isSafeInteger(safeId)||safeId<=0)throw new Error('מזהה הגיבוי אינו תקין');
+  const q=`/rest/v1/${table}?id=eq.${safeId}&document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,state,saved_at&limit=1`,r=await supaRest(q,{method:'GET',dataPriority:'high'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת גיבוי הענן נכשלה');return Array.isArray(j)&&j.length?j[0]:null;
+}
+async function readChecksBackupAtOrBefore(savedAt){
+  const at=String(savedAt||'').trim();if(!Number.isFinite(Date.parse(at)))throw new Error('זמן הגיבוי אינו תקין');
+  const encoded=encodeURIComponent(at),query=table=>`/rest/v1/${table}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&saved_at=lte.${encoded}&select=id,revision,state,saved_at&order=saved_at.desc,id.desc&limit=1`;
+  const [live,rollingResult,periodicResult]=await Promise.all([readSharedChecksDocument(),supaRest(query('shared_checks_document_backups'),{method:'GET',dataPriority:'high'}),supaRest(query('shared_checks_periodic_backups'),{method:'GET',dataPriority:'high'})]);
+  const parse=async(result,label)=>{const j=await result.json().catch(()=>null);if(!result.ok)throw new Error(j?.message||`קריאת ${label} נכשלה`);return Array.isArray(j)&&j.length?j[0]:null};
+  const [rolling,periodic]=await Promise.all([parse(rollingResult,'גיבויי הצ׳קים'),parse(periodicResult,'גיבויי הצ׳קים התקופתיים')]),candidates=[];
+  if(live&&Date.parse(live.updated_at||'')<=Date.parse(at))candidates.push({revision:live.revision,state:live.state,saved_at:live.updated_at,source:'live'});
+  if(rolling)candidates.push({...rolling,source:'rolling'});if(periodic)candidates.push({...periodic,source:'periodic'});
+  candidates.sort((a,b)=>Date.parse(b.saved_at||'')-Date.parse(a.saved_at||''));return candidates[0]||null;
+}
+async function readKupaCloudBackupPoint(source,id){
+  const kind=source==='periodic'?'periodic':'rolling',table=kind==='periodic'?'kupa_periodic_backups':'kupa_document_backups',row=await readBackupState(table,session.cloudDocumentName,id);if(!row)throw new Error('הגיבוי המבוקש כבר אינו קיים בענן');
+  assertReadableCloudState(row.state,'גיבוי הקופה בענן');const checks=await readChecksBackupAtOrBefore(row.saved_at);if(checks&&(!checks.state||!Array.isArray(checks.state.checks)||!Array.isArray(checks.state.bankEvents)))throw new Error('צילום הצ׳קים של נקודת הגיבוי אינו תקין');
+  return {source:kind,id:Number(row.id),revision:Number(row.revision),savedAt:row.saved_at,state:row.state,checksState:checks?.state||null,checksRevision:Number(checks?.revision||0),checksSavedAt:checks?.saved_at||null,checksSource:checks?.source||null};
+}
 async function readSharedChecksDocument(){
   const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
   const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
@@ -155,5 +182,5 @@ async function restoreRpc(name,body){const r=await supaRest(`/rest/v1/rpc/${name
 async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v5',restoreGroupRpcPayload(group))}
 async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v5',{p_restore_group_id:String(restoreGroupId)})}
 async function listIncompleteRestoreGroups(){const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return Array.isArray(j)?j:[]}
-return {readSupabaseDocument,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing};
+return {readSupabaseDocument,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,rpcSaveSharedChecks,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing};
 }

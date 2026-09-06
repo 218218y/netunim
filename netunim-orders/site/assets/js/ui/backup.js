@@ -3,7 +3,22 @@ import {clone,esc} from '../core/values.js';
 import {restoreJsonCounts} from '../state/validation.js';
 import {normalizeSharedBankEvents,normalizeSharedChecks} from '../domains/checks/model.js';
 import {CLOUD_BASE_KEY,$} from '../state/constants.js';
+import {buildBackupCatalog,backupPointKey,backupSourceLabel,summarizeBackupDiff} from '../shared/cloud-backups.js';
 import {createRestoreGroup,executeRestoreGroup,resumeRestoreGroup} from '../shared/restore-groups.js';
+
+const ORDERS_BACKUP_COLLECTIONS=[
+  {path:'suppliers',label:'ספקים'},
+  {path:'transactions',label:'תנועות ספק'},
+  {path:'customerDebts',label:'חובות לקוחות'},
+  {path:'customerOrders',label:'הזמנות לקוח'},
+  {path:'serviceCalls',label:'קריאות שירות'},
+  {path:'inventoryItems',label:'פריטי מלאי'},
+  {path:'inventoryEvents',label:'אירועי מלאי'},
+  {path:'warehouseOrders',label:'הזמנות מחסן'},
+  {path:'notes',label:'פתקים'},
+  {path:'checks',label:'צ׳קים'},
+];
+const ORDERS_BACKUP_CONFIG=[{path:'inventoryCategoryOrder',label:'סדר קטגוריות מלאי'}];
 
 function restoreDeleteIntents(before,after){
   const out={};
@@ -14,9 +29,11 @@ function restoreDeleteIntents(before,after){
   }
   return out;
 }
+function localDateTime(value){const d=new Date(value||'');return Number.isFinite(d.getTime())?d.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'זמן לא ידוע'}
+function diffRowMarkup(row){const parts=[];if(row.removed)parts.push(`יוסרו ${row.removed}`);if(row.restored)parts.push(`יחזרו ${row.restored}`);if(row.changed)parts.push(`ישתנו ${row.changed}`);return `<div class="cloud-backup-diff-row"><b>${esc(row.label)}</b><span>${esc(row.before)} ← ${esc(row.after)}</span><small>${esc(parts.join(' · ')||'ללא שינוי')}</small></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,balanceRows,supplierYearContext,boolText,confirmDialog}){
+export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog}){
   function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
   function exportJson(){const payload=prepareState();downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-backup_${stamp()}.json`)}
@@ -52,12 +69,12 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
     return serverGroups.some(item=>item.app_site==='orders');
   }
 
-  async function applyJsonRestore(){
-    if(!ui.pendingJsonRestore||!tab.primaryTab)return;
-    const restoreChecks=!!$('#restoreJsonChecks')?.checked,imported=normalizeState(clone(ui.pendingJsonRestore.payload)),current=prepareState(),currentChecks=clone(model.state.checks||[]),fileName=ui.pendingJsonRestore.fileName||'JSON';
-    if(!await confirmDialog('אישור שחזור גיבוי',`לשחזר את הנתונים מהקובץ ${fileName}?\n\nלפני השחזור יישמר צילום בטיחות durable. ${restoreChecks?'גם מסמך הצ׳קים ישוחזר באותה פעולת restore.':'מסמך הצ׳קים יישאר ללא שינוי.'}`,{confirmText:'שחזר גיבוי'}))return;
+  async function restoreNormalizedState(source,{restoreChecks=true,title='אישור שחזור גיבוי',message='לשחזר את נתוני הגיבוי?',surface='backup.restore',beforeDownload=true}={}){
+    if(!tab.primaryTab)return showSecondaryTabGuard();
+    const imported=normalizeState(clone(source)),current=prepareState(),currentChecks=clone(model.state.checks||[]);
+    if(!await confirmDialog(title,`${message}\n\nלפני השחזור יישמר צילום בטיחות durable. ${restoreChecks?'גם מסמך הצ׳קים ישוחזר באותה פעולת restore.':'מסמך הצ׳קים יישאר ללא שינוי.'}`,{confirmText:'שחזר גיבוי',cancelText:'ביטול',tone:'danger'}))return false;
     try{
-      downloadBlob(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}),`orders-before-restore_${stamp()}.json`);
+      if(beforeDownload)downloadBlob(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}),`orders-before-restore_${stamp()}.json`);
       if(folderBackupAvailable())await writeStateSnapshotToFolder(current,true);
       const cloudActive=cloudEnabled();if(!restoreChecks)imported.checks=currentChecks;
       const mainState=prepareCloudState(imported);let remoteRow=null,checksRow=null;
@@ -80,8 +97,47 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
       const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;if(!localSnapshot()){model.state=normalizeState(previous);localSnapshot();throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}render()};
       if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});
       else{const staged=await restoreGroupStore.stage(group);await applyLocal(staged,{});await restoreGroupStore.complete(staged)}
-      ui.pendingJsonRestore=null;closeModal();if(folderBackupAvailable())await writeStateToFolder(true);setSave('מקומי: שמור','',folderSaveTitle());toast('השחזור הושלם ונשמר כפעולה מאוחדת');
-    }catch(error){console.error('json restore apply',error);toast('השחזור נעצר בבטחה: '+(error.message||error))}
+      if(folderBackupAvailable())await writeStateToFolder(true);setSave('מקומי: שמור','',folderSaveTitle());toast('השחזור הושלם ונשמר כפעולה מאוחדת');return true;
+    }catch(error){console.error(surface,error);toast('השחזור נעצר בבטחה: '+(error.message||error));return false}
+  }
+
+  async function applyJsonRestore(){
+    if(!ui.pendingJsonRestore||!tab.primaryTab)return;
+    const restoreChecks=!!$('#restoreJsonChecks')?.checked,fileName=ui.pendingJsonRestore.fileName||'JSON',payload=normalizeState(clone(ui.pendingJsonRestore.payload));
+    const done=await restoreNormalizedState(payload,{restoreChecks,title:'אישור שחזור גיבוי',message:`לשחזר את הנתונים מהקובץ ${fileName}?`,surface:'backup.json-restore'});
+    if(done){ui.pendingJsonRestore=null;closeModal()}
+  }
+
+  async function refreshCloudBackups(){
+    if(!cloudEnabled()){ui.cloudBackupCatalog=[];ui.cloudBackupError='גיבויי ענן זמינים לאחר התחברות ל־Supabase.';return renderSettings()}
+    ui.cloudBackupLoading=true;ui.cloudBackupError='';renderSettings();
+    try{const raw=await listOrdersCloudBackups();ui.cloudBackupCatalog=buildBackupCatalog(raw.rolling,raw.periodic)}catch(error){console.error('orders cloud backup list',error);ui.cloudBackupCatalog=[];ui.cloudBackupError=error.message||'קריאת גיבויי הענן נכשלה'}finally{ui.cloudBackupLoading=false;renderSettings()}
+  }
+
+  function cloudPointTargetState(point){
+    if(!point?.checksState?.checks)throw new Error('לא נמצא צילום צ׳קים מתאים לנקודת הזמן הזאת');
+    return normalizeState({...clone(point.state),checks:clone(point.checksState.checks)});
+  }
+  async function loadCloudBackupPoint(source,id){
+    const key=backupPointKey(source,id);if(ui.pendingCloudBackup?.key===key&&ui.pendingCloudBackup?.point)return ui.pendingCloudBackup;
+    const point=await readOrdersCloudBackupPoint(source,id),targetState=point.checksState?cloudPointTargetState(point):null,diff=targetState?summarizeBackupDiff(model.state,targetState,{collections:ORDERS_BACKUP_COLLECTIONS,config:ORDERS_BACKUP_CONFIG}):null;
+    ui.pendingCloudBackup={key,point,targetState,diff};return ui.pendingCloudBackup;
+  }
+  function previewMarkup(entry){
+    const {point,diff}=entry,rows=diff?.rows||[],settings=diff?.settings||[],checksInfo=point.checksState?`צ׳קים: r${esc(point.checksRevision)} · ${esc(localDateTime(point.checksSavedAt))}`:'לא נמצא צילום צ׳קים מתאים';
+    return `<div class="cloud-backup-preview"><div class="notice"><b>${esc(backupSourceLabel(point.source))}</b> · הזמנות r${esc(point.revision)} · ${esc(localDateTime(point.savedAt))}<br><small>${checksInfo}</small></div>${point.checksState?'<div class="soft-note">השחזור יחזיר את מסמך ההזמנות ואת הצ׳קים לאותה נקודת זמן. יומן אירועי הבנק של הצ׳קים נשמר מהמצב החי כדי למנוע הפעלה חוזרת של השפעות כספיות.</div>':'<div class="notice danger"><b>שחזור אוטומטי מושבת:</b> אין צילום צ׳קים קוהרנטי לנקודת הזמן הזאת.</div>'}<div class="cloud-backup-diff">${rows.length?rows.map(diffRowMarkup).join(''):'<div class="muted">אין הבדלים מהותיים באוספים הראשיים.</div>'}${settings.length?`<div class="cloud-backup-settings-diff"><b>הגדרות שישתנו:</b> ${settings.map(x=>esc(x.label)).join(' · ')}</div>`:''}</div></div>`;
+  }
+  async function previewCloudBackup(source,id){
+    try{const entry=await loadCloudBackupPoint(source,id),enabled=!!entry.point.checksState;modal('תצוגה מקדימה של גיבוי ענן',previewMarkup(entry),`<button class="btn" data-action="download-selected-orders-cloud-backup" ${enabled?'':'disabled'}>הורד JSON</button><button class="btn danger" data-action="apply-orders-cloud-backup-restore" ${enabled?'':'disabled'}>שחזר לנקודה זו</button><button class="btn" data-action="close-modal">סגור</button>`)}catch(error){console.error('orders cloud backup preview',error);toast('לא ניתן לפתוח את הגיבוי: '+(error.message||error))}
+  }
+  async function downloadCloudBackup(source,id){
+    try{const entry=await loadCloudBackupPoint(source,id);if(!entry.targetState)throw new Error('אין צילום צ׳קים מתאים ולכן לא נוצר קובץ חלקי');const payload=prepareState(entry.targetState);payload._meta={...payload._meta,cloudBackup:{source:entry.point.source,primarySavedAt:entry.point.savedAt,checksRevision:entry.point.checksRevision,checksSavedAt:entry.point.checksSavedAt}};downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-cloud-backup_r${entry.point.revision}_${String(entry.point.savedAt||'').slice(0,10)||stamp()}.json`);toast('גיבוי הענן הורד')}catch(error){console.error('orders cloud backup download',error);toast('הורדת הגיבוי נכשלה: '+(error.message||error))}
+  }
+  async function downloadSelectedCloudBackup(){const entry=ui.pendingCloudBackup;if(!entry?.point)return;await downloadCloudBackup(entry.point.source,entry.point.id)}
+  async function applySelectedCloudBackup(){
+    const entry=ui.pendingCloudBackup;if(!entry?.targetState)return toast('אין נקודת גיבוי מלאה לשחזור');
+    closeModal();const done=await restoreNormalizedState(entry.targetState,{restoreChecks:true,title:'שחזור נקודת ענן',message:`להחזיר את ניהול ההזמנות והצ׳קים למצב של ${localDateTime(entry.point.savedAt)}?`,surface:'backup.cloud-restore'});
+    if(done){ui.pendingCloudBackup=null;await refreshCloudBackups()}
   }
 
   function exportCsv(){
@@ -90,5 +146,5 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
     const csv='\ufeff'+out.map(row=>row.map(value=>'"'+String(value??'').replaceAll('"','""')+'"').join(',')).join('\r\n');downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8'}),`orders-export_${stamp()}.csv`);
   }
 
-  return {downloadBlob,exportJson,beginJsonRestore,applyJsonRestore,resumeIncompleteRestore,exportCsv};
+  return {downloadBlob,exportJson,beginJsonRestore,applyJsonRestore,resumeIncompleteRestore,refreshCloudBackups,previewCloudBackup,downloadCloudBackup,downloadSelectedCloudBackup,applySelectedCloudBackup,exportCsv};
 }
