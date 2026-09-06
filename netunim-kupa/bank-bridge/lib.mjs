@@ -405,13 +405,15 @@ export function normalizeCreditMonthSlice(slice={}){
 }
 export function normalizeCreditScrapeAccount(account={},provider=''){
   const balance=creditNumber(account.balance),cardFrame=creditNumber(account.cardFrame),directAvailable=creditNumber(account.availableCredit);
-  // israeli-bank-scrapers defines MAX balance as -(CreditLimit - OpenToBuy), so
-  // CreditLimit + balance is the issuer's exact OpenToBuy value. Cal's balance is
-  // only the next debit, therefore applying the same formula there would be false.
-  const maxAvailable=provider==='max'&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
+  // israeli-bank-scrapers defines MAX balance as -(CreditLimit - OpenToBuy).
+  // Since v6.10.0 Isracard/Amex use the same useful-credit semantics: balance is
+  // negative utilized credit and cardFrame is the issuer limit. Therefore
+  // cardFrame + balance is the issuer's exact available credit for those providers.
+  // Cal is deliberately excluded: its balance is the next debit, not utilized credit.
+  const issuerAvailable=['max','isracard','amex'].includes(provider)&&cardFrame!==null&&balance!==null?Math.round((cardFrame+balance)*100)/100:null;
   const months=(Array.isArray(account.months)?account.months:[]).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:[]).map(normalizeCreditScrapeTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:[]).map(normalizeCreditScrapeTransaction),legacyTransactions=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditScrapeTransaction),txns=months.length?[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions]:legacyTransactions;
   const hasFrameValue=balance!==null||cardFrame!==null||directAvailable!==null,frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):hasFrameValue?'fresh':'missing',frameFetchStatus=['success','unavailable','provider_error','schema_error','network_error'].includes(String(account.frameFetchStatus))?String(account.frameFetchStatus):frameStatus==='fresh'?'success':'unavailable';
-  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??maxAvailable,frameStatus,frameFetchStatus,frameFetchedAt:account.frameFetchedAt||null,frameErrorCode:creditText(account.frameErrorCode||'',80),frameErrorAt:account.frameErrorAt||null,months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:account.pendingFetchedAt||null,pendingErrorCode:creditText(account.pendingErrorCode||'',80),pendingErrorAt:account.pendingErrorAt||null,unassignedTransactions,txns};
+  return {accountNumber:creditText(account.accountNumber||'',80),balance,balanceDate:account.balanceDate||null,cardType:creditText(account.cardType||'',80),cardFrame,availableCredit:directAvailable??issuerAvailable,frameStatus,frameFetchStatus,frameFetchedAt:account.frameFetchedAt||null,frameErrorCode:creditText(account.frameErrorCode||'',80),frameErrorAt:account.frameErrorAt||null,months,pendingTransactions,pendingStatus:['success','provider_error','schema_error','network_error'].includes(String(account.pendingStatus))?String(account.pendingStatus):pendingTransactions.length?'success':'missing',pendingFetchedAt:account.pendingFetchedAt||null,pendingErrorCode:creditText(account.pendingErrorCode||'',80),pendingErrorAt:account.pendingErrorAt||null,unassignedTransactions,txns};
 }
 function creditFailureContext(typeValue,rawValue,profile){
   const type=String(typeValue||'SCRAPE_FAILED').toUpperCase(),raw=String(rawValue||''),isIsracardGroup=profile?.provider==='isracard'||profile?.provider==='amex';

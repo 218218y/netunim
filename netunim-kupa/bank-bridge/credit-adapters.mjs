@@ -15,7 +15,7 @@ import {
 import {safeCreditResponseShape} from './credit-diagnostics.mjs';
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
-export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.9.0';
+export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-6.9.0-netunim-v2';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_SYNC_MODE_DAILY='daily';

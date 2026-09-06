@@ -13,6 +13,8 @@ const FETCH_TIMEOUT_MS=60_000;
 const RATE_DELAY_MIN_MS=2_500;
 const RATE_DELAY_MAX_MS=3_000;
 const INSTALLMENTS_KEYWORD='תשלום';
+const CARD_LIST_PAGE_PATH='/personalarea/cardlist/?WebPage=true';
+const CARD_LIST_BALANCE_READY_MARKERS=['עבור כרטיס שמסתיים ב','נותר לניצול:'];
 const CAMOUFOX_SCREEN={minWidth:1280,maxWidth:1920,minHeight:720,maxHeight:1200};
 const CAMOUFOX_LOGIN_SESSION_ATTEMPTS=1;
 
@@ -27,6 +29,15 @@ function addUtcMonths(date,count){const d=new Date(Date.UTC(date.getUTCFullYear(
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 async function randomDelay(){const ms=Math.floor(Math.random()*(RATE_DELAY_MAX_MS-RATE_DELAY_MIN_MS+1))+RATE_DELAY_MIN_MS;await sleep(ms)}
 function parseRetryAfter(value,now=Date.now()){const raw=String(value??'').trim();if(!raw)return null;const seconds=Number(raw),time=Number.isFinite(seconds)&&seconds>=0?Number(now)+seconds*1000:Date.parse(raw);return Number.isFinite(time)?new Date(Math.max(Number(now),time)).toISOString():null}
+function cardSuffix(value){const digits=String(value??'').replace(/\D/g,'');return digits.slice(-4)}
+function balanceNumber(value){const n=Number(String(value??'').replace(/,/g,''));return Number.isFinite(n)?n:null}
+function balanceDate(year,month,day){
+  const y=Number(year),m=Number(month),d=Number(day),date=new Date(Date.UTC(y,m-1,d));
+  if(!Number.isFinite(date.getTime())||date.getUTCFullYear()!==y||date.getUTCMonth()!==m-1||date.getUTCDate()!==d)return null;
+  return `${String(y).padStart(4,'0')}-${two(m)}-${two(d)}T00:00:00`;
+}
+function fullBalanceDate(value){const match=String(value??'').trim().match(/^(\d{2})[/\.\-](\d{2})[/\.\-](\d{4})$/);return match?balanceDate(match[3],match[2],match[1]):null}
+function shortBalanceDate(value,now=new Date()){const match=String(value??'').trim().match(/^(\d{2})[/\.\-](\d{2})$/);return match?balanceDate(now.getUTCFullYear(),match[2],match[1]):null}
 
 export function camoufoxCreditSupported(provider){return Object.prototype.hasOwnProperty.call(PROVIDERS,String(provider||''))}
 export function isCamoufoxRetryableNativeFailure(error){return ['CREDIT_LOGIN_HTML_RESPONSE','CREDIT_AUTOMATION_BLOCKED','CREDIT_DATA_HTML_RESPONSE'].includes(String(error?.code||''))}
@@ -37,6 +48,26 @@ export function parseIsracardDate(value){
   const d=new Date(Date.UTC(year,month-1,day));
   if(d.getUTCFullYear()!==year||d.getUTCMonth()!==month-1||d.getUTCDate()!==day)return null;
   return d.toISOString();
+}
+export function parseIsracardFamilyCardListBalances(pageText,now=new Date()){
+  const text=String(pageText??''),balances=new Map();
+  const amexSections=text.split(/עבור כרטיס שמסתיים ב\s*/).slice(1);
+  for(const section of amexSections){
+    const suffix=section.match(/^(\d{4})/)?.[1],match=section.match(/ניצלת עד כה\s*([\d,.]+)\s*(?:₪)?\s*מתוך מסגרת האשראי\s*([\d,.]+).*?נכון לתאריך\s*:?\s*(\d{2}[/\.\-]\d{2}[/\.\-]\d{4})/s);
+    if(!suffix||!match)continue;
+    const utilized=balanceNumber(match[1]),frame=balanceNumber(match[2]),date=fullBalanceDate(match[3]);
+    if(utilized===null||frame===null||!date)continue;
+    balances.set(suffix,{balance:-utilized,balanceDate:date,cardFrame:frame});
+  }
+  const dates=[...text.matchAll(/לחיוב ב-(\d{2}[/\.\-]\d{2})/g)].map(([,date])=>date),uniqueDates=[...new Set(dates)],fallbackDate=uniqueDates.length===1?uniqueDates[0]:null;
+  const cardPattern=/(\d{4})[\s\S]*?מסגרת:\s*₪?\s*([\d,.]+)[\s\S]*?נותר לניצול:\s*₪?\s*([\d,.]+)/g;
+  for(const match of text.matchAll(cardPattern)){
+    const [,suffix,frameValue,remainingValue]=match,frame=balanceNumber(frameValue),remaining=balanceNumber(remainingValue);
+    if(frame===null||remaining===null)continue;
+    const ownDate=match[0].match(/לחיוב ב-(\d{2}[/\.\-]\d{2})/)?.[1],dateValue=ownDate||(frame>0?fallbackDate:null),date=dateValue?shortBalanceDate(dateValue,now):null;
+    balances.set(suffix,{balance:Math.round((remaining-frame)*100)/100,cardFrame:frame,...(date?{balanceDate:date}:{})});
+  }
+  return balances;
 }
 export function buildCreditMonths(startDate,futureMonthsToScrape=1,now=new Date()){
   const start=new Date(startDate);if(!Number.isFinite(start.getTime()))throw safeError('תאריך תחילת סנכרון האשראי אינו תקין','CREDIT_CAMOUFOX_INVALID_DATE');
@@ -120,7 +151,7 @@ function transactionsUrl(servicesUrl,month){const url=new URL(servicesUrl);url.s
 function providerMonthIsEmpty(data){return data?.Header?.Status!=='1'}
 export function parseIsracardFamilyAccountsResponse(data,month){
   const stage=`DashboardMonth ${monthKey(month)}`;
-  // The upstream 6.9.0 Isracard/Amex connector treats a non-success monthly
+  // The upstream 6.10.0 Isracard/Amex connector treats a non-success monthly
   // provider status as an empty month, not as a transport/provider failure.
   if(providerMonthIsEmpty(data))return [];
   if(!data?.DashboardMonthBean||!Array.isArray(data.DashboardMonthBean.cardsCharges))throw safeError('חברת האשראי החזירה מבנה חשבונות חודשי שאינו תואם למחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
@@ -155,6 +186,18 @@ async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
   const accountResult=await fetchAccounts(page,servicesUrl,month);await randomDelay();
   const data=await pageFetchJson(page,{url:transactionsUrl(servicesUrl,month),stage:`CardsTransactionsList ${monthKey(month)}`});
   return {data:parseIsracardFamilyTransactionsResponse(data,accountResult.accounts,startDate,month),semanticEmptyStages:[...(accountResult.semanticEmpty?['DashboardMonth']:[]),...(providerMonthIsEmpty(data)?['CardsTransactionsList']:[])]};
+}
+
+async function fetchCardBalances(page,cfg,now){
+  const started=Date.now(),fetchedAt=now().toISOString(),url=`${cfg.baseUrl}${CARD_LIST_PAGE_PATH}`;
+  try{
+    const response=await page.goto(url,{waitUntil:'domcontentloaded',timeout:FETCH_TIMEOUT_MS}),httpStatus=Number(response?.status?.()||0);
+    if(httpStatus>=400)return {balances:new Map(),fetchStatus:'provider_error',fetchedAt:null,errorCode:'CREDIT_FRAMES_UNAVAILABLE',httpStatus,durationMs:Date.now()-started};
+    await page.waitForFunction(markers=>markers.some(marker=>document.body?.innerText?.includes(marker)),CARD_LIST_BALANCE_READY_MARKERS,{timeout:FETCH_TIMEOUT_MS});
+    const text=await page.evaluate(()=>document.body?.innerText||''),balances=parseIsracardFamilyCardListBalances(text,now());
+    if(!balances.size)return {balances,fetchStatus:'unavailable',fetchedAt:null,errorCode:'CREDIT_FRAMES_UNAVAILABLE',httpStatus,durationMs:Date.now()-started};
+    return {balances,fetchStatus:'success',fetchedAt,errorCode:'',httpStatus,durationMs:Date.now()-started};
+  }catch(error){return {balances:new Map(),fetchStatus:'provider_error',fetchedAt:null,errorCode:'CREDIT_FRAMES_UNAVAILABLE',httpStatus:Number(error?.httpStatus)||0,durationMs:Date.now()-started}}
 }
 
 async function login(page,provider,credentials,servicesUrl){
@@ -319,8 +362,8 @@ export async function doctorCamoufox(){
   return true;
 }
 
-function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-6.9.0-camoufox-v3',lastErrorCode:code,lastErrorAt:at}}
-function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-6.9.0-camoufox-v3',lastErrorCode:'',lastErrorAt:null}}
+function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-6.10.0-camoufox-v4',lastErrorCode:code,lastErrorAt:at}}
+function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-6.10.0-camoufox-v4',lastErrorCode:'',lastErrorAt:null}}
 function publicMonthError(error,month,tier,at){return {code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage:String(error?.stage||`Transactions ${month}`).slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת חודש מחברת האשראי נכשלה',at,retryAfterAt:error?.retryAfterAt||null,month,tier}}
 
 export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,startDate,futureMonthsToScrape=1,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date()}){
@@ -333,7 +376,17 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
     const months=buildCreditMonths(startDate,futureMonthsToScrape,now()),current=addUtcMonths(new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),1),results=[],knownAccounts=new Set(),errors=[];
     for(const month of months){const key=monthKey(month),tier=month<=current?'core':'forecast',started=Date.now();try{const monthResult=await fetchTransactionsForMonth(page,servicesUrl,month,startDate),data=monthResult.data;Object.keys(data).forEach(account=>knownAccounts.add(account));results.push({month:key,tier,data,at:now().toISOString()});for(const emptyStage of monthResult.semanticEmptyStages)onDiagnostic({correlationId,provider,stage:`${emptyStage}Empty`,month:key,durationMs:Date.now()-started});onDiagnostic({correlationId,provider,stage:'Transactions',month:key,durationMs:Date.now()-started})}catch(error){const at=now().toISOString();results.push({month:key,tier,error,at});errors.push(publicMonthError(error,key,tier,at));onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}}
     if(!knownAccounts.size&&results.some(result=>!result.error))throw safeError('חברת האשראי לא החזירה כרטיסים באף חודש תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardMonth'});
-    const accounts=[...knownAccounts].map(accountNumber=>({accountNumber,months:results.map(result=>result.error?coverageFailure(result.month,result.tier,result.error,result.at):coverageSuccess(result.month,result.tier,result.data[accountNumber]||[],result.at)),pendingTransactions:[],pendingStatus:'missing'}));
+    // Frames are deliberately fetched only after transaction coverage is complete.
+    // A card-list/WAF/UI failure must never turn already-successful transaction data
+    // into a failed scrape. The caller will preserve the prior frame as Last Known Good.
+    const frameResult=await fetchCardBalances(page,cfg,now),missingFrameAccounts=[];
+    onDiagnostic({correlationId,provider,stage:'Frames',durationMs:frameResult.durationMs,errorClass:frameResult.errorCode||undefined,httpStatus:frameResult.httpStatus||0});
+    const accounts=[...knownAccounts].map(accountNumber=>{
+      const frame=frameResult.balances.get(cardSuffix(accountNumber)),frameOk=!!frame;
+      if(!frameOk)missingFrameAccounts.push(accountNumber);
+      return {accountNumber,balance:frame?.balance??null,balanceDate:frame?.balanceDate??null,cardFrame:frame?.cardFrame??null,frameStatus:frameOk?'fresh':'missing',frameFetchStatus:frameOk?'success':frameResult.fetchStatus==='provider_error'?'provider_error':'unavailable',frameFetchedAt:frameOk?frameResult.fetchedAt:null,frameErrorCode:frameOk?'':'CREDIT_FRAMES_UNAVAILABLE',frameErrorAt:frameOk?null:now().toISOString(),months:results.map(result=>result.error?coverageFailure(result.month,result.tier,result.error,result.at):coverageSuccess(result.month,result.tier,result.data[accountNumber]||[],result.at)),pendingTransactions:[],pendingStatus:'missing'};
+    });
+    if(missingFrameAccounts.length)errors.push({code:'CREDIT_FRAMES_UNAVAILABLE',stage:'Frames',component:'frames',severity:'warning',httpStatus:frameResult.httpStatus||0,message:frameResult.fetchStatus==='provider_error'?'עסקאות האשראי סונכרנו, אך דף המסגרות של החברה לא היה זמין; Last Known Good או המסגרת הידנית נשמרים.':`עסקאות האשראי סונכרנו, אך לא התקבלה מסגרת עבור ${missingFrameAccounts.length} כרטיסים; Last Known Good או המסגרת הידנית נשמרים.`,at:now().toISOString()});
     const coreComplete=!results.some(result=>result.tier==='core'&&result.error),forecastFailures=results.filter(result=>result.tier==='forecast'&&result.error).length,coreFailures=results.filter(result=>result.tier==='core'&&result.error).length;
     if(forecastFailures)errors.unshift({code:'CREDIT_PARTIAL_FORECAST',stage:'Forecast',httpStatus:0,message:`חסרים ${forecastFailures} חודשי תחזית; Last Known Good נשמר.`,at:now().toISOString()});
     if(coreFailures)errors.unshift({code:'CREDIT_CORE_COVERAGE_INCOMPLETE',stage:'CoreCoverage',httpStatus:0,message:`חסרים ${coreFailures} חודשי ליבה; זמן ההצלחה המלאה לא התקדם.`,at:now().toISOString()});

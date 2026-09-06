@@ -12,7 +12,7 @@ import {
   parseVisaCalFrame,
   parseVisaCalMonthData,
 } from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
-import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
+import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
 
@@ -22,6 +22,13 @@ assert.deepEqual(parseIsracardFamilyAccountsResponse({Header:{Status:'7'}},amexM
 assert.deepEqual(parseIsracardFamilyTransactionsResponse({Header:{Status:'7'}},[],new Date('2026-09-01T00:00:00.000Z'),amexMonth),{},'Amex CardsTransactionsList non-success is an upstream-compatible empty month');
 assert.throws(()=>parseIsracardFamilyAccountsResponse({Header:{Status:'1'},DashboardMonthBean:{}},amexMonth),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage==='DashboardMonth 2026-12','a Status=1 DashboardMonth still requires the documented cardsCharges schema');
 assert.throws(()=>parseIsracardFamilyTransactionsResponse({Header:{Status:'1'},CardsTransactionsListBean:{Index1:{CurrentCardTransactions:[{txnIsrael:[{fullPurchaseDate:'01/12/2026'}]}]}}},[],new Date('2026-09-01T00:00:00.000Z'),amexMonth),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage==='CardsTransactionsList 2026-12','transactions without a safe card-index mapping cannot be silently discarded');
+const amexFrames=parseIsracardFamilyCardListBalances('עבור כרטיס שמסתיים ב7392\nניצלת עד כה 9,564.99 מתוך מסגרת האשראי 15,500 נכון לתאריך 10/08/2026',new Date('2026-09-03T00:00:00Z'));
+assert.deepEqual(amexFrames.get('7392'),{balance:-9564.99,balanceDate:'2026-08-10T00:00:00',cardFrame:15500},'Camoufox parses the same Amex balance/frame semantics introduced upstream in israeli-bank-scrapers 6.10.0');
+const isracardFrames=parseIsracardFamilyCardListBalances('מסטרקארד\n7392\n₪9,564.99 לחיוב ב-10.09\nמסגרת: ₪15,500\nנותר לניצול: ₪5,935.01\n1234\nמסגרת: ₪5,000\nנותר לניצול: ₪4,328.00',new Date('2026-09-03T00:00:00Z'));
+assert.deepEqual(isracardFrames.get('7392'),{balance:-9564.99,balanceDate:'2026-09-10T00:00:00',cardFrame:15500});
+assert.deepEqual(isracardFrames.get('1234'),{balance:-672,balanceDate:'2026-09-10T00:00:00',cardFrame:5000},'a single Isracard billing date is safely shared with an active card whose block omits it');
+const cancelledFrame=parseIsracardFamilyCardListBalances('7392 מבוטל\nמסגרת: ₪0\nנותר לניצול: ₪0.00',new Date('2026-09-03T00:00:00Z')).get('7392');
+assert.deepEqual(cancelledFrame,{balance:0,cardFrame:0},'zero-frame cancelled cards never inherit an unrelated billing date');
 const fixedNow=new Date('2026-09-03T06:00:00.000Z'),profile={profileId:'cal-profile',provider:'visaCal',label:'כאל בדיקה',credentials:{username:'local-user',password:'never-log-me'}};
 const plan=buildCreditMonthPlan({startDate:new Date('2026-05-01T00:00:00Z'),futureMonths:12,now:fixedNow});
 assert.equal(plan.at(-1).month,'2027-09','the connector keeps the full +12-month issuer horizon');

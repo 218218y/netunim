@@ -50,7 +50,7 @@ export function sanitizeCreditDiagnosticEvent(value={}){
   event.fingerprint=diagnosticFingerprint(event);return event;
 }
 
-export function createCreditDiagnosticLog({directory,bridgeVersion=0,contractVersion=2,connectorVersion='israeli-bank-scrapers-6.9.0',maxBytes=CREDIT_DIAGNOSTIC_MAX_BYTES,fileCount=CREDIT_DIAGNOSTIC_FILE_COUNT,retentionMs=CREDIT_DIAGNOSTIC_RETENTION_MS}={}){
+export function createCreditDiagnosticLog({directory,bridgeVersion=0,contractVersion=2,connectorVersion='israeli-bank-scrapers-6.10.0',maxBytes=CREDIT_DIAGNOSTIC_MAX_BYTES,fileCount=CREDIT_DIAGNOSTIC_FILE_COUNT,retentionMs=CREDIT_DIAGNOSTIC_RETENTION_MS}={}){
   const logPath=path.join(directory,'credit-diagnostics.jsonl');let queue=Promise.resolve();
   async function rotate(){
     let stat;try{stat=await fs.stat(logPath)}catch{return}
