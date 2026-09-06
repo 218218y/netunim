@@ -529,6 +529,7 @@ const domainsBankController=createDomainsBankController({
   session,
   checksSession,
   sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
+  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),

@@ -84,15 +84,18 @@ test('shared checks pull is single-flight in both apps: concurrent bank verifica
 });
 
 
-test('Kupa bank snapshot treats a shared-check pull in progress as joinable work, not as failed synchronization',async()=>{
- const model={state:{bank:{adjustments:[]}}};let syncCalls=0,saveCalls=0;
+test('Kupa bank snapshot flushes local shared-check work and treats an in-flight pull as joinable verification',async()=>{
+ const model={state:{bank:{adjustments:[]}}};let syncCalls=0,saveCalls=0,checkFlushCalls=0,hasLocalWork=true;
  const api=createKupaBankController({
    model,session:{connectionMode:'supabase'},checksSession:{sharedChecksBusy:true},
-   sharedChecksHaveLocalWork:()=>false,saveState:async()=>{saveCalls++;return true},
+   sharedChecksHaveLocalWork:()=>hasLocalWork,
+   saveSharedChecksToCloud:async()=>{checkFlushCalls++;hasLocalWork=false;return true},
+   saveState:async()=>{saveCalls++;return true},
    syncSharedChecksFromCloud:async()=>{syncCalls++;return true},sharedChecksObservedSequence:()=>176,
    toast:()=>{},render:()=>{},bridge:{}
  });
  assert.equal(await api.commitBankSnapshot(1234),true);
+ assert.equal(checkFlushCalls,1,'bank snapshot must flush pending shared-check work through its explicit controller dependency before taking a watermark');
  assert.equal(syncCalls,1,'bank snapshot must verify through the joinable shared-check pull even while the status flag is busy');
  assert.equal(saveCalls,1);assert.equal(model.state.bank.snapshotSeq,176);
 });
