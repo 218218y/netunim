@@ -124,9 +124,9 @@ const retryBase=Date.parse('2026-09-03T06:00:00.000Z');
 assert.equal(parseRetryAfter('7200',retryBase),'2026-09-03T08:00:00.000Z');
 assert.equal(classifyCreditHttpResponse({status:429,text:'',stage:'Pending',retryAfter:'7200',now:retryBase}).retryAfterAt,'2026-09-03T08:00:00.000Z','Retry-After controls the next eligible attempt');
 
-const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',stage:'LoginPage',httpStatus:403,responseShape:shape,username:'secret-user',password:'secret-password',rawHtml:'<html>secret</html>',authorization:'Bearer secret'}),serializedDiagnostic=JSON.stringify(diagnostic);
+const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',stage:'LoginPage',httpStatus:403,responseShape:shape,startupFailureReason:'timeout',identityState:'legacy_unverified',profileRecovery:'fresh_profile',launchAttempt:2,username:'secret-user',password:'secret-password',rawHtml:'<html>secret</html>',authorization:'Bearer secret'}),serializedDiagnostic=JSON.stringify(diagnostic);
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
-assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);
+assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);
 assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
 
 const identityRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-v2-'));
@@ -136,6 +136,18 @@ try{
   await launchCamoufox(fakeCamoufox,{identityDir,enableCache:true});await launchCamoufox(fakeCamoufox,{identityDir,enableCache:true});
   assert.equal(launches.length,2);assert.equal(launches[0].user_data_dir,launches[1].user_data_dir,'two launches reuse the same persistent BrowserContext directory');
   assert.equal(launches[1].config['navigator.userAgent'],'stable-firefox');assert.equal(launches[1].config['canvas:seed'],12345,'the generated identity config and anti-fingerprinting seed survive a restart');
+  const recoveryDir=creditIdentityDirectory(path.join(identityRoot,'credit-identities'),{provider:'amex',credentials:{id:'555555555'}}),recoveryLaunches=[];
+  const flakyCamoufox=async options=>{recoveryLaunches.push(structuredClone(options));if(recoveryLaunches.length===1){options.config['poisoned:seed']='must-not-persist';throw new Error('browserType.launchPersistentContext: Timeout 180000ms exceeded')}options.config['navigator.userAgent']='recovered-firefox';return {close:async()=>{}}};
+  await launchCamoufox(flakyCamoufox,{identityDir:recoveryDir,enableCache:true});
+  assert.equal(recoveryLaunches.length,2,'a local BrowserContext startup failure gets exactly one bounded retry before any issuer navigation exists');
+  assert.equal(recoveryLaunches[1].config['poisoned:seed'],undefined,'a config mutated by a failed launch is never committed into the retry candidate');
+  const recoveredIdentity=JSON.parse(await fs.readFile(path.join(recoveryDir,'camoufox-identity.json'),'utf8'));
+  assert.equal(recoveredIdentity['navigator.userAgent'],'recovered-firefox');assert.equal(recoveredIdentity['poisoned:seed'],undefined,'only the identity from a successful BrowserContext launch becomes durable');
+  assert.equal(JSON.parse(await fs.readFile(path.join(recoveryDir,'camoufox-ready.json'),'utf8')).version,1,'successful startup marks the persistent identity as locally verified');
+  const failedDir=creditIdentityDirectory(path.join(identityRoot,'credit-identities'),{provider:'amex',credentials:{id:'444444444'}});let failedLaunches=0;
+  await assert.rejects(()=>launchCamoufox(async options=>{failedLaunches++;options.config['failed:seed']=failedLaunches;throw new Error('browserType.launchPersistentContext: Timeout 180000ms exceeded')},{identityDir:failedDir}),error=>error.code==='CREDIT_CAMOUFOX_STARTUP_FAILED'&&error.stage==='BrowserLaunch'&&error.startupFailureReason==='timeout');
+  assert.equal(failedLaunches,2,'startup recovery is bounded and cannot turn into an identity-generation loop');
+  await assert.rejects(()=>fs.stat(path.join(failedDir,'camoufox-identity.json')),error=>error.code==='ENOENT','a never-started identity is not persisted after both local attempts fail');
   await fs.mkdir(otherDir,{recursive:true});await fs.writeFile(path.join(otherDir,'keep.txt'),'keep');
   await deleteCreditIdentity(path.join(identityRoot,'credit-identities'),{provider:'amex',credentials:{id:'123456789'}});
   await assert.rejects(()=>fs.stat(identityDir),error=>error.code==='ENOENT');assert.equal((await fs.readFile(path.join(otherDir,'keep.txt'),'utf8')),'keep','deleting one connection removes only its browser identity');

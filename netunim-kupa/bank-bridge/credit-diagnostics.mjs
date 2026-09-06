@@ -41,6 +41,10 @@ export function sanitizeCreditDiagnosticEvent(value={}){
     bridgeVersion:Math.max(0,Math.trunc(Number(value.bridgeVersion)||0)),contractVersion:Math.max(0,Math.trunc(Number(value.contractVersion)||0)),connectorVersion:text(value.connectorVersion,80),browserEngine:text(value.browserEngine,40),
     stage:text(value.stage,80),accountSuffix:suffix(value.accountSuffix||value.accountNumber),month:safeMonth(value.month),durationMs:Math.max(0,Math.trunc(Number(value.durationMs)||0)),
     errorClass:text(value.errorClass||value.code,80),httpStatus:Math.max(0,Math.trunc(Number(value.httpStatus)||0)),retryAfterAt:value.retryAfterAt?iso(value.retryAfterAt):null,
+    startupFailureReason:['timeout','profile_lock','process_exit','binary_startup','unknown'].includes(String(value.startupFailureReason||''))?String(value.startupFailureReason):'',
+    identityState:['new','legacy_unverified','verified'].includes(String(value.identityState||''))?String(value.identityState):'',
+    profileRecovery:['none','fresh_profile','identity_rotated','legacy_profile_reset'].includes(String(value.profileRecovery||''))?String(value.profileRecovery):'',
+    launchAttempt:Math.max(0,Math.min(3,Math.trunc(Number(value.launchAttempt)||0))),
   };
   if(responseShape){event.responseShape=responseShape;event.responseShapeFingerprint=responseShapeFingerprint(responseShape)}
   event.fingerprint=diagnosticFingerprint(event);return event;

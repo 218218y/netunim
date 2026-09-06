@@ -159,12 +159,80 @@ export function camoufoxLaunchOptions({interactive=false,enableCache=false,userD
   // boundary is the anonymous issuer login-page response below, before credentials.
   return {headless:!interactive,humanize:true,os:'windows',screen:{...CAMOUFOX_SCREEN},locale:'he-IL',enable_cache:!!enableCache,...(userDataDir?{user_data_dir:userDataDir,config:identityConfig&&typeof identityConfig==='object'?identityConfig:{},i_know_what_im_doing:true}:{})};
 }
-async function readIdentityConfig(identityDir){try{const value=JSON.parse(await fs.readFile(path.join(identityDir,'camoufox-identity.json'),'utf8'));return value&&typeof value==='object'&&!Array.isArray(value)?value:{}}catch{return {}}}
-async function writeIdentityConfig(identityDir,config){await fs.mkdir(identityDir,{recursive:true,mode:0o700});const target=path.join(identityDir,'camoufox-identity.json'),temporary=path.join(identityDir,`.camoufox-identity-${process.pid}.tmp`);try{await fs.writeFile(temporary,JSON.stringify(config,null,2),{encoding:'utf8',mode:0o600});await fs.rename(temporary,target)}finally{try{await fs.rm(temporary,{force:true})}catch{}}}
-export async function launchCamoufox(Camoufox,{interactive=false,enableCache=false,identityDir=''}={}){
+const CAMOUFOX_IDENTITY_FILE='camoufox-identity.json';
+const CAMOUFOX_READY_FILE='camoufox-ready.json';
+const CAMOUFOX_LOCAL_LAUNCH_ATTEMPTS=2;
+function cloneIdentityConfig(config){return JSON.parse(JSON.stringify(config&&typeof config==='object'&&!Array.isArray(config)?config:{}))}
+async function readIdentityState(identityDir){
+  const target=path.join(identityDir,CAMOUFOX_IDENTITY_FILE);
+  try{
+    const value=JSON.parse(await fs.readFile(target,'utf8'));
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('identity config is not an object');
+    return {config:value,exists:true};
+  }catch(error){
+    if(error?.code==='ENOENT')return {config:{},exists:false};
+    throw safeError('קובץ זהות Camoufox המקומי אינו תקין. יש לאפס רק את זהות הדפדפן של החיבור ולנסות שוב.','CREDIT_CAMOUFOX_IDENTITY_CORRUPT',{stage:'BrowserLaunch'});
+  }
+}
+async function identityReady(identityDir){try{const value=JSON.parse(await fs.readFile(path.join(identityDir,CAMOUFOX_READY_FILE),'utf8'));return Number(value?.version)===1}catch{return false}}
+async function writeJsonAtomic(identityDir,name,value){
+  await fs.mkdir(identityDir,{recursive:true,mode:0o700});
+  const target=path.join(identityDir,name),temporary=path.join(identityDir,`.${name}-${process.pid}.tmp`);
+  try{await fs.writeFile(temporary,JSON.stringify(value,null,2),{encoding:'utf8',mode:0o600});await fs.rename(temporary,target)}
+  finally{try{await fs.rm(temporary,{force:true})}catch{}}
+}
+async function writeIdentityConfig(identityDir,config){await writeJsonAtomic(identityDir,CAMOUFOX_IDENTITY_FILE,config)}
+async function markIdentityReady(identityDir){await writeJsonAtomic(identityDir,CAMOUFOX_READY_FILE,{version:1})}
+export function classifyCamoufoxStartupFailure(error){
+  const raw=String(error?.message||error||'');
+  if(/Timeout\s+\d+ms\s+exceeded|launchPersistentContext[^\n]*Timeout/i.test(raw))return 'timeout';
+  if(/parent\.lock|\.parentlock|profile[^\n]*(?:lock|in use)|persistent context closed/i.test(raw))return 'profile_lock';
+  if(/browser[^\n]*(?:closed|disconnected)|process[^\n]*(?:exited|exit code)|Target page[^\n]*closed/i.test(raw))return 'process_exit';
+  if(/camoufox\.exe|spawn|side-by-side|0xc000|dll|executable/i.test(raw))return 'binary_startup';
+  return 'unknown';
+}
+async function resetLocalBrowserProfile(userDataDir){
+  try{await fs.rm(userDataDir,{recursive:true,force:true});await fs.mkdir(userDataDir,{recursive:true,mode:0o700})}
+  catch(error){throw safeError('פרופיל Camoufox המקומי תפוס או לא ניתן לניקוי בטוח. לא בוצע ניסיון נוסף כדי להימנע משימוש מקביל באותו פרופיל.','CREDIT_CAMOUFOX_PROFILE_IN_USE',{stage:'BrowserLaunch',startupFailureReason:'profile_lock'})}
+}
+async function safeStartupDiagnostic(callback,event){try{await Promise.resolve(callback?.(event))}catch{}}
+export async function launchCamoufox(Camoufox,{interactive=false,enableCache=false,identityDir='',onStartupDiagnostic=()=>{}}={}){
   if(!identityDir)return Camoufox(camoufoxLaunchOptions({interactive,enableCache}));
-  await fs.mkdir(identityDir,{recursive:true,mode:0o700});const config=await readIdentityConfig(identityDir),userDataDir=path.join(identityDir,'profile');await fs.mkdir(userDataDir,{recursive:true,mode:0o700});
-  try{return await Camoufox(camoufoxLaunchOptions({interactive,enableCache,userDataDir,identityConfig:config}))}finally{await writeIdentityConfig(identityDir,config)}
+  await fs.mkdir(identityDir,{recursive:true,mode:0o700});
+  const state=await readIdentityState(identityDir),ready=state.exists&&await identityReady(identityDir),userDataDir=path.join(identityDir,'profile');
+  const identityState=ready?'verified':state.exists?'legacy_unverified':'new';
+  if(state.exists&&!ready){
+    // v33/v34 could persist a generated config from a launch that never returned a usable
+    // BrowserContext. Reset only the browser profile during the v35 migration; keep
+    // the generated device config stable unless a clean local launch still fails.
+    await resetLocalBrowserProfile(userDataDir);
+    await safeStartupDiagnostic(onStartupDiagnostic,{stage:'BrowserProfileRecovery',identityState,profileRecovery:'legacy_profile_reset',launchAttempt:0});
+  }else await fs.mkdir(userDataDir,{recursive:true,mode:0o700});
+  let lastError=null,lastReason='unknown';
+  for(let attempt=1;attempt<=CAMOUFOX_LOCAL_LAUNCH_ATTEMPTS;attempt++){
+    const rotateLegacyCandidate=attempt===2&&state.exists&&!ready;
+    const config=rotateLegacyCandidate?{}:cloneIdentityConfig(state.config);
+    if(attempt>1){
+      await resetLocalBrowserProfile(userDataDir);
+      await safeStartupDiagnostic(onStartupDiagnostic,{stage:'BrowserProfileRecovery',identityState,profileRecovery:rotateLegacyCandidate?'identity_rotated':'fresh_profile',launchAttempt:attempt});
+    }
+    let session=null;
+    try{
+      session=await Camoufox(camoufoxLaunchOptions({interactive,enableCache,userDataDir,identityConfig:config}));
+      // Commit generated identity only after Playwright has returned a usable context.
+      // A timed-out/crashed launch must never make a half-created identity durable.
+      await writeIdentityConfig(identityDir,config);await markIdentityReady(identityDir);
+      await safeStartupDiagnostic(onStartupDiagnostic,{stage:'BrowserLaunch',identityState,profileRecovery:rotateLegacyCandidate?'identity_rotated':attempt>1?'fresh_profile':'none',launchAttempt:attempt});
+      return session;
+    }catch(error){
+      if(session)try{await session.close()}catch{}
+      lastError=error;lastReason=classifyCamoufoxStartupFailure(error);
+      const willRetry=attempt<CAMOUFOX_LOCAL_LAUNCH_ATTEMPTS&&lastReason!=='binary_startup';
+      await safeStartupDiagnostic(onStartupDiagnostic,{stage:'BrowserLaunch',identityState,profileRecovery:rotateLegacyCandidate?'identity_rotated':attempt>1?'fresh_profile':'none',launchAttempt:attempt,errorClass:willRetry?'CREDIT_CAMOUFOX_STARTUP_RETRY':'CREDIT_CAMOUFOX_STARTUP_FAILED',startupFailureReason:lastReason});
+      if(!willRetry)break;
+    }
+  }
+  throw safeError(`Camoufox לא הצליח להשלים את פתיחת פרופיל הדפדפן המקומי גם לאחר התאוששות מקומית מוגבלת (${lastReason}). לא נשלחה בקשה לחברת האשראי.`,'CREDIT_CAMOUFOX_STARTUP_FAILED',{stage:'BrowserLaunch',startupFailureReason:lastReason,cause:lastError});
 }
 async function closeCamoufoxSession(browser,page){try{await page?.close()}catch{}try{await browser?.close()}catch{}}
 async function sessionPage(session){const existing=typeof session?.pages==='function'?session.pages().find(page=>!page.isClosed?.()):null;return existing||session.newPage()}
@@ -186,12 +254,12 @@ export async function verifyCamoufoxIdentityContinuity(Camoufox,{identityDir}={}
   if(JSON.stringify(probes[0])!==JSON.stringify(probes[1]))throw safeError('Camoufox changed observable browser identity fields between two launches that used the same local identity.','CREDIT_CAMOUFOX_IDENTITY_UNSTABLE',{stage:'IdentityContinuity'});
   return {stable:true,fields:Object.keys(probes[0]||{})};
 }
-async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false,identityDir=''}={}){
+async function openQualifiedLoginSession(Camoufox,cfg,{interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',provider=''}={}){
   let lastStatus=0;
   for(let attempt=1;attempt<=CAMOUFOX_LOGIN_SESSION_ATTEMPTS;attempt++){
     let browser,page;
     try{
-      browser=await launchCamoufox(Camoufox,{interactive,enableCache:true,identityDir});
+      browser=await launchCamoufox(Camoufox,{interactive,enableCache:true,identityDir,onStartupDiagnostic:event=>onDiagnostic({correlationId,provider,...event})});
       page=await sessionPage(browser);page.setDefaultTimeout(45_000);page.setDefaultNavigationTimeout(LOGIN_TIMEOUT_MS);
       // Do not install Playwright request interception here. In the Camoufox/Firefox
       // stack used by this Bridge, page.route() changes the document request's wire
@@ -240,7 +308,7 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
   let Camoufox;try{({Camoufox}=await import('camoufox-js'))}catch{throw safeError('מנוע Camoufox של Bank Bridge אינו מותקן. הרץ שוב install_bank_bridge.bat.','CREDIT_CAMOUFOX_RUNTIME_MISSING')}
   const cfg=PROVIDERS[provider],servicesUrl=`${cfg.baseUrl}/services/ProxyRequestHandler.ashx`;let browser,page;
   try{
-    ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir}));
+    ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir,onDiagnostic,correlationId,provider}));
     await login(page,provider,credentials,servicesUrl);
     const months=buildCreditMonths(startDate,futureMonthsToScrape,now()),current=addUtcMonths(new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),1),results=[],knownAccounts=new Set(),errors=[];
     for(const month of months){const key=monthKey(month),tier=month<=current?'core':'forecast',started=Date.now();try{const data=await fetchTransactionsForMonth(page,servicesUrl,month,startDate);Object.keys(data).forEach(account=>knownAccounts.add(account));results.push({month:key,tier,data,at:now().toISOString()});onDiagnostic({correlationId,provider,stage:'Transactions',month:key,durationMs:Date.now()-started})}catch(error){const at=now().toISOString();results.push({month:key,tier,error,at});errors.push(publicMonthError(error,key,tier,at));onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}}
