@@ -60,7 +60,7 @@ begin
   if has_function_privilege('authenticated','netunim_internal.prune_document_backups()','EXECUTE')
      or has_function_privilege('anon','netunim_internal.prune_document_backups()','EXECUTE')
      or exists(
-       select 1 from pg_proc p,cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+       select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
        where p.oid=to_regprocedure('netunim_internal.prune_document_backups()') and acl.grantee=0 and acl.privilege_type='EXECUTE'
      ) then raise exception 'v5_postflight_browser_backup_maintenance_grant';end if;
   if not exists(
