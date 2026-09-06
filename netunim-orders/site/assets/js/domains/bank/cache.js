@@ -1,12 +1,12 @@
 import {clone} from '../../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsBankCache({checksSession, ui, computeKupaNetReadout, renderKupa=()=>{}, renderChecks, renderSummary, loadSession, readKupaReadOnlyCloud, readKupaReadOnlyMeta, refreshAlertCenter=()=>{}}){
+export function createDomainsBankCache({checksSession, ui, computeKupaNetReadout, renderKupa=()=>{}, renderChecks, renderSummary, loadSession, readKupaReadOnlyCloud, readKupaReadOnlyMeta, refreshAlertCenter=()=>{}, refreshBankAlertArchive=async()=>false}){
 function rememberKupaNetState(kupa){checksSession.kupaCloudReadState=kupa&&typeof kupa==='object'?clone(kupa):null;checksSession.kupaNetReadout=computeKupaNetReadout(checksSession.kupaCloudReadState);return checksSession.kupaNetReadout}
 
 function recomputeKupaNetFromCache(){if(checksSession.kupaCloudReadState)checksSession.kupaNetReadout=computeKupaNetReadout(checksSession.kupaCloudReadState);return checksSession.kupaNetReadout}
 
-function acceptKupaCloudRow(row,{renderIfChanged=false}={}){if(!row)return false;const previousRevision=Number(checksSession.kupaReadRevision||0),previousFinanceRevision=Number(checksSession.financeReadRevision||0),hadState=!!checksSession.kupaCloudReadState,nextRevision=Number(row.revision||0),nextFinanceRevision=Number(row.financeRevision||0);checksSession.kupaReadRevision=nextRevision;checksSession.financeReadRevision=nextFinanceRevision;checksSession.financeReadUpdatedAt=row.financeUpdatedAt||checksSession.financeReadUpdatedAt||null;rememberKupaNetState(row.state||{});refreshAlertCenter();if(renderIfChanged&&(!hadState||nextRevision!==previousRevision||nextFinanceRevision!==previousFinanceRevision))renderKupaDependentView();return true}
+function acceptKupaCloudRow(row,{renderIfChanged=false}={}){if(!row)return false;const previousRevision=Number(checksSession.kupaReadRevision||0),previousFinanceRevision=Number(checksSession.financeReadRevision||0),hadState=!!checksSession.kupaCloudReadState,nextRevision=Number(row.revision||0),nextFinanceRevision=Number(row.financeRevision||0);checksSession.kupaReadRevision=nextRevision;checksSession.financeReadRevision=nextFinanceRevision;checksSession.financeReadUpdatedAt=row.financeUpdatedAt||checksSession.financeReadUpdatedAt||null;rememberKupaNetState(row.state||{});refreshAlertCenter();Promise.resolve(refreshBankAlertArchive()).then(()=>refreshAlertCenter()).catch(error=>console.error('orders bank alert archive refresh',error));if(renderIfChanged&&(!hadState||nextRevision!==previousRevision||nextFinanceRevision!==previousFinanceRevision))renderKupaDependentView();return true}
 
 function renderKupaDependentView(){recomputeKupaNetFromCache();refreshAlertCenter();if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='summary')renderSummary()}
 

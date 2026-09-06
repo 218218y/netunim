@@ -49,17 +49,33 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null}){
   const local={bankBusy:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
   const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
-  let bankDisplayArchivePromise=null;
+  let bankDisplayArchivePromise=null,bankDisplayArchiveRequestVersion=0;
 
-  function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows,directSnapshot:cache.directSnapshot}):normalized}
-  function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;if(kupa)kupa.checks=clone(getSharedChecks());const rawBank=kupa?.bank?clone(kupa.bank):null,bank=rawBank?{...rawBank,feed:displayArchiveFeed('business',rawBank.feed),homeFeed:displayArchiveFeed('home',rawBank.homeFeed)}:null;return {kupa,bank,creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?clone(kupa.cards):[],credits:Array.isArray(kupa?.credits)?clone(kupa.credits):[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),bankAutoEnabled:bridge.bankAutoEnabled(),creditAutoEnabled:bridge.creditAutoEnabled(),creditAutoMode:bridge.creditAutoMode(),bridgeTokenConfigured:!!bridge.getBridgeToken(),bankBusy:local.bankBusy,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
+  function bankArchiveTargets(){const bank=checksSession.kupaCloudReadState?.bank||{};return [['business',normalizeBankFeed(bank.feed)],['home',normalizeBankFeed(bank.homeFeed)]].filter(([,feed])=>!!feed?.accountNumber)}
+  function bankArchiveCacheMatches(role,feed){if(!feed?.accountNumber)return false;const cache=bankDisplayArchive[role];return cache.accountKey===String(feed.accountNumber||'')&&cache.syncKey===String(feed.syncedAt||'')&&Array.isArray(cache.rows)}
+  function bankAlertsReady(){return bankArchiveTargets().every(([role,feed])=>bankArchiveCacheMatches(role,feed))}
+  function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;return bankArchiveCacheMatches(role,normalized)?normalizeBankFeed({...normalized,transactions:bankDisplayArchive[role].rows,directSnapshot:bankDisplayArchive[role].directSnapshot}):normalized}
+  function snapshot(){const kupa=checksSession.kupaCloudReadState&&typeof checksSession.kupaCloudReadState==='object'?clone(checksSession.kupaCloudReadState):null;if(kupa)kupa.checks=clone(getSharedChecks());const rawBank=kupa?.bank?clone(kupa.bank):null,bank=rawBank?{...rawBank,feed:displayArchiveFeed('business',rawBank.feed),homeFeed:displayArchiveFeed('home',rawBank.homeFeed)}:null;return {kupa,bank,bankAlertsReady:bankAlertsReady(),creditSync:normalizeCreditSync(kupa?.creditSync),cards:Array.isArray(kupa?.cards)?clone(kupa.cards):[],credits:Array.isArray(kupa?.credits)?clone(kupa.credits):[],bankLastSyncAt:bankLastSyncAt(kupa),creditLastSyncAt:creditLastSyncAt(kupa),bankAutoEnabled:bridge.bankAutoEnabled(),creditAutoEnabled:bridge.creditAutoEnabled(),creditAutoMode:bridge.creditAutoMode(),bridgeTokenConfigured:!!bridge.getBridgeToken(),bankBusy:local.bankBusy,creditBusy:local.creditBusy,bankError:local.bankError,creditError:local.creditError,bankErrorAt:local.bankErrorAt,creditErrorAt:local.creditErrorAt,bankStatus:local.bankStatus?clone(local.bankStatus):null,creditStatus:local.creditStatus?clone(local.creditStatus):null,bankStatusChecked:local.bankStatusChecked,creditStatusChecked:local.creditStatusChecked,bankBridgeError:local.bankBridgeError,creditBridgeError:local.creditBridgeError}}
 
   async function ensureBankDisplayArchive(){
     if(!loadSession()||!navigator.onLine||typeof readBankTransactions!=='function')return false;
+    bankDisplayArchiveRequestVersion++;
     if(bankDisplayArchivePromise)return bankDisplayArchivePromise;
-    const bank=checksSession.kupaCloudReadState?.bank||{},targets=[['business',normalizeBankFeed(bank.feed)],['home',normalizeBankFeed(bank.homeFeed)]].filter(([,feed])=>feed?.accountNumber),pending=targets.filter(([role,feed])=>{const cache=bankDisplayArchive[role];return cache.accountKey!==String(feed.accountNumber||'')||cache.syncKey!==String(feed.syncedAt||'')||!Array.isArray(cache.rows)});
-    if(!pending.length)return false;
-    bankDisplayArchivePromise=(async()=>{let changed=false;for(const [role,feed] of pending){try{const [rows,directSnapshot]=await Promise.all([readBankTransactions(feed.accountNumber,role,{days:null}),readBankTransactionSnapshot(feed.accountNumber,role)]);bankDisplayArchive[role]={accountKey:String(feed.accountNumber||''),syncKey:String(feed.syncedAt||''),rows,directSnapshot};changed=true}catch(error){console.error(`orders bank display archive ${role}`,error)}}return changed})();
+    bankDisplayArchivePromise=(async()=>{
+      let changed=false;
+      while(true){
+        const requestVersion=bankDisplayArchiveRequestVersion,pending=bankArchiveTargets().filter(([role,feed])=>!bankArchiveCacheMatches(role,feed));
+        for(const [role,feed] of pending){
+          try{
+            const requestedAccountKey=String(feed.accountNumber||''),requestedSyncKey=String(feed.syncedAt||''),[rows,directSnapshot]=await Promise.all([readBankTransactions(feed.accountNumber,role,{days:null}),readBankTransactionSnapshot(feed.accountNumber,role)]),current=bankArchiveTargets().find(([currentRole])=>currentRole===role)?.[1]||null;
+            if(!current||String(current.accountNumber||'')!==requestedAccountKey||String(current.syncedAt||'')!==requestedSyncKey)continue;
+            bankDisplayArchive[role]={accountKey:requestedAccountKey,syncKey:requestedSyncKey,rows,directSnapshot};changed=true;
+          }catch(error){console.error(`orders bank display archive ${role}`,error)}
+        }
+        if(requestVersion===bankDisplayArchiveRequestVersion)break;
+      }
+      return changed;
+    })();
     try{return await bankDisplayArchivePromise}finally{bankDisplayArchivePromise=null}
   }
 

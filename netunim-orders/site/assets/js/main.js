@@ -252,6 +252,7 @@ const domainsBankCache=createDomainsBankCache({
   readKupaReadOnlyCloud:(...args)=>cloudTransport.readKupaReadOnlyCloud(...args),
   readKupaReadOnlyMeta:(...args)=>cloudTransport.readKupaReadOnlyMeta(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
+  refreshBankAlertArchive:(...args)=>domainsFinanceController.ensureBankDisplayArchive(...args),
 });
 
 const uiDateEditor=createUiDateEditor({

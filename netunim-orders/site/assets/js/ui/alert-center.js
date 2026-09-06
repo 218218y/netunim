@@ -40,7 +40,7 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
   function currentAlerts(today=checkTodayISO()){
     const snapshot=financeSnapshot?.()||{};
     return [
-      ...bankWarningItems(snapshot.bank),
+      ...(snapshot.bankAlertsReady===true?bankWarningItems(snapshot.bank):[]),
       ...cashflowWarningItems(snapshot.kupa),
       ...dueCheckWarningItems(model?.state?.checks,today),
     ];
