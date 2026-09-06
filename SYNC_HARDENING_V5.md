@@ -10,12 +10,14 @@ This release keeps the existing document architecture, revision concurrency, 3-w
 | Orders | `inventoryCategoryOrder` | Replaceable display configuration | Whole-value 3-way merge; no entity delete intent |
 | Kupa | `credits`, `cash`, `rights`, `notes`, `expenses`, `notesSheet.rows`, `notesSheet.columns` | Stable-ID user entities | Exact v4/v5 delete intent plus mass guard |
 | Kupa | `cards` | User-maintained persistent records | Stable ID assigned once to legacy cards; ID-based merge and exact delete intent |
-| Kupa | `bank.adjustments` | Reset-controlled finance configuration | Whole array remains under finance/reset flows; no new delete-intent semantics were added without a separate business decision |
+| Kupa | `bank.adjustments` | Reset-controlled finance configuration | Whole-value 3-way merge under finance/reset flows; no entity IDs and no delete-intent semantics |
 | Shared Checks | `checks` | Stable-ID user entities in an authoritative separate document | Exact deleted-ID contract plus mass guard |
 | Shared Checks | `bankEvents` | Server/finance-derived event stream (`eventId`/sequence semantics, not generic `id`) | Preserved by the Shared Checks merge/restore flow; not treated as an ID-keyed user collection |
 | Finance | provider feeds, monthly slices, pending/unassigned transactions | Server/provider-derived data in a separate document | Outside Kupa/Orders destructive writes; v5 staging test asserts finance isolation |
 
 Every ID-keyed collection is validated before client staging and again in the database transaction. Missing, blank, non-canonical, or duplicate IDs are rejected; no validator normalizes or collapses duplicates.
+
+`bank.adjustments` is intentionally not an ID-keyed persistent entity collection. Bank synchronization owns reset/replacement of this configuration, so client and server invariants require an array but do not require item IDs. The synchronizer merges the array as one value: a reset against an unchanged remote is retained, while different local and remote replacements produce the explicit `bank.adjustments` 3-way conflict. It must not gain per-record delete intent without a separate business-semantics change.
 
 Legacy Kupa card IDs are migrated from lineage, not from mutable card JSON. A pending outbox upgrades `baseState` and `snapshot` together before either is normalized, and the 3-way merge aligns the remote branch against that same ordered legacy lineage. In-place legacy edits inherit the base slot ID; a structural addition or deletion is accepted only when the unchanged side has one unique ordered embedding. Additions on different branches receive separate namespaces. Reordering, duplicate-row ambiguity, conflicting embedded IDs, or any other non-unique mapping persists an explicit `legacy-card-migration-conflict` and performs no cloud write or deletion. Once an ID exists it is preserved verbatim across all later normalization and edits.
 
@@ -36,17 +38,19 @@ Before cloud mutation, the browser stores the restore ID, both targets, base rev
 
 Completed local restore archives remain in IndexedDB as before-restore recovery material. Only the current pointer is removed after cloud ACK and successful local application. Server safety snapshots and public backup history cannot be updated, deleted, truncated, or pruned by browser roles.
 
+Public rolling document backups are retained by trusted server maintenance at the newest 200 rows per owner/document; periodic backups are retained for 365 days. `netunim_internal.safety_snapshots` is outside this retention function and is never pruned by it. A daily `pg_cron` job executes the locked-search-path maintenance function; browser roles have neither function execution nor backup-table DELETE permission.
+
 ## Deployment order
 
 1. Stop writes or enter a controlled maintenance window and take a production database/safety export. Record its location and checksum outside browser storage.
-2. Run `sync_integrity_v5_data_preflight.sql` on staging, then apply `sync_integrity_v5_upgrade.sql`. The preflight is read-only and reports malformed IDs, legacy Kupa cards, and client-local pending compatibility expectations. The migration is additive and transactional; it does not rewrite live business rows or historical backups.
-3. Run `supabase/shared/validation/sync_integrity_v5_server_contracts.sql` with a dedicated staging user. It includes the historical 55→1 fixture and rolls back all test rows.
-4. Run `supabase/shared/validation/sync_integrity_v5_postflight.sql` and verify RPCs, triggers, RLS, grants, invariant functions, immutable backups, restore tables, and the active trusted ledger schedule. After both clients have connected and synced, run `sync_integrity_v5_data_postdeploy.sql`; it fails if any Kupa card still lacks an ID.
-5. Deploy database protection before dependent clients. Deploy Kupa and Orders together because v5 Shared Checks is common. Old clients fail closed at the invariant/mass guard rather than bypassing protection.
-6. Run `python tests/run_all.py` on CI/Windows with localhost/native ESM browser runtime enabled. `--core-only` is not a deployment gate.
-7. Monitor delete-intent rejections, mass-delete rejections, revision conflicts, pending-outbox age, incomplete restore groups, and safety-snapshot failures.
+2. Run `sync_integrity_v5_data_preflight.sql`, then apply `sync_integrity_v5_upgrade.sql`. The preflight is read-only and reports malformed IDs, legacy Kupa cards, and client-local pending compatibility expectations. The migration is additive and transactional; it does not rewrite live business rows or historical backups.
+3. Run `supabase/shared/validation/sync_integrity_v5_postflight.sql` to verify RPCs, triggers, RLS, grants, invariant functions, immutable backups, restore tables, and both active trusted retention schedules. On staging, also run `sync_integrity_v5_server_contracts.sql` with a dedicated user; its fixtures roll back.
+4. Deploy Kupa and Orders together because v5 Shared Checks is common. Old clients fail closed at the invariant/mass guard rather than bypassing protection.
+5. On one trusted computer, open Kupa v5, let legacy card IDs and any pending outbox migrate, and wait for the visible “מסונכרן לענן” status.
+6. Only after that successful client sync, run `sync_integrity_v5_data_postdeploy.sql`, then the final database postflight. Reopen normal writes only after both gates pass.
+7. Run `python tests/run_all.py` on CI/Windows with localhost/native ESM browser runtime enabled. `--core-only` is not a deployment gate, then monitor delete-intent/mass-delete rejections, revision conflicts, pending-outbox age, incomplete restore groups, and safety-snapshot failures.
 
-Do not shorten the two-year operation-ledger retention until the 365-day durable offline/lost-ACK horizon is re-evaluated. Pruning is scheduled weekly by trusted `pg_cron`; browser roles have neither prune execution nor ledger delete permission.
+Do not shorten the two-year operation-ledger retention until the 365-day durable offline/lost-ACK horizon is re-evaluated. Ledger pruning is scheduled weekly and backup pruning daily by trusted `pg_cron`; browser roles have neither prune execution nor DELETE permission.
 
 ## Operator runbook (PowerShell)
 
@@ -139,13 +143,20 @@ Do not run the staging fixture on production. After the postflight passes, use t
 if ($LASTEXITCODE -ne 0) { throw 'Combined client preflight failed; do not upload.' }
 & cmd.exe /d /c deploy_all.bat
 if ($LASTEXITCODE -ne 0) { throw 'Coordinated client deployment failed; keep writes closed.' }
-& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $postflight
-if ($LASTEXITCODE -ne 0) { throw 'Post-deploy database postflight failed; keep writes closed.' }
-& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPostdeploy
-if ($LASTEXITCODE -ne 0) { throw 'Post-deploy Kupa card ID gate failed; keep writes closed.' }
 ```
 
-Database guards must precede the clients. Reopen writes only after the second production postflight passes.
+Keep normal writes closed. On one trusted production computer, open the deployed Kupa v5 client. Let it persist the legacy-card migration and any compatible pending outbox, and wait until the UI reports “מסונכרן לענן”. Do not run the Kupa card ID gate merely because the initial database postflight passed.
+
+Only after that successful trusted-client cloud sync, run the data gate and then the final database postflight, in this order:
+
+```powershell
+& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $dataPostdeploy
+if ($LASTEXITCODE -ne 0) { throw 'Post-deploy Kupa card ID gate failed; keep writes closed.' }
+& psql $env:NETUNIM_PRODUCTION_DB_URL -X -v ON_ERROR_STOP=1 -f $postflight
+if ($LASTEXITCODE -ne 0) { throw 'Final production database postflight failed; keep writes closed.' }
+```
+
+The production gate order is: DB preflight → DB migration → DB postflight → coordinated client deploy → trusted Kupa v5 cloud sync → data postdeploy gate → final DB postflight → reopen normal writes. Both the data postdeploy gate and final database postflight must pass before normal writes reopen.
 
 ### 6. Immediate monitoring
 

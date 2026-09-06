@@ -18,6 +18,7 @@ declare
   v_ids jsonb;v_group uuid:=gen_random_uuid();v_main_op text:=gen_random_uuid()::text;v_checks_op text:=gen_random_uuid()::text;v_result record;
   v_kupa_doc text:='sync-v5-kupa-'||gen_random_uuid()::text;v_kupa_state jsonb;v_kupa_revision bigint;v_finance_doc text:='sync-v5-finance-'||gen_random_uuid()::text;v_finance_op text:=gen_random_uuid()::text;
   v_finance_revision bigint;v_finance_state jsonb;v_finance_after_revision bigint;v_finance_after_state jsonb;
+  v_retention_doc text:='sync-v5-retention-'||gen_random_uuid()::text;v_count bigint;v_min_revision bigint;v_max_revision bigint;v_safety_before bigint;v_safety_after bigint;
 begin
   select revision,state into v_finance_revision,v_finance_state from public.finance_sync_documents where owner_id=auth.uid() and document_name='main';
   v_state:=jsonb_build_object(
@@ -67,7 +68,7 @@ begin
     'version',4,'businessName','sync-v5-kupa','credits','[]'::jsonb,'cash','[]'::jsonb,'rights','[]'::jsonb,'notes','[]'::jsonb,
     'expenses','[]'::jsonb,'cards','[{"id":"CARD-1","name":"one"},{"id":"CARD-2","name":"two"}]'::jsonb,
     'notesSheet',jsonb_build_object('version',1,'rows','[]'::jsonb,'columns','[]'::jsonb),
-    'bank',jsonb_build_object('adjustments','[]'::jsonb)
+    'bank',jsonb_build_object('adjustments','[{"amount":10}]'::jsonb)
   );
   select revision into v_kupa_revision from public.save_kupa_document_v5(v_kupa_doc,0,v_kupa_state,gen_random_uuid()::text,'{}'::jsonb,'{"app":"kupa","mutationType":"fixture"}'::jsonb);
   v_candidate:=jsonb_set(v_kupa_state,'{cards}','[{"id":"CARD-1","name":"one"}]'::jsonb,true);
@@ -99,6 +100,58 @@ begin
   if has_table_privilege('authenticated','public.order_management_document_backups','DELETE')
      or has_table_privilege('authenticated','public.order_management_periodic_backups','DELETE')
      or has_table_privilege('authenticated','netunim_internal.safety_snapshots','DELETE') then raise exception 'browser_can_delete_immutable_backup';end if;
+
+  -- Trusted backup retention is global but deterministic. This transaction proves
+  -- every table contract and then rolls all fixture pruning back.
+  if has_function_privilege('authenticated','netunim_internal.prune_document_backups()','EXECUTE')
+     or has_function_privilege('anon','netunim_internal.prune_document_backups()','EXECUTE')
+     or exists(
+       select 1 from pg_proc p,cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+       where p.oid=to_regprocedure('netunim_internal.prune_document_backups()') and acl.grantee=0 and acl.privilege_type='EXECUTE'
+     ) then raise exception 'browser_can_execute_backup_prune';end if;
+  if exists(
+    select 1 from unnest(array[
+      'public.order_management_document_backups','public.order_management_periodic_backups',
+      'public.kupa_document_backups','public.kupa_periodic_backups',
+      'public.shared_checks_document_backups','public.shared_checks_periodic_backups'
+    ]) relation(name)
+    where has_table_privilege('authenticated',relation.name,'DELETE') or has_table_privilege('anon',relation.name,'DELETE')
+  ) then raise exception 'browser_can_delete_backup_for_prune';end if;
+
+  insert into public.order_management_document_backups(owner_id,document_name,revision,state,saved_at)
+  select auth.uid(),v_retention_doc,n,v_state,statement_timestamp()-(205-n)*interval '1 minute' from generate_series(1,205)n;
+  insert into public.kupa_document_backups(owner_id,document_name,revision,state,saved_at)
+  select auth.uid(),v_retention_doc,n,v_kupa_state,statement_timestamp()-(205-n)*interval '1 minute' from generate_series(1,205)n;
+  insert into public.shared_checks_document_backups(owner_id,document_name,revision,state,saved_at)
+  select auth.uid(),v_retention_doc,n,v_checks,statement_timestamp()-(205-n)*interval '1 minute' from generate_series(1,205)n;
+
+  insert into public.order_management_periodic_backups(owner_id,document_name,revision,state,saved_at) values
+    (auth.uid(),v_retention_doc,1001,v_state,statement_timestamp()-interval '364 days'),
+    (auth.uid(),v_retention_doc,1002,v_state,statement_timestamp()-interval '366 days');
+  insert into public.kupa_periodic_backups(owner_id,document_name,revision,state,saved_at) values
+    (auth.uid(),v_retention_doc,1001,v_kupa_state,statement_timestamp()-interval '364 days'),
+    (auth.uid(),v_retention_doc,1002,v_kupa_state,statement_timestamp()-interval '366 days');
+  insert into public.shared_checks_periodic_backups(owner_id,document_name,revision,state,saved_at) values
+    (auth.uid(),v_retention_doc,1001,v_checks,statement_timestamp()-interval '364 days'),
+    (auth.uid(),v_retention_doc,1002,v_checks,statement_timestamp()-interval '366 days');
+
+  select count(*) into v_safety_before from netunim_internal.safety_snapshots where owner_id=auth.uid();
+  select * into v_result from netunim_internal.prune_document_backups();
+  for v_count,v_min_revision,v_max_revision in
+    select count(*),min(revision),max(revision) from public.order_management_document_backups where owner_id=auth.uid() and document_name=v_retention_doc
+    union all select count(*),min(revision),max(revision) from public.kupa_document_backups where owner_id=auth.uid() and document_name=v_retention_doc
+    union all select count(*),min(revision),max(revision) from public.shared_checks_document_backups where owner_id=auth.uid() and document_name=v_retention_doc
+  loop
+    if v_count<>200 or v_min_revision<>6 or v_max_revision<>205 then raise exception 'trusted_prune_did_not_keep_exactly_200_newest';end if;
+  end loop;
+  if not exists(select 1 from public.order_management_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1001)
+     or not exists(select 1 from public.kupa_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1001)
+     or not exists(select 1 from public.shared_checks_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1001) then raise exception 'periodic_backup_under_365_days_was_deleted';end if;
+  if exists(select 1 from public.order_management_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1002)
+     or exists(select 1 from public.kupa_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1002)
+     or exists(select 1 from public.shared_checks_periodic_backups where owner_id=auth.uid() and document_name=v_retention_doc and revision=1002) then raise exception 'periodic_backup_over_365_days_was_retained';end if;
+  select count(*) into v_safety_after from netunim_internal.safety_snapshots where owner_id=auth.uid();
+  if v_safety_after<>v_safety_before then raise exception 'backup_retention_changed_safety_snapshots';end if;
 
   select revision,state into v_finance_after_revision,v_finance_after_state from public.finance_sync_documents where owner_id=auth.uid() and document_name='main';
   if v_finance_after_revision is distinct from v_finance_revision or v_finance_after_state is distinct from v_finance_state then raise exception 'finance_document_changed_by_core_restore';end if;

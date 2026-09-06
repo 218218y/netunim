@@ -14,7 +14,8 @@ begin
     'public.bulk_delete_save_shared_checks_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
     'public.stage_restore_group_v5(uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb)',
     'public.apply_restore_group_v5(uuid)',
-    'netunim_internal.assert_document_invariants(text,jsonb)'
+    'netunim_internal.assert_document_invariants(text,jsonb)',
+    'netunim_internal.prune_document_backups()'
   ]) signature where to_regprocedure(signature) is null;
   if v_missing is not null then raise exception 'v5_postflight_missing_functions: %',v_missing;end if;
 
@@ -56,6 +57,18 @@ begin
      or has_function_privilege('authenticated','netunim_internal.prune_sync_operation_ledgers()','EXECUTE') then raise exception 'v5_postflight_browser_ledger_maintenance_grant';end if;
 
   if not exists(select 1 from cron.job where jobname='netunim-sync-ledger-retention-weekly' and active and command='select * from netunim_internal.prune_sync_operation_ledgers();') then raise exception 'v5_postflight_ledger_schedule_missing';end if;
+  if has_function_privilege('authenticated','netunim_internal.prune_document_backups()','EXECUTE')
+     or has_function_privilege('anon','netunim_internal.prune_document_backups()','EXECUTE')
+     or exists(
+       select 1 from pg_proc p,cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) acl
+       where p.oid=to_regprocedure('netunim_internal.prune_document_backups()') and acl.grantee=0 and acl.privilege_type='EXECUTE'
+     ) then raise exception 'v5_postflight_browser_backup_maintenance_grant';end if;
+  if not exists(
+    select 1 from pg_proc p
+    where p.oid=to_regprocedure('netunim_internal.prune_document_backups()')
+      and p.prosecdef and 'search_path=pg_catalog'=any(coalesce(p.proconfig,array[]::text[]))
+  ) then raise exception 'v5_postflight_backup_prune_not_locked';end if;
+  if not exists(select 1 from cron.job where jobname='netunim-document-backup-retention-daily' and active and schedule='43 3 * * *' and command='select * from netunim_internal.prune_document_backups();') then raise exception 'v5_postflight_backup_retention_schedule_missing';end if;
   if exists(select 1 from unnest(array[
     'netunim_internal.save_order_management_document(text,bigint,jsonb)',
     'netunim_internal.save_kupa_document(text,bigint,jsonb)',

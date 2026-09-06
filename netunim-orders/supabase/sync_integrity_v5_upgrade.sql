@@ -558,19 +558,67 @@ begin
 end
 $immutable_backups$;
 
--- A real trusted weekly schedule. Migration fails if pg_cron cannot be installed;
--- deployment must not claim ledger retention is active merely because the function exists.
+-- Backup retention runs only under this SECURITY DEFINER entry point. Its table
+-- allow-list is fixed; safety_snapshots are deliberately outside its scope.
+create or replace function netunim_internal.prune_document_backups()
+returns table(rolling_deleted bigint,periodic_deleted bigint)
+language plpgsql security definer set search_path=pg_catalog as $maintenance$
+declare v_table text;v_deleted bigint;
+begin
+  rolling_deleted:=0;periodic_deleted:=0;
+  foreach v_table in array array[
+    'order_management_document_backups','kupa_document_backups','shared_checks_document_backups'
+  ] loop
+    execute pg_catalog.format(
+      'with ranked as materialized (
+         select id,row_number() over(partition by owner_id,document_name order by saved_at desc,id desc) as recency_rank
+         from public.%I
+       ),deleted as (
+         delete from public.%I target using ranked
+         where target.id=ranked.id and ranked.recency_rank>200
+         returning target.id
+       ) select count(*)::bigint from deleted',v_table,v_table
+    ) into v_deleted;
+    rolling_deleted:=rolling_deleted+v_deleted;
+  end loop;
+  foreach v_table in array array[
+    'order_management_periodic_backups','kupa_periodic_backups','shared_checks_periodic_backups'
+  ] loop
+    execute pg_catalog.format(
+      'with deleted as (
+         delete from public.%I
+         where saved_at < statement_timestamp()-interval ''365 days''
+         returning id
+       ) select count(*)::bigint from deleted',v_table
+    ) into v_deleted;
+    periodic_deleted:=periodic_deleted+v_deleted;
+  end loop;
+  return next;
+end
+$maintenance$;
+revoke all on function netunim_internal.prune_document_backups() from public,anon,authenticated;
+grant usage on schema netunim_internal to service_role;
+grant execute on function netunim_internal.prune_document_backups() to service_role;
+
+-- Real trusted schedules. Migration fails if pg_cron cannot be installed or a
+-- same-name job has drifted; deployment must not infer retention from functions alone.
 create extension if not exists pg_cron;
-do $ledger_schedule$
+do $retention_schedule$
 begin
   if not exists(select 1 from cron.job where jobname='netunim-sync-ledger-retention-weekly') then
     perform cron.schedule('netunim-sync-ledger-retention-weekly','17 3 * * 0','select * from netunim_internal.prune_sync_operation_ledgers();');
   end if;
-  if not exists(select 1 from cron.job where jobname='netunim-sync-ledger-retention-weekly' and active) then
+  if not exists(select 1 from cron.job where jobname='netunim-sync-ledger-retention-weekly' and active and schedule='17 3 * * 0' and command='select * from netunim_internal.prune_sync_operation_ledgers();') then
     raise exception 'sync_ledger_retention_schedule_missing';
   end if;
+  if not exists(select 1 from cron.job where jobname='netunim-document-backup-retention-daily') then
+    perform cron.schedule('netunim-document-backup-retention-daily','43 3 * * *','select * from netunim_internal.prune_document_backups();');
+  end if;
+  if not exists(select 1 from cron.job where jobname='netunim-document-backup-retention-daily' and active and schedule='43 3 * * *' and command='select * from netunim_internal.prune_document_backups();') then
+    raise exception 'document_backup_retention_schedule_missing';
+  end if;
 end
-$ledger_schedule$;
+$retention_schedule$;
 
 notify pgrst,'reload schema';
 commit;

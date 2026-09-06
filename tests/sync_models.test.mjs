@@ -55,6 +55,24 @@ test('Kupa bank sync keeps business and home feeds independent across normalizat
  assert.equal(rebased.bank.currentBalance,4100);assert.equal(rebased.bank.homeFeed.accountNumber,'123-222222');
 });
 
+test('Kupa bank adjustments are reset-controlled whole-value configuration without entity IDs',()=>{
+ const base=k.normalizeState({version:4,bank:{adjustments:[{amount:10,reason:'opening balance'}]}});
+ const cloud=k.prepareKupaCloudState(base);
+ assert.equal(validKupaCloudState(cloud),true,'ID-less adjustments remain valid because they are not entity records');
+
+ const reset=structuredClone(base),unchangedRemote=structuredClone(base);reset.bank.adjustments=[];
+ const resetMerge=km.mergeState3Way(base,reset,unchangedRemote);
+ assert.deepEqual(resetMerge.conflicts,[]);assert.deepEqual(resetMerge.state.bank.adjustments,[],'an intentional local reset is preserved');
+
+ const concurrentRemote=structuredClone(base);concurrentRemote.bank.adjustments=[{amount:15,reason:'remote correction'}];
+ const conflict=km.mergeState3Way(base,reset,concurrentRemote);
+ assert.deepEqual(conflict.conflicts,['bank.adjustments'],'concurrent whole-array changes fail as an explicit merge conflict');
+ assert.deepEqual(conflict.state.bank.adjustments,concurrentRemote.bank.adjustments,'the ordinary merge does not invent per-record identity');
+
+ const rebased=km.rebaseLocalProgress(base,reset,concurrentRemote);
+ assert.deepEqual(rebased.bank.adjustments,[],'retry rebase preserves the intentional local reset as a whole value');
+});
+
 
 test('Kupa cashflow minimum thresholds merge independently without cross-account overwrites',()=>{
  const base=k.normalizeState({version:4,checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[],cards:[],cashflowSettings:{businessMinimum:null,homeMinimum:null},bank:{adjustments:[]}});
