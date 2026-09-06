@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createUiGlobalSearch} from '../netunim-kupa/site/assets/js/ui/global-search.js';
 
-function harness(){
+function harness(state={}){
   const calls=[];
   const ui={
     checkTab:'open',checkAccount:'עסקי',checkYear:'2026',checkFocus:'overdue',checkSearchValue:'local',
@@ -12,7 +12,7 @@ function harness(){
   const previousDocument=globalThis.document,previousRaf=globalThis.requestAnimationFrame;
   globalThis.document={querySelectorAll:()=>[]};
   globalThis.requestAnimationFrame=callback=>{callback();return 1};
-  const search=createUiGlobalSearch({model:{state:{}},ui,setPage:page=>calls.push(page)});
+  const search=createUiGlobalSearch({model:{state:{checks:[],...state}},ui,setPage:page=>calls.push(page)});
   return {search,ui,calls,restore(){globalThis.document=previousDocument;globalThis.requestAnimationFrame=previousRaf}};
 }
 
@@ -20,7 +20,15 @@ test('Kupa global check navigation removes local constraints and selects the cor
   const h=harness();try{
     assert.equal(h.search.navigateItem({group:'checks',kind:'check',id:'C1',account:'ביתי'}),true);
     assert.deepEqual(h.calls,['checks']);
-    assert.deepEqual([h.ui.checkTab,h.ui.checkAccount,h.ui.checkYear,h.ui.checkFocus,h.ui.checkSearchValue],['all','ביתי','all','all','']);
+    assert.deepEqual([h.ui.checkTab,h.ui.checkAccount,h.ui.checkYear,h.ui.checkFocus,h.ui.checkSearchValue],['open','ביתי','all','all','']);
+  }finally{h.restore()}
+});
+
+
+test('Kupa global check navigation sends closed checks to the closed tab',()=>{
+  const h=harness({checks:[{id:'CLOSED',status:'נפרע',account:'עסקי'}]});try{
+    assert.equal(h.search.navigateItem({group:'checks',kind:'check',id:'CLOSED',account:'עסקי'}),true);
+    assert.equal(h.ui.checkTab,'closed');
   }finally{h.restore()}
 });
 

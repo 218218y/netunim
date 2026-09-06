@@ -1,6 +1,7 @@
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
 import {searchKupaGlobalData} from '../domains/search/model.js';
+import {checkIsClosedStatus} from '../domains/checks/model.js';
 
 export function createUiGlobalSearch({model,ui,setPage}){
   let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null;
@@ -21,7 +22,7 @@ export function createUiGlobalSearch({model,ui,setPage}){
   function reveal(attribute,id){requestAnimationFrame(()=>{const target=[...document.querySelectorAll(`[${attribute}]`)].find(el=>el.getAttribute(attribute)===String(id));if(!target)return;target.scrollIntoView({block:'center',inline:'nearest',behavior:'smooth'});target.classList.add('global-search-target');if(highlightTimer)clearTimeout(highlightTimer);highlightTimer=setTimeout(()=>target.classList.remove('global-search-target'),2600)})}
   function navigateItem(item){
     if(!item)return false;
-    if(item.group==='checks'){ui.checkTab='all';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkFocus='all';ui.checkSearchValue='';setPage('checks');reveal('data-bulk-id',item.id);return true}
+    if(item.group==='checks'){const check=model.state.checks?.find(row=>String(row.id)===String(item.id));ui.checkTab=checkIsClosedStatus(check?.status)?'closed':'open';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkFocus='all';ui.checkSearchValue='';setPage('checks');reveal('data-bulk-id',item.id);return true}
     if(item.group==='credit'){ui.expensesTab='credit';ui.creditAccountFilter='all';ui.creditProviderFilter='all';ui.creditCardFilter='all';ui.creditSearchValue='';ui.creditDetailFocus={monthKey:item.monthKey||'',cardKey:item.cardKey||''};setPage('credit');reveal('data-credit-search-id',item.id);return true}
     if(item.group==='expenses'){ui.expensesTab='expenses';ui.expenseSearchValue='';setPage('credit');reveal('data-expense-id',item.id);return true}
     if(item.group==='cash'){ui.cashSearchValue='';setPage('cash');reveal('data-bulk-id',item.id);return true}

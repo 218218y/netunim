@@ -67,11 +67,20 @@ test('global check navigation selects the check account and removes local tab, y
     h.search.navigateItem({group:'checks',kind:'check',id:'check-1',account:'ביתי'});
     assert.deepEqual(h.calls.views,['kupa']);
     assert.equal(h.ui.kupaSubView,'checks');
-    assert.equal(h.ui.checkTab,'all');
+    assert.equal(h.ui.checkTab,'open');
     assert.equal(h.ui.checkAccount,'ביתי');
     assert.equal(h.ui.checkYear,'all');
     assert.equal(h.ui.checkSearchValue,'');
     assert.equal(h.calls.renders.length,1);
+  }finally{h.restore()}
+});
+
+
+test('global check navigation routes a closed check to the closed tab after the legacy all tab is removed',()=>{
+  const h=harness({checks:[{id:'check-closed',status:'נפרע',account:'עסקי'}]});
+  try{
+    h.search.navigateItem({group:'checks',kind:'check',id:'check-closed',account:'עסקי'});
+    assert.equal(h.ui.checkTab,'closed');
   }finally{h.restore()}
 });
 

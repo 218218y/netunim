@@ -258,6 +258,13 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in o
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+ok('data-action="check-tab">הכל</button>' in orders_checks_view
+   and 'data-action="check-tab">הכל</button>' in kupa_checks_view
+   and 'data-action="check-tab-4"' not in orders_checks_view and 'data-action="check-tab-4"' not in kupa_checks_view
+   and "if(ui.checkTab==='open')rows=rows.filter(x=>!checkIsClosedStatus(x.status))" in orders_checks_view
+   and "if(ui.checkTab==='open')rows=rows.filter(x=>!checkIsClosedStatus(x.status))" in kupa_checks_view
+   and 'data-action="mark-alert-check-deposited"' in (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8"),
+   "checks workflow: the first tab is the non-closed all view, the legacy all tab is removed, and due-check warnings expose a direct deposit action")
 ok("checkForecastMarkup()" in orders_checks_view
    and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear,account:ui.checkAccount})" in orders_checks_view
    and "צ׳קים בקופה לפי חודשים קדימה" not in orders_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in orders_checks_view

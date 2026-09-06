@@ -48,7 +48,7 @@ function saveCheck(id){
   closeModal(true);saveChecksState('הצק עודכן');
 }
 
-function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status==='הופקד - במעקב')return;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד')}
+function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד');return true}
 
 function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע')}
 

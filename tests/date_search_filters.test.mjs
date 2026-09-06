@@ -30,4 +30,25 @@ assert.equal(ordersChecks.visibleChecks().length,1,'Orders checks search recogni
 ordersUi.checkSearchValue='20-8-2026';
 assert.equal(ordersChecks.visibleChecks().length,1,'Orders checks search recognizes created date');
 
+
+
+const statusRows=[
+  {...check,id:'OPEN',status:'בקופה'},
+  {...check,id:'DEPOSITED',status:'הופקד - במעקב'},
+  {...check,id:'CLEARED',status:'נפרע'},
+  {...check,id:'RETURNED',status:'חזר'},
+  {...check,id:'CANCELLED',status:'בוטל'},
+];
+for(const [label,createView,uiFactory,args] of [
+  ['Kupa',createKupaChecksView,()=>({checkTab:'open',checkFocus:'all',checkYear:'all',checkSearchValue:'',checkAccount:'עסקי',bulkSelected:new Set()}),ui=>({ui,model:{state:{checks:statusRows}},syncBulkUi:()=>{},bulkControls:()=>'',bulkHeader:()=>'',bulkCell:()=>'',futureCheckMonths:()=>[]})],
+  ['Orders',createOrdersChecksView,()=>({checkTab:'open',checkYear:'all',checkSearchValue:'',checkAccount:'עסקי',checksBulkMode:false,checksBulkSelected:new Set()}),ui=>({model:{state:{checks:statusRows}},ui,checksSession:{},loadSession:()=>false,mountViewLayout:()=>{}})],
+]){
+  const ui=uiFactory(),view=createView(args(ui));
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['OPEN','DEPOSITED'],`${label}: the first "הכל" tab includes every non-closed check`);
+  ui.checkTab='deposited';
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['DEPOSITED'],`${label}: deposited filter remains specific`);
+  ui.checkTab='closed';
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['CLEARED','RETURNED','CANCELLED'],`${label}: closed filter contains only closed statuses`);
+}
+
 console.log('PASS date search filters: flexible date forms are canonical across bank/credit/check search helpers');

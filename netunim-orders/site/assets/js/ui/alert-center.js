@@ -15,11 +15,11 @@ function alertCard(item){
   if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה, פחות חיובי האשראי וההוצאות של אותו חשבון, ובתוספת צ׳קים מאותו חשבון שעדיין בקופה ונכנסים עד יום החיתוך שהוגדר.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
   const dueText=item.isToday?`מועד ההפקדה הוא היום · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
   const facts=[item.checkNumber?`מס׳ צ׳ק ${item.checkNumber}`:'',item.note?item.note:''].filter(Boolean);
-  return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
+  return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">הופקד</button></div>`;
 }
 
-export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{}}){
-  let startupHandled=false;
+export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},markCheckDeposited=()=>false}){
+  let startupHandled=false,openMode=null;
 
   function currentAlerts(today=checkTodayISO()){
     const snapshot=financeSnapshot?.()||{};
@@ -51,10 +51,24 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
     return `${intro}${list}`;
   }
 
-  function openAlertCenter({startup=false}={}){
-    const alerts=refreshIndicator();
+  function renderOpenAlertCenter(){
+    const startup=openMode==='startup',alerts=refreshIndicator();
+    if(!alerts.length){closeModal();openMode=null;return 0}
     modal(startup?'התראות בפתיחת המערכת':'מרכז אזהרות',modalBody(alerts,{startup}),'<button class="btn primary" type="button" data-action="close-modal">הבנתי</button>');
     return alerts.length;
+  }
+
+  function openAlertCenter({startup=false}={}){
+    openMode=startup?'startup':'manual';
+    return renderOpenAlertCenter();
+  }
+
+  function markAlertCheckDeposited(checkId){
+    const item=currentAlerts().find(row=>row.kind==='check_due'&&row.checkId===String(checkId||''));
+    if(!item)return false;
+    if(markCheckDeposited(item.checkId)!==true)return false;
+    renderOpenAlertCenter();
+    return true;
   }
 
   function openAlertTarget(alertId){
@@ -75,5 +89,5 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
     return true;
   }
 
-  return {currentAlerts,refreshIndicator,openAlertCenter,openAlertTarget,showStartupAlerts};
+  return {currentAlerts,refreshIndicator,openAlertCenter,markAlertCheckDeposited,openAlertTarget,showStartupAlerts};
 }

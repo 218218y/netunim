@@ -670,6 +670,7 @@ const uiAlertCenter=createUiAlertCenter({
   closeModal:(...args)=>uiModal.closeModal(...args),
   navigateToChecks:(...args)=>uiNavigation.openKupaChecks(...args),
   navigateToCashflow:(...args)=>uiNavigation.openKupaBank(...args),
+  markCheckDeposited:(...args)=>domainsChecksEditor.markCheckDeposited(...args),
 });
 
 const syncDocument=createSyncDocument({
@@ -830,6 +831,7 @@ const uiActions=createUiActions({
   warehouseUi,
   ui,
   openAlertTarget:(...args)=>uiAlertCenter.openAlertTarget(...args),
+  markAlertCheckDeposited:(...args)=>uiAlertCenter.markAlertCheckDeposited(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),

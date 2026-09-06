@@ -1,6 +1,7 @@
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
 import {searchGlobalData} from '../domains/search/model.js';
+import {checkIsClosedStatus} from '../domains/checks/model.js';
 
 // Global search is a UI coordinator: data matching stays in domains/search/model.js,
 // while navigation reuses the existing view renderers and their native state.
@@ -38,7 +39,7 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
 
   function navigateService(item){prepareView('service');serviceUi.serviceSearch='';const call=model.state.serviceCalls.find(x=>x.id===item.id);serviceUi.serviceFilter=call?.closed?'closed':'all';render();reveal('data-service-bulk-id',item.id)}
 
-  function navigateCheck(item){ui.kupaSubView='checks';prepareView('kupa');ui.checkTab='all';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkSearchValue='';render();reveal('data-check-id',item.id)}
+  function navigateCheck(item){const check=model.state.checks.find(row=>String(row.id)===String(item.id));ui.kupaSubView='checks';prepareView('kupa');ui.checkTab=checkIsClosedStatus(check?.status)?'closed':'open';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkSearchValue='';render();reveal('data-check-id',item.id)}
 
   function navigateWarehouse(item){prepareView('warehouse');warehouseUi.warehouseSearch='';if(item.kind==='inventory-item'){const inventoryItem=model.state.inventoryItems.find(x=>x.id===item.id);if(inventoryItem?.active===false){warehouseUi.warehouseTab='history';render();openInventoryItemModal(item.id);return}warehouseUi.warehouseTab='stock';render();reveal('data-stock-bulk-id',item.id);return}if(item.kind==='warehouse-order'){warehouseUi.warehouseTab='orders';render();reveal('data-warehouse-order-id',item.id);return}warehouseUi.warehouseTab='history';render();reveal('data-inventory-event-id',item.id)}
 
