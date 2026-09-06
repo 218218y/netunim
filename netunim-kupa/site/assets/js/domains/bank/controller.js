@@ -4,7 +4,7 @@ import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
-const BANK_BRIDGE_VERSION=25;
+const BANK_BRIDGE_VERSION=34;
 
 function canonicalJson(value){
   if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
@@ -28,13 +28,17 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,readBankTransactions=async()=>[]}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
-const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null},home:{accountKey:'',syncKey:'',rows:null}};
+const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
 let bankDisplayArchivePromise=null;
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
+function completeTransactionCoverage(snapshot){
+  const coverage=snapshot?.transactionCoverage&&typeof snapshot.transactionCoverage==='object'?snapshot.transactionCoverage:{},from=String(coverage.from||''),to=String(coverage.to||''),valid=/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to)&&from<=to,warning=String(snapshot?.transactionWarning||'');
+  return {complete:coverage.complete===true&&!warning&&valid,from:valid?from:null,to:valid?to:null,days:Number(coverage.days)||null,warning};
+}
 function sharedBankLastSyncAt(state=model.state){const feed=normalizeBankFeed(state?.bank?.feed);return feed?.syncedAt||state?.bank?.bankSyncAt||(state?.bank?.source==='hapoalim'?state?.bank?.updatedAt:null)||null}
 function feedFromSnapshot(snapshot,fetchedAt){
   if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;
@@ -72,7 +76,7 @@ async function saveBankBalance(){
   try{await commitBankSnapshot(el.value,{source:'manual'})}catch(e){toast(e.message||String(e))}
 }
 
-function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows}):normalized}
+function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows,directSnapshot:cache.directSnapshot}):normalized}
 function bankBridgeUiState(){
   const feed=displayArchiveFeed('business',model.state.bank?.feed),homeFeed=displayArchiveFeed('home',model.state.bank?.homeFeed);
   const sharedLastSyncAt=sharedBankLastSyncAt();
@@ -86,7 +90,7 @@ async function ensureBankDisplayArchive(){
   const targets=[['business',normalizeBankFeed(model.state.bank?.feed)],['home',normalizeBankFeed(model.state.bank?.homeFeed)]].filter(([,feed])=>feed?.accountNumber);
   const pending=targets.filter(([role,feed])=>{const cache=bankDisplayArchive[role];return cache.accountKey!==String(feed.accountNumber||'')||cache.syncKey!==String(feed.syncedAt||'')||!Array.isArray(cache.rows)});
   if(!pending.length)return false;
-  bankDisplayArchivePromise=(async()=>{let changed=false;for(const [role,feed] of pending){try{const rows=await readBankTransactions(feed.accountNumber,role,{days:null});bankDisplayArchive[role]={accountKey:String(feed.accountNumber||''),syncKey:String(feed.syncedAt||''),rows};changed=true}catch(error){console.error(`bank display archive ${role}`,error)}}return changed})();
+  bankDisplayArchivePromise=(async()=>{let changed=false;for(const [role,feed] of pending){try{const [rows,directSnapshot]=await Promise.all([readBankTransactions(feed.accountNumber,role,{days:null}),readBankTransactionSnapshot(feed.accountNumber,role)]);bankDisplayArchive[role]={accountKey:String(feed.accountNumber||''),syncKey:String(feed.syncedAt||''),rows,directSnapshot};changed=true}catch(error){console.error(`bank display archive ${role}`,error)}}return changed})();
   try{const changed=await bankDisplayArchivePromise;if(changed)render();return changed}finally{bankDisplayArchivePromise=null}
 }
 
@@ -191,15 +195,19 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     const fetchedAt=result.fetchedAt||new Date().toISOString(),businessAccount=accountIdOf(business),homeAccount=home?accountIdOf(home):'';
     let businessArchive=Array.isArray(business.transactions)?business.transactions:[],homeArchive=home&&Array.isArray(home.transactions)?home.transactions:[],archiveAudit=null;
     if(cloudArchive){
-      const businessMerge=await mergeBankTransactions(businessAccount,'business',business.transactions||[]),homeMerge=home&&homeAccount?await mergeBankTransactions(homeAccount,'home',home.transactions||[]):null;
-      businessArchive=await readBankTransactions(businessAccount,'business',{days:370});homeArchive=homeAccount?await readBankTransactions(homeAccount,'home',{days:370}):[];
+      const businessCoverage=completeTransactionCoverage(business),homeCoverage=home?completeTransactionCoverage(home):null;
+      const businessMerge=await syncBankTransactionsSnapshot(businessAccount,'business',business.transactions||[],{snapshotAt:fetchedAt,coverage:businessCoverage,complete:businessCoverage.complete}),homeMerge=home&&homeAccount?await syncBankTransactionsSnapshot(homeAccount,'home',home.transactions||[],{snapshotAt:fetchedAt,coverage:homeCoverage,complete:homeCoverage?.complete===true}):null;
+      const [nextBusinessArchive,nextBusinessDirect,nextHomeArchive,nextHomeDirect]=await Promise.all([readBankTransactions(businessAccount,'business',{days:370}),readBankTransactionSnapshot(businessAccount,'business'),homeAccount?readBankTransactions(homeAccount,'home',{days:370}):Promise.resolve([]),homeAccount?readBankTransactionSnapshot(homeAccount,'home'):Promise.resolve(null)]);
+      businessArchive=nextBusinessArchive;homeArchive=nextHomeArchive;
+      bankDisplayArchive.business={accountKey:String(businessAccount||''),syncKey:String(fetchedAt),rows:businessArchive,directSnapshot:nextBusinessDirect};
+      if(homeAccount)bankDisplayArchive.home={accountKey:String(homeAccount||''),syncKey:String(fetchedAt),rows:homeArchive,directSnapshot:nextHomeDirect};
       const requireExactArchive=historyDays>=365,businessAudit=assertBankArchiveCoverage(businessMerge,businessArchive,{role:'עסקי',requireExactCount:requireExactArchive}),homeAudit=home&&homeAccount?assertBankArchiveCoverage(homeMerge,homeArchive,{role:'ביתי',requireExactCount:requireExactArchive}):null;
-      archiveAudit={version:2,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount},home:homeAudit?{...homeAudit,accountKey:homeAccount}:null};
+      archiveAudit={version:3,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount,reconciliation:businessMerge?.result||null,coverage:businessCoverage},home:homeAudit?{...homeAudit,accountKey:homeAccount,reconciliation:homeMerge?.result||null,coverage:homeCoverage}:null};
     }
     const businessFeed=feedFromSnapshot({...business,transactions:businessArchive},fetchedAt),homeFeed=home?feedFromSnapshot({...home,transactions:homeArchive},fetchedAt):null;
     const warnings=[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean);
     const previousBank=model.state.bank&&typeof model.state.bank==='object'?model.state.bank:{};
-    const exactBackfillVerified=cloudArchive&&historyDays>=365&&!business.transactionWarning&&!homeFailure&&(!home||!home.transactionWarning),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);
+    const exactBackfillVerified=cloudArchive&&historyDays>=365&&completeTransactionCoverage(business).complete&&!homeFailure&&(!home||completeTransactionCoverage(home).complete),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);
     const nextBank={...previousBank,currentBalance:wholeMoney(business.balance),availableBalance:Number.isFinite(Number(business.availableBalance))?Number(business.availableBalance):null,creditLimit:Number.isFinite(Number(business.creditLimit))?Number(business.creditLimit):null,creditLimitUsed:Number.isFinite(Number(business.creditLimitUsed))?Number(business.creditLimitUsed):null,creditLimitUsedPercent:Number.isFinite(Number(business.creditLimitUsedPercent))?Number(business.creditLimitUsedPercent):null,updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:sharedChecksObservedSequence(),adjustments:[],source:'hapoalim',sourceAccount:businessAccount||null,bankSyncAt:fetchedAt,feed:businessFeed,homeFeed:home?homeFeed:(homeFailure?previousBank.homeFeed??null:null),archiveInitialized:cloudArchive?(archiveReady||exactBackfillVerified):previousBank.archiveInitialized===true,archiveVersion:exactBackfillVerified?2:archiveVersion,archiveInitializedAt:cloudArchive?(archiveReady?previousBank.archiveInitializedAt||null:(exactBackfillVerified?fetchedAt:null)):(previousBank.archiveInitializedAt||null),archiveAudit:cloudArchive?archiveAudit:(previousBank.archiveAudit||null),archiveBaselineAudit:cloudArchive?archiveBaselineAudit:(previousBank.archiveBaselineAudit||null)};
     if(session.connectionMode==='supabase'&&typeof saveBankSyncSnapshot==='function'){
       await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq);
@@ -224,6 +232,17 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
   }finally{if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('bank sync lease release',error)}bridgeState.busy=false;render()}
 }
 
+async function acknowledgeMissingBankTransaction(transactionId){
+  if(session.connectionMode!=='supabase')return false;
+  const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0){toast('לא ניתן לזהות את תנועת הבנק לסימון');return false}
+  try{
+    await acknowledgeBankTransactionMissing(id);
+    for(const role of ['business','home']){const cache=bankDisplayArchive[role];if(Array.isArray(cache.rows)&&cache.rows.some(row=>Number(row?.archiveId)===id)){cache.rows=null;cache.directSnapshot=null}}
+    await ensureBankDisplayArchive();
+    toast('התנועה סומנה כנבדקה. היא נשמרת בהיסטוריה אך לא תופיע עוד כאזהרה פעילה.');render();return true;
+  }catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
+}
+
 function maybeAutoRefreshBankBalance(){
   if(autoTimer){clearTimeout(autoTimer);autoTimer=null}
   if(!session.backendReady||!bridge.autoEnabled()||!bridge.getBridgeToken()||bridgeState.busy)return;
@@ -236,5 +255,5 @@ function maybeAutoRefreshBankBalance(){
   autoTimer=setTimeout(()=>{autoTimer=null;refreshBankBalance({interactive:false,auto:true}).catch(e=>console.error('bank auto refresh',e))},300);
 }
 
-return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,setBankAutoRefresh,refreshBankBalance,maybeAutoRefreshBankBalance,commitBankSnapshot};
+return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
 }

@@ -1,0 +1,17 @@
+import {esc} from '../../core/values.js';
+
+export function bankMissingActive(row){return row?.presenceState==='missing'&&!row?.missingAcknowledgedAt}
+
+function presenceTime(value){if(!value)return '—';const d=new Date(value);return Number.isFinite(d.getTime())?`${d.toLocaleDateString('he-IL')} · ${d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}`:'—'}
+
+export function bankDataMode(ui){return ui?.bankDataView==='direct'?'direct':'history'}
+
+export function bankSmartRows(rows){return [...(Array.isArray(rows)?rows:[])].sort((a,b)=>{const alertDelta=Number(bankMissingActive(b))-Number(bankMissingActive(a));if(alertDelta)return alertDelta;return String(b?.date||b?.processedDate||'').localeCompare(String(a?.date||a?.processedDate||''))})}
+
+export function bankDataViewToggleMarkup(mode){return `<span class="bank-data-view-tabs" role="tablist" aria-label="מקור תנועות הבנק"><button type="button" role="tab" aria-selected="${mode==='history'}" class="bank-data-view-tab ${mode==='history'?'active':''}" data-action="set-orders-bank-data-view" data-click-arg0="history">היסטוריה חכמה</button><button type="button" role="tab" aria-selected="${mode==='direct'}" class="bank-data-view-tab ${mode==='direct'?'active':''}" data-action="set-orders-bank-data-view" data-click-arg0="direct">עדכני מהבנק</button></span>`}
+
+export function bankDirectSnapshotNote(snapshot){if(!snapshot)return `<div class="bank-direct-snapshot-note empty-state"><b>עדיין אין צילום תנועות מלא ומאומת מהבנק.</b><span>צילום ישיר יישמר רק לאחר קריאת תנועות מלאה ללא אזהרה; קריאה חלקית לעולם לא תחליף אותו.</span></div>`;return `<div class="bank-direct-snapshot-note"><span><b>נתוני הבנק הישירים האחרונים</b> · ${esc(presenceTime(snapshot.snapshotAt))}</span><small>כיסוי ${esc(snapshot.coverageFrom)} עד ${esc(snapshot.coverageTo)} · ${esc(snapshot.transactionCount)} תנועות. סנכרון חלקי אינו מחליף צילום זה.</small></div>`}
+
+export function bankMissingSummary(rows){const active=(Array.isArray(rows)?rows:[]).filter(bankMissingActive),cheques=active.filter(row=>row.cheque);if(!active.length)return '';return `<div class="bank-missing-summary"><span class="bank-missing-summary-icon" aria-hidden="true">!</span><div><b>${esc(active.length)} תנועות אינן מופיעות בסריקת הבנק המלאה האחרונה${cheques.length?` · מתוכן ${esc(cheques.length)} הפקדות צ׳קים`:''}</b><small>הן הועלו לראש הרשימה. ההתראה נשארת גם אחרי סנכרונים נוספים, עד שהתנועה חוזרת לבנק או עד סימון ידני „נבדק”.</small></div></div>`}
+
+export function bankMissingDetail(row){if(!bankMissingActive(row))return '';const title=row.cheque?'הפקדת צ׳ק לא מופיעה בסריקת הבנק האחרונה':'התנועה לא מופיעה בסריקת הבנק האחרונה';return `<div class="bank-missing-detail"><div><b>${esc(title)}</b><small>נראתה לאחרונה: ${esc(presenceTime(row.lastSeenAt))} · חסרה מאז: ${esc(presenceTime(row.missingSince))}</small></div>${row.archiveId?`<button type="button" class="btn bank-missing-ack" data-action="ack-orders-bank-missing" data-click-arg0="${esc(row.archiveId)}">נבדק — הסר התראה</button>`:''}</div>`}

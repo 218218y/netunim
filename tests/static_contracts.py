@@ -345,8 +345,8 @@ ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/dom
    "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=25" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v25 contract")
+ok("const BANK_BRIDGE_VERSION=34" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v34 contract")
 ok("const CREDIT_BRIDGE_VERSION=33" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
    "orders Kupa UI: credit controls require Bridge v33 / Credit Connector contract v2 so older bridges cannot silently ignore the corrected Frames semantics")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
@@ -454,6 +454,8 @@ ok("enable row level security" in lease_sql.lower()
    "distributed finance lease SQL: RLS confines lease rows to the authenticated owner")
 ok(all(fragment in sqls["kupa_setup"] and fragment in sqls["orders_setup"] for fragment in ("create table if not exists public.finance_sync_leases","create or replace function public.claim_finance_sync_lease","create or replace function public.release_finance_sync_lease")),
    "distributed finance lease SQL: clean installations include the same lock table and RPCs as the additive upgrade")
+ok(all(fragment in sqls["kupa_setup"] and fragment in sqls["orders_setup"] for fragment in ("create table if not exists public.bank_transaction_snapshots","create or replace function public.sync_bank_transactions_snapshot","create or replace function public.acknowledge_bank_transaction_missing","bank_transactions_owner_missing_idx")),
+   "bank snapshot reconciliation SQL: clean installations include durable snapshots, presence tracking and manual acknowledgement RPCs")
 contention_sql=sqls["orders_contention_hardening"]
 ok(contention_sql==sqls["kupa_contention_hardening"],
    "core RPC contention hardening: Kupa and Orders ship the exact same final migration")

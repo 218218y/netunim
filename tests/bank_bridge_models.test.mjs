@@ -151,7 +151,7 @@ assert.equal(navRecoveries,2,'navigation recovery callback runs only between tra
 await assert.rejects(()=>retryTransientNavigation(async()=>{throw new Error('bank rejected request')},{attempts:3}),/bank rejected request/,'non-navigation failures are never retried as if they were transient');
 assert.equal(HAPOALIM_TRANSACTION_LOOKBACK_DAYS,30,'recent transaction fetch is intentionally bounded to thirty days');
 assert.equal(HAPOALIM_TRANSACTION_LIMIT,1000,'bridge requests the full thirty-day window with a 1000-row bank page size');
-assert.equal(BANK_FEED_TRANSACTION_LIMIT,1000,'shared Kupa bank feed preserves the full thirty-day bank page instead of trimming it to twenty rows');
+assert.equal(BANK_FEED_TRANSACTION_LIMIT,20000,'shared Kupa bank feed preserves complete multi-page bank snapshots without silently trimming them');
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 
 const detailPayload=[{
@@ -231,7 +231,7 @@ const feed=normalizeBankFeed({
 assert.equal(feed.balance,4321.5,'shared bank feed preserves the authoritative bank balance');
 assert.equal(feed.transactions.length,3,'shared bank feed carries the complete fetched rolling-window transaction set');
 assert.equal(feed.transactions.find(x=>x.bankReference==='101').balanceAfter,4321.5,'shared bank feed preserves the bank-provided per-transaction balance');
-assert.equal(feed.version,4,'shared feed schema is upgraded to v4 for structured cheque rows');
+assert.equal(feed.version,5,'shared feed schema is upgraded to v5 for bank-presence reconciliation and direct snapshots');
 assert.deepEqual(feed.transactions.find(x=>x.cheque).checkDetails.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'shared feed v4 preserves structured verified cheque rows across cloud/local normalization');
 assert.equal(feed.accountNumber,'12-345-678901','shared bank feed carries the selected account identity');
 assert.equal(feed.syncedAt,'2026-08-30T06:15:00.000Z','shared bank feed carries the successful bank-sync timestamp');

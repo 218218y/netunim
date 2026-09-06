@@ -1,5 +1,5 @@
-export const BANK_FEED_VERSION=4;
-export const BANK_FEED_TRANSACTION_LIMIT=1000;
+export const BANK_FEED_VERSION=5;
+export const BANK_FEED_TRANSACTION_LIMIT=20000;
 
 export function bankTransactionIdentity(row={},role='business',index=0){
   const side=role==='home'?'home':'business',when=String(row.date||row.processedDate||'').slice(0,10),stable=String(row.id||row.bankSerial||row.bankReference||'').trim(),fallback=stable||`${String(row.description||'').trim()}|${Number(row.amount||0)}|${index}`;
@@ -43,7 +43,29 @@ export function normalizeBankFeedTransaction(value){
     bankSerial:cleanText(row.bankSerial,100),
     cheque:!!row.cheque,
     checkDetails:row.cheque?normalizeCheckDetails(row.checkDetails):null,
+    archiveId:Number.isSafeInteger(Number(row.archiveId))&&Number(row.archiveId)>0?Number(row.archiveId):null,
+    presenceState:['unknown','present','missing'].includes(row.presenceState)?row.presenceState:'unknown',
+    firstSeenAt:cleanIso(row.firstSeenAt),
+    lastSeenAt:cleanIso(row.lastSeenAt),
+    missingSince:cleanIso(row.missingSince),
+    missingAcknowledgedAt:cleanIso(row.missingAcknowledgedAt),
   };
+}
+
+
+function cleanCoverageDate(value){const s=String(value||'').slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:''}
+function normalizeDirectSnapshot(value){
+  if(!value||typeof value!=='object')return null;
+  const snapshotAt=cleanIso(value.snapshotAt),coverageFrom=cleanCoverageDate(value.coverageFrom),coverageTo=cleanCoverageDate(value.coverageTo);
+  if(!snapshotAt||!coverageFrom||!coverageTo)return null;
+  const seen=new Set(),transactions=[];
+  for(const raw of Array.isArray(value.transactions)?value.transactions:[]){
+    const row=normalizeBankFeedTransaction(raw),key=`${row.id}|${row.date}|${row.amount}|${row.description}`;
+    if(seen.has(key))continue;seen.add(key);transactions.push(row);
+  }
+  transactions.sort((a,b)=>String(b.date||b.processedDate||'').localeCompare(String(a.date||a.processedDate||'')));
+  transactions.length=Math.min(transactions.length,BANK_FEED_TRANSACTION_LIMIT);
+  return {snapshotAt,coverageFrom,coverageTo,transactionCount:Number.isSafeInteger(Number(value.transactionCount))?Number(value.transactionCount):transactions.length,transactions};
 }
 
 export function normalizeBankFeed(feed){
@@ -70,5 +92,6 @@ export function normalizeBankFeed(feed){
     syncedAt,
     transactions,
     transactionWarning:cleanText(feed.transactionWarning,320),
+    directSnapshot:normalizeDirectSnapshot(feed.directSnapshot),
   };
 }

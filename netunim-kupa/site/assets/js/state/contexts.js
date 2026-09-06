@@ -45,6 +45,7 @@ return {
     creditCardFilter:'all',
     creditDetailFocus:null,
     bankAccountView:'business',
+    bankDataView:'history',
     bankDateMode:'all',
     bankDateFrom:'',
     bankDateTo:'',

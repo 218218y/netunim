@@ -61,3 +61,13 @@
 6. הרץ ב-staging את cloud_sync_v3_server_contracts.sql, את cloud_sync_v3_ledger_retention_contracts.sql ואת benchmark העומס לפני בחירת statement_timeout או הוספת index ל-cleanup.
 7. רק לאחר שה-SQL עבר, פרוס את לקוחות Orders ו-Kupa יחד והריץ tools/sync-assets.py --check.
 8. האינדקס google_calendar_oauth_states_owner_index_upgrade.sql הוא migration נפרד ומורץ מחוץ ל-transaction.
+
+שדרוג זיהוי תנועות בנק שנעלמו / Direct Snapshot
+-----------------------------------------------
+- בהתקנה חדשה אין פעולה נוספת: setup.sql כולל את טבלת ה-snapshot, סטטוסי presence ואת RPC האישור הידני.
+- במערכת קיימת אין להריץ setup.sql מחדש לצורך השדרוג. גבה תחילה את מסד הנתונים, ואז הרץ פעם אחת את bank_snapshot_reconciliation_upgrade.sql מאחת משתי האפליקציות (הקבצים זהים byte-for-byte).
+- המיגרציה אינה מוחקת תנועות בנק קיימות. כל שורת ארכיון קיימת מתחילה כ-unknown, והסריקה המלאה התקינה הראשונה לאחר הפריסה משמשת baseline בלבד.
+- רק סריקה מלאה מאוחרת יותר רשאית להעביר תנועה שנצפתה קודם מ-present ל-missing. סריקה חלקית/עם transactionWarning אינה מסמנת היעלמויות ואינה מחליפה את ה-Direct Snapshot התקין האחרון.
+- missing נשאר בהיסטוריה ובאזהרה עד שהתנועה חוזרת בפועל או עד אישור ידני של המשתמש. אישור ידני אינו מוחק את התנועה; חזרה ולאחריה היעלמות נוספת יוצרת אירוע אזהרה חדש.
+- לאחר setup/upgrade שמחליף RPC ממשיכים להחיל את core_rpc_contention_hardening_upgrade.sql לפי מדיניות הפרויקט; ה-RPC של ה-snapshot קורא דרך public.merge_bank_transactions ולכן נשאר תקין משני צדי ה-hardening.
+

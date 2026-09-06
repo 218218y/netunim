@@ -645,7 +645,10 @@ const domainsFinanceController=createDomainsFinanceController({
   releaseFinanceSyncLease:(...args)=>cloudTransport.releaseFinanceSyncLease(...args),
   saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
   mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
+  syncBankTransactionsSnapshot:(...args)=>cloudTransport.syncBankTransactionsSnapshot(...args),
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
+  readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
+  acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
 });
 
 const domainsFinanceView=createDomainsFinanceView({
@@ -829,6 +832,8 @@ const uiActions=createUiActions({
   openAlertTarget:(...args)=>uiAlertCenter.openAlertTarget(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
+  setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
+  acknowledgeOrdersBankMissing:(...args)=>domainsFinanceView.acknowledgeBankMissing(...args),
   setOrdersBankSearch:(...args)=>domainsFinanceView.setBankSearch(...args),
   setOrdersBankDateMode:(...args)=>domainsFinanceView.setBankDateMode(...args),
   setOrdersBankDateBoundary:(...args)=>domainsFinanceView.setBankDateBoundary(...args),

@@ -41,7 +41,7 @@ import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=33;
+const BRIDGE_VERSION=34;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -333,9 +333,12 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
   const creditLimitUsedPercent=Number.isFinite(Number(balanceData?.creditLimitUtilizationPercent))?Number(balanceData.creditLimitUtilizationPercent):null;
   if(!Number.isFinite(balance))throw stageError('balance',Object.assign(new Error('בנק הפועלים לא החזיר יתרת עו״ש מספרית לחשבון שנבחר'),{code:'NO_BALANCE'}));
 
+  const end=new Date(),days=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(1,Number(historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
+  const coverageStart=new Date(end);coverageStart.setDate(coverageStart.getDate()-(days-1));
+  const isoLocalDate=value=>{const compact=ymdDate(value);return compact?`${compact.slice(0,4)}-${compact.slice(4,6)}-${compact.slice(6,8)}`:''};
   let transactions=[],transactionWarning='',reusableReady=balanceReady;
+  let transactionCoverage={complete:false,from:isoLocalDate(coverageStart),to:isoLocalDate(end),days};
   try{
-    const end=new Date(),days=Math.min(HAPOALIM_INITIAL_BACKFILL_DAYS,Math.max(1,Number(historyDays)||HAPOALIM_TRANSACTION_LOOKBACK_DAYS));
     const all=[];
     async function fetchWindow(windowStart,windowEnd){
       const txResult=await pageFetchJson(page,async current=>{
@@ -362,10 +365,11 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
       await fetchWindow(chunkStart,chunkEnd);
     }
     transactions=normalizeRecentTransactions(all,all.length);
+    transactionCoverage={...transactionCoverage,complete:true};
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
 
-  return {snapshot:{balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning},ready:reusableReady};
+  return {snapshot:{balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning,transactionCoverage},ready:reusableReady};
 }
 
 function configuredAccountSelector(credentials,role){

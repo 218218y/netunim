@@ -541,7 +541,10 @@ const domainsBankController=createDomainsBankController({
   releaseFinanceSyncLease:(...args)=>releaseSharedFinanceSyncLease(...args),
   saveBankSyncSnapshot:(...args)=>cloudTransport.saveBankSyncSnapshot(...args),
   mergeBankTransactions:(...args)=>cloudTransport.mergeBankTransactions(...args),
+  syncBankTransactionsSnapshot:(...args)=>cloudTransport.syncBankTransactionsSnapshot(...args),
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
+  readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
+  acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
 });
 
 const domainsBankView=createDomainsBankView({
@@ -766,6 +769,8 @@ const uiActions=createUiActions({
   configureBankBridge:(...args)=>domainsBankController.configureBankBridge(...args),
   selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
   setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),
+  setBankDataView:(...args)=>domainsBankView.setBankDataView(...args),
+  acknowledgeMissingBankTransaction:(...args)=>domainsBankController.acknowledgeMissingBankTransaction(...args),
   setBankSearch:(...args)=>domainsBankView.setBankSearch(...args),
   setBankDateMode:(...args)=>domainsBankView.setBankDateMode(...args),
   setBankDateBoundary:(...args)=>domainsBankView.setBankDateBoundary(...args),

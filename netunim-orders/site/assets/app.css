@@ -473,3 +473,26 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .alert-center-card-action{appearance:none;width:100%;font:inherit;color:inherit;text-align:inherit;cursor:pointer;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}.alert-center-card-action:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(70,50,36,.09)}.alert-center-card-action:focus-visible{outline:3px solid rgba(143,109,85,.22);outline-offset:2px}.alert-center-card-open{align-self:center;flex:0 0 auto;padding-inline-start:4px;color:var(--muted);font-size:10.5px;font-weight:850}.alert-center-card-action:hover .alert-center-card-open{color:var(--text)}
 .alert-center-empty{min-height:150px;display:grid;place-items:center;align-content:center;gap:7px;margin-top:8px;border:1px dashed #cfe0d5;border-radius:14px;background:#f7fbf8;color:var(--good)}.alert-center-empty span{width:36px;height:36px;display:grid;place-items:center;border-radius:50%;background:var(--good-soft);font-size:21px;font-weight:900}.alert-center-empty b{font-size:14px}
 @media(max-width:700px){.alert-center-card-title{align-items:flex-start;flex-direction:column;gap:3px}.alert-center-card-title strong{font-size:19px}.alert-center-intro{padding:13px}.alert-center-intro-icon{width:34px;height:34px;flex-basis:34px}.alert-center-trigger{width:32px;height:32px}}
+
+/* Bank snapshot reconciliation: smart history is default; complete direct bank snapshot is optional. */
+.bank-caption-controls{display:flex;align-items:center;justify-content:flex-end;gap:12px;min-width:0;flex-wrap:wrap}
+.bank-data-view-tabs{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid #dce5e0;border-radius:9px;background:#f5f8f6;white-space:nowrap}
+.bank-data-view-tab{appearance:none;border:0;border-radius:7px;background:transparent;color:var(--muted);padding:5px 9px;font:inherit;font-size:10px;font-weight:850;cursor:pointer}
+.bank-data-view-tab:hover{background:#fff;color:var(--text)}
+.bank-data-view-tab.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(35,55,47,.10)}
+.bank-direct-snapshot-note,.bank-missing-summary{margin:10px 14px 0;padding:10px 12px;border-radius:10px;display:flex;align-items:flex-start;gap:10px}
+.bank-direct-snapshot-note{border:1px solid #dce6e1;background:#f7faf8;color:var(--text);flex-direction:column;gap:3px}
+.bank-direct-snapshot-note.empty-state{border-style:dashed;color:var(--muted)}
+.bank-direct-snapshot-note span,.bank-direct-snapshot-note small{display:block}
+.bank-direct-snapshot-note small{color:var(--muted);font-size:10px}
+.bank-missing-summary{border:1px solid #ead6a4;background:var(--warn-soft);color:#654f18}
+.bank-missing-summary-icon{display:inline-grid;place-items:center;flex:0 0 24px;width:24px;height:24px;border-radius:50%;background:#fff;font-weight:950}
+.bank-missing-summary>div{display:grid;gap:3px}
+.bank-missing-summary b{font-size:11px}.bank-missing-summary small{font-size:10px;line-height:1.45}
+.bank-transactions-table tr.bank-transaction-missing.active>td{background:#fff9e8}
+.bank-transactions-table tr.bank-transaction-missing.active>td:first-child{box-shadow:inset -3px 0 0 #d9a82e}
+.bank-transaction-missing-badge{display:inline-flex;padding:2px 6px;border-radius:999px;background:var(--warn-soft);color:#725716;font-size:9px;font-weight:900;white-space:nowrap}
+.bank-missing-detail{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:7px;padding:8px 9px;border:1px solid #ead6a4;border-radius:8px;background:#fffdf6;color:#654f18}
+.bank-missing-detail>div{display:grid;gap:2px}.bank-missing-detail b{font-size:10px}.bank-missing-detail small{font-size:9px;color:#7a672f}
+.bank-missing-ack{flex:0 0 auto;min-height:29px;padding:4px 8px;font-size:9px;background:#fff}
+@media(max-width:760px){.bank-caption-controls{width:100%;justify-content:space-between}.bank-data-view-tabs{max-width:100%}.bank-data-view-tab{padding-inline:7px}.bank-missing-detail{align-items:stretch;flex-direction:column}.bank-missing-ack{align-self:flex-start}.bank-direct-snapshot-note,.bank-missing-summary{margin-inline:8px}}

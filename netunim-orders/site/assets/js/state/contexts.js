@@ -7,6 +7,7 @@ return {
     currentView:'supplier',
     kupaSubView:'bank',
     bankAccountView:'business',
+    bankDataView:'history',
     bankDateMode:'all',
     bankDateFrom:'',
     bankDateTo:'',
