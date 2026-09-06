@@ -44,6 +44,7 @@ export function normalizeBankFeedTransaction(value){
     lastSeenAt:cleanIso(row.lastSeenAt),
     missingSince:cleanIso(row.missingSince),
     missingAcknowledgedAt:cleanIso(row.missingAcknowledgedAt),
+    alertAcknowledgements:row.alertAcknowledgements&&typeof row.alertAcknowledgements==='object'&&!Array.isArray(row.alertAcknowledgements)?Object.fromEntries(Object.entries(row.alertAcknowledgements).map(([key,value])=>[cleanText(key,80),cleanIso(value)]).filter(([key,value])=>key&&value)): {},
   };
 }
 

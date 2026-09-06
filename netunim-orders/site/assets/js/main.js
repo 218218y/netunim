@@ -652,6 +652,7 @@ const domainsFinanceController=createDomainsFinanceController({
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
   readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
+  acknowledgeBankTransactionAlert:(...args)=>cloudTransport.acknowledgeBankTransactionAlert(...args),
 });
 
 const domainsFinanceView=createDomainsFinanceView({
@@ -673,7 +674,11 @@ const uiAlertCenter=createUiAlertCenter({
   closeModal:(...args)=>uiModal.closeModal(...args),
   navigateToChecks:(...args)=>uiNavigation.openKupaChecks(...args),
   navigateToCashflow:(...args)=>uiNavigation.openKupaBank(...args),
+  navigateToBank:(...args)=>uiNavigation.openKupaBank(...args),
   markCheckDeposited:(...args)=>domainsChecksEditor.markCheckDeposited(...args),
+  dismissBankWarning:async item=>item?.kind==='bank_missing'
+    ?domainsFinanceController.acknowledgeMissingBankTransaction(item.archiveId)
+    :domainsFinanceController.acknowledgePersistentBankAlert(item?.archiveId,item?.alertKind),
 });
 
 const syncDocument=createSyncDocument({
@@ -824,6 +829,7 @@ const lifecycle=createLifecycle({
   openCloud:(...args)=>uiCloud.openCloud(...args),
   startOrderPolling:(...args)=>syncDocument.startPolling(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+  prepareStartupAlerts:(...args)=>domainsFinanceController.ensureBankDisplayArchive(...args),
   showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
 
@@ -837,6 +843,7 @@ const uiActions=createUiActions({
   ui,
   openAlertTarget:(...args)=>uiAlertCenter.openAlertTarget(...args),
   markAlertCheckDeposited:(...args)=>uiAlertCenter.markAlertCheckDeposited(...args),
+  dismissBankAlert:(...args)=>uiAlertCenter.dismissBankAlert(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),

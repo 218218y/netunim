@@ -46,7 +46,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null}){
+export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null}){
   const local={bankBusy:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
   const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
   let bankDisplayArchivePromise=null;
@@ -205,9 +205,23 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('orders bank sync lease release',error)}local.bankBusy=false;scheduleBankAuto()}
   }
 
+  function updateLocalBankTransaction(transactionId,mutator){
+    const id=Number(transactionId);let changed=false;
+    const apply=rows=>{if(!Array.isArray(rows))return;for(const row of rows)if(Number(row?.archiveId)===id){mutator(row);changed=true}};
+    for(const role of ['business','home'])apply(bankDisplayArchive[role].rows);
+    const bank=checksSession.kupaCloudReadState?.bank||{};apply(bank.feed?.transactions);apply(bank.homeFeed?.transactions);
+    return changed;
+  }
+
   async function acknowledgeMissingBankTransaction(transactionId){
     const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0){toast('לא ניתן לזהות את תנועת הבנק לסימון');return false}
-    try{await acknowledgeBankTransactionMissing(id);for(const role of ['business','home']){const cache=bankDisplayArchive[role];if(Array.isArray(cache.rows)&&cache.rows.some(row=>Number(row?.archiveId)===id)){cache.rows=null;cache.directSnapshot=null}}await ensureBankDisplayArchive();toast('התנועה סומנה כנבדקה. היא נשמרת בהיסטוריה אך לא תופיע עוד כאזהרה פעילה.');return true}catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
+    try{const result=await acknowledgeBankTransactionMissing(id),at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.missingAcknowledgedAt=at});toast('התנועה סומנה כנבדקה. היא נשמרת בהיסטוריה אך לא תופיע עוד כאזהרה פעילה.');return true}catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
+  }
+
+  async function acknowledgePersistentBankAlert(transactionId,alertKind){
+    const id=Number(transactionId),kind=String(alertKind||'').trim();
+    if(!Number.isSafeInteger(id)||id<=0||kind!=='returned_cheque'){toast('לא ניתן לזהות את התראת הבנק להסרה');return false}
+    try{const result=await acknowledgeBankTransactionAlert(id,kind),at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.alertAcknowledgements={...(row.alertAcknowledgements&&typeof row.alertAcknowledgements==='object'?row.alertAcknowledgements:{}),[kind]:at}});toast('ההתראה הוסרה ולא תוצג שוב עבור אירוע הבנק הזה.');return true}catch(error){toast(error?.message||'הסרת התראת הבנק נכשלה');return false}
   }
 
   async function refreshCredit({interactive=false,auto=false,syncMode='full'}={}){
@@ -257,5 +271,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
   function setCreditAutoMode(value){bridge.setCreditAutoMode(value);scheduleCreditAuto()}
 
-  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
+  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
 }

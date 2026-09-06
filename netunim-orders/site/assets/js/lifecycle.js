@@ -5,7 +5,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, showStartupAlerts=()=>{}}){
+export function createLifecycle({ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState(){
   try{session.lastCloudState=JSON.parse(localStorage.getItem(CLOUD_BASE_KEY)||'null')}catch(e){console.error('orders cloud base load',e)}
   const durablePending=await getCloudPending(),pending=durablePending?.snapshot||loadCloudPendingState();
@@ -41,6 +41,10 @@ async function backupAfterHydration(localServicesPromise){
   if(folderBackupAvailable())try{await maybeCreateAutomaticFolderBackup(prepareState())}catch(e){console.error('automatic folder backup',e)}
 }
 
+async function prepareAlertsBeforeDisplay(){
+  try{await prepareStartupAlerts()}catch(error){console.error('startup bank alerts preparation',error)}
+}
+
 async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecoveryPromise,localServicesPromise}){
   try{await checksRecoveryPromise}catch(e){console.error('checks recovery wait',e)}
   if(sharedOnline){
@@ -61,6 +65,7 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
   }
   if(ordersOnline)startOrderPolling();
   await backupAfterHydration(localServicesPromise);
+  await prepareAlertsBeforeDisplay();
   showStartupAlerts();
   startFinanceAutoSync();
   startupMark('background-ready');
@@ -112,10 +117,10 @@ async function boot(){
   }
 
   if(sharedOnline){
-    session.startupHydrationPromise=hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecoveryPromise,localServicesPromise}).catch(error=>{console.error('secondary startup hydration',error);showStartupAlerts();startFinanceAutoSync()});
+    session.startupHydrationPromise=hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecoveryPromise,localServicesPromise}).catch(async error=>{console.error('secondary startup hydration',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
   }else{
     await checksRecoveryPromise;
-    session.startupHydrationPromise=backupAfterHydration(localServicesPromise).then(()=>{showStartupAlerts();startFinanceAutoSync();startupMark('background-ready')}).catch(error=>{console.error('startup background',error);showStartupAlerts();startFinanceAutoSync()});
+    session.startupHydrationPromise=backupAfterHydration(localServicesPromise).then(async()=>{await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync();startupMark('background-ready')}).catch(async error=>{console.error('startup background',error);await prepareAlertsBeforeDisplay();showStartupAlerts();startFinanceAutoSync()});
   }
 }
 

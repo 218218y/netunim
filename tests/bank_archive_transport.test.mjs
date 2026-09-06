@@ -16,7 +16,7 @@ const sourceRows=[
 
 let mergePayload=null;
 const pageRequests=[];
-const archiveRow=i=>({merge_key:`k${i}`,transaction_date:'2026-08-01T09:00:00.000Z',processed_date:'2026-08-01T09:00:00.000Z',amount:'1',currency:'ILS',description:'x',memo:'',party_name:'',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:String(i),bank_serial:String(i),activity_type_code:1,cheque:false,check_details:null});
+const archiveRow=i=>({merge_key:`k${i}`,transaction_date:'2026-08-01T09:00:00.000Z',processed_date:'2026-08-01T09:00:00.000Z',amount:'1',currency:'ILS',description:'x',memo:'',party_name:'',party_headline:'',message_headline:'',message_detail:'',status:'completed',balance_after:null,bank_reference:String(i),bank_serial:String(i),activity_type_code:1,cheque:false,check_details:null,alert_acknowledgements:i===0?{returned_cheque:'2026-09-06T01:00:00.000Z'}:{}});
 const kupaFetch=async(path,options={})=>{
   if(path.includes('/rpc/merge_bank_transactions')){mergePayload=JSON.parse(options.body);return jsonResponse([{inserted_count:4,updated_count:0,total_count:4}])}
   if(path.includes('/bank_transactions?')){
@@ -38,6 +38,7 @@ assert.match(keys[3],/:2$/,'indistinguishable fallback rows get stable occurrenc
 
 const archive=await kupa.readBankTransactions('12-655-1','business',{days:370,maxRows:3000});
 assert.equal(archive.length,1002,'archive reader paginates beyond the 1000-row PostgREST page');
+assert.equal(archive[0].alertAcknowledgements.returned_cheque,'2026-09-06T01:00:00.000Z','archive reader preserves per-alert durable acknowledgements');
 assert.equal(pageRequests.length,2);
 assert.match(pageRequests[0],/account_role=eq\.business/);
 assert.match(pageRequests[0],/offset=0/);
@@ -60,6 +61,7 @@ const reconciliationFetch=async(path,options={})=>{
   if(path.includes('/rpc/sync_bank_transactions_snapshot')){reconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{inserted_count:1,updated_count:0,total_count:1,missing_count:0,active_missing_count:0,snapshot_stored:true,baseline_created:true}])}
   if(path.includes('/bank_transaction_snapshots?'))return jsonResponse([snapshotRow]);
   if(path.includes('/rpc/acknowledge_bank_transaction_missing')){reconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{transaction_id:77,acknowledged_at:'2026-09-06T02:05:00.000Z'}])}
+  if(path.includes('/rpc/acknowledge_bank_transaction_alert')){reconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{transaction_id:77,alert_kind:'returned_cheque',acknowledged_at:'2026-09-06T02:06:00.000Z'}])}
   throw new Error('unexpected reconciliation request '+path);
 };
 const kupaReconciliation=createKupaTransport({session:{cloudDocumentName:'main'},supaRest:reconciliationFetch});
@@ -77,6 +79,8 @@ assert.equal(directSnapshot.snapshotAt,snapshotRow.snapshot_at);
 assert.equal(directSnapshot.transactions[0].id,'snapshot-1','direct-bank view is reconstructed from the durable complete snapshot payload');
 await kupaReconciliation.acknowledgeBankTransactionMissing(77);
 assert.equal(reconciliationCalls.at(-1).body.p_transaction_id,77,'manual review acknowledges the persistent missing incident by archive row id');
+await kupaReconciliation.acknowledgeBankTransactionAlert(77,'returned_cheque');
+assert.deepEqual(reconciliationCalls.at(-1).body,{p_transaction_id:77,p_alert_kind:'returned_cheque'},'returned-cheque dismissal is persisted separately from missing reconciliation');
 
 let ordersSnapshotPayload=null;
 const ordersReconciliationCalls=[];
@@ -84,6 +88,7 @@ const ordersReconciliation=createOrdersTransport({supaFetch:async(path,options={
   if(path.includes('/rpc/sync_bank_transactions_snapshot')){ordersSnapshotPayload=JSON.parse(options.body);ordersReconciliationCalls.push({path,body:ordersSnapshotPayload});return jsonResponse([{inserted_count:1,updated_count:0,total_count:1}])}
   if(path.includes('/bank_transaction_snapshots?'))return jsonResponse([snapshotRow]);
   if(path.includes('/rpc/acknowledge_bank_transaction_missing')){ordersReconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{transaction_id:77,acknowledged_at:'2026-09-06T02:05:00.000Z'}])}
+  if(path.includes('/rpc/acknowledge_bank_transaction_alert')){ordersReconciliationCalls.push({path,body:JSON.parse(options.body)});return jsonResponse([{transaction_id:77,alert_kind:'returned_cheque',acknowledged_at:'2026-09-06T02:06:00.000Z'}])}
   throw new Error('unexpected request '+path)
 }});
 await ordersReconciliation.syncBankTransactionsSnapshot('12-655-1','business',[sourceRows[0]],{snapshotAt:'2026-09-06T02:00:00.000Z',coverage:{complete:true,from:'2026-08-08',to:'2026-09-06',days:30,warning:''},complete:true});
@@ -92,5 +97,7 @@ const ordersDirectSnapshot=await ordersReconciliation.readBankTransactionSnapsho
 assert.deepEqual(ordersDirectSnapshot,directSnapshot,'Orders can read the same durable direct-bank snapshot as Kupa');
 await ordersReconciliation.acknowledgeBankTransactionMissing(77);
 assert.equal(ordersReconciliationCalls.at(-1).body.p_transaction_id,77,'Orders acknowledgement RPC is callable from the transport factory and preserves the archive row id');
+await ordersReconciliation.acknowledgeBankTransactionAlert(77,'returned_cheque');
+assert.deepEqual(ordersReconciliationCalls.at(-1).body,{p_transaction_id:77,p_alert_kind:'returned_cheque'},'Orders uses the same per-alert acknowledgement RPC contract as Kupa');
 
 console.log('PASS bank archive transport: collision-safe identities and >1000-row pagination are deterministic in both apps');
