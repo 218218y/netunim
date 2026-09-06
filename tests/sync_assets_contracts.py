@@ -1,4 +1,7 @@
 """Cross-platform release hashes and read-only/idempotent asset generation."""
+from contextlib import redirect_stdout
+import importlib.util
+import io
 from pathlib import Path
 import re
 import shutil
@@ -9,6 +12,19 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXT_SUFFIXES = {'.html', '.css', '.js', '.webmanifest'}
+
+
+def load_sync_module():
+    """Load the generator once per test process; tests retarget only its ROOT."""
+    spec = importlib.util.spec_from_file_location('netunim_sync_assets_contract', ROOT / 'tools/sync-assets.py')
+    if spec is None or spec.loader is None:
+        raise RuntimeError('could not load tools/sync-assets.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+SYNC_MODULE = load_sync_module()
 
 
 class SyncAssetContracts(unittest.TestCase):
@@ -23,9 +39,23 @@ class SyncAssetContracts(unittest.TestCase):
         self.run_sync()
 
     def run_sync(self, check=False, expected=0):
+        """Exercise generator logic in-process; CLI wiring is covered separately."""
+        previous_root = SYNC_MODULE.ROOT
+        output = io.StringIO()
+        try:
+            SYNC_MODULE.ROOT = self.root
+            with redirect_stdout(output):
+                clean = SYNC_MODULE.sync(check=check)
+        finally:
+            SYNC_MODULE.ROOT = previous_root
+        returncode = 1 if check and not clean else 0
+        self.assertEqual(returncode, expected, output.getvalue())
+
+    def run_sync_cli(self, check=False, expected=0):
         command = [sys.executable, str(self.root / 'tools/sync-assets.py')]
-        result = subprocess.run(command + (['--check'] if check else []), capture_output=True, text=True)
+        result = subprocess.run(command + (['--check'] if check else []), cwd=self.root, capture_output=True, text=True)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        return result
 
     def snapshot(self):
         return {p.relative_to(self.root).as_posix(): (p.read_bytes(), p.stat().st_mtime_ns)
@@ -40,6 +70,17 @@ class SyncAssetContracts(unittest.TestCase):
             if path.suffix in TEXT_SUFFIXES or path.name == '_headers':
                 data = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
                 path.write_bytes(data.replace(b'\n', newline))
+
+    def test_cli_exit_codes_and_check_mode_are_preserved(self):
+        """Keep a small subprocess contract without paying that startup cost for every matrix case."""
+        self.run_sync_cli(check=True)
+        path = self.root / 'netunim-kupa/site/assets/app.js'
+        path.write_bytes(path.read_bytes() + b'\ncli contract change\n')
+        before = self.snapshot()
+        self.run_sync_cli(check=True, expected=1)
+        self.assertEqual(self.snapshot(), before, '--check CLI wrote files')
+        self.run_sync_cli()
+        self.run_sync_cli(check=True)
 
     def test_line_endings_do_not_change_hash_or_check_result(self):
         self.line_endings(b'\n')
@@ -105,7 +146,8 @@ class SyncAssetContracts(unittest.TestCase):
         worker = self.root / 'netunim-kupa/site/service-worker.js'
         worker.write_text(worker.read_text().replace('const CACHE=', 'const RENAMED_CACHE='))
         before = self.snapshot()
-        self.run_sync(check=True, expected=1)
+        with self.assertRaisesRegex(ValueError, 'CACHE declaration'):
+            self.run_sync(check=True, expected=1)
         self.assertEqual(self.snapshot(), before)
 
 

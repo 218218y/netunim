@@ -8,6 +8,7 @@ vendored Node runtime is prepared specifically for the ChatGPT repair environmen
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import base64
 import hashlib
 import json
@@ -28,8 +29,8 @@ CONFIG_PATH = ROOT / "tools" / "offline-deps.json"
 LOCK_PATH = ROOT / "package-lock.json"
 VENDOR = ROOT / "vendor" / "offline"
 MANIFEST_PATH = VENDOR / "manifest.json"
-INSTALL_ROOT = ROOT / ".offline"
-OFFLINE_NODE_MODULES = INSTALL_ROOT / "node_modules"
+LEGACY_INSTALL_ROOT = ROOT / ".offline"
+CACHE_DIR_ENV = "NETUNIM_OFFLINE_CACHE_DIR"
 USER_AGENT = "netunim-offline-deps/1"
 
 
@@ -327,31 +328,75 @@ def extract_wheel(archive: Path, destination: Path) -> None:
                     shutil.copyfileobj(src, out)
 
 
-def remove_generated_install() -> None:
-    # ChatGPT/Linux generated state is fully isolated under .offline.
-    # Never inspect, replace or remove the repository's normal node_modules.
-    shutil.rmtree(INSTALL_ROOT, ignore_errors=True)
+def manifest_sha256() -> str:
+    return hashlib.sha256(MANIFEST_PATH.read_bytes()).hexdigest()
 
 
-def install() -> dict:
-    check_platform()
-    manifest = check_vendor(quiet=True)
-    stamp_value = hashlib.sha256(MANIFEST_PATH.read_bytes()).hexdigest()
-    stamp_path = INSTALL_ROOT / "stamp.json"
-    if stamp_path.is_file():
+def offline_cache_root() -> Path:
+    """Return a generated-tool cache that is deliberately outside the repository."""
+    override = os.environ.get(CACHE_DIR_ENV)
+    if override:
+        path = Path(override).expanduser()
+        if not path.is_absolute():
+            raise OfflineDepsError(f"{CACHE_DIR_ENV} must be an absolute path")
+    else:
+        path = Path.home() / ".cache" / "netunim" / "offline"
+    resolved = path.resolve()
+    root = ROOT.resolve()
+    if resolved == root or root in resolved.parents:
+        raise OfflineDepsError(
+            f"{CACHE_DIR_ENV} must point outside the repository; got {resolved}"
+        )
+    return resolved
+
+
+def install_root(manifest: dict | None = None, stamp_value: str | None = None) -> Path:
+    manifest = manifest or read_json(MANIFEST_PATH)
+    profile = manifest.get("profile")
+    if not isinstance(profile, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", profile):
+        raise OfflineDepsError(f"unsafe offline profile name: {profile!r}")
+    stamp_value = stamp_value or manifest_sha256()
+    if not re.fullmatch(r"[0-9a-f]{64}", stamp_value):
+        raise OfflineDepsError("invalid offline manifest cache key")
+    return offline_cache_root() / profile / stamp_value
+
+
+def offline_node_modules(root: Path | None = None) -> Path:
+    return (root or install_root()) / "node_modules"
+
+
+def install_is_ready(root: Path, stamp_value: str) -> bool:
+    stamp_path = root / "stamp.json"
+    if not stamp_path.is_file():
+        return False
+    try:
+        stamp = read_json(stamp_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        stamp.get("manifestSha256") == stamp_value
+        and (root / "node" / "bin" / "node").is_file()
+        and (root / "node_modules" / "eslint" / "bin" / "eslint.js").is_file()
+    )
+
+
+@contextmanager
+def install_lock(root: Path):
+    """Serialize publishers for one content-addressed install without stale lock files."""
+    root.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = root.parent / f".{root.name}.lock"
+    with lock_path.open("a+b") as handle:
+        # Installation is Linux-only, so import the POSIX locking primitive lazily.
+        import fcntl
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         try:
-            stamp = read_json(stamp_path)
-            if (stamp.get("manifestSha256") == stamp_value
-                    and (INSTALL_ROOT / "node" / "bin" / "node").is_file()
-                    and (OFFLINE_NODE_MODULES / "eslint" / "bin" / "eslint.js").is_file()):
-                return manifest
-        except Exception:
-            pass
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
-    shutil.rmtree(INSTALL_ROOT, ignore_errors=True)
-    INSTALL_ROOT.mkdir(parents=True, exist_ok=True)
-    (INSTALL_ROOT / "node").mkdir(parents=True, exist_ok=True)
-    node_executable = extract_node_runtime(VENDOR / manifest["node"]["file"], INSTALL_ROOT / "node")
+
+def build_install(stage: Path, manifest: dict, stamp_value: str) -> None:
+    node_executable = extract_node_runtime(VENDOR / manifest["node"]["file"], stage / "node")
     version_check = subprocess.run([str(node_executable), "--version"], capture_output=True, text=True)
     expected_version = f"v{manifest['node']['version']}"
     if version_check.returncode or version_check.stdout.strip() != expected_version:
@@ -359,60 +404,111 @@ def install() -> dict:
             f"vendored Node runtime version mismatch: expected {expected_version}, got {version_check.stdout.strip()!r}"
         )
 
-    node_stage = INSTALL_ROOT / "node_modules-stage"
-    node_stage.mkdir(parents=True, exist_ok=True)
+    node_modules = stage / "node_modules"
     for item in manifest["npm"]:
         lock_path = PurePosixPath(item["lockPath"])
         if not lock_path.parts or lock_path.parts[0] != "node_modules":
             raise OfflineDepsError(f"unexpected npm lock path: {item['lockPath']}")
-        target = node_stage.joinpath(*lock_path.parts[1:])
+        target = node_modules.joinpath(*lock_path.parts[1:])
         target.mkdir(parents=True, exist_ok=True)
         extract_tar(VENDOR / item["file"], target, strip_first=True)
-    python_site = INSTALL_ROOT / "python"
+
+    python_site = stage / "python"
     python_site.mkdir(parents=True, exist_ok=True)
     for item in manifest["python"]:
         extract_wheel(VENDOR / item["file"], python_site)
 
-    old_modules = INSTALL_ROOT / "node_modules-old"
-    if OFFLINE_NODE_MODULES.exists():
-        os.replace(OFFLINE_NODE_MODULES, old_modules)
+    write_json(stage / "stamp.json", {"manifestSha256": stamp_value})
+
+
+def publish_install(stage: Path, root: Path) -> None:
+    """Publish a complete staged install atomically, with rollback for stale/corrupt roots."""
+    backup = root.parent / f".{root.name}.previous"
+    shutil.rmtree(backup, ignore_errors=True)
+    moved_old = False
+    if root.exists():
+        os.replace(root, backup)
+        moved_old = True
     try:
-        os.replace(node_stage, OFFLINE_NODE_MODULES)
+        os.replace(stage, root)
     except BaseException:
-        if old_modules.exists() and not OFFLINE_NODE_MODULES.exists():
-            os.replace(old_modules, OFFLINE_NODE_MODULES)
+        if moved_old and backup.exists() and not root.exists():
+            os.replace(backup, root)
         raise
-    shutil.rmtree(old_modules, ignore_errors=True)
-    write_json(stamp_path, {"manifestSha256": stamp_value})
-    print("OK: offline dependencies installed into generated local folders")
+    shutil.rmtree(backup, ignore_errors=True)
+
+
+def remove_legacy_install() -> None:
+    # .offline was reserved for generated repair dependencies in older revisions.
+    # Keep it until an external install is known-good, then remove it so future
+    # workspace/sandbox copies cannot accidentally carry the heavy legacy tree.
+    shutil.rmtree(LEGACY_INSTALL_ROOT, ignore_errors=True)
+
+
+def remove_generated_install() -> None:
+    # Clean only generated repair state. Never inspect or mutate normal node_modules.
+    remove_legacy_install()
+    if MANIFEST_PATH.is_file():
+        shutil.rmtree(install_root(), ignore_errors=True)
+
+
+def install() -> dict:
+    check_platform()
+    manifest = check_vendor(quiet=True)
+    stamp_value = manifest_sha256()
+    root = install_root(manifest, stamp_value)
+    if install_is_ready(root, stamp_value):
+        remove_legacy_install()
+        return manifest
+
+    with install_lock(root):
+        if install_is_ready(root, stamp_value):
+            remove_legacy_install()
+            return manifest
+        root.parent.mkdir(parents=True, exist_ok=True)
+        stage = Path(tempfile.mkdtemp(prefix=f".{root.name[:12]}-stage-", dir=root.parent))
+        try:
+            build_install(stage, manifest, stamp_value)
+            if not install_is_ready(stage, stamp_value):
+                raise OfflineDepsError("offline install staging verification failed")
+            publish_install(stage, root)
+        except BaseException:
+            shutil.rmtree(stage, ignore_errors=True)
+            raise
+
+    remove_legacy_install()
+    print(f"OK: offline dependencies installed in external cache: {root}")
     return manifest
 
 
-def offline_env() -> dict[str, str]:
+def offline_env(manifest: dict | None = None) -> dict[str, str]:
+    manifest = manifest or read_json(MANIFEST_PATH)
+    root = install_root(manifest)
     env = os.environ.copy()
-    node_bin = str(INSTALL_ROOT / "node" / "bin")
+    node_bin = str(root / "node" / "bin")
     env["PATH"] = node_bin + os.pathsep + env.get("PATH", "")
-    python_site = str(INSTALL_ROOT / "python")
+    python_site = str(root / "python")
     env["PYTHONPATH"] = python_site + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-    offline_modules = str(OFFLINE_NODE_MODULES)
-    env["NODE_PATH"] = offline_modules + (os.pathsep + env["NODE_PATH"] if env.get("NODE_PATH") else "")
-    env["NETUNIM_OFFLINE_NODE_MODULES"] = offline_modules
+    modules = str(offline_node_modules(root))
+    env["NODE_PATH"] = modules + (os.pathsep + env["NODE_PATH"] if env.get("NODE_PATH") else "")
+    env["NETUNIM_OFFLINE_NODE_MODULES"] = modules
+    env["NETUNIM_OFFLINE_INSTALL_ROOT"] = str(root)
     env["NETUNIM_OFFLINE"] = "1"
     return env
 
 
 def run_offline(command: list[str]) -> int:
-    install()
-    result = subprocess.run(command, cwd=ROOT, env=offline_env())
+    manifest = install()
+    result = subprocess.run(command, cwd=ROOT, env=offline_env(manifest))
     return result.returncode
 
 
 def browser_probe() -> int:
-    install()
+    manifest = install()
     return subprocess.run(
         [sys.executable, str(ROOT / "tests" / "offline_environment_probe.py")],
         cwd=ROOT,
-        env=offline_env(),
+        env=offline_env(manifest),
     ).returncode
 
 
@@ -478,8 +574,8 @@ def update() -> None:
             print(f"python {item['project']} -> {version}")
         write_json(CONFIG_PATH, config)
         refresh_vendor()
-        remove_generated_install()
-        print("OK: dependency metadata updated; fresh offline archives replaced old archives only after full verification")
+        remove_legacy_install()
+        print("OK: dependency metadata updated; the next offline run selects the new content-addressed cache key")
     except BaseException:
         LOCK_PATH.write_bytes(original_lock)
         CONFIG_PATH.write_bytes(original_config)
@@ -488,7 +584,7 @@ def update() -> None:
 
 def clean() -> None:
     remove_generated_install()
-    print("OK: generated .offline installation removed; normal npm node_modules was never touched")
+    print("OK: generated offline cache entry removed; normal npm node_modules was never touched")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -503,7 +599,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("chat-test", help="run full verification when browser works, otherwise explicit core-only repair checks")
     sub.add_parser("lint", help="install as needed and run ESLint offline")
     sub.add_parser("update", help="update reviewed dependency ranges, redownload, then delete superseded vendor files")
-    sub.add_parser("clean", help="remove generated installed dependencies but keep the offline vendor")
+    sub.add_parser("clean", help="remove the current generated cache entry and legacy .offline state")
     args = parser.parse_args(argv)
     try:
         if args.command == "download":
@@ -519,9 +615,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "chat-test":
             return chat_test()
         elif args.command == "lint":
-            node = INSTALL_ROOT / "node" / "bin" / "node"
-            install()
-            return subprocess.run([str(node), str(OFFLINE_NODE_MODULES / "eslint" / "bin" / "eslint.js"), "."], cwd=ROOT, env=offline_env()).returncode
+            manifest = install()
+            root = install_root(manifest)
+            node = root / "node" / "bin" / "node"
+            modules = offline_node_modules(root)
+            return subprocess.run([str(node), str(modules / "eslint" / "bin" / "eslint.js"), "."], cwd=ROOT, env=offline_env(manifest)).returncode
         elif args.command == "update":
             update()
         elif args.command == "clean":

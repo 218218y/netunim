@@ -26,7 +26,7 @@ npm run test:offline       strict complete verification gate; browser runtime fa
 npm run test:chat          repair-session command: full gate when browser works, otherwise explicit core-only gate
 npm run lint:offline       run ESLint through the vendored Node/toolchain
 npm run offline:update     update allowed versions, redownload transactionally, then remove superseded archives
-npm run offline:clean      remove generated installations while keeping this vendor
+npm run offline:clean      remove the current generated cache entry and legacy .offline state
 ```
 
 `test:chat` is deliberately not a deployment gate. If the host browser is unavailable or policy-blocked, it runs
@@ -36,9 +36,19 @@ only the deterministic non-browser suites and prints that the runtime suites wer
 `offline:download` and `offline:update` may be executed on Windows before uploading the repository to ChatGPT.
 `offline:install`, `offline:doctor`, `test:offline`, `test:chat` and `lint:offline` intentionally target Linux
 x86_64/glibc, because the vendor is a repair-environment artifact rather than a production/runtime dependency set.
-Generated npm packages are installed only into `.offline/node_modules`. The offline tool never creates, replaces,
-reads as its package store, or removes the repository root `node_modules`, so the normal Windows/npm workflow is
-fully independent from ChatGPT repair state.
+Generated Linux verification packages are installed into a content-addressed cache **outside the repository**,
+by default `~/.cache/netunim/offline/<profile>/<manifest-sha256>/`. Set `NETUNIM_OFFLINE_CACHE_DIR` to an absolute
+external cache base when the host needs a different location; paths inside the repository are rejected. This keeps
+large generated Node files out of workspace/sandbox copies while allowing separate repair copies of the same revision
+to reuse one verified installation. The repository's old `.offline/` location is treated only as legacy cleanup state.
+
+Cache publication is transactional: one process builds a complete staging directory, verifies it, and atomically
+publishes it under the manifest hash while a per-hash file lock serializes concurrent installers. A changed manifest
+therefore gets a different cache directory instead of mutating an installation that another repair copy may be using.
+`offline:clean` removes the current manifest's generated cache entry (and any legacy `.offline/` directory); it never
+creates, replaces, reads as its package store, or removes the repository root `node_modules`. The normal Windows/npm
+workflow is therefore fully independent from ChatGPT repair state. Older manifest-hash cache entries are left
+intact on purpose so another repair copy pinned to an older revision is not broken by an update.
 
 The refresh process stages the entire next vendor first. Existing verified files are reused, missing/changed files
 are downloaded, every npm archive is checked against `package-lock.json`, Node/Python archives are hash-checked,

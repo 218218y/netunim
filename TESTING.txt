@@ -19,7 +19,9 @@ Normal local setup:
   python -m pip install -r tests/requirements.txt
   npm ci
 
-The ChatGPT offline installer is isolated under `.offline/`; it never uses or replaces the normal root `node_modules`.
+The ChatGPT offline installer uses a content-addressed cache outside the repository (by default
+`~/.cache/netunim/offline/...` on the Linux repair host); it never uses or replaces the normal root `node_modules`.
+`NETUNIM_OFFLINE_CACHE_DIR` may override the cache base, but repository-internal paths are rejected.
 The Windows launchers also suppress `serve`'s nonessential network update notification so a registry/network problem
 does not delay local startup. For the equivalent manual PowerShell debug launch use:
   $env:NO_UPDATE_CHECK='1'; npx serve . --debug
