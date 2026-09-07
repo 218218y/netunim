@@ -45,5 +45,11 @@ function openKupaBank(account='עסקי'){
   revealAlertTarget('.bank-transactions-region');
 }
 
-return { render, renderDashboard, prepareView, setCustomerRoute, switchView, openKupaChecks, openKupaBank };
+function openNotesNote(noteId=''){
+  prepareView('notes');
+  render();
+  if(noteId)revealAlertTarget(`[data-note-id="${CSS.escape(String(noteId))}"]`);
+}
+
+return { render, renderDashboard, prepareView, setCustomerRoute, switchView, openKupaChecks, openKupaBank, openNotesNote };
 }

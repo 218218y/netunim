@@ -1,6 +1,7 @@
 import {clone} from '../core/values.js';
 import {assertOrderEntityInvariants,restoreJsonRequiredArrays} from './validation.js';
 import {INITIAL_STATE} from './constants.js';
+import {normalizeNoteReminderDate} from '../domains/notes/alerts.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateNormalization({}){
@@ -18,7 +19,7 @@ export function createStateNormalization({}){
       const seen=new Set();state.inventoryCategoryOrder=[...state.inventoryCategoryOrder.map(value=>String(value||'').trim()).filter(Boolean),...inventoryCategories].filter(value=>inventoryCategories.includes(value)&&!seen.has(value)&&seen.add(value));
     }else{state.inventoryCategoryOrder=inventoryCategories.filter(value=>value!=='אביזרים');if(inventoryCategories.includes('אביזרים'))state.inventoryCategoryOrder.push('אביזרים')}
     state.inventoryEvents=seed('inventoryEvents');state.warehouseOrders=seed('warehouseOrders');state.checks=seed('checks').map(check=>({...check,account:check.account==='ביתי'?'ביתי':'עסקי',amount:Math.round(Number(check.amount||0)),name:String(check.name||''),dueDate:String(check.dueDate||''),status:String(check.status||'בקופה'),depositDate:check.depositDate||null,depositedAt:check.depositedAt||null,clearedDate:check.clearedDate||null,checkNumber:String(check.checkNumber||''),note:String(check.note||''),createdAt:check.createdAt||''}));
-    state.notes=seed('notes').map(note=>({...note,id:String(note.id),content:String(note.content||''),createdAt:String(note.createdAt||''),updatedAt:String(note.updatedAt||note.createdAt||'')}));
+    state.notes=seed('notes').map(note=>{const normalized={...note,id:String(note.id),content:String(note.content||''),createdAt:String(note.createdAt||''),updatedAt:String(note.updatedAt||note.createdAt||'')},reminderDate=normalizeNoteReminderDate(note?.reminderDate);if(reminderDate)normalized.reminderDate=reminderDate;else delete normalized.reminderDate;return normalized});
     state.importAudit=state.importAudit||{};state.stage2Audit=state.stage2Audit||structuredClone(INITIAL_STATE.stage2Audit||{});
     const explicitInvoice=state.customerDebts.find(debt=>debt?.source?.sheet==='חובות_וזכויות'&&Number(debt?.source?.row)===32&&!debt.updatedAt&&/יצאה\s*ח[״"']?מ/.test(`${debt.sourceInvoiceText||''} ${debt.note||''}`));if(explicitInvoice)explicitInvoice.invoiceIssued=true;
     state._meta={...(state._meta||{}),schemaVersion:4};assertOrderEntityInvariants(state,{includeChecks:true,required:true});return state;

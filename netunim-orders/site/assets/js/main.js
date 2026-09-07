@@ -676,7 +676,9 @@ const uiAlertCenter=createUiAlertCenter({
   navigateToChecks:(...args)=>uiNavigation.openKupaChecks(...args),
   navigateToCashflow:(...args)=>uiNavigation.openKupaBank(...args),
   navigateToBank:(...args)=>uiNavigation.openKupaBank(...args),
+  navigateToNote:(...args)=>uiNavigation.openNotesNote(...args),
   markCheckDeposited:(...args)=>domainsChecksEditor.markCheckDeposited(...args),
+  dismissNoteReminder:(...args)=>domainsNotesController.removeStickyNoteReminder(...args),
   dismissBankWarning:async item=>item?.kind==='bank_missing'
     ?domainsFinanceController.acknowledgeMissingBankTransaction(item.archiveId)
     :domainsFinanceController.acknowledgePersistentBankAlert(item?.archiveId,item?.alertKind),
@@ -774,6 +776,10 @@ const domainsNotesController=createDomainsNotesController({
   toast:(...args)=>uiStatus.toast(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
+  refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
+  currentView:()=>ui.currentView,
 });
 
 const uiSettings=createUiSettings({
@@ -845,6 +851,7 @@ const uiActions=createUiActions({
   openAlertTarget:(...args)=>uiAlertCenter.openAlertTarget(...args),
   markAlertCheckDeposited:(...args)=>uiAlertCenter.markAlertCheckDeposited(...args),
   dismissBankAlert:(...args)=>uiAlertCenter.dismissBankAlert(...args),
+  dismissNoteAlert:(...args)=>uiAlertCenter.dismissNoteAlert(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
@@ -1007,6 +1014,8 @@ const uiActions=createUiActions({
   addStickyNote:(...args)=>domainsNotesController.addStickyNote(...args),
   updateStickyNote:(...args)=>domainsNotesController.updateStickyNote(...args),
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
+  openStickyNoteReminder:(...args)=>domainsNotesController.openStickyNoteReminder(...args),
+  saveStickyNoteReminder:(...args)=>domainsNotesController.saveStickyNoteReminder(...args),
   toggleNotesBulkMode:(...args)=>domainsNotesController.toggleNotesBulkMode(...args),
   toggleNotesBulkRow:(...args)=>domainsNotesController.toggleNotesBulkRow(...args),
   toggleNotesBulkVisible:(...args)=>domainsNotesController.toggleNotesBulkVisible(...args),
@@ -1061,4 +1070,4 @@ const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,a
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true});
+export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();uiAlertCenter.startDateWatcher();return true});
