@@ -2,10 +2,10 @@
   "project_id": "bupoidcurcxuypfrjqio",
   "verified_at": "2026-09-07 04:02:31.505551+00",
   "source_audit": "audit/retention-release-verification.json",
-  "source_audit_sha256": "ecf6a80e43ebe5f5e5b0c4759668d59f30a8ff778917fd9e37e1d6bd3ba877f9",
+  "source_audit_sha256": "5b9041937190bc1d7f59340207099869d6bc4fae0818e4999401c252c0dad328",
   "production_postflight": "PASS",
   "schema_snapshot": "audit/production-schema-upgraded.json",
-  "schema_snapshot_sha256": "9f875dddff7efa03a5f36ccf7a8f2a5fa1d31a1063d2f43dba251276283e25a4",
+  "schema_snapshot_sha256": "7ac0e7eb4c03d58d1163e36e2b009cb4d6b6e2c2d4803477c5364f560511a707",
   "migration_manifest": [
     {
       "version": "20260906200304",
@@ -60,5 +60,6 @@
     "server_port": 5432,
     "launch_active_jobs": "on",
     "full_visibility": true
-  }
+  },
+  "text_hash_normalization": "lf-v1"
 }

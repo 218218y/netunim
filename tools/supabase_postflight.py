@@ -41,8 +41,10 @@ def build_fingerprint():
     return digest.hexdigest()
 
 
-def file_sha256(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def normalized_text_sha256(path):
+    """Hash repository text independently of Git/Windows line-ending checkout policy."""
+    data = path.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    return hashlib.sha256(data).hexdigest()
 
 
 def release_gate(target, receipt_path=None):
@@ -64,6 +66,8 @@ def release_gate(target, receipt_path=None):
         errors.append('receipt targets a different Supabase project')
     if receipt.get('production_postflight') != 'PASS':
         errors.append('receipt does not record a successful Production postflight')
+    if receipt.get('text_hash_normalization') != 'lf-v1':
+        errors.append('receipt text-hash normalization contract is missing or unsupported')
 
     source_rel = receipt.get('source_audit')
     source_hash = receipt.get('source_audit_sha256')
@@ -73,7 +77,7 @@ def release_gate(target, receipt_path=None):
         source_path = ROOT / 'supabase' / source_rel
         if not source_path.is_file():
             errors.append(f'source audit is missing: {source_rel}')
-        elif file_sha256(source_path) != source_hash:
+        elif normalized_text_sha256(source_path) != source_hash:
             errors.append('source audit changed since the Production receipt was recorded')
         else:
             audit = json.loads(source_path.read_text(encoding='utf8'))
@@ -91,8 +95,8 @@ def release_gate(target, receipt_path=None):
         schema_path = ROOT / 'supabase' / schema_rel
         if not schema_path.is_file():
             errors.append(f'reviewed schema snapshot is missing: {schema_rel}')
-        elif file_sha256(schema_path) != receipt.get('schema_snapshot_sha256'):
-            errors.append('reviewed schema snapshot bytes changed since the Production receipt')
+        elif normalized_text_sha256(schema_path) != receipt.get('schema_snapshot_sha256'):
+            errors.append('reviewed schema snapshot content changed since the Production receipt')
 
     reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
     if canonical(receipt.get('migration_manifest', [])) != canonical(reviewed_manifest):

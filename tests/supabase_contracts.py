@@ -10,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from build_schema_baseline import render
-from supabase_postflight import drift
+from supabase_postflight import drift, normalized_text_sha256
 
 
 def read(name):
@@ -76,6 +76,22 @@ class SupabaseContracts(unittest.TestCase):
         self.assertIn('NETUNIM_SUPABASE_CAPTURE', deployment)
         self.assertIn('if defined PGHOST if defined PGDATABASE if defined PGUSER', deployment)
         self.assertIn('Mandatory Production receipt gate passed', deployment)
+
+    def test_release_receipt_text_hash_is_line_ending_independent(self):
+        target = read('postflight-target.json')
+        receipt = read('production-deployment-receipt.json')
+        self.assertEqual(receipt['text_hash_normalization'], 'lf-v1')
+        for rel, hash_key in ((target['schema_snapshot'], 'schema_snapshot_sha256'),
+                              (receipt['source_audit'], 'source_audit_sha256')):
+            source = ROOT / 'supabase' / rel
+            raw = source.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+            with tempfile.TemporaryDirectory() as tmp:
+                lf = Path(tmp) / 'lf.txt'
+                crlf = Path(tmp) / 'crlf.txt'
+                lf.write_bytes(raw)
+                crlf.write_bytes(raw.replace(b'\n', b'\r\n'))
+                self.assertEqual(normalized_text_sha256(lf), receipt[hash_key])
+                self.assertEqual(normalized_text_sha256(crlf), receipt[hash_key])
 
     def test_release_gate_accepts_current_contract_and_rejects_receipt_drift(self):
         command = [sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--release-gate']
