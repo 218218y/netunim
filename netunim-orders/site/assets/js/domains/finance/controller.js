@@ -10,7 +10,7 @@ import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
 const BANK_BRIDGE_VERSION=34;
-const CREDIT_BRIDGE_VERSION=38;
+const CREDIT_BRIDGE_VERSION=39;
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}

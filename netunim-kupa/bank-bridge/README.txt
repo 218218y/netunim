@@ -267,6 +267,13 @@ For an unverified legacy candidate, the browser profile is rebuilt once while ke
 The recovery is bounded to two local startup attempts and occurs before any issuer navigation. If the browser profile cannot be removed safely, recovery stops with CREDIT_CAMOUFOX_PROFILE_IN_USE instead of deleting lock files blindly. If both local attempts fail, the Bridge reports CREDIT_CAMOUFOX_STARTUP_FAILED with a sanitized startup reason (timeout/profile_lock/process_exit/binary_startup/unknown). No issuer request is made by these local recovery attempts, and there is no fingerprint-generation loop.
 
 
+
+Bridge v39 — Amex Chromium identity hardening for ValidateIdData WAF responses
+-------------------------------------------------------------------------------
+Bridge v39 keeps the v38 architecture (installed Chrome/Edge first, bounded Camoufox fallback) and fixes the remaining Chromium identity gap documented upstream for the shared Isracard/Amex scraper. Before the Amex login page is opened, the adapter now applies a coherent Windows Chrome/Edge User-Agent, sec-ch-ua client hints, language headers and pre-document browser identity values. The request interception uses cooperative priority 20, intentionally above israeli-bank-scrapers 6.10.0's normal continue priority (10) and below its detector-dom abort priority (1000), so the maintained detector-dom protection remains authoritative.
+
+The hardening is scoped to Amex only. It does not change credentials, ValidateIdData/performLogonI payloads, transaction parsing, Max/Cal behavior, or the v38 engine-scoped cooldown rules. israeli-bank-scrapers stays pinned to 6.10.0 because 6.11.0 contains no Amex scraper change.
+
 Bridge v38 — Amex Chromium-first and browser-engine scoped 403 cooldown
 ---------------------------------------------------------------------
 Bridge v38 revalidates the Amex browser choice against the pinned israeli-bank-scrapers 6.10.0 implementation. That package has a first-class CompanyTypes.amex scraper using the same Isracard/Amex base protocol (Login -> ValidateIdData -> performLogonI), so the Bridge no longer bypasses the maintained Chromium path. Chrome/Edge is primary; the custom Camoufox implementation is a bounded fallback only for the existing retryable HTML/WAF classifications. Invalid credentials never cause a second-engine login attempt.

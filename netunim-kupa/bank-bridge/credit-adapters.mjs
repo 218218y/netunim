@@ -55,6 +55,50 @@ function errorFetchStatus(error){
 }
 function diagnostic(onDiagnostic,event){try{onDiagnostic?.(event)}catch{}}
 
+const AMEX_IDENTITY_INTERCEPTION_PRIORITY=20;
+
+function chromiumVersionParts(value){
+  const match=String(value||'').match(/(?:HeadlessChrome|Chrome)\/(\d+(?:\.\d+){0,3})/i);
+  if(!match)return null;
+  const parts=match[1].split('.').filter(Boolean);
+  while(parts.length<4)parts.push('0');
+  return {major:parts[0],full:parts.slice(0,4).join('.')};
+}
+function amexChromiumFlavor(browserPath){return /(?:^|[\\/])msedge\.exe$/i.test(String(browserPath||''))?'edge':'chrome'}
+function amexChromiumIdentity({browserPath='',browserVersion=''}){
+  const version=chromiumVersionParts(browserVersion);
+  if(!version)throw safeError('לא ניתן לזהות את גרסת Chrome/Edge המותקנת לצורך התחברות מאובטחת ל-American Express.','CREDIT_BROWSER_IDENTITY_UNAVAILABLE',{stage:'BrowserIdentity'});
+  const flavor=amexChromiumFlavor(browserPath),brand=flavor==='edge'?'Microsoft Edge':'Google Chrome';
+  const userAgent=`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version.full} Safari/537.36${flavor==='edge'?` Edg/${version.full}`:''}`;
+  return {flavor,brand,...version,userAgent,headers:{
+    'sec-ch-ua':`\"Chromium\";v=\"${version.major}\", \"Not)A;Brand\";v=\"99\", \"${brand}\";v=\"${version.major}\"`,
+    'sec-ch-ua-mobile':'?0',
+    'sec-ch-ua-platform':'\"Windows\"',
+    'accept-language':'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+  }};
+}
+
+export async function prepareAmexChromiumPage(page,{browserPath=''}={}){
+  if(!page?.browser||!page?.setUserAgent||!page?.evaluateOnNewDocument||!page?.setRequestInterception||!page?.on)throw safeError('ממשק הדפדפן של American Express אינו תואם לחוזה המחבר.','CREDIT_BROWSER_IDENTITY_UNAVAILABLE',{stage:'BrowserIdentity'});
+  const browserVersion=await page.browser().version(),identity=amexChromiumIdentity({browserPath,browserVersion});
+  await page.setUserAgent(identity.userAgent);
+  await page.evaluateOnNewDocument(()=>{
+    Object.defineProperty(navigator,'webdriver',{get:()=>false,configurable:true});
+    Object.defineProperty(navigator,'plugins',{get:()=>[1,2,3,4,5],configurable:true});
+    Object.defineProperty(navigator,'languages',{get:()=>['he-IL','he','en-US','en'],configurable:true});
+    if(!window.chrome)window.chrome={};
+    if(!window.chrome.runtime)window.chrome.runtime={connect:()=>{},sendMessage:()=>{}};
+  });
+  await page.setRequestInterception(true);
+  page.on('request',request=>{
+    try{
+      const headers={...request.headers(),...identity.headers};
+      void request.continue({headers},AMEX_IDENTITY_INTERCEPTION_PRIORITY);
+    }catch{}
+  });
+  return {flavor:identity.flavor,brand:identity.brand,major:identity.major,full:identity.full};
+}
+
 export function creditStartDate(now=new Date()){
   const d=new Date(now);d.setUTCDate(d.getUTCDate()-CREDIT_HISTORY_DAYS);return d;
 }
@@ -239,8 +283,8 @@ function genericMonthlyAccount(account,provider,{startDate,futureMonths,now}){
 }
 
 export class GenericScraperAdapter extends CreditProviderAdapter {
-  constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive})}
-  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false,outputData:{enableTransactionsFilterByDate:false}}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});throw failure}}
+  constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive,preparePage:options.preparePage})}
+  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false,outputData:{enableTransactionsFilterByDate:false},...(this.preparePage?{preparePage:this.preparePage}:{})}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});throw failure}}
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 
@@ -251,7 +295,7 @@ export class IsracardAdapter extends GenericScraperAdapter {
 }
 
 export class AmexAdapter extends GenericScraperAdapter {
-  constructor(options={}){super(options);this.identityDir=options.identityDir;this.allowCamoufoxFallback=options.allowCamoufoxFallback!==false}
+  constructor(options={}){super({...options,preparePage:page=>prepareAmexChromiumPage(page,{browserPath:options.browserPath})});this.identityDir=options.identityDir;this.allowCamoufoxFallback=options.allowCamoufoxFallback!==false}
   async scrape(){
     // israeli-bank-scrapers 6.10.0 has a first-class CompanyTypes.amex scraper.
     // Prefer that maintained Chromium/Puppeteer path and keep the custom Camoufox
