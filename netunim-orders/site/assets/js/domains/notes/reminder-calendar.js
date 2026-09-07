@@ -8,6 +8,7 @@ const monthFormatter=new Intl.DateTimeFormat('he-IL',{month:'long',year:'numeric
 function pad(value){return String(value).padStart(2,'0')}
 function localIso(date){return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`}
 function parseMonthKey(value){const match=/^(\d{4})-(\d{2})$/.exec(String(value||''));if(!match)return null;const year=Number(match[1]),month=Number(match[2]);if(month<1||month>12)return null;return new Date(year,month-1,1)}
+function parseIsoDate(value){const normalized=normalizeNoteReminderDate(value);if(!normalized)return null;const [year,month,day]=normalized.split('-').map(Number);return new Date(year,month-1,day,12)}
 
 export function noteReminderMonthKey(value,fallback=checkTodayISO()){
   const raw=String(value||'').trim();if(parseMonthKey(raw))return raw;
@@ -19,6 +20,15 @@ export function shiftNoteReminderMonth(monthKey,delta){
   const base=parseMonthKey(monthKey)||parseMonthKey(noteReminderMonthKey(''));
   const shifted=new Date(base.getFullYear(),base.getMonth()+Number(delta||0),1);
   return `${shifted.getFullYear()}-${pad(shifted.getMonth()+1)}`;
+}
+
+export function shiftNoteReminderFocusDate(value,key,{minDate=checkTodayISO()}={}){
+  const base=parseIsoDate(value);if(!base)return '';
+  const offsets={ArrowLeft:1,ArrowRight:-1,ArrowUp:-7,ArrowDown:7};
+  const offset=offsets[key];if(!offset)return normalizeNoteReminderDate(value);
+  base.setDate(base.getDate()+offset);
+  const candidate=localIso(base),minimum=normalizeNoteReminderDate(minDate)||checkTodayISO();
+  return candidate<minimum?normalizeNoteReminderDate(value):candidate;
 }
 
 export function noteReminderCalendarDays(monthKey,{today=checkTodayISO(),minDate=today}={}){
@@ -33,9 +43,10 @@ export function noteReminderCalendarDays(monthKey,{today=checkTodayISO(),minDate
   });
 }
 
-export function noteReminderCalendarMarkup({monthKey='',selectedDate='',today=checkTodayISO(),minDate=today}={}){
+export function noteReminderCalendarMarkup({monthKey='',selectedDate='',focusedDate='',today=checkTodayISO(),minDate=today}={}){
   const month=noteReminderMonthKey(monthKey,today),monthDate=parseMonthKey(month),selected=normalizeNoteReminderDate(selectedDate),minimum=normalizeNoteReminderDate(minDate)||normalizeNoteReminderDate(today)||checkTodayISO();
-  const previous=shiftNoteReminderMonth(month,-1),previousDisabled=previous<minimum.slice(0,7);
-  const days=noteReminderCalendarDays(month,{today,minDate:minimum});
-  return `<section class="note-reminder-calendar" data-note-reminder-month="${esc(month)}"><header class="note-reminder-calendar-head"><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-prev-month" aria-label="החודש הקודם" ${previousDisabled?'disabled':''}>‹</button><strong>${esc(monthFormatter.format(monthDate))}</strong><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-next-month" aria-label="החודש הבא">›</button></header><div class="note-reminder-calendar-weekdays">${HEBREW_WEEKDAYS.map(day=>`<span>${esc(day)}</span>`).join('')}</div><div class="note-reminder-calendar-grid">${days.map(day=>`<button type="button" class="note-reminder-calendar-day${day.outside?' outside':''}${day.today?' today':''}${day.iso===selected?' selected':''}" data-action="note-reminder-select-day" data-click-arg0="${esc(day.iso)}" ${day.disabled?'disabled':''} aria-label="${esc(day.iso)}" aria-pressed="${day.iso===selected?'true':'false'}">${day.day}</button>`).join('')}</div></section>`;
+  const previous=shiftNoteReminderMonth(month,-1),previousDisabled=previous<minimum.slice(0,7),days=noteReminderCalendarDays(month,{today,minDate:minimum});
+  const requestedFocus=normalizeNoteReminderDate(focusedDate)||selected||minimum;
+  const focusDate=days.some(day=>day.iso===requestedFocus&&!day.disabled)?requestedFocus:(days.find(day=>!day.disabled&&!day.outside)||days.find(day=>!day.disabled))?.iso||'';
+  return `<section class="note-reminder-calendar" data-note-reminder-month="${esc(month)}" aria-label="בחירת תאריך התראה"><header class="note-reminder-calendar-head"><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-prev-month" aria-label="החודש הקודם" ${previousDisabled?'disabled':''}>‹</button><strong>${esc(monthFormatter.format(monthDate))}</strong><button class="note-reminder-calendar-nav" type="button" data-action="note-reminder-next-month" aria-label="החודש הבא">›</button></header><div class="note-reminder-calendar-weekdays" aria-hidden="true">${HEBREW_WEEKDAYS.map(day=>`<span>${esc(day)}</span>`).join('')}</div><div class="note-reminder-calendar-grid" role="grid" aria-label="ימים בחודש">${days.map(day=>`<button type="button" role="gridcell" class="note-reminder-calendar-day${day.outside?' outside':''}${day.today?' today':''}${day.iso===selected?' selected':''}" data-action="note-reminder-select-day" data-keydown="note-reminder-calendar-keydown" data-click-arg0="${esc(day.iso)}" data-note-reminder-date="${esc(day.iso)}" tabindex="${day.iso===focusDate?'0':'-1'}" ${day.disabled?'disabled':''} aria-label="${esc(day.iso)}" ${day.today?'aria-current="date" ':''}aria-selected="${day.iso===selected?'true':'false'}">${day.day}</button>`).join('')}</div></section>`;
 }

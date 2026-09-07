@@ -1019,6 +1019,7 @@ const uiActions=createUiActions({
   openStickyNoteReminder:(...args)=>domainsNotesController.openStickyNoteReminder(...args),
   changeStickyNoteReminderMonth:(...args)=>domainsNotesController.changeStickyNoteReminderMonth(...args),
   selectStickyNoteReminderDate:(...args)=>domainsNotesController.selectStickyNoteReminderDate(...args),
+  handleStickyNoteReminderCalendarKeydown:(...args)=>domainsNotesController.handleStickyNoteReminderCalendarKeydown(...args),
   syncStickyNoteReminderCalendar:(...args)=>domainsNotesController.syncStickyNoteReminderCalendar(...args),
   saveStickyNoteReminder:(...args)=>domainsNotesController.saveStickyNoteReminder(...args),
   toggleNotesBulkMode:(...args)=>domainsNotesController.toggleNotesBulkMode(...args),

@@ -4,8 +4,8 @@ import {normalizeNoteReminderDate,noteReminderWarningItems} from '../netunim-ord
 import {createDomainsNotesController} from '../netunim-orders/site/assets/js/domains/notes/controller.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
-import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/domains/notes/reminder-calendar.js';
-import {createUiDateEditor} from '../netunim-orders/site/assets/js/ui/date-editor.js';
+import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/domains/notes/reminder-calendar.js';
+import {createUiDateEditor,shiftDateEditorIso} from '../netunim-orders/site/assets/js/ui/date-editor.js';
 
 test('note reminder model accepts real ISO dates and activates reminders from their date onward',()=>{
   assert.equal(normalizeNoteReminderDate('2026-09-07'),'2026-09-07');
@@ -46,16 +46,29 @@ test('inline note reminder calendar highlights today, blocks past days, navigate
   assert.equal(days.find(day=>day.iso==='2026-09-06')?.disabled,true);
   assert.equal(days.find(day=>day.iso===today)?.today,true);
   assert.equal(days.find(day=>day.iso===today)?.disabled,false);
-  const markup=noteReminderCalendarMarkup({monthKey:'2026-09',selectedDate:'2026-09-10',today,minDate:today});
+  assert.equal(shiftNoteReminderFocusDate('2026-09-10','ArrowLeft',{minDate:today}),'2026-09-11');
+  assert.equal(shiftNoteReminderFocusDate('2026-09-10','ArrowRight',{minDate:today}),'2026-09-09');
+  assert.equal(shiftNoteReminderFocusDate('2026-09-10','ArrowUp',{minDate:today}),'2026-09-10','blocked keyboard moves keep the current focused day');
+  assert.equal(shiftNoteReminderFocusDate(today,'ArrowRight',{minDate:today}),today,'keyboard navigation must not enter blocked past dates');
+  const markup=noteReminderCalendarMarkup({monthKey:'2026-09',selectedDate:'2026-09-10',focusedDate:'2026-09-10',today,minDate:today});
   assert.match(markup,/data-action="note-reminder-prev-month"/);
   assert.match(markup,/data-action="note-reminder-next-month"/);
   assert.match(markup,/data-action="note-reminder-select-day"/);
-  assert.match(markup,/data-click-arg0="2026-09-10"[^>]*aria-pressed="true"/);
+  assert.match(markup,/data-click-arg0="2026-09-10"[^>]*tabindex="0"[^>]*aria-selected="true"/);
+  assert.match(markup,/data-keydown="note-reminder-calendar-keydown"/);
+  assert.match(markup,/data-note-reminder-date="2026-09-10"/);
+  assert.match(markup,/aria-current="date"/);
   assert.match(markup,/data-click-arg0="2026-09-06"[^>]*disabled/);
   const editor=createUiDateEditor({markCheckSeriesManual:()=>{},syncCheckSeriesFromFirst:()=>{},toast:()=>{}});
-  const row=editor.dateEditorMarkup('noteReminderDate','2026-09-10',{label:'תאריך תחילת ההתראה',picker:false,change:'note-reminder-date-change'});
+  assert.equal(shiftDateEditorIso('2026-09-10','day',1),'2026-09-11');
+  assert.equal(shiftDateEditorIso('2026-01-31','month',1),'2026-02-28');
+  assert.equal(shiftDateEditorIso('2028-02-29','year',1),'2029-02-28');
+  assert.equal(shiftDateEditorIso('2026-09-07','day',-1,{minDate:today}),today);
+  const row=editor.dateEditorMarkup('noteReminderDate','2026-09-10',{label:'תאריך תחילת ההתראה',picker:false,change:'note-reminder-date-change',minDate:today});
   assert.match(row,/id="noteReminderDate"/);
   assert.match(row,/data-change="note-reminder-date-change"/);
+  assert.match(row,/data-date-min="2026-09-07"/);
+  assert.match(row,/data-keydown="handle-check-date-part-keydown"/);
   assert.match(row,/date-editor-no-picker/);
   assert.doesNotMatch(row,/data-action="open-check-date-picker"/);
 });
