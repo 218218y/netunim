@@ -780,6 +780,8 @@ const domainsNotesController=createDomainsNotesController({
   closeModal:(...args)=>uiModal.closeModal(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   currentView:()=>ui.currentView,
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
 });
 
 const uiSettings=createUiSettings({
@@ -1015,6 +1017,9 @@ const uiActions=createUiActions({
   updateStickyNote:(...args)=>domainsNotesController.updateStickyNote(...args),
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
   openStickyNoteReminder:(...args)=>domainsNotesController.openStickyNoteReminder(...args),
+  changeStickyNoteReminderMonth:(...args)=>domainsNotesController.changeStickyNoteReminderMonth(...args),
+  selectStickyNoteReminderDate:(...args)=>domainsNotesController.selectStickyNoteReminderDate(...args),
+  syncStickyNoteReminderCalendar:(...args)=>domainsNotesController.syncStickyNoteReminderCalendar(...args),
   saveStickyNoteReminder:(...args)=>domainsNotesController.saveStickyNoteReminder(...args),
   toggleNotesBulkMode:(...args)=>domainsNotesController.toggleNotesBulkMode(...args),
   toggleNotesBulkRow:(...args)=>domainsNotesController.toggleNotesBulkRow(...args),
@@ -1070,4 +1075,5 @@ const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,a
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();uiAlertCenter.startDateWatcher();return true});
+export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true});
+void appReady.then(()=>uiAlertCenter.startDateWatcher());

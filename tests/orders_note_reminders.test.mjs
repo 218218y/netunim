@@ -4,6 +4,8 @@ import {normalizeNoteReminderDate,noteReminderWarningItems} from '../netunim-ord
 import {createDomainsNotesController} from '../netunim-orders/site/assets/js/domains/notes/controller.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
+import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/domains/notes/reminder-calendar.js';
+import {createUiDateEditor} from '../netunim-orders/site/assets/js/ui/date-editor.js';
 
 test('note reminder model accepts real ISO dates and activates reminders from their date onward',()=>{
   assert.equal(normalizeNoteReminderDate('2026-09-07'),'2026-09-07');
@@ -30,6 +32,32 @@ test('Orders normalization preserves valid reminder dates without changing legac
   assert.equal(Object.hasOwn(state.notes[0],'reminderDate'),false);
   assert.equal(state.notes[1].reminderDate,'2026-09-10');
   assert.equal(Object.hasOwn(state.notes[2],'reminderDate'),false);
+});
+
+
+test('inline note reminder calendar highlights today, blocks past days, navigates months and keeps the compact date row reusable',()=>{
+  const today='2026-09-07';
+  assert.equal(noteReminderMonthKey('2026-09',today),'2026-09');
+  assert.equal(noteReminderMonthKey('2026-10-15',today),'2026-10');
+  assert.equal(shiftNoteReminderMonth('2026-09',1),'2026-10');
+  assert.equal(shiftNoteReminderMonth('2026-01',-1),'2025-12');
+  const days=noteReminderCalendarDays('2026-09',{today,minDate:today});
+  assert.equal(days.length,42);
+  assert.equal(days.find(day=>day.iso==='2026-09-06')?.disabled,true);
+  assert.equal(days.find(day=>day.iso===today)?.today,true);
+  assert.equal(days.find(day=>day.iso===today)?.disabled,false);
+  const markup=noteReminderCalendarMarkup({monthKey:'2026-09',selectedDate:'2026-09-10',today,minDate:today});
+  assert.match(markup,/data-action="note-reminder-prev-month"/);
+  assert.match(markup,/data-action="note-reminder-next-month"/);
+  assert.match(markup,/data-action="note-reminder-select-day"/);
+  assert.match(markup,/data-click-arg0="2026-09-10"[^>]*aria-pressed="true"/);
+  assert.match(markup,/data-click-arg0="2026-09-06"[^>]*disabled/);
+  const editor=createUiDateEditor({markCheckSeriesManual:()=>{},syncCheckSeriesFromFirst:()=>{},toast:()=>{}});
+  const row=editor.dateEditorMarkup('noteReminderDate','2026-09-10',{label:'תאריך תחילת ההתראה',picker:false,change:'note-reminder-date-change'});
+  assert.match(row,/id="noteReminderDate"/);
+  assert.match(row,/data-change="note-reminder-date-change"/);
+  assert.match(row,/date-editor-no-picker/);
+  assert.doesNotMatch(row,/data-action="open-check-date-picker"/);
 });
 
 test('note card exposes one reminder button and cancellation removes only the reminder after confirmation',async()=>{

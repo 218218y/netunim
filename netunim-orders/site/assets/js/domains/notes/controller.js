@@ -1,10 +1,12 @@
 import {uid, esc} from '../../core/values.js';
 import {checkDateFmt,checkTodayISO} from '../../core/dates.js';
 import {normalizeNoteReminderDate} from './alerts.js';
+import {noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderMonth} from './reminder-calendar.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsNotesController({model, notesUi, scheduleSave, toast=()=>{}, mountViewLayout, confirmDialog, modal=()=>{}, closeModal=()=>{}, refreshAlertCenter=()=>{}, currentView=()=>''}){
+export function createDomainsNotesController({model, notesUi, scheduleSave, toast=()=>{}, mountViewLayout, confirmDialog, modal=()=>{}, closeModal=()=>{}, refreshAlertCenter=()=>{}, currentView=()=>'', dateEditorMarkup=()=>'', setDateValue=()=>{}}){
+let reminderPickerMonth='';
 function noteDisplayDate(note){const raw=note?.updatedAt||note?.createdAt;if(!raw)return 'נשמר';const d=new Date(raw);if(Number.isNaN(d.getTime()))return 'נשמר';return 'עודכן '+new Intl.DateTimeFormat('he-IL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)}
 
 function noteSortRows(){return [...(model.state.notes||[])].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))}
@@ -21,12 +23,32 @@ async function deleteStickyNote(id){const note=model.state.notes.find(x=>x.id===
 
 function reminderButtonLabel(note){const date=normalizeNoteReminderDate(note?.reminderDate);return date?`התראה · ${checkDateFmt(date)}`:'התראה'}
 
+function renderStickyNoteReminderCalendar(){
+  const host=$('#noteReminderCalendar'),today=checkTodayISO(),selected=normalizeNoteReminderDate($('#noteReminderDate')?.value)||today;if(!host)return false;
+  host.innerHTML=noteReminderCalendarMarkup({monthKey:reminderPickerMonth||noteReminderMonthKey(selected,today),selectedDate:selected,today,minDate:today});return true;
+}
+
+function changeStickyNoteReminderMonth(delta){
+  const today=checkTodayISO(),current=reminderPickerMonth||noteReminderMonthKey($('#noteReminderDate')?.value,today),next=shiftNoteReminderMonth(current,delta);
+  if(Number(delta)<0&&next<today.slice(0,7))return false;reminderPickerMonth=next;return renderStickyNoteReminderCalendar();
+}
+
+function selectStickyNoteReminderDate(value){
+  const selected=normalizeNoteReminderDate(value),today=checkTodayISO();if(!selected||selected<today)return false;
+  reminderPickerMonth=noteReminderMonthKey(selected,today);setDateValue($('#noteReminderDate'),selected,true);return true;
+}
+
+function syncStickyNoteReminderCalendar(input){
+  const selected=normalizeNoteReminderDate(input?.value||$('#noteReminderDate')?.value),today=checkTodayISO();if(!selected||selected<today)return false;
+  reminderPickerMonth=noteReminderMonthKey(selected,today);return renderStickyNoteReminderCalendar();
+}
+
 async function openStickyNoteReminder(id){
   const note=model.state.notes.find(x=>x.id===id);if(!note)return false;
   if(normalizeNoteReminderDate(note.reminderDate))return removeStickyNoteReminder(id);
-  const today=checkTodayISO(),preview=String(note.content||'').trim().slice(0,180);
-  modal('התראה להערה',`<div class="note-reminder-dialog">${preview?`<div class="notice"><b>הערה:</b> ${esc(preview)}${String(note.content||'').trim().length>180?'…':''}</div>`:''}<div class="field"><label for="noteReminderDate">תאריך תחילת ההתראה</label><input id="noteReminderDate" type="date" min="${esc(today)}" value="${esc(today)}"><small>מהתאריך שנבחר ואילך ההערה תופיע במרכז האזהרות עד לביטול ההתראה.</small></div></div>`,`<button class="btn primary" type="button" data-action="save-sticky-note-reminder" data-click-arg0="${esc(note.id)}">שמור התראה</button><button class="btn" type="button" data-action="close-modal">ביטול</button>`);
-  requestAnimationFrame(()=>$('#noteReminderDate')?.focus());
+  const today=checkTodayISO(),preview=String(note.content||'').trim().slice(0,180);reminderPickerMonth=noteReminderMonthKey(today,today);
+  modal('התראה להערה',`<div class="note-reminder-dialog">${preview?`<div class="notice"><b>הערה:</b> ${esc(preview)}${String(note.content||'').trim().length>180?'…':''}</div>`:''}<div id="noteReminderCalendar">${noteReminderCalendarMarkup({monthKey:reminderPickerMonth,selectedDate:today,today,minDate:today})}</div><div class="field note-reminder-date-field"><label>תאריך תחילת ההתראה</label>${dateEditorMarkup('noteReminderDate',today,{label:'תאריך תחילת ההתראה',picker:false,change:'note-reminder-date-change'})}<small>בחר יום בלוח או הקלד תאריך. מהתאריך שנבחר ואילך ההערה תופיע במרכז האזהרות עד לביטול ההתראה.</small></div></div>`,`<button class="btn primary" type="button" data-action="save-sticky-note-reminder" data-click-arg0="${esc(note.id)}">שמור התראה</button><button class="btn" type="button" data-action="close-modal">ביטול</button>`);
+  requestAnimationFrame(()=>$('#noteReminderCalendar')?.querySelector('.note-reminder-calendar-day.selected')?.focus());
   return true;
 }
 
@@ -65,5 +87,5 @@ function stickyNoteCard(note){const selected=notesUi.notesBulkSelected.has(note.
 
 function renderNotes(){const rows=noteSortRows();$('#main').innerHTML=`<div class="notes-view"><section class="hero notes-hero"><div><h1>הערות</h1></div><div class="notes-actions"><button class="btn primary" data-action="add-sticky-note">+ פתק חדש</button>${notesBulkControls()}</div></section><div class="notes-grid">${rows.map(stickyNoteCard).join('')||`<div class="notes-empty"><b>אין עדיין פתקים</b>לחץ על „פתק חדש” כדי לרשום תזכורת ראשונה.</div>`}</div></div>`;mountViewLayout({sourceSelector:'.notes-view',headCount:1,className:'notes-view',scrollKey:'notes'});requestAnimationFrame(()=>{resizeAllStickyNotes();syncNotesBulkUi()})}
 
-return { noteDisplayDate, noteSortRows, resizeStickyNoteTextarea, resizeAllStickyNotes, addStickyNote, updateStickyNote, deleteStickyNote, openStickyNoteReminder, saveStickyNoteReminder, removeStickyNoteReminder, toggleNotesBulkMode, toggleNotesBulkRow, toggleNotesBulkVisible, notesBulkControls, syncNotesBulkUi, deleteSelectedStickyNotes, stickyNoteCard, renderNotes };
+return { noteDisplayDate, noteSortRows, resizeStickyNoteTextarea, resizeAllStickyNotes, addStickyNote, updateStickyNote, deleteStickyNote, openStickyNoteReminder, changeStickyNoteReminderMonth, selectStickyNoteReminderDate, syncStickyNoteReminderCalendar, saveStickyNoteReminder, removeStickyNoteReminder, toggleNotesBulkMode, toggleNotesBulkRow, toggleNotesBulkVisible, notesBulkControls, syncNotesBulkUi, deleteSelectedStickyNotes, stickyNoteCard, renderNotes };
 }
