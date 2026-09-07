@@ -30,6 +30,7 @@ import {
   normalizeCreditProfileInput,
   creditAutomaticRetryAfterAt,
   deferredCreditProfileError,
+  deferredCamoufoxProfileError,
   expiredCamoufoxLoginPageBlock,
   creditErrorSeverity,
   creditErrorComponent,
@@ -41,7 +42,7 @@ import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=37;
+const BRIDGE_VERSION=38;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -451,9 +452,9 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
 function normalizeCreditSyncSelection(value){return (Array.isArray(value)?value:[]).slice(0,100).map(row=>({profileId:String(row?.profileId||'').trim().slice(0,80),excludedAccounts:[...new Set((Array.isArray(row?.excludedAccounts)?row.excludedAccounts:[]).slice(0,100).map(account=>String(account||'').trim().slice(0,80)).filter(Boolean))]})).filter(row=>row.profileId&&row.excludedAccounts.length)}
 function excludedAccountsForProfile(selection,profileId){return selection.find(row=>row.profileId===profileId)?.excludedAccounts||[]}
 
-async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='daily',excludedAccountNumbers=[]}={}){
-  const browserPath=profile.provider==='amex'?'':await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile),browserEngine=profile.provider==='amex'?'camoufox':'chromium';
-  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,onDiagnostic:event=>creditDiagnostics.record({browserEngine,...event})});
+async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='daily',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
+  const browserPath=await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile);
+  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,allowCamoufoxFallback,onDiagnostic:event=>creditDiagnostics.record({browserEngine:'chromium',...event})});
   return adapter.scrape();
 }
 async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[],syncMode='daily',selection=[]}={}){
@@ -467,6 +468,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
     for(const profile of enabled){
       const deferred=deferredCreditProfileError(previousErrors,profile);
       if(deferred){errors.push(deferred);deferredCount++;continue}
+      const camoufoxDeferred=deferredCamoufoxProfileError(previousErrors,profile);
       const expiredBlockedIdentity=expiredCamoufoxLoginPageBlock(previousErrors,profile);
       attemptedCount++;
       try{
@@ -474,11 +476,16 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
           await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile);
           await creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:'camoufox',stage:'IdentityRecovery'});
         }
-        const result=await scrapeCreditProfile(profile,{interactive,correlationId,syncMode,excludedAccountNumbers:excludedAccountsForProfile(selection,profile.profileId)});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
+        const result=await scrapeCreditProfile(profile,{interactive,correlationId,syncMode,excludedAccountNumbers:excludedAccountsForProfile(selection,profile.profileId),allowCamoufoxFallback:!camoufoxDeferred});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
       }
       catch(error){
-        const at=new Date().toISOString(),base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
-        errors.push({...base,severity,component,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:profile.provider==='amex'?'camoufox':'chromium',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason});
+        const at=new Date().toISOString(),browserEngine=['chromium','camoufox'].includes(String(error?.browserEngine||''))?String(error.browserEngine):'chromium',base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId,browserEngine},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
+        errors.push({...base,severity,component,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});
+        // If Chromium was attempted while a prior Camoufox 403 was still cooling down,
+        // retain that engine-scoped not-before record when Chromium also fails. This
+        // prevents a second manual refresh from immediately re-entering Camoufox.
+        if(camoufoxDeferred&&browserEngine!=='camoufox')errors.push(camoufoxDeferred);
+        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason});
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;

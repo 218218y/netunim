@@ -38,6 +38,7 @@ import {
   creditThrownScrapeFailure,
   creditAutomaticRetryAfterAt,
   deferredCreditProfileError,
+  deferredCamoufoxProfileError,
   expiredCamoufoxLoginPageBlock,
   CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
@@ -90,21 +91,29 @@ assert.equal(reportedCalLoginTimeout.stage,'LoginFlow','a TIMEOUT is assigned to
 const blockedAt=Date.parse('2026-09-03T05:05:00+03:00'),blockedError={profileId:'amex-a',provider:'amex',code:'CREDIT_AUTOMATION_BLOCKED',at:new Date(blockedAt).toISOString()};
 const retryAfterAt=creditAutomaticRetryAfterAt(blockedError,blockedAt);
 assert.equal(Date.parse(retryAfterAt)-blockedAt,CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,'automation blocks receive exactly one 24-hour automatic retry cooldown');
-const deferred=deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+60*60*1000);
-assert.equal(deferred?.deferred,true,'a blocked Amex profile is deferred without opening another automatic browser session during cooldown');
-assert.equal(deferred?.severity,'deferred','403 cooldown is a deferred state rather than a new failed event');
-assert.equal(deferred?.at,blockedError.at,'a defer check never stamps an old 403 as a new attempt');
-assert.equal(deferred?.originalFailureAt,blockedError.at,'the original issuer failure time remains explicit');
-assert.match(deferred?.message,/מושהה עד .* עקב 403 קודם/);
+const legacyCamoufoxBlock={...blockedError,stage:'LoginPage',httpStatus:403,retryAfterAt};
+assert.equal(deferredCreditProfileError([legacyCamoufoxBlock],{profileId:'amex-a',provider:'amex'},blockedAt+60*60*1000),null,'legacy v37 Amex LoginPage/403 no longer suppresses the newly eligible Chromium primary path');
+const camoufoxDeferred=deferredCamoufoxProfileError([legacyCamoufoxBlock],{profileId:'amex-a',provider:'amex'},blockedAt+60*60*1000);
+assert.equal(camoufoxDeferred?.deferred,true,'legacy v37 Amex LoginPage/403 is migrated narrowly into an engine-scoped Camoufox cooldown');
+assert.equal(camoufoxDeferred?.browserEngine,'camoufox','the migrated cooldown records the browser engine explicitly');
+assert.equal(camoufoxDeferred?.at,blockedError.at,'an engine-scoped defer check never stamps an old 403 as a new attempt');
+assert.equal(camoufoxDeferred?.originalFailureAt,blockedError.at,'the original issuer failure time remains explicit');
+assert.match(camoufoxDeferred?.message,/Camoufox מושהה .* Chromium הראשי נשאר זכאי/);
+const explicitCamoufox={...legacyCamoufoxBlock,browserEngine:'camoufox'};
+assert.equal(deferredCreditProfileError([explicitCamoufox],{profileId:'amex-a',provider:'amex'},blockedAt+1000),null,'an explicit Camoufox 403 never gates Chromium');
+assert.equal(deferredCamoufoxProfileError([explicitCamoufox],{profileId:'amex-a',provider:'amex'},blockedAt+1000)?.browserEngine,'camoufox','an explicit Camoufox 403 still gates the fallback itself');
+const chromiumBlock={...legacyCamoufoxBlock,browserEngine:'chromium'};
+const chromiumDeferred=deferredCreditProfileError([chromiumBlock],{profileId:'amex-a',provider:'amex'},blockedAt+1000);
+assert.equal(chromiumDeferred?.deferred,true,'a proven Chromium 403 remains a whole-profile hard not-before instead of being mislabelled as Camoufox');
+assert.equal(deferredCamoufoxProfileError([chromiumBlock],{profileId:'amex-a',provider:'amex'},blockedAt+1000),null,'a Chromium 403 never creates or rotates Camoufox identity state');
 const rateFailure={profileId:'amex-a',provider:'amex',code:'CREDIT_PROVIDER_RATE_LIMITED',at:blockedError.at,retryAfterAt:new Date(blockedAt+2*60*60*1000).toISOString()},rateDeferred=deferredCreditProfileError([rateFailure],{profileId:'amex-a',provider:'amex'},blockedAt+1000);
-assert.equal(rateDeferred?.severity,'deferred');assert.equal(rateDeferred?.at,rateFailure.at,'Retry-After hard not-before is unchanged for manual/interactive callers because the gate has no mode bypass');assert.match(rateDeferred?.message,/עקב 429 קודם/);
-assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'cal-a',provider:'visaCal'},blockedAt+60*60*1000),null,'cooldown is profile-specific and never suppresses another issuer/profile');
-assert.equal(deferredCreditProfileError([{...blockedError,retryAfterAt}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'automatic retry becomes eligible exactly when the cooldown expires');
-const loginPageBlock={...blockedError,stage:'LoginPage',httpStatus:403,retryAfterAt};
-assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS-1),null,'Camoufox identity recovery cannot run before the hard 403 cooldown expires');
-assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS)?.at,blockedError.at,'the rejected persistent identity becomes eligible for one recovery only after its exact not-before time');
-assert.equal(expiredCamoufoxLoginPageBlock([{...loginPageBlock,stage:'ValidateIdData'}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'authenticated-stage blocks never trigger browser-identity replacement');
-assert.equal(expiredCamoufoxLoginPageBlock([loginPageBlock],{profileId:'cal-a',provider:'visaCal'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'non-Camoufox providers never enter Camoufox identity recovery');
+assert.equal(rateDeferred?.severity,'deferred');assert.equal(rateDeferred?.at,rateFailure.at,'Retry-After hard not-before remains issuer-wide and has no manual/interactive bypass');assert.match(rateDeferred?.message,/עקב 429 קודם/);
+assert.equal(deferredCamoufoxProfileError([legacyCamoufoxBlock],{profileId:'cal-a',provider:'visaCal'},blockedAt+60*60*1000),null,'engine cooldown is profile-specific and never suppresses another issuer/profile');
+assert.equal(deferredCamoufoxProfileError([legacyCamoufoxBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'Camoufox fallback becomes eligible exactly when its cooldown expires');
+assert.equal(expiredCamoufoxLoginPageBlock([legacyCamoufoxBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS-1),null,'Camoufox identity recovery cannot run before its own 403 cooldown expires');
+assert.equal(expiredCamoufoxLoginPageBlock([legacyCamoufoxBlock],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS)?.at,blockedError.at,'the rejected persistent Camoufox identity becomes eligible for one recovery only after its exact not-before time');
+assert.equal(expiredCamoufoxLoginPageBlock([{...legacyCamoufoxBlock,stage:'ValidateIdData'}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'authenticated-stage blocks never trigger browser-identity replacement');
+assert.equal(expiredCamoufoxLoginPageBlock([{...legacyCamoufoxBlock,browserEngine:'chromium'}],{profileId:'amex-a',provider:'amex'},blockedAt+CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS),null,'a Chromium LoginPage/403 never retires a Camoufox identity');
 
 const now=Date.parse('2026-08-30T06:00:00+03:00');
 assert.equal(bankAutoRefreshDue(null,now),true,'missing successful bank sync is due');

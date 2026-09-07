@@ -240,30 +240,36 @@ function genericMonthlyAccount(account,provider,{startDate,futureMonths,now}){
 
 export class GenericScraperAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive})}
-  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false,outputData:{enableTransactionsFilterByDate:false}}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){this.event({stage:error?.stage||'Scrape',durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus});throw creditThrownScrapeFailure(error,profile)}}
+  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false,outputData:{enableTransactionsFilterByDate:false}}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});throw failure}}
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 
 export class IsracardAdapter extends GenericScraperAdapter {
-  constructor(options={}){super(options);this.identityDir=options.identityDir}
-  async scrape(){try{return await super.scrape()}catch(error){if(!isCamoufoxRetryableNativeFailure(error))throw error;return this.scrapeCamoufox()}}
-  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
+  constructor(options={}){super(options);this.identityDir=options.identityDir;this.allowCamoufoxFallback=options.allowCamoufoxFallback!==false}
+  async scrape(){try{return await super.scrape()}catch(error){if(!this.allowCamoufoxFallback||!isCamoufoxRetryableNativeFailure(error))throw error;return this.scrapeCamoufox()}}
+  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.onDiagnostic({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
 }
 
-export class AmexAdapter extends CreditProviderAdapter {
-  constructor(options={}){super(options);this.interactive=!!options.interactive;this.identityDir=options.identityDir}
-  async scrape(){if(!camoufoxCreditSupported(this.profile.provider))throw safeError('Camoufox אינו תומך בחברת האשראי שנבחרה.','CREDIT_PROVIDER_UNAVAILABLE');const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:this.onDiagnostic,correlationId:this.correlationId,now:this.now})}
+export class AmexAdapter extends GenericScraperAdapter {
+  constructor(options={}){super(options);this.identityDir=options.identityDir;this.allowCamoufoxFallback=options.allowCamoufoxFallback!==false}
+  async scrape(){
+    // israeli-bank-scrapers 6.10.0 has a first-class CompanyTypes.amex scraper.
+    // Prefer that maintained Chromium/Puppeteer path and keep the custom Camoufox
+    // implementation only as a bounded fallback for proven WAF/HTML failures.
+    try{return await super.scrape()}catch(error){if(!this.allowCamoufoxFallback||!isCamoufoxRetryableNativeFailure(error))throw error;if(!camoufoxCreditSupported(this.profile.provider))throw error;return this.scrapeCamoufox()}
+  }
+  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.onDiagnostic({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
 }
 
 async function camoufoxProfileResult(adapter,options){
-  try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString();return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label}))}}catch(error){throw creditThrownScrapeFailure(error,adapter.profile)}
+  try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString();return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label,browserEngine:'camoufox'}))}}catch(error){const failure=creditThrownScrapeFailure(error,adapter.profile);if(!failure.browserEngine)failure.browserEngine='camoufox';throw failure}
 }
 
-export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[]}={}){
-  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode,excludedAccountNumbers};
+export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
+  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode,excludedAccountNumbers,allowCamoufoxFallback};
   if(profile.provider==='visaCal')return new VisaCalAdapter(common);
   if(profile.provider==='max')return new MaxAdapter({...common,companyId:CompanyTypes.max});
   if(profile.provider==='isracard')return new IsracardAdapter({...common,companyId:CompanyTypes.isracard});
-  if(profile.provider==='amex')return new AmexAdapter(common);
+  if(profile.provider==='amex')return new AmexAdapter({...common,companyId:CompanyTypes.amex});
   throw safeError('חברת האשראי שנבחרה אינה נתמכת ב־Credit Connector v2.','CREDIT_PROVIDER_UNAVAILABLE');
 }

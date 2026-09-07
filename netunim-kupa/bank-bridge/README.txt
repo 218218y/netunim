@@ -32,8 +32,8 @@ Security model
 - Credentials are encrypted with Windows DPAPI CurrentUser under %LOCALAPPDATA%\NetunimKupaBankBridge.
 - Kupa never stores the Hapoalim user code/password in localStorage, JSON, backups, Supabase or the deployed site.
 - The browser stores only the local Bridge key and the auto-refresh preference for that browser profile.
-- Hapoalim, Visa Cal, Max and the normal Isracard path use Chrome/Edge already installed on Windows. Puppeteer's own browser download is disabled.
-- American Express uses a separate locally installed Camoufox browser because the issuer currently rejects the ordinary automated Chromium fingerprint before the fixed-password API login can start. Camoufox files stay under %LOCALAPPDATA%\NetunimKupaBankBridge\camoufox.
+- Hapoalim, Visa Cal, Max, Isracard and American Express use Chrome/Edge already installed on Windows as their primary path. Puppeteer's own browser download is disabled.
+- Isracard/American Express retain a separate locally installed Camoufox browser only as a bounded fallback for proven HTML/WAF failures from the maintained Chromium scraper. A Camoufox 403 cools down that fallback only; it never suppresses an otherwise eligible Chrome/Edge attempt. Camoufox files stay under %LOCALAPPDATA%\NetunimKupaBankBridge\camoufox.
 - A dedicated browser profile under the Bridge data directory is reused to preserve harmless browser/device state between bank sessions; it is not the user's normal Chrome profile.
 
 Automatic and manual refresh
@@ -265,3 +265,10 @@ The generated camoufox-identity.json is now committed only after launchPersisten
 For an unverified legacy candidate, the browser profile is rebuilt once while keeping the generated device config stable. If that clean local launch still fails, exactly one second local startup attempt is allowed with a fresh profile and, only for that unverified legacy candidate, a fresh identity candidate. For an already verified identity, recovery may rebuild only the browser profile; it never rotates the durable identity merely because of a local startup failure.
 
 The recovery is bounded to two local startup attempts and occurs before any issuer navigation. If the browser profile cannot be removed safely, recovery stops with CREDIT_CAMOUFOX_PROFILE_IN_USE instead of deleting lock files blindly. If both local attempts fail, the Bridge reports CREDIT_CAMOUFOX_STARTUP_FAILED with a sanitized startup reason (timeout/profile_lock/process_exit/binary_startup/unknown). No issuer request is made by these local recovery attempts, and there is no fingerprint-generation loop.
+
+
+Bridge v38 — Amex Chromium-first and browser-engine scoped 403 cooldown
+---------------------------------------------------------------------
+Bridge v38 revalidates the Amex browser choice against the pinned israeli-bank-scrapers 6.10.0 implementation. That package has a first-class CompanyTypes.amex scraper using the same Isracard/Amex base protocol (Login -> ValidateIdData -> performLogonI), so the Bridge no longer bypasses the maintained Chromium path. Chrome/Edge is primary; the custom Camoufox implementation is a bounded fallback only for the existing retryable HTML/WAF classifications. Invalid credentials never cause a second-engine login attempt.
+
+The previous profile-wide 24-hour circuit breaker incorrectly allowed a Camoufox LoginPage/403 to suppress Chromium as well. v38 persists browserEngine on safe errors/diagnostics, scopes Camoufox 403 cooldown to Camoufox, and preserves issuer-wide 429 behavior. Legacy v37 Amex LoginPage/403 records are migrated narrowly as Camoufox-origin because v37 could not run Amex in Chromium. This allows an already-paused Amex profile to try Chrome/Edge immediately after upgrading without discarding the Camoufox not-before state. If Chromium also fails while Camoufox is cooling down, both the current Chromium failure and the deferred Camoufox record are retained so repeated manual refreshes cannot accidentally hammer the fallback.

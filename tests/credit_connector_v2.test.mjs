@@ -8,6 +8,7 @@ import {
   MaxAdapter,
   buildCreditMonthPlan,
   classifyCreditHttpResponse,
+  createCreditProviderAdapter,
   parseRetryAfter,
   parseVisaCalFrame,
   parseVisaCalMonthData,
@@ -59,6 +60,19 @@ const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'
 const genericResult=await genericAdapter.scrape();
 assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'native MAX/Isracard purchase-date filtering is disabled so Netunim can apply the canonical billing-date boundary');
 assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
+
+const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
+let amexNativeOptions=null,amexNativeCredentials=null;
+const amexNativeAdapter=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:options=>{amexNativeOptions=structuredClone(options);return {scrape:async credentials=>{amexNativeCredentials=structuredClone(credentials);return {success:true,accounts:[]}}}},browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
+const amexNativeResult=await amexNativeAdapter.scrape();
+assert.equal(amexNativeOptions.companyId,'amex','Amex primary path uses the pinned israeli-bank-scrapers CompanyTypes.amex implementation');
+assert.equal(amexNativeOptions.executablePath,'chrome.exe','Amex primary path runs through the discovered Chrome/Edge executable instead of forcing Camoufox');
+assert.deepEqual(amexNativeCredentials,amexProfile.credentials,'Amex native Chromium receives the official id/card6Digits/password credential contract unchanged');
+assert.equal(amexNativeResult.coreComplete,true,'successful native Amex Chromium completes without entering the Camoufox fallback');
+const amexBadPassword=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>({scrape:async()=>({success:false,errorType:'INVALID_PASSWORD',errorMessage:'invalid'})}),browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
+await assert.rejects(()=>amexBadPassword.scrape(),error=>error.code==='CREDIT_INVALID_PASSWORD'&&error.browserEngine==='chromium','invalid Amex credentials never trigger a second browser engine login attempt');
+const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>({scrape:async()=>({success:false,errorType:'GENERIC',errorMessage:'fetchPostWithinPage parse error reqName=ValidateIdData <!DOCTYPE html>'})}),browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});
+await assert.rejects(()=>amexCamoufoxPaused.scrape(),error=>error.code==='CREDIT_LOGIN_HTML_RESPONSE'&&error.browserEngine==='chromium','a Camoufox cooldown disables only the fallback; Chromium is still attempted and its native failure remains explicit');
 
 const excludedFixture=fakeScraper(),excludedRequests=[],excludedFetch=fetchFixture(),excludedResult=await adapterFor(excludedFixture.scraper,async(url,options)=>{excludedRequests.push({url,body:JSON.parse(options.body)});return excludedFetch(url,options)},'full',{excludedAccountNumbers:['1111']}).scrape();
 assert.equal(excludedRequests.length,20,'a known excluded Cal card sends zero Frames/Pending/month requests while one included card keeps the complete full horizon');

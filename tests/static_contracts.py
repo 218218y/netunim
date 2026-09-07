@@ -377,8 +377,10 @@ ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and
    "orders Kupa UI: composition root and state own the new financial surface")
 ok("const BANK_BRIDGE_VERSION=34" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v34 contract")
-ok("const CREDIT_BRIDGE_VERSION=37" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
-   "orders Kupa UI: credit controls require Bridge v37 / Credit Connector contract v2 so older bridges cannot silently miss Isracard/Amex issuer-frame support")
+ok("const CREDIT_BRIDGE_VERSION=38" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
+   "orders Kupa UI: credit controls require Bridge v38 / Credit Connector contract v2 so older bridges cannot silently miss Isracard/Amex issuer-frame support")
+ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in orders_finance_view,
+   "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
 ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")

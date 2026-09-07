@@ -30,7 +30,7 @@ export function safeCreditResponseShape(value){
 export function responseShapeFingerprint(value={}){const shape=sanitizeStoredResponseShape(value),{statusCode:_,...structural}=shape;return createHash('sha256').update(JSON.stringify(structural)).digest('hex').slice(0,24)}
 
 export function diagnosticFingerprint(value={}){
-  const stable=[value.provider,value.stage,value.month,value.errorClass||value.code,value.httpStatus].map(item=>text(item,80)).join('|');
+  const stable=[value.provider,value.browserEngine,value.stage,value.month,value.errorClass||value.code,value.httpStatus].map(item=>text(item,80)).join('|');
   return createHash('sha256').update(stable).digest('hex').slice(0,16);
 }
 

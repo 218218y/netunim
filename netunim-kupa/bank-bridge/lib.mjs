@@ -477,16 +477,39 @@ export function creditAutomaticRetryAfterAt(error,now=Date.now()){
   const base=Number(now);if(!Number.isFinite(base))return null;
   return new Date(base+(code==='CREDIT_AUTOMATION_BLOCKED'?CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS:CREDIT_RATE_LIMIT_FALLBACK_COOLDOWN_MS)).toISOString();
 }
+function creditErrorBrowserEngine(error,profile){
+  const explicit=String(error?.browserEngine||'').toLowerCase();if(explicit)return explicit;
+  // Bridge <=37 forced Amex through Camoufox and did not persist browserEngine on
+  // profile errors. This narrow migration rule lets an existing Amex LoginPage/403
+  // cooldown suppress only the old Camoufox fallback, not the newly eligible
+  // Chromium primary path. Do not guess an engine for any other legacy failure.
+  if(String(profile?.provider||'')==='amex'&&String(error?.code||'')==='CREDIT_AUTOMATION_BLOCKED'&&String(error?.stage||'')==='LoginPage'&&Number(error?.httpStatus)===403)return 'camoufox';
+  return '';
+}
+function deferredCreditError(error,retryAt,{engineOnly=false}={}){
+  const originalFailureAt=error.originalFailureAt||error.at||null,reason=String(error.code||'').includes('RATE_LIMITED')?'429':'403',engine=creditErrorBrowserEngine(error,{provider:error?.provider});
+  return {...error,severity:'deferred',deferred:true,originalFailureAt,at:originalFailureAt,message:engineOnly&&engine==='camoufox'?`Camoufox מושהה עד ${new Date(retryAt).toISOString()} עקב 403 קודם. מסלול Chromium הראשי נשאר זכאי לניסיון.`:`מושהה עד ${new Date(retryAt).toISOString()} עקב ${reason} קודם. לא נשלחה בקשה חדשה לחברת האשראי.`};
+}
+export function deferredCamoufoxProfileError(errors,profile,now=Date.now()){
+  const time=Number(now);if(!Number.isFinite(time))return null;
+  for(const error of matchingCreditProfileErrors(errors,profile)){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time&&String(error?.code||'')==='CREDIT_AUTOMATION_BLOCKED'&&creditErrorBrowserEngine(error,profile)==='camoufox')return deferredCreditError({...error,browserEngine:'camoufox'},retryAt,{engineOnly:true})}
+  return null;
+}
 export function deferredCreditProfileError(errors,profile,now=Date.now()){
   const time=Number(now);if(!Number.isFinite(time))return null;
   const matching=matchingCreditProfileErrors(errors,profile);
-  for(const error of matching){const retryAt=Date.parse(error?.retryAfterAt||'');if(Number.isFinite(retryAt)&&retryAt>time){const originalFailureAt=error.originalFailureAt||error.at||null,reason=String(error.code||'').includes('RATE_LIMITED')?'429':'403';return {...error,severity:'deferred',deferred:true,originalFailureAt,at:originalFailureAt,message:`מושהה עד ${new Date(retryAt).toISOString()} עקב ${reason} קודם. לא נשלחה בקשה חדשה לחברת האשראי.`}}}
+  for(const error of matching){
+    const retryAt=Date.parse(error?.retryAfterAt||'');if(!Number.isFinite(retryAt)||retryAt<=time)continue;
+    // 429 is issuer-wide. A Camoufox-only 403 is not: Chromium may still be usable.
+    if(String(error?.code||'')==='CREDIT_AUTOMATION_BLOCKED'&&creditErrorBrowserEngine(error,profile)==='camoufox')continue;
+    return deferredCreditError(error,retryAt);
+  }
   return null;
 }
 export function expiredCamoufoxLoginPageBlock(errors,profile,now=Date.now()){
   const time=Number(now),provider=String(profile?.provider||'');
   if(!Number.isFinite(time)||!['amex','isracard'].includes(provider))return null;
-  const latest=matchingCreditProfileErrors(errors,profile)[0];if(!latest)return null;
+  const latest=matchingCreditProfileErrors(errors,profile).find(error=>creditErrorBrowserEngine(error,profile)==='camoufox');if(!latest)return null;
   if(String(latest.code||'')!=='CREDIT_AUTOMATION_BLOCKED'||String(latest.stage||'')!=='LoginPage'||Number(latest.httpStatus)!==403)return null;
   const retryAt=Date.parse(latest.retryAfterAt||'');
   return Number.isFinite(retryAt)&&retryAt<=time?latest:null;
