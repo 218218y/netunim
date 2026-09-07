@@ -36,8 +36,14 @@ retention jobs from `retention-jobs.json`. It checks names, schedules, command t
 active state, owner, database and local connection target/port. It detects aliases
 by retention names and prune function references; unrelated jobs remain allowed.
 Missing catalogs/access fail closed, as do missing operational capture fields.
-The deployment engine runs this gate before each site's upload. Fresh connector
-captures are tied to the verifier, expectations, migrations and site assets.
+For database releases, the live postflight remains authoritative. Static site uploads
+use `production-deployment-receipt.json` as a mandatory offline dependency gate: the
+local schema snapshot, migration SQL hashes and retention contract must still match the
+last authenticated Production postflight. This prevents a frontend deploy from outrunning
+an unapplied migration without requiring database credentials on every workstation.
+When a connector capture or PostgreSQL connection is configured, the deployment engine
+also runs the stronger live drift check before upload. A database-contract change always
+invalidates the receipt gate until a new live Production verification is recorded.
 
 ## Historical normalization is provenance, not a prerequisite
 

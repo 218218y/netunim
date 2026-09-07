@@ -1,0 +1,64 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "verified_at": "2026-09-07 04:02:31.505551+00",
+  "source_audit": "audit/retention-release-verification.json",
+  "source_audit_sha256": "ecf6a80e43ebe5f5e5b0c4759668d59f30a8ff778917fd9e37e1d6bd3ba877f9",
+  "production_postflight": "PASS",
+  "schema_snapshot": "audit/production-schema-upgraded.json",
+  "schema_snapshot_sha256": "9f875dddff7efa03a5f36ccf7a8f2a5fa1d31a1063d2f43dba251276283e25a4",
+  "migration_manifest": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline",
+      "sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker",
+      "sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates",
+      "sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index",
+      "sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "name": "retention_cron_jobs",
+      "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    }
+  ],
+  "retention_jobs": [
+    {
+      "jobname": "netunim-document-backup-retention-daily",
+      "schedule": "43 3 * * *",
+      "command": "select * from netunim_internal.prune_document_backups();",
+      "active": true,
+      "username": "postgres",
+      "database": "postgres",
+      "nodename": "localhost"
+    },
+    {
+      "jobname": "netunim-sync-ledger-retention-weekly",
+      "schedule": "17 3 * * 0",
+      "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+      "active": true,
+      "username": "postgres",
+      "database": "postgres",
+      "nodename": "localhost"
+    }
+  ],
+  "operations": {
+    "pg_cron": true,
+    "database": "postgres",
+    "timezone": "GMT",
+    "server_port": 5432,
+    "launch_active_jobs": "on",
+    "full_visibility": true
+  }
+}

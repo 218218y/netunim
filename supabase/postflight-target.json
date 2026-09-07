@@ -3,5 +3,6 @@
   "schema_snapshot": "audit/production-schema-upgraded.json",
   "migration_snapshot": "canonical-migrations.json",
   "manifest_snapshot": "canonical-migration-manifest.json",
-  "status": "Canonical file-derived expectations. Independently captured Production evidence is retained under audit; pending migrations fail the live deployment gate."
+  "status": "Canonical file-derived expectations plus an authenticated Production deployment receipt. Static site deploys block on any unacknowledged database-contract change; live drift checks run when live access is configured.",
+  "deployment_receipt": "production-deployment-receipt.json"
 }

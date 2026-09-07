@@ -31,6 +31,13 @@ The script re-runs the complete verifier, checks required modules/CSP/public-roo
 then runs the Wrangler version managed in ..\tools\wrangler-version.txt in a fresh isolated temporary
 directory. Only the absolute site/ path is uploaded. The configured Pages project is bargig-kupa.
 Do not bypass the verification gate with a direct Wrangler upload.
+Before Wrangler, the deployment engine always verifies that the repository database contract
+still matches the last authenticated Production receipt. Ordinary frontend-only deployments
+do not require PGHOST/PGDATABASE/PGUSER or a database password. If NETUNIM_SUPABASE_CAPTURE,
+PGSERVICE, or a complete PGHOST/PGDATABASE/PGUSER tuple is configured, the stronger live
+Supabase catalog drift check also runs automatically and remains fail-closed. Any migration,
+reviewed schema snapshot or retention-job contract change invalidates the offline receipt gate
+until Production is verified and a new receipt is recorded.
 From the repository root, check/update the deployment CLI deliberately with:
   npm run wrangler:check
   npm run wrangler:update

@@ -1,8 +1,9 @@
-"""Read-only deploy gate: compare live application catalogs with the reviewed schema.
+"""Supabase release and live postflight gates.
 
-Use PostgreSQL's normal environment/service/passfile configuration; no credentials
-in arguments or output. --actual accepts a fresh connector inventory for review.
-Live mode forces a read-only transaction and fails on missing access or drift.
+--release-gate is intentionally offline: it proves the repository database contract
+still matches the last authenticated Production deployment receipt, so a static site
+deploy cannot outrun an unapplied migration. Live mode remains read-only and checks
+actual catalogs whenever a connector capture or PostgreSQL connection is available.
 """
 import argparse
 import difflib
@@ -38,6 +39,80 @@ def build_fingerprint():
         digest.update(path.read_bytes())
         digest.update(b'\0')
     return digest.hexdigest()
+
+
+def file_sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def release_gate(target, receipt_path=None):
+    """Prove no repository DB contract change is pending since Production verification.
+
+    This gate deliberately does not pretend to be a live drift check. It binds the
+    current migration SQL, reviewed schema snapshot and retention contract to the
+    last authenticated Production postflight receipt. Any database-contract edit
+    therefore requires a new live postflight/receipt before a static upload.
+    """
+    receipt_path = receipt_path or ROOT / 'supabase' / target['deployment_receipt']
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding='utf8'))
+    except (OSError, KeyError, json.JSONDecodeError) as exc:
+        raise SystemExit(f'FAIL: Production deployment receipt is missing or invalid: {exc}') from exc
+
+    errors = []
+    if receipt.get('project_id') != target.get('project_id'):
+        errors.append('receipt targets a different Supabase project')
+    if receipt.get('production_postflight') != 'PASS':
+        errors.append('receipt does not record a successful Production postflight')
+
+    source_rel = receipt.get('source_audit')
+    source_hash = receipt.get('source_audit_sha256')
+    if not source_rel or not source_hash:
+        errors.append('receipt is missing its authenticated source-audit binding')
+    else:
+        source_path = ROOT / 'supabase' / source_rel
+        if not source_path.is_file():
+            errors.append(f'source audit is missing: {source_rel}')
+        elif file_sha256(source_path) != source_hash:
+            errors.append('source audit changed since the Production receipt was recorded')
+        else:
+            audit = json.loads(source_path.read_text(encoding='utf8'))
+            if audit.get('project_id') != target.get('project_id'):
+                errors.append('source audit targets a different Supabase project')
+            if audit.get('production_postflight') != 'PASS':
+                errors.append('source audit does not contain a successful Production postflight')
+            if audit.get('schema_drift') != []:
+                errors.append('source audit contains unexplained Production schema drift')
+
+    schema_rel = receipt.get('schema_snapshot')
+    if schema_rel != target.get('schema_snapshot'):
+        errors.append('reviewed schema snapshot changed since the Production receipt')
+    elif schema_rel:
+        schema_path = ROOT / 'supabase' / schema_rel
+        if not schema_path.is_file():
+            errors.append(f'reviewed schema snapshot is missing: {schema_rel}')
+        elif file_sha256(schema_path) != receipt.get('schema_snapshot_sha256'):
+            errors.append('reviewed schema snapshot bytes changed since the Production receipt')
+
+    reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
+    if canonical(receipt.get('migration_manifest', [])) != canonical(reviewed_manifest):
+        errors.append('migration versions or SQL hashes changed since the Production receipt')
+
+    expected_jobs = json.loads((ROOT / 'supabase/retention-jobs.json').read_text(encoding='utf8'))
+    if canonical(receipt.get('retention_jobs', [])) != canonical(expected_jobs):
+        errors.append('retention job contract changed since the Production receipt')
+
+    expected_ops = {'pg_cron': True, 'database': 'postgres', 'timezone': 'GMT',
+                    'server_port': 5432, 'launch_active_jobs': 'on', 'full_visibility': True}
+    if canonical(receipt.get('operations', {})) != canonical(expected_ops):
+        errors.append('Production operational contract in the receipt is incomplete or unexpected')
+
+    if errors:
+        raise SystemExit('FAIL: repository database contract differs from the last authenticated Production receipt; '
+                         'run a live Supabase postflight and record a new receipt before site deployment.\n- ' +
+                         '\n- '.join(errors))
+    print('PASS: repository database contract matches the last authenticated Production receipt; no database release is pending.')
+    print('INFO: this offline release gate does not claim to detect out-of-band live drift.')
 
 
 def connector_capture(path, target):
@@ -132,10 +207,21 @@ def main():
     parser.add_argument('--manifest', type=Path, help='server SQL hashes accompanying --actual/--history')
     parser.add_argument('--capture', type=Path, default=os.environ.get('NETUNIM_SUPABASE_CAPTURE'),
                         help='fresh, release-bound capture from the authenticated Supabase connector/CI job')
+    parser.add_argument('--release-gate', action='store_true',
+                        help='offline static-deploy gate bound to the last authenticated Production receipt')
+    parser.add_argument('--receipt', type=Path,
+                        help='test/operator override for --release-gate receipt path')
     args = parser.parse_args()
+    if args.receipt and not args.release_gate:
+        parser.error('--receipt is only valid with --release-gate')
     reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
     if local_manifest() != reviewed_manifest:
         raise SystemExit('FAIL: local migration files differ from reviewed SQL hashes; no deploy allowed.')
+    if args.release_gate:
+        if args.actual or args.history or args.manifest:
+            parser.error('--release-gate cannot be combined with --actual/--history/--manifest')
+        release_gate(target, args.receipt)
+        return
     expected = json.loads(args.expected.read_text(encoding='utf8'))
     if args.capture:
         if args.actual or args.history or args.manifest:
@@ -150,9 +236,14 @@ def main():
         query += "\nselect coalesce(jsonb_agg(jsonb_build_object('version',version,'name',name) order by version),'[]') from supabase_migrations.schema_migrations;"
         query += '\n' + migration_manifest_sql()
         command = ['psql', '-X', '-w', '-qAt', '-v', 'ON_ERROR_STOP=1']
-        result = subprocess.run(command, input='BEGIN READ ONLY;\n' + query + '\nROLLBACK;',
-                                env={**os.environ, 'PGCLIENTENCODING': 'UTF8', 'PGCONNECT_TIMEOUT': '10'},
-                                encoding='utf8', capture_output=True, timeout=60)
+        try:
+            result = subprocess.run(command, input='BEGIN READ ONLY;\n' + query + '\nROLLBACK;',
+                                    env={**os.environ, 'PGCLIENTENCODING': 'UTF8', 'PGCONNECT_TIMEOUT': '10'},
+                                    encoding='utf8', capture_output=True, timeout=60)
+        except FileNotFoundError as exc:
+            raise SystemExit('FAIL: psql is not installed or not on PATH; live Supabase postflight cannot run.') from exc
+        except subprocess.TimeoutExpired as exc:
+            raise SystemExit('FAIL: live Supabase catalog read timed out; no deploy allowed.') from exc
         if result.returncode:
             raise SystemExit('FAIL: cannot read live database catalogs; configure PGHOST/PGDATABASE/PGUSER and a passfile/service. No deploy allowed.')
         actual, history, manifest = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]

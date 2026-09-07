@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import tempfile
+import subprocess
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,10 +65,30 @@ class SupabaseContracts(unittest.TestCase):
         self.assertFalse(capability['security_definer'])
         self.assertFalse(capability['anon'])
 
-    def test_upload_requires_live_or_fresh_release_bound_postflight(self):
+    def test_static_upload_requires_production_receipt_and_live_check_is_conditional(self):
         deployment = (ROOT / 'tools/deploy_site_core.bat').read_text(encoding='utf8')
-        self.assertLess(deployment.index('supabase_postflight.py'), deployment.index('call npx --yes wrangler'))
-        self.assertIn('Supabase postflight failed. No site was uploaded.', deployment)
+        wrangler = deployment.index('call npx --yes wrangler')
+        release = deployment.index('supabase_postflight.py" --release-gate')
+        live = deployment.index('if defined NETUNIM_RUN_LIVE_POSTFLIGHT')
+        self.assertLess(release, live)
+        self.assertLess(live, wrangler)
+        self.assertIn('Supabase release gate failed. No site was uploaded.', deployment)
+        self.assertIn('NETUNIM_SUPABASE_CAPTURE', deployment)
+        self.assertIn('if defined PGHOST if defined PGDATABASE if defined PGUSER', deployment)
+        self.assertIn('Mandatory Production receipt gate passed', deployment)
+
+    def test_release_gate_accepts_current_contract_and_rejects_receipt_drift(self):
+        command = [sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--release-gate']
+        result = subprocess.run(command, capture_output=True, encoding='utf8', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = read('production-deployment-receipt.json')
+        receipt['migration_manifest'] = receipt['migration_manifest'][:-1]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'receipt.json'
+            path.write_text(json.dumps(receipt), encoding='utf8')
+            failed = subprocess.run(command + ['--receipt', str(path)], capture_output=True, encoding='utf8', timeout=30)
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn('migration versions or SQL hashes changed', failed.stderr)
 
 
 if __name__ == '__main__':
