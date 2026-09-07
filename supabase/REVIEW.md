@@ -1,5 +1,9 @@
 # Production schema normalization and security review
 
+Current reconstruction/operations runbook: [REPRODUCIBILITY.md](REPRODUCIBILITY.md).
+The normalization sequence below is historical and already completed; do not repeat
+it during new installations. Retention scheduling is now a separate canonical migration.
+
 Status: **Applied and verified on Production after the user's continuation request.**
 The three narrow DDL migrations succeeded; seven archived historical versions were
 replaced in the active ledger by the CLI-generated baseline marker. The baseline DDL

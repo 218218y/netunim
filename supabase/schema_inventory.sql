@@ -16,6 +16,13 @@ select jsonb_build_object(
 'event_triggers',(select jsonb_agg(jsonb_build_object('name',e.evtname,'event',e.evtevent,'enabled',e.evtenabled,'tags',e.evttags,'schema',n.nspname,'function',p.proname,'owner',pg_get_userbyid(e.evtowner)) order by e.evtname) from pg_event_trigger e join pg_proc p on p.oid=e.evtfoid join ns n on n.oid=p.pronamespace),
 'default_privileges',(select jsonb_agg(jsonb_build_object('schema',coalesce(n.nspname,''),'owner',pg_get_userbyid(d.defaclrole),'type',d.defaclobjtype,'acl',d.defaclacl::text) order by n.nspname,d.defaclrole,d.defaclobjtype) from pg_default_acl d left join pg_namespace n on n.oid=d.defaclnamespace where d.defaclnamespace=0 or n.nspname in (select nspname from ns)),
 'types',(select jsonb_agg(jsonb_build_object('schema',n.nspname,'name',t.typname,'kind',t.typtype) order by n.nspname,t.typname) from pg_type t join ns n on n.oid=t.typnamespace where t.typtype in ('e','d')),
+'operations',jsonb_build_object(
+  'pg_cron',exists(select 1 from pg_extension where extname='pg_cron'),
+  'full_visibility',exists(select 1 from pg_roles where rolname=current_user and (rolsuper or rolbypassrls)),
+  'database',current_database(), 'server_port',inet_server_port(),
+  'timezone',current_setting('cron.timezone',true),
+  'launch_active_jobs',current_setting('cron.launch_active_jobs',true),
+  'jobs',(select coalesce(jsonb_agg(to_jsonb(j) order by j.jobid),'[]') from cron.job j)),
 'extensions',(select jsonb_agg(jsonb_build_object('name',e.extname,'schema',n.nspname,'version',e.extversion) order by e.extname) from pg_extension e join pg_namespace n on n.oid=e.extnamespace),
 'platform_schemas',(select jsonb_agg(jsonb_build_object('name',nspname,'owner',pg_get_userbyid(nspowner),'acl',nspacl::text) order by nspname) from pg_namespace where nspname not like 'pg_%' and nspname<>'information_schema' and nspname not in (select nspname from ns))
 ) as inventory;

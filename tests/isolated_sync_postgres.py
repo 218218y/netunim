@@ -13,8 +13,9 @@ from browser_harness import ROOT, _free_port
 
 OWNER='11111111-1111-4111-8111-111111111111'
 class IsolatedPostgres:
-    def __init__(self, schema_files=None):
+    def __init__(self, schema_files=None, demotable_postgres=False):
         self.schema_files=schema_files
+        self.demotable_postgres=demotable_postgres
 
     def __enter__(self):
         binary=shutil.which('postgres')
@@ -26,21 +27,30 @@ class IsolatedPostgres:
         for key in ('PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGHOST','PGDATABASE','PGUSER','PGPORT','PGOPTIONS'):
             self.env.pop(key,None)
         try:
-            self.run('initdb','-D',str(self.tmp/'data'),'-U','postgres','-A','trust','--encoding=UTF8','--no-locale')
+            bootstrap='fixture_bootstrap' if self.demotable_postgres else 'postgres'
+            self.run('initdb','-D',str(self.tmp/'data'),'-U',bootstrap,'-A','trust','--encoding=UTF8','--no-locale')
             self.run('pg_ctl','-D',str(self.tmp/'data'),'-l',str(self.tmp/'server.log'),'-o',f'-p {self.port} -h 127.0.0.1','start')
+            if self.demotable_postgres:
+                # PostgreSQL 18 cannot demote its bootstrap superuser. A separate
+                # fixture bootstrap permits testing Supabase's non-superuser postgres.
+                self.run('psql','-h','127.0.0.1','-p',str(self.port),'-U',bootstrap,'-d','postgres','-X','-qAt','-v','ON_ERROR_STOP=1',input='create role postgres login superuser;')
             self.sql('''create role anon;create role authenticated;create role service_role;
 create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema auth to public;grant execute on function auth.uid() to public;
 create schema extensions;grant usage on schema extensions to authenticated;create schema cron;
-create table cron.job(jobid bigint generated always as identity,jobname text,schedule text,command text,active boolean default true);
-create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values($1,$2,$3) returning jobid$$;
+create table cron.job(jobid bigint generated always as identity primary key,jobname text,schedule text,command text,active boolean default true,
+ username text default current_user,database text default current_database(),nodename text default 'localhost',nodeport integer default inet_server_port(),unique(jobname,username));
+create function cron.schedule(text,text,text) returns bigint language sql as $$insert into cron.job(jobname,schedule,command) values($1,$2,$3)
+ on conflict(jobname,username) do update set schedule=excluded.schedule,command=excluded.command,active=true returning jobid$$;
+create function cron.alter_job(job_id bigint,schedule text default null,command text default null,database text default null,username text default null,active boolean default null)
+ returns void language sql as $$update cron.job set schedule=coalesce($2,job.schedule),command=coalesce($3,job.command),database=coalesce($4,job.database),username=coalesce($5,job.username),active=coalesce($6,job.active) where jobid=$1$$;
 insert into auth.users values('''+quote(OWNER)+''');''')
             files=['netunim-kupa/supabase/setup.sql','netunim-orders/supabase/setup.sql','netunim-orders/supabase/shared/setup.sql']+['netunim-orders/supabase/'+n+'.sql' for n in ['core_rpc_contention_hardening_upgrade','cloud_sync_lossless_v3_upgrade','cloud_sync_operation_ledger_retention_upgrade','shared_checks_delete_intent_v4_upgrade','destructive_delete_intent_v4_upgrade','sync_integrity_v5_upgrade','sync_recovery_fencing_v6_upgrade']]
             if self.schema_files is not None:files=self.schema_files
             for name in files:
-                self.sql((ROOT/name).read_text(encoding='utf-8-sig').replace('create extension if not exists pg_cron;','-- isolated scheduling catalog stub'))
+                self.migrate((ROOT/name).read_text(encoding='utf-8-sig'))
             if self.schema_files is None:self.sql((ROOT/'netunim-orders/supabase/shared/validation/sync_recovery_v6_postflight.sql').read_text(encoding='utf-8-sig'))
             return self
         except BaseException:
@@ -64,6 +74,10 @@ insert into auth.users values('''+quote(OWNER)+''');''')
         return result.stdout
     def sql(self,source):
         return self.run('psql','-h','127.0.0.1','-p',str(self.port),'-U','postgres','-d','postgres','-X','-qAt','-v','ON_ERROR_STOP=1',input=source)
+    def migrate(self,source):
+        # Explicit Windows-only scheduling model. Never fake pg_extension membership:
+        # the live postflight MUST reject this fixture's missing real extension.
+        return self.sql(source.replace('create extension if not exists pg_cron;','-- isolated scheduling catalog stub'))
     def auth_sql(self,source):
         return self.sql("begin;set local role authenticated;set local request.jwt.claim.sub='"+OWNER+"';"+source+';commit;')
     def rpc(self,name,body):

@@ -1,0 +1,290 @@
+{
+  "result": {
+    "lints": [
+      {
+        "name": "rls_enabled_no_policy",
+        "title": "RLS Enabled No Policy",
+        "level": "INFO",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects cases where row level security (RLS) has been enabled on a table but no RLS policies have been created.",
+        "detail": "Table \\`netunim_internal.bank_alert_rollout_baselines\\` has RLS enabled, but no policies exist",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy",
+        "metadata": {
+          "name": "bank_alert_rollout_baselines",
+          "type": "table",
+          "schema": "netunim_internal"
+        },
+        "cache_key": "rls_enabled_no_policy_netunim_internal_bank_alert_rollout_baselines",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "title": "RLS Enabled No Policy",
+        "level": "INFO",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects cases where row level security (RLS) has been enabled on a table but no RLS policies have been created.",
+        "detail": "Table \\`public.google_calendar_connections\\` has RLS enabled, but no policies exist",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy",
+        "metadata": {
+          "name": "google_calendar_connections",
+          "type": "table",
+          "schema": "public"
+        },
+        "cache_key": "rls_enabled_no_policy_public_google_calendar_connections",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "rls_enabled_no_policy",
+        "title": "RLS Enabled No Policy",
+        "level": "INFO",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects cases where row level security (RLS) has been enabled on a table but no RLS policies have been created.",
+        "detail": "Table \\`public.google_calendar_oauth_states\\` has RLS enabled, but no policies exist",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy",
+        "metadata": {
+          "name": "google_calendar_oauth_states",
+          "type": "table",
+          "schema": "public"
+        },
+        "cache_key": "rls_enabled_no_policy_public_google_calendar_oauth_states",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.acknowledge_bank_transaction_alert(p_transaction_id bigint, p_alert_kind text)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/acknowledge_bank_transaction_alert`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "acknowledge_bank_transaction_alert",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_transaction_id bigint, p_alert_kind text",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_acknowledge_bank_transaction_alert_p_transaction_id bigint, p_alert_kind text",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.acknowledge_bank_transaction_missing(p_transaction_id bigint)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/acknowledge_bank_transaction_missing`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "acknowledge_bank_transaction_missing",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_transaction_id bigint",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_acknowledge_bank_transaction_missing_p_transaction_id bigint",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.apply_restore_group_v5(p_restore_group_id uuid)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/apply_restore_group_v5`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "apply_restore_group_v5",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_restore_group_id uuid",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_apply_restore_group_v5_p_restore_group_id uuid",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.claim_finance_sync_lease(p_lease_name text, p_lease_token text, p_ttl_seconds integer)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/claim_finance_sync_lease`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "claim_finance_sync_lease",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_lease_name text, p_lease_token text, p_ttl_seconds integer",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_claim_finance_sync_lease_p_lease_name text, p_lease_token text, p_ttl_seconds integer",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.merge_bank_transactions(p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/merge_bank_transactions`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "merge_bank_transactions",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_merge_bank_transactions_p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.release_finance_sync_lease(p_lease_name text, p_lease_token text)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/release_finance_sync_lease`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "release_finance_sync_lease",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_lease_name text, p_lease_token text",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_release_finance_sync_lease_p_lease_name text, p_lease_token text",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.save_bank_sync_snapshot(p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text, p_lease_token text, p_fence_epoch bigint)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/save_bank_sync_snapshot`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "save_bank_sync_snapshot",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_save_bank_sync_snapshot_p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.save_finance_sync_document_v5(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/save_finance_sync_document_v5`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "save_finance_sync_document_v5",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_save_finance_sync_document_v5_p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.stage_restore_group_v5(p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/stage_restore_group_v5`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "stage_restore_group_v5",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_stage_restore_group_v5_p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "title": "Signed-In Users Can Execute SECURITY DEFINER Function",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Detects `SECURITY DEFINER` functions that are callable by signed-in users. Revoke `EXECUTE`, switch the function to `SECURITY INVOKER`, or move it out of your exposed API schema if signed-in users should not call it.",
+        "detail": "Function `public.sync_bank_transactions_snapshot(p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text, p_lease_token text, p_fence_epoch bigint)` can be executed by the `authenticated` role as a `SECURITY DEFINER` function via `/rest/v1/rpc/sync_bank_transactions_snapshot`. Revoke `EXECUTE` or switch it to `SECURITY INVOKER` if that is not intentional.",
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable",
+        "metadata": {
+          "name": "sync_bank_transactions_snapshot",
+          "schema": "public",
+          "language": "plpgsql",
+          "arguments": "p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+          "security_definer": true
+        },
+        "cache_key": "authenticated_security_definer_function_executable_public_sync_bank_transactions_snapshot_p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+        "observed_at": "2026-09-07T04:00:19.295Z"
+      },
+      {
+        "name": "auth_leaked_password_protection",
+        "title": "Leaked Password Protection Disabled",
+        "level": "WARN",
+        "facing": "EXTERNAL",
+        "categories": [
+          "SECURITY"
+        ],
+        "description": "Leaked password protection is currently disabled.",
+        "detail": "Supabase Auth prevents the use of compromised passwords by checking against HaveIBeenPwned.org. Enable this feature to enhance security.",
+        "cache_key": "auth_leaked_password_protection",
+        "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection",
+        "metadata": {
+          "type": "auth",
+          "entity": "Auth"
+        }
+      }
+    ]
+  }
+}

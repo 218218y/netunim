@@ -9,9 +9,11 @@ import difflib
 import json
 import os
 import hashlib
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
+from supabase_migration_manifest import manifest as local_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_SECTIONS = ('schemas', 'tables', 'columns', 'constraints', 'indexes',
@@ -20,7 +22,9 @@ APPLICATION_SECTIONS = ('schemas', 'tables', 'columns', 'constraints', 'indexes'
 
 def build_fingerprint():
     """Bind an authenticated connector capture to this exact release, not a later build."""
-    paths = [ROOT / 'supabase/postflight-target.json', ROOT / 'supabase/schema_inventory.sql']
+    paths = [ROOT / 'supabase/postflight-target.json', ROOT / 'supabase/schema_inventory.sql',
+             ROOT / 'supabase/retention-jobs.json', Path(__file__).resolve(),
+             ROOT / 'tools/supabase_migration_manifest.py', ROOT / 'tools/supabase_capture_query.py']
     paths += sorted((ROOT / 'supabase/migrations').glob('*.sql'))
     target = json.loads(paths[0].read_text(encoding='utf8'))
     paths += [ROOT / 'supabase' / target['schema_snapshot'], ROOT / 'supabase' / target['migration_snapshot']]
@@ -90,6 +94,35 @@ def drift(expected, actual):
     return list(difflib.unified_diff(a, b, fromfile='reviewed schema', tofile='actual schema', lineterm=''))
 
 
+def operational_errors(inventory):
+    """Check the entire visible catalog, including renamed/extra retention jobs."""
+    ops = inventory.get('operations') or {}
+    errors = []
+    for key, value in [('pg_cron', True), ('full_visibility', True), ('database', 'postgres'),
+                       ('timezone', 'GMT'), ('launch_active_jobs', 'on')]:
+        if ops.get(key) != value:
+            errors.append(f'{key}: expected {value!r}, got {ops.get(key)!r}')
+    expected = json.loads((ROOT / 'supabase/retention-jobs.json').read_text(encoding='utf8'))
+    names = {row['jobname'] for row in expected}
+    jobs = ops.get('jobs')
+    if not isinstance(jobs, list):
+        return errors + ['missing full cron.job inventory']
+    relevant = [j for j in jobs if j.get('jobname') in names
+                or re.search(r'^netunim-.*retention', j.get('jobname') or '')
+                or re.search(r'prune_(document_backups|sync_operation_ledgers)', j.get('command') or '', re.I)]
+    if len(relevant) != 2:
+        errors.append(f'expected exactly 2 retention jobs, found {len(relevant)}')
+    for wanted in expected:
+        rows = [j for j in relevant if j.get('jobname') == wanted['jobname']]
+        if len(rows) != 1:
+            errors.append(f"{wanted['jobname']}: expected exactly one job, found {len(rows)}")
+            continue
+        for key, value in {**wanted, 'nodeport': ops.get('server_port')}.items():
+            if rows[0].get(key) != value or value is None:
+                errors.append(f"{wanted['jobname']}: {key} differs from {value!r}")
+    return errors
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
@@ -100,6 +133,9 @@ def main():
     parser.add_argument('--capture', type=Path, default=os.environ.get('NETUNIM_SUPABASE_CAPTURE'),
                         help='fresh, release-bound capture from the authenticated Supabase connector/CI job')
     args = parser.parse_args()
+    reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
+    if local_manifest() != reviewed_manifest:
+        raise SystemExit('FAIL: local migration files differ from reviewed SQL hashes; no deploy allowed.')
     expected = json.loads(args.expected.read_text(encoding='utf8'))
     if args.capture:
         if args.actual or args.history or args.manifest:
@@ -124,6 +160,9 @@ def main():
     if differences:
         print('\n'.join(differences))
         raise SystemExit('FAIL: unexplained application schema drift; no deploy allowed.')
+    errors = operational_errors(actual)
+    if errors:
+        raise SystemExit('FAIL: operational infrastructure drift; no deploy allowed.\n' + '\n'.join(errors))
     if history is not None:
         expected_history = json.loads((ROOT / 'supabase' / target['migration_snapshot']).read_text(encoding='utf8'))['migrations']
         if canonical(history) != canonical(expected_history):
@@ -134,6 +173,7 @@ def main():
         if canonical(actual_manifest) != canonical(expected_manifest):
             raise SystemExit('FAIL: recorded migration SQL differs from reviewed file hashes; no deploy allowed.')
     print('PASS: application tables/columns/constraints/indexes/functions/security/grants/policies/triggers match the reviewed schema.')
+    print('PASS: pg_cron and exactly two active retention jobs match names/schedules/commands/ownership/targets; scheduler enabled in GMT.')
     if history is not None:
         print('PASS: migration history matches the reviewed ledger.')
     if manifest is not None:

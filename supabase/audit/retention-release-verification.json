@@ -1,0 +1,167 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "verified_at": "2026-09-07 04:02:31.505551+00",
+  "migration": {
+    "name": "retention_cron_jobs",
+    "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98",
+    "version": "20260907035930"
+  },
+  "canonical_migrations": [
+    {
+      "name": "production_schema_baseline",
+      "version": "20260906200304"
+    },
+    {
+      "name": "capabilities_security_invoker",
+      "version": "20260906203818"
+    },
+    {
+      "name": "restore_group_qualified_owner_updates",
+      "version": "20260906203827"
+    },
+    {
+      "name": "oauth_owner_index",
+      "version": "20260906203837"
+    },
+    {
+      "name": "retention_cron_jobs",
+      "version": "20260907035930"
+    }
+  ],
+  "production_postflight": "PASS",
+  "schema_drift": [],
+  "application_catalog_sha256": "fca8a4f5cb5b354852288475e7fdb32dd0d813876e21119c2e0eb92176be4411",
+  "catalog_counts": {
+    "tables": 20,
+    "columns": 168,
+    "indexes": 38,
+    "functions": 59,
+    "policies": 39
+  },
+  "operations": {
+    "jobs": [
+      {
+        "jobid": 1,
+        "active": true,
+        "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+        "jobname": "netunim-sync-ledger-retention-weekly",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "17 3 * * 0",
+        "username": "postgres"
+      },
+      {
+        "jobid": 2,
+        "active": true,
+        "command": "select * from netunim_internal.prune_document_backups();",
+        "jobname": "netunim-document-backup-retention-daily",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "43 3 * * *",
+        "username": "postgres"
+      }
+    ],
+    "pg_cron": true,
+    "database": "postgres",
+    "timezone": "GMT",
+    "server_port": 5432,
+    "full_visibility": true,
+    "launch_active_jobs": "on"
+  },
+  "existing_job_ids_and_all_fields_unchanged": true,
+  "historical_migration_rows_and_sql_hashes_unchanged": true,
+  "business_data_modified_by_this_release": false,
+  "prune_functions_invoked_by_this_release": false,
+  "tests": {
+    "full_predeployment_verification": "PASS",
+    "full_suite_log_sha256": "96892be7f909f9696a66163d35a600ee3e70077aa19a79a0fd0816981b550cd6",
+    "full_suites": [
+      "supabase_contracts.py\r",
+      "supabase_retention.py\r",
+      "static_contracts.py\r",
+      "cloud_sync_v3_contracts.py\r",
+      "sync_integrity_v5_contracts.py\r",
+      "offline_dependencies_contracts.py\r",
+      "confirmation_contracts.py\r",
+      "cloud_backup_contracts.py\r",
+      "asset_contracts.py\r",
+      "deploy_preflight.py\r",
+      "service_worker_contracts.py\r",
+      "module_contracts.py\r",
+      "calendar_contracts.py\r",
+      "bank_bridge_contracts.py\r",
+      "runtime_smoke.py\r",
+      "runtime_responsive.py\r",
+      "runtime_calendar.py\r",
+      "runtime_events.py\r",
+      "runtime_security.py\r",
+      "runtime_workflows.py\r",
+      "runtime_pwa.py\r",
+      "runtime_performance.py\r",
+      "runtime_data_integrity.py\r",
+      "runtime_sync_recovery.py\r",
+      "runtime_sync_multitab.py\r",
+      "runtime_sync_two_computers.py\r",
+      "runtime_financial.py\r"
+    ],
+    "shared_checks_race_repetitions": 100,
+    "shared_checks_race_result": "PASS",
+    "canonical_manifest_verification": "PASS",
+    "baseline_clean_install_and_postflight": "PASS (Windows cron model)",
+    "candidate_and_13_rpc_helper_authorizations": "PASS",
+    "normalization_history_regression": "PASS",
+    "restricted_postgres_role_and_concurrent_migration_reruns": "PASS",
+    "real_pg_cron_fresh_install": "NOT CERTIFIED: Windows lacks pg_cron, WSL HCS_E_SERVICE_NOT_AVAILABLE; Docker absent",
+    "real_pg_cron_production_extension_and_catalog": "PASS"
+  },
+  "intentional_security_definer_warnings_unchanged": [
+    "acknowledge_bank_transaction_alert",
+    "acknowledge_bank_transaction_missing",
+    "apply_restore_group_v5",
+    "claim_finance_sync_lease",
+    "merge_bank_transactions",
+    "release_finance_sync_lease",
+    "save_bank_sync_snapshot",
+    "save_finance_sync_document_v5",
+    "stage_restore_group_v5",
+    "sync_bank_transactions_snapshot"
+  ],
+  "deployments": {
+    "orders": {
+      "Id": "906b03a2-acfd-4c03-a236-5eb93de0a3c1",
+      "Environment": "Production",
+      "Branch": "main",
+      "Source": "",
+      "Deployment": "https://906b03a2.bargig-orders.pages.dev",
+      "Status": "48 seconds ago",
+      "Build": "https://dash.cloudflare.com/7d352c315748f2f8c6e723c5fc46f606/pages/view/bargig-orders/906b03a2-acfd-4c03-a236-5eb93de0a3c1"
+    },
+    "kupa": {
+      "Id": "4e5c5aa3-f6b6-4921-8d99-0f8141a484ef",
+      "Environment": "Production",
+      "Branch": "main",
+      "Source": "",
+      "Deployment": "https://4e5c5aa3.bargig-kupa.pages.dev",
+      "Status": "28 seconds ago",
+      "Build": "https://dash.cloudflare.com/7d352c315748f2f8c6e723c5fc46f606/pages/view/bargig-kupa/4e5c5aa3-f6b6-4921-8d99-0f8141a484ef"
+    }
+  },
+  "public_http_verification": [
+    {
+      "app": "orders",
+      "url": "https://bargig-orders.pages.dev/service-worker.js",
+      "status": 418,
+      "body_excerpt": "<!DOCTYPE html>\n<html>\n    <head>\n        <link rel=\"icon\" href=\"//netfree.link/img/block-favicon.png\"/>\n    </head>\n    <body>\n        <iframe src=\"//netfree.link/block/#%7B%22block%22:%22unknown%22%2C%22page_info%22:%7B%22url%22:%22https:%2F%2Fbarg"
+    },
+    {
+      "app": "kupa",
+      "url": "https://bargig-kupa.pages.dev/service-worker.js",
+      "status": 418,
+      "body_excerpt": "<!DOCTYPE html>\n<html>\n    <head>\n        <link rel=\"icon\" href=\"//netfree.link/img/block-favicon.png\"/>\n    </head>\n    <body>\n        <iframe src=\"//netfree.link/block/#%7B%22block%22:%22unknown%22%2C%22page_info%22:%7B%22url%22:%22https:%2F%2Fbarg"
+    }
+  ],
+  "initial_attempt": "Rolled back on hosted cron.job table-lock permission; no ledger entry or job change. Final migration uses an advisory transaction lock and has a restricted-role regression.",
+  "source_of_truth_scope": "All application schema/RPC/index/grant/policy/trigger definitions and the two retention jobs are in the canonical migrations. Managed Supabase binaries/Auth configuration/secrets/business rows are platform/backup prerequisites, not schema migrations."
+}

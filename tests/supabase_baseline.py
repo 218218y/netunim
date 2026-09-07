@@ -33,7 +33,7 @@ with IsolatedPostgres(schema_files=migrations) as db:
     # that full chain after preserving the independent historical baseline test.
     for migration in sorted((ROOT / 'supabase/migrations').glob('*.sql')):
         if migration not in migrations:
-            db.sql(migration.read_text(encoding='utf8'))
+            db.migrate(migration.read_text(encoding='utf8'))
     # Exercise the actual deployment command's live read-only connection, including
     # ledger drift. The URL cannot escape this disposable cluster.
     target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
@@ -44,15 +44,28 @@ with IsolatedPostgres(schema_files=migrations) as db:
     def live_gate():
         return subprocess.run([sys.executable, str(ROOT / 'tools/supabase_postflight.py')], env=env, capture_output=True, encoding='utf8', timeout=30)
     result = live_gate()
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode != 0 and 'pg_cron: expected True, got False' in result.stderr, result.stdout + result.stderr
     # An authenticated connector/CI handoff has the same schema/history gate and
     # must additionally reject expired, wrong-project or different-build evidence.
     capture = {'project_id': target['project_id'], 'captured_at': datetime.now(timezone.utc).isoformat(),
                'build_fingerprint': build_fingerprint(), 'inventory': json.loads(db.sql((ROOT / 'supabase/schema_inventory.sql').read_text(encoding='utf8'))), 'migrations': history,
                'manifest': json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))}
+    # Synthetic extension/worker evidence ONLY in this disposable test handoff.
+    # Windows does not ship pg_cron. Its absence above must block a real deploy.
+    capture['inventory']['operations'].update(pg_cron=True, timezone='GMT', launch_active_jobs='on')
     capture_file = db.tmp / 'capture.json'
     capture_file.write_text(json.dumps(capture), encoding='utf8')
     assert connector_capture(capture_file, target)[1] == history
+    def fixture_gate():
+        capture['inventory'] = json.loads(db.sql((ROOT / 'supabase/schema_inventory.sql').read_text(encoding='utf8')))
+        capture['inventory']['operations'].update(pg_cron=True, timezone='GMT', launch_active_jobs='on')
+        capture['migrations'] = json.loads(db.sql("select json_agg(json_build_object('version',version,'name',name) order by version) from supabase_migrations.schema_migrations"))
+        from supabase_postflight import migration_manifest_sql
+        capture['manifest'] = json.loads(db.sql(migration_manifest_sql()))
+        capture_file.write_text(json.dumps(capture), encoding='utf8')
+        return subprocess.run([sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--capture', str(capture_file)], env=env, capture_output=True, encoding='utf8', timeout=30)
+    result = fixture_gate()
+    assert result.returncode == 0, result.stdout + result.stderr
     for field, invalid in [('project_id', 'different-project'), ('build_fingerprint', 'different-build'),
                            ('captured_at', (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat())]:
         capture_file.write_text(json.dumps({**capture, field: invalid}), encoding='utf8')
@@ -62,10 +75,10 @@ with IsolatedPostgres(schema_files=migrations) as db:
         except SystemExit as error:
             assert str(error).startswith('FAIL:')
     db.sql('alter function public.get_netunim_sync_capabilities() security definer;')
-    assert live_gate().returncode != 0, 'live deploy gate accepted function drift'
+    assert 'application schema drift' in fixture_gate().stderr, 'deploy gate accepted function drift'
     db.sql('alter function public.get_netunim_sync_capabilities() security invoker;')
     db.sql("update supabase_migrations.schema_migrations set statements=ARRAY['unreviewed SQL'];")
-    assert live_gate().returncode != 0, 'live deploy gate accepted migration SQL drift'
+    assert 'recorded migration SQL' in fixture_gate().stderr, 'deploy gate accepted migration SQL drift'
     db.sql("update supabase_migrations.schema_migrations set name='unreviewed fixture change';")
-    assert live_gate().returncode != 0, 'live deploy gate accepted ledger drift'
-print('PASS clean install parity, live deployment schema/history gates and authenticated finance fence regressions')
+    assert 'migration history differs' in fixture_gate().stderr, 'deploy gate accepted ledger drift'
+print('PASS application clean install, fixture capture schema/history gates, real-extension absence fail-closed, and finance fence regressions (Windows cron model)')

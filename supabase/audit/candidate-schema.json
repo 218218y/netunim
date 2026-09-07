@@ -4278,6 +4278,38 @@
       "version": "1.0"
     }
   ],
+  "operations": {
+    "jobs": [
+      {
+        "jobid": 1,
+        "active": true,
+        "command": "select * from netunim_internal.prune_document_backups();",
+        "jobname": "netunim-document-backup-retention-daily",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 51246,
+        "schedule": "43 3 * * *",
+        "username": "postgres"
+      },
+      {
+        "jobid": 2,
+        "active": true,
+        "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+        "jobname": "netunim-sync-ledger-retention-weekly",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 51246,
+        "schedule": "17 3 * * 0",
+        "username": "postgres"
+      }
+    ],
+    "pg_cron": false,
+    "database": "postgres",
+    "timezone": null,
+    "server_port": 51246,
+    "full_visibility": true,
+    "launch_active_jobs": null
+  },
   "constraints": [
     {
       "name": "bank_alert_rollout_baselines_alert_kind_check",

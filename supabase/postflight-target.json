@@ -1,7 +1,7 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
   "schema_snapshot": "audit/production-schema-upgraded.json",
-  "migration_snapshot": "audit/production-migrations-upgraded.json",
-  "manifest_snapshot": "audit/applied-migration-manifest.json",
-  "status": "Applied and verified on Production 2026-09-06: baseline metadata normalization, capability invoker, restore corrections and OAuth owner index. Original audit snapshots retained."
+  "migration_snapshot": "canonical-migrations.json",
+  "manifest_snapshot": "canonical-migration-manifest.json",
+  "status": "Canonical file-derived expectations. Independently captured Production evidence is retained under audit; pending migrations fail the live deployment gate."
 }
