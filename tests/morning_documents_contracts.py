@@ -62,6 +62,8 @@ for action in ('open-morning-document','open-morning-standalone','morning-docume
 
 ok("const STANDALONE_SCOPE='__standalone__'" in documents and "openStandaloneMorningDocument" in documents and "debt_id:activeScopeId" in documents and "open-morning-standalone" in view,
    'Morning standalone documents: general document creation uses a dedicated ledger scope and never creates a customer debt')
+ok('ללא חוב מקושר' not in documents,
+   'Morning standalone document UI: redundant unlinked-debt hero copy stays removed')
 ok("customer-morning-add-btn" in view and view.find('customer-visible-total') < view.find('customer-morning-add-btn') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
    'Customer Morning UI: standalone document action is at the toolbar edge and debt-row edit precedes Morning in RTL flow')
 ok("debt_id text not null" in sql and not re.search(r'debt_id\s+text[^,]*references',sql,re.I) and 'morning_document_operations' not in editor and 'morning_document_operations' not in bulk,

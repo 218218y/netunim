@@ -59,7 +59,7 @@ function paymentFields(dateEditorMarkup){return `<div id="morningPaymentFields" 
 
 function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
   const amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'';
-  const heroAmount=standalone?'<div class="morning-amount standalone"><small>מסמך כללי</small><b>ללא חוב מקושר</b></div>':`<div class="morning-amount"><small>סכום החוב</small><b>${money(d.amount)}</b></div>`;
+  const heroAmount=standalone?'<div class="morning-amount standalone"><small>מסמך כללי</small></div>':`<div class="morning-amount"><small>סכום החוב</small><b>${money(d.amount)}</b></div>`;
   const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
   const historyTitle=standalone?'מסמכי Morning כלליים':'מסמכי Morning לחוב הזה';
   return `<div class="morning-document-dialog" data-morning-scope="${esc(activeScopeId)}">
