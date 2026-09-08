@@ -88,8 +88,9 @@ ok('5000' not in edge and '5,000' not in documents,
 ok("async function getDocument(body:any" in edge and "document_links" in edge and "getDocument(body,true)" in edge,
    'Morning document open: document IDs are checked with the authenticated current Morning business')
 config=(ROOT/'netunim-orders/supabase/config.toml').read_text(encoding='utf-8')
-ok('[functions.morning-documents]' in config and 'verify_jwt = true' in config.split('[functions.morning-documents]',1)[1],
-   'Morning function auth: platform JWT verification remains enabled for signed-in browser calls')
+morning_config=config.split('[functions.morning-documents]',1)[1]
+ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'client.auth.getUser(token)' in edge and "if(req.method==='OPTIONS')" in edge and "'Access-Control-Allow-Origin':'*'" in edge,
+   'Morning function auth/CORS: preflight reaches the handler while every POST still requires a Supabase-authenticated user')
 ok('const domainsCustomers=createDomainsCustomers({' in main and 'const renderCustomers=' not in main
    and 'renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args)' in main,
    'Customer composition: deferred navigation uses the public domain API without a test-only lexical facade')

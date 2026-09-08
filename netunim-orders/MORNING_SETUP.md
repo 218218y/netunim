@@ -130,7 +130,9 @@ netunim-orders/supabase/functions/morning-documents/index.ts
 
 הקובץ הוא מקור הקוד הקנוני. אין להעתיק רק חלק ממנו ואין להכניס אליו את מפתחות Morning.
 
-7. השאר את JWT verification פעיל/ברירת-מחדל. הפונקציה מיועדת רק למשתמש Supabase מחובר, ובנוסף מבצעת `auth.getUser()` בתוך הקוד.
+7. כבה את **JWT verification של שער Supabase** עבור הפונקציה הזאת. הסיבה היא בקשות CORS `OPTIONS` מהדפדפן: הן חייבות להגיע ל-Function כדי לקבל כותרות CORS תקינות.
+
+   זה **לא הופך את פעולות Morning לציבוריות**: הקוד עצמו מפעיל `requireUser(req)` ומאמת את ה-JWT מול `auth.getUser()` לפני קריאת גוף הבקשה ולפני כל פעולה ב-Morning. בקשת `POST` ללא משתמש Supabase תקף מוחזרת כ-401.
 8. לחץ **Deploy function**.
 9. לאחר הפריסה פתח את הפונקציה ובדוק ב-Logs שאין שגיאת import/configuration.
 
@@ -139,14 +141,14 @@ netunim-orders/supabase/functions/morning-documents/index.ts
 מתוך `netunim-orders` לאחר `supabase link`:
 
 ```powershell
-supabase functions deploy morning-documents --project-ref bupoidcurcxuypfrjqio
+supabase functions deploy morning-documents --no-verify-jwt --project-ref bupoidcurcxuypfrjqio
 ```
 
 הקובץ `supabase/config.toml` מגדיר במפורש:
 
 ```toml
 [functions.morning-documents]
-verify_jwt = true
+verify_jwt = false
 ```
 
 ## 5. בדיקת Sandbox לפני מסמך רשמי

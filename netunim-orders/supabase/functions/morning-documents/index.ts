@@ -2,8 +2,9 @@ import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 
 const corsHeaders={
   'Access-Control-Allow-Origin':'*',
-  'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info',
+  'Access-Control-Allow-Headers':'authorization, apikey, content-type, x-client-info, x-retry-count, traceparent, tracestate, baggage',
   'Access-Control-Allow-Methods':'POST, OPTIONS',
+  'Access-Control-Max-Age':'86400',
 };
 const DOCUMENT_TYPES=new Set([305,320,400]);
 const PAYMENT_TYPES=new Set([1,2,3,4]);

@@ -4,7 +4,7 @@ import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 
 const rows=[],requests=[];
-let failure='',postCount=0,linkCount=0,lookupItems=[],lastSearch;
+let failure='',postCount=0,linkCount=0,lookupItems=[],lastSearch,servedHandler=null;
 const owner='00000000-0000-4000-8000-000000000001',documentId='00000000-0000-4000-8000-000000000002';
 const sample={id:documentId,number:123,type:305,amount:100,documentDate:'2026-09-08',creationDate:Math.floor(Date.now()/1000),client:{name:'Test'},description:'Test document',currency:'ILS',status:0,url:{he:'https://example.org/private-signed.pdf'},allocationNumber:'allocation-123'};
 class Query{
@@ -28,13 +28,14 @@ const mockFetch=async(url,init={})=>{
   if(url.endsWith('/businesses/me'))return Response.json({id:'business'});
   if(url.endsWith('/documents/search')){lastSearch=JSON.parse(init.body);return Response.json({items:lookupItems,total:lookupItems.length,pages:lookupItems.length?1:0,page:1})}
   if(url.endsWith('/download/links'))return Response.json({he:`https://example.org/document.pdf?fresh=${++linkCount}`});
+  if(url.startsWith('https://example.org/document.pdf?fresh='))return new Response(new TextEncoder().encode('%PDF-1.4\nmock document\n'),{status:200,headers:{'Content-Type':'application/pdf','Content-Length':'24'}});
   if(url.endsWith('/documents')){postCount++;if(failure==='timeout')throw new Error('network lost');if(failure==='401')return Response.json({message:'rejected'},{status:401});return Response.json(sample)}
   if(url.includes('/documents/'))return Response.json(sample);
   throw new Error('Unexpected request '+url);
 };
-const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:()=>{}}});
+const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/,'');
-vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,searchInput,searchDocuments,getDocument,normalizeInput,validateLinkedDocument};`,context);
+vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,validateLinkedDocument};`,context);
 const api=context.api;
 const body=()=>({operation_id:crypto.randomUUID(),document:{type:305,amount:100,date:'2026-09-08',description:'Test document',client:{name:'Test'}}});
 const decode=async response=>({status:response.status,...await response.json()});
@@ -75,6 +76,12 @@ await api.searchDocuments(input);assert.equal(requests.filter(r=>r.url.endsWith(
 await api.validateLinkedDocument({linkedDocumentId:documentId});sample.status=4;await assert.rejects(()=>api.validateLinkedDocument({linkedDocumentId:documentId}));sample.status=0;
 assert.equal((await api.getDocument({document_id:'../bad'})).status,400);
 const link1=await decode(await api.getDocument({document_id:documentId},true)),link2=await decode(await api.getDocument({document_id:documentId},true));assert.notEqual(link1.url,link2.url);assert.equal(linkCount,2);
+assert.ok(!('viewUrl' in link1),'document_links no longer exposes a Morning app-page URL');
+const pdf=await api.getDocumentPdf({document_id:documentId});assert.equal(pdf.status,200);assert.match(pdf.headers.get('Content-Type')||'',/^application\/pdf/i);assert.equal(new TextDecoder().decode(await pdf.arrayBuffer()).slice(0,5),'%PDF-');assert.equal(linkCount,3,'inline preview gets its own fresh PDF link');
 assert.ok(rows.every(r=>!JSON.stringify(r).includes('https://')));
-assert.equal(link1.viewUrl,`https://app.sandbox.d.greeninvoice.co.il/incomes/documents/${documentId}`);
-console.log('PASS Morning Edge: reservations, races, replay, uncertain POST, operation reconciliation, owner isolation, search whitelist, manual invoice linking and fresh links');
+assert.ok(servedHandler,'Edge handler is registered');
+const preflight=await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'OPTIONS',headers:{Origin:'http://localhost:3000','Access-Control-Request-Method':'POST','Access-Control-Request-Headers':'authorization,apikey,content-type'}}));
+assert.equal(preflight.status,200);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'*');assert.match(preflight.headers.get('Access-Control-Allow-Headers')||'',/authorization/i);
+const anonymous=await decode(await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status'})})));
+assert.equal(anonymous.status,401);assert.equal(anonymous.code,'morning_cloud_auth_required');
+console.log('PASS Morning Edge: reservations, races, replay, uncertain POST, operation reconciliation, owner isolation, search whitelist, manual invoice linking, transient PDF, CORS preflight and handler-level auth');
