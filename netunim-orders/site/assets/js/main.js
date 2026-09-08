@@ -28,10 +28,7 @@ import {createDomainsSuppliersBulk} from './domains/suppliers/bulk.js';
 import {createDomainsSuppliersView} from './domains/suppliers/view.js';
 import {createUiModal} from './ui/modal.js';
 import {createDomainsSuppliersEditor} from './domains/suppliers/editor.js';
-import {createDomainsCustomersSelectors} from './domains/customers/selectors.js';
-import {createDomainsCustomersBulk} from './domains/customers/bulk.js';
-import {createDomainsCustomersView} from './domains/customers/view.js';
-import {createDomainsCustomersEditor} from './domains/customers/editor.js';
+import {createDomainsCustomers} from './domains/customers/composition.js';
 import {createDomainsServiceBulk} from './domains/service/bulk.js';
 import {createDomainsServiceView} from './domains/service/view.js';
 import {createDomainsServiceEditor} from './domains/service/editor.js';
@@ -371,43 +368,16 @@ const domainsSuppliersEditor=createDomainsSuppliersEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const domainsCustomersSelectors=createDomainsCustomersSelectors({
-  model,
-});
-
-const domainsCustomersBulk=createDomainsCustomersBulk({
-  customerUi,
-  model,
-  renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  onTabChange:(tab)=>uiNavigation.setCustomerRoute(tab),
-});
-
-const domainsCustomersView=createDomainsCustomersView({
+const {selectors:domainsCustomersSelectors,bulk:domainsCustomersBulk,view:domainsCustomersView,editor:domainsCustomersEditor,documents:domainsCustomersDocuments}=createDomainsCustomers({
   model,
   customerUi,
-  bindScrollViewport:(...args)=>uiLayout.bindScrollViewport(...args),
-  mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
-  customerStats:(...args)=>domainsCustomersSelectors.customerStats(...args),
-  customerBulkHeader:(...args)=>domainsCustomersBulk.customerBulkHeader(...args),
-  customerBulkControls:(...args)=>domainsCustomersBulk.customerBulkControls(...args),
-  syncCustomerBulkUi:(...args)=>domainsCustomersBulk.syncCustomerBulkUi(...args),
-  customerBottomSummary:(...args)=>domainsCustomersBulk.customerBottomSummary(...args),
-  customerBulkCell:(...args)=>domainsCustomersBulk.customerBulkCell(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
-});
-
-const domainsCustomersEditor=createDomainsCustomersEditor({
-  model,
-  customerUi,
-  modal:(...args)=>uiModal.modal(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  uiLayout,
+  uiModal,
+  uiStatus,
+  storagePersistence,
+  cloudAuth,
+  uiNavigation,
+  uiDateEditor,
 });
 
 const domainsServiceBulk=createDomainsServiceBulk({
@@ -956,6 +926,13 @@ const uiActions=createUiActions({
   openDebtModal:(...args)=>domainsCustomersEditor.openDebtModal(...args),
   saveDebt:(...args)=>domainsCustomersEditor.saveDebt(...args),
   deleteDebt:(...args)=>domainsCustomersEditor.deleteDebt(...args),
+  openMorningDocument:(...args)=>domainsCustomersDocuments.openMorningDocument(...args),
+  syncMorningDocumentType:(...args)=>domainsCustomersDocuments.syncDocumentType(...args),
+  syncMorningPaymentType:(...args)=>domainsCustomersDocuments.syncPaymentType(...args),
+  previewMorningDocument:(...args)=>domainsCustomersDocuments.previewMorningDocument(...args),
+  createMorningDocument:(...args)=>domainsCustomersDocuments.createMorningDocument(...args),
+  openMorningExistingDocument:(...args)=>domainsCustomersDocuments.openExistingDocument(...args),
+  reconcileMorningDocument:(...args)=>domainsCustomersDocuments.reconcile(...args),
   toggleServiceBulkMode:(...args)=>domainsServiceBulk.toggleServiceBulkMode(...args),
   toggleServiceBulkRow:(...args)=>domainsServiceBulk.toggleServiceBulkRow(...args),
   toggleServiceBulkVisible:(...args)=>domainsServiceBulk.toggleServiceBulkVisible(...args),

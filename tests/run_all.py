@@ -26,6 +26,7 @@ CORE_SUITES = [
     "service_worker_contracts.py",
     "module_contracts.py",
     "calendar_contracts.py",
+    "morning_documents_contracts.py",
     "bank_bridge_contracts.py",
 ]
 
