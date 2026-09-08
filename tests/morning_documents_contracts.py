@@ -73,7 +73,17 @@ ok("מעל 5,000" in setup and "allocationNumber" in setup and "אין להוס�
 ok('5000' not in edge and '5,000' not in documents,
    'Israel Invoices: regulatory allocation threshold is not hard-coded into runtime logic; Morning remains the compliance authority')
 
+ok("async function openDocument(ownerId:string" in edge and ".eq('owner_id',ownerId)" in edge and "morning_document_not_owned" in edge and "openDocument(user.id,body)" in edge,
+   'Morning document open: document IDs are owner-scoped before Morning is queried')
+config=(ROOT/'netunim-orders/supabase/config.toml').read_text(encoding='utf-8')
+ok('[functions.morning-documents]' in config and 'verify_jwt = true' in config.split('[functions.morning-documents]',1)[1],
+   'Morning function auth: platform JWT verification remains enabled for signed-in browser calls')
+facade='const renderCustomers=(...args)=>domainsCustomersView.renderCustomers(...args);'
+ok(facade in main and main.find(facade) < main.find('const uiNavigation=createUiNavigation') < main.find('=createDomainsCustomers({'),
+   'Customer composition: renderCustomers facade is a top-level deferred binding visible to runtime probes without changing initialization order')
+
 if errors:
     print('\nERRORS',len(errors))
     raise SystemExit(1)
+
 print('\nALL MORNING DOCUMENT CONTRACTS PASSED')

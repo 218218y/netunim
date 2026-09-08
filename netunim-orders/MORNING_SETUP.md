@@ -24,55 +24,148 @@
 
 הטבלה `morning_document_operations` היא ledger קטן בלבד לצורכי idempotency, מניעת כפילויות וקישור למסמך. PDF ותוכן המסמך המלא נשארים ב-Morning.
 
-## 2. הגדרת משתני Morning ב-Supabase
+## 2. התחלה בטוחה ב-Sandbox של Morning
+
+לניסוי **לא משתמשים במפתחות Production**. ל-Morning יש Sandbox נפרד עם נתונים ומפתחות נפרדים.
+
+1. צור/פתח חשבון Morning Sandbox.
+2. בתוך חשבון ה-Sandbox צור API Key וקבל `Client ID` ו-`Client Secret` של ה-Sandbox.
+3. שמור אותם רק ב-Supabase Secrets.
+4. הגדר `MORNING_ENV=sandbox`.
+
+מפתח API שיצרת בחשבון Morning הרגיל הוא מפתח Production ואינו אמור לעבוד ב-Sandbox.
+
+## 3. הגדרת Secrets ב-Supabase
+
+יש **Edge Function אחת** בשם `morning-documents`. שלושת הערכים הבאים הם משתני סביבה שלה, לא שלוש פונקציות:
+
+```text
+MORNING_CLIENT_ID=<מזהה ה-API Key של Morning Sandbox>
+MORNING_CLIENT_SECRET=<הסיסמה הסודית של Morning Sandbox>
+MORNING_ENV=sandbox
+```
 
 ### דרך ה-Dashboard
 
-בפרויקט Supabase פתח את אזור **Edge Function Secrets** והוסף:
+בפרויקט הנכון פתח:
 
-```text
-MORNING_CLIENT_ID=<מזהה ה-API-Key שלך>
-MORNING_CLIENT_SECRET=<הסיסמה הסודית של ה-API-Key>
-MORNING_ENV=production
-```
+**Edge Functions > Secrets**
 
-ב-Production אפשר גם לא להגדיר `MORNING_ENV`; הקוד משתמש ב-`production` כברירת מחדל. מומלץ בכל זאת להגדיר אותו במפורש כדי שהסביבה תהיה ברורה.
+והוסף את שלושת הערכים לעיל. אפשר להדביק כמה Secrets יחד ולשמור. אין לשים את ה-Client Secret בקוד הפונקציה, ב-SQL או בקבצי האתר.
 
 ### דרך Supabase CLI
 
-מתיקיית `netunim-orders`:
+Project Ref של ניהול הזמנות/קופה הוא:
 
-```bash
+```text
+bupoidcurcxuypfrjqio
+```
+
+הוא מאומת גם ב-`site/supabase/config.js` וגם בקבצי ה-release של הפרויקט. אם `supabase projects list` אינו מציג אותו, ה-CLI מחובר לחשבון Supabase אחר. **אל תבחר פרויקט אחר רק כדי להמשיך.**
+
+ב-Windows PowerShell אפשר לעבוד מתיקיית:
+
+```text
+C:\Users\יעקב\Downloads\pro\netunim\netunim-orders
+```
+
+ודא שבתוכה קיימים:
+
+```text
+supabase\config.toml
+supabase\functions\morning-documents\index.ts
+```
+
+לאחר מכן:
+
+```powershell
+supabase logout
 supabase login
 supabase projects list
-supabase link --project-ref YOUR_PROJECT_REF
-supabase secrets set MORNING_CLIENT_ID="YOUR_CLIENT_ID" MORNING_CLIENT_SECRET="YOUR_CLIENT_SECRET" MORNING_ENV="production"
-supabase secrets list
 ```
 
-שינוי Secrets ב-Supabase נכנס לתוקף עבור Edge Functions בלי צורך בפריסה מחדש של הקוד. לעומת זאת, לאחר שינוי `index.ts` כן צריך לפרוס את הפונקציה מחדש.
+התחבר לחשבון Supabase שמכיל את הפרויקט `bupoidcurcxuypfrjqio`. לאחר שהוא מופיע ברשימה:
 
-## 3. פריסת Edge Function
-
-עדיין מתוך `netunim-orders`:
-
-```bash
-supabase functions deploy morning-documents --use-api
+```powershell
+supabase link --project-ref bupoidcurcxuypfrjqio
 ```
 
-אפשר גם בלי `--use-api`:
+אם `supabase login` ממשיך להחזיר אותך לחשבון הלא נכון בגלל שיש לך שני חשבונות, פתח בחשבון הנכון את **Account > Access Tokens**, צור Personal Access Token זמני/ייעודי והשתמש בו ב-`supabase login` כאשר ה-CLI מבקש token. לאחר מכן הרץ שוב `supabase projects list`. אל תעתיק את ה-token לקוד, ל-SQL או לקובץ `.env` שנכנס לפרויקט.
 
-```bash
-supabase functions deploy morning-documents
+אין צורך לבחור אינטראקטיבית את `paqzrxrvowwndevqptdk`; זה אינו הפרויקט של ניהול הזמנות/קופה.
+
+הגדרת Secrets של Sandbox:
+
+```powershell
+supabase secrets set MORNING_CLIENT_ID="SANDBOX_CLIENT_ID" MORNING_CLIENT_SECRET="SANDBOX_CLIENT_SECRET" MORNING_ENV="sandbox" --project-ref bupoidcurcxuypfrjqio
 ```
 
-זו הפונקציה היחידה שנוספה עבור Morning:
+בדיקה שהשמות נשמרו:
 
-`netunim-orders/supabase/functions/morning-documents/index.ts`
+```powershell
+supabase secrets list --project-ref bupoidcurcxuypfrjqio
+```
 
-הפונקציה דורשת משתמש מחובר ל-Supabase ומבצעת גם אימות משתמש פנימי לפני כל פעולה. אין endpoint אנונימי שמאפשר להפיק מסמך.
+Supabase אינו מציג את ערכי הסודות עצמם בחזרה.
 
-## 4. מספרי הקצאה — חשבוניות ישראל
+## 4. פריסת Edge Function דרך ה-Dashboard — Via Editor
+
+זו **פונקציה אחת חדשה**.
+
+1. פתח את הפרויקט שה-URL שלו מכיל `bupoidcurcxuypfrjqio`.
+2. בתפריט השמאלי פתח **Edge Functions**.
+3. לחץ **Deploy a new function**.
+4. בחר **Via Editor**.
+5. בשדה Function name כתוב בדיוק:
+
+```text
+morning-documents
+```
+
+6. בעורך מחק את קוד הדוגמה והדבק **את כל תוכן הקובץ**:
+
+```text
+netunim-orders/supabase/functions/morning-documents/index.ts
+```
+
+הקובץ הוא מקור הקוד הקנוני. אין להעתיק רק חלק ממנו ואין להכניס אליו את מפתחות Morning.
+
+7. השאר את JWT verification פעיל/ברירת-מחדל. הפונקציה מיועדת רק למשתמש Supabase מחובר, ובנוסף מבצעת `auth.getUser()` בתוך הקוד.
+8. לחץ **Deploy function**.
+9. לאחר הפריסה פתח את הפונקציה ובדוק ב-Logs שאין שגיאת import/configuration.
+
+### פריסה דרך CLI במקום ה-Editor
+
+מתוך `netunim-orders` לאחר `supabase link`:
+
+```powershell
+supabase functions deploy morning-documents --project-ref bupoidcurcxuypfrjqio
+```
+
+הקובץ `supabase/config.toml` מגדיר במפורש:
+
+```toml
+[functions.morning-documents]
+verify_jwt = true
+```
+
+## 5. בדיקת Sandbox לפני מסמך רשמי
+
+1. ודא שב-Secrets מוגדר `MORNING_ENV=sandbox` וששני המפתחות הם של Sandbox.
+2. התחבר לאתר ניהול הזמנות כרגיל דרך Supabase Auth.
+3. פתח `לקוחות > חובות` ובחר חוב בדיקה.
+4. פתח Morning וודא שהכותרת מציגה סביבת Sandbox.
+5. התחל ב-**תצוגה מקדימה**. Preview אינו מפיק מסמך רשמי.
+6. רק לאחר שה-PDF נראה נכון, נסה הפקת מסמך ב-Sandbox.
+7. ודא שהמסמך מופיע בחשבון Morning Sandbox ולא בחשבון Production.
+
+רק לאחר שהבדיקה הושלמה מחליפים את שני ה-Secrets לזוג Production ומגדירים:
+
+```text
+MORNING_ENV=production
+```
+
+## 6. מספרי הקצאה — חשבוניות ישראל
 
 האתר **לא פונה ישירות לרשות המסים** לקבלת מספר הקצאה. Morning מטפלת בבקשת ההקצאה כחלק ממערכת החשבוניות שלה כאשר:
 
@@ -93,7 +186,7 @@ supabase functions deploy morning-documents
 
 אין להוסיף לקוד API Key נוסף של רשות המסים לצורך הזרימה הזו.
 
-## 5. בדיקה בטוחה לפני Production
+## 7. בדיקה נוספת לפני Production
 
 אם יש לך credentials של Morning Sandbox, הגדר את **מפתחות ה-Sandbox** ואת:
 
@@ -112,13 +205,13 @@ MORNING_ENV=sandbox
 
 לפני מעבר ל-Production החלף לזוג credentials של Production והגדר `MORNING_ENV=production`.
 
-## 6. מה נשמר באתר ומה נשאר ב-Morning
+## 8. מה נשמר באתר ומה נשאר ב-Morning
 
 באתר נשמרים רק פרטי קישור קטנים: מזהה פעולה, מזהה/מספר מסמך, סוג, סכום, תאריך, URL אם קיים, מספר הקצאה אם התקבל ומצב reconciliation.
 
 לא נשמרים אצלך PDF-ים של החשבוניות ולא ארכיון מלא של Morning. המסמך הרשמי ומקור האמת נשארים ב-Morning.
 
-## 7. התנהגות במקרי תקלה
+## 9. התנהגות במקרי תקלה
 
 - אין retry אוטומטי ל-POST שמפיק מסמך.
 - כל ניסיון מקבל `operation_id` ונרשם ב-DB לפני הפנייה ל-Morning.

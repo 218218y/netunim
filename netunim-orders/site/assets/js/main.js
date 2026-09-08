@@ -205,6 +205,10 @@ const uiLayout=createUiLayout({
   supplierUi,
 });
 
+// Stable customer-domain facade: keeps navigation/runtime probes decoupled from
+// the internal customer view while preserving deferred initialization order.
+const renderCustomers=(...args)=>domainsCustomersView.renderCustomers(...args);
+
 const uiNavigation=createUiNavigation({
   ui,
   model,
@@ -217,7 +221,7 @@ const uiNavigation=createUiNavigation({
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderSummary:(...args)=>domainsDashboardView.renderSummary(...args),
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
-  renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
+  renderCustomers,
   renderService:(...args)=>domainsServiceView.renderService(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
   renderNotes:(...args)=>domainsNotesController.renderNotes(...args),
@@ -379,6 +383,7 @@ const {selectors:domainsCustomersSelectors,bulk:domainsCustomersBulk,view:domain
   uiNavigation,
   uiDateEditor,
 });
+
 
 const domainsServiceBulk=createDomainsServiceBulk({
   serviceUi,
@@ -917,7 +922,7 @@ const uiActions=createUiActions({
   toggleCustomerBulkRow:(...args)=>domainsCustomersBulk.toggleCustomerBulkRow(...args),
   toggleCustomerBulkVisible:(...args)=>domainsCustomersBulk.toggleCustomerBulkVisible(...args),
   deleteSelectedCustomerRows:(...args)=>domainsCustomersBulk.deleteSelectedCustomerRows(...args),
-  renderCustomers:(...args)=>domainsCustomersView.renderCustomers(...args),
+  renderCustomers,
   addCustomerOrder:(...args)=>domainsCustomersEditor.addCustomerOrder(...args),
   saveCustomerOrderField:(...args)=>domainsCustomersEditor.saveCustomerOrderField(...args),
   deleteCustomerOrder:(...args)=>domainsCustomersEditor.deleteCustomerOrder(...args),

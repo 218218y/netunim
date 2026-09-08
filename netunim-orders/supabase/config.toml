@@ -1,2 +1,5 @@
 [functions.google-calendar-oauth]
 verify_jwt = false
+
+[functions.morning-documents]
+verify_jwt = true
