@@ -3,7 +3,7 @@
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Amex can use the current DigitalV3 flow.
 
-export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-pr1159-2026-09-06';
+export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-pr1159-netunim-v41';
 export const AMEX_LOGIN_BASE_URL='https://he.americanexpress.co.il';
 export const AMEX_WEB_BASE_URL='https://web.americanexpress.co.il';
 export const AMEX_LOGIN_COMPANY_CODE='77';
@@ -18,6 +18,13 @@ const NAVIGATION_TIMEOUT_MS=90_000;
 const INTERCEPTION_ABORT_PRIORITY=1000;
 const INTERCEPTION_CONTINUE_PRIORITY=10;
 const JSON_HEADERS={'Content-Type':'application/json',Accept:'application/json'};
+
+export function buildAmexDigitalV3LogonRequest(validateBean={},credentials={}){
+  // PR #1159 deliberately models userName as optional. Keep its wire contract:
+  // when the issuer omits userName, JSON.stringify omits KodMishtamesh instead of
+  // inventing a substitute such as the ID number.
+  return {KodMishtamesh:validateBean?.userName,MisparZihuy:credentials.id,Sisma:credentials.password,cardSuffix:credentials.card6Digits,countryCode:COUNTRY_CODE,idType:ID_TYPE};
+}
 
 function text(value,max=220){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function safeError(message,code,extra={}){const error=new Error(message);error.code=code;Object.assign(error,extra);return error}
@@ -132,9 +139,7 @@ async function login(page,credentials,onDiagnostic){
   const returnCode=String(validateResult.ValidateIdDataBean.returnCode||'');
   if(returnCode==='4')throw safeError('American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.','CREDIT_CHANGE_PASSWORD',{stage:'LoginApi'});
   if(returnCode!=='1')throw safeError('פרטי ההתחברות של American Express נדחו.','CREDIT_INVALID_PASSWORD',{stage:'LoginApi'});
-  const userName=validateResult.ValidateIdDataBean.userName;
-  if(!userName)throw safeError('American Express לא החזירה userName לאחר אימות הזהות.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'LoginApi'});
-  const logonRequest={KodMishtamesh:userName,MisparZihuy:credentials.id,Sisma:credentials.password,cardSuffix:credentials.card6Digits,countryCode:COUNTRY_CODE,idType:ID_TYPE};
+  const logonRequest=buildAmexDigitalV3LogonRequest(validateResult.ValidateIdDataBean,credentials);
   const logonResult=await pagePost(page,`${servicesUrl}?reqName=performLogonI`,logonRequest,{headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},stage:'LoginPassword',login:true,onDiagnostic});
   const status=String(logonResult?.status||'');
   if(status==='3')throw safeError('American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.','CREDIT_CHANGE_PASSWORD',{stage:'LoginPassword'});

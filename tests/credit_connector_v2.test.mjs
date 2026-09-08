@@ -16,7 +16,7 @@ import {
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
-import {AMEX_DIGITAL_V3_SCHEMA_VERSION,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
+import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
 const amexMonth=new Date('2026-12-01T00:00:00.000Z');
@@ -64,13 +64,13 @@ assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').t
 
 const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
 let amexDigitalOptions=null;
-const amexDigitalAdapter=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>{throw new Error('published 6.10 scraper must not own Amex v40')},amexScrapeImpl:async options=>{amexDigitalOptions={...options,onDiagnostic:undefined,now:undefined};return {success:true,accounts:[{accountNumber:'6774',balance:-1250,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:10000,txns:[{identifier:'a1',status:'completed',date:'2026-09-07T10:00:00.000Z',transactionDate:'2026-09-07T10:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-50,chargedCurrency:'ILS'}]}]}} ,browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
+const amexDigitalAdapter=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>{throw new Error('published 6.10 scraper must not own Amex v41')},amexScrapeImpl:async options=>{amexDigitalOptions={...options,onDiagnostic:undefined,now:undefined};return {success:true,accounts:[{accountNumber:'6774',balance:-1250,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:10000,txns:[{identifier:'a1',status:'completed',date:'2026-09-07T10:00:00.000Z',transactionDate:'2026-09-07T10:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-50,chargedCurrency:'ILS'}]}]}} ,browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
 const amexDigitalResult=await amexDigitalAdapter.scrape();
-assert.equal(amexDigitalOptions.browserPath,'chrome.exe','Amex v40 primary path runs through the discovered installed Chrome/Edge executable');
+assert.equal(amexDigitalOptions.browserPath,'chrome.exe','Amex v41 primary path runs through the discovered installed Chrome/Edge executable');
 assert.deepEqual(amexDigitalOptions.credentials,amexProfile.credentials,'Amex DigitalV3 receives the official id/card6Digits/password credential contract unchanged');
 assert.equal(amexDigitalOptions.futureMonthsToScrape,1,'daily Amex DigitalV3 keeps the bounded current+next billing horizon');
 assert.equal(amexDigitalResult.coreComplete,true,'successful Amex DigitalV3 completes without entering Camoufox fallback');
-assert.equal(amexDigitalResult.accounts[0].months.find(row=>row.month==='2026-09').providerSchemaVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v40 month slices identify the DigitalV3 schema instead of pretending to be the 6.10 legacy scraper');
+assert.equal(amexDigitalResult.accounts[0].months.find(row=>row.month==='2026-09').providerSchemaVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 month slices identify the DigitalV3 schema instead of pretending to be the 6.10 legacy scraper');
 assert.deepEqual({balance:amexDigitalResult.accounts[0].balance,cardFrame:amexDigitalResult.accounts[0].cardFrame,availableCredit:amexDigitalResult.accounts[0].availableCredit},{balance:-1250,cardFrame:10000,availableCredit:8750},'DigitalV3 issuer limit data keeps the existing utilized/frame/available semantics');
 
 function fakeAmexPage(){
@@ -88,6 +88,12 @@ assert.equal(amexIdentity.webdriver,'undefined');assert.equal(amexIdentityFixtur
 assert.match(String(amexIdentityFixture.state.preDocument),/webdriver/);assert.match(String(amexIdentityFixture.state.preDocument),/undefined/,'the current live-tested Amex login masks navigator.webdriver as undefined, not false');
 let detectorAbort=null;amexIdentityFixture.state.requestHandler({url:()=> 'https://he.americanexpress.co.il/detector-dom.min.js',abort:(reason,priority)=>{detectorAbort={reason,priority}},continue:()=>{throw new Error('detector request must be aborted')}});await new Promise(resolve=>setImmediate(resolve));assert.equal(detectorAbort.priority,1000,'DigitalV3 login preserves the maintained detector-dom abort priority');
 let normalContinue=null;amexIdentityFixture.state.requestHandler({url:()=> 'https://he.americanexpress.co.il/personalarea/Login',abort:()=>{throw new Error('normal request must continue')},continue:(overrides,priority)=>{normalContinue={overrides,priority}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(normalContinue.priority,10,'DigitalV3 login matches upstream normal cooperative continue priority without synthetic client-hint rewriting');
+const amexCredentials={id:'123456789',card6Digits:'123456',password:'fixed-password'};
+const logonWithoutUserName=buildAmexDigitalV3LogonRequest({returnCode:'1'},amexCredentials),logonWithoutUserNameWire=JSON.parse(JSON.stringify(logonWithoutUserName));
+assert.equal(logonWithoutUserName.KodMishtamesh,undefined,'PR #1159 models ValidateIdDataBean.userName as optional');
+assert.equal(Object.hasOwn(logonWithoutUserNameWire,'KodMishtamesh'),false,'when Amex omits optional userName, the wire request omits KodMishtamesh exactly as upstream JSON serialization does');
+assert.deepEqual(logonWithoutUserNameWire,{MisparZihuy:'123456789',Sisma:'fixed-password',cardSuffix:'123456',countryCode:'212',idType:'1'},'missing userName never falls back to an invented ID/username value');
+assert.equal(buildAmexDigitalV3LogonRequest({returnCode:'1',userName:'issuer-user'},amexCredentials).KodMishtamesh,'issuer-user','when Amex supplies userName, performLogonI preserves it unchanged');
 const approved=normalizeAmexDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'abc',extraDetails:'memo'});
 assert.equal(approved.status,'pending');assert.equal(approved.originalAmount,-75);assert.equal(approved.chargedAmount,-75);assert.equal(approved.date,approved.transactionDate,'DigitalV3 pending rows preserve the exact purchase date separately for ordering/audit');
 const voucher=normalizeAmexDigitalV3Voucher({purchaseDate:'06/09/2026',purchaseTime:'08:15:00',businessName:'עסק 2',originalAmount:300,originalCurrencyIso:'ILS',billingAmount:100,seqVoucherNumber:'v1',currentInstallmentNum:2,numberOfInstallment:3},'2026-09-10T00:00:00.000Z');
@@ -177,7 +183,7 @@ const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',st
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
 assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);
 assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
-const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:40,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v40 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
+const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:41,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
 
 const identityRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-v2-'));
 try{
