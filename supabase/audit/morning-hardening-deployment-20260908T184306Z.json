@@ -1,0 +1,126 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "source_audit": "audit/production-postflight-20260908T184306920798Z.json",
+  "database_postflight": "PASS",
+  "migration_push_invocations": 1,
+  "applied_migrations": [
+    {
+      "name": "morning_verified_creation",
+      "version": "20260908190000"
+    },
+    {
+      "name": "morning_global_idempotency",
+      "version": "20260908194500"
+    },
+    {
+      "name": "morning_ledger_owner_retention",
+      "version": "20260908203000"
+    },
+    {
+      "name": "morning_preissue_reservation",
+      "version": "20260908204500"
+    }
+  ],
+  "migration_history_after": [
+    {
+      "name": "production_schema_baseline",
+      "version": "20260906200304"
+    },
+    {
+      "name": "capabilities_security_invoker",
+      "version": "20260906203818"
+    },
+    {
+      "name": "restore_group_qualified_owner_updates",
+      "version": "20260906203827"
+    },
+    {
+      "name": "oauth_owner_index",
+      "version": "20260906203837"
+    },
+    {
+      "name": "retention_cron_jobs",
+      "version": "20260907035930"
+    },
+    {
+      "name": "morning_operation_ledger",
+      "version": "20260908103011"
+    },
+    {
+      "name": "morning_verified_creation",
+      "version": "20260908190000"
+    },
+    {
+      "name": "morning_global_idempotency",
+      "version": "20260908194500"
+    },
+    {
+      "name": "morning_ledger_owner_retention",
+      "version": "20260908203000"
+    },
+    {
+      "name": "morning_preissue_reservation",
+      "version": "20260908204500"
+    }
+  ],
+  "debt_safety": {
+    "before": {
+      "debts": {
+        "count": 42,
+        "digest": "7520862b34ccfc815489dc88fd22b9cf",
+        "owner_documents": 1
+      },
+      "operations": [
+        {
+          "state": "created",
+          "operations": 2,
+          "environment": "sandbox"
+        }
+      ],
+      "captured_at": "2026-09-08T18:36:19.376788+00:00"
+    },
+    "after": {
+      "debts": {
+        "count": 42,
+        "digest": "7520862b34ccfc815489dc88fd22b9cf",
+        "owner_documents": 1
+      },
+      "operations": [
+        {
+          "state": "created_unverified",
+          "operations": 2,
+          "environment": "sandbox"
+        }
+      ],
+      "captured_at": "2026-09-08T18:43:35.562515+00:00",
+      "backup_retained": true
+    },
+    "content_unchanged": true
+  },
+  "edge": {
+    "id": "b2a66860-c55b-4c5d-a1d8-ae192e364fdc",
+    "version": 9,
+    "status": "ACTIVE",
+    "verify_jwt": false,
+    "ezbr_sha256": "6f72a75d60c6466eb8d30ecbe9dc6ff882c73e41533a302bae8ebc5c9fd1931b",
+    "source_matches_repository": true
+  },
+  "secrets_changed": false,
+  "live_morning_create_requests": 0,
+  "static_sites_uploaded": false,
+  "cloudflare_read_only_checks": {
+    "authentication": "PASS",
+    "pages_projects": [
+      "bargig-orders",
+      "bargig-kupa"
+    ],
+    "system_certificate_authorities": true
+  },
+  "verification": {
+    "before_database_release": "PASS",
+    "after_database_release": "PASS",
+    "deploy_all_preflight_only": "PASS",
+    "orders_preflight_and_production_receipt": "PASS",
+    "kupa_preflight_and_production_receipt": "PASS"
+  }
+}

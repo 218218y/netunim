@@ -15,6 +15,10 @@ if "%~3"=="" exit /b 2
 if "%~5"=="" exit /b 2
 if not "%~6"=="" if /I not "%~6"=="--preflight-only" exit /b 2
 
+rem Include Windows trusted certificate authorities for networks using a trusted
+rem proxy. TLS certificate verification stays enabled. Scoped to this deployment.
+set "NODE_USE_SYSTEM_CA=1"
+
 set "PROJECT_DIR=%~f1"
 set "PROJECT_NAME=%~2"
 set "BUILD_MARKER=%~3"
@@ -204,11 +208,6 @@ for %%F in (_worker.js _routes.json wrangler.toml wrangler.json wrangler.jsonc) 
   exit /b 2
 )
 
-if /I "%~6"=="--preflight-only" (
-  echo Deployment preflight passed. No deployment requested.
-  exit /b 0
-)
-
 rem Static site uploads must never outrun an unapplied database release. This
 rem mandatory offline gate binds the current DB contract to the last authenticated
 rem Production postflight receipt and requires no local database credentials.
@@ -216,6 +215,11 @@ python "%~dp0supabase_postflight.py" --release-gate
 if errorlevel 1 (
   echo ERROR: Supabase release gate failed. No site was uploaded.
   exit /b 2
+)
+
+if /I "%~6"=="--preflight-only" (
+  echo Deployment preflight and Production receipt gate passed. No deployment requested.
+  exit /b 0
 )
 
 rem A live drift check is stronger but requires privileged database access. Run it

@@ -14,7 +14,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
-from supabase_migration_manifest import manifest as local_manifest
+from supabase_migration_manifest import manifest as local_manifest, verify_server_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_SECTIONS = ('schemas', 'tables', 'columns', 'constraints', 'indexes',
@@ -95,6 +95,13 @@ def release_contract_errors(target, receipt, audit, reviewed_manifest, expected_
         receipt_versions=[{k:r.get(k) for k in ('version','name')} for r in receipt.get('migration_manifest',[])]
         if audit_versions and audit_versions!=receipt_versions:
             errors.append('source audit migration ledger does not match the receipt manifest')
+        if 'server_migration_manifest' in audit:
+            try:
+                formats = verify_server_manifest(audit['server_migration_manifest'], audit.get('migration_manifest', []))
+                if formats != audit.get('migration_storage_formats'):
+                    errors.append('source audit SQL storage formats differ from verified server hashes')
+            except (ValueError, OSError) as exc:
+                errors.append('source audit server SQL hashes differ from reviewed files: '+str(exc))
 
     schema_rel=receipt.get('schema_snapshot')
     if schema_rel!=target.get('schema_snapshot'):
@@ -250,6 +257,59 @@ def operational_errors(inventory):
     return errors
 
 
+def record_release(target, capture_path, actual, history, manifest):
+    """Record only the evidence just checked by live postflight; receipt is last.
+
+    The operator must obtain the capture from an authenticated connector. Like
+    connector_capture, this is an operator handoff, not a signed attestation.
+    Offline snapshot comparisons cannot enter this path.
+    """
+    # Recheck freshness and build binding immediately before writing any artifact.
+    captured = connector_capture(capture_path, target)
+    if captured != (actual, history, manifest):
+        raise SystemExit('FAIL: connector capture changed during postflight; no receipt recorded.')
+    capture = json.loads(capture_path.read_text(encoding='utf8'))
+    reviewed_manifest = local_manifest()
+    formats = verify_server_manifest(manifest, reviewed_manifest)
+    stamp = datetime.fromisoformat(capture['captured_at'].replace('Z', '+00:00'))
+    source_rel = 'audit/production-postflight-' + stamp.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.json'
+    source_path = ROOT / 'supabase' / source_rel
+    if source_path.exists():
+        raise SystemExit('FAIL: this capture already has an audit; fetch a new live capture.')
+    audit = {
+        'project_id': target['project_id'], 'verified_at': capture['captured_at'],
+        'production_postflight': 'PASS', 'schema_drift': [],
+        'build_fingerprint': capture['build_fingerprint'],
+        'canonical_migrations': history, 'migration_manifest': reviewed_manifest,
+        'server_migration_manifest': manifest, 'migration_storage_formats': formats,
+        'operations': actual['operations'],
+        'scope': 'Read-only database schema, security, retention jobs and migration SQL verification. No Morning document issued.',
+    }
+    jobs = json.loads((ROOT / 'supabase/retention-jobs.json').read_text(encoding='utf8'))
+    schema_path = ROOT / 'supabase' / target['schema_snapshot']
+    write_json = lambda path, value: path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + '\n', encoding='utf8')
+    # An interruption before the final replace leaves the previous receipt stale,
+    # so site deployment fails closed instead of accepting a partial recording.
+    write_json(source_path, audit)
+    write_json(schema_path, actual)
+    receipt = {
+        'project_id': target['project_id'], 'verified_at': capture['captured_at'],
+        'production_postflight': 'PASS', 'text_hash_normalization': 'lf-v1',
+        'source_audit': source_rel, 'source_audit_sha256': normalized_text_sha256(source_path),
+        'schema_snapshot': target['schema_snapshot'],
+        'schema_snapshot_sha256': normalized_text_sha256(schema_path),
+        'migration_manifest': reviewed_manifest, 'retention_jobs': jobs,
+        'operations': {key: actual['operations'][key] for key in
+                       ('pg_cron', 'database', 'timezone', 'server_port', 'launch_active_jobs', 'full_visibility')},
+    }
+    path = ROOT / 'supabase' / target['deployment_receipt']
+    temporary = path.with_suffix('.json.tmp')
+    write_json(temporary, receipt)
+    temporary.replace(path)
+    release_gate(target)
+    print('PASS: authenticated source audit, schema snapshot and Production receipt recorded.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
@@ -263,9 +323,13 @@ def main():
                         help='offline static-deploy gate bound to the last authenticated Production receipt')
     parser.add_argument('--receipt', type=Path,
                         help='test/operator override for --release-gate receipt path')
+    parser.add_argument('--record-release', action='store_true',
+                        help='after successful fresh connector postflight, record the schema, source audit and receipt together')
     args = parser.parse_args()
     if args.receipt and not args.release_gate:
         parser.error('--receipt is only valid with --release-gate')
+    if args.record_release and (not args.capture or args.release_gate or args.actual or args.history or args.manifest or args.receipt):
+        parser.error('--record-release requires --capture and cannot use offline evidence or --release-gate')
     reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
     if local_manifest() != reviewed_manifest:
         raise SystemExit('FAIL: local migration files differ from reviewed SQL hashes; no deploy allowed.')
@@ -312,15 +376,18 @@ def main():
             raise SystemExit('FAIL: migration history differs from the reviewed ledger; no deploy allowed.')
     if manifest is not None:
         expected_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
-        actual_manifest = [{k: row[k] for k in ('version', 'name', 'sha256')} for row in manifest]
-        if canonical(actual_manifest) != canonical(expected_manifest):
-            raise SystemExit('FAIL: recorded migration SQL differs from reviewed file hashes; no deploy allowed.')
+        try:
+            verify_server_manifest(manifest, expected_manifest)
+        except (ValueError, OSError) as exc:
+            raise SystemExit('FAIL: recorded migration SQL differs from reviewed file/CLI statement hashes; no deploy allowed. '+str(exc)) from exc
     print('PASS: application tables/columns/constraints/indexes/functions/security/grants/policies/triggers match the reviewed schema.')
     print('PASS: pg_cron and exactly two active retention jobs match names/schedules/commands/ownership/targets; scheduler enabled in GMT.')
     if history is not None:
         print('PASS: migration history matches the reviewed ledger.')
     if manifest is not None:
-        print('PASS: server migration SQL hashes match the canonical files.')
+        print('PASS: server migration SQL hashes match canonical files or their exact CLI statement representation.')
+    if args.record_release:
+        record_release(target, args.capture, actual, history, manifest)
 
 
 if __name__ == '__main__':

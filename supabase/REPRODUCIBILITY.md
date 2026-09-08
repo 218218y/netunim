@@ -54,6 +54,64 @@ source-audit artifact. Editing only `production-deployment-receipt.json` therefo
 cannot acknowledge new migrations. After a legitimate database release, refresh the
 live schema/history/hash evidence and record a new source audit + receipt together.
 
+### Recording a database release
+
+For normal site updates run `deploy_all.bat`; it verifies both sites and checks
+the Production receipt. No Supabase login is needed when the database contract
+has not changed. `deploy_all.bat --preflight-only` runs the same verification and
+offline receipt gate without uploading. It must reject pending database releases.
+The Windows deployment process enables `NODE_USE_SYSTEM_CA=1` for Wrangler so
+Node also trusts the system's certificate authorities. TLS verification stays
+enabled. This avoids certificate failures on networks using a trusted proxy;
+Cloudflare authentication and upload permissions remain required for upload.
+
+For the Morning ledger upgrade, the database operator first runs
+`verify.bat --no-pause`, checks `supabase migration list --workdir .`, and reviews
+`supabase db push --dry-run --workdir .`. Production must be an exact prefix of
+the local chain, with only the intended migrations pending. Apply that suffix
+once with `supabase db push --workdir .`, then deploy the Edge Function with
+`supabase functions deploy morning-documents --workdir netunim-orders
+--project-ref bupoidcurcxuypfrjqio --no-verify-jwt --use-api`. Keep existing secrets.
+The root `supabase/migrations` is the only migration chain; the function source
+lives under `netunim-orders/supabase/functions`. Do not run migration push from
+the function directory, repair history, seed, or reset the linked database.
+
+Generate an independent expectation with
+`python tools/supabase_candidate_schema.py --output .work/morning-candidate.json`
+(use a new filename on another run). This replays the canonical chain on isolated
+PostgreSQL, verifies the Morning invariants and preserves the existing backup
+contract. It does not create Production evidence or touch application data.
+
+Generate fresh capture SQL with `python tools/supabase_capture_query.py`, execute
+it using the authenticated Production connector, and save the returned JSON row
+to a private local file. Within five minutes, run:
+
+```text
+python tools/supabase_postflight.py --expected .work/morning-candidate.json --capture .work/production-capture.json --record-release
+```
+
+Only a complete live schema, retention, migration-history and SQL-hash PASS
+records the schema snapshot, a new dated source audit and the receipt. The
+receipt is written last. Offline `--actual` input cannot record a release;
+expired captures, mismatched builds/projects, and drift leave the artifacts
+unchanged. Captures are trusted operator handoffs, not signed attestations;
+never synthesize them from local fixtures or historical snapshots.
+
+Migration file hashes remain unchanged and byte-sensitive after LF normalization.
+The live verifier accepts two independently derived server storage encodings:
+the full file used by historical connector migrations, and the CLI's ordered
+statements with only outer semicolons/whitespace removed. The CLI uses
+[`SplitAndTrim` and records `Statements`](https://github.com/supabase/cli/blob/develop/apps/cli-go/pkg/migration/file.go).
+Strings, dollar-quoted function bodies, comments, statement order and internal
+whitespace are preserved by the comparison. Unsupported syntax fails closed.
+The source audit retains both the raw server hashes and the proven storage
+encoding; the receipt stays bound to the reviewed file hashes. Neither local
+migration SQL nor the server's migration ledger is rewritten to match a hash.
+
+Finally run `verify.bat --no-pause` and `deploy_all.bat --preflight-only`, then
+use the normal deployment command. This process does not call Morning create,
+and requires no real invoice, receipt or change of Morning environment.
+
 ## Historical normalization is provenance, not a prerequisite
 
 On 2026-09-06 the seven exported legacy ledger rows were replaced by the baseline

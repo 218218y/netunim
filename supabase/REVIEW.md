@@ -141,8 +141,11 @@ is an Auth configuration issue; this database refactor does not change Auth sett
 
 `tools/supabase_postflight.py` reads live catalogs in a read-only transaction and compares
 them plus migration history to the reviewed Production artifacts. The actual site upload
-path calls it before Wrangler. Missing PostgreSQL access or drift blocks upload;
-`--preflight-only` remains an offline static check and makes no cloud connection.
+path always checks the last authenticated Production receipt before Wrangler.
+`--preflight-only` checks static files and that same receipt, then stops without a
+cloud connection. Pending database migrations therefore block preflight as well
+as upload. When live PostgreSQL access is configured, failed access or drift also
+blocks upload.
 Use PGHOST/PGPORT/PGDATABASE/PGUSER and a passfile or service; never place secrets in SQL
 artifacts or command arguments. A connector capture can also be compared with
 `--actual <inventory.json> --history <migration-list.json>` during review.

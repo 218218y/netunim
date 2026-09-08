@@ -53,24 +53,49 @@ with IsolatedPostgres(schema_files=[]) as db:
     assert db.sql("select issuance_started_at is not null from public.morning_document_operations where operation_id='00000000-0000-4000-8000-000000000001'").strip()=='t'
     db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OTHER_OWNER}','00000000-0000-4000-8000-000000000006','sandbox','reserved-only','reserved',305,1,current_date)")
     assert db.sql("select issuance_started_at is null from public.morning_document_operations where operation_id='00000000-0000-4000-8000-000000000006'").strip()=='t'
+    # The database itself must reject a row that claims Morning issuance may have started
+    # without recording when that external ambiguity began.
+    try:
+        db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OWNER}','00000000-0000-4000-8000-000000000007','sandbox','invalid-pending','pending',305,1,current_date)")
+        raise AssertionError('Pending operation without issuance_started_at was allowed')
+    except RuntimeError as error:
+        assert 'morning_document_operations_issuance_started_check' in str(error)
     # A verified operation is exactly-once by operation_id, but its business content is not
     # permanently unique: two legitimate documents can have identical customer/amount/date data.
-    db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OWNER}','00000000-0000-4000-8000-000000000002','sandbox','same','pending',305,1,current_date)")
+    # New code first reserves locally, then atomically claims the issuance window. A direct
+    # post-migration INSERT as `pending` is intentionally invalid because `pending` proves
+    # Morning POST may have started and therefore requires issuance_started_at.
+    db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OWNER}','00000000-0000-4000-8000-000000000002','sandbox','same','reserved',305,1,current_date)")
+    db.sql("update public.morning_document_operations set state='pending', issuance_started_at=now() where operation_id='00000000-0000-4000-8000-000000000002' and state='reserved'")
+    assert db.sql("select state||':'||(issuance_started_at is not null)::text from public.morning_document_operations where operation_id='00000000-0000-4000-8000-000000000002'").strip()=='pending:true'
     # While that second operation is unresolved, the same fingerprint is protected account-wide.
     try:
-        db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OTHER_OWNER}','00000000-0000-4000-8000-000000000005','sandbox','same','pending',305,1,current_date)")
+        db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{OTHER_OWNER}','00000000-0000-4000-8000-000000000005','sandbox','same','reserved',305,1,current_date)")
         raise AssertionError('Unresolved Morning fingerprint was not protected across app users')
     except RuntimeError as error:
         assert 'morning_document_operations_unresolved_fingerprint_uidx' in str(error)
     # Environment isolation remains explicit; sandbox uncertainty cannot block production.
-    db.sql(insert.replace('000000000002','000000000003').replace("'sandbox'","'production'"))
+    production_reserved=insert.replace('000000000002','000000000003').replace("'sandbox'","'production'").replace("'pending'","'reserved'")
+    db.sql(production_reserved)
+    db.sql("update public.morning_document_operations set state='pending', issuance_started_at=now() where operation_id='00000000-0000-4000-8000-000000000003' and environment='production' and state='reserved'")
+    # Use a valid completed issuance as the positive control. Changing only the
+    # document ID must then fail on uniqueness, not on a lifecycle prerequisite.
+    other_created=f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date,document_id,verified_at,issuance_started_at) values('{OTHER_OWNER}','00000000-0000-4000-8000-000000000004','sandbox','different','created',305,1,current_date,'00000000-0000-4000-8000-000000000011',now(),now())"
+    db.sql('begin; '+other_created+'; rollback;')
     # The same Morning document cannot be claimed by another operation/user, even in a race.
     try:
-        db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date,document_id,verified_at) values('{OTHER_OWNER}','00000000-0000-4000-8000-000000000004','sandbox','different','created',305,1,current_date,'00000000-0000-4000-8000-000000000010',now())")
+        db.sql(other_created.replace('000000000011', '000000000010'))
         raise AssertionError('Duplicate Morning document ID was allowed across app users')
     except RuntimeError as error:
         assert 'morning_document_operations_document_uidx' in str(error)
-    assert db.sql('select count(*) from public.morning_document_operations').strip()=='3'
+    expected_new_operations={
+        '00000000-0000-4000-8000-000000000001',
+        '00000000-0000-4000-8000-000000000002',
+        '00000000-0000-4000-8000-000000000003',
+        '00000000-0000-4000-8000-000000000006',
+    }
+    observed_new_operations=set(filter(None,db.sql('select operation_id::text from public.morning_document_operations order by operation_id').splitlines()))
+    assert observed_new_operations==expected_new_operations
     for role in ('anon','authenticated'):
         assert db.sql(f"select has_table_privilege('{role}','public.morning_document_operations','select')").strip()=='f'
         assert db.sql(f"select has_table_privilege('{role}','public.morning_document_operations_backup_20260908','select')").strip()=='f'
@@ -82,11 +107,13 @@ with IsolatedPostgres(schema_files=[]) as db:
         assert 'preserve new Morning operations' in str(error)
     db.sql("update public.morning_document_operations set state='failed'")
     db.migrate(rollback)
-    assert db.sql('select count(*) from public.morning_document_operations_rollback_20260908').strip()=='2'
+    rolled_back_operations=set(filter(None,db.sql('select operation_id::text from public.morning_document_operations_rollback_20260908 order by operation_id').splitlines()))
+    assert rolled_back_operations==expected_new_operations
     assert db.sql("select debt_id from public.morning_document_operations").strip()=='legacy-failed'
     assert db.sql("select count(*) from information_schema.columns where table_name='morning_document_operations' and column_name in ('state','document_type','amount') and is_nullable='NO'").strip()=='3'
     assert db.sql("select count(*) from pg_constraint where conrelid='public.morning_document_operations'::regclass and contype='c'").strip()=='3'
 with IsolatedPostgres(schema_files=[MIGRATION,HARDENING,GLOBAL_IDEMPOTENCY,OWNER_RETENTION,PREISSUE]) as db:
     assert db.sql("select count(*) from public.morning_document_operations").strip()=='0'
     assert db.sql("select count(*) from information_schema.columns where table_name='morning_document_operations' and column_name='verified_at'").strip()=='1'
+    assert_morning_schema_contract(json.loads(db.sql((ROOT/'supabase/schema_inventory.sql').read_text(encoding='utf-8'))))
 print('PASS Morning SQL: migration guard, verification hardening, account-wide fingerprint/document uniqueness, owner-retained issuance evidence, atomic pre-issue reservation, fresh install, environments and permissions')

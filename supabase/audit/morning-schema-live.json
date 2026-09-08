@@ -2249,6 +2249,32 @@
     },
     {
       "acl": null,
+      "name": "verified_at",
+      "type": "timestamp with time zone",
+      "table": "morning_document_operations",
+      "schema": "public",
+      "default": null,
+      "identity": "",
+      "not_null": false,
+      "position": 21,
+      "collation": null,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "issuance_started_at",
+      "type": "timestamp with time zone",
+      "table": "morning_document_operations",
+      "schema": "public",
+      "default": null,
+      "identity": "",
+      "not_null": false,
+      "position": 22,
+      "collation": null,
+      "generated": ""
+    },
+    {
+      "acl": null,
       "name": "owner_id",
       "type": "uuid",
       "table": "morning_document_operations_backup_20260908",
@@ -3131,6 +3157,14 @@
       "definition": "CREATE UNIQUE INDEX kupa_periodic_backups_pkey ON public.kupa_periodic_backups USING btree (id)"
     },
     {
+      "name": "morning_document_operations_document_uidx",
+      "table": "morning_document_operations",
+      "valid": true,
+      "schema": "public",
+      "constraint": false,
+      "definition": "CREATE UNIQUE INDEX morning_document_operations_document_uidx ON public.morning_document_operations USING btree (environment, document_id) WHERE (document_id IS NOT NULL)"
+    },
+    {
       "name": "morning_document_operations_pkey",
       "table": "morning_document_operations",
       "valid": true,
@@ -3144,7 +3178,7 @@
       "valid": true,
       "schema": "public",
       "constraint": false,
-      "definition": "CREATE UNIQUE INDEX morning_document_operations_unresolved_fingerprint_uidx ON public.morning_document_operations USING btree (owner_id, environment, request_fingerprint) WHERE (state = ANY (ARRAY['pending'::text, 'needs_reconciliation'::text]))"
+      "definition": "CREATE UNIQUE INDEX morning_document_operations_unresolved_fingerprint_uidx ON public.morning_document_operations USING btree (environment, request_fingerprint) WHERE (state = ANY (ARRAY['reserved'::text, 'pending'::text, 'created_unverified'::text, 'needs_reconciliation'::text]))"
     },
     {
       "name": "order_management_backups_owner_doc_revision_uidx",
@@ -5381,6 +5415,22 @@
       "definition": "CHECK (amount > 0::numeric)"
     },
     {
+      "name": "morning_document_operations_created_unverified_document_check",
+      "type": "c",
+      "table": "morning_document_operations",
+      "schema": "public",
+      "validated": true,
+      "definition": "CHECK (state <> 'created_unverified'::text OR document_id IS NOT NULL)"
+    },
+    {
+      "name": "morning_document_operations_created_verified_check",
+      "type": "c",
+      "table": "morning_document_operations",
+      "schema": "public",
+      "validated": true,
+      "definition": "CHECK (state <> 'created'::text OR document_id IS NOT NULL AND verified_at IS NOT NULL)"
+    },
+    {
       "name": "morning_document_operations_document_type_check",
       "type": "c",
       "table": "morning_document_operations",
@@ -5397,12 +5447,12 @@
       "definition": "CHECK (environment = ANY (ARRAY['production'::text, 'sandbox'::text]))"
     },
     {
-      "name": "morning_document_operations_owner_id_fkey",
-      "type": "f",
+      "name": "morning_document_operations_issuance_started_check",
+      "type": "c",
       "table": "morning_document_operations",
       "schema": "public",
       "validated": true,
-      "definition": "FOREIGN KEY (owner_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+      "definition": "CHECK ((state = ANY (ARRAY['reserved'::text, 'failed'::text])) OR issuance_started_at IS NOT NULL)"
     },
     {
       "name": "morning_document_operations_pkey",
@@ -5418,7 +5468,7 @@
       "table": "morning_document_operations",
       "schema": "public",
       "validated": true,
-      "definition": "CHECK (state = ANY (ARRAY['pending'::text, 'created'::text, 'needs_reconciliation'::text, 'failed'::text]))"
+      "definition": "CHECK (state = ANY (ARRAY['reserved'::text, 'pending'::text, 'created_unverified'::text, 'created'::text, 'needs_reconciliation'::text, 'failed'::text]))"
     },
     {
       "name": "order_management_document_backups_owner_id_fkey",

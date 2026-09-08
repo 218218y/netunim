@@ -1,0 +1,69 @@
+[
+  {
+    "version": "20260908190000",
+    "name": "morning_verified_creation",
+    "statement_count": 15,
+    "statements": [
+      "-- Harden Morning issuance semantics without deleting or recreating the ledger.\n-- `created` now means: the returned Morning document ID was re-read canonically\n-- and the document's core fields matched the reserved request.\nbegin",
+      "lock table public.morning_document_operations in access exclusive mode",
+      "alter table public.morning_document_operations\n  add column if not exists verified_at timestamptz",
+      "-- Existing `created` rows came from the previous implementation, which could\n-- mark success even when the canonical GET failed. Preserve the known Morning\n-- document ID, but force one read-back before treating those rows as verified.\ndo $$\nbegin\n  if exists (\n    select 1 from public.morning_document_operations\n    where state='created' and document_id is null\n  ) then\n    raise exception 'Cannot harden Morning ledger: a created row has no document_id';\n  end if;\n\n  if exists (\n    select 1\n    from public.morning_document_operations\n    where document_id is not null\n    group by owner_id,environment,document_id\n    having count(*) > 1\n  ) then\n    raise exception 'Cannot harden Morning ledger: duplicate document_id ownership exists';\n  end if;\nend $$",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_state_check",
+      "alter table public.morning_document_operations\n  add constraint morning_document_operations_state_check\n  check (state in ('pending','created_unverified','created','needs_reconciliation','failed'))",
+      "update public.morning_document_operations\nset state='created_unverified',\n    error_code=coalesce(error_code,'migration_requires_reverification'),\n    error_message=coalesce(error_message,'Existing success must be canonically re-verified after reliability hardening'),\n    updated_at=now()\nwhere state='created' and verified_at is null",
+      "drop index if exists public.morning_document_operations_unresolved_fingerprint_uidx",
+      "create unique index morning_document_operations_unresolved_fingerprint_uidx\n  on public.morning_document_operations(owner_id,environment,request_fingerprint)\n  where state in ('pending','created_unverified','needs_reconciliation')",
+      "-- Close the race that previously relied only on an application-side lookup.\ncreate unique index if not exists morning_document_operations_document_uidx\n  on public.morning_document_operations(owner_id,environment,document_id)\n  where document_id is not null",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_created_verified_check",
+      "alter table public.morning_document_operations\n  add constraint morning_document_operations_created_verified_check\n  check (state <> 'created' or (document_id is not null and verified_at is not null))",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_created_unverified_document_check",
+      "alter table public.morning_document_operations\n  add constraint morning_document_operations_created_unverified_document_check\n  check (state <> 'created_unverified' or document_id is not null)",
+      "commit"
+    ]
+  },
+  {
+    "version": "20260908194500",
+    "name": "morning_global_idempotency",
+    "statement_count": 8,
+    "statements": [
+      "-- The Edge Function uses one Morning credential pair per environment. Idempotency\n-- must therefore protect that Morning business across all authenticated app users,\n-- not merely within one Supabase owner_id.\nbegin",
+      "lock table public.morning_document_operations in access exclusive mode",
+      "do $$\nbegin\n  if exists (\n    select 1\n    from public.morning_document_operations\n    where document_id is not null\n    group by environment,document_id\n    having count(*) > 1\n  ) then\n    raise exception 'Cannot enable global Morning idempotency: one document_id is already claimed by multiple app users';\n  end if;\n\n  if exists (\n    select 1\n    from public.morning_document_operations\n    where state in ('pending','created_unverified','needs_reconciliation')\n    group by environment,request_fingerprint\n    having count(*) > 1\n  ) then\n    raise exception 'Cannot enable global Morning idempotency: duplicate unresolved fingerprints already exist across app users';\n  end if;\nend $$",
+      "drop index if exists public.morning_document_operations_unresolved_fingerprint_uidx",
+      "create unique index morning_document_operations_unresolved_fingerprint_uidx\n  on public.morning_document_operations(environment,request_fingerprint)\n  where state in ('pending','created_unverified','needs_reconciliation')",
+      "drop index if exists public.morning_document_operations_document_uidx",
+      "create unique index morning_document_operations_document_uidx\n  on public.morning_document_operations(environment,document_id)\n  where document_id is not null",
+      "commit"
+    ]
+  },
+  {
+    "version": "20260908203000",
+    "name": "morning_ledger_owner_retention",
+    "statement_count": 5,
+    "statements": [
+      "-- Morning issuance evidence must outlive an app user account.\n-- Deleting a Supabase user must never erase an unresolved/verified issuance row,\n-- because Morning remains the system of record and a lost guard could permit a\n-- duplicate document on a later retry.\nbegin",
+      "lock table public.morning_document_operations in access exclusive mode",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_owner_id_fkey",
+      "comment on column public.morning_document_operations.owner_id is\n  'Supabase user UUID that initiated the operation. Intentionally not a cascading FK: issuance/idempotency evidence survives user deletion.'",
+      "commit"
+    ]
+  },
+  {
+    "version": "20260908204500",
+    "name": "morning_preissue_reservation",
+    "statement_count": 11,
+    "statements": [
+      "-- Separate a DB-only reservation from the externally ambiguous issuance window.\n-- `reserved` proves POST /documents has not been started yet. `pending` means the\n-- operation has atomically claimed the right to issue and may already have reached Morning.\nbegin",
+      "lock table public.morning_document_operations in access exclusive mode",
+      "alter table public.morning_document_operations\n  add column if not exists issuance_started_at timestamptz",
+      "-- Rows created by older code used `pending` from reservation time. Treat them\n-- conservatively as possibly issued and use created_at as the reconciliation anchor.\nupdate public.morning_document_operations\nset issuance_started_at = coalesce(issuance_started_at, created_at)\nwhere state in ('pending','created_unverified','created','needs_reconciliation')",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_state_check",
+      "alter table public.morning_document_operations\n  add constraint morning_document_operations_state_check\n  check (state in ('reserved','pending','created_unverified','created','needs_reconciliation','failed'))",
+      "alter table public.morning_document_operations\n  drop constraint if exists morning_document_operations_issuance_started_check",
+      "alter table public.morning_document_operations\n  add constraint morning_document_operations_issuance_started_check\n  check (state in ('reserved','failed') or issuance_started_at is not null)",
+      "drop index if exists public.morning_document_operations_unresolved_fingerprint_uidx",
+      "create unique index morning_document_operations_unresolved_fingerprint_uidx\n  on public.morning_document_operations(environment,request_fingerprint)\n  where state in ('reserved','pending','created_unverified','needs_reconciliation')",
+      "commit"
+    ]
+  }
+]

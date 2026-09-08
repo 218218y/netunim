@@ -125,6 +125,9 @@ ok('set "VERIFY_EXIT=%ERRORLEVEL%"' not in verify_text, "verify.bat: avoids pars
 deploy_core_path = ROOT / "tools/deploy_site_core.bat"
 deploy_core = deploy_core_path.read_text(encoding="utf-8")
 wrangler_pos = deploy_core.lower().find("pages deploy")
+ok('set "NODE_USE_SYSTEM_CA=1"' in deploy_core[:wrangler_pos]
+   and 'NODE_TLS_REJECT_UNAUTHORIZED' not in deploy_core,
+   "deploy core: uses trusted system certificates without disabling TLS verification")
 ok(wrangler_pos >= 0, "deploy core: contains the only Wrangler Pages upload command")
 ok("verify.bat" not in deploy_core.lower(), "deploy core: does not own or bypass the repository verification gate")
 ok('if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" (' in deploy_core,
@@ -135,8 +138,8 @@ ok(0 <= dry_run < mkdir_pos < wrangler_pos, "deploy core: read-only preflight ex
 ok('exit /b 0' in deploy_core[dry_run:mkdir_pos], "deploy core: preflight cannot fall through to upload")
 release_gate_pos = deploy_core.find('supabase_postflight.py" --release-gate')
 live_gate_pos = deploy_core.find('if defined NETUNIM_RUN_LIVE_POSTFLIGHT')
-ok(dry_run < release_gate_pos < live_gate_pos < wrangler_pos,
-   "deploy core: mandatory offline DB release gate precedes optional live drift check and upload")
+ok(release_gate_pos < dry_run < live_gate_pos < wrangler_pos,
+   "deploy core: preflight checks the mandatory offline DB release gate before returning success; live drift check and upload remain later")
 ok('if defined NETUNIM_SUPABASE_CAPTURE' in deploy_core
    and 'if defined PGHOST if defined PGDATABASE if defined PGUSER' in deploy_core,
    "deploy core: live Supabase postflight is enabled only by explicit connector/PG connection configuration")

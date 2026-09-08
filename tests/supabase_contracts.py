@@ -6,12 +6,15 @@ import sys
 import tempfile
 import subprocess
 import unittest
+import shutil
+from datetime import datetime, timezone, timedelta
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from build_schema_baseline import render
 from supabase_postflight import (drift, manifest_pending_suffix, normalized_text_sha256,
                                 release_contract_errors)
+from supabase_migration_manifest import split_sql_statements, verify_server_manifest
 
 
 def read(name):
@@ -19,6 +22,101 @@ def read(name):
 
 
 class SupabaseContracts(unittest.TestCase):
+    def test_cli_statement_storage_matches_observed_migrations_without_changing_file_hashes(self):
+        rows = json.loads((ROOT/'tests/fixtures/morning_cli_migration_statements.json').read_text(encoding='utf8'))
+        reviewed = read(read('postflight-target.json')['manifest_snapshot'])
+        server = json.loads(json.dumps(reviewed))
+        for row in rows:
+            path = ROOT/'supabase/migrations'/(row['version']+'_'+row['name']+'.sql')
+            self.assertEqual(split_sql_statements(path.read_text(encoding='utf8')), row['statements'])
+            item = next(r for r in server if r['version'] == row['version'])
+            item['sha256'] = hashlib.sha256('\n'.join(row['statements']).encode('utf8')).hexdigest()
+        formats = verify_server_manifest(server, reviewed)
+        formats_by_version = {r['version']: r['storage'] for r in formats}
+        self.assertEqual([formats_by_version[r['version']] for r in rows], ['cli-statements-lf-v1']*len(rows))
+        for case in ('reordered', 'missing', 'extra', 'changed-string', 'changed-comment', 'renamed'):
+            bad = json.loads(json.dumps(server))
+            if case == 'reordered': bad[-1], bad[-2] = bad[-2], bad[-1]
+            elif case == 'missing': bad.pop()
+            elif case == 'extra': bad.append(bad[-1])
+            elif case == 'renamed': bad[-1]['name'] += '_changed'
+            else:
+                changed = '\n'.join(rows[-1]['statements'])
+                changed = changed.replace("'pending'", "'failed'", 1) if case == 'changed-string' else changed.replace('-- Separate', '-- CHANGED', 1)
+                bad[-1]['sha256'] = hashlib.sha256(changed.encode('utf8')).hexdigest()
+            with self.assertRaises(ValueError, msg=case): verify_server_manifest(bad, reviewed)
+
+    def test_statement_hashing_preserves_quoted_bodies_comments_and_internal_whitespace(self):
+        statements = [
+            "-- ; heading\nselect 'a;''b', \"odd;\"\"name\"",
+            r"select E'escaped\';semi'",
+            "/* nested /* ; */ comment */ do $outer$ begin perform $inner$;$inner$; end $outer$",
+            "select  1 /* keep spacing; */",
+        ]
+        self.assertEqual(split_sql_statements(';\n\n'.join(statements)+';\n'), statements)
+        self.assertEqual(split_sql_statements((';\n'.join(statements)+';').replace('\n','\r\n')), statements)
+        for invalid in ("select 'missing", 'select "missing', 'do $tag$ missing', '/* unclosed',
+                        'begin atomic select 1; end;', 'copy t from stdin;', 'set standard_conforming_strings=off;'):
+            with self.assertRaises(ValueError, msg=invalid): split_sql_statements(invalid)
+
+    def test_record_release_requires_fresh_matching_capture_and_preserves_evidence_on_failure(self):
+        # Synthetic evidence lives ONLY in a disposable copy. Exercise the real CLI
+        # and artifact binding; never overwrite the repository's Production evidence.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = read('postflight-target.json')
+            paths = [ROOT/'tools'/name for name in ('supabase_postflight.py', 'supabase_migration_manifest.py', 'supabase_capture_query.py')]
+            paths += list((ROOT/'supabase/migrations').glob('*.sql'))
+            paths += [ROOT/'supabase'/name for name in ('postflight-target.json', 'schema_inventory.sql', 'retention-jobs.json',
+                      target['schema_snapshot'], target['migration_snapshot'], target['manifest_snapshot'], target['deployment_receipt'])]
+            for path in paths:
+                destination = root/path.relative_to(ROOT)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, destination)
+            fingerprint = subprocess.check_output([sys.executable, '-c', 'from supabase_postflight import build_fingerprint; print(build_fingerprint())'],
+                                                  cwd=root/'tools', encoding='utf8').strip()
+            capture = {'project_id': target['project_id'], 'captured_at': datetime.now(timezone.utc).isoformat(),
+                       'build_fingerprint': fingerprint, 'inventory': read(target['schema_snapshot']),
+                       'migrations': read(target['migration_snapshot'])['migrations'], 'manifest': read(target['manifest_snapshot'])}
+            # New CLI statement-array encoding must produce a receipt bound to
+            # unchanged reviewed file hashes while retaining the raw server hash.
+            last = capture['manifest'][-1]
+            source = (ROOT/'supabase/migrations'/(last['version']+'_'+last['name']+'.sql')).read_text(encoding='utf8')
+            last['sha256'] = hashlib.sha256('\n'.join(split_sql_statements(source)).encode('utf8')).hexdigest()
+            command = [sys.executable, str(root/'tools/supabase_postflight.py')]
+            capture_path = root/'capture.json'
+            before = {p.relative_to(root): p.read_bytes() for p in (root/'supabase').rglob('*') if p.is_file()}
+            def invoke(args):
+                return subprocess.run(command+args, capture_output=True, encoding='utf8', timeout=30)
+            for args in (['--record-release'], ['--record-release', '--actual', str(root/'supabase'/target['schema_snapshot'])],
+                         ['--record-release', '--release-gate', '--capture', str(capture_path)]):
+                self.assertNotEqual(invoke(args).returncode, 0)
+            for case in ('expired', 'wrong-project', 'wrong-build', 'schema', 'history', 'sql', 'operations'):
+                bad = json.loads(json.dumps(capture))
+                if case == 'expired': bad['captured_at'] = (datetime.now(timezone.utc)-timedelta(minutes=10)).isoformat()
+                elif case == 'wrong-project': bad['project_id'] = 'different-project'
+                elif case == 'wrong-build': bad['build_fingerprint'] = '0'*64
+                elif case == 'schema': bad['inventory']['columns'] = []
+                elif case == 'history': bad['migrations'] = bad['migrations'][:-1]
+                elif case == 'sql': bad['manifest'][-1]['sha256'] = '0'*64
+                elif case == 'operations': bad['inventory']['operations']['pg_cron'] = False
+                capture_path.write_text(json.dumps(bad), encoding='utf8')
+                result = invoke(['--capture', str(capture_path), '--record-release'])
+                self.assertNotEqual(result.returncode, 0, case)
+                after = {p.relative_to(root): p.read_bytes() for p in (root/'supabase').rglob('*') if p.is_file()}
+                self.assertEqual(before, after, case)
+            capture_path.write_text(json.dumps(capture), encoding='utf8')
+            result = invoke(['--capture', str(capture_path), '--record-release'])
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            receipt = json.loads((root/'supabase'/target['deployment_receipt']).read_text(encoding='utf8'))
+            audit = json.loads((root/'supabase'/receipt['source_audit']).read_text(encoding='utf8'))
+            self.assertEqual(receipt['migration_manifest'], read(target['manifest_snapshot']))
+            self.assertEqual(audit['server_migration_manifest'], capture['manifest'])
+            self.assertEqual(audit['build_fingerprint'], fingerprint)
+            self.assertEqual(audit['verified_at'], capture['captured_at'])
+            result = invoke(['--release-gate'])
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
     def test_versioned_files_match_reviewed_deployment_expectations(self):
         target = read('postflight-target.json')
         history = read(target['migration_snapshot'])['migrations']
@@ -94,8 +192,11 @@ class SupabaseContracts(unittest.TestCase):
         deployment = (ROOT / 'tools/deploy_site_core.bat').read_text(encoding='utf8')
         wrangler = deployment.index('call npx --yes wrangler')
         release = deployment.index('supabase_postflight.py" --release-gate')
+        preflight = deployment.index('if /I "%~6"=="--preflight-only" (')
         live = deployment.index('if defined NETUNIM_RUN_LIVE_POSTFLIGHT')
         self.assertLess(release, live)
+        self.assertLess(release, preflight)
+        self.assertLess(preflight, live)
         self.assertLess(live, wrangler)
         self.assertIn('Supabase release gate failed. No site was uploaded.', deployment)
         self.assertIn('NETUNIM_SUPABASE_CAPTURE', deployment)
