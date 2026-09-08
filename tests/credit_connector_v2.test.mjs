@@ -12,11 +12,11 @@ import {
   parseRetryAfter,
   parseVisaCalFrame,
   parseVisaCalMonthData,
-  prepareAmexChromiumPage,
 } from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
+import {AMEX_DIGITAL_V3_SCHEMA_VERSION,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
 const amexMonth=new Date('2026-12-01T00:00:00.000Z');
@@ -63,37 +63,39 @@ assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'na
 assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
 
 const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
-let amexNativeOptions=null,amexNativePreparePage=null,amexNativeCredentials=null;
-const amexNativeAdapter=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:options=>{amexNativePreparePage=options.preparePage;const {preparePage,...serializableOptions}=options;amexNativeOptions=structuredClone(serializableOptions);return {scrape:async credentials=>{amexNativeCredentials=structuredClone(credentials);return {success:true,accounts:[]}}}},browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
-const amexNativeResult=await amexNativeAdapter.scrape();
-assert.equal(amexNativeOptions.companyId,'amex','Amex primary path uses the pinned israeli-bank-scrapers CompanyTypes.amex implementation');
-assert.equal(amexNativeOptions.executablePath,'chrome.exe','Amex primary path runs through the discovered Chrome/Edge executable instead of forcing Camoufox');
-assert.equal(typeof amexNativePreparePage,'function','Amex primary Chromium path installs the upstream-tested WAF identity preparation before navigation');
-assert.deepEqual(amexNativeCredentials,amexProfile.credentials,'Amex native Chromium receives the official id/card6Digits/password credential contract unchanged');
-assert.equal(amexNativeResult.coreComplete,true,'successful native Amex Chromium completes without entering the Camoufox fallback');
+let amexDigitalOptions=null;
+const amexDigitalAdapter=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>{throw new Error('published 6.10 scraper must not own Amex v40')},amexScrapeImpl:async options=>{amexDigitalOptions={...options,onDiagnostic:undefined,now:undefined};return {success:true,accounts:[{accountNumber:'6774',balance:-1250,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:10000,txns:[{identifier:'a1',status:'completed',date:'2026-09-07T10:00:00.000Z',transactionDate:'2026-09-07T10:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-50,chargedCurrency:'ILS'}]}]}} ,browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
+const amexDigitalResult=await amexDigitalAdapter.scrape();
+assert.equal(amexDigitalOptions.browserPath,'chrome.exe','Amex v40 primary path runs through the discovered installed Chrome/Edge executable');
+assert.deepEqual(amexDigitalOptions.credentials,amexProfile.credentials,'Amex DigitalV3 receives the official id/card6Digits/password credential contract unchanged');
+assert.equal(amexDigitalOptions.futureMonthsToScrape,1,'daily Amex DigitalV3 keeps the bounded current+next billing horizon');
+assert.equal(amexDigitalResult.coreComplete,true,'successful Amex DigitalV3 completes without entering Camoufox fallback');
+assert.equal(amexDigitalResult.accounts[0].months.find(row=>row.month==='2026-09').providerSchemaVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v40 month slices identify the DigitalV3 schema instead of pretending to be the 6.10 legacy scraper');
+assert.deepEqual({balance:amexDigitalResult.accounts[0].balance,cardFrame:amexDigitalResult.accounts[0].cardFrame,availableCredit:amexDigitalResult.accounts[0].availableCredit},{balance:-1250,cardFrame:10000,availableCredit:8750},'DigitalV3 issuer limit data keeps the existing utilized/frame/available semantics');
 
-function fakeAmexPage({browserVersion='Chrome/152.0.8112.50'}={}){
+function fakeAmexPage(){
   const state={userAgent:'',preDocument:null,interception:false,requestHandler:null};
   return {state,page:{
-    browser:()=>({version:async()=>browserVersion}),
+    evaluate:async()=> 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.8112.50 Safari/537.36',
     setUserAgent:async value=>{state.userAgent=value},
     evaluateOnNewDocument:async fn=>{state.preDocument=fn},
     setRequestInterception:async value=>{state.interception=value},
     on:(event,handler)=>{if(event==='request')state.requestHandler=handler},
   }};
 }
-const chromeIdentityFixture=fakeAmexPage();
-const chromeIdentity=await prepareAmexChromiumPage(chromeIdentityFixture.page,{browserPath:'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'});
-assert.equal(chromeIdentity.brand,'Google Chrome');assert.equal(chromeIdentity.major,'152');assert.equal(chromeIdentityFixture.state.userAgent.includes('HeadlessChrome'),false);assert(chromeIdentityFixture.state.userAgent.includes('Chrome/152.0.8112.50'));assert.equal(chromeIdentityFixture.state.interception,true);assert.equal(typeof chromeIdentityFixture.state.preDocument,'function');
-let chromeContinue=null;chromeIdentityFixture.state.requestHandler({headers:()=>({'user-agent':'old'}),continue:(overrides,priority)=>{chromeContinue={overrides,priority}}});await new Promise(resolve=>setImmediate(resolve));
-assert.equal(chromeContinue.priority,20,'Amex identity headers use cooperative interception priority above upstream continue=10 and below detector-dom abort=1000');
-assert(chromeContinue.overrides.headers['sec-ch-ua'].includes('Google Chrome'));assert.equal(chromeContinue.overrides.headers['sec-ch-ua-platform'],'"Windows"');assert.equal(chromeContinue.overrides.headers['accept-language'],'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7');
-const edgeIdentityFixture=fakeAmexPage({browserVersion:'Chrome/152.0.8112.50'}),edgeIdentity=await prepareAmexChromiumPage(edgeIdentityFixture.page,{browserPath:'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'});
-assert.equal(edgeIdentity.brand,'Microsoft Edge');assert(edgeIdentityFixture.state.userAgent.includes('Edg/152.0.8112.50'),'Edge path produces an internally consistent Edge-branded UA');let edgeContinue=null;edgeIdentityFixture.state.requestHandler({headers:()=>({}),continue:(overrides,priority)=>{edgeContinue={overrides,priority}}});await new Promise(resolve=>setImmediate(resolve));assert(edgeContinue.overrides.headers['sec-ch-ua'].includes('Microsoft Edge'),'Edge path produces matching sec-ch-ua client hints');
-const amexBadPassword=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>({scrape:async()=>({success:false,errorType:'INVALID_PASSWORD',errorMessage:'invalid'})}),browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
+const amexIdentityFixture=fakeAmexPage(),amexIdentity=await prepareAmexDigitalV3Page(amexIdentityFixture.page);
+assert.equal(amexIdentity.webdriver,'undefined');assert.equal(amexIdentityFixture.state.userAgent.includes('HeadlessChrome'),false);assert(amexIdentityFixture.state.userAgent.includes('Chrome/152.0.8112.50'));assert.equal(amexIdentityFixture.state.interception,true);assert.equal(typeof amexIdentityFixture.state.preDocument,'function');
+assert.match(String(amexIdentityFixture.state.preDocument),/webdriver/);assert.match(String(amexIdentityFixture.state.preDocument),/undefined/,'the current live-tested Amex login masks navigator.webdriver as undefined, not false');
+let detectorAbort=null;amexIdentityFixture.state.requestHandler({url:()=> 'https://he.americanexpress.co.il/detector-dom.min.js',abort:(reason,priority)=>{detectorAbort={reason,priority}},continue:()=>{throw new Error('detector request must be aborted')}});await new Promise(resolve=>setImmediate(resolve));assert.equal(detectorAbort.priority,1000,'DigitalV3 login preserves the maintained detector-dom abort priority');
+let normalContinue=null;amexIdentityFixture.state.requestHandler({url:()=> 'https://he.americanexpress.co.il/personalarea/Login',abort:()=>{throw new Error('normal request must continue')},continue:(overrides,priority)=>{normalContinue={overrides,priority}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(normalContinue.priority,10,'DigitalV3 login matches upstream normal cooperative continue priority without synthetic client-hint rewriting');
+const approved=normalizeAmexDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'abc',extraDetails:'memo'});
+assert.equal(approved.status,'pending');assert.equal(approved.originalAmount,-75);assert.equal(approved.chargedAmount,-75);assert.equal(approved.date,approved.transactionDate,'DigitalV3 pending rows preserve the exact purchase date separately for ordering/audit');
+const voucher=normalizeAmexDigitalV3Voucher({purchaseDate:'06/09/2026',purchaseTime:'08:15:00',businessName:'עסק 2',originalAmount:300,originalCurrencyIso:'ILS',billingAmount:100,seqVoucherNumber:'v1',currentInstallmentNum:2,numberOfInstallment:3},'2026-09-10T00:00:00.000Z');
+assert.deepEqual(voucher.installments,{number:2,total:3});assert.equal(voucher.processedDate,'2026-09-10T00:00:00.000Z');assert.equal(voucher.transactionDate,voucher.date,'DigitalV3 settled rows retain purchase date before installment billing-date normalization');
+const amexBadPassword=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('invalid');error.code='CREDIT_INVALID_PASSWORD';error.stage='LoginPassword';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
 await assert.rejects(()=>amexBadPassword.scrape(),error=>error.code==='CREDIT_INVALID_PASSWORD'&&error.browserEngine==='chromium','invalid Amex credentials never trigger a second browser engine login attempt');
-const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},createScraper:()=>({scrape:async()=>({success:false,errorType:'GENERIC',errorMessage:'fetchPostWithinPage parse error reqName=ValidateIdData <!DOCTYPE html>'})}),browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});
-await assert.rejects(()=>amexCamoufoxPaused.scrape(),error=>error.code==='CREDIT_LOGIN_HTML_RESPONSE'&&error.browserEngine==='chromium','a Camoufox cooldown disables only the fallback; Chromium is still attempted and its native failure remains explicit');
+const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('html');error.code='CREDIT_LOGIN_HTML_RESPONSE';error.stage='LoginApi';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});
+await assert.rejects(()=>amexCamoufoxPaused.scrape(),error=>error.code==='CREDIT_LOGIN_HTML_RESPONSE'&&error.browserEngine==='chromium','a Camoufox cooldown disables only the fallback; DigitalV3 Chromium is still attempted and its current failure remains explicit');
 
 const excludedFixture=fakeScraper(),excludedRequests=[],excludedFetch=fetchFixture(),excludedResult=await adapterFor(excludedFixture.scraper,async(url,options)=>{excludedRequests.push({url,body:JSON.parse(options.body)});return excludedFetch(url,options)},'full',{excludedAccountNumbers:['1111']}).scrape();
 assert.equal(excludedRequests.length,20,'a known excluded Cal card sends zero Frames/Pending/month requests while one included card keeps the complete full horizon');
@@ -175,6 +177,7 @@ const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',st
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
 assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);
 assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
+const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:40,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v40 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
 
 const identityRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-v2-'));
 try{

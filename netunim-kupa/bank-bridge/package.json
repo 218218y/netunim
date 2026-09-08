@@ -10,7 +10,8 @@
     "puppeteer": false
   },
   "dependencies": {
-    "israeli-bank-scrapers": "6.10.0"
+    "israeli-bank-scrapers": "6.10.0",
+    "puppeteer": "24.43.1"
   },
   "netunimRuntimeDependencies": {
     "camoufox-js": "0.12.0",

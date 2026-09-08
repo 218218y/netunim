@@ -60,7 +60,7 @@ export function createCreditDiagnosticLog({directory,bridgeVersion=0,contractVer
   async function prune(now=Date.now()){
     for(let index=0;index<fileCount;index++){const file=index===0?logPath:`${logPath}.${index}`;try{const stat=await fs.stat(file);if(now-stat.mtimeMs>retentionMs)await fs.rm(file,{force:true})}catch(error){if(error?.code!=='ENOENT')throw error}}
   }
-  async function append(value){await fs.mkdir(directory,{recursive:true,mode:0o700});await prune();await rotate();const event=sanitizeCreditDiagnosticEvent({...value,bridgeVersion,contractVersion,connectorVersion});await fs.appendFile(logPath,`${JSON.stringify(event)}\n`,{encoding:'utf8',mode:0o600});await prune();return event}
+  async function append(value){await fs.mkdir(directory,{recursive:true,mode:0o700});await prune();await rotate();const event=sanitizeCreditDiagnosticEvent({...value,bridgeVersion,contractVersion,connectorVersion:value?.connectorVersion||connectorVersion});await fs.appendFile(logPath,`${JSON.stringify(event)}\n`,{encoding:'utf8',mode:0o600});await prune();return event}
   function record(value){queue=queue.then(()=>append(value)).catch(()=>{});return queue}
   async function summary({limit=100}={}){
     await queue;const files=[logPath,...Array.from({length:fileCount-1},(_,index)=>`${logPath}.${index+1}`)],events=[];
