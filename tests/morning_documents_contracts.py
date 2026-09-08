@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import subprocess
 
 ROOT=Path(__file__).resolve().parents[1]
 SITE=ROOT/'netunim-orders/site'
@@ -122,6 +123,13 @@ ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
 
 
 browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
+browser_lifecycle=subprocess.run(['node',str(ROOT/'tests/morning_documents_browser.test.mjs')],cwd=ROOT,capture_output=True,text=True)
+ok(browser_lifecycle.returncode==0,
+   'Morning embedded PDF lifecycle: the active Blob URL stays valid for Chrome PDF toolbar download and is revoked only when replaced')
+if browser_lifecycle.returncode!=0:
+    print(browser_lifecycle.stdout)
+    print(browser_lifecycle.stderr)
+
 migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql')).read_text(encoding='utf-8')
 ok(all(name not in documents for name in ('applyCreatedOperations','scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration,
    'Morning cannot change debt flags, amounts or debt storage')

@@ -95,7 +95,10 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
       const browserBox=$('#morningBrowserPreview'),browserFrame=$('#morningBrowserPreviewFrame'),issuanceBox=$('#morningPreviewBox'),issuanceFrame=$('#morningPreviewFrame'),issuanceNote=$('#morningPreviewNote');
       const box=browserBox||issuanceBox,frame=browserFrame||issuanceFrame;if(!box||!frame){releasePreviewUrl();throw new Error('אזור תצוגת המסמך אינו זמין')}
       if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';
-      frame.addEventListener('load',()=>{if(previewObjectUrl===url){URL.revokeObjectURL(url);previewObjectUrl=''}},{once:true});frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
+      // Keep the Blob URL alive for the full embedded-viewer lifetime. Chrome's PDF toolbar
+      // re-reads the iframe source when its built-in Download action is used; revoking on
+      // iframe load leaves the PDF visible/printable but makes that later download fail.
+      frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
     }catch(error){if(!quiet)toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
   }
   async function downloadDocument(id,button){
