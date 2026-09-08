@@ -52,8 +52,8 @@ ok("revoke all on table public.morning_document_operations from public, anon, au
    'Morning ledger: RLS plus browser-role revocation keeps write authority server-side')
 ok(not re.search(r'\b(pdf|base64|blob|document_content)\b\s+(?:text|jsonb|bytea)',sql,re.I),
    'Morning storage: ledger schema does not store PDF/base64/document bodies')
-ok("createDomainsCustomers" in composition and "domainsCustomersDocuments" in main and main.count("./domains/customers/") <= 1,
-   'Customer composition: Morning integration does not inflate main.js with customer-domain wiring')
+ok("createDomainsCustomers" in composition and "openMorningDocument" in main and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
+   'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
 for action in ('open-morning-document','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 ok("MORNING_CLIENT_SECRET" in setup and "PDF" in setup and "needs_reconciliation" in setup,
@@ -81,6 +81,18 @@ ok('[functions.morning-documents]' in config and 'verify_jwt = true' in config.s
 facade='const renderCustomers=(...args)=>domainsCustomersView.renderCustomers(...args);'
 ok(facade in main and main.find(facade) < main.find('const uiNavigation=createUiNavigation') < main.find('=createDomainsCustomers({'),
    'Customer composition: renderCustomers facade is a top-level deferred binding visible to runtime probes without changing initialization order')
+customer_facades=(
+  'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
+  'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtNote','openDebtModal','saveDebt','deleteDebt',
+  'openMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
+)
+composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
+customer_create=main[main.find('const {',main.find(facade)):main.find('}=createDomainsCustomers({')+2]
+customer_actions=main[main.find('  setCustomerTab,'):main.find('  toggleServiceBulkMode:',main.find('  setCustomerTab,'))]
+ok(all(f'{name}:(...args)=>' in composition for name in customer_facades)
+   and all(name in customer_create for name in customer_facades)
+   and all(f'  {name},' in customer_actions for name in customer_facades),
+   'Customer composition: the complete customer/debt/Morning action facade is flattened into stable top-level bindings for runtime probes and UI actions')
 
 if errors:
     print('\nERRORS',len(errors))

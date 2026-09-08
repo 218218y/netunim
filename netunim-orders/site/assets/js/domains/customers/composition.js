@@ -47,5 +47,27 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     renderCustomers:(...args)=>view.renderCustomers(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   });
-  return {selectors,bulk,view,editor,documents};
+  return {
+    selectors,bulk,view,editor,documents,
+    setCustomerTab:(...args)=>bulk.setCustomerTab(...args),
+    toggleCustomerBulkMode:(...args)=>bulk.toggleCustomerBulkMode(...args),
+    toggleCustomerBulkRow:(...args)=>bulk.toggleCustomerBulkRow(...args),
+    toggleCustomerBulkVisible:(...args)=>bulk.toggleCustomerBulkVisible(...args),
+    deleteSelectedCustomerRows:(...args)=>bulk.deleteSelectedCustomerRows(...args),
+    addCustomerOrder:(...args)=>editor.addCustomerOrder(...args),
+    saveCustomerOrderField:(...args)=>editor.saveCustomerOrderField(...args),
+    deleteCustomerOrder:(...args)=>editor.deleteCustomerOrder(...args),
+    setCustomerFlag:(...args)=>view.setCustomerFlag(...args),
+    saveDebtNote:(...args)=>view.saveDebtNote(...args),
+    openDebtModal:(...args)=>editor.openDebtModal(...args),
+    saveDebt:(...args)=>editor.saveDebt(...args),
+    deleteDebt:(...args)=>editor.deleteDebt(...args),
+    openMorningDocument:(...args)=>documents.openMorningDocument(...args),
+    syncMorningDocumentType:(...args)=>documents.syncDocumentType(...args),
+    syncMorningPaymentType:(...args)=>documents.syncPaymentType(...args),
+    previewMorningDocument:(...args)=>documents.previewMorningDocument(...args),
+    createMorningDocument:(...args)=>documents.createMorningDocument(...args),
+    openMorningExistingDocument:(...args)=>documents.openExistingDocument(...args),
+    reconcileMorningDocument:(...args)=>documents.reconcile(...args),
+  };
 }
