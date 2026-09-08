@@ -16,11 +16,20 @@
 
 ## 1. עדכון מסד הנתונים
 
-ב-Supabase Dashboard פתח **SQL Editor**, הדבק והריץ את:
+בפרויקט Production שכבר מנוהל על-ידי שרשרת המיגרציות של המאגר, **אין לסמן ידנית שהמיגרציות הוחלו ואין לעדכן ידנית את `production-deployment-receipt.json`**. ארבע המיגרציות הבאות חייבות להיכנס ל-Production דרך מסלול migration שמעדכן גם את `supabase_migrations.schema_migrations`, לפי הסדר:
 
-`netunim-orders/supabase/morning_documents.sql`
+1. `supabase/migrations/20260908190000_morning_verified_creation.sql`
+2. `supabase/migrations/20260908194500_morning_global_idempotency.sql`
+3. `supabase/migrations/20260908203000_morning_ledger_owner_retention.sql`
+4. `supabase/migrations/20260908204500_morning_preissue_reservation.sql`
 
-להתקנה חדשה ניתן להריץ את קובץ הסכמה. בהתקנה שכבר עברה את migration `20260908103011_morning_operation_ledger.sql`, יש להחיל לפי הסדר גם את `supabase/migrations/20260908190000_morning_verified_creation.sql` ולאחריו את `supabase/migrations/20260908194500_morning_global_idempotency.sql`, ואז את `supabase/migrations/20260908203000_morning_ledger_owner_retention.sql`, ולבסוף את `supabase/migrations/20260908204500_morning_preissue_reservation.sql`. המיגרציות **משמרות את הטבלה והפעולות הקיימות**: הראשונה מוסיפה `verified_at`, ממירה הצלחות ישנות ל־`created_unverified` עד לקריאת אימות ומקשיחה שיוך `document_id`; השנייה מרחיבה את נעילת ניסיונות ההפקה הלא־פתורים ואת ייחודיות `document_id` לכל משתמשי האפליקציה שעובדים מול אותו חשבון Morning בסביבה המוגדרת; השלישית מסירה רק את ה־FK המדורג מ־`owner_id`, כדי שמחיקת משתמש Supabase לא תמחק ראיית idempotency או ניסיון הפקה לא־פתור; הרביעית מפרידה בין `reserved` — רישום DB שבו בוודאות טרם התחיל POST ל־Morning — לבין `pending`, שבו בקשת ההפקה כבר נכנסה לחלון החיצוני הלא־ודאי, ושומרת `issuance_started_at` לצורך reconciliation מדויק. המיגרציות אינן מוחקות מסמכי Morning או נתוני חובות. אין להריץ DROP ידני.
+Supabase CLI העדכני משתמש ב-`supabase migration list` כדי להשוות local/remote וב-`supabase db push --dry-run` לפני `supabase db push` כדי להציג ולהחיל רק migrations שטרם נרשמו. השתמש במסלול הזה רק מתוך סביבת CLI שמחוברת **לפרויקט הנכון ושבה תיקיית `supabase/migrations` הזו היא השרשרת הפעילה**. אם סביבת ה-CLI שלך משתמשת בתיקיית עבודה אחרת, אל תעתיק קבצים או תריץ `migration repair` כדי “ליישר” היסטוריה בלי review; השתמש במסלול הפריסה הקיים של המאגר.
+
+לאחר ההחלה יש להריץ live postflight וליצור source-audit + Production receipt חדשים. עד אז `verify.bat` רשאי לאמת שה-release המקומי reviewed, אבל `deploy_site_core.bat` ימשיך לעצור לפני העלאת האתר — בכוונה — כי ה-Production receipt עדיין מתאר את המצב הישן.
+
+להתקנה חדשה/מבודדת שאינה משתמשת בהיסטוריית ה-Production הקיימת אפשר להשתמש ב-`netunim-orders/supabase/morning_documents.sql` כמקור סכמה. אין להשתמש בו כדי לעקוף את שרשרת המיגרציות של Production.
+
+המיגרציות **משמרות את הטבלה והפעולות הקיימות**: הראשונה מוסיפה `verified_at`, ממירה הצלחות ישנות ל־`created_unverified` עד לקריאת אימות ומקשיחה שיוך `document_id`; השנייה מרחיבה את נעילת ניסיונות ההפקה הלא־פתורים ואת ייחודיות `document_id` לכל משתמשי האפליקציה שעובדים מול אותו חשבון Morning בסביבה המוגדרת; השלישית מסירה רק את ה־FK המדורג מ־`owner_id`, כדי שמחיקת משתמש Supabase לא תמחק ראיית idempotency או ניסיון הפקה לא־פתור; הרביעית מפרידה בין `reserved` — רישום DB שבו בוודאות טרם התחיל POST ל־Morning — לבין `pending`, שבו בקשת ההפקה כבר נכנסה לחלון החיצוני הלא־ודאי, ושומרת `issuance_started_at` לצורך reconciliation מדויק. המיגרציות אינן מוחקות מסמכי Morning או נתוני חובות. אין להריץ DROP ידני.
 
 הטבלה `morning_document_operations` היא ledger קטן בלבד לצורכי idempotency, מניעת כפילויות וקישור למסמך. PDF ותוכן המסמך המלא נשארים ב-Morning.
 

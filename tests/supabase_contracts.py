@@ -10,7 +10,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from build_schema_baseline import render
-from supabase_postflight import drift, normalized_text_sha256
+from supabase_postflight import (drift, manifest_pending_suffix, normalized_text_sha256,
+                                release_contract_errors)
 
 
 def read(name):
@@ -30,6 +31,15 @@ class SupabaseContracts(unittest.TestCase):
         for row in read('audit/applied-migration-manifest.json'):
             self.assertIn(row, manifest)
 
+    def test_manifest_generator_accepts_the_reviewed_chain(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / 'tools/supabase_migration_manifest.py')],
+            capture_output=True,
+            encoding='utf8',
+            timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_historical_baseline_stays_reproducible_and_original_history_is_preserved(self):
         baseline = next((ROOT / 'supabase/migrations').glob('*_production_schema_baseline.sql'))
         self.assertEqual(baseline.read_text(encoding='utf8'), render(read('audit/production-schema.json')))
@@ -38,9 +48,24 @@ class SupabaseContracts(unittest.TestCase):
         self.assertTrue(all(row['statements'] for row in original))
         self.assertEqual([{k: row[k] for k in ('version', 'name')} for row in original], read('audit/production-migrations.json')['migrations'])
 
-    def test_candidate_matches_actual_production_schema(self):
+    def test_production_schema_snapshot_stays_bound_to_authenticated_receipt(self):
         target = read('postflight-target.json')
-        self.assertEqual(drift(read(target.get('candidate_snapshot','audit/candidate-schema.json')), read(target['schema_snapshot'])), [])
+        receipt = read('production-deployment-receipt.json')
+        self.assertEqual(receipt['schema_snapshot'], target['schema_snapshot'])
+        self.assertEqual(
+            normalized_text_sha256(ROOT / 'supabase' / target['schema_snapshot']),
+            receipt['schema_snapshot_sha256'],
+        )
+
+    def test_reviewed_migrations_are_equal_to_or_an_exact_suffix_after_production_receipt(self):
+        target = read('postflight-target.json')
+        receipt = read('production-deployment-receipt.json')
+        reviewed = read(target['manifest_snapshot'])
+        pending = manifest_pending_suffix(receipt['migration_manifest'], reviewed)
+        self.assertIsNotNone(
+            pending,
+            'Production receipt must equal the reviewed chain or be its exact prefix; arbitrary migration drift is forbidden',
+        )
 
     def test_every_remaining_rpc_advisor_warning_has_reviewed_authorization_coverage(self):
         expected = {'acknowledge_bank_transaction_alert', 'acknowledge_bank_transaction_missing',
@@ -93,15 +118,55 @@ class SupabaseContracts(unittest.TestCase):
                 self.assertEqual(normalized_text_sha256(lf), receipt[hash_key])
                 self.assertEqual(normalized_text_sha256(crlf), receipt[hash_key])
 
-    def test_release_gate_accepts_current_contract_and_rejects_receipt_drift(self):
+    def test_release_gate_distinguishes_reviewed_pending_release_from_receipt_drift(self):
+        target = read('postflight-target.json')
         command = [sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--release-gate']
-        result = subprocess.run(command, capture_output=True, encoding='utf8', timeout=30)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
         receipt = read('production-deployment-receipt.json')
-        receipt['migration_manifest'] = receipt['migration_manifest'][:-1]
+        audit = read(receipt['source_audit'])
+        reviewed = read(target['manifest_snapshot'])
+        jobs = read('retention-jobs.json')
+        pending = manifest_pending_suffix(receipt['migration_manifest'], reviewed)
+        self.assertIsNotNone(pending)
+
+        # Verification accepts a reviewed pending database release, but the real
+        # upload gate remains fail-closed until the authenticated Production receipt
+        # catches up. After a legitimate DB deployment/receipt refresh, the same test
+        # expects the gate to pass rather than baking today's pending state forever.
+        result = subprocess.run(command, capture_output=True, encoding='utf8', timeout=30)
+        if pending:
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('reviewed database release is pending Production', result.stderr)
+        else:
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+        # Unit-test the logical contract in its post-deployment state without
+        # forging a filesystem Production receipt or authenticated source audit.
+        current_receipt = json.loads(json.dumps(receipt))
+        current_audit = json.loads(json.dumps(audit))
+        current_receipt['migration_manifest'] = reviewed
+        current_audit['migration_manifest'] = reviewed
+        current_audit['canonical_migrations'] = [
+            {k: row[k] for k in ('version', 'name')} for row in reviewed
+        ]
+        self.assertEqual(
+            release_contract_errors(target, current_receipt, current_audit, reviewed, jobs), []
+        )
+
+        drifted = json.loads(json.dumps(current_receipt))
+        drifted['migration_manifest'][-1]['sha256'] = '0' * 64
+        errors = release_contract_errors(target, drifted, current_audit, reviewed, jobs)
+        self.assertTrue(any('migration versions or SQL hashes changed' in error for error in errors), errors)
+        self.assertTrue(any('not bound to its authenticated source audit' in error for error in errors), errors)
+
+        # The CLI override used by operator/tests must fail closed too; do not test
+        # only the pure helper and accidentally bypass filesystem/hash bindings.
+        stale = json.loads(json.dumps(receipt))
+        stale['migration_manifest'] = stale['migration_manifest'][:-1]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'receipt.json'
-            path.write_text(json.dumps(receipt), encoding='utf8')
+            path.write_text(json.dumps(stale), encoding='utf8')
             failed = subprocess.run(command + ['--receipt', str(path)], capture_output=True, encoding='utf8', timeout=30)
         self.assertNotEqual(failed.returncode, 0)
         self.assertIn('migration versions or SQL hashes changed', failed.stderr)

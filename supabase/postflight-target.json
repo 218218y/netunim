@@ -3,7 +3,6 @@
   "schema_snapshot": "audit/morning-schema-live.json",
   "migration_snapshot": "canonical-migrations.json",
   "manifest_snapshot": "canonical-migration-manifest.json",
-  "status": "Canonical file-derived expectations plus an authenticated Production deployment receipt. Static site deploys block on any unacknowledged database-contract change; live drift checks run when live access is configured.",
-  "deployment_receipt": "production-deployment-receipt.json",
-  "candidate_snapshot": "audit/morning-schema-reviewed.json"
+  "status": "Canonical reviewed migration expectations plus authenticated Production evidence. Verification permits only an exact pending migration suffix; static uploads remain blocked until Production is migrated and a new live receipt is recorded.",
+  "deployment_receipt": "production-deployment-receipt.json"
 }

@@ -147,6 +147,8 @@ ok('lock table' in migration and migration.index('raise exception') < migration.
    'Migration locks and guards important rows before backup and DROP; backup is retained')
 ok('from.setDate(from.getDate()-90)' in browser and 'page:0,pageSize:25' in browser and "order:'DESC'" in browser and 'CACHE_TTL_MS=90_000' in browser,
    'Document browser defaults to 90 days, 25 per page and bounded memory cache')
+ok("dateEditorMarkup('morningSearchFrom'" in browser and "dateEditorMarkup('morningSearchTo'" in browser and 'type="date"' not in browser,
+   'Morning document browser: visible date filters use the centralized two-digit-year editor, not native four-digit date inputs')
 ok(all(action in edge for action in ('search_documents','get_document','document_links','document_pdf')) and 'morning_documents' not in sql,
    'Live search, details, download links and transient PDF viewing share one Edge Function without document synchronization')
 ok('Number.isSafeInteger(page)' in edge and 'pageSize>50' in edge and 'SEARCH_TYPES.has(v)' in edge and 'SEARCH_STATUSES.has(v)' in edge and 'clientName.length>160' in edge,

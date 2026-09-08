@@ -6,8 +6,12 @@ The sole application database installation chain is the ordered SQL under
 by `python tools/supabase_migration_manifest.py --write`. They are not evidence that
 a migration has run. `supabase_postflight.py` independently checks live server
 versions, names and recorded SQL hashes against these files and the files' own
-hashes. A pending migration blocks deployment. Never regenerate expectations from
-an unexplained live drift.
+hashes. The repository verifier permits the authenticated Production receipt to be
+an **exact prefix** of that reviewed chain so pending migration code can itself be
+tested before Production is changed. The actual static-upload `--release-gate`
+still fails closed while any reviewed suffix is pending. A renamed/reordered/edited
+historical migration is never treated as pending; it is drift. Never regenerate
+Production evidence or rewrite a receipt to make a pending release appear deployed.
 
 ## What the earlier baseline omitted
 
@@ -44,6 +48,11 @@ an unapplied migration without requiring database credentials on every workstati
 When a connector capture or PostgreSQL connection is configured, the deployment engine
 also runs the stronger live drift check before upload. A database-contract change always
 invalidates the receipt gate until a new live Production verification is recorded.
+
+The receipt is additionally bound to the migration manifest inside its authenticated
+source-audit artifact. Editing only `production-deployment-receipt.json` therefore
+cannot acknowledge new migrations. After a legitimate database release, refresh the
+live schema/history/hash evidence and record a new source audit + receipt together.
 
 ## Historical normalization is provenance, not a prerequisite
 

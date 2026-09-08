@@ -13,7 +13,7 @@ export function defaultDocumentSearch(now=new Date()){
 function options(values){return '<option value="">הכל</option>'+Object.entries(values).map(([value,label])=>`<option value="${value}">${esc(label)}</option>`).join('')}
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
-export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
+export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,dateEditorMarkup}){
   const cache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
   async function backend(action,payload={}){
     const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,body:JSON.stringify({action,...payload})});
@@ -25,8 +25,8 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
     <p class="morning-browser-intro">חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning</p>
     <div class="morning-browser-filters">
       <label>שם לקוח<input id="morningSearchClient" maxlength="160" data-keydown="morning-search-enter" value="${esc(query.clientName)}" placeholder="שם הלקוח"></label>
-      <label>מתאריך<input id="morningSearchFrom" type="date" value="${query.fromDate}"></label>
-      <label>עד תאריך<input id="morningSearchTo" type="date" value="${query.toDate}"></label>
+      <label>מתאריך${dateEditorMarkup('morningSearchFrom',query.fromDate,{label:'מתאריך',compact:true})}</label>
+      <label>עד תאריך${dateEditorMarkup('morningSearchTo',query.toDate,{label:'עד תאריך',compact:true})}</label>
       <label>סוג מסמך<select id="morningSearchType" ${picker?'disabled':''}>${picker?'<option value="305">חשבונית מס</option>':options(TYPES)}</select></label>
       <label>סטטוס<select id="morningSearchStatus" ${picker?'disabled':''}>${picker?'<option value="0">פתוח</option>':options(STATUSES)}</select></label>
       <div class="morning-browser-filter-actions"><button class="btn primary" data-action="morning-search">חפש</button><button class="btn" data-action="morning-refresh">רענן</button></div>

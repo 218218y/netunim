@@ -47,6 +47,74 @@ def normalized_text_sha256(path):
     return hashlib.sha256(data).hexdigest()
 
 
+
+
+def manifest_rows(value):
+    """Normalize only manifest fields while preserving migration order."""
+    keys = ('version', 'name', 'sha256')
+    return [{key: row.get(key) for key in keys} for row in (value or [])]
+
+
+def manifest_pending_suffix(deployed, reviewed):
+    """Return the reviewed suffix not yet in Production, or None for non-prefix drift.
+
+    Migration order is part of the contract. A Production receipt may legitimately be
+    an exact prefix of the reviewed local chain while a database release is pending.
+    Anything else (renamed/reordered/changed SQL or extra deployed rows) is drift.
+    """
+    deployed_rows = manifest_rows(deployed)
+    reviewed_rows = manifest_rows(reviewed)
+    if len(deployed_rows)>len(reviewed_rows):
+        return None
+    if deployed_rows!=reviewed_rows[:len(deployed_rows)]:
+        return None
+    return reviewed_rows[len(deployed_rows):]
+
+
+def release_contract_errors(target, receipt, audit, reviewed_manifest, expected_jobs):
+    """Validate logical receipt/audit bindings without pretending pending == deployed."""
+    errors=[]
+    if receipt.get('project_id')!=target.get('project_id'):
+        errors.append('receipt targets a different Supabase project')
+    if receipt.get('production_postflight')!='PASS':
+        errors.append('receipt does not record a successful Production postflight')
+    if receipt.get('text_hash_normalization')!='lf-v1':
+        errors.append('receipt text-hash normalization contract is missing or unsupported')
+    if audit is None:
+        errors.append('receipt source audit is unavailable')
+    else:
+        if audit.get('project_id')!=target.get('project_id'):
+            errors.append('source audit targets a different Supabase project')
+        if audit.get('production_postflight')!='PASS':
+            errors.append('source audit does not contain a successful Production postflight')
+        if audit.get('schema_drift')!=[]:
+            errors.append('source audit contains unexplained Production schema drift')
+        if manifest_rows(audit.get('migration_manifest', [])) != manifest_rows(receipt.get('migration_manifest', [])):
+            errors.append('receipt migration manifest is not bound to its authenticated source audit')
+        audit_versions=[{k:r.get(k) for k in ('version','name')} for r in audit.get('canonical_migrations',[])]
+        receipt_versions=[{k:r.get(k) for k in ('version','name')} for r in receipt.get('migration_manifest',[])]
+        if audit_versions and audit_versions!=receipt_versions:
+            errors.append('source audit migration ledger does not match the receipt manifest')
+
+    schema_rel=receipt.get('schema_snapshot')
+    if schema_rel!=target.get('schema_snapshot'):
+        errors.append('reviewed schema snapshot changed since the Production receipt')
+
+    pending=manifest_pending_suffix(receipt.get('migration_manifest',[]),reviewed_manifest)
+    if pending is None:
+        errors.append('migration versions or SQL hashes changed incompatibly since the Production receipt')
+    elif pending:
+        labels=', '.join(f"{row['version']}_{row['name']}" for row in pending)
+        errors.append('migration versions or SQL hashes changed since the Production receipt; reviewed database release is pending Production: '+labels)
+
+    if canonical(receipt.get('retention_jobs',[]))!=canonical(expected_jobs):
+        errors.append('retention job contract changed since the Production receipt')
+    expected_ops={'pg_cron':True,'database':'postgres','timezone':'GMT',
+                  'server_port':5432,'launch_active_jobs':'on','full_visibility':True}
+    if canonical(receipt.get('operations',{}))!=canonical(expected_ops):
+        errors.append('Production operational contract in the receipt is incomplete or unexpected')
+    return errors
+
 def release_gate(target, receipt_path=None):
     """Prove no repository DB contract change is pending since Production verification.
 
@@ -55,66 +123,46 @@ def release_gate(target, receipt_path=None):
     last authenticated Production postflight receipt. Any database-contract edit
     therefore requires a new live postflight/receipt before a static upload.
     """
-    receipt_path = receipt_path or ROOT / 'supabase' / target['deployment_receipt']
+    receipt_path=receipt_path or ROOT/'supabase'/target['deployment_receipt']
     try:
-        receipt = json.loads(receipt_path.read_text(encoding='utf8'))
-    except (OSError, KeyError, json.JSONDecodeError) as exc:
+        receipt=json.loads(receipt_path.read_text(encoding='utf8'))
+    except (OSError,KeyError,json.JSONDecodeError) as exc:
         raise SystemExit(f'FAIL: Production deployment receipt is missing or invalid: {exc}') from exc
 
-    errors = []
-    if receipt.get('project_id') != target.get('project_id'):
-        errors.append('receipt targets a different Supabase project')
-    if receipt.get('production_postflight') != 'PASS':
-        errors.append('receipt does not record a successful Production postflight')
-    if receipt.get('text_hash_normalization') != 'lf-v1':
-        errors.append('receipt text-hash normalization contract is missing or unsupported')
-
-    source_rel = receipt.get('source_audit')
-    source_hash = receipt.get('source_audit_sha256')
+    errors=[]
+    audit=None
+    source_rel=receipt.get('source_audit')
+    source_hash=receipt.get('source_audit_sha256')
     if not source_rel or not source_hash:
         errors.append('receipt is missing its authenticated source-audit binding')
     else:
-        source_path = ROOT / 'supabase' / source_rel
+        source_path=ROOT/'supabase'/source_rel
         if not source_path.is_file():
             errors.append(f'source audit is missing: {source_rel}')
-        elif normalized_text_sha256(source_path) != source_hash:
+        elif normalized_text_sha256(source_path)!=source_hash:
             errors.append('source audit changed since the Production receipt was recorded')
         else:
-            audit = json.loads(source_path.read_text(encoding='utf8'))
-            if audit.get('project_id') != target.get('project_id'):
-                errors.append('source audit targets a different Supabase project')
-            if audit.get('production_postflight') != 'PASS':
-                errors.append('source audit does not contain a successful Production postflight')
-            if audit.get('schema_drift') != []:
-                errors.append('source audit contains unexplained Production schema drift')
+            try:
+                audit=json.loads(source_path.read_text(encoding='utf8'))
+            except json.JSONDecodeError:
+                errors.append('source audit is not valid JSON')
 
-    schema_rel = receipt.get('schema_snapshot')
-    if schema_rel != target.get('schema_snapshot'):
-        errors.append('reviewed schema snapshot changed since the Production receipt')
-    elif schema_rel:
-        schema_path = ROOT / 'supabase' / schema_rel
+    schema_rel=receipt.get('schema_snapshot')
+    if schema_rel==target.get('schema_snapshot') and schema_rel:
+        schema_path=ROOT/'supabase'/schema_rel
         if not schema_path.is_file():
             errors.append(f'reviewed schema snapshot is missing: {schema_rel}')
-        elif normalized_text_sha256(schema_path) != receipt.get('schema_snapshot_sha256'):
+        elif normalized_text_sha256(schema_path)!=receipt.get('schema_snapshot_sha256'):
             errors.append('reviewed schema snapshot content changed since the Production receipt')
 
-    reviewed_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
-    if canonical(receipt.get('migration_manifest', [])) != canonical(reviewed_manifest):
-        errors.append('migration versions or SQL hashes changed since the Production receipt')
-
-    expected_jobs = json.loads((ROOT / 'supabase/retention-jobs.json').read_text(encoding='utf8'))
-    if canonical(receipt.get('retention_jobs', [])) != canonical(expected_jobs):
-        errors.append('retention job contract changed since the Production receipt')
-
-    expected_ops = {'pg_cron': True, 'database': 'postgres', 'timezone': 'GMT',
-                    'server_port': 5432, 'launch_active_jobs': 'on', 'full_visibility': True}
-    if canonical(receipt.get('operations', {})) != canonical(expected_ops):
-        errors.append('Production operational contract in the receipt is incomplete or unexpected')
+    reviewed_manifest=json.loads((ROOT/'supabase'/target['manifest_snapshot']).read_text(encoding='utf8'))
+    expected_jobs=json.loads((ROOT/'supabase/retention-jobs.json').read_text(encoding='utf8'))
+    errors.extend(release_contract_errors(target,receipt,audit,reviewed_manifest,expected_jobs))
 
     if errors:
         raise SystemExit('FAIL: repository database contract differs from the last authenticated Production receipt; '
-                         'run a live Supabase postflight and record a new receipt before site deployment.\n- ' +
-                         '\n- '.join(errors))
+                         'run/apply the reviewed database migrations, then run a live Supabase postflight and record a new receipt before site deployment.\n- '+
+                         '\n- '.join(dict.fromkeys(errors)))
     print('PASS: repository database contract matches the last authenticated Production receipt; no database release is pending.')
     print('INFO: this offline release gate does not claim to detect out-of-band live drift.')
 

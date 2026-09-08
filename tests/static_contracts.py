@@ -719,3 +719,10 @@ ok(all(token in kupa_date_sources for token in ["dateEditorMarkup('mDate'", "dat
    "kupa: all editable date surfaces use the centralized editor")
 ok(all(token in orders_date_sources for token in ["dateEditorMarkup('calendarStartDate'", "dateEditorMarkup('calendarEndDate'", "dateEditorMarkup('svcOpened'", "dateEditorMarkup('svcNext'", "'bank-date-from'", "'bank-date-to'"]),
    "orders: all editable date surfaces use the centralized editor")
+if errors:
+    print("\nERRORS", len(errors))
+    for item in errors:
+        print("-", item)
+    sys.exit(1)
+
+print("\nALL STATIC CONTRACTS PASSED")

@@ -1,5 +1,7 @@
 """Real isolated PostgreSQL safety/idempotency tests. No live credentials accepted."""
 from isolated_sync_postgres import IsolatedPostgres, ROOT, OWNER
+from morning_schema_contract import assert_morning_schema_contract
+import json
 
 MIGRATION=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql'))
 HARDENING=next((ROOT/'supabase/migrations').glob('*_morning_verified_creation.sql'))

@@ -28,5 +28,25 @@
     "version": "20260908103011",
     "name": "morning_operation_ledger",
     "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+  },
+  {
+    "version": "20260908190000",
+    "name": "morning_verified_creation",
+    "sha256": "58fc15f0f7fa56a8681ba201c41f31edf0fbaba149f18d9dbbb5237c15f21b8d"
+  },
+  {
+    "version": "20260908194500",
+    "name": "morning_global_idempotency",
+    "sha256": "7db16bc878f89c0eb59718a176fc5dc1036bb6159569aaf9a523e74da1693349"
+  },
+  {
+    "version": "20260908203000",
+    "name": "morning_ledger_owner_retention",
+    "sha256": "8d7795af8ba40ae9fb71820d3fb9a12d81c08b2141c6bfbbc63887b4587d3c7b"
+  },
+  {
+    "version": "20260908204500",
+    "name": "morning_preissue_reservation",
+    "sha256": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec"
   }
 ]

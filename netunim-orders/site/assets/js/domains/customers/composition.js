@@ -20,6 +20,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+    dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   });
   const documents=createDomainsCustomersDocuments({
     model,

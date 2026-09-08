@@ -23,6 +23,22 @@
     {
       "version": "20260908103011",
       "name": "morning_operation_ledger"
+    },
+    {
+      "version": "20260908190000",
+      "name": "morning_verified_creation"
+    },
+    {
+      "version": "20260908194500",
+      "name": "morning_global_idempotency"
+    },
+    {
+      "version": "20260908203000",
+      "name": "morning_ledger_owner_retention"
+    },
+    {
+      "version": "20260908204500",
+      "name": "morning_preissue_reservation"
     }
   ]
 }
