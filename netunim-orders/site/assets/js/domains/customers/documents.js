@@ -14,7 +14,7 @@ function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,supaFetch,dateEditorMarkup,documentsBrowser}){
+export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser}){
 let activeOperationId='',modalGeneration=0,createBusy=false,blocked=false,completed=false;
 function defaultDescription(d,standalone=false){if(standalone)return'';const order=cleanText(d?.orderNumber,80);return order?`הזמנה ${order}`:`עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
 function newOperationId(){return globalThis.crypto.randomUUID()}
@@ -61,7 +61,7 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
       <div class="form-grid">
         <div class="field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
-        <div class="field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0.01" step="0.01" value="${esc(amountInput)}" placeholder="0.00"></div>
+        <div class="field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
         <div class="field"><label>אימייל <small>(רשות)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email||'')}"></div>
         <div class="field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone||'')}"></div>
         <div class="field"><label>מספר עוסק / ח.פ. <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
@@ -141,7 +141,7 @@ async function refreshStatus({reconcile=false}={}){
     // A status read can race a still-running Edge request before its reservation.
     // Missing metadata is not proof that an uncertain issuance did not happen.
     blocked=!!data.unresolved;renderOperation(data.operation);
-    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at;if(verifiedCreated)completed=true;
+    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at;if(verifiedCreated){completed=true;markModalDraftSaved?.()}
     if(data.operation?.state==='failed'){completed=false;activeOperationId=newOperationId()}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
     if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
@@ -178,12 +178,12 @@ async function createMorningDocument(button){
       connectionStatus(data.local_link_pending||!pdfLoaded?'warning':'ready',message);
       if(button){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}
     }
-    blocked=!!data.local_link_pending;completed=true;
+    blocked=!!data.local_link_pending;completed=true;if(isActive(generation))markModalDraftSaved?.();
     toast(`${documentLabel(type)} ${data.document.number||''} הופק ואומת ב-Morning`);
   }catch(error){
     if(error?.details?.operation_id)activeOperationId=error.details.operation_id;
     if(error?.details?.prevent_retry){
-      blocked=false;completed=true;const existing=error.details.document;if(existing?.id)renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:existing.id,document_number:existing.number,allocation_number:existing.allocationNumber});
+      blocked=false;completed=true;if(isActive(generation))markModalDraftSaved?.();const existing=error.details.document;if(existing?.id)renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:existing.id,document_number:existing.number,allocation_number:existing.allocationNumber});
       if(isActive(generation))connectionStatus('warning',error.message||'ניסיון זהה קודם כבר אומת; החלון ננעל למניעת כפילות.');
       if(button){button.dataset.idleLabel='ננעל למניעת כפילות';button.textContent='ננעל למניעת כפילות'}
     }else{

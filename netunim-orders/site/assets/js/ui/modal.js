@@ -30,6 +30,13 @@ function modalHasUnsavedDraft(){
   return !!($('#modalBackdrop')?.classList.contains('open')&&modalDraftReady&&modalBaseline!==null&&modalFieldState()!==modalBaseline);
 }
 
+function markModalDraftSaved(){
+  if(!$('#modalBackdrop')?.classList.contains('open'))return false;
+  modalBaseline=modalFieldState();
+  modalDraftReady=true;
+  return true;
+}
+
 function modal(title,body,foot=''){
   const back=$('#modalBackdrop'),panel=$('#modal');
   modalGeneration++;
@@ -150,5 +157,5 @@ function triSelect(id,label,val,na=true){return `<div class="field"><label>${esc
 
 function parseTri(id){const v=$('#'+id).value;return v==='true'?true:v==='false'?false:null}
 
-return { modal, closeModal, dismissModal, confirmDialog, modalHasUnsavedDraft, triSelect, parseTri };
+return { modal, closeModal, dismissModal, confirmDialog, modalHasUnsavedDraft, markModalDraftSaved, triSelect, parseTri };
 }

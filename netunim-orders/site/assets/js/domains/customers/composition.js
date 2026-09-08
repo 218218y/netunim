@@ -27,6 +27,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+    markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args),
     supaFetch:(...args)=>cloudAuth.supaFetch(...args),
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),

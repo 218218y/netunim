@@ -151,6 +151,10 @@ ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in docume
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
 ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
+ok('id="morningAmount"' in documents and 'step="1"' in documents and 'step="0.01"' not in documents.split('id="morningAmount"',1)[1].split('>',1)[0],
+   'Morning amount UI: native number arrows advance by whole shekels instead of agorot')
+ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
+   'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
 ok('lock table' in migration and migration.index('raise exception') < migration.index('create table public.morning_document_operations_backup_20260908') < migration.index('drop table public.morning_document_operations;'),
    'Migration locks and guards important rows before backup and DROP; backup is retained')
 ok('from.setDate(from.getDate()-90)' in browser and 'page:0,pageSize:25' in browser and "order:'DESC'" in browser and 'CACHE_TTL_MS=90_000' in browser,

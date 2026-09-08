@@ -28,13 +28,16 @@ state=normalizeState({version:4,customerDebts:[{id:'prefill-only',customerName:'
 const before=JSON.stringify(state.customerDebts);Object.freeze(state.customerDebts[0]);Object.freeze(state.customerDebts);
 switchView('customers');click('open-morning-document');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 assert(document.getElementById('morningClientName').value==='Frozen debt','Client prefilled');assert(document.getElementById('morningAmount').value==='100.00','Amount prefilled');
+const morningAmount=document.getElementById('morningAmount');assert(morningAmount.step==='1','Amount spinner uses whole-shekel step');morningAmount.stepUp();assert(Number(morningAmount.value)===101,'Amount spinner increments by one shekel');morningAmount.value='100.00';
+fill('morningDescription','Edited before issue');assert(uiModal.modalHasUnsavedDraft(),'Morning edits arm the generic draft guard before issue');
 assert(!document.querySelector('.morning-history'),'Debt history removed');
 click('morning-create');await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));document.getElementById('confirmAccept').click();await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100'));
 await waitFor(()=>!document.getElementById('morningPreviewBox').hidden&&document.getElementById('morningPreviewFrame').src.startsWith('blob:'));
 assert(calls.filter(c=>c.action==='document_pdf').length===1,'Verified issuance automatically loads the official Morning PDF');assert(document.getElementById('morningPreviewNote').textContent.includes('מסמך רשמי'),'Issued preview is explicitly official');
 assert(document.querySelector('[data-action="morning-create"]').disabled&&document.querySelector('[data-action="morning-create"]').textContent.includes('הופק ואומת'),'Verified issuance locks the same dialog against accidental duplicate creation');
 assert(JSON.stringify(state.customerDebts)===before,'Create changed debt bytes');
-click('close-modal');click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
+assert(!uiModal.modalHasUnsavedDraft(),'Verified issuance commits the Morning modal draft baseline');
+click('close-modal');assert(!document.getElementById('confirmBackdrop').classList.contains('open'),'Closing a verified Morning document does not show a false unsaved-changes confirmation');click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 assert(document.getElementById('morningClientName').value==='','Standalone starts empty');
 fill('morningClientName','General');fill('morningAmount','100');fill('morningDescription','General document');
 uncertain=true;click('morning-create');await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));document.getElementById('confirmAccept').click();await waitFor(()=>!!operation);
@@ -63,7 +66,7 @@ assert(calls.filter(c=>c.action==='document_links').length===1,'Only download re
 click('close-modal');operation=null;resolveStatus=false;click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 document.querySelector('input[name="morningDocumentType"][value="400"]').click();click('morning-invoice-picker');await waitFor(()=>document.querySelector('[data-action="morning-select-invoice"]'));click('morning-select-invoice');assert(document.getElementById('morningLinkedDocument').value===docs[0].id,'Manual invoice picker');
 assert(JSON.stringify(state.customerDebts)===before,'All Morning actions preserve debt bytes');
-return {prefill:true,standalone:true,debtBytesUnchanged:true,verifiedCreate:true,officialPdfAfterCreate:true,timeout:true,operationReconciliation:true,liveSearch:true,pagination:true,cache:true,filters:true,details:true,freshLinks:true,manualInvoicePicker:true};
+return {prefill:true,wholeShekelSpinner:true,noFalseUnsavedAfterIssue:true,standalone:true,debtBytesUnchanged:true,verifiedCreate:true,officialPdfAfterCreate:true,timeout:true,operationReconciliation:true,liveSearch:true,pagination:true,cache:true,filters:true,details:true,freshLinks:true,manualInvoicePicker:true};
 """
 
 with BrowserSession(ROOT/'netunim-orders/site','morning-workflow') as browser:
