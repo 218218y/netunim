@@ -14,7 +14,7 @@ function options(values){return '<option value="">הכל</option>'+Object.entrie
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
 export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
-  const cache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[];
+  const cache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
   async function backend(action,payload={}){
     const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,body:JSON.stringify({action,...payload})});
     const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.message||'לא ניתן לקרוא מסמכים מ-Morning');return data;
@@ -33,12 +33,15 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
     </div>
     <div id="morningBrowserStatus" role="status" aria-live="polite"></div>
     <div id="morningBrowserResults"></div><div id="morningBrowserDetails" hidden></div>
+    <div id="morningBrowserPreview" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגת מסמך</b><span>PDF זמני שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningBrowserPreviewFrame" title="תצוגת מסמך Morning"></iframe></div>
     <nav class="morning-browser-pagination" aria-label="עמודי מסמכים"><button class="btn" id="morningPrevious" data-action="morning-page" data-click-arg0="-1" disabled>הקודם</button><span id="morningPageLabel">עמוד 1</span><button class="btn" id="morningNext" data-action="morning-page" data-click-arg0="1" disabled>הבא</button></nav>
   </section>`}
-  async function openDocuments(){picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('מסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
+  function releasePreviewUrl(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
+  function clearBrowserPreview(){releasePreviewUrl();const box=$('#morningBrowserPreview'),frame=$('#morningBrowserPreviewFrame');if(frame)frame.removeAttribute('src');if(box)box.hidden=true}
+  async function openDocuments(){releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('מסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
   async function openInvoicePicker(){
     const panel=$('#morningInvoicePicker');if(!panel)return;
-    picker=true;sequence++;invalidateCache();query={...defaultDocumentSearch(),type:[305],status:[0],clientName:$('#morningClientName')?.value||''};
+    releasePreviewUrl();picker=true;sequence++;invalidateCache();query={...defaultDocumentSearch(),type:[305],status:[0],clientName:$('#morningClientName')?.value||''};
     panel.hidden=false;panel.innerHTML=markup();return runSearch();
   }
   function readFilters(){
@@ -49,7 +52,7 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
   }
   function setBusy(value){busy=value;root()?.setAttribute('aria-busy',String(value));for(const id of ['morningPrevious','morningNext']){const button=$('#'+id);if(button&&value)button.disabled=true}root()?.querySelectorAll('[data-action="morning-search"],[data-action="morning-refresh"]').forEach(button=>{button.disabled=value})}
   async function runSearch({refresh=false}={}){
-    const ticket=++sequence,element=root();if(!element)return;setBusy(true);
+    const ticket=++sequence,element=root();if(!element)return;setBusy(true);clearBrowserPreview();
     $('#morningBrowserStatus').textContent='מחפש ב-Morning…';$('#morningBrowserResults').replaceChildren();$('#morningBrowserDetails').hidden=true;
     try{
       const key=JSON.stringify(query),cached=cache.get(key);
@@ -75,21 +78,32 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
   function selectInvoice(id){
     const doc=lastItems.find(item=>item.id===id),select=$('#morningLinkedDocument');if(!doc||!select)return;
     select.innerHTML=`<option value="">ללא קישור</option><option value="${esc(id)}">${esc(doc.number)} · ${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</option>`;select.value=id;
-    sequence++;$('#morningInvoicePicker').hidden=true;$('#morningInvoicePicker').replaceChildren();
+    sequence++;releasePreviewUrl();$('#morningInvoicePicker').hidden=true;$('#morningInvoicePicker').replaceChildren();
   }
   async function details(id,button){if(button)button.disabled=true;const element=root();try{const data=await backend('get_document',{document_id:id});if(root()!==element)return;const doc=data.document,panel=$('#morningBrowserDetails');panel.hidden=false;panel.innerHTML=`<div class="morning-form-card"><b>${esc(TYPES[doc.type]||doc.type)} ${esc(doc.number)}</b><p>${esc(doc.description)}</p><p>${esc(doc.clientName)} · ${esc(amount(doc.amount,doc.currency))}</p><p>מספר הקצאה: ${esc(doc.allocationNumber||'—')}</p></div>`}catch(error){toast(error.message)}finally{if(button)button.disabled=false}}
-  async function documentLink(id,button,download){
-    if(button)button.disabled=true;
-    // Reserve the view tab during the user gesture, before the async fresh-link request.
-    const tab=download?null:window.open('about:blank','_blank');if(tab)tab.opener=null;
-    try{const data=await backend('document_links',{document_id:String(id)}),url=new URL(download?data.url:data.viewUrl);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');
-      const anchor=document.createElement('a');anchor.href=url.href;anchor.target='_blank';anchor.rel='noopener noreferrer';if(download)anchor.download='morning-document.pdf';
-      // Keep a short-lived, explicit link available when a browser blocks popups.
-      // This is only the current user gesture's DOM; never cached or persisted.
-      anchor.className='btn small';anchor.textContent=download?'לחץ כאן אם ההורדה לא התחילה':'לחץ כאן אם המסמך לא נפתח';
-      const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);
-      if(tab)tab.location.replace(url.href);else anchor.click();setTimeout(()=>anchor.remove(),60_000);
-    }catch(error){tab?.close();toast(error.message||'פתיחת המסמך נכשלה')}finally{if(button)button.disabled=false}
+  async function fetchDocumentPdf(id){
+    const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,dataPriority:'high',body:JSON.stringify({action:'document_pdf',document_id:String(id)})});
+    if(!response.ok){const data=await response.json().catch(()=>({}));throw new Error(data.message||'לא ניתן לטעון את קובץ המסמך מ-Morning')}
+    const contentType=String(response.headers.get('Content-Type')||'').toLowerCase();if(!contentType.includes('application/pdf'))throw new Error('Morning החזירה קובץ שאינו PDF');
+    const blob=await response.blob();if(!blob.size)throw new Error('Morning החזירה קובץ PDF ריק');return blob;
   }
-  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument:(id,button)=>documentLink(id,button,false),downloadDocument:(id,button)=>documentLink(id,button,true)};
+  async function viewDocument(id,button){
+    if(button)button.disabled=true;const element=root();
+    try{
+      const blob=await fetchDocumentPdf(id);if(element&&root()!==element)return;
+      releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
+      const browserBox=$('#morningBrowserPreview'),browserFrame=$('#morningBrowserPreviewFrame'),issuanceBox=$('#morningPreviewBox'),issuanceFrame=$('#morningPreviewFrame'),issuanceNote=$('#morningPreviewNote');
+      const box=browserBox||issuanceBox,frame=browserFrame||issuanceFrame;if(!box||!frame){releasePreviewUrl();throw new Error('אזור תצוגת המסמך אינו זמין')}
+      if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';
+      frame.addEventListener('load',()=>{if(previewObjectUrl===url){URL.revokeObjectURL(url);previewObjectUrl=''}},{once:true});frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});
+    }catch(error){toast(error.message||'טעינת המסמך נכשלה')}finally{if(button)button.disabled=false}
+  }
+  async function downloadDocument(id,button){
+    if(button)button.disabled=true;
+    try{const data=await backend('document_links',{document_id:String(id)}),url=new URL(data.url);if(url.protocol!=='https:')throw new Error('קישור מסמך אינו תקין');
+      const anchor=document.createElement('a');anchor.href=url.href;anchor.target='_blank';anchor.rel='noopener noreferrer';anchor.download='morning-document.pdf';anchor.className='btn small';anchor.textContent='לחץ כאן אם ההורדה לא התחילה';
+      const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);anchor.click();setTimeout(()=>anchor.remove(),60_000);
+    }catch(error){toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
+  }
+  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,downloadDocument};
 }

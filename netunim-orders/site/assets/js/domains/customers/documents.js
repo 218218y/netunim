@@ -75,7 +75,7 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
     </div>
     ${paymentFields(dateEditorMarkup)}
     <div id="morningLinkedDocumentPanel" class="morning-form-card" hidden><div class="morning-section-title"><span>קישור לחשבונית מס קיימת</span><small>בקבלה ניתן לקשר לחשבונית שהופקה קודם</small></div><div class="field"><label>חשבונית לקישור <small>(רשות)</small></label><select id="morningLinkedDocument"><option value="">ללא קישור</option></select><button class="btn small" data-action="morning-invoice-picker">חפש חשבונית ב-Morning</button><div id="morningInvoicePicker" hidden></div></div></div>
-    <div id="morningPreviewBox" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגה מקדימה</b><span>הקובץ עדיין לא הופק רשמית</span></div><iframe id="morningPreviewFrame" title="תצוגה מקדימה של מסמך Morning"></iframe></div>
+    <div id="morningPreviewBox" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגה מקדימה</b><span id="morningPreviewNote">הקובץ עדיין לא הופק רשמית</span></div><iframe id="morningPreviewFrame" title="תצוגה מקדימה של מסמך Morning"></iframe></div>
     <div id="morningOperationResult" aria-live="polite"></div><button class="btn small" data-action="morning-reconcile">בדוק מצב הפקה</button>
   </div>`;
 }
@@ -149,7 +149,7 @@ async function refreshStatus({reconcile=false}={}){
 
 async function previewMorningDocument(button){
   let payload;try{payload=readForm()}catch(error){return toast(error.message)}setBusy(button,true,'מכין…');
-  try{const data=await backend('preview',payload),base64=String(data.pdfBase64||'');if(!base64)throw new Error('Morning לא החזירה קובץ תצוגה מקדימה');const binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const box=currentField('morningPreviewBox'),frame=currentField('morningPreviewFrame');if(frame)frame.src=previewObjectUrl;if(box){box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'})}}
+  try{const data=await backend('preview',payload),base64=String(data.pdfBase64||'');if(!base64)throw new Error('Morning לא החזירה קובץ תצוגה מקדימה');const binary=atob(base64),bytes=new Uint8Array(binary.length);for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);if(previewObjectUrl)URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));const box=currentField('morningPreviewBox'),frame=currentField('morningPreviewFrame'),note=currentField('morningPreviewNote');if(note)note.textContent='הקובץ עדיין לא הופק רשמית';if(frame)frame.src=previewObjectUrl;if(box){box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'})}}
   catch(error){toast(error.message||'יצירת התצוגה המקדימה נכשלה')}finally{setBusy(button,false)}
 }
 

@@ -20,7 +20,8 @@ cloudAuth.supaFetch=async(path,options)=>{
   }
   if(request.action==='search_documents')data={ok:true,items:docs.slice(request.page*25,(request.page+1)*25),total:26,pages:2};
   if(request.action==='get_document')data={ok:true,document:{...docs[0],description:'On demand details'}};
-  if(request.action==='document_links')data={ok:true,url:'https://example.org/document.pdf?fresh='+calls.length,viewUrl:'https://app.sandbox.d.greeninvoice.co.il/incomes/documents/'+request.document_id};
+  if(request.action==='document_links')data={ok:true,url:'https://example.org/document.pdf?fresh='+calls.length};
+  if(request.action==='document_pdf')return new Response(new TextEncoder().encode('%PDF-1.4\nmock'),{status:200,headers:{'Content-Type':'application/pdf'}});
   return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 };
 state=normalizeState({version:4,customerDebts:[{id:'prefill-only',customerName:'Frozen debt',amount:100,paid:false,invoiceIssued:false,closedAt:null,phone:'123',orderNumber:'A1'}]});
@@ -49,11 +50,13 @@ click('morning-refresh');await waitFor(()=>calls.filter(c=>c.action==='search_do
 fill('morningSearchClient','Filtered');document.getElementById('morningSearchClient').dispatchEvent(new Event('input',{bubbles:true}));assert(calls.filter(c=>c.action==='search_documents').length===3,'No keypress search');
 document.getElementById('morningSearchClient').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await waitFor(()=>calls.some(c=>c.clientName==='Filtered')&&document.querySelector('[data-action="morning-details"]'));
 click('morning-details');await waitFor(()=>document.getElementById('morningBrowserDetails').textContent.includes('On demand'));
-const opened=[];window.open=()=>({opener:null,location:{replace:url=>opened.push(url)},close:()=>{}});HTMLAnchorElement.prototype.click=function(){opened.push(this.href)};
-click('morning-browser-view');await waitFor(()=>opened.length===1);click('morning-download');await waitFor(()=>opened.length===2);
-assert(opened[0]==='https://app.sandbox.d.greeninvoice.co.il/incomes/documents/'+docs[0].id,'View opens the Morning document page');
-assert(opened[1].startsWith('https://example.org/document.pdf?fresh='),'Download uses the PDF attachment');
-assert(calls.filter(c=>c.action==='document_links').length===2,'Each view/download requests fresh links');
+const opened=[];HTMLAnchorElement.prototype.click=function(){opened.push(this.href)};
+click('morning-browser-view');await waitFor(()=>!document.getElementById('morningBrowserPreview').hidden&&document.getElementById('morningBrowserPreviewFrame').src.startsWith('blob:'));
+assert(calls.filter(c=>c.action==='document_pdf').length===1,'View streams one fresh PDF through the authenticated backend');
+assert(opened.length===0,'View remains inside the app and does not open Morning');
+click('morning-download');await waitFor(()=>opened.length===1);
+assert(opened[0].startsWith('https://example.org/document.pdf?fresh='),'Download still uses a fresh PDF attachment link');
+assert(calls.filter(c=>c.action==='document_links').length===1,'Only download requests the external signed link');
 click('close-modal');operation=null;resolveStatus=false;click('open-morning-standalone');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 document.querySelector('input[name="morningDocumentType"][value="400"]').click();click('morning-invoice-picker');await waitFor(()=>document.querySelector('[data-action="morning-select-invoice"]'));click('morning-select-invoice');assert(document.getElementById('morningLinkedDocument').value===docs[0].id,'Manual invoice picker');
 assert(JSON.stringify(state.customerDebts)===before,'All Morning actions preserve debt bytes');

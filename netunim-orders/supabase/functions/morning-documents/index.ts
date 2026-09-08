@@ -11,6 +11,7 @@ const CARD_TYPES=new Set([1,2,3,4,5]);
 const REQUEST_TIMEOUT_MS=20_000;
 const RECONCILE_MIN_AGE_MS=45_000;
 const RECONCILE_WINDOW_MS=5*60_000;
+const MAX_DOCUMENT_PDF_BYTES=20*1024*1024;
 
 type OperationState='pending'|'created'|'needs_reconciliation'|'failed';
 type JsonRecord=Record<string,unknown>;
@@ -37,7 +38,6 @@ const MORNING_ENV_VALID=MORNING_ENV_RAW==='production'||MORNING_ENV_RAW==='sandb
 const MORNING_ENV=MORNING_ENV_RAW==='sandbox'?'sandbox':'production';
 const TOKEN_URL=MORNING_ENV==='sandbox'?'https://api.sandbox.morning.dev/idp/v1/oauth/token':'https://api.morning.co/idp/v1/oauth/token';
 const API_BASE=MORNING_ENV==='sandbox'?'https://sandbox.d.greeninvoice.co.il/api/v1':'https://api.greeninvoice.co.il/api/v1';
-const APP_BASE=MORNING_ENV==='sandbox'?'https://app.sandbox.d.greeninvoice.co.il':'https://app.greeninvoice.co.il';
 const admin=createClient(SUPABASE_URL,SECRET_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
 let tokenCache={value:'',expiresAt:0};
 
@@ -205,14 +205,24 @@ async function getDocument(body:any,links=false){
   const id=clean(body?.document_id,80);if(!isUuid(id))return json({ok:false,code:'invalid_document_id',message:'מזהה המסמך אינו תקין'},400);
   try{const data=await morningRequest(`/documents/${encodeURIComponent(id)}${links?'/download/links':''}`,{method:'GET'});
     if(!links)return json({ok:true,document:browserDocument(data)});
-    const url=documentUrl({url:data})||documentUrl(data);if(!url)throw new Error('Morning לא החזירה קישור תקין');
-    // Morning PDF links are attachments. Viewing uses its authenticated document page.
-    return json({ok:true,url,viewUrl:`${APP_BASE}/incomes/documents/${encodeURIComponent(id)}`});
+    const url=documentUrl({url:data})||documentUrl(data);if(!url)throw new Error('Morning לא החזירה קישור תקין');return json({ok:true,url});
   }catch(error:any){return json({ok:false,code:'morning_document_access_failed',message:clean(error?.message,250)},error?.status===404?404:502)}
+}
+async function getDocumentPdf(body:any){
+  const id=clean(body?.document_id,80);if(!isUuid(id))return json({ok:false,code:'invalid_document_id',message:'מזהה המסמך אינו תקין'},400);
+  try{
+    const links=await morningRequest(`/documents/${encodeURIComponent(id)}/download/links`,{method:'GET'}),url=documentUrl({url:links})||documentUrl(links);if(!url)throw new MorningHttpError('Morning לא החזירה קישור PDF תקין',502,links,false);
+    let response:Response;try{response=await fetchWithTimeout(url,{method:'GET',headers:{Accept:'application/pdf'}})}catch(error){throw new MorningHttpError('הורדת קובץ המסמך מ-Morning נכשלה',0,error,false)}
+    if(!response.ok)throw new MorningHttpError(`Morning PDF HTTP ${response.status}`,response.status,null,false);
+    const declaredLength=Number(response.headers.get('content-length')||0);if(Number.isFinite(declaredLength)&&declaredLength>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
+    const bytes=new Uint8Array(await response.arrayBuffer());if(!bytes.length)throw new MorningHttpError('Morning החזירה קובץ PDF ריק',502,null,false);if(bytes.length>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
+    if(bytes.length<5||bytes[0]!==0x25||bytes[1]!==0x50||bytes[2]!==0x44||bytes[3]!==0x46||bytes[4]!==0x2d)throw new MorningHttpError('Morning החזירה קובץ שאינו PDF',502,null,false);
+    return new Response(bytes,{status:200,headers:{...corsHeaders,'Content-Type':'application/pdf','Content-Disposition':'inline; filename="morning-document.pdf"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  }catch(error:any){return json({ok:false,code:'morning_document_pdf_failed',message:clean(error?.message,250)},error?.status===404?404:error?.status===413?413:502)}
 }
 
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
   const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);const body=await req.json().catch(()=>({})),action=String(body?.action||'');
-  if(action==='status')return status(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
+  if(action==='status')return status(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 });

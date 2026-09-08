@@ -64,8 +64,8 @@ ok("openMorningDocumentModal({prefill:null})" in documents and "openStandaloneMo
    'Morning standalone documents: general document creation shares the prefill flow and has no debt scope')
 ok('ללא חוב מקושר' not in documents,
    'Morning standalone document UI: redundant unlinked-debt hero copy stays removed')
-ok("customer-morning-add-btn" in view and view.find('customer-visible-total') < view.find('customer-morning-add-btn') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
-   'Customer Morning UI: standalone document action is at the toolbar edge and debt-row edit precedes Morning in RTL flow')
+ok('customer-morning-actions' in view and 'הצג מסמכים' in view and view.find('open-morning-documents') < view.find('open-morning-standalone') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
+   'Customer Morning UI: document browser is labeled explicitly and grouped immediately to the right of standalone issuance in RTL flow')
 ok("debt_id" not in sql and "debt_id" not in edge and 'morning_document_operations' not in editor and 'morning_document_operations' not in bulk,
    'Morning retention: deleting a local debt cannot cascade into or explicitly delete the Morning document ledger')
 ok("MORNING_CLIENT_SECRET" in setup and "PDF" in setup and "needs_reconciliation" in setup,
@@ -114,12 +114,16 @@ ok('lock table' in migration and migration.index('raise exception') < migration.
    'Migration locks and guards important rows before backup and DROP; backup is retained')
 ok('from.setDate(from.getDate()-90)' in browser and 'page:0,pageSize:25' in browser and "order:'DESC'" in browser and 'CACHE_TTL_MS=90_000' in browser,
    'Document browser defaults to 90 days, 25 per page and bounded memory cache')
-ok(all(action in edge for action in ('search_documents','get_document','document_links')) and 'morning_documents' not in sql,
-   'Live search and on-demand details/links share one Edge Function without document synchronization')
+ok(all(action in edge for action in ('search_documents','get_document','document_links','document_pdf')) and 'morning_documents' not in sql,
+   'Live search, details, download links and transient PDF viewing share one Edge Function without document synchronization')
 ok('Number.isSafeInteger(page)' in edge and 'pageSize>50' in edge and 'SEARCH_TYPES.has(v)' in edge and 'SEARCH_STATUSES.has(v)' in edge and 'clientName.length>160' in edge,
    'Search uses a server whitelist for dates, pagination, types, statuses, client and sort')
-ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'noopener noreferrer' in browser,
-   'Browser requests fresh document links and never persists documents or signed URLs')
+ok('MAX_DOCUMENT_PDF_BYTES=20*1024*1024' in edge and "Content-Type':'application/pdf'" in edge and "bytes[0]!==0x25" in edge and "Cache-Control':'no-store'" in edge,
+   'Existing-document preview validates PDF magic bytes, caps payload size and disables storage/cache')
+ok('morningBrowserPreviewFrame' in browser and "action:'document_pdf'" in browser and "opened.length===0" not in browser,
+   'Existing-document view is rendered inside the app rather than navigating to Morning')
+ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
+   'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
 
 if errors:
     print('\nERRORS',len(errors))
