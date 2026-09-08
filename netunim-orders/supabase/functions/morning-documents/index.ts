@@ -10,17 +10,20 @@ const DOCUMENT_TYPES=new Set([305,320,400]);
 const PAYMENT_TYPES=new Set([1,2,3,4]);
 const CARD_TYPES=new Set([1,2,3,4,5]);
 const REQUEST_TIMEOUT_MS=20_000;
+const SAFE_RATE_LIMIT_RETRIES=2;
+const MAX_RATE_LIMIT_DELAY_MS=5_000;
 const RECONCILE_MIN_AGE_MS=45_000;
+const RESERVATION_STALE_MS=2*60_000;
 const RECONCILE_WINDOW_MS=5*60_000;
 const MAX_DOCUMENT_PDF_BYTES=20*1024*1024;
 
-type OperationState='pending'|'created'|'needs_reconciliation'|'failed';
+type OperationState='reserved'|'pending'|'created_unverified'|'created'|'needs_reconciliation'|'failed';
 type JsonRecord=Record<string,unknown>;
 type OperationRow={
   owner_id:string;operation_id:string;environment:string;request_fingerprint:string;state:OperationState;
   document_type:number;amount:number|string;document_date:string;client_name:string;description:string;
   document_id?:string|null;document_number?:string|null;
-  allocation_number?:string|null;allocation_checked_at?:string|null;
+  allocation_number?:string|null;allocation_checked_at?:string|null;verified_at?:string|null;issuance_started_at?:string|null;
   reconciliation_attempts:number;last_reconciliation_at?:string|null;error_code?:string|null;error_message?:string|null;created_at:string;updated_at:string;
 };
 
@@ -58,6 +61,18 @@ async function sha256(value:string){const digest=await crypto.subtle.digest('SHA
 
 class MorningHttpError extends Error{status:number;payload:any;ambiguous:boolean;constructor(message:string,status=0,payload:any=null,ambiguous=false){super(message);this.status=status;this.payload=payload;this.ambiguous=ambiguous}}
 async function fetchWithTimeout(url:string,init:RequestInit){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);try{return await fetch(url,{...init,signal:controller.signal})}finally{clearTimeout(timer)}}
+function sleep(ms:number){return new Promise(resolve=>setTimeout(resolve,ms))}
+function retryAfterMs(response:Response,attempt:number){const raw=(response.headers.get('retry-after')||'').trim();if(raw){const seconds=Number(raw);if(Number.isFinite(seconds)&&seconds>=0)return Math.min(MAX_RATE_LIMIT_DELAY_MS,seconds*1000);const at=Date.parse(raw);if(Number.isFinite(at))return Math.max(0,Math.min(MAX_RATE_LIMIT_DELAY_MS,at-Date.now()))}return Math.min(MAX_RATE_LIMIT_DELAY_MS,350*(2**attempt))}
+function timestampMs(value:unknown){if(typeof value==='number'&&Number.isFinite(value))return value>1_000_000_000_000?value:value*1000;const text=String(value??'').trim();if(!text)return NaN;if(/^\d+(?:\.\d+)?$/.test(text)){const number=Number(text);if(Number.isFinite(number))return number>1_000_000_000_000?number:number*1000}return Date.parse(text)}
+function ambiguousWriteStatus(status:unknown){const value=Number(status||0);return value===408||(value>=500&&value<=599)}
+function base64ByteLength(value:string){const normalized=value.replace(/\s/g,'');if(!normalized)return 0;const padding=normalized.endsWith('==')?2:normalized.endsWith('=')?1:0;return Math.max(0,Math.floor(normalized.length*3/4)-padding)}
+function validatePreviewPdfBase64(value:string){const normalized=value.replace(/\s/g,'');if(!normalized||base64ByteLength(normalized)>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ התצוגה המקדימה גדול מדי',413,null,false);try{if(!atob(normalized.slice(0,12)).startsWith('%PDF-'))throw new Error('not pdf')}catch{throw new MorningHttpError('Morning החזירה תצוגה מקדימה שאינה PDF',502,null,false)}return normalized}
+async function readResponseBytesBounded(response:Response,maxBytes=MAX_DOCUMENT_PDF_BYTES){
+  const declared=Number(response.headers.get('content-length')||0);if(Number.isFinite(declared)&&declared>maxBytes)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
+  if(!response.body){const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length>maxBytes)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);return bytes}
+  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let total=0;try{while(true){const {done,value}=await reader.read();if(done)break;if(!value?.length)continue;total+=value.length;if(total>maxBytes){await reader.cancel().catch(()=>{});throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false)}chunks.push(value)}}finally{reader.releaseLock()}
+  const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length}return bytes
+}
 async function morningToken(force=false){
   if(!force&&tokenCache.value&&tokenCache.expiresAt>Date.now()+60_000)return tokenCache.value;
   if(!MORNING_CLIENT_ID||!MORNING_CLIENT_SECRET)throw new MorningHttpError('Morning API credentials are not configured',503,null,false);
@@ -70,14 +85,18 @@ async function morningToken(force=false){
   const rawExpiresAt=Number(data?.expiresAt||0),rawExpiresIn=Number(data?.expiresIn||data?.expires_in||0);let expiresAt=Date.now()+60*60_000;if(Number.isFinite(rawExpiresAt)&&rawExpiresAt>0)expiresAt=rawExpiresAt>1_000_000_000_000?rawExpiresAt:rawExpiresAt*1000;else if(Number.isFinite(rawExpiresIn)&&rawExpiresIn>0)expiresAt=Date.now()+Math.max(60,rawExpiresIn)*1000;
   tokenCache={value:token,expiresAt};return token;
 }
-async function morningRequest(path:string,init:RequestInit={},authRetry=true){
+async function morningRequest(path:string,init:RequestInit={},authRetry=true,rateLimitRetry=true){
   const request=async(token:string)=>{let response:Response;try{response=await fetchWithTimeout(API_BASE+path,{...init,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',...(init.headers||{})}})}catch(error){throw new MorningHttpError('החיבור ל-Morning נותק במהלך הבקשה',0,error,true)}let text:string;try{text=await response.text()}catch(error){throw new MorningHttpError('Morning response interrupted',response.status,error,true)}let data:any=null;try{data=text?JSON.parse(text):null}catch{data=text}return {response,data}};
-  let token=await morningToken(),result=await request(token);
-  if(result.response.status===401&&authRetry){tokenCache={value:'',expiresAt:0};token=await morningToken(true);result=await request(token)}
-  if(!result.response.ok){const message=String(result.data?.message||result.data?.error?.message||result.data?.error_description||result.data?.error||`Morning HTTP ${result.response.status}`);throw new MorningHttpError(message,result.response.status,result.data,[500,502,503,504].includes(result.response.status))}
-  return result.data;
+  let token=await morningToken(),authRetried=false,rateLimitAttempts=0;
+  while(true){
+    const result=await request(token);
+    if(result.response.status===401){tokenCache={value:'',expiresAt:0};if(authRetry&&!authRetried){authRetried=true;token=await morningToken(true);continue}}
+    if(result.response.status===429&&rateLimitRetry&&rateLimitAttempts<SAFE_RATE_LIMIT_RETRIES){await sleep(retryAfterMs(result.response,rateLimitAttempts++));continue}
+    if(!result.response.ok){const message=String(result.data?.message||result.data?.error?.message||result.data?.error_description||result.data?.error||`Morning HTTP ${result.response.status}`);throw new MorningHttpError(message,result.response.status,result.data,ambiguousWriteStatus(result.response.status))}
+    return result.data;
+  }
 }
-async function verifyMorning(){await morningToken();await morningRequest('/businesses/me',{method:'GET'})}
+async function verifyMorning(){await morningToken();await morningRequest('/documents/types?lang=he',{method:'GET'})}
 
 function normalizeInput(body:any){
   const operationId=clean(body?.operation_id,80),doc=body?.document||{},type=Number(doc.type),amount=amountNumber(doc.amount),date=String(doc.date||''),dueDate=type===305?clean(doc.dueDate,10):'',description=clean(doc.description,250),remarks=clean(doc.remarks,500),orderNumber=clean(doc.orderNumber,80),clientRaw=doc.client||{},clientName=clean(clientRaw.name,160),email=clean(clientRaw.email,180),phone=clean(clientRaw.phone,50);
@@ -95,26 +114,33 @@ function normalizeInput(body:any){
   return {operationId,type,amount,date,dueDate,description:payload.description,remarks,orderNumber,clientName,linkedDocumentId:linked||'',payload,fingerprintSource};
 }
 function userMessage(code:string){const messages:Record<string,string>={invalid_operation_id:'מזהה הפעולה אינו תקין',invalid_document_type:'סוג המסמך אינו נתמך',invalid_amount:'סכום המסמך אינו תקין',invalid_document_date:'תאריך המסמך אינו תקין',invalid_due_date:'תאריך לתשלום אינו תקין או מוקדם מתאריך המסמך',missing_description:'תיאור המסמך חסר',missing_client_name:'שם הלקוח חסר',invalid_email:'כתובת האימייל אינה תקינה',invalid_tax_id:'מספר העוסק / ח.פ. אינו תקין',invalid_payment:'פרטי התשלום אינם תקינים',invalid_card_payment:'פרטי כרטיס האשראי אינם תקינים',invalid_check_payment:'פרטי הצ׳ק אינם מלאים',invalid_linked_document:'מזהה החשבונית המקושרת אינו תקין'};return messages[code]||'פרטי המסמך אינם תקינים'}
-function documentUrl(data:any){if(typeof data?.url==='string'&&/^https:\/\//.test(data.url))return data.url;for(const key of ['he','origin','en']){const value=data?.url?.[key];if(typeof value==='string'&&/^https:\/\//.test(value))return value}return''}
-function allocationValue(data:any){const value=data?.allocationNumber??data?.allocation_number??data?.data?.allocationNumber??'';return clean(value,40)}
-function documentSummary(data:any,fallback:any){const source=data?.id?data:(data?.data?.id?data.data:data);return {id:String(source?.id||''),number:String(source?.number||''),type:Number(source?.type||fallback.type),amount:Number(source?.amount||source?.amountLocal||fallback.amount),date:String(source?.documentDate||source?.date||fallback.date),allocationNumber:allocationValue(source)}}
+function documentSource(data:any){return data?.id?data:(data?.data?.id?data.data:data)}
+function documentUrl(data:any){const source=data?.data&&typeof data.data==='object'?data.data:data;if(typeof source==='string'&&/^https:\/\//.test(source))return source;if(typeof source?.url==='string'&&/^https:\/\//.test(source.url))return source.url;for(const key of ['he','origin','en']){const value=source?.url?.[key]??source?.[key];if(typeof value==='string'&&/^https:\/\//.test(value))return value}return''}
+function allocationValue(data:any){const source=documentSource(data),value=source?.allocationNumber??source?.allocation_number??'';return clean(value,40)}
+function documentSummary(data:any,fallback:any){const source=documentSource(data);return {id:String(source?.id||''),number:String(source?.number||''),type:Number(source?.type||fallback.type),amount:Number(source?.amount||source?.amountLocal||fallback.amount),date:String(source?.documentDate||source?.date||fallback.date),allocationNumber:allocationValue(source)}}
 function findPdfBase64(value:any,depth=0):string{if(depth>4||value==null)return'';if(typeof value==='string'){const stripped=value.includes('base64,')?value.split('base64,').pop()||'':value;if(stripped.length>500&&/^[A-Za-z0-9+/=\r\n]+$/.test(stripped))return stripped.replace(/\s/g,'');return''}if(Array.isArray(value)){for(const item of value){const found=findPdfBase64(item,depth+1);if(found)return found}return''}if(typeof value==='object'){for(const key of ['pdf','base64','content','data','file']){const found=findPdfBase64(value[key],depth+1);if(found)return found}for(const item of Object.values(value)){const found=findPdfBase64(item,depth+1);if(found)return found}}return''}
 
 function operationQuery(ownerId:string){return admin.from('morning_document_operations').select('*').eq('owner_id',ownerId).eq('environment',MORNING_ENV)}
+function businessOperationQuery(){return admin.from('morning_document_operations').select('*').eq('environment',MORNING_ENV)}
 async function readOperation(ownerId:string,operationId:string){const {data,error}=await operationQuery(ownerId).eq('operation_id',operationId).maybeSingle();if(error)throw error;return data as OperationRow|null}
-async function updateOperation(ownerId:string,operationId:string,patch:JsonRecord){const {error}=await admin.from('morning_document_operations').update({...patch,updated_at:new Date().toISOString()}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',operationId);return error}
-async function reserveOperation(ownerId:string,input:any,fingerprint:string){
+async function updateOperation(ownerId:string,operationId:string,patch:JsonRecord){const {data,error}=await admin.from('morning_document_operations').update({...patch,updated_at:new Date().toISOString()}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',operationId).select('operation_id').maybeSingle();if(error)return error;if(!data)return {code:'morning_operation_missing',message:'Morning operation ledger row disappeared during update'};return null}
+async function claimReservedOperation(ownerId:string,operationId:string){const startedAt=new Date().toISOString(),{data,error}=await admin.from('morning_document_operations').update({state:'pending',issuance_started_at:startedAt,updated_at:startedAt}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',operationId).eq('state','reserved').select('*').maybeSingle();if(error)throw error;return data as OperationRow|null}
+async function abandonStaleReservation(row:OperationRow){const now=new Date().toISOString(),{data,error}=await admin.from('morning_document_operations').update({state:'failed',error_code:'reservation_abandoned',error_message:'Pre-issuance reservation expired before Morning POST started',client_name:'',description:'',updated_at:now}).eq('owner_id',row.owner_id).eq('environment',MORNING_ENV).eq('operation_id',row.operation_id).eq('state','reserved').select('operation_id').maybeSingle();if(error)throw error;return !!data}
+async function reserveOperation(ownerId:string,input:any,fingerprint:string,allowStaleRelease=true){
   const existing=await readOperation(ownerId,input.operationId);
   if(existing){if(existing.request_fingerprint!==fingerprint)throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});return {row:existing,created:false}}
-  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'pending',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description};
+  const row={owner_id:ownerId,environment:MORNING_ENV,operation_id:input.operationId,request_fingerprint:fingerprint,state:'reserved',document_type:input.type,amount:input.amount,document_date:input.date,client_name:input.clientName,description:input.description};
   const {data,error}=await admin.from('morning_document_operations').insert(row).select('*').single();
   if(error){
     if(String(error.code||'')==='23505'){
       const replay=await readOperation(ownerId,input.operationId);
       if(replay){if(replay.request_fingerprint!==fingerprint)throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});return {row:replay,created:false}}
-      const {data:blocked,error:blockedError}=await operationQuery(ownerId).eq('request_fingerprint',fingerprint).in('state',['pending','needs_reconciliation']).limit(1).maybeSingle();
+      const {data:blocked,error:blockedError}=await businessOperationQuery().eq('request_fingerprint',fingerprint).in('state',['reserved','pending','created_unverified','needs_reconciliation']).limit(1).maybeSingle();
       if(blockedError)throw blockedError;
-      if(blocked)throw Object.assign(new Error('operation_unresolved'),{code:'operation_unresolved',blocked});
+      if(allowStaleRelease&&blocked?.state==='reserved'&&Date.now()-new Date(blocked.updated_at||blocked.created_at).getTime()>=RESERVATION_STALE_MS){
+        const released=await abandonStaleReservation(blocked as OperationRow);if(released)return reserveOperation(ownerId,input,fingerprint,false);
+      }
+      if(blocked)throw Object.assign(new Error('operation_unresolved'),{code:'operation_unresolved',blocked})
       throw Object.assign(new Error('operation_id_conflict'),{code:'operation_id_conflict'});
     }
     throw error;
@@ -123,18 +149,23 @@ async function reserveOperation(ownerId:string,input:any,fingerprint:string){
 }
 
 function candidateItems(data:any){if(Array.isArray(data?.items))return data.items;if(Array.isArray(data?.data?.items))return data.data.items;if(Array.isArray(data))return data;return[]}
-function matchesCandidate(item:any,row:OperationRow,strict=false){
-  if(Number(item?.type)!==Number(row.document_type))return false;if(!sameAmount(item?.amount??item?.amountLocal,row.amount))return false;
+function matchesDocumentCore(item:any,row:OperationRow,strict=false){
+  if(Number(item?.type)!==Number(row.document_type))return false;const rawAmount=item?.amount??item?.amountLocal;if(strict&&!Number.isFinite(Number(rawAmount)))return false;if(!sameAmount(rawAmount,row.amount))return false;
   const itemDate=String(item?.documentDate||item?.date||'').slice(0,10),expectedDate=String(row.document_date).slice(0,10);if(strict&&!itemDate)return false;if(itemDate&&itemDate!==expectedDate)return false;
-  const expectedClient=normalizeText(row.client_name),actualClient=normalizeText(item?.client?.name||item?.clientName);if(strict&&expectedClient&&actualClient!==expectedClient)return false;if(!strict&&expectedClient&&actualClient&&expectedClient!==actualClient)return false;
-  const expectedDescription=normalizeText(row.description),actualDescription=normalizeText(item?.description);if(strict&&expectedDescription&&actualDescription!==expectedDescription)return false;if(!strict&&expectedDescription&&actualDescription&&expectedDescription!==actualDescription)return false;
-  if(strict){const created=Number(item?.creationDate)*1000,start=new Date(row.created_at).getTime();if(!Number.isFinite(created)||created<start-1000||created>start+RECONCILE_WINDOW_MS)return false}
+  const expectedClient=normalizeText(row.client_name),actualClient=normalizeText(item?.client?.name||item?.clientName);if(strict&&expectedClient&&!actualClient)return false;if(expectedClient&&actualClient&&expectedClient!==actualClient)return false;
+  const expectedDescription=normalizeText(row.description),actualDescription=normalizeText(item?.description);if(strict&&expectedDescription&&!actualDescription)return false;if(expectedDescription&&actualDescription&&expectedDescription!==actualDescription)return false;
   return !!item?.id;
+}
+function matchesCandidate(item:any,row:OperationRow,strict=false){
+  if(!matchesDocumentCore(item,row,strict))return false;if(strict){const created=timestampMs(item?.creationDate),start=new Date(row.issuance_started_at||row.created_at).getTime();if(!Number.isFinite(created)||created<start-1000||created>start+RECONCILE_WINDOW_MS)return false}return true;
+}
+async function verifyKnownDocument(documentId:string,row:OperationRow){
+  const raw=await morningRequest(`/documents/${encodeURIComponent(documentId)}`,{method:'GET'}),detail=documentSource(raw);if(String(detail?.id||'')!==documentId||!matchesDocumentCore(detail,row,true))throw new MorningHttpError('Morning document read-back did not match the issued request',502,raw,true);return detail;
 }
 async function validateLinkedDocument(input:any){
   if(!input.linkedDocumentId)return null;
   // Authenticated Morning GET is scoped to the current business, including manual invoices.
-  const detail=await morningRequest(`/documents/${encodeURIComponent(input.linkedDocumentId)}`,{method:'GET'});
+  const raw=await morningRequest(`/documents/${encodeURIComponent(input.linkedDocumentId)}`,{method:'GET'}),detail=documentSource(raw);
   if(detail?.id!==input.linkedDocumentId||Number(detail?.type)!==305||Number(detail?.status)!==0)
     throw Object.assign(new Error('linked_document_not_linkable'),{code:'linked_document_not_linkable'});
   return detail;
@@ -145,43 +176,56 @@ async function refreshCreatedAllocation(ownerId:string,row:OperationRow){
   const patch={allocation_number:allocationValue(detail)||null,allocation_checked_at:new Date().toISOString()};
   const error=await updateOperation(ownerId,row.operation_id,patch);if(error)throw error;return {...row,...patch};
 }
+async function markVerifiedCreated(ownerId:string,row:OperationRow,detail:any){
+  const doc=documentSummary(detail,{type:row.document_type,amount:Number(row.amount),date:row.document_date}),verifiedAt=new Date().toISOString(),error=await updateOperation(ownerId,row.operation_id,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,client_name:'',description:''});if(error)throw error;return {...row,state:'created',document_id:doc.id,document_number:doc.number,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,updated_at:verifiedAt} as OperationRow;
+}
 async function reconcileRow(ownerId:string,row:OperationRow){
-  const age=Date.now()-new Date(row.created_at).getTime();if(age<RECONCILE_MIN_AGE_MS)return row;
   try{
+    if(row.document_id){
+      const attemptError=await updateOperation(ownerId,row.operation_id,{reconciliation_attempts:Number(row.reconciliation_attempts||0)+1,last_reconciliation_at:new Date().toISOString()});if(attemptError)throw attemptError;
+      try{return await markVerifiedCreated(ownerId,row,await verifyKnownDocument(row.document_id,row))}catch(error:any){console.warn('Morning known-document verification still pending',row.operation_id,error?.message);await updateOperation(ownerId,row.operation_id,{state:'created_unverified',error_code:'known_document_verification_pending',error_message:clean(error?.message,500)});return {...row,state:'created_unverified',error_code:'known_document_verification_pending'} as OperationRow}
+    }
+    const age=Date.now()-new Date(row.issuance_started_at||row.created_at).getTime();if(age<RECONCILE_MIN_AGE_MS)return row;
     const attemptError=await updateOperation(ownerId,row.operation_id,{reconciliation_attempts:Number(row.reconciliation_attempts||0)+1,last_reconciliation_at:new Date().toISOString()});if(attemptError)throw attemptError;
     const searchBody={fromDate:String(row.document_date),toDate:String(row.document_date),type:[Number(row.document_type)],clientName:String(row.client_name),page:1,pageSize:50,sort:'documentDate'};
-    const data=await morningRequest('/documents/search',{method:'POST',body:JSON.stringify(searchBody)}),coarse=candidateItems(data).filter((item:any)=>matchesCandidate(item,row,false));
+    const data=await morningRequest('/documents/search',{method:'POST',body:JSON.stringify(searchBody)}),coarse=candidateItems(data).map(documentSource).filter((item:any)=>matchesCandidate(item,row,false));
     if(candidateItems(data).length>=50||Number(data?.pages)>1||coarse.length>20){await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'too_many_candidates',error_message:'Morning returned too many possible documents'});return {...row,state:'needs_reconciliation'} as OperationRow}
     const verified:any[]=[];for(const item of coarse){const id=String(item?.id||'');if(!isUuid(id))continue;
-      const {data:claimed,error:claimedError}=await operationQuery(ownerId).eq('document_id',id).neq('operation_id',row.operation_id).limit(1).maybeSingle();if(claimedError)throw claimedError;if(claimed)continue;
-      const detail=await morningRequest(`/documents/${encodeURIComponent(id)}`,{method:'GET'});if(matchesCandidate(detail,row,true))verified.push(detail)}
-    if(verified.length===1){const doc=documentSummary(verified[0],{type:row.document_type,amount:Number(row.amount),date:row.document_date}),checkedAt=new Date().toISOString(),error=await updateOperation(ownerId,row.operation_id,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:checkedAt,error_code:null,error_message:null,client_name:'',description:''});if(error)throw error;return {...row,state:'created',document_id:doc.id,document_number:doc.number,allocation_number:doc.allocationNumber||null,allocation_checked_at:checkedAt,updated_at:checkedAt} as OperationRow}
+      const {data:claimed,error:claimedError}=await businessOperationQuery().eq('document_id',id).neq('operation_id',row.operation_id).limit(1).maybeSingle();if(claimedError)throw claimedError;if(claimed)continue;
+      const detail=documentSource(await morningRequest(`/documents/${encodeURIComponent(id)}`,{method:'GET'}));if(matchesCandidate(detail,row,true))verified.push(detail)}
+    if(verified.length===1)return await markVerifiedCreated(ownerId,row,verified[0]);
     if(verified.length>1){await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'multiple_candidates',error_message:'Morning returned multiple verified documents'});return {...row,state:'needs_reconciliation'} as OperationRow}
     await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'waiting_for_reconciliation',error_message:'Waiting before retrying Morning search'});return {...row,state:'needs_reconciliation'} as OperationRow;
-  }catch(error){console.error('morning reconciliation failed',row.operation_id,error);await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'reconciliation_unavailable',error_message:'Morning reconciliation unavailable'});return {...row,state:'needs_reconciliation'} as OperationRow}
+  }catch(error){console.error('morning reconciliation failed',row.operation_id,error);const fallback:OperationState=row.document_id?'created_unverified':'needs_reconciliation';await updateOperation(ownerId,row.operation_id,{state:fallback,error_code:'reconciliation_unavailable',error_message:'Morning reconciliation unavailable'});return {...row,state:fallback} as OperationRow}
 }
 async function status(ownerId:string,body:any){
-  if(!configured())return json({ok:true,configured:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
+  if(!configured())return json({ok:true,configured:false,available:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
   const id=clean(body?.operation_id,80);if(id&&!isUuid(id))return json({ok:false,code:'invalid_operation_id',message:'מזהה פעולה אינו תקין'},400);
-  try{await verifyMorning();let operation=id?await readOperation(ownerId,id):null;
-    if(body?.reconcile===true&&operation){if(['pending','needs_reconciliation'].includes(operation.state))operation=await reconcileRow(ownerId,operation);else if(operation.state==='created')operation=await refreshCreatedAllocation(ownerId,operation)}
-    return json({ok:true,configured:true,operation,unresolved:!!operation&&['pending','needs_reconciliation'].includes(operation.state),environment:MORNING_ENV});
+  try{let operation=id?await readOperation(ownerId,id):null,available=true,connectionError='';try{await verifyMorning()}catch(error:any){available=false;connectionError=clean(error?.message,250)}
+    if(body?.reconcile===true&&operation&&available){if(['pending','created_unverified','needs_reconciliation'].includes(operation.state))operation=await reconcileRow(ownerId,operation);else if(operation.state==='created')operation=await refreshCreatedAllocation(ownerId,operation)}
+    return json({ok:true,configured:true,available,connection_error:connectionError||null,operation,unresolved:!!operation&&['pending','created_unverified','needs_reconciliation'].includes(operation.state),retryable_reserved:operation?.state==='reserved',environment:MORNING_ENV});
   }catch(error){return dbError(error,'morning_status_failed')}
 }
-async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status>=400&&error.status<500?400:502)}}
+async function preview(ownerId:string,body:any){if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body);await validateLinkedDocument(input)}catch(error:any){const code=String(error?.code||error?.message||'invalid_document');return json({ok:false,code,message:code==='linked_document_not_linkable'?'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור':userMessage(code)},400)}try{const data=await morningRequest('/documents/preview',{method:'POST',body:JSON.stringify(input.payload)}),pdfBase64=findPdfBase64(data);if(!pdfBase64)return json({ok:false,code:'morning_preview_missing_pdf',message:'Morning לא החזירה PDF לתצוגה מקדימה'},502);return json({ok:true,pdfBase64:validatePreviewPdfBase64(pdfBase64)})}catch(error:any){return json({ok:false,code:'morning_preview_failed',message:String(error?.message||'תצוגה מקדימה נכשלה')},error?.status===413?413:error?.status>=400&&error.status<500?400:502)}}
 async function create(ownerId:string,body:any){
   if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);let input;try{input=normalizeInput(body)}catch(error:any){const code=String(error?.message||'invalid_document');return json({ok:false,code,message:userMessage(code)},400)}if(!input.operationId)return json({ok:false,code:'missing_operation_id',message:'מזהה הפעולה חסר'},400);try{await validateLinkedDocument(input)}catch(error:any){if(error?.code==='linked_document_not_linkable')return json({ok:false,code:'linked_document_not_linkable',message:'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור'},400);return dbError(error,'morning_link_validation_failed')}const fingerprint=await sha256(JSON.stringify(input.fingerprintSource));let reserved;
-  try{reserved=await reserveOperation(ownerId,input,fingerprint)}catch(error:any){if(error?.code==='operation_unresolved')return json({ok:false,code:'morning_operation_unresolved',message:'קיים ניסיון הפקה קודם שעדיין לא אומת. לא נשלח מסמך נוסף.',uncertain:true,operation_id:error.blocked.operation_id},409);if(error?.code==='operation_id_conflict')return json({ok:false,code:'morning_operation_conflict',message:'מזהה הפעולה כבר שייך לבקשה אחרת'},409);return dbError(error,'morning_operation_reserve_failed')}
-  const row=reserved.row;if(row.state==='created'&&row.document_id)return json({ok:true,replayed:true,document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''}});if(!reserved.created)return json({ok:false,code:'morning_operation_unresolved',message:'ניסיון ההפקה הזה עדיין בבדיקה. לא נשלח מסמך נוסף.',uncertain:true},409);
-  try{
-    const data=await morningRequest('/documents',{method:'POST',body:JSON.stringify(input.payload)},false);let doc=documentSummary(data,input);if(!doc.id)throw new MorningHttpError('Morning returned success without a document ID',502,data,true);
-    let allocationCheckedAt:string|null=null;try{const detail=await morningRequest(`/documents/${encodeURIComponent(doc.id)}`,{method:'GET'});if(detail?.id!==doc.id)throw new Error('Invalid read-back');doc=documentSummary(detail,input);allocationCheckedAt=new Date().toISOString()}catch{console.warn('Morning document created; canonical read-back failed',input.operationId)}
-    const persistError=await updateOperation(ownerId,input.operationId,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:allocationCheckedAt,error_code:null,error_message:null,client_name:'',description:''});if(persistError){console.error('Morning document created but metadata persistence failed',input.operationId,persistError);return json({ok:true,document:doc,local_link_pending:true})}
-    return json({ok:true,document:doc});
-  }catch(error:any){
-    const ambiguous=!!error?.ambiguous||[500,502,503,504].includes(Number(error?.status||0));const nextState:OperationState=ambiguous?'needs_reconciliation':'failed';const updateError=await updateOperation(ownerId,input.operationId,{state:nextState,error_code:ambiguous?'creation_uncertain':'morning_create_rejected',error_message:clean(error?.message,500),...(ambiguous?{}:{client_name:'',description:''})});if(updateError)console.error('Morning operation failure persistence failed',input.operationId,updateError);
-    return json({ok:false,code:ambiguous?'morning_creation_uncertain':'morning_create_failed',message:ambiguous?'לא ניתן לדעת בוודאות אם Morning כבר הפיקה את המסמך. לא יישלח ניסיון נוסף עד לאימות.':String(error?.message||'Morning דחתה את יצירת המסמך'),uncertain:ambiguous},ambiguous?502:(error?.status>=400&&error.status<500?400:502));
+  try{reserved=await reserveOperation(ownerId,input,fingerprint)}catch(error:any){if(error?.code==='operation_unresolved'){
+      let blockedRow=error?.blocked as OperationRow|undefined;const canReconcile=!!blockedRow&&blockedRow.state!=='reserved'&&(!!blockedRow.document_id||Date.now()-new Date(blockedRow.issuance_started_at||blockedRow.created_at).getTime()>=RECONCILE_MIN_AGE_MS);
+      if(canReconcile){try{blockedRow=await reconcileRow(blockedRow!.owner_id,blockedRow!)}catch(reconcileError){console.warn('Morning duplicate guard reconciliation failed',blockedRow?.operation_id,reconcileError)}}
+      if(blockedRow?.state==='created'&&blockedRow.document_id&&blockedRow.verified_at){const ownOperation=blockedRow.owner_id===ownerId;return json({ok:false,code:'morning_similar_operation_verified',message:'ניסיון הפקה זהה קודם כבר אומת ב-Morning. החלון ננעל כדי שלא יופק מסמך כפול; אם נדרש מסמך נוסף בכוונה, יש לסגור ולפתוח חלון הפקה חדש.',prevent_retry:true,uncertain:false,...(ownOperation?{operation_id:blockedRow.operation_id,document:{id:blockedRow.document_id,number:blockedRow.document_number||'',allocationNumber:blockedRow.allocation_number||''}}:{})},409)}
+      const ownOperation=blockedRow?.owner_id===ownerId?blockedRow.operation_id:undefined;return json({ok:false,code:'morning_operation_unresolved',message:'קיים ניסיון הפקה זהה שעדיין לא אומת. לא נשלח מסמך נוסף.',uncertain:true,...(ownOperation?{operation_id:ownOperation}:{})},409)}if(error?.code==='operation_id_conflict')return json({ok:false,code:'morning_operation_conflict',message:'מזהה הפעולה כבר שייך לבקשה אחרת'},409);return dbError(error,'morning_operation_reserve_failed')}
+  let row=reserved.row;if(row.state==='created'&&row.document_id&&row.verified_at)return json({ok:true,verified:true,replayed:true,document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''}});
+  if(row.state==='reserved'){try{const claimed=await claimReservedOperation(ownerId,row.operation_id);if(!claimed)return json({ok:false,code:'morning_operation_unresolved',message:'ניסיון ההפקה נתפס כעת על ידי בקשה אחרת. לא נשלח מסמך נוסף.',uncertain:true,operation_id:row.operation_id},409);row=claimed}catch(error){return dbError(error,'morning_operation_claim_failed')}}
+  else if(!reserved.created)return json({ok:false,code:'morning_operation_unresolved',message:'ניסיון ההפקה הזה עדיין בבדיקה. לא נשלח מסמך נוסף.',uncertain:true,operation_id:row.operation_id},409);
+  let data:any;try{data=await morningRequest('/documents',{method:'POST',body:JSON.stringify(input.payload)},false,false)}catch(error:any){
+    const ambiguous=!!error?.ambiguous||ambiguousWriteStatus(error?.status);const nextState:OperationState=ambiguous?'needs_reconciliation':'failed';const updateError=await updateOperation(ownerId,input.operationId,{state:nextState,error_code:ambiguous?'creation_uncertain':'morning_create_rejected',error_message:clean(error?.message,500),...(ambiguous?{}:{client_name:'',description:''})});if(updateError)console.error('Morning operation failure persistence failed',input.operationId,updateError);
+    return json({ok:false,code:ambiguous?'morning_creation_uncertain':'morning_create_failed',message:ambiguous?'לא ניתן לדעת בוודאות אם Morning כבר הפיקה את המסמך. לא יישלח ניסיון נוסף עד לאימות.':String(error?.message||'Morning דחתה את יצירת המסמך'),uncertain:ambiguous,operation_id:input.operationId},ambiguous?502:(error?.status>=400&&error.status<500?400:502));
   }
+  let doc=documentSummary(data,input);if(!doc.id){const error=await updateOperation(ownerId,input.operationId,{state:'needs_reconciliation',error_code:'creation_success_without_id',error_message:'Morning returned success without a document ID'});if(error)console.error('Morning operation ambiguity persistence failed',input.operationId,error);return json({ok:false,code:'morning_creation_uncertain',message:'Morning החזירה תשובת הצלחה ללא מזהה מסמך. לא יישלח ניסיון נוסף עד לאימות.',uncertain:true,operation_id:input.operationId},502)}
+  const provisionalError=await updateOperation(ownerId,input.operationId,{state:'created_unverified',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,error_code:'creation_verification_pending',error_message:'Morning returned a document ID; canonical read-back is still required'});if(provisionalError)console.error('Morning document ID persistence failed before verification',input.operationId,provisionalError);
+  let detail:any;try{detail=await verifyKnownDocument(doc.id,{...row,document_id:doc.id} as OperationRow);doc=documentSummary(detail,input)}catch(error:any){if(!provisionalError){const persistError=await updateOperation(ownerId,input.operationId,{state:'created_unverified',error_code:'creation_verification_pending',error_message:clean(error?.message,500)});if(persistError)console.error('Morning verification-pending persistence failed',input.operationId,persistError)}return json({ok:false,code:'morning_creation_verification_pending',message:'Morning החזירה מזהה למסמך, אבל הקריאה החוזרת לא אימתה עדיין את פרטיו. לא יישלח מסמך נוסף; יש להשתמש ב„בדוק מצב הפקה”.',uncertain:true,known_document:true,operation_id:input.operationId,document:{id:doc.id,number:doc.number||''}},502)}
+  const verifiedAt=new Date().toISOString(),persistError=await updateOperation(ownerId,input.operationId,{state:'created',document_id:doc.id,document_number:doc.number||null,allocation_number:doc.allocationNumber||null,allocation_checked_at:verifiedAt,verified_at:verifiedAt,error_code:null,error_message:null,client_name:'',description:''});if(persistError){console.error('Morning document verified but metadata persistence failed',input.operationId,persistError);return json({ok:true,verified:true,document:doc,local_link_pending:true})}
+  return json({ok:true,verified:true,document:doc});
 }
 // Request and response whitelists: no free-form Morning proxy and no persisted URLs.
 const SEARCH_TYPES=new Set([10,20,100,200,210,300,305,320,330,400,405,410,500,600,610]);
@@ -196,7 +240,7 @@ function searchInput(body:any){
   // Morning pages are one-based; the application's public API is zero-based.
   return {fromDate,toDate,page:page+1,pageSize,clientName:clientName.trim(),sort,order,type,status};
 }
-function browserDocument(source:any){return {...documentSummary(source,{}),clientName:clean(source?.client?.name||source?.clientName,160),currency:clean(source?.currency,3),status:Number(source?.status),description:clean(source?.description,250)}}
+function browserDocument(raw:any){const source=documentSource(raw);return {...documentSummary(source,{}),clientName:clean(source?.client?.name||source?.clientName,160),currency:clean(source?.currency,3),status:Number(source?.status),description:clean(source?.description,250)}}
 async function searchDocuments(body:any){
   let payload;try{payload=searchInput(body)}catch(error:any){return json({ok:false,code:'invalid_search',message:error.message},400)}
   try{const data=await morningRequest('/documents/search',{method:'POST',body:JSON.stringify(payload)});return json({ok:true,items:candidateItems(data).map(browserDocument),page:payload.page-1,pageSize:payload.pageSize,total:Number(data?.total)||0,pages:Number(data?.pages)||0})}
@@ -206,17 +250,16 @@ async function getDocument(body:any,links=false){
   const id=clean(body?.document_id,80);if(!isUuid(id))return json({ok:false,code:'invalid_document_id',message:'מזהה המסמך אינו תקין'},400);
   try{const data=await morningRequest(`/documents/${encodeURIComponent(id)}${links?'/download/links':''}`,{method:'GET'});
     if(!links)return json({ok:true,document:browserDocument(data)});
-    const url=documentUrl({url:data})||documentUrl(data);if(!url)throw new Error('Morning לא החזירה קישור תקין');return json({ok:true,url});
+    const url=documentUrl(data);if(!url)throw new Error('Morning לא החזירה קישור תקין');return json({ok:true,url});
   }catch(error:any){return json({ok:false,code:'morning_document_access_failed',message:clean(error?.message,250)},error?.status===404?404:502)}
 }
 async function getDocumentPdf(body:any){
   const id=clean(body?.document_id,80);if(!isUuid(id))return json({ok:false,code:'invalid_document_id',message:'מזהה המסמך אינו תקין'},400);
   try{
-    const links=await morningRequest(`/documents/${encodeURIComponent(id)}/download/links`,{method:'GET'}),url=documentUrl({url:links})||documentUrl(links);if(!url)throw new MorningHttpError('Morning לא החזירה קישור PDF תקין',502,links,false);
+    const links=await morningRequest(`/documents/${encodeURIComponent(id)}/download/links`,{method:'GET'}),url=documentUrl(links);if(!url)throw new MorningHttpError('Morning לא החזירה קישור PDF תקין',502,links,false);
     let response:Response;try{response=await fetchWithTimeout(url,{method:'GET',headers:{Accept:'application/pdf'}})}catch(error){throw new MorningHttpError('הורדת קובץ המסמך מ-Morning נכשלה',0,error,false)}
     if(!response.ok)throw new MorningHttpError(`Morning PDF HTTP ${response.status}`,response.status,null,false);
-    const declaredLength=Number(response.headers.get('content-length')||0);if(Number.isFinite(declaredLength)&&declaredLength>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
-    const bytes=new Uint8Array(await response.arrayBuffer());if(!bytes.length)throw new MorningHttpError('Morning החזירה קובץ PDF ריק',502,null,false);if(bytes.length>MAX_DOCUMENT_PDF_BYTES)throw new MorningHttpError('קובץ המסמך גדול מדי לתצוגה באתר',413,null,false);
+    const bytes=await readResponseBytesBounded(response);if(!bytes.length)throw new MorningHttpError('Morning החזירה קובץ PDF ריק',502,null,false);
     if(bytes.length<5||bytes[0]!==0x25||bytes[1]!==0x50||bytes[2]!==0x44||bytes[3]!==0x46||bytes[4]!==0x2d)throw new MorningHttpError('Morning החזירה קובץ שאינו PDF',502,null,false);
     return new Response(bytes,{status:200,headers:{...corsHeaders,'Content-Type':'application/pdf','Content-Disposition':'inline; filename="morning-document.pdf"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }catch(error:any){return json({ok:false,code:'morning_document_pdf_failed',message:clean(error?.message,250)},error?.status===404?404:error?.status===413?413:502)}

@@ -87,16 +87,16 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch}){
     const contentType=String(response.headers.get('Content-Type')||'').toLowerCase();if(!contentType.includes('application/pdf'))throw new Error('Morning החזירה קובץ שאינו PDF');
     const blob=await response.blob();if(!blob.size)throw new Error('Morning החזירה קובץ PDF ריק');return blob;
   }
-  async function viewDocument(id,button){
+  async function viewDocument(id,button,{quiet=false}={}){
     if(button)button.disabled=true;const element=root();
     try{
-      const blob=await fetchDocumentPdf(id);if(element&&root()!==element)return;
+      const blob=await fetchDocumentPdf(id);if(element&&root()!==element)return false;
       releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
       const browserBox=$('#morningBrowserPreview'),browserFrame=$('#morningBrowserPreviewFrame'),issuanceBox=$('#morningPreviewBox'),issuanceFrame=$('#morningPreviewFrame'),issuanceNote=$('#morningPreviewNote');
       const box=browserBox||issuanceBox,frame=browserFrame||issuanceFrame;if(!box||!frame){releasePreviewUrl();throw new Error('אזור תצוגת המסמך אינו זמין')}
       if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';
-      frame.addEventListener('load',()=>{if(previewObjectUrl===url){URL.revokeObjectURL(url);previewObjectUrl=''}},{once:true});frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});
-    }catch(error){toast(error.message||'טעינת המסמך נכשלה')}finally{if(button)button.disabled=false}
+      frame.addEventListener('load',()=>{if(previewObjectUrl===url){URL.revokeObjectURL(url);previewObjectUrl=''}},{once:true});frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
+    }catch(error){if(!quiet)toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
   }
   async function downloadDocument(id,button){
     if(button)button.disabled=true;

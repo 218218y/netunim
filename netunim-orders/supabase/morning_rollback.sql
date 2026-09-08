@@ -3,7 +3,7 @@
 begin;
 lock table public.morning_document_operations in access exclusive mode;
 do $$ begin
-  if exists(select 1 from public.morning_document_operations where state in ('created','pending','needs_reconciliation')) then
+  if exists(select 1 from public.morning_document_operations where state in ('reserved','created','created_unverified','pending','needs_reconciliation')) then
     raise exception 'STOP: preserve new Morning operations; do not restore the old schema over them';
   end if;
   if to_regclass('public.morning_document_operations_backup_20260908') is null then

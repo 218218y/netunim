@@ -15,7 +15,7 @@ function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
 export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,supaFetch,dateEditorMarkup,documentsBrowser}){
-let activeOperationId='',modalGeneration=0,createBusy=false,blocked=false;
+let activeOperationId='',modalGeneration=0,createBusy=false,blocked=false,completed=false;
 function defaultDescription(d,standalone=false){if(standalone)return'';const order=cleanText(d?.orderNumber,80);return order?`הזמנה ${order}`:`עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
 function newOperationId(){return globalThis.crypto.randomUUID()}
 
@@ -90,7 +90,7 @@ function openMorningDocument(debtId){
 function openStandaloneMorningDocument(){return openMorningDocumentModal({prefill:null})}
 async function openMorningDocumentModal({prefill=null}={}){
   // Retain an uncertain operation in memory across closing/reopening the dialog.
-  if(!blocked&&!createBusy)activeOperationId=newOperationId();
+  if(!blocked&&!createBusy){activeOperationId=newOperationId();completed=false}
   modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   modal('הפקת מסמך Morning',formBody(prefill||{},305,dateEditorMarkup,{standalone:!prefill}),foot());
@@ -126,8 +126,11 @@ function readForm(){
 
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;el.className=`morning-connection ${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){
-  const result=currentField('morningOperationResult');if(!result||op?.state!=='created')return;
-  result.innerHTML=`<div class="morning-form-card"><b>המסמך הופק בהצלחה ${esc(op.document_number||'')}</b><span class="morning-allocation">מספר הקצאה: ${esc(op.allocation_number||'—')}</span><button class="btn small" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`;
+  const result=currentField('morningOperationResult');if(!result)return;
+  if(op?.state==='reserved'){result.innerHTML='<div class="morning-form-card"><b>פעולת ההפקה נרשמה בשרת אך טרם נשלחה ל-Morning</b><span>אפשר לנסות שוב בבטחה; אותו מזהה פעולה יישמר.</span></div>';return}
+  if(op?.state==='created_unverified'){result.innerHTML=`<div class="morning-form-card"><b>Morning החזירה מזהה למסמך ${esc(op.document_number||'')}, אך האימות החוזר עדיין לא הושלם</b><span>לא מפיקים שוב. יש ללחוץ „בדוק מצב הפקה”.</span></div>`;return}
+  if(op?.state!=='created'||!op?.verified_at)return;
+  result.innerHTML=`<div class="morning-form-card"><b>המסמך הופק ואומת ב-Morning ${esc(op.document_number||'')}</b><span class="morning-allocation">מספר הקצאה: ${esc(op.allocation_number||'—')}</span><button class="btn small" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`;
 }
 async function refreshStatus({reconcile=false}={}){
   const generation=modalGeneration,operationId=activeOperationId;
@@ -137,12 +140,15 @@ async function refreshStatus({reconcile=false}={}){
     if(!isActive(generation)||operationId!==activeOperationId||createBusy)return data;
     // A status read can race a still-running Edge request before its reservation.
     // Missing metadata is not proof that an uncertain issuance did not happen.
-    blocked=!!data.unresolved||(blocked&&!data.operation);renderOperation(data.operation);
-    if(data.operation?.state==='created'||data.operation?.state==='failed')activeOperationId=newOperationId();
+    blocked=!!data.unresolved;renderOperation(data.operation);
+    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at;if(verifiedCreated)completed=true;
+    if(data.operation?.state==='failed'){completed=false;activeOperationId=newOperationId()}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
-    if(data.configured)connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
-    else connectionStatus('error','Morning אינו מוגדר בשרת');
-    const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=!data.configured||blocked||createBusy;
+    if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
+    else if(data.available===false)connectionStatus('error',blocked?'Morning אינו זמין כרגע והפקה קודמת עדיין חסומה עד לאימות.':'Morning אינו זמין כרגע. הפקת מסמכים חסומה ליתר ביטחון.');
+    else if(data.retryable_reserved)connectionStatus('warning','הפעולה נרשמה אך טרם נשלחה ל-Morning. ניתן ללחוץ שוב על „הפק מסמך רשמי”.');
+    else connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
+    const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=!data.configured||data.available===false||blocked||completed||createBusy;if(completed){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}
     return data;
   }catch(error){if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}return null}
 }
@@ -154,7 +160,7 @@ async function previewMorningDocument(button){
 }
 
 async function createMorningDocument(button){
-  if(createBusy||blocked)return;
+  if(createBusy||blocked||completed)return;
   let payload;try{payload=readForm()}catch(error){return toast(error.message)}
   const generation=modalGeneration,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name;
   createBusy=true;setBusy(button,true,'מפיק…');
@@ -163,22 +169,30 @@ async function createMorningDocument(button){
     if(!confirmed||!isActive(generation))return;
     // Conservatively retain the operation even when the browser loses the Edge response.
     blocked=true;
-    const data=await backend('create',payload);if(!data.document?.id)throw new Error('לא התקבל מזהה מסמך; יש לבדוק את מצב ההפקה');
+    const data=await backend('create',payload);if(data.verified!==true||!data.document?.id)throw new Error('השרת לא החזיר אימות קנוני למסמך. לא יישלח ניסיון נוסף לפני בדיקת מצב ההפקה.');
     documentsBrowser.invalidateCache();
+    let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});
     if(isActive(generation)){
-      renderOperation({state:'created',document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
-      connectionStatus(data.local_link_pending?'warning':'ready',data.local_link_pending?'המסמך הופק. שמירת רישום הפעולה עדיין בבדיקה.':'המסמך הופק בהצלחה');
+      renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
+      const message=data.local_link_pending?'המסמך הופק ואומת ב-Morning. שמירת רישום הפעולה עדיין בבדיקה.':pdfLoaded?'המסמך הופק, אומת וה-PDF הרשמי נטען מ-Morning.':'המסמך הופק ואומת ב-Morning. ה-PDF הרשמי לא נטען כרגע; אפשר ללחוץ „צפה”.';
+      connectionStatus(data.local_link_pending||!pdfLoaded?'warning':'ready',message);
+      if(button){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}
     }
-    blocked=!!data.local_link_pending;
-    if(!blocked)activeOperationId=newOperationId();
-    toast(`${documentLabel(type)} ${data.document.number||''} הופק בהצלחה`);
+    blocked=!!data.local_link_pending;completed=true;
+    toast(`${documentLabel(type)} ${data.document.number||''} הופק ואומת ב-Morning`);
   }catch(error){
     if(error?.details?.operation_id)activeOperationId=error.details.operation_id;
-    // Only explicit server rejection is safely retryable; transport loss remains uncertain.
-    if(error?.status&&error.status<500&&!error?.details?.uncertain){blocked=false;activeOperationId=newOperationId()}
-    if(isActive(generation))connectionStatus(blocked?'warning':'error',blocked?'ההפקה ממתינה לאימות. לא נשלח ניסיון נוסף.':error.message);
+    if(error?.details?.prevent_retry){
+      blocked=false;completed=true;const existing=error.details.document;if(existing?.id)renderOperation({state:'created',verified_at:new Date().toISOString(),document_id:existing.id,document_number:existing.number,allocation_number:existing.allocationNumber});
+      if(isActive(generation))connectionStatus('warning',error.message||'ניסיון זהה קודם כבר אומת; החלון ננעל למניעת כפילות.');
+      if(button){button.dataset.idleLabel='ננעל למניעת כפילות';button.textContent='ננעל למניעת כפילות'}
+    }else{
+      // Only explicit server rejection is safely retryable; transport loss remains uncertain.
+      if(error?.status&&error.status<500&&!error?.details?.uncertain){blocked=false;activeOperationId=newOperationId()}
+      if(isActive(generation))connectionStatus(blocked?'warning':'error',blocked?'ההפקה ממתינה לאימות. לא נשלח ניסיון נוסף.':error.message);
+    }
     toast(error.message||'יש לבדוק את מצב ההפקה');
-  }finally{createBusy=false;setBusy(button,false);if(button)button.disabled=blocked}
+  }finally{createBusy=false;setBusy(button,false);if(button)button.disabled=blocked||completed}
 }
 
 function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
