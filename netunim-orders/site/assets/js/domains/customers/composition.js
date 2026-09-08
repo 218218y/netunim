@@ -63,6 +63,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     saveDebt:(...args)=>editor.saveDebt(...args),
     deleteDebt:(...args)=>editor.deleteDebt(...args),
     openMorningDocument:(...args)=>documents.openMorningDocument(...args),
+    openStandaloneMorningDocument:(...args)=>documents.openStandaloneMorningDocument(...args),
     syncMorningDocumentType:(...args)=>documents.syncDocumentType(...args),
     syncMorningPaymentType:(...args)=>documents.syncPaymentType(...args),
     previewMorningDocument:(...args)=>documents.previewMorningDocument(...args),

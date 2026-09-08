@@ -15,6 +15,9 @@ def ok(condition,message):
 edge=FUNCTION.read_text(encoding='utf-8')
 sql=SQL.read_text(encoding='utf-8')
 documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='utf-8')
+view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
+editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
+bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
@@ -54,8 +57,15 @@ ok(not re.search(r'\b(pdf|base64|blob|document_content)\b\s+(?:text|jsonb|bytea)
    'Morning storage: ledger schema does not store PDF/base64/document bodies')
 ok("createDomainsCustomers" in composition and "openMorningDocument" in main and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
    'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
-for action in ('open-morning-document','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
+for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
+
+ok("const STANDALONE_SCOPE='__standalone__'" in documents and "openStandaloneMorningDocument" in documents and "debt_id:activeScopeId" in documents and "open-morning-standalone" in view,
+   'Morning standalone documents: general document creation uses a dedicated ledger scope and never creates a customer debt')
+ok("customer-morning-add-btn" in view and view.find('customer-visible-total') < view.find('customer-morning-add-btn') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
+   'Customer Morning UI: standalone document action is at the toolbar edge and debt-row edit precedes Morning in RTL flow')
+ok("debt_id text not null" in sql and not re.search(r'debt_id\s+text[^,]*references',sql,re.I) and 'morning_document_operations' not in editor and 'morning_document_operations' not in bulk,
+   'Morning retention: deleting a local debt cannot cascade into or explicitly delete the Morning document ledger')
 ok("MORNING_CLIENT_SECRET" in setup and "PDF" in setup and "needs_reconciliation" in setup,
    'Morning setup: deployment, storage and uncertain-create recovery are documented')
 ok("MORNING_ENV_RAW" in edge and "MORNING_ENV_VALID" in edge and "invalid_environment" in edge,
@@ -84,7 +94,7 @@ ok(facade in main and main.find(facade) < main.find('const uiNavigation=createUi
 customer_facades=(
   'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
   'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtNote','openDebtModal','saveDebt','deleteDebt',
-  'openMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
+  'openMorningDocument','openStandaloneMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
 )
 composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 customer_create=main[main.find('const {',main.find(facade)):main.find('}=createDomainsCustomers({')+2]
