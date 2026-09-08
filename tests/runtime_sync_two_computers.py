@@ -43,7 +43,7 @@ def run(app, same):
         head = b.evaluate("window.fixtureHead")
         assert head['revision'] == 11, head
         # A resumes using only its recovered outbox and B's authoritative head.
-        resume = "reportError=()=>{};primaryTab=true;window.fixtureHead="+json.dumps(head)+";"
+        resume = "uiStatus.reportError=()=>{};primaryTab=true;window.fixtureHead="+json.dumps(head)+";"
         if app == 'orders':
             resume += "localStorage.setItem(CLOUD_AUTO_KEY,'1');saveSession({access_token:'fixture',expires_at:9999999999});cloudConflictBlocked=false;"
         else:

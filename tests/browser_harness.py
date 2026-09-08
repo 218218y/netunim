@@ -284,15 +284,17 @@ class BrowserSession:
         if nav.get("errorText"):
             raise RuntimeError('Native ESM runtime requires localhost navigation: '+nav['errorText'])
         end = time.time() + 10
+        last_error = None
+        state = None
         while time.time() < end:
             try:
                 state = self.evaluate("({ready:document.readyState,href:location.href})")
                 if state and state.get("href", "").startswith(self.url) and state.get("ready") == "complete":
                     return
-            except Exception:
-                pass
+            except Exception as error:
+                last_error = error
             time.sleep(0.05)
-        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}")
+        raise RuntimeError(f"{self.label}: page did not finish loading at {self.url}; state: {state}; last error: {last_error}; browser errors: {self.drain_serious_errors()}")
 
     def evaluate(self, expression: str, *, await_promise: bool = True, timeout: float | None = None):
         if self.instrument:

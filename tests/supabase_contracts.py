@@ -40,7 +40,7 @@ class SupabaseContracts(unittest.TestCase):
 
     def test_candidate_matches_actual_production_schema(self):
         target = read('postflight-target.json')
-        self.assertEqual(drift(read('audit/candidate-schema.json'), read(target['schema_snapshot'])), [])
+        self.assertEqual(drift(read(target.get('candidate_snapshot','audit/candidate-schema.json')), read(target['schema_snapshot'])), [])
 
     def test_every_remaining_rpc_advisor_warning_has_reviewed_authorization_coverage(self):
         expected = {'acknowledge_bank_transaction_alert', 'acknowledge_bank_transaction_missing',

@@ -1,5 +1,20 @@
--- Technical issuance ledger only. No business data is converted here.
+-- Guard again under an exclusive lock: preflight counts alone can race a create.
 begin;
+do $$
+begin
+  if to_regclass('public.morning_document_operations') is null then return; end if;
+  lock table public.morning_document_operations in access exclusive mode;
+  if exists (select 1 from public.morning_document_operations
+             where state in ('created','pending','needs_reconciliation')) then
+    raise exception 'Important Morning operations exist. STOP: use a preserving migration.';
+  end if;
+-- Intentionally no IF NOT EXISTS: never overwrite or silently reuse a backup.
+create table public.morning_document_operations_backup_20260908
+as table public.morning_document_operations;
+alter table public.morning_document_operations_backup_20260908 enable row level security;
+revoke all on public.morning_document_operations_backup_20260908 from public, anon, authenticated;
+drop table public.morning_document_operations;
+end $$;
 create table if not exists public.morning_document_operations (
   operation_id uuid primary key,
   owner_id uuid not null references auth.users(id) on delete cascade,

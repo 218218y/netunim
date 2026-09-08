@@ -70,7 +70,7 @@ def run(db,app,checks,same,index):
         db.rpc(rpc,{'p_document_name':doc,'p_expected_revision':0,'p_state':state,'p_operation_id':'fixture-seed','p_audit':{},**extra})
         db.sql('update public.'+table+' set revision=10 where owner_id='+quote(OWNER)+' and document_name='+quote(doc))
         for browser in (a,b):
-            setup="state=normalizeState("+json.dumps(initial)+");primaryTab=true;reportError=()=>{};Object.defineProperty(navigator,'onLine',{value:true,configurable:true});"
+            setup="state=normalizeState("+json.dumps(initial)+");primaryTab=true;uiStatus.reportError=()=>{};Object.defineProperty(navigator,'onLine',{value:true,configurable:true});"
             if app=='orders':setup+="saveSession({access_token:'fixture',expires_at:9999999999});localStorage.setItem(CLOUD_AUTO_KEY,'1');cloudRevision=10;lastCloudState=prepareCloudState(state);cloudConflictBlocked=false;cloudSaveRequested=false;checksCloudRevision=10;checksCloudBase=clone(state.checks);"
             else:setup+="storeSupaSession({access_token:'fixture',expires_at:9999999999});connectionMode='supabase';backendReady=true;dbRevision=10;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));sharedChecksRevision=10;sharedChecksBase=clone(state.checks);cloudConflictPending=false;"
             browser.evaluate('(()=>{'+setup+'return true})()')

@@ -102,13 +102,18 @@ class RetentionContracts(unittest.TestCase):
                        'build_fingerprint': build_fingerprint(), 'inventory': before,
                        'migrations': [{k: r[k] for k in ('version', 'name')} for r in manifest()], 'manifest': manifest()}
             path = db.tmp / 'explicit-test-fixture-capture.json'
+            # Fresh installations have no legacy Morning table to back up. This
+            # test exercises retention against its actual isolated clean schema;
+            # production schema/backup drift is covered by the release contracts.
+            expected_path = db.tmp / 'isolated-clean-schema.json'
+            expected_path.write_text(json.dumps(before), encoding='utf8')
             for field, value in [('valid', None), ('pg_cron', False), ('full_visibility', False),
                                  ('jobs', jobs[:1]), ('jobs', jobs + jobs[:1]), ('launch_active_jobs', 'off')]:
                 test_capture = copy.deepcopy(capture)
                 if field != 'valid':
                     test_capture['inventory']['operations'][field] = value
                 path.write_text(json.dumps(test_capture), encoding='utf8')
-                result = subprocess.run([sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--capture', str(path)], capture_output=True, encoding='utf8', timeout=30)
+                result = subprocess.run([sys.executable, str(ROOT / 'tools/supabase_postflight.py'), '--capture', str(path), '--expected', str(expected_path)], capture_output=True, encoding='utf8', timeout=30)
                 if field == 'valid':
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 else:

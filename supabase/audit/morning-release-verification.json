@@ -1,11 +1,34 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
   "verified_at": "2026-09-08 10:34:55.408168+00",
-  "source_audit": "audit/morning-release-verification.json",
-  "source_audit_sha256": "457e5a20db804bfa11c972e3df190ba25fb21522e756d1a12811aa9ff014b391",
   "production_postflight": "PASS",
-  "schema_snapshot": "audit/morning-schema-live.json",
-  "schema_snapshot_sha256": "11a8b849a116e132fe41575fc14f1ef64bf929af675655fd07ddb669d10608e3",
+  "schema_drift": [],
+  "canonical_migrations": [
+    {
+      "name": "production_schema_baseline",
+      "version": "20260906200304"
+    },
+    {
+      "name": "capabilities_security_invoker",
+      "version": "20260906203818"
+    },
+    {
+      "name": "restore_group_qualified_owner_updates",
+      "version": "20260906203827"
+    },
+    {
+      "name": "oauth_owner_index",
+      "version": "20260906203837"
+    },
+    {
+      "name": "retention_cron_jobs",
+      "version": "20260907035930"
+    },
+    {
+      "name": "morning_operation_ledger",
+      "version": "20260908103011"
+    }
+  ],
   "migration_manifest": [
     {
       "name": "production_schema_baseline",
@@ -38,33 +61,14 @@
       "version": "20260908103011"
     }
   ],
-  "retention_jobs": [
-    {
-      "jobname": "netunim-document-backup-retention-daily",
-      "schedule": "43 3 * * *",
-      "command": "select * from netunim_internal.prune_document_backups();",
-      "active": true,
-      "username": "postgres",
-      "database": "postgres",
-      "nodename": "localhost"
-    },
-    {
-      "jobname": "netunim-sync-ledger-retention-weekly",
-      "schedule": "17 3 * * 0",
-      "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
-      "active": true,
-      "username": "postgres",
-      "database": "postgres",
-      "nodename": "localhost"
-    }
-  ],
-  "operations": {
-    "pg_cron": true,
-    "database": "postgres",
-    "timezone": "GMT",
-    "server_port": 5432,
-    "launch_active_jobs": "on",
-    "full_visibility": true
+  "debt_safety": {
+    "before_count": 41,
+    "after_count": 41,
+    "before_digest": "47487aeba6146049bbc46e1f44aa6574",
+    "after_digest": "47487aeba6146049bbc46e1f44aa6574"
   },
-  "text_hash_normalization": "lf-v1"
+  "backup": "morning_document_operations_backup_20260908",
+  "backup_retained": true,
+  "edge_version": 2,
+  "scope": "Database postflight only; Morning Sandbox acceptance and frontend release tracked separately."
 }

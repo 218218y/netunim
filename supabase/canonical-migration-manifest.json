@@ -23,5 +23,10 @@
     "version": "20260907035930",
     "name": "retention_cron_jobs",
     "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+  },
+  {
+    "version": "20260908103011",
+    "name": "morning_operation_ledger",
+    "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
   }
 ]

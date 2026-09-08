@@ -106,7 +106,7 @@ ok("_pendingDelete:true" in controller and 'ממתין למחיקה' in controll
 ok("autoIncrement:true" in storage and "pending-operations" in storage,'calendar storage: outbound operations use an ordered durable IndexedDB journal')
 ok("error?.status!==409" in journal and 'getEvent' in journal and 'insertMatches' in journal,'calendar journal: duplicate create retry confirms both the preassigned ID and intended event content')
 ok("error?.status===404||error?.status===410" in journal,'calendar journal: repeated deletes acknowledge already-deleted events')
-ok('accounts.google.com/gsi' not in headers and 'https://www.googleapis.com' in headers and "script-src 'self'" in headers and "frame-src 'none'" in headers and 'Cross-Origin-Opener-Policy: same-origin' in headers,'calendar security: CSP/COOP no longer allow Google popup/iframe resources while Calendar API access remains allowed')
+ok('accounts.google.com/gsi' not in headers and 'https://www.googleapis.com' in headers and "script-src 'self'" in headers and "frame-src blob:;" in headers and 'Cross-Origin-Opener-Policy: same-origin' in headers,'calendar security: CSP/COOP prohibit remote iframes; local Morning PDF blobs and Calendar API access remain allowed')
 ok('./assets/js/calendar/journal.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker,'calendar PWA: calendar journal/view/controller modules are part of the deterministic app shell')
 ok((ROOT/'netunim-orders/GOOGLE_CALENDAR_SETUP.txt').is_file(),'calendar setup: deployment/OAuth instructions are included')
 

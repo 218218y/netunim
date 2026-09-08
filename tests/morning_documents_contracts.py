@@ -41,12 +41,12 @@ ok("/documents/preview" in edge and "pdfBase64" in edge and "morningPreviewFrame
    'Morning preview: PDF preview is available without creating a formal document')
 reserve_pos=edge.find('reserved=await reserveOperation')
 create_pos=edge.find("morningRequest('/documents'")
-ok(0 <= reserve_pos < create_pos and "morning_document_operations_unresolved_debt_uidx" in sql,
-   'Morning idempotency: durable DB reservation and unresolved-debt uniqueness precede document creation')
-ok("needs_reconciliation" in edge and "morning_creation_uncertain" in edge and "RECONCILE_RELEASE_AGE_MS" in edge,
+ok(0 <= reserve_pos < create_pos and "morning_document_operations_unresolved_fingerprint_uidx" in sql,
+   'Morning idempotency: durable DB reservation and unresolved-fingerprint uniqueness precede document creation')
+ok("needs_reconciliation" in edge and "morning_creation_uncertain" in edge and "RECONCILE_WINDOW_MS" in edge,
    'Morning ambiguity handling: network/server uncertainty blocks retries and enters reconciliation')
-ok("validateLinkedDocument(ownerId,input)" in edge and ".eq('debt_id',input.debtId)" in edge and ".eq('document_type',305)" in edge,
-   'Morning receipt linking: linked tax invoice must be a created document for the same owner and debt')
+ok("validateLinkedDocument(input)" in edge and "Number(detail?.type)!==305" in edge and "Number(detail?.status)!==0" in edge,
+   'Morning receipt linking: linked tax invoice is verified directly in the current Morning business, including manual invoices')
 ok("morningRequest(`/documents/${encodeURIComponent(id)}`" in edge and "matchesCandidate(detail,row,true)" in edge,
    'Morning reconciliation: ambiguous search candidates are re-read as full documents before linking')
 ok("local_link_pending:true" in edge and "Morning document created but metadata persistence failed" in edge,
@@ -60,13 +60,13 @@ ok("createDomainsCustomers" in composition and "openMorningDocument" in main and
 for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
-ok("const STANDALONE_SCOPE='__standalone__'" in documents and "openStandaloneMorningDocument" in documents and "debt_id:activeScopeId" in documents and "open-morning-standalone" in view,
-   'Morning standalone documents: general document creation uses a dedicated ledger scope and never creates a customer debt')
+ok("openMorningDocumentModal({prefill:null})" in documents and "openStandaloneMorningDocument" in documents and "debt_id" not in documents and "open-morning-standalone" in view,
+   'Morning standalone documents: general document creation shares the prefill flow and has no debt scope')
 ok('ללא חוב מקושר' not in documents,
    'Morning standalone document UI: redundant unlinked-debt hero copy stays removed')
 ok("customer-morning-add-btn" in view and view.find('customer-visible-total') < view.find('customer-morning-add-btn') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
    'Customer Morning UI: standalone document action is at the toolbar edge and debt-row edit precedes Morning in RTL flow')
-ok("debt_id text not null" in sql and not re.search(r'debt_id\s+text[^,]*references',sql,re.I) and 'morning_document_operations' not in editor and 'morning_document_operations' not in bulk,
+ok("debt_id" not in sql and "debt_id" not in edge and 'morning_document_operations' not in editor and 'morning_document_operations' not in bulk,
    'Morning retention: deleting a local debt cannot cascade into or explicitly delete the Morning document ledger')
 ok("MORNING_CLIENT_SECRET" in setup and "PDF" in setup and "needs_reconciliation" in setup,
    'Morning setup: deployment, storage and uncertain-create recovery are documented')
@@ -74,7 +74,7 @@ ok("MORNING_ENV_RAW" in edge and "MORNING_ENV_VALID" in edge and "invalid_enviro
    'Morning environment: only production/sandbox are accepted; typos fail closed instead of silently using production')
 ok("dueDate" in documents and "morningDueDate" in documents and "payload.dueDate=dueDate" in edge and "payload.remarks=remarks" in edge,
    'Morning document details: due date and remarks are supported and validated through the existing date editor')
-ok("allocation_number text" in sql and "allocation_checked_at timestamptz" in sql and "allocationNumber" in edge and "refreshCreatedAllocations" in edge and "morning-allocation" in documents,
+ok("allocation_number text" in sql and "allocation_checked_at timestamptz" in sql and "allocationNumber" in edge and "refreshCreatedAllocation" in edge and "morning-allocation" in documents,
    'Israel Invoices: compact allocation-number metadata is read back from Morning, persisted and displayed')
 ok("const detail=await morningRequest(`/documents/${encodeURIComponent(doc.id)}`" in edge and "canonical read-back failed" in edge,
    'Morning post-create verification: the formal document is re-read after creation without converting a read-back failure into a second create')
@@ -85,26 +85,41 @@ ok("מעל 5,000" in setup and "allocationNumber" in setup and "אין להוס�
 ok('5000' not in edge and '5,000' not in documents,
    'Israel Invoices: regulatory allocation threshold is not hard-coded into runtime logic; Morning remains the compliance authority')
 
-ok("async function openDocument(ownerId:string" in edge and ".eq('owner_id',ownerId)" in edge and "morning_document_not_owned" in edge and "openDocument(user.id,body)" in edge,
-   'Morning document open: document IDs are owner-scoped before Morning is queried')
+ok("async function getDocument(body:any" in edge and "document_links" in edge and "getDocument(body,true)" in edge,
+   'Morning document open: document IDs are checked with the authenticated current Morning business')
 config=(ROOT/'netunim-orders/supabase/config.toml').read_text(encoding='utf-8')
 ok('[functions.morning-documents]' in config and 'verify_jwt = true' in config.split('[functions.morning-documents]',1)[1],
    'Morning function auth: platform JWT verification remains enabled for signed-in browser calls')
-facade='const renderCustomers=(...args)=>domainsCustomersView.renderCustomers(...args);'
-ok(facade in main and main.find(facade) < main.find('const uiNavigation=createUiNavigation') < main.find('=createDomainsCustomers({'),
-   'Customer composition: renderCustomers facade is a top-level deferred binding visible to runtime probes without changing initialization order')
-customer_facades=(
+ok('const domainsCustomers=createDomainsCustomers({' in main and 'const renderCustomers=' not in main
+   and 'renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args)' in main,
+   'Customer composition: deferred navigation uses the public domain API without a test-only lexical facade')
+customer_actions=(
   'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
   'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtNote','openDebtModal','saveDebt','deleteDebt',
   'openMorningDocument','openStandaloneMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
 )
 composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
-customer_create=main[main.find('const {',main.find(facade)):main.find('}=createDomainsCustomers({')+2]
-customer_actions=main[main.find('  setCustomerTab,'):main.find('  toggleServiceBulkMode:',main.find('  setCustomerTab,'))]
-ok(all(f'{name}:(...args)=>' in composition for name in customer_facades)
-   and all(name in customer_create for name in customer_facades)
-   and all(f'  {name},' in customer_actions for name in customer_facades),
-   'Customer composition: the complete customer/debt/Morning action facade is flattened into stable top-level bindings for runtime probes and UI actions')
+ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
+   and all(f'{name}:(...args)=>domainsCustomers.{name}(...args)' in main for name in customer_actions),
+   'Customer composition: customer/debt/Morning actions are wired through the same public API used by tests')
+
+
+browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
+migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql')).read_text(encoding='utf-8')
+ok(all(name not in documents for name in ('applyCreatedOperations','scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration,
+   'Morning cannot change debt flags, amounts or debt storage')
+ok('operation_id uuid primary key' in sql and 'owner_id,environment,request_fingerprint' in sql and 'document_url' not in sql,
+   'Ledger has globally unique operation IDs, environment isolation and no signed URL column')
+ok('lock table' in migration and migration.index('raise exception') < migration.index('create table public.morning_document_operations_backup_20260908') < migration.index('drop table public.morning_document_operations;'),
+   'Migration locks and guards important rows before backup and DROP; backup is retained')
+ok('from.setDate(from.getDate()-90)' in browser and 'page:0,pageSize:25' in browser and "order:'DESC'" in browser and 'CACHE_TTL_MS=90_000' in browser,
+   'Document browser defaults to 90 days, 25 per page and bounded memory cache')
+ok(all(action in edge for action in ('search_documents','get_document','document_links')) and 'morning_documents' not in sql,
+   'Live search and on-demand details/links share one Edge Function without document synchronization')
+ok('Number.isSafeInteger(page)' in edge and 'pageSize>50' in edge and 'SEARCH_TYPES.has(v)' in edge and 'SEARCH_STATUSES.has(v)' in edge and 'clientName.length>160' in edge,
+   'Search uses a server whitelist for dates, pagination, types, statuses, client and sort')
+ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'noopener noreferrer' in browser,
+   'Browser requests fresh document links and never persists documents or signed URLs')
 
 if errors:
     print('\nERRORS',len(errors))

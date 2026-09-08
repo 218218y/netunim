@@ -27,6 +27,8 @@ CORE_SUITES = [
     "module_contracts.py",
     "calendar_contracts.py",
     "morning_documents_contracts.py",
+    "morning_edge_contracts.py",
+    "morning_ledger.py",
     "bank_bridge_contracts.py",
 ]
 
@@ -37,6 +39,7 @@ RUNTIME_SUITES = [
     "runtime_events.py",
     "runtime_security.py",
     "runtime_workflows.py",
+    "runtime_morning.py",
     "runtime_pwa.py",
     "runtime_performance.py",
     "runtime_data_integrity.py",

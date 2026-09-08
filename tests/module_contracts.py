@@ -9,6 +9,7 @@ for command in (
     [sys.executable, 'tools/sync-assets.py', '--check'],
     [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],
+    ['node', '--test', 'tests/module_probe.test.mjs'],
     ['node', str(DEV_NODE_MODULES / 'eslint/bin/eslint.js'), 'netunim-kupa/site', 'netunim-orders/site'],
     ['node', '--test', 'tests/business_models.test.mjs'],
     ['node', '--test', 'tests/global_search.test.mjs'],

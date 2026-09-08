@@ -18,7 +18,7 @@ for label in ('kupa','orders'):
  setPage('checks');clean();openCheckModal(attack);clean();closeModal(true);
  state.expenses=[{id:attack,description:attack,amount:10,date:'2026-08-27',type:attack,account:attack,active:true}];
  setPage('bank');clean();openExpenseModal(attack);clean();
- modal(attack,'<p>trusted body</p>',attack,()=>{});clean();
+ uiModal.modal(attack,'<p>trusted body</p>',attack,()=>{});clean();
  return true;
  """ if label=='kupa' else r"""
  state.suppliers=[{id:attack,name:attack,active:true,sortOrder:0}];
@@ -33,7 +33,7 @@ for label in ('kupa','orders'):
  state.warehouseOrders=[{id:attack,customerName:attack,details:attack,status:'to_order',note:attack}];
  setWarehouseTab('orders');clean();openWarehouseOrderModal(attack);clean();closeModal();
  state.notes=[{id:attack,content:attack,createdAt:'2026-08-27'}];switchView('notes');clean();
- modal(attack,'<p>trusted body</p>','');clean();return true;
+ uiModal.modal(attack,'<p>trusted body</p>','');clean();return true;
  """
         assert browser.evaluate('(async()=>{'+common+flow+'})()')
         assert not browser.drain_serious_errors()

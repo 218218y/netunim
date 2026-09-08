@@ -19,6 +19,10 @@
     {
       "version": "20260907035930",
       "name": "retention_cron_jobs"
+    },
+    {
+      "version": "20260908103011",
+      "name": "morning_operation_ledger"
     }
   ]
 }

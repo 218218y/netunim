@@ -1,8 +1,9 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "schema_snapshot": "audit/production-schema-upgraded.json",
+  "schema_snapshot": "audit/morning-schema-live.json",
   "migration_snapshot": "canonical-migrations.json",
   "manifest_snapshot": "canonical-migration-manifest.json",
   "status": "Canonical file-derived expectations plus an authenticated Production deployment receipt. Static site deploys block on any unacknowledged database-contract change; live drift checks run when live access is configured.",
-  "deployment_receipt": "production-deployment-receipt.json"
+  "deployment_receipt": "production-deployment-receipt.json",
+  "candidate_snapshot": "audit/morning-schema-reviewed.json"
 }

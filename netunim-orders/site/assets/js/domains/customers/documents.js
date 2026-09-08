@@ -6,27 +6,18 @@ const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
 const PAYMENT_TYPES=Object.freeze({1:'מזומן',2:'צ׳ק',3:'כרטיס אשראי',4:'העברה בנקאית'});
 const CARD_TYPES=Object.freeze({1:'ישראכרט',2:'Visa',3:'Mastercard',4:'American Express',5:'Diners'});
-const STANDALONE_SCOPE='__standalone__';
 let previewObjectUrl='';
 
 function todayLocal(){const d=new Date(),shift=d.getTimezoneOffset()*60_000;return new Date(d.getTime()-shift).toISOString().slice(0,10)}
 function documentLabel(type){return DOCUMENT_TYPES[Number(type)]||`מסמך ${Number(type)||''}`}
-function operationCreated(op){return String(op?.state||'')==='created'&&String(op?.document_id||'')}
-function allocationNumber(op){return cleanText(op?.allocation_number,40)}
-function documentAmount(op){const n=Number(op?.amount);return Number.isFinite(n)?n:0}
-function sameAmount(a,b){return Math.abs(Number(a||0)-Number(b||0))<0.01}
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function currentField(id){return $('#'+id)}
-function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=busy?label:button.dataset.idleLabel}}
+function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,supaFetch,scheduleSave,renderCustomers,dateEditorMarkup}){
-let activeDebtId='',activeScopeId='',activeOperationId='',lastOperations=[];
-
-function debt(){return (model.state.customerDebts||[]).find(item=>item.id===activeDebtId)||null}
-function standaloneActive(){return activeScopeId===STANDALONE_SCOPE}
-function defaultType(d){if(d?.paid&&!d?.invoiceIssued)return 320;if(!d?.paid)return 305;return 400}
+export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,supaFetch,dateEditorMarkup,documentsBrowser}){
+let activeOperationId='',modalGeneration=0,createBusy=false,blocked=false;
 function defaultDescription(d,standalone=false){if(standalone)return'';const order=cleanText(d?.orderNumber,80);return order?`הזמנה ${order}`:`עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
-function newOperationId(){return globalThis.crypto?.randomUUID?.()||`morning-${Date.now()}-${Math.random().toString(16).slice(2)}`}
+function newOperationId(){return globalThis.crypto.randomUUID()}
 
 async function backend(action,payload={}){
   let response;
@@ -38,8 +29,7 @@ async function backend(action,payload={}){
 }
 
 function documentButton(d){
-  const label=d.invoiceIssued?'מסמך':'הפק מסמך';
-  return `<button class="icon-btn morning-document-button ${esc(d.invoiceIssued?'has-document':'')}" title="${esc(label+' ב-Morning')}" aria-label="${esc(label+' ב-Morning')}" data-action="open-morning-document" data-click-arg0="${esc(d.id)}"><span aria-hidden="true">▤</span></button>`;
+  return `<button class="icon-btn morning-document-button" title="הפק מסמך ב-Morning" aria-label="הפק מסמך ב-Morning" data-action="open-morning-document" data-click-arg0="${esc(d.id)}"><span aria-hidden="true">▤</span></button>`;
 }
 
 function paymentFields(dateEditorMarkup){return `<div id="morningPaymentFields" class="morning-payment-panel">
@@ -61,10 +51,9 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
   const amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'';
   const heroAmount=standalone?'<div class="morning-amount standalone"><small>מסמך כללי</small></div>':`<div class="morning-amount"><small>סכום החוב</small><b>${money(d.amount)}</b></div>`;
   const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
-  const historyTitle=standalone?'מסמכי Morning כלליים':'מסמכי Morning לחוב הזה';
-  return `<div class="morning-document-dialog" data-morning-scope="${esc(activeScopeId)}">
+  return `<div class="morning-document-dialog" data-morning-generation="${modalGeneration}">
     <div class="morning-document-hero"><div><span class="morning-brand">Morning</span><h4>${standalone?'הפקת מסמך כללי':'הפקת מסמך ללקוח'}</h4><p>המסמך הרשמי יופק ויישמר ב-Morning. באתר נשמרת רק הפניה קטנה למסמך.</p></div>${heroAmount}</div>
-    <div id="morningConnectionStatus" class="morning-connection loading"><span class="morning-dot"></span><span>בודק חיבור ומסמכים קיימים…</span></div>
+    <div id="morningConnectionStatus" class="morning-connection loading"><span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${Object.entries(DOCUMENT_TYPES).map(([value,label])=>`<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${esc(value)}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`).join('')}
     </div>
@@ -79,37 +68,35 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
         <div class="field"><label>תאריך מסמך</label>${dateEditorMarkup('morningDocumentDate',todayLocal(),{label:'תאריך מסמך'})}</div>
         <div class="field morning-due-date-field" data-document-kind="305"><label>לתשלום עד <small>(רשות)</small></label>${dateEditorMarkup('morningDueDate','',{label:'תאריך לתשלום'})}</div>
         <div class="field"><label>מספר הזמנה <small>(לזיהוי אצלך)</small></label><input id="morningOrderNumber" maxlength="80" value="${esc(d.orderNumber||'')}"></div>
-        <div class="field full"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(defaultDescription(d,standalone))}"></div>
+        <div class="field full"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(d.description||defaultDescription(d,standalone))}"></div>
         <div class="field full"><label>הערות במסמך <small>(רשות)</small></label><textarea id="morningRemarks" maxlength="500" rows="2" placeholder="הערה שתופיע במסמך ב-Morning"></textarea></div>
       </div>
       <div class="morning-allocation-note"><b>חשבוניות ישראל</b><span>Morning מטפלת במספר הקצאה אוטומטית כאשר החיבור לרשות המסים פעיל והמסמך עומד בתנאים. לא בכל חשבונית נדרש מספר; ללקוח עסקי חשוב להזין מספר עוסק / ח.פ.</span></div>
     </div>
     ${paymentFields(dateEditorMarkup)}
-    <div id="morningLinkedDocumentPanel" class="morning-form-card" hidden><div class="morning-section-title"><span>קישור לחשבונית מס קיימת</span><small>בקבלה ניתן לקשר לחשבונית שהופקה קודם</small></div><div class="field"><label>חשבונית לקישור <small>(רשות)</small></label><select id="morningLinkedDocument"><option value="">ללא קישור</option></select></div></div>
+    <div id="morningLinkedDocumentPanel" class="morning-form-card" hidden><div class="morning-section-title"><span>קישור לחשבונית מס קיימת</span><small>בקבלה ניתן לקשר לחשבונית שהופקה קודם</small></div><div class="field"><label>חשבונית לקישור <small>(רשות)</small></label><select id="morningLinkedDocument"><option value="">ללא קישור</option></select><button class="btn small" data-action="morning-invoice-picker">חפש חשבונית ב-Morning</button><div id="morningInvoicePicker" hidden></div></div></div>
     <div id="morningPreviewBox" class="morning-preview-box" hidden><div class="morning-preview-head"><b>תצוגה מקדימה</b><span>הקובץ עדיין לא הופק רשמית</span></div><iframe id="morningPreviewFrame" title="תצוגה מקדימה של מסמך Morning"></iframe></div>
-    <div class="morning-history"><div class="morning-section-title"><span>${historyTitle}</span><button class="btn tiny" data-action="morning-reconcile">בדוק שוב</button></div><div id="morningDocumentHistory" class="morning-history-list"><div class="morning-empty">טוען…</div></div></div>
+    <div id="morningOperationResult" aria-live="polite"></div><button class="btn small" data-action="morning-reconcile">בדוק מצב הפקה</button>
   </div>`;
 }
 
-function foot(){return `<button class="btn primary" data-action="morning-create">הפק מסמך רשמי</button><button class="btn" data-action="morning-preview">תצוגה מקדימה</button><button class="btn" data-action="close-modal">סגור</button>`}
+function foot(){return `<button class="btn primary" data-action="morning-create" disabled>הפק מסמך רשמי</button><button class="btn" data-action="morning-preview">תצוגה מקדימה</button><button class="btn" data-action="close-modal">סגור</button>`}
 
-async function openMorningDocument(debtId){
+function openMorningDocument(debtId){
   const d=(model.state.customerDebts||[]).find(item=>item.id===debtId);if(!d)return toast('חוב הלקוח לא נמצא');
-  activeDebtId=d.id;activeScopeId=d.id;activeOperationId=newOperationId();lastOperations=[];
-  if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
-  modal('מסמך Morning',formBody(d,defaultType(d),dateEditorMarkup),foot());
-  syncDocumentType();syncPaymentType();
-  await refreshStatus({reconcile:true});
+  const {customerName,amount,orderNumber,phone,email,taxId}=d;
+  return openMorningDocumentModal({prefill:{customerName,amount,orderNumber,phone,email,taxId}});
 }
-
-async function openStandaloneMorningDocument(){
-  activeDebtId='';activeScopeId=STANDALONE_SCOPE;activeOperationId=newOperationId();lastOperations=[];
+function openStandaloneMorningDocument(){return openMorningDocumentModal({prefill:null})}
+async function openMorningDocumentModal({prefill=null}={}){
+  // Retain an uncertain operation in memory across closing/reopening the dialog.
+  if(!blocked&&!createBusy)activeOperationId=newOperationId();
+  modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
-  const standalone={customerName:'',amount:'',email:'',phone:'',taxId:'',orderNumber:''};
-  modal('הפקת מסמך Morning',formBody(standalone,305,dateEditorMarkup,{standalone:true}),foot());
-  syncDocumentType();syncPaymentType();
-  await refreshStatus({reconcile:true});
+  modal('הפקת מסמך Morning',formBody(prefill||{},305,dateEditorMarkup,{standalone:!prefill}),foot());
+  syncDocumentType();syncPaymentType();await refreshStatus();
 }
+function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
 
 function selectedType(){return Number(document.querySelector('input[name="morningDocumentType"]:checked')?.value||0)}
 function syncDocumentType(){const type=selectedType(),needsPayment=type===320||type===400;const payment=currentField('morningPaymentFields'),linked=currentField('morningLinkedDocumentPanel');if(payment)payment.hidden=!needsPayment;if(linked)linked.hidden=type!==400;document.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type})}
@@ -127,40 +114,37 @@ function paymentPayload(amount){
 }
 
 function readForm(){
-  const d=debt();if(!activeScopeId)throw new Error('הקשר מסמך Morning אינו זמין');if(!standaloneActive()&&!d)throw new Error('חוב הלקוח כבר אינו קיים');
+  if(!activeOperationId)throw new Error('יש לפתוח את חלון ההפקה');
   const type=selectedType();if(!DOCUMENT_TYPES[type])throw new Error('יש לבחור סוג מסמך');
   const clientName=cleanText(currentField('morningClientName')?.value,160),email=cleanText(currentField('morningClientEmail')?.value,180),phone=cleanText(currentField('morningClientPhone')?.value,50),taxId=validateTaxId(currentField('morningClientTaxId')?.value),rawAmount=String(currentField('morningAmount')?.value||''),amount=Number(rawAmount),date=String(currentField('morningDocumentDate')?.value||''),dueDate=type===305?String(currentField('morningDueDate')?.value||''):'',description=cleanText(currentField('morningDescription')?.value,250),remarks=cleanText(currentField('morningRemarks')?.value,500),orderNumber=cleanText(currentField('morningOrderNumber')?.value,80);
   if(!clientName)throw new Error('יש להזין שם לקוח');if(!Number.isFinite(amount)||amount<=0)throw new Error('יש להזין סכום חיובי תקין');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('יש לבחור תאריך מסמך');if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))throw new Error('תאריך לתשלום אינו תקין');if(dueDate&&dueDate<date)throw new Error('תאריך לתשלום לא יכול להיות לפני תאריך המסמך');if(!description)throw new Error('יש להזין תיאור למסמך');if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('כתובת האימייל אינה תקינה');
-  const payload={debt_id:activeScopeId,operation_id:activeOperationId,document:{type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone}}};
+  const payload={operation_id:activeOperationId,document:{type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone}}};
   if(type===320||type===400)payload.document.payment=paymentPayload(amount);
   if(type===400){const linked=String(currentField('morningLinkedDocument')?.value||'').trim();if(linked)payload.document.linkedDocumentId=linked}
   return payload;
 }
 
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;el.className=`morning-connection ${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
-function historyHtml(ops){const created=(ops||[]).filter(operationCreated);if(!created.length)return `<div class="morning-empty">${standaloneActive()?'עדיין לא הופק מסמך Morning כללי.':'עדיין לא הופק מסמך Morning מהחוב הזה.'}</div>`;return created.map(op=>{const type=Number(op.document_type),allocation=allocationNumber(op),allocationText=[305,320].includes(type)?`<span class="morning-allocation ${allocation?'assigned':'empty'}" title="${esc(allocation?'מספר ההקצאה שהתקבל מ-Morning':'לא התקבל מספר הקצאה מ-Morning; ייתכן שאינו נדרש למסמך הזה')}">מס׳ הקצאה: ${esc(allocation||'—')}</span>`:'';return `<div class="morning-history-row"><div><b>${esc(documentLabel(type))}${op.document_number?` #${esc(op.document_number)}`:''}</b><small>${esc(op.document_date||'')} · ${money(documentAmount(op))}${allocationText}</small></div><button class="btn tiny" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`}).join('')}
-function populateLinkedDocuments(ops){const select=currentField('morningLinkedDocument');if(!select)return;const previous=select.value,rows=(ops||[]).filter(op=>operationCreated(op)&&Number(op.document_type)===305);select.innerHTML='<option value="">ללא קישור</option>'+rows.map(op=>`<option value="${esc(op.document_id)}">חשבונית מס ${esc(op.document_number?`#${op.document_number}`:'')} · ${money(documentAmount(op))}</option>`).join('');if(rows.some(op=>op.document_id===previous))select.value=previous;else if(rows.length===1)select.value=rows[0].document_id}
-
-function applyCreatedOperations(ops){
-  const d=debt();if(!d)return false;const matching=(ops||[]).filter(op=>operationCreated(op)&&sameAmount(documentAmount(op),d.amount));if(!matching.length)return false;
-  const invoice=matching.some(op=>[305,320].includes(Number(op.document_type))),paid=matching.some(op=>[320,400].includes(Number(op.document_type)));if(!invoice&&!paid)return false;
-  const now=new Date().toISOString();let changed=false;
-  if(invoice&&!d.invoiceIssued){d.invoiceIssued=true;d.invoiceIssuedAt=d.invoiceIssuedAt||now;changed=true}
-  if(paid&&!d.paid){d.paid=true;d.paidAt=d.paidAt||now;changed=true}
-  if(changed){d.updatedAt=now;d.closedAt=d.paid&&d.invoiceIssued?(d.closedAt||now):null;scheduleSave('סטטוס חוב הלקוח עודכן ממסמך Morning');renderCustomers()}
-  return changed;
+function renderOperation(op){
+  const result=currentField('morningOperationResult');if(!result||op?.state!=='created')return;
+  result.innerHTML=`<div class="morning-form-card"><b>המסמך הופק בהצלחה ${esc(op.document_number||'')}</b><span class="morning-allocation">מספר הקצאה: ${esc(op.allocation_number||'—')}</span><button class="btn small" data-action="morning-open-document" data-click-arg0="${esc(op.document_id)}">צפה</button></div>`;
 }
-
 async function refreshStatus({reconcile=false}={}){
-  if(!activeScopeId)return;
-  connectionStatus('loading','בודק חיבור ומסמכים קיימים…');
+  const generation=modalGeneration,operationId=activeOperationId;
+  connectionStatus('loading','בודק חיבור ל-Morning…');
   try{
-    const data=await backend('status',{debt_id:activeScopeId,reconcile});lastOperations=Array.isArray(data.operations)?data.operations:[];
-    currentField('morningDocumentHistory')?.replaceChildren();const history=currentField('morningDocumentHistory');if(history)history.innerHTML=historyHtml(lastOperations);populateLinkedDocuments(lastOperations);applyCreatedOperations(lastOperations);
-    const envLabel=data.environment==='sandbox'?'Sandbox':'Production';if(data.configured)connectionStatus(data.unresolved||data.environment==='sandbox'?'warning':'ready',data.unresolved?'יש ניסיון הפקה שדורש אימות לפני פעולה נוספת. לחץ „בדוק שוב”.':`מחובר ל-Morning ${envLabel} · ${lastOperations.filter(operationCreated).length} מסמכים מקושרים`);else connectionStatus('error',data.configuration_error==='invalid_environment'?'MORNING_ENV אינו תקין. יש לבחור production או sandbox.':'Morning אינו מוגדר בשרת. יש להגדיר את משתני הסביבה ב-Supabase.');
-    const createButton=document.querySelector('[data-action="morning-create"]');if(createButton)createButton.disabled=!data.configured||!!data.unresolved;
+    const data=await backend('status',{operation_id:operationId,reconcile});
+    if(!isActive(generation)||operationId!==activeOperationId||createBusy)return data;
+    // A status read can race a still-running Edge request before its reservation.
+    // Missing metadata is not proof that an uncertain issuance did not happen.
+    blocked=!!data.unresolved||(blocked&&!data.operation);renderOperation(data.operation);
+    if(data.operation?.state==='created'||data.operation?.state==='failed')activeOperationId=newOperationId();
+    const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
+    if(data.configured)connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
+    else connectionStatus('error','Morning אינו מוגדר בשרת');
+    const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=!data.configured||blocked||createBusy;
     return data;
-  }catch(error){connectionStatus('error',error.message||'לא ניתן לאמת את חיבור Morning');const createButton=document.querySelector('[data-action="morning-create"]');if(createButton)createButton.disabled=true;const history=currentField('morningDocumentHistory');if(history)history.innerHTML='<div class="morning-empty error">לא ניתן לקרוא כרגע את רישום מסמכי Morning. ההפקה חסומה ליתר ביטחון.</div>';return null}
+  }catch(error){if(isActive(generation)){connectionStatus('error',error.message||'לא ניתן לאמת את החיבור');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=true}return null}
 }
 
 async function previewMorningDocument(button){
@@ -170,20 +154,35 @@ async function previewMorningDocument(button){
 }
 
 async function createMorningDocument(button){
+  if(createBusy||blocked)return;
   let payload;try{payload=readForm()}catch(error){return toast(error.message)}
-  const d=debt(),type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name;
-  const missingTaxId=[305,320].includes(Number(type))&&!payload.document.client.taxId,allocationWarning=missingTaxId?'\n\nשים לב: לא הוזן מספר עוסק / ח.פ. ללקוח. אם זו חשבונית עסקית שנדרשת למספר הקצאה, Morning לא תוכל לבקש אותו בלי הפרט הזה.':'';
-  const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק עכשיו ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName||d?.customerName||'הלקוח'}?\n\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${allocationWarning}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});if(!confirmed)return;
-  setBusy(button,true,'מפיק…');
+  const generation=modalGeneration,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name;
+  createBusy=true;setBusy(button,true,'מפיק…');
   try{
-    const data=await backend('create',payload);if(!data.document?.id)throw new Error('Morning אישרה את הבקשה אך לא החזירה מזהה מסמך');const allocation=cleanText(data.document.allocationNumber,40),taxDocument=[305,320].includes(Number(type));toast(`${documentLabel(type)} ${data.document.number?`#${data.document.number} `:''}הופק בהצלחה${allocation?` · מספר הקצאה ${allocation}`:taxDocument?' · מספר הקצאה לא חזר כרגע מ-Morning':''}`);activeOperationId=newOperationId();await refreshStatus({reconcile:false});
+    const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});
+    if(!confirmed||!isActive(generation))return;
+    // Conservatively retain the operation even when the browser loses the Edge response.
+    blocked=true;
+    const data=await backend('create',payload);if(!data.document?.id)throw new Error('לא התקבל מזהה מסמך; יש לבדוק את מצב ההפקה');
+    documentsBrowser.invalidateCache();
+    if(isActive(generation)){
+      renderOperation({state:'created',document_id:data.document.id,document_number:data.document.number,allocation_number:data.document.allocationNumber});
+      connectionStatus(data.local_link_pending?'warning':'ready',data.local_link_pending?'המסמך הופק. שמירת רישום הפעולה עדיין בבדיקה.':'המסמך הופק בהצלחה');
+    }
+    blocked=!!data.local_link_pending;
+    if(!blocked)activeOperationId=newOperationId();
+    toast(`${documentLabel(type)} ${data.document.number||''} הופק בהצלחה`);
   }catch(error){
-    if(error?.details?.uncertain){connectionStatus('warning','לא ניתן לדעת בוודאות אם Morning כבר הפיקה את המסמך. ההפקה נעצרה עד לאימות.');toast('החיבור נותק אחרי שליחת הבקשה. לא נשלח ניסיון נוסף כדי למנוע מסמך כפול.');await refreshStatus({reconcile:true})}else toast(error.message||'הפקת המסמך נכשלה');
-  }finally{setBusy(button,false)}
+    if(error?.details?.operation_id)activeOperationId=error.details.operation_id;
+    // Only explicit server rejection is safely retryable; transport loss remains uncertain.
+    if(error?.status&&error.status<500&&!error?.details?.uncertain){blocked=false;activeOperationId=newOperationId()}
+    if(isActive(generation))connectionStatus(blocked?'warning':'error',blocked?'ההפקה ממתינה לאימות. לא נשלח ניסיון נוסף.':error.message);
+    toast(error.message||'יש לבדוק את מצב ההפקה');
+  }finally{createBusy=false;setBusy(button,false);if(button)button.disabled=blocked}
 }
 
-async function openExistingDocument(documentId,button){setBusy(button,true,'פותח…');try{const data=await backend('open_document',{document_id:String(documentId||'')});const url=String(data.url||'');if(!/^https:\/\//.test(url))throw new Error('לא התקבל קישור מסמך תקין');const anchor=document.createElement('a');anchor.href=url;anchor.target='_blank';anchor.rel='noopener noreferrer';document.body.appendChild(anchor);anchor.click();anchor.remove()}catch(error){toast(error.message||'פתיחת המסמך נכשלה')}finally{setBusy(button,false)}}
-async function reconcile(button){setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
+function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
+async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {documentButton,openMorningDocument,openStandaloneMorningDocument,syncDocumentType,syncPaymentType,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus};
+return {documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,syncDocumentType,syncPaymentType,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus};
 }
