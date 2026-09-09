@@ -172,6 +172,8 @@ ok("action==='abandon_reservation'" in edge and "eq('state','reserved')" in edge
    'Morning reload pre-POST recovery: only a still-reserved operation can be atomically abandoned; pending/external issuance is never canceled and must reconcile')
 ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||result.reason==='already-applied'" in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
    'Morning local durability handshake: scheduleSave reports durability and an idempotent replay re-persists an in-memory Morning event before recovery state may clear')
+ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=4,
+   'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
 ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
    'Morning debt primary-tab safety: debt-linked issuance is blocked before POST and rechecked after confirmation when local mutation authority is unavailable')
 ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args)" in composition

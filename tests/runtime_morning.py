@@ -75,8 +75,9 @@ fill('morningSearchClient','Filtered');document.getElementById('morningSearchCli
 document.getElementById('morningSearchClient').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));await waitFor(()=>calls.some(c=>c.clientName==='Filtered')&&document.querySelector('[data-action="morning-details"]'));
 click('morning-details');await waitFor(()=>document.getElementById('morningBrowserDetails').textContent.includes('On demand'));
 const opened=[];HTMLAnchorElement.prototype.click=function(){opened.push(this.href)};
+const pdfCallsBeforeManualView=calls.filter(c=>c.action==='document_pdf').length;
 click('morning-browser-view');await waitFor(()=>!document.getElementById('morningBrowserPreview').hidden&&document.getElementById('morningBrowserPreviewFrame').src.startsWith('blob:'));
-assert(calls.filter(c=>c.action==='document_pdf').length===3,'Manual view streams a fresh PDF in addition to both automatically loaded issued-document PDFs');
+assert(calls.filter(c=>c.action==='document_pdf').length===pdfCallsBeforeManualView+1,'Manual view streams exactly one fresh PDF regardless of how many issued-document PDFs were automatically loaded earlier');
 assert(opened.length===0,'View remains inside the app and does not open Morning');
 click('morning-download');await waitFor(()=>opened.length===1);
 assert(opened[0].startsWith('https://example.org/document.pdf?fresh='),'Download still uses a fresh PDF attachment link');

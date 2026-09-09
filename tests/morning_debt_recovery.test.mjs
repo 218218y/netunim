@@ -8,6 +8,7 @@ import {
   saveMorningDebtRecoveryContext,
   clearMorningDebtRecoveryContext,
   morningDebtRecoveryMatchesVerified,
+  morningVerifiedApplicationDurable,
 } from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
 import {applyVerifiedMorningDocumentToDebt} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
@@ -82,4 +83,23 @@ test('saved allocation policy survives reload and prevents a manual payment from
   assert.equal(result.changed,true);
   const progress=customerDebtProgressData(debt);assert.equal(progress.paymentApplied,30);assert.equal(progress.invoiceApplied,30);
   assert.equal(debt.debtProgress.filter(row=>row.kind==='payment').length,1);assert.equal(debt.debtProgress.filter(row=>row.kind==='invoice'&&row.source==='morning').length,1);
+});
+
+
+test('verified recovery durability uses an explicit safe allowlist and unknown outcomes fail closed',()=>{
+  for(const reason of ['standalone','skipped-by-policy','no-balance','ineligible-debt','missing-debt'])assert.equal(morningVerifiedApplicationDurable({changed:false,reason}),true,reason);
+  assert.equal(morningVerifiedApplicationDurable({changed:true,persisted:true}),true);
+  assert.equal(morningVerifiedApplicationDurable({changed:false,reason:'already-applied',persisted:true}),true);
+  for(const result of [
+    null,
+    {changed:true},
+    {changed:true,persisted:false},
+    {changed:false,reason:'already-applied'},
+    {changed:false,reason:'write-blocked'},
+    {changed:false,reason:'verification-mismatch'},
+    {changed:false,reason:'no-handler'},
+    {changed:false,reason:'editor-unavailable'},
+    {changed:false,reason:'unbound-operation'},
+    {changed:false,reason:'future-unknown-result'},
+  ])assert.equal(morningVerifiedApplicationDurable(result),false,JSON.stringify(result));
 });

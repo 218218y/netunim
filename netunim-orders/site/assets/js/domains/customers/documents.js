@@ -3,7 +3,7 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
-import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified} from './morning-debt-recovery.js';
+import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable} from './morning-debt-recovery.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
@@ -209,7 +209,10 @@ function applyVerifiedContext(context,{operationId,type,amount,verifiedAt}={}){
   return result;
 }
 function applyVerifiedOperation(args={}){return applyVerifiedContext(issuanceContext,args)}
-function verifiedApplicationDurable(result){return result?.reason!=='write-blocked'&&result?.reason!=='no-handler'&&result?.reason!=='verification-mismatch'&&result?.persisted!==false}
+function settleVerifiedRecovery(operationId,result,{serverLinkPending=false}={}){
+  const durable=morningVerifiedApplicationDurable(result),recoveryCleared=durable&&!serverLinkPending?clearRecoveryContext(operationId):false;
+  return {durable,recoveryCleared,blocked:!durable||serverLinkPending||!recoveryCleared};
+}
 
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;el.className=`morning-connection ${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){
@@ -238,14 +241,15 @@ async function refreshStatus({reconcile=false}={}){
     // A persisted recovery context stays fail-closed even if a status read races before the Edge reservation becomes visible.
     const recoveryStillPending=pendingRecovery?.operationId===operationId;
     blocked=!!data.unresolved||!!data.retryable_reserved||(recoveryStillPending&&!data.operation);renderOperation(data.operation);
-    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at,needsLocalRecovery=!completed||pendingRecovery?.operationId===operationId;
-    if(verifiedCreated&&needsLocalRecovery){const result=applyVerifiedOperation({operationId:data.operation.operation_id,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at});const durable=verifiedApplicationDurable(result);if(durable)clearRecoveryContext(operationId);blocked=!durable;completed=durable;markModalDraftSaved?.()}
+    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at,needsLocalRecovery=!completed||pendingRecovery?.operationId===operationId;let recoveryCleanupPending=false;
+    if(verifiedCreated&&needsLocalRecovery){const result=applyVerifiedOperation({operationId:data.operation.operation_id,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at}),settlement=settleVerifiedRecovery(operationId,result);blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;markModalDraftSaved?.()}
     if(data.operation?.state==='failed'){resetOperationAfterTerminal(operationId)}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
     if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
     else if(data.available===false)connectionStatus('error',blocked?'Morning אינו זמין כרגע והפקה קודמת עדיין חסומה עד לאימות.':'Morning אינו זמין כרגע. הפקת מסמכים חסומה ליתר ביטחון.');
     else if(data.retryable_reserved)connectionStatus('warning','הפעולה נרשמה אך טרם נשלחה ל-Morning. לחץ „בדוק מצב הפקה” כדי לבטל את ההזמנה המוקדמת בבטחה ואז להפיק מחדש.');
     else if(recoveryStillPending&&!data.operation)connectionStatus('warning','נשמר ניסיון הפקה מקומי אך הוא עדיין לא הופיע ביומן השרת. לא נשלח ניסיון נוסף עד שהמצב יתברר.');
+    else if(recoveryCleanupPending)connectionStatus('warning','המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה והמערכת תנסה שוב.');
     else connectionStatus(blocked||data.environment==='sandbox'?'warning':'ready',blocked?'ניסיון ההפקה עדיין בבדיקה. לחץ „בדוק מצב הפקה”.':`מחובר ל-Morning ${envLabel}`);
     const button=document.querySelector('[data-action="morning-create"]');if(button){button.disabled=!data.configured||data.available===false||blocked||completed||createBusy;if(completed){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}}
     if(blocked&&recoveryStillPending)scheduleRecoveryCheck();
@@ -265,9 +269,9 @@ async function recoverPendingMorningOperation({quiet=false}={}){
       operation=abandoned.operation;
     }
     if(operation?.state==='created'&&operation.verified_at){
-      const result=applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at});
-      if(verifiedApplicationDurable(result)){clearRecoveryContext(context.operationId);blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
-      scheduleRecoveryCheck();return {ok:false,state:'local-pending',result};
+      const result=applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result);
+      if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
+      blocked=true;completed=settlement.durable;scheduleRecoveryCheck();if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
     }
     if(operation?.state==='failed'){resetOperationAfterTerminal(context.operationId);toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
     blocked=true;scheduleRecoveryCheck(operation?60_000:30_000);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
@@ -299,8 +303,7 @@ async function createMorningDocument(button){
     // From this point both the server reservation and the exact local debt/update policy are durable before any official POST.
     blocked=true;
     const data=await backend('create',payload);if(data.verified!==true||!data.document?.id)throw new Error('השרת לא החזיר אימות קנוני למסמך. לא יישלח ניסיון נוסף לפני בדיקת מצב ההפקה.');
-    const result=applyVerifiedOperation({operationId:activeOperationId,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()}),durable=verifiedApplicationDurable(result);
-    let recoveryCleared=false;if(durable&&!data.local_link_pending)recoveryCleared=clearRecoveryContext(activeOperationId);
+    const result=applyVerifiedOperation({operationId:activeOperationId,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()}),settlement=settleVerifiedRecovery(activeOperationId,result,{serverLinkPending:!!data.local_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;
     documentsBrowser.invalidateCache();
     let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});
     if(isActive(generation)){
@@ -309,7 +312,7 @@ async function createMorningDocument(button){
       connectionStatus(!durable||data.local_link_pending||!recoveryCleared||!pdfLoaded?'warning':'ready',message);
       if(button){button.dataset.idleLabel='הופק ואומת';button.textContent='הופק ואומת'}
     }
-    blocked=!durable||!!data.local_link_pending||!recoveryCleared;completed=true;if(isActive(generation))markModalDraftSaved?.();
+    blocked=settlement.blocked;completed=true;if(isActive(generation))markModalDraftSaved?.();
     if(blocked)scheduleRecoveryCheck();
     toast(`${documentLabel(type)} ${data.document.number||''} הופק ואומת ב-Morning`);
   }catch(error){
