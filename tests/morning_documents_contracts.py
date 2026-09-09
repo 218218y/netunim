@@ -30,6 +30,8 @@ preissue=PREISSUE.read_text(encoding='utf-8')
 
 ok("const DOCUMENT_TYPES=new Set([305,320,400])" in edge and "305:'חשבונית מס'" in documents and "320:'חשבונית מס / קבלה'" in documents and "400:'קבלה'" in documents,
    'Morning document types: tax invoice, invoice/receipt and receipt are explicit and consistent')
+ok("const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400])" in documents and "const DEFAULT_DOCUMENT_TYPE=320" in documents and "DOCUMENT_TYPE_ORDER.map(value=>" in documents and "formBody(prefill||{},DEFAULT_DOCUMENT_TYPE,dateEditorMarkup,{standalone:!prefill})" in documents,
+   'Morning document default: invoice/receipt is selected for debt-prefilled and standalone issuance')
 ok("const PAYMENT_TYPES=new Set([1,2,3,4])" in edge and "1:'מזומן'" in documents and "2:'צ׳ק'" in documents and "3:'כרטיס אשראי'" in documents and "4:'העברה בנקאית'" in documents,
    'Morning payment enum: cash/check/card/electronic transfer codes are fixed on both client and server')
 ok("https://api.morning.co/idp/v1/oauth/token" in edge and "grant_type:'client_credentials'" in edge and "'Content-Type':'application/json'" in edge and "expiresAt" in edge and "https://api.greeninvoice.co.il/api/v1" in edge,

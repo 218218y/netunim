@@ -4,6 +4,8 @@ import {$} from '../../state/constants.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
+const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400]);
+const DEFAULT_DOCUMENT_TYPE=320;
 const PAYMENT_TYPES=Object.freeze({1:'מזומן',2:'צ׳ק',3:'כרטיס אשראי',4:'העברה בנקאית'});
 const CARD_TYPES=Object.freeze({1:'ישראכרט',2:'Visa',3:'Mastercard',4:'American Express',5:'Diners'});
 let previewObjectUrl='';
@@ -55,7 +57,7 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
     <div class="morning-document-hero"><div><span class="morning-brand">Morning</span><h4>${standalone?'הפקת מסמך כללי':'הפקת מסמך ללקוח'}</h4><p>המסמך הרשמי יופק ויישמר ב-Morning. באתר נשמרת רק הפניה קטנה למסמך.</p></div>${heroAmount}</div>
     <div id="morningConnectionStatus" class="morning-connection loading"><span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
-      ${Object.entries(DOCUMENT_TYPES).map(([value,label])=>`<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${esc(value)}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`).join('')}
+      ${DOCUMENT_TYPE_ORDER.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${esc(value)}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
     </div>
     <div class="morning-form-card">
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
@@ -93,7 +95,7 @@ async function openMorningDocumentModal({prefill=null}={}){
   if(!blocked&&!createBusy){activeOperationId=newOperationId();completed=false}
   modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
-  modal('הפקת מסמך Morning',formBody(prefill||{},305,dateEditorMarkup,{standalone:!prefill}),foot());
+  modal('הפקת מסמך Morning',formBody(prefill||{},DEFAULT_DOCUMENT_TYPE,dateEditorMarkup,{standalone:!prefill}),foot());
   syncDocumentType();syncPaymentType();await refreshStatus();
 }
 function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
