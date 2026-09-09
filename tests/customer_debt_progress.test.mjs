@@ -113,7 +113,7 @@ test('partial customer row makes the unpaid balance primary and exposes clearly-
  const view=createDomainsCustomersView({model:{state:{customerDebts:[debt],customerOrders:[]}},customerUi:{customerBulkMode:false,customerBulkSelected:new Set()},bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
  const html=view.debtRow(debt);
  assert.match(html,/customer-debt-amount is-payment-partial/);assert.match(html,/750/);assert.doesNotMatch(html,/customer-debt-amount is-supplied/);
- assert.match(html,/שולם/);assert.match(html,/250/);assert.match(html,/debt-partial-chip/);assert.match(html,/data-action="open-debt-progress-details"/);assert.match(html,/debt-details-icon/);assert.match(html,/badge orange/);assert.match(html,/הצג פירוט חוב/);
+ assert.match(html,/מתוך/);assert.match(html,/1,000/);assert.doesNotMatch(html,/שולם 250 מתוך/);assert.match(html,/debt-partial-chip/);assert.match(html,/data-action="open-debt-progress-details"/);assert.match(html,/debt-details-icon/);assert.match(html,/badge orange/);assert.match(html,/הצג פירוט חוב/);
 });
 
 test('debt progress details promote the remaining amount and keep the original debt as secondary context',()=>{
