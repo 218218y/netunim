@@ -339,9 +339,11 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .view-scroll{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable}
 .view-scroll::-webkit-scrollbar{height:11px;width:11px}.view-scroll::-webkit-scrollbar-thumb{background:#cbd4dc;border-radius:10px;border:3px solid #fff}
 .view-head .supplier-command,.view-head .customer-command{position:static;top:auto}
-.supplier-view-shell .view-scroll{overflow:hidden}
+.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}
 .supplier-view-shell .supplier-table-panel{height:100%;min-height:0;display:flex;flex-direction:column}
 .supplier-view-shell .supplier-table-panel .table-wrap{flex:1 1 auto;min-height:0;max-height:none}
+.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}
+.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}
 .customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}
 .customers-view .view-scroll>#customerSearchResults{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customers-view .customer-work-panel{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
