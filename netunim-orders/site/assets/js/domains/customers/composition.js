@@ -5,7 +5,7 @@ import {createDomainsCustomersEditor} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 
-export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor}){
+export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery}){
   let view,editor;
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
@@ -25,6 +25,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
   });
   const documents=createDomainsCustomersDocuments({
     model,
+    refreshForMorningRecovery,
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
@@ -94,5 +95,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     openMorningExistingDocument:(...args)=>documents.openExistingDocument(...args),
     reconcileMorningDocument:(...args)=>documents.reconcile(...args),
     recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args),
+    saveMorningRecoveryChoice:(...args)=>documents.saveRecoveryChoice(...args),
+    confirmMorningRecoveryChoice:(...args)=>documents.confirmRecoveryChoice(...args),
   };
 }

@@ -370,6 +370,7 @@ const domainsSuppliersEditor=createDomainsSuppliersEditor({
 
 const domainsCustomers=createDomainsCustomers({
   model,
+  refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
   customerUi,
   uiLayout,
   uiModal,
@@ -936,6 +937,8 @@ const uiActions=createUiActions({
   createMorningDocument:(...args)=>domainsCustomers.createMorningDocument(...args),
   openMorningExistingDocument:(...args)=>domainsCustomers.openMorningExistingDocument(...args),
   reconcileMorningDocument:(...args)=>domainsCustomers.reconcileMorningDocument(...args),
+  saveMorningRecoveryChoice:(...args)=>domainsCustomers.saveMorningRecoveryChoice(...args),
+  confirmMorningRecoveryChoice:(...args)=>domainsCustomers.confirmMorningRecoveryChoice(...args),
   openMorningDocuments:(...args)=>domainsCustomers.openMorningDocuments(...args),
   searchMorningDocuments:(...args)=>domainsCustomers.searchMorningDocuments(...args),
   pageMorningDocuments:(...args)=>domainsCustomers.pageMorningDocuments(...args),

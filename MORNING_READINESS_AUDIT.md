@@ -1,27 +1,47 @@
-**בדיקת מוכנות Morning → חובות לקוחות — 9 בספטמבר 2026**
+**בדיקת מוכנות Morning → חובות לקוחות — עדכון 9 בספטמבר 2026**
 
-**החלטה: אין אישור לשימוש בייצור כרגע.** כל 18 חבילות ה-core וכל 14 חבילות ה-runtime עברו, כולל `runtime_morning.py` המורחב. עם זאת, בדיקה נוספת שחוצה שני מחשבים חשפה קיזוז כפול סמנטי שעדיין אפשרי. הצלחת השער אינה מבטלת את הממצא הזה.
+**החסם של מעבר ממחשב A למחשב B וחזרה הוסר בתרחישים שנבדקו.** כל 18 חבילות ה-core וכל 14 חבילות ה-runtime עברו בפקודה `python tests/run_all.py`, כולל PostgreSQL מקומי ובדיקות Chromium. `runtime_morning.py` כולל כעת את בדיקות הבטיחות הקודמות ואת בדיקות ההכרעה החדשות. [לוג שער הפריסה המלא](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-snapshot-release.log>).
 
-**בטיחות הנתונים והיקף הבדיקה**
+**התוצאה העסקית שהוכחה:** A נשאר עם מסמך 320 של 30 ₪ שממתין לאימות; B רושם תשלום ידני של 30 ₪; A חוזר ומקבל את מסמך ההזמנות העדכני מהענן. המערכת נשארת עם 30 ₪ ששולמו, לא מוסיפה אוטומטית את תשלום Morning ומציגה הכרעה. בבחירה מפורשת „לא לזקוף תשלום, כן לזקוף חשבונית”, נשמר התשלום הידני היחיד ומתווספת חשבונית של 30 ₪. לא מתקבל תשלום של 60 ₪ ללא אישור מפורש שזה תשלום נוסף.
 
-הבדיקות פעלו על עותקי אתר זמניים, פרופילי Chromium נפרדים, LocalStorage/IndexedDB של הבדיקות בלבד, ו-PostgreSQL מקומי שנוצר בתיקיית TEMP עם פורט מקומי אקראי. תשתית PostgreSQL מסירה משתני חיבור סביבתיים ואינה מקבלת URL של שרת חיצוני. פרופיל הדפדפן האישי, החובות האמיתיים, מפתחות Morning ונתוני Supabase לא שימשו לבדיקות. לא הופק מסמך אמיתי ולא בוצעו פריסה או migration בשרת שלך.
+**השינוי שיושם**
 
-Morning הודמה בתעבורה מבוקרת; בדיקות Edge מפעילות את קוד השרת עם API ויומן מדומים. בדיקות SQL מפעילות PostgreSQL אמיתי. במבחני שני המחשבים, שני פרופילים אמיתיים מפעילים את ה-outbox, השמירה והמיזוג של היישום, מול תעבורת CAS מדומה. אין בכך אישור לתאימות שירות Morning החי, להרשאות הפרויקט החי או לתצורת המפתחות הנוכחית. ב-Windows, pg_cron מיוצג בקטלוג תזמון מדומה; לא נבדקה הרצת worker אמיתי שלו.
+Recovery חדש של חוב שומר `financialSnapshot` עם חמישה שדות בלבד: `amount`, `paymentApplied`, `invoiceApplied`, `paymentComplete`, `invoiceComplete`. הסכומים מנורמלים לאגורות. אין צילום של כל שורת החוב ואין מסמך Morning, PDF, כתובת, נתוני לקוח או קישור קבוע לענן בתוך הצילום.
 
-**תקלות אמיתיות והשרשרת הסיבתית**
+לפני זקיפה מתוך Recovery, המערכת ממתינה להשלמת poll או שמירת ענן פעילים, מסיימת סנכרון של שינויים מקומיים קיימים באמצעות ה-outbox וה-CAS הקיימים, ואז מבצעת קריאת GET מלאה חדשה של מסמך ניהול ההזמנות. רק הצלחה מפורשת של הרענון, קליטת המצב ושמירתו המקומית מאפשרות השוואה וזקיפה. כשל רשת, קונפליקט סנכרון, חוב חסר, אובדן בעלות ראשית, revision לא תקין/ישן או שינוי מקומי תוך כדי GET משאירים את ההתאוששות נעולה. התחלת timer או cloudPoll אינה אישור להמשיך.
 
-1. **תוקן — קיזוז כפול באותו דפדפן לאחר reload.** הפקת 320 של 30 ₪ נשארה `needs_reconciliation`; העורך התיר הוספת תשלום ידני של 30 ₪; reconciliation הוסיף אירוע Morning נוסף. בפועל התקבלו 60 ₪ ששולמו על חוב של 100 ₪. נוספה נעילה כספית זמנית לפי `debtId`, לרבות מחיקה יחידה ומרובה. ההערות, supplied וחובות אחרים נשארים זמינים. הנעילה נבדקת גם בזמן השמירה ולא רק בהצגת שדות disabled. [הוכחת הכשל המקורי](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-gap-proof.log>).
-2. **תוקן — שחרור הפקה למרות כשל בניקוי Recovery.** `resetOperationAfterTerminal` התעלם מתוצאת `clearRecoveryContext`, החליף operation ID ואיפשר הפקה חדשה. התקבל בפועל `recoveryRemains=True` לצד `newIssueEnabled=True`. כעת ניסיון failed או reserved נשאר נעול עד שניקוי Recovery מצליח, כמו מסמך created. [הוכחת כשל הניקוי](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-terminal-proof.log>).
-3. **תוקן — קונפליקט שווא על זמן בלבד.** מיזוג השווה את כל תוכן האירוע, כולל `createdAt`. אותו ID ואותו סכום שהגיעו בזמני אימות שונים גרמו לקונפליקט. כעת רק ההשוואה העסקית מתעלמת מהזמן; אירוע קיים בבסיס נשאר ללא שינוי, ולשתי גרסאות חדשות נבחר זמן מוקדם באופן דטרמיניסטי. סכום/סוג/מקור/פעולה שונים באותו ID עדיין גורמים לקונפליקט. [רגרסיה שנכשלה לפני התיקון](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-timestamp-proof.log>).
-4. **תוקן — save מיותר על replay שכבר נשמר.** העורך קרא ל-scheduleSave בכל `already-applied`, גם לאחר שמירה מוצלחת. נוסף זיכרון מקומי של מצב החוב שנשמר בהצלחה. כפילות זהה אינה מבצעת save/render; לאחר כשל בשמירה או אובדן הזיכרון ב-reload מתבצע persistence מחדש. אין הסתמכות על הזיכרון הזה במקום שמירה עמידה.
-5. **תוקן — אובדן נקודת ההתאוששות כאשר החוב חסר.** מחיקה ממקור אחר לפני reconciliation הובילה ל-`missing-debt`, שהוגדר כתוצאה בטוחה וניקה Recovery למרות שלא נרשם תשלום או חשבונית. הוסר מסיווג הסיום הבטוח. כעת Recovery נשמר, והחזרת החוב המקורי מאפשרת להשלים את הרישום פעם אחת. [הוכחת הכשל לפני התיקון](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-boundary-proof.log>).
-6. **פתוח — קיזוז כפול סמנטי בין שני מחשבים.** A מפיק 320 של 30 ₪ ונשאר עם Recovery מקומי. B, שאין אצלו אותו LocalStorage, רושם ידנית את אותו תשלום של 30 ₪. המיזוג תקין מבחינת IDs ואין בו קונפליקט. לאחר reconciliation ב-A מתקבלים שני אירועים שונים וסך 60 ₪ ששולמו. זהו כשל עסקי, לא כפל POST ולא overwrite. הנעילה המקומית שנוספה אינה יודעת להגן על מחשב B. [שחזור במחשבים מבודדים](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-boundary-proof.log>); [סקריפט ההוכחה](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning_boundary_probe.py>).
+אם הנתונים הכספיים לא השתנו, היישום ממשיך אוטומטית עם המדיניות שנשמרה בזמן ההפקה. note, supplied ושדות לא כספיים אינם נכללים בהשוואה. אם סכום החוב, התקדמות התשלום או התקדמות החשבונית השתנו, אין ניחוש לפי סכומים: מוצגים סכום המסמך, המצב בזמן ההפקה והמצב הנוכחי, ובחירות עצמאיות בהתאם לסוג המסמך. בצד שהשתנה ברירת המחדל היא לא לזקוף. שינוי amount מכבה כברירת מחדל את שני הצדדים הרלוונטיים.
 
-נדרש שינוי נוסף בתכנון התיאום בין מחשבים לפני אישור ייצור: נעילה זמנית משותפת עם הגנה גם על עריכות שהצטברו offline, או מנגנון הכרעה מפורש שמזהה שינוי כספי בזמן המתנה ואינו מנחש לפי סכומים. אין כאן הצעה לקזז אוטומטית אירועים שווי סכום. בבדיקה הזאת לא נוספו טבלה או קשר קבוע למסמכי Morning; לא הוכנס שינוי בפרוטוקול הסנכרון כדי להסוות את המגבלה.
+שינוי תיבות הבחירה שומר טיוטת הכרעה ב-Recovery. לחיצה על אישור מחייבת רענון נוסף; אם החוב השתנה שוב, מוצג המצב החדש ונדרש אישור מחדש. החלטה מאושרת נשמרת מקומית עם צילום המצב שנבדק ו-`confirmedAt` לפני הפעלת מנגנון הזקיפה. לאחר reload היא תקפה רק כל עוד המצב הרלוונטי עדיין תואם. Recovery ישן ללא snapshot דורש הכרעה מפורשת עם ברירות מחדל כבויות. הכרעה פגומה אינה מעניקה הרשאה אוטומטית.
 
-**תוצאות שער הפריסה — `python tests/run_all.py`**
+האירועים נכתבים דרך אותו מנגנון קיים, באותם מזהי `MORNING:operation_id:payment/invoice`. בבדיקת replay מושמטים מההשוואה רק אירועי אותה פעולה לפי IDs מדויקים, בלי לשנות אותם ובלי להשמיט אירועים בעלי סכום זהה. כך אירוע שכבר נשמר לפני כשל בניקוי אינו נראה כשינוי כספי חדש ואינו נרשם שוב. מסמך מאומת שחוזר באותה בקשת create לאחר ניתוק/הסתרת הלשונית עובר גם הוא דרך בדיקת ההתאוששות.
 
-השער הקיים עבר גם בהרצה הראשונית, ולכן הבדיקות החדשות חשובות: התקלות לא כוסו במלואן קודם. הטבלה להלן מתייחסת להרצה המלאה על קוד הייצור המתוקן. [לוג מלא סופי](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-audit-final-v2.log>).
+לא נוספו shared lock, טבלה, SQL, migration, שינוי Edge Function או שדה חדש במסמך ההזמנות בענן. כל ההרחבה של Recovery וההכרעה נשארת ב-LocalStorage. התיקונים הקודמים נשמרו.
+
+**בדיקות ההמשך המבוקשות**
+
+| תרחיש | תוצאה | ראיה התנהגותית |
+|---|---|---|
+| A pending, B מוסיף אותו תשלום, A חוזר | PASS | רענון אמיתי של מנגנון היישום מול ענן מדומה מזהה תשלום 30; אין זקיפה אוטומטית נוספת |
+| 320: לא לזקוף תשלום, כן לזקוף חשבונית | PASS | נשאר manual payment יחיד של 30; נוסף invoice של 30 בלבד |
+| B מוסיף תשלום אחר והמשתמש מאשר תשלום נוסף | PASS | manual 20 + Morning 30 נשמרים כשלושה אירועים נפרדים כולל החשבונית; תשלום כולל 50 |
+| B משנה note/supplied בלבד | PASS | אין false positive; השדות נשמרים והמסמך נזקף אוטומטית |
+| A חוזר ללא רענון ענן זמין | PASS | GET נכשל: אין זקיפה ואין ניקוי Recovery; GET מוצלח מאוחר יותר משלים |
+| GET מסתיים אחרי timer של Recovery | PASS | Promise נשאר בלתי פתור מעבר למועד הטיימר; אין אירוע עד תשובה מוצלחת והשוואה |
+| startup בפועל | PASS | לאחר כשל בהידרציה הראשונית, ה-appReady timer מחכה לקריאת הענן הייעודית המאוחרת |
+| online ו-visibilitychange בפועל | PASS | אירועי דפדפן אמיתיים לא עוקפים את ה-GET; גם cloudPoll פעיל ממתין להשלמה |
+| reload נוסף בזמן ההכרעה | PASS | טיוטת checkbox נשמרת בלי להתאשר אוטומטית; ההכרעה מוצגת שוב |
+| קריסה אחרי אישור ולפני היישום | PASS | החלטת invoice-only נשמרת קודם; לאחר reload רק החשבונית מתווספת |
+| replay אחרי הכרעה | PASS | אין אירוע נוסף; operation_id ו-IDs נשארו ללא שינוי |
+| אישור, כשל ניקוי, שמירה לענן ואז reload | PASS | ההחלטה נשמרת; האירוע של אותה פעולה אינו יוצר קונפליקט שווא או כפילות |
+| Recovery ישן בלי snapshot | PASS | 305/400/320 דורשים אישור; כל צד רלוונטי כבוי כברירת מחדל |
+| שינוי נוסף בענן בזמן האישור | PASS | אין יישום של החלטה שהתיישנה; מוצג מצב חדש ובחירה בטוחה |
+| כשל בשמירת ההכרעה | PASS | אין זקיפה, Recovery נשאר |
+| תשובת create מאומתת אך מאוחרת אחרי ניתוק | PASS | גם מסלול זה ממתין לענן ומבקש הכרעה על התשלום שנרשם ב-B |
+
+בדיקות אלה רצות מתוך `runtime_morning.py` בשער המלא. [מקור בדיקות ההכרעה](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning_resolution.py>); [בדיקת replay לאחר כשל ניקוי](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-approved-replay.log>); [בדיקות startup ומרוץ האישור](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-startup-resolution.log>).
+
+**שער הפריסה — כל suite בנפרד**
 
 | suite | קבוצה | תוצאה |
 |---|---|---|
@@ -58,87 +78,69 @@ Morning הודמה בתעבורה מבוקרת; בדיקות Edge מפעילות
 | `runtime_sync_two_computers.py` | runtime | PASS |
 | `runtime_financial.py` | runtime | PASS |
 
-**הרצות נפרדות**
+שלוש חבילות PostgreSQL — `supabase_candidate.py`, `supabase_retention.py`, `morning_ledger.py` — הורצו במסגרת השער המלא וגם בנפרד, וכולן PASS, עם cluster מקומי זמני ופורט אקראי, לא מול production. לוגי ההרצות הנפרדות נמצאים ב-`.work/morning-snapshot-candidate-independent.log`, `.work/morning-snapshot-retention-independent.log`, `.work/morning-snapshot-ledger-independent.log`. בדיקות schema, retention, הרשאות, migration ו-account-wide fingerprint guard עברו. `pg_cron` ב-Windows נבדק דרך קטלוג התזמון המדומה הקיים, ללא worker תזמון אמיתי.
 
-| בדיקה | תוצאה | ראיה |
-|---|---|---|
-| `python tests/morning_ledger.py` ב-PostgreSQL מבודד, כולל שתי הכנסות מקבילות | PASS | [לוג](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-ledger-independent.log>) |
-| `python tests/supabase_candidate.py` ב-PostgreSQL מבודד | PASS | [לוג](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-candidate-independent.log>) |
-| `python tests/supabase_retention.py` ב-PostgreSQL מבודד | PASS — 3 tests | [לוג](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-retention-independent.log>) |
-| מודלי חובות/Morning/Recovery | PASS — 33 tests; נבדקו שוב כחלק מהשער | [לוג המודלים](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-audit-models.log>) |
-| `node tests/morning_edge.test.mjs`, כולל מרוץ בין משתמשים שונים | PASS | [לוג Edge](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-edge-independent.log>) |
-| קריסה לפני POST, קריסה לפני persistence, חוב שנמחק ממקור אחר | PASS | [לוג דפדפן](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-crash-runtime.log>) |
-| רישום ידני של אותו תשלום ב-B בזמן Recovery ב-A | **FAIL — נשאר פתוח** | [הוכחה: 30 הפך ל-60](<C:/Users/יעקב/Downloads/pro/netunim/.work/morning-boundary-proof.log>) |
+**בדיקות הבטיחות הקודמות שנשמרו**
 
-**תרחישי Morning, קריסה וסנכרון**
-
-| תרחיש | תוצאה סופית | אופן האימות |
-|---|---|---|
-| 320 על מלוא החוב: תשלום וחשבונית נסגרים פעם אחת | PASS | Chromium + מודל |
-| 400: תשלום בלבד | PASS | Chromium + מודל |
-| 305: חשבונית בלבד | PASS | Chromium + מודל |
-| מסמכים חלקיים בכמה פעימות ויתרה בכל שלב | PASS | Chromium: 320/400/305 ברצף |
-| מסמך מעל היתרה, ללא יתרה שלילית | PASS | Chromium + מודל |
-| תשלום ידני קיים, 320, זקיפה כתשלום כבויה | PASS | Chromium: נשאר תשלום ידני יחיד; חשבונית מתווספת |
-| חשבונית ידנית קיימת, 320, זקיפה כחשבונית כבויה | PASS | Chromium: נשארת חשבונית ידנית יחידה; תשלום מתווסף |
-| operation_id חוזר מ-create ומ-reconciliation | PASS | אין אירוע/save/render נוסף אחרי שמירה מוצלחת |
-| Reset לאחר אירוע Morning ואז replay | PASS | האירוע נשאר בהיסטוריה, אינו מופעל מחדש |
-| קריסה אחרי server reserve ולפני POST | PASS | snapshot משוחזר; abandon בלבד, ללא create וללא שינוי חוב; Edge בודק גם reservation מיושן ללא Recovery מקומי |
-| POST עם תשובה אבודה | PASS | UI אינו שולח create נוסף; Edge אינו מבצע POST נוסף לפני reconciliation |
-| אימות מוצלח לפני persistence שנכשל | PASS | replay בזיכרון שומר מחדש; reload מאבד זיכרון ומשחזר פעם אחת מתוך Recovery |
-| removeItem נכשל בניקוי Recovery | PASS | created, failed ו-reserved נשארים נעולים; ניסיון ניקוי חוזר מצליח |
-| תוצאת יישום חדשה ולא מוכרת | PASS | Recovery נשאר; ההפקה נעולה |
-| שתי לשוניות: Secondary ו-Primary | PASS | שתי לשוניות אמיתיות; רק הראשית מפיקה, גם בהפקה עצמאית |
-| איבוד ownership בזמן חלון האישור | PASS | נעצר לפני reserve ו-create |
-| פתיחת חוב אחר כשיש Recovery | PASS | אין שיוך מחדש; התוכן השמור לא משתנה |
-| A מוסיף תשלום חלקי ו-B מוסיף תשלום אחר | PASS | שני פרופילים, outbox אמיתי ו-CAS מדומה; שני האירועים נשמרים |
-| Reset ב-A ותשלום חדש ב-B | PASS | התשלום החדש נשמר; בוטלו רק IDs שה-Reset הכיר |
-| שתי פעולות Morning שונות לאותו חוב | PASS | ארבעה אירועים, שתי יתרות מוגבלות לאפס, ללא אובדן האירועים |
-| בקשות זהות במקביל | PASS | מרוץ Edge בין operation IDs ומשתמשים שונים + INSERT מקביל ב-PostgreSQL; POST אחד בלבד |
-| needs_reconciliation, reload, ניסיון שינוי סכום/תשלום/חשבונית/paid/invoiceIssued/מחיקה באותו דפדפן | PASS אחרי התיקון | החוב נשאר נעול; הערות/supplied וחוב אחר זמינים; הנעילה משתחררת רק בסיום בטוח |
-| אותה פעולה, אבל הרישום הידני נעשה במחשב אחר | **FAIL** | הוכח קיזוז סמנטי כפול; חסם ייצור |
-| אירועים קיימים append-only | PASS | עריכה עסקית באירוע קיים גורמת לקונפליקט; Reset מוסיף אירוע עם IDs מפורשים |
-| אותו ID ותוכן עסקי שונה | PASS | קונפליקט; מסלול הסנכרון שומר את הגרסאות ולא מפרסם את המיזוג החלקי |
-| timestamps בלבד | PASS אחרי התיקון | מטא-דאטה של חוב ואירוע אינם יוצרים קונפליקט עסקי |
-| סכומי הסיכום | PASS | remaining payment משמש בסיכום הלקוחות ובסיכום הפיננסי המשותף |
-| חוב חסר בזמן reconciliation | PASS אחרי התיקון | Recovery נשמר עד החזרת החוב והשלמת הרישום |
-
-**האם נמצאה דרך לייצר את הסיכונים שהוגדרו?**
-
-| סיכון | מסקנה מפורשת |
+| תרחיש | תוצאה |
 |---|---|
-| מסמך Morning כפול | לא נוצר כפל POST במרוצי operation ID/fingerprint שנבדקו. לפני התיקון כשל cleanup איפשר להתחיל פעולה חדשה בעוד Recovery קיים; המסלול תוקן. operation ID חדש לאחר השלמת פעולה קודמת עדיין יכול להפיק ביודעין מסמך עם אותו תוכן — ה-fingerprint אינו איסור תמידי על מסמכים זהים. |
-| קיזוז כפול | **כן.** באותו דפדפן תוקן; בין שני מחשבים במקרה של אותו תשלום ידני עדיין אפשרי. |
-| אובדן תשלום | נמצא אובדן אפשרות רישום אוטומטי כאשר החוב נמחק ממקור אחר ונוקה Recovery; תוקן. לא נמצא אובדן של אירוע תשלום קיים במרוצי המיזוג שנבדקו. |
-| אובדן חשבונית | אותו כשל של חוב חסר חל גם על צד החשבונית ותוקן; לא נמצא אובדן אירוע חשבונית קיים במרוצי המיזוג שנבדקו. |
-| מחיקת Recovery מוקדמת | **כן, תוקן במסלול missing-debt.** בכשל removeItem הבעיה הייתה שחרור הנעילה למרות ש-Recovery דווקא נשאר; גם זה תוקן. |
-| overwrite במיזוג | לא נמצא overwrite שקט בתרחישים שנבדקו. שינויים עסקיים באותו ID ממשיכים להיחסם; timestamps בלבד מתמזגים. הקיזוז הכפול שנותר הוא איחוד שני IDs שונים ולא overwrite. |
+| 320 מלא סוגר תשלום וחשבונית פעם אחת | PASS |
+| 400 מעדכן תשלום בלבד; 305 חשבונית בלבד | PASS |
+| חלקי בכמה פעימות ומעל יתרה, בלי יתרה שלילית | PASS |
+| opt-out עצמאי לתשלום/חשבונית שכבר נרשמו ידנית | PASS |
+| כפילות create/reconciliation, ללא save/render מיותר ליישום עמיד שכבר הושלם | PASS |
+| Reset ידני ואז replay אינו מחיה אירוע שבוטל | PASS |
+| קריסה אחרי reserve ולפני POST: ביטול reservation בלי מסמך | PASS |
+| תשובת POST אבודה אינה גורמת ל-POST נוסף | PASS |
+| כשל persistence משמר Recovery ו-replay שומר מחדש | PASS |
+| removeItem נכשל ב-created/failed/reserved: הנעילה נשארת | PASS |
+| result לא מוכר מיישום החוב: אין ניקוי Recovery | PASS |
+| Secondary אינה מפיקה; Primary מפיקה; איבוד ownership באישור עוצר | PASS |
+| Recovery אינו מועבר לחוב אחר | PASS |
+| שינויי חוב כספיים ומחיקה יחידה/מרובה נעולים באותו דפדפן במהלך Recovery | PASS |
+| הערות/supplied וחובות אחרים זמינים | PASS |
+| A ו-B מוסיפים תשלומים שונים: איחוד האירועים | PASS |
+| Reset ב-A ותשלום חדש ב-B: רק האירועים שה-Reset הכיר מבוטלים | PASS |
+| שתי פעולות Morning שונות: איחוד לפי IDs ויתרה לא שלילית | PASS |
+| שתי בקשות זהות במקביל: fingerprint guard, POST אחד | PASS |
+| append-only; תוכן עסקי שונה באותו ID גורם conflict | PASS |
+| timestamps בלבד אינם conflict עסקי | PASS |
+| סיכומי החוב משתמשים ב-remaining payment | PASS |
+| חוב שנמחק בענן לפני reconciliation: Recovery נשמר; שחזור החוב מאפשר השלמה | PASS |
 
-המסקנות מוגבלות לתרחישים ולכשלים המפורטים; אינן הוכחה מתמטית להעדר כל תקלה אפשרית. בפרט, אין אישור בטיחות לעריכה כספית מקבילה מהמחשב השני במהלך Recovery במחשב הראשון.
+**היסטוריית הממצאים והסטטוס המעודכן**
 
-**הפרדה בין תקלה בייצור לתקלה בבדיקה**
+חמשת התיקונים מהבדיקה הקודמת נשמרו: נעילת עריכות כספיות מקומיות בזמן Recovery; שחרור נעילה רק אחרי ניקוי מוצלח; מניעת conflict על timestamp בלבד; מניעת save מיותר אחרי replay עמיד; ושמירת Recovery כאשר החוב חסר. לא שונו הקוד או ה-IDs כדי לבטל בדיקות קיימות.
 
-כשל הקיזוז המקומי, כשל cleanup, זמן האירוע וחוב חסר הוכחו לפני שינוי קוד. בחוזה הישן, missing-debt סווג כמותר לניקוי; שיניתי את החוזה רק אחרי שהשחזור הוכיח אובדן Recovery בלי רישום כספי. בדיקת הקריסה החדשה הניחה שרענון לא ישמור זיכרון, אבל pagehide של הייצור שמר אותו; תוקן רק ה-fault injection בבדיקה כדי שגם שמירת pagehide תיכשל. לא הוחלשה שמירת החירום בייצור.
+הממצא השישי היה פתוח: שני IDs שונים — manual ב-B ו-Morning ב-A — התמזגו תקין מבחינה טכנית אך ייצגו פעמיים את אותו תשלום. ההוכחה המקורית תיעדה 30 שהפך ל-60. כעת יש בדיקת cloud refresh + snapshot לפני האירוע השני והכרעה מפורשת, והתרחיש עבר. לוג ההוכחה הישן מתעד את המצב לפני התיקון ואינו תוצאת הקוד הנוכחי.
 
-**קבצים ששונו בדיוק**
+לא נמצאו בבדיקות המעודכנות מסמך כפול, זקיפה אוטומטית כפולה בתרחיש המעבר A→B→A, אובדן תשלום/חשבונית, מחיקת Recovery לפני הסיום הבטוח או overwrite שקט במיזוג. אישור מפורש של המשתמש לזקוף „תשלום נוסף” מוסיף תשלום בכוונה. הפתרון אינו נעילה מבוזרת ואינו מבטיח למנוע רישום ידני מקביל שמתרחש במחשב אחר *אחרי* צילום הענן האחרון; זהו היקף תרחיש המעבר שביקשת.
+
+**כשל קוד מול כשל בחוזה בדיקה**
+
+תשתית Morning הישנה לא סיפקה ענן כלל, משום שהיישום הישן לא דרש refresh. היא הורחבה בתעבורה מבודדת ולא ב-stub שמחזיר „refresh הצליח”: קוד refresh, outbox ו-CAS של הייצור באמת רץ. בדיקות שמוסיפות חובות ישירות למודל הותאמו לשמור את נתוני התרגיל לפני סנכרון. בדיקת חוב חסר שינתה בעבר רק את המודל המקומי; כעת היא מדמה מחיקה ב-head המרוחק והחזרת החוב בענן, משום שרענון אמיתי אמור לשחזר חוב שעוד קיים בשרת. בדיקת קריסה לפני persistence עוצרת גם את הסנכרון המדומה, כדי שתהליך שמירה ברקע לא יבטל את תרחיש הכשל. שני חוזי טקסט עודכנו להרחבה המכוונת של מבנה Recovery ולנעילה המחמירה יותר בזמן רענון. בדיקות ההגנה עצמן לא הוסרו.
+
+**בטיחות הנתונים ומגבלות האימות**
+
+כל הנתונים נוצרו בעותקי אתר ובפרופילי דפדפן זמניים. שרת PostgreSQL מקומי בלבד, ותעבורת Morning/ענן מדומה. לא נעשה שימוש בחובות האמיתיים, בפרופיל הדפדפן האישי או במפתחות Morning; לא הופק מסמך אמיתי, לא נפרס אתר ולא בוצע SQL בשירות החי. בדיקות startup מוסיפות fault injection רק לעותק האתר הזמני. השער מאשר את הקוד והתרחישים המקומיים; אין כאן אימות חי של מפתחות Morning, זמינות השירות או תצורת production.
+
+**הקבצים ששונו בהמשך הנוכחי**
 
 | קובץ | שינוי |
 |---|---|
-| [netunim-orders/site/assets/js/domains/customers/bulk.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/bulk.js>) | חסימת מחיקה מרובה של חוב עם Recovery, גם לאחר אישור מחיקה. |
-| [netunim-orders/site/assets/js/domains/customers/composition.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/composition.js>) | חיבור בדיקת Recovery לעורך, לטבלה ולמחיקה מרובה. |
-| [netunim-orders/site/assets/js/domains/customers/documents.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/documents.js>) | נעילת עריכת חוב; ביטול ניסיון משחרר נעילה רק לאחר ניקוי מוצלח; הודעה במקרה שחוב חסר. |
-| [netunim-orders/site/assets/js/domains/customers/editor.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/editor.js>) | חסימת סכום/תשלום/חשבונית/מחיקה; הצגת הנעילה; מניעת שמירה חוזרת מיותרת לאחר persistence מוצלח. |
-| [netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js>) | missing-debt אינו נחשב עוד לסיום מקומי בטוח שמאפשר למחוק Recovery. |
-| [netunim-orders/site/assets/js/domains/customers/view.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/view.js>) | חסימת שינוי paid/invoiceIssued במהלך Recovery, עם השארת supplied והערות זמינים. |
-| [netunim-orders/site/assets/js/sync/merge-records.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/sync/merge-records.js>) | זמן אירוע אינו קונפליקט עסקי; תוכן עסקי שונה באותו ID עדיין נחסם; אירוע בסיס נשמר ללא שינוי. |
-| [netunim-orders/site/service-worker.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/service-worker.js>) | עדכון מזהה המטמון באמצעות tools/sync-assets.py עבור הנכסים שהשתנו. |
-| [tests/customer_debt_progress.test.mjs](<C:/Users/יעקב/Downloads/pro/netunim/tests/customer_debt_progress.test.mjs>) | רגרסיית זמן שונה לאותו אירוע, דטרמיניזם, שימור אירוע קיים וקונפליקט על סכום שונה. |
-| [tests/morning_debt_progress.test.mjs](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_debt_progress.test.mjs>) | רגרסיה שמוודאת שאין save/render נוסף אחרי replay שכבר נשמר. |
-| [tests/morning_debt_recovery.test.mjs](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_debt_recovery.test.mjs>) | חוזה מתוקן: חוב חסר מחייב שמירת Recovery. |
-| [tests/morning_edge.test.mjs](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_edge.test.mjs>) | שתי בקשות מקבילות, משתמשים ו-operation IDs שונים, fingerprint זהה: POST אחד בלבד. |
-| [tests/morning_ledger.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_ledger.py>) | בדיקת INSERT מקביל אמיתי ב-PostgreSQL של אותו fingerprint משני משתמשים. |
-| [tests/runtime_morning.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning.py>) | שילוב בדיקות הבטיחות החדשות בתוך runtime_morning.py ובשער הפריסה. |
-| [tests/runtime_morning_audit.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning_audit.py>) | תרחישי דפדפן: סוגי מסמכים, חלקי/יתר, opt-out, reload, cleanup, קריסות, לשוניות, שני מחשבים וחוב שנמחק ממקור אחר. |
-| [MORNING_READINESS_AUDIT.md](<C:/Users/יעקב/Downloads/pro/netunim/MORNING_READINESS_AUDIT.md>) | דוח זה. |
+| [netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js>) | צילום כספי מינימלי, השוואה באגורות, נרמול ושמירת הכרעה/טיוטה מקומית; טיפול בטוח ברשומות ישנות. |
+| [netunim-orders/site/assets/js/domains/customers/documents.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/documents.js>) | המתנה לרענון ענן לפני Recovery; מסך השוואה והכרעה; שמירת האישור לפני היישום; בדיקה חוזרת אם המצב השתנה; תשובת create מאוחרת לאחר ניתוק מטופלת כהתאוששות. |
+| [netunim-orders/site/assets/js/domains/customers/composition.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/domains/customers/composition.js>) | הזרקת פעולת רענון הענן וחיבור פעולות ההכרעה. |
+| [netunim-orders/site/assets/js/sync/document.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/sync/document.js>) | refreshForMorningRecovery: המתנה לסנכרון פעיל, סיום outbox קיים, GET מלא חדש ומאומת, רענון המודל ושמירה מקומית; cloudPoll מחזיר Promise שמייצג השלמה. |
+| [netunim-orders/site/assets/js/main.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/main.js>) | חיבור רענון ניהול ההזמנות ל-Morning ורישום פעולות ההכרעה. |
+| [netunim-orders/site/assets/js/ui/actions.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/assets/js/ui/actions.js>) | פעולות שינוי בחירה ואישור ההכרעה בממשק. |
+| [netunim-orders/site/service-worker.js](<C:/Users/יעקב/Downloads/pro/netunim/netunim-orders/site/service-worker.js>) | עדכון מזהה המטמון באמצעות tools/sync-assets.py. |
+| [tests/morning_debt_recovery.test.mjs](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_debt_recovery.test.mjs>) | בדיקות snapshot מינימלי, מטא-דאטה לא כספית, החלטה שמורה, legacy ו-replay לפי IDs בלבד. |
+| [tests/morning_documents_contracts.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/morning_documents_contracts.py>) | התאמת חוזי המבנה להרחבת Recovery ולנעילה שנשארת גם בזמן רענון ענן. |
+| [tests/runtime_morning.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning.py>) | שילוב בדיקות הענן וההכרעה בתוך runtime_morning.py ושער הפריסה המלא. |
+| [tests/runtime_morning_audit.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning_audit.py>) | התאמת תשתית הבדיקות הישנה לרענון הענן הנדרש, בלי להסיר בדיקות בטיחות קודמות. |
+| [tests/runtime_morning_cloud.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning_cloud.py>) | תעבורת ענן מבודדת; מנגנוני refresh, שמירה, outbox ו-CAS של הייצור נשארים פעילים. |
+| [tests/runtime_morning_resolution.py](<C:/Users/יעקב/Downloads/pro/netunim/tests/runtime_morning_resolution.py>) | תרחישי A/B, המתנה לתשובת GET, startup/online/visibilitychange, הכרעה, reload, כשל שמירה, שינוי נוסף ו-idempotency. |
+| [MORNING_READINESS_AUDIT.md](<C:/Users/יעקב/Downloads/pro/netunim/MORNING_READINESS_AUDIT.md>) | הדוח המעודכן. |
 
-לוגים וסקריפטים אבחוניים נוספים נמצאים ב-`.work/`. סכמות SQL, נתוני חובות, מסמכי Morning ומפתחות לא שונו. השינויים מקומיים בלבד ולא נפרסו.
+קובצי SQL, ה-Edge Function, סכמות, אירועים קיימים והקוד של מנגנון הזקיפה/מיזוג ledger מהתיקון הקודם לא שונו. לוגים וסקריפטים אבחוניים נמצאים ב-`.work/`. השינויים נשארו מקומיים ומוכנים לסקירה ולפריסה שלך.

@@ -159,7 +159,7 @@ recovery_save_pos=documents.find('persistRecoveryContext(recoveryContext(type,am
 create_call_pos=documents.find("backend('create',payload)")
 ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
    'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
-ok("return {version:1,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time}" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
+ok("const record={version:1,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time}" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
    'Morning reload recovery storage stays minimal: no PDF, signed URL, customer payload or permanent document metadata is retained locally')
 ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,
    'Morning reload recovery verification: operation, document type and exact cent amount must match before a recovered debt can mutate')
@@ -180,7 +180,7 @@ ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(
    and "activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents
    and documents.count('if(rejectCurrentIssuance())return;')>=2,
    'Morning official issuance single-writer: standalone documents also require the primary tab, while debt-linked documents retain the stronger local-mutation guard')
-ok("blocked=!!data.unresolved||!!data.retryable_reserved||(recoveryStillPending&&!data.operation)" in documents
+ok("blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in documents
    and "if(blocked&&requestedDebtId!==activeDebtId)" in documents
    and "if(createBusy){toast(" in documents
    and 'לא שולחים מחדש מתוך הטופס המשוחזר' in documents,

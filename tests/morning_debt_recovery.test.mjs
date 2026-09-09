@@ -9,6 +9,8 @@ import {
   clearMorningDebtRecoveryContext,
   morningDebtRecoveryMatchesVerified,
   morningVerifiedApplicationDurable,
+  morningFinancialSnapshot,
+  morningFinancialChanges,
 } from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
 import {applyVerifiedMorningDocumentToDebt} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
@@ -33,6 +35,38 @@ test('recovery context persists only the minimal debt binding and independent al
   const raw=JSON.parse(storage.getItem(MORNING_DEBT_RECOVERY_STORAGE_KEY));
   assert.deepEqual(Object.keys(raw).sort(),['amount','applyInvoice','applyPayment','createdAt','debtId','operationId','type','version'].sort());
   assert.ok(!('documentId' in raw)&&!('pdf' in raw)&&!('url' in raw)&&!('client' in raw));
+});
+
+test('financial snapshot is minimal, cents-normalized and ignores notes/supply metadata',()=>{
+  const debt={amount:100,paid:false,invoiceIssued:false,note:'private',supplied:false,debtProgress:[{id:'manual',kind:'payment',action:'add',amount:30,source:'manual'}]};
+  const snapshot=morningFinancialSnapshot(debt);
+  assert.deepEqual(snapshot,{amount:100,paymentApplied:30,invoiceApplied:0,paymentComplete:false,invoiceComplete:false});
+  assert.equal(morningFinancialChanges(snapshot,morningFinancialSnapshot({...debt,note:'edited',supplied:true})).changed,false);
+  assert.equal(morningFinancialChanges(snapshot,{...snapshot,amount:110}).payment,true);
+  assert.equal(morningFinancialChanges(snapshot,{...snapshot,amount:110}).invoice,true);
+  assert.deepEqual(morningFinancialChanges(snapshot,{...snapshot,paymentApplied:50}),{amount:false,payment:true,invoice:false,changed:true});
+  assert.equal(morningFinancialChanges(null,snapshot).changed,true,'legacy snapshot is never assumed current');
+});
+
+test('snapshot and explicit decision survive storage; invalid decision cannot authorize application',()=>{
+  const storage=new MemoryStorage(),financialSnapshot=morningFinancialSnapshot({amount:100});
+  const base=createMorningDebtRecoveryContext({operationId:OP,debtId:'D',type:320,amount:30,financialSnapshot});
+  for(const confirmedAt of ['',CREATED]){
+    const context=createMorningDebtRecoveryContext({...base,resolution:{financialSnapshot:{...financialSnapshot,paymentApplied:30},applyPayment:false,applyInvoice:true,confirmedAt}});
+    assert.equal(saveMorningDebtRecoveryContext(context,storage),true);
+    assert.deepEqual(loadMorningDebtRecoveryContext(storage),context);
+  }
+  const corrupt=createMorningDebtRecoveryContext({...base,financialSnapshot:{amount:'invalid'},resolution:{financialSnapshot,applyPayment:'yes',applyInvoice:true,confirmedAt:CREATED}});
+  assert.equal(corrupt.financialSnapshot,undefined);assert.equal(corrupt.resolution,undefined);
+});
+
+test('replay comparison excludes only the exact operation IDs, not equal amounts or other Morning events',()=>{
+  const debt={amount:100,debtProgress:[{id:'manual',kind:'payment',action:'add',amount:30,source:'manual'}]};
+  const before=morningFinancialSnapshot(debt);
+  applyVerifiedMorningDocumentToDebt(debt,{operationId:OP,type:320,amount:30});
+  assert.deepEqual(morningFinancialSnapshot(debt,OP),before);
+  assert.equal(morningFinancialSnapshot(debt,OTHER).paymentApplied,60);
+  assert.equal(debt.debtProgress.length,3,'comparison never mutates the ledger');
 });
 
 test('verified Morning data must match operation, document type and exact cent amount before a recovered debt can change',()=>{

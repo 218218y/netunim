@@ -1,8 +1,9 @@
 """Morning UI workflows with deterministic transport; never issues real documents."""
 from browser_harness import BrowserSession, ROOT
 import json
+from runtime_morning_cloud import LOCAL_CLOUD
 
-FLOW=r"""
+FLOW=LOCAL_CLOUD+r"""
 const assert=(value,message)=>{if(!value)throw new Error(message)};
 const errors=[];window.addEventListener('unhandledrejection',event=>errors.push(String(event.reason?.stack||event.reason)));
 const waitFor=async fn=>{for(let i=0;i<150;i++){if(fn())return;await new Promise(r=>setTimeout(r,20))}throw new Error('Morning UI timed out '+document.getElementById('morningConnectionStatus')?.textContent+' '+JSON.stringify(calls.slice(-3))+' '+JSON.stringify(errors)+' '+document.querySelector('[data-action="morning-create"]')?.outerHTML)};
@@ -56,10 +57,10 @@ const manualDebt=state.customerDebts.find(d=>d.id==='manual-partial'),manualPaym
 
 state.customerDebts.push({id:'reconcile-debt',customerName:'Partial reconcile',amount:100,paid:false,invoiceIssued:false,closedAt:null,phone:'456',orderNumber:'A2'});switchView('customers');
 const reconcileButton=document.querySelector('[data-customer-bulk-id="reconcile-debt"] [data-action="open-morning-document"]');assert(reconcileButton,'Missing Morning button for reconciliation debt');reconcileButton.click();await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
-fill('morningAmount','40');fill('morningDescription','Partial uncertain issue');uncertain=true;resolveStatus=false;operation=null;click('morning-create');await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
+scheduleSave('fixture new debt');fill('morningAmount','40');fill('morningDescription','Partial uncertain issue');uncertain=true;resolveStatus=false;operation=null;click('morning-create');await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
 const partialConfirm=document.getElementById('confirmMessage').textContent;assert(partialConfirm.includes('המסמך חלקי ביחס לחוב'),'Partial debt warning is explicit');assert(partialConfirm.includes('40')&&partialConfirm.includes('60'),'Partial confirmation explains applied and remaining amounts');document.getElementById('confirmAccept').click();await waitFor(()=>!!operation);
 const createCount=calls.filter(c=>c.action==='create').length;click('morning-create');assert(calls.filter(c=>c.action==='create').length===createCount,'Timeout triggered another POST');
-await waitFor(()=>!document.querySelector('[data-action="morning-create"]').textContent.includes('מפיק'));resolveStatus=true;click('morning-reconcile');await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100')&&document.querySelector('[data-action="morning-create"]').disabled);
+await waitFor(()=>!document.querySelector('[data-action="morning-create"]').textContent.includes('מפיק'));resolveStatus=true;click('morning-reconcile');await waitFor(()=>document.getElementById('morningOperationResult').textContent.includes('100')&&document.querySelector('[data-action="morning-create"]').disabled&&!localStorage.getItem('orders.morning.pending-issuance.v1'));
 assert(calls.some(c=>c.action==='status'&&c.reconcile&&c.operation_id===operation.operation_id),'Reconciliation must use operation ID');
 const partialDebt=state.customerDebts.find(d=>d.id==='reconcile-debt');assert(partialDebt.debtProgress?.length===2,'Verified reconciliation applies both 320 dimensions');assert(partialDebt.debtProgress.every(e=>e.amount===40&&e.source==='morning'),'Reconciled operation applies the verified partial amount once');assert(!partialDebt.paidAt&&!partialDebt.invoiceIssuedAt&&!partialDebt.closedAt,'Partial reconciliation does not falsely close the debt');
 const partialBytes=JSON.stringify(partialDebt);click('morning-reconcile');await new Promise(r=>setTimeout(r,80));assert(JSON.stringify(partialDebt)===partialBytes,'Repeated reconciliation is idempotent');uncertain=false;
@@ -96,3 +97,6 @@ print('PASS Morning UI workflows')
 
 from runtime_morning_audit import run as run_safety_audit
 run_safety_audit()
+
+from runtime_morning_resolution import run as run_resolution_audit
+run_resolution_audit()

@@ -1,8 +1,9 @@
 """Morning debt safety regressions in disposable Chromium; no external services."""
 import json
 from browser_harness import BrowserSession, ROOT
+from runtime_morning_cloud import LOCAL_CLOUD
 
-SETUP = r"""
+SETUP = LOCAL_CLOUD + r"""
 window.auditAssert=(ok,msg)=>{if(!ok)throw new Error(msg)};
 window.auditWait=async fn=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw new Error('audit timeout')};
 window.auditCalls=[];
@@ -27,7 +28,7 @@ window.auditDebt=()=>state.customerDebts.find(d=>d.id==='AUDIT');
 window.auditProgress=async()=>{const m=await import('./assets/js/shared/customer-debt-progress.js');return m.customerDebtProgressData(window.auditDebt())};
 window.auditOpen=async()=>{switchView('customers');openMorningDocument('AUDIT');await window.auditWait(()=>document.querySelector('[data-action="morning-create"]')&&!document.querySelector('[data-action="morning-create"]').disabled)};
 window.auditIssue=async(type,amount,policy={})=>{
- window.auditSetServer({operation:null});await window.auditOpen();
+ scheduleSave('fixture debt before issuance');window.auditSetServer({operation:null});await window.auditOpen();
  document.querySelector('input[name="morningDocumentType"][value="'+type+'"]').click();
  document.getElementById('morningAmount').value=String(amount);
  for(const [key,value] of Object.entries(policy))document.getElementById(key).checked=value;
@@ -121,8 +122,8 @@ def recovery_lock():
         await openMorningDocument('AUDIT');const calls=window.auditCalls.filter(c=>c.action==='create').length;
         await createMorningDocument(document.querySelector('[data-action="morning-create"]'));window.auditAssert(window.auditCalls.filter(c=>c.action==='create').length===calls,'uncertain retry POST');
         window.auditSetServer({operation:{...window.auditServer.operation,state:'created',verified_at:new Date().toISOString()}});
-        await recoverPendingMorningOperation();
-        window.auditAssert(!localStorage.getItem(key),'recovery not cleared after durable reconciliation');
+        const recovered=await recoverPendingMorningOperation();
+        window.auditAssert(!localStorage.getItem(key),'recovery not cleared after durable reconciliation '+JSON.stringify({recovered,context:JSON.parse(localStorage.getItem(key)),debt:window.auditDebt(),busy:cloudBusy,requested:cloudSaveRequested,conflict:cloudConflictBlocked}));
         const p=await window.auditProgress();window.auditAssert(p.paymentApplied===30&&p.invoiceApplied===30,'semantic double deduction');
         openDebtModal('AUDIT');window.auditAssert(!document.getElementById('dAmount').disabled,'lock not released');
         document.getElementById('dAddPayment').value='10';saveDebt('AUDIT');window.auditAssert((await window.auditProgress()).paymentApplied===40,'post-recovery payment blocked');
@@ -200,6 +201,7 @@ def crash_snapshots():
         seed(browser)
         js(browser, r"""
         scheduleSave('durable base');clearTimeout(saveTimer);saveTimer=null;await files.browserStateWritePromise;
+        await requestCloudSave('durable fixture base');cloudAuth.cloudEnabled=()=>false;
         // Navigation runs the production pagehide safety snapshot. Keep persistence
         // unavailable there too, so this fixture actually models a crash before disk save.
         storagePersistence.scheduleSave=()=>false;storageBrowser.localSnapshot=()=>false;await window.auditIssue(320,30);
@@ -245,12 +247,14 @@ def remotely_missing_debt():
         seed(browser)
         js(browser, r"""
         window.auditSetServer({uncertain:true});await window.auditIssue(320,30);
+        await requestCloudSave('fixture before remote removal');clearTimeout(saveTimer);saveTimer=null;
         const original=structuredClone(window.auditDebt());
-        state.customerDebts=state.customerDebts.filter(d=>d.id!=='AUDIT');
+        window.auditCloudHead={revision:cloudRevision+1,state:prepareCloudState(state)};
+        window.auditCloudHead.state.customerDebts=window.auditCloudHead.state.customerDebts.filter(d=>d.id!=='AUDIT');
         window.auditSetServer({operation:{...window.auditServer.operation,state:'created',verified_at:new Date().toISOString()}});
         const missing=await recoverPendingMorningOperation();
         window.auditAssert(!missing.ok&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'missing debt discarded verified payment recovery');
-        state.customerDebts.push(original);await recoverPendingMorningOperation();
+        window.auditCloudHead.state.customerDebts.push(original);window.auditCloudHead.revision++;await recoverPendingMorningOperation();
         window.auditAssert((await window.auditProgress()).paymentApplied===30&&!localStorage.getItem('orders.morning.pending-issuance.v1'),'restored debt could not recover verified payment');return true;
         """)
         print('PASS Morning remote debt removal preserves recovery; restoring original debt recovers both dimensions')
@@ -268,7 +272,10 @@ def two_computers():
                 js(browser, "state=normalizeState("+json.dumps(initial)+");primaryTab=true;localGeneration=0;cloudRevision=10;lastCloudState=prepareCloudState(state);cloudConflictBlocked=false;cloudSaveRequested=false;localStorage.setItem(CLOUD_AUTO_KEY,'1');saveSession({access_token:'fixture',expires_at:9999999999});Object.defineProperty(navigator,'onLine',{value:false,configurable:true});return true;")
             for index,browser in enumerate((a,b)):
                 if scenario=='distinct-morning':
-                    js(browser, f"await window.auditIssue(320,{60 if index==0 else 70});clearTimeout(saveTimer);saveTimer=null;await getCloudPending();return true;")
+                    # Morning transport is online; Orders cloud is unavailable until the
+                    # profiles reconnect below. A verified network response while navigator
+                    # is offline now correctly enters the refresh-required recovery path.
+                    js(browser, f"Object.defineProperty(navigator,'onLine',{{value:true,configurable:true}});cloudAuth.cloudEnabled=()=>false;await window.auditIssue(320,{60 if index==0 else 70});cloudAuth.cloudEnabled=()=>true;Object.defineProperty(navigator,'onLine',{{value:false,configurable:true}});scheduleSave('fixture offline outbox');clearTimeout(saveTimer);saveTimer=null;await getCloudPending();return true;")
                 else:
                     change="setCustomerFlag('AUDIT','paid',false);" if scenario=='reset-and-new-payment' and index==0 else "openDebtModal('AUDIT');document.getElementById('dPaid').value='partial';document.getElementById('dAddPayment').value='"+('20' if index==0 else '25')+"';saveDebt('AUDIT');"
                     js(browser, change+"clearTimeout(saveTimer);saveTimer=null;await getCloudPending();return true;")

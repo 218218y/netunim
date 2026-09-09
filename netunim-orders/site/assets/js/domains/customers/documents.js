@@ -3,7 +3,7 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
-import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable} from './morning-debt-recovery.js';
+import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
@@ -19,8 +19,12 @@ function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation}){
+export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery}){
 let activeOperationId='',activeDebtId='',issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false,recoveryBusy=false,recoveryTimer=null;
+let applicationPromise=null,decisionView=null;
+let issuanceInterruptionEpoch=0;
+globalThis.addEventListener?.('offline',()=>{issuanceInterruptionEpoch++});
+globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)issuanceInterruptionEpoch++});
 let pendingRecovery=loadMorningDebtRecoveryContext();
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;issuanceContext=pendingRecovery;blocked=true}
 function isDebtRecoveryPending(debtId){
@@ -84,6 +88,7 @@ function formBody(d,type,dateEditorMarkup,{standalone=false}={}){
   return `<div class="morning-document-dialog" data-morning-generation="${modalGeneration}">
     <div class="morning-document-hero"><div><span class="morning-brand">Morning</span><h4>${standalone?'הפקת מסמך כללי':'הפקת מסמך ללקוח'}</h4><p>המסמך הרשמי יופק ויישמר ב-Morning. באתר נשמרת רק הפניה קטנה למסמך.</p></div>${heroAmount}</div>
     <div id="morningConnectionStatus" class="morning-connection loading"><span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span></div>
+    <div id="morningRecoveryDecision" hidden></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${DOCUMENT_TYPE_ORDER.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${esc(value)}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
     </div>
@@ -191,32 +196,88 @@ function debtImpactConfirmation(type,amount,policy=debtUpdatePolicy(type)){
   else lines.push('רק הסעיפים שסומנו יעודכנו, ורק לאחר אימות ודאי של המסמך ב-Morning.');
   return `\n\nעדכון החוב לאחר אימות:\n${lines.join('\n')}`;
 }
-function recoveryContext(type,amount,policy=debtUpdatePolicy(type),operationId=activeOperationId){return createMorningDebtRecoveryContext({operationId,debtId:activeDebtId,type,amount,applyPayment:policy.applyPayment,applyInvoice:policy.applyInvoice})}
+function recoveryContext(type,amount,policy=debtUpdatePolicy(type),operationId=activeOperationId){return createMorningDebtRecoveryContext({operationId,debtId:activeDebtId,type,amount,applyPayment:policy.applyPayment,applyInvoice:policy.applyInvoice,financialSnapshot:morningFinancialSnapshot(currentDebt())})}
 function persistRecoveryContext(context){
   if(!saveMorningDebtRecoveryContext(context))throw new Error('לא ניתן לשמור נקודת התאוששות מקומית לפני ההפקה. המסמך לא נשלח ל-Morning כדי שלא יאבד הקשר לחוב במקרה של ניתוק או רענון.');
   pendingRecovery=context;issuanceContext=context;return context;
 }
 function clearRecoveryContext(operationId=''){
   const target=operationId||pendingRecovery?.operationId||issuanceContext?.operationId||'';
-  const cleared=clearMorningDebtRecoveryContext(target);if(cleared&&(!pendingRecovery||!target||pendingRecovery.operationId===target))pendingRecovery=null;return cleared;
+  const cleared=clearMorningDebtRecoveryContext(target);if(cleared&&(!pendingRecovery||!target||pendingRecovery.operationId===target)){pendingRecovery=null;decisionView=null;const panel=currentField('morningRecoveryDecision');if(panel){panel.hidden=true;panel.replaceChildren()}}return cleared;
 }
 function adoptRecoveryOperationId(operationId){
   const id=String(operationId||'').trim();if(!id||!issuanceContext||issuanceContext.operationId===id)return issuanceContext;
-  const next=recoveryContext(issuanceContext.type,issuanceContext.amount,{applyPayment:issuanceContext.applyPayment,applyInvoice:issuanceContext.applyInvoice},id);
+  const next=createMorningDebtRecoveryContext({...issuanceContext,operationId:id});
   if(saveMorningDebtRecoveryContext(next)){pendingRecovery=next;issuanceContext=next;activeOperationId=id;activeDebtId=next.debtId;return next}
   return issuanceContext;
 }
-function applyVerifiedContext(context,{operationId,type,amount,verifiedAt}={}){
+function showRecoveryDecision(context,current){
+  const changes=morningFinancialChanges(context.financialSnapshot,current),saved=context.resolution;
+  const reviewed=saved&&!morningFinancialChanges(saved.financialSnapshot,current).changed;
+  const displayedCurrent=morningFinancialSnapshot((model.state.customerDebts||[]).find(d=>d.id===context.debtId))||current;
+  decisionView={operationId:context.operationId,financialSnapshot:current};
+  if(!$('#modalBackdrop')?.classList.contains('open')){
+    modalGeneration++;modal('הכרעה בעדכון חוב מ-Morning',`<div data-morning-generation="${modalGeneration}"><div id="morningConnectionStatus"></div><div id="morningRecoveryDecision"></div></div>`,'<button class="btn" data-action="close-modal">סגור — ההפקה תישאר ממתינה</button>');
+  }
+  const panel=currentField('morningRecoveryDecision');
+  if(!panel){toast('החוב השתנה בזמן שהפקת Morning המתינה לאימות. פתח את הפקת Morning של החוב להכרעה לפני זקיפה.');return}
+  const summary=value=>value?`סכום החוב: ${money(value.amount)} · שולם: ${money(value.paymentApplied)} (${value.paymentComplete?'מלא':'לא מלא'}) · חשבוניות: ${money(value.invoiceApplied)} (${value.invoiceComplete?'מלא':'לא מלא'})`:'לא נשמר צילום מצב בניסיון ההפקה הישן. נדרש אישור מפורש.';
+  const option=(kind,label,supported,checked)=>supported?`<label class="morning-debt-update-option"><input id="morningRecovery${kind}" type="checkbox" data-change="morning-recovery-choice" ${checked?'checked':''}><span>${label}</span></label>`:'';
+  panel.hidden=false;panel.innerHTML=`<section class="morning-form-card"><h4>נדרשת הכרעה לפני עדכון החוב</h4><p>${esc(documentLabel(context.type))} בסך <b>${money(context.amount)}</b>. ייתכן שהתשלום או החשבונית כבר נרשמו ממחשב אחר. אין זקיפה אוטומטית לפי סכומים.</p><p><b>בזמן ההפקה:</b> ${summary(context.financialSnapshot)}</p><p><b>המצב הנוכחי לאחר סנכרון:</b> ${summary(displayedCurrent)}</p><div class="morning-debt-update-options">${option('Payment','זקוף כתשלום',context.type!==305,reviewed?saved.applyPayment:context.applyPayment&&!changes.payment)}${option('Invoice','זקוף כחשבונית',context.type!==400,reviewed?saved.applyInvoice:context.applyInvoice&&!changes.invoice)}</div><p>בצד שהשתנה הסימון כבוי כברירת מחדל. סמן אותו רק אם מסמך Morning מייצג סכום נוסף שעדיין לא נרשם. הבחירות נשמרות; זקיפה תבוצע רק לאחר אישור מפורש ורענון ענן מוצלח.</p><button class="btn primary" data-action="morning-recovery-confirm">אשר את הבחירות ועדכן את החוב</button><p id="morningRecoveryChoiceStatus" role="status"></p></section>`;
+  connectionStatus('warning','המסמך מאומת. החוב ממתין להכרעה מפורשת.');markModalDraftSaved?.();
+}
+function saveRecoveryChoice(){
+  const context=loadMorningDebtRecoveryContext();if(!context||context.operationId!==decisionView?.operationId||rejectSecondaryMutation?.()===true)return false;
+  const next=createMorningDebtRecoveryContext({...context,resolution:{financialSnapshot:decisionView.financialSnapshot,applyPayment:currentField('morningRecoveryPayment')?.checked===true,applyInvoice:currentField('morningRecoveryInvoice')?.checked===true,confirmedAt:''}});
+  if(!saveMorningDebtRecoveryContext(next)){toast('לא ניתן לשמור את ההכרעה. החוב לא יעודכן ונקודת ההתאוששות נשארת נעולה.');return false}
+  pendingRecovery=next;issuanceContext=next;markModalDraftSaved?.();return true;
+}
+async function confirmRecoveryChoice(button){
+  if(applicationPromise||recoveryBusy||!saveRecoveryChoice())return;
+  const chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
+  setBusy(button,true,'מסנכרן ובודק…');
+  try{
+    if(await refreshForMorningRecovery?.()!==true){toast('לא ניתן להשלים רענון מהענן. ההכרעה נשמרה אך החוב לא עודכן.');return}
+    if(rejectSecondaryMutation?.()===true)return;
+    const current=morningFinancialSnapshot((model.state.customerDebts||[]).find(d=>d.id===chosen.debtId),chosen.operationId);
+    if(!current){toast('החוב אינו קיים. נקודת ההתאוששות נשמרה.');return}
+    if(morningFinancialChanges(chosen.resolution.financialSnapshot,current).changed){showRecoveryDecision(chosen,current);toast('החוב השתנה שוב בזמן הבדיקה. בדוק ואשר את המצב המעודכן.');return}
+    const latest=loadMorningDebtRecoveryContext();if(latest?.operationId!==chosen.operationId||JSON.stringify(latest.resolution)!==JSON.stringify(chosen.resolution))return;
+    const approved=createMorningDebtRecoveryContext({...chosen,resolution:{...chosen.resolution,confirmedAt:new Date().toISOString()}});
+    if(!saveMorningDebtRecoveryContext(approved)){toast('שמירת האישור נכשלה. לא בוצעה זקיפה.');return}
+    pendingRecovery=approved;issuanceContext=approved;markModalDraftSaved?.();await recoverPendingMorningOperation();
+  }catch(error){toast('ההכרעה נשמרה להתאוששות; לא ניתן להשלים כרגע: '+error.message)}finally{setBusy(button,false)}
+}
+
+function applyVerifiedContext(context,args={},options={}){
+  if(applicationPromise)return applicationPromise;
+  applicationPromise=applyVerifiedContextOnce(context,args,options).finally(()=>{applicationPromise=null});return applicationPromise;
+}
+async function applyVerifiedContextOnce(context,{operationId,type,amount,verifiedAt}={}, {immediate=false}={}){
   if(!context||!operationId||context.operationId!==operationId)return {changed:false,reason:'unbound-operation'};
   if(!morningDebtRecoveryMatchesVerified(context,{operationId,type,amount})){toast('המסמך אומת ב-Morning, אך פרטי האימות אינם תואמים לנקודת ההתאוששות המקומית. החוב לא עודכן אוטומטית.');return {changed:false,reason:'verification-mismatch'}}
   if(!context.debtId)return {changed:false,reason:'standalone'};
-  const result=applyVerifiedDebtDocument?.({debtId:context.debtId,operationId,type,amount,verifiedAt,applyPayment:context.applyPayment,applyInvoice:context.applyInvoice})||{changed:false,reason:'no-handler'};
+  if(!immediate){
+    connectionStatus('loading','ממתין להשלמת רענון החוב מהענן לפני זקיפה…');
+    if(await refreshForMorningRecovery?.()!==true){connectionStatus('warning','רענון החוב מהענן לא הושלם. לא בוצעה זקיפה; נקודת ההתאוששות נשארת נעולה.');return {changed:false,reason:'cloud-refresh-pending'}}
+  }
+  if(rejectSecondaryMutation?.()===true)return {changed:false,reason:'write-blocked'};
+  const stored=loadMorningDebtRecoveryContext();if(stored?.operationId!==operationId)return {changed:false,reason:'recovery-changed'};context=stored;
+  const debt=(model.state.customerDebts||[]).find(d=>d.id===context.debtId),current=morningFinancialSnapshot(debt,operationId);
+  if(!current){toast('המסמך אומת, אך החוב חסר. נקודת ההתאוששות נשמרה עד לשחזור החוב.');return {changed:false,reason:'missing-debt'}}
+  const resolution=context.resolution,reviewed=resolution&&!morningFinancialChanges(resolution.financialSnapshot,current).changed;
+  let policy=context;
+  if(resolution||morningFinancialChanges(context.financialSnapshot,current).changed){
+    if(!reviewed||!resolution.confirmedAt){showRecoveryDecision(context,current);return {changed:false,reason:'decision-required'}}
+    policy=resolution;
+  }
+  const result=applyVerifiedDebtDocument?.({debtId:context.debtId,operationId,type,amount,verifiedAt,applyPayment:policy.applyPayment,applyInvoice:policy.applyInvoice})||{changed:false,reason:'no-handler'};
   if(result.reason==='missing-debt')toast('המסמך אומת ב-Morning, אך שורת החוב כבר אינה קיימת ולכן לא עודכנה. נקודת ההתאוששות נשמרה וההפקה נשארת נעולה עד לשחזור החוב ובדיקת המצב מחדש.');
   else if(result.reason==='write-blocked')toast('המסמך אומת ב-Morning, אך עדכון החוב נעצר כי אין כרגע הרשאת כתיבה מקומית. נקודת ההתאוששות נשמרה וינוסה שוב מהלשונית הראשית.');
   else if(result.persisted===false)toast('המסמך אומת והחוב עודכן בזיכרון, אך השמירה המקומית נכשלה. נקודת ההתאוששות נשמרה; אין לסגור את החלון עד שהשמירה המקומית חוזרת לפעול.');
   return result;
 }
-function applyVerifiedOperation(args={}){return applyVerifiedContext(issuanceContext,args)}
+function applyVerifiedOperation(args={},options={}){return applyVerifiedContext(issuanceContext,args,options)}
 function settleVerifiedRecovery(operationId,result,{serverLinkPending=false}={}){
   const durable=morningVerifiedApplicationDurable(result),recoveryCleared=durable&&!serverLinkPending?clearRecoveryContext(operationId):false;
   return {durable,recoveryCleared,blocked:!durable||serverLinkPending||!recoveryCleared};
@@ -249,9 +310,9 @@ async function refreshStatus({reconcile=false}={}){
     if(reconcile&&data.retryable_reserved&&operationId){const abandoned=await abandonRecoveredReservation(operationId);if(abandoned.abandoned){if(isActive(generation)){connectionStatus('ready','הניסיון הקודם נעצר לפני שליחה. אפשר לערוך ולהפיק מחדש בבטחה.');const button=document.querySelector('[data-action="morning-create"]');if(button)button.disabled=false}return data}data={...data,operation:abandoned.operation}}
     // A persisted recovery context stays fail-closed even if a status read races before the Edge reservation becomes visible.
     const recoveryStillPending=pendingRecovery?.operationId===operationId;
-    blocked=!!data.unresolved||!!data.retryable_reserved||(recoveryStillPending&&!data.operation);renderOperation(data.operation);
+    blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending;renderOperation(data.operation);
     const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at,needsLocalRecovery=!completed||pendingRecovery?.operationId===operationId;let recoveryCleanupPending=false;
-    if(verifiedCreated&&needsLocalRecovery){const result=applyVerifiedOperation({operationId:data.operation.operation_id,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at}),settlement=settleVerifiedRecovery(operationId,result);blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;markModalDraftSaved?.()}
+    if(verifiedCreated&&needsLocalRecovery){const result=await applyVerifiedOperation({operationId:data.operation.operation_id,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at}),settlement=settleVerifiedRecovery(operationId,result);blocked=settlement.blocked;completed=settlement.durable;recoveryCleanupPending=settlement.durable&&!settlement.recoveryCleared;markModalDraftSaved?.()}
     if(data.operation?.state==='failed'){resetOperationAfterTerminal(operationId)}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
     if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
@@ -278,7 +339,7 @@ async function recoverPendingMorningOperation({quiet=false}={}){
       operation=abandoned.operation;
     }
     if(operation?.state==='created'&&operation.verified_at){
-      const result=applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result);
+      const result=await applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result);
       if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
       blocked=true;completed=settlement.durable;scheduleRecoveryCheck();if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
     }
@@ -299,7 +360,7 @@ async function createMorningDocument(button){
   const rejectCurrentIssuance=()=>activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true;
   if(rejectCurrentIssuance())return;
   let payload;try{payload=readForm()}catch(error){return toast(error.message)}
-  const generation=modalGeneration,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
+  const generation=modalGeneration,issuanceEpoch=issuanceInterruptionEpoch,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name,policy=debtUpdatePolicy(type);
   createBusy=true;setBusy(button,true,'מפיק…');
   try{
     const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount,policy)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});
@@ -312,7 +373,7 @@ async function createMorningDocument(button){
     // From this point both the server reservation and the exact local debt/update policy are durable before any official POST.
     blocked=true;
     const data=await backend('create',payload);if(data.verified!==true||!data.document?.id)throw new Error('השרת לא החזיר אימות קנוני למסמך. לא יישלח ניסיון נוסף לפני בדיקת מצב ההפקה.');
-    const result=applyVerifiedOperation({operationId:activeOperationId,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()}),settlement=settleVerifiedRecovery(activeOperationId,result,{serverLinkPending:!!data.local_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;
+    const result=await applyVerifiedOperation({operationId:activeOperationId,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()},{immediate:issuanceEpoch===issuanceInterruptionEpoch&&navigator.onLine!==false}),settlement=settleVerifiedRecovery(activeOperationId,result,{serverLinkPending:!!data.local_link_pending}),durable=settlement.durable,recoveryCleared=settlement.recoveryCleared;
     documentsBrowser.invalidateCache();
     let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});
     if(isActive(generation)){
@@ -342,5 +403,5 @@ async function createMorningDocument(button){
 function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,syncDocumentType,syncPaymentType,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
+return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,syncDocumentType,syncPaymentType,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
 }

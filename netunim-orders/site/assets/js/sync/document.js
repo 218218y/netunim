@@ -12,6 +12,35 @@ function effectiveDeleteIntents(base,candidate,intents){const out={},declared=no
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncDocument({model, files, session, ui, tab, normalizeState, localSnapshot, markCloudPending, getCloudPending, clearCloudPending, toast, setCloud, prepareCloudState, writeStateToFolder, readCloud, rpcSave, merge3, applyOrderCloudState, cloudPendingExists, setSave, cloudEnabled, loadCloudPendingState, sameOrderCloudData, cloudHasLocalWork, render, readCloudMeta, refreshKupaReadout, pollSharedChecks, refreshCloudTimestamp}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
+let cloudPollPromise=null,morningRefreshPromise=null;
+
+function refreshForMorningRecovery(){
+  if(morningRefreshPromise)return morningRefreshPromise;
+  morningRefreshPromise=(async()=>{
+    const available=()=>tab.primaryTab&&cloudEnabled()&&navigator.onLine&&!session.cloudConflictBlocked&&!session.syncCapabilitiesError;
+    if(!available())return false;
+    // Await actual completion, including a poll already reading the remote head.
+    if(cloudPollPromise)await cloudPollPromise;
+    if(session.cloudSavePromise)await session.cloudSavePromise;
+    if(!available())return false;
+    if(cloudHasLocalWork()||await getCloudPending()){
+      if(!await requestCloudSave('סנכרון החוב לפני התאוששות Morning'))return false;
+    }
+    if(!available()||session.cloudBusy)return false;
+    session.cloudBusy=true;
+    try{
+      const generation=session.localGeneration,local=prepareCloudState(model.state),row=await readCloud();
+      if(!available()||!row?.state||!Number.isSafeInteger(Number(row.revision))||Number(row.revision)<Number(session.cloudRevision||0))return false;
+      // A local edit/save during the GET invalidates this refresh; never apply a stale head.
+      if(session.localGeneration!==generation||session.cloudSavePromise||cloudHasLocalWork()||!sameOrderCloudData(model.state,local))return false;
+      applyOrderCloudState(row.state);session.cloudRevision=Number(row.revision);session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);
+      localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));
+      if(localSnapshot()===false)return false;
+      render();refreshCloudTimestamp();return true;
+    }finally{session.cloudBusy=false}
+  })().catch(error=>{console.error('Morning recovery cloud refresh',error);return false}).finally(()=>{morningRefreshPromise=null});
+  return morningRefreshPromise;
+}
 async function saveCloudSnapshot(snapshot,startGeneration,pendingRecord=null){
   let base=clone(pendingRecord?.baseState||session.lastCloudState||snapshot),deleteIntents=normalizeDeleteIntents(pendingRecord?.deleteIntents),expected=Number(pendingRecord?.baseRevision??session.cloudRevision??0),res=null,serverSnapshot=clone(snapshot),mergedRemote=false;
   const operationId=String(pendingRecord?.operationId||'').trim();
@@ -62,7 +91,8 @@ async function restorePendingAgainstCloud(row){const durable=await getCloudPendi
 
 async function cloudPoll(){if(!tab.primaryTab)return;if(!cloudEnabled()||session.cloudBusy||!navigator.onLine)return;if(cloudHasLocalWork()){await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return}try{session.cloudBusy=true;const meta=await readCloudMeta();if(!meta)return;const metaRevision=Number(meta.revision||0);if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;refreshCloudTimestamp();return}const row=await readCloud();if(!row)return;if(Number(row.revision||0)<=session.cloudRevision)return;const meaningful=!sameOrderCloudData(model.state,row.state);session.cloudRevision=Number(row.revision);session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;if(!meaningful){session.lastCloudState=prepareCloudState(row.state||model.state);try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)};refreshCloudTimestamp();setCloud('ענן: מסונכרן','synced');return}applyOrderCloudState(row.state);session.lastCloudState=prepareCloudState(model.state);try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)};localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}setCloud('ענן: מסונכרן','synced');render();toast('התקבל עדכון מהענן')}catch(e){console.error(e)}finally{session.cloudBusy=false;await pollSharedChecks();await refreshKupaReadout({renderIfChanged:true})}}
 
-function startPolling(){clearTimeout(session.cloudPollTimer);session.cloudPollingEnabled=true;const schedule=()=>{if(!session.cloudPollingEnabled)return;session.cloudPollTimer=setTimeout(async()=>{try{await cloudPoll()}finally{schedule()}},12_000+Math.floor(Math.random()*2_000))};schedule()}
+function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
+function startPolling(){clearTimeout(session.cloudPollTimer);session.cloudPollingEnabled=true;const schedule=()=>{if(!session.cloudPollingEnabled)return;session.cloudPollTimer=setTimeout(async()=>{try{await trackedCloudPoll()}finally{schedule()}},12_000+Math.floor(Math.random()*2_000))};schedule()}
 
-return { saveCloudSnapshot, requestCloudSave, restorePendingAgainstCloud, cloudPoll, startPolling };
+return { saveCloudSnapshot, requestCloudSave, restorePendingAgainstCloud, cloudPoll:trackedCloudPoll, startPolling,refreshForMorningRecovery };
 }
