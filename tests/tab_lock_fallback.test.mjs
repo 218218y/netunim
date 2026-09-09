@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {withExpectedConsoleErrors} from './helpers/expected-console.mjs';
 import {createStorageTabLock as createOrdersLock} from '../netunim-orders/site/assets/js/storage/tab-lock.js';
 import {createStorageTabLock as createKupaLock} from '../netunim-kupa/site/assets/js/storage/tab-lock.js';
 
@@ -47,8 +48,13 @@ async function failClosedExercise(factory,mode){
     Object.defineProperty(globalThis,'BroadcastChannel',{value:class{constructor(){throw new Error('broadcast unavailable')}},configurable:true});
     Object.defineProperty(globalThis,'setTimeout',{value:()=>1,configurable:true});Object.defineProperty(globalThis,'clearTimeout',{value:()=>{},configurable:true});
   }else Object.defineProperty(globalThis,'BroadcastChannel',{value:undefined,configurable:true});
-  try{const tab={primaryTab:true,primaryTabReady:false},lock=factory({tab,showSecondaryTabGuard(){}});assert.equal(await lock.acquirePrimaryTabLock(),false);assert.equal(tab.primaryTab,false);assert.ok(tab.lockDiagnostic);}
-  finally{for(const callback of pagehide)callback();for(const [key,value] of Object.entries(prior))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true})}
+  const expected=mode==='storage'?[
+    ['tab writer fallback','blocked'],['tab writer fallback','blocked'],['tab writer fallback','blocked'],
+  ]:mode==='broadcast'?[['tab writer fallback','broadcast unavailable']]:[];
+  return withExpectedConsoleErrors(expected,async()=>{
+    try{const tab={primaryTab:true,primaryTabReady:false},lock=factory({tab,showSecondaryTabGuard(){}});assert.equal(await lock.acquirePrimaryTabLock(),false);assert.equal(tab.primaryTab,false);assert.ok(tab.lockDiagnostic);}
+    finally{for(const callback of pagehide)callback();for(const [key,value] of Object.entries(prior))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true})}
+  });
 }
 
 for(const [label,factory] of [['Orders',createOrdersLock],['Kupa',createKupaLock]]){

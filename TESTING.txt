@@ -10,6 +10,9 @@ python tools/sync-assets.py
  cd ..
 netunim\deploy_all.bat --preflight-only
 
+cd..
+netunim\verify.bat --no-pause
+
 NETUNIM TESTING
 ===============
 

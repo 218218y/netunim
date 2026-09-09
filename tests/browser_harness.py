@@ -95,6 +95,15 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format, *_args):
         pass
 
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            # Headless Chromium can cancel or close an idle localhost request while
+            # tabs/targets are being torn down. That is a normal client disconnect,
+            # not a server or application failure; unexpected exceptions still escape.
+            pass
+
     def end_headers(self):
         # Exercise the same security headers as the static deployment.
         headers = Path(self.directory) / '_headers'

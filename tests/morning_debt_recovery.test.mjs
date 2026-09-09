@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {withExpectedConsoleErrors} from './helpers/expected-console.mjs';
 import {
   MORNING_DEBT_RECOVERY_STORAGE_KEY,
   createMorningDebtRecoveryContext,
@@ -95,7 +96,10 @@ test('corrupt or stale-shaped storage is rejected and cleaned instead of being t
   assert.equal(normalizeMorningDebtRecoveryContext({version:1,operationId:OP,debtId:'x',type:999,amount:100,createdAt:CREATED}),null);
 });
 
-test('failure to durably write or remove local recovery fails closed',()=>{
+test('failure to durably write or remove local recovery fails closed',()=>withExpectedConsoleErrors([
+  ['Morning recovery context save','quota'],
+  ['Morning recovery context clear','locked'],
+],async()=>{
   const storage=new MemoryStorage();
   const context=createMorningDebtRecoveryContext({operationId:OP,debtId:'debt-1',type:320,amount:100,applyPayment:true,applyInvoice:true,createdAt:CREATED});
   storage.failSet=true;
@@ -105,7 +109,7 @@ test('failure to durably write or remove local recovery fails closed',()=>{
   storage.failRemove=true;
   assert.equal(clearMorningDebtRecoveryContext(OP,storage),false);
   assert.deepEqual(loadMorningDebtRecoveryContext(storage),context);
-});
+}));
 
 
 test('saved allocation policy survives reload and prevents a manual payment from being deducted again',()=>{
