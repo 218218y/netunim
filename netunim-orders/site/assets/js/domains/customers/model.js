@@ -9,8 +9,8 @@ export function customerDebtStatus(d){
   if(p.paymentPartial&&p.invoiceComplete)return{key:'partial',text:'חשבונית יצאה · שולם חלקית',cls:'orange'};
   if(p.paymentPartial)return{key:'partial',text:p.invoiceComplete?'חשבונית יצאה · שולם חלקית':'שולם חלקית',cls:'orange'};
   if(p.invoicePartial)return{key:'partial',text:p.paymentComplete?'שולם · חשבונית חלקית':'חשבונית חלקית · טרם שולם',cls:'orange'};
-  if(p.paymentComplete&&!p.invoiceComplete)return{key:'invoice',text:'שולם · חסרה חשבונית',cls:'red'};
-  if(!p.paymentComplete&&p.invoiceComplete)return{key:'open',text:'חשבונית יצאה · טרם שולם',cls:'yellow'};
+  if(p.paymentComplete&&!p.invoiceComplete)return{key:'invoice',text:'חסר ח״מ',cls:'red'};
+  if(!p.paymentComplete&&p.invoiceComplete)return{key:'open',text:'טרם שולם',cls:'yellow'};
   return{key:'open',text:'חוב פתוח',cls:'yellow'};
 }
 

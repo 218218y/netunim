@@ -13,6 +13,11 @@ const reset=(id,kind,clears,createdAt='2026-09-09T09:00:00.000Z')=>({id,kind,act
 
 function baseOrderState(customerDebts=[]){return {version:4,businessName:'test',suppliers:[],transactions:[],customerDebts,customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[],checks:[],notes:[],importAudit:{},stage2Audit:{}}}
 
+test('customer debt status uses compact labels for narrow state columns',()=>{
+ assert.equal(customerDebtStatus({amount:100,paid:true,invoiceIssued:false}).text,'חסר ח״מ');
+ assert.equal(customerDebtStatus({amount:100,paid:false,invoiceIssued:true}).text,'טרם שולם');
+});
+
 test('customer debt progress derives payment and invoice balances independently in cents',()=>{
  const debt={amount:1000,debtProgress:[add('P1','payment',300),add('P2','payment',200),add('I1','invoice',400)]};
  assert.deepEqual(customerDebtProgressData(debt),{
