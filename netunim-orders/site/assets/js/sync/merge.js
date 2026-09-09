@@ -1,5 +1,5 @@
 import {clone} from '../core/values.js';
-import {eq, mergeArray} from './merge-records.js';
+import {eq, mergeArray, mergeCustomerDebtArray} from './merge-records.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncMerge({normalizeState}){
@@ -15,7 +15,7 @@ function merge3(base,local,remote,{preferLocalConflicts=false,deleteIntents={}}=
   out.businessName=scalar('businessName');
   out.suppliers=mergeArray(base?.suppliers,protectImplicitDeletes(base?.suppliers,local?.suppliers,deleteIntents.suppliers),remote?.suppliers,'id',conflicts,'supplier',preferLocalConflicts);
   out.transactions=mergeArray(base?.transactions,protectImplicitDeletes(base?.transactions,local?.transactions,deleteIntents.transactions),remote?.transactions,'id',conflicts,'transaction',preferLocalConflicts);
-  out.customerDebts=mergeArray(base?.customerDebts,protectImplicitDeletes(base?.customerDebts,local?.customerDebts,deleteIntents.customerDebts),remote?.customerDebts,'id',conflicts,'customerDebt',preferLocalConflicts);
+  out.customerDebts=mergeCustomerDebtArray(base?.customerDebts,protectImplicitDeletes(base?.customerDebts,local?.customerDebts,deleteIntents.customerDebts),remote?.customerDebts,conflicts,preferLocalConflicts);
   out.customerOrders=mergeArray(base?.customerOrders,protectImplicitDeletes(base?.customerOrders,local?.customerOrders,deleteIntents.customerOrders),remote?.customerOrders,'id',conflicts,'customerOrder',preferLocalConflicts);
   out.serviceCalls=mergeArray(base?.serviceCalls,protectImplicitDeletes(base?.serviceCalls,local?.serviceCalls,deleteIntents.serviceCalls),remote?.serviceCalls,'id',conflicts,'serviceCall',preferLocalConflicts);
   out.notes=mergeArray(base?.notes,protectImplicitDeletes(base?.notes,local?.notes,deleteIntents.notes),remote?.notes,'id',conflicts,'note',preferLocalConflicts);

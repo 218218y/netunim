@@ -925,6 +925,7 @@ const uiActions=createUiActions({
   setCustomerFlag:(...args)=>domainsCustomers.setCustomerFlag(...args),
   saveDebtNote:(...args)=>domainsCustomers.saveDebtNote(...args),
   openDebtModal:(...args)=>domainsCustomers.openDebtModal(...args),
+  openDebtProgressDetails:(...args)=>domainsCustomers.openDebtProgressDetails(...args),
   saveDebt:(...args)=>domainsCustomers.saveDebt(...args),
   deleteDebt:(...args)=>domainsCustomers.deleteDebt(...args),
   openMorningDocument:(...args)=>domainsCustomers.openMorningDocument(...args),

@@ -1,3 +1,5 @@
+import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
+
 const GROUPS=[
   {key:'suppliers',label:'ספקים'},
   {key:'customers',label:'לקוחות'},
@@ -28,7 +30,7 @@ function supplierEntries(state){
 }
 
 function customerEntries(state){
-  const debts=(Array.isArray(state.customerDebts)?state.customerDebts:[]).map(d=>({group:'customers',kind:'customer-debt',id:d.id,context:d.customerName||'לקוח',badge:'חוב לקוח',title:d.customerName||'לקוח ללא שם',subtitle:[d.orderNumber?`הזמנה ${d.orderNumber}`:'',d.phone,d.note].filter(Boolean).join(' · ')||'כרטיס חוב',amount:Number(d.amount||0),meta:[d.paid?'שולם':'פתוח',d.invoiceIssued?'חשבונית יצאה':''].filter(Boolean),searchText:entrySearchText([d.customerName,d.orderNumber,d.phone,d.amount,d.note,...sourceValues(d.source),truthLabel(d.paid,'שולם','לא שולם'),truthLabel(d.supplied,'סופק','לא סופק'),truthLabel(d.invoiceIssued,'חשבונית יצאה','חסרה חשבונית')])}));
+  const debts=(Array.isArray(state.customerDebts)?state.customerDebts:[]).map(d=>{const p=customerDebtProgressData(d),paymentLabel=p.paymentComplete?'שולם':p.paymentPartial?'שולם חלקית':'פתוח',invoiceLabel=p.invoiceComplete?'חשבונית יצאה':p.invoicePartial?'חשבונית חלקית':'חסרה חשבונית',amount=p.paymentPartial?p.remainingPayment:Number(d.amount||0);return{group:'customers',kind:'customer-debt',id:d.id,context:d.customerName||'לקוח',badge:'חוב לקוח',title:d.customerName||'לקוח ללא שם',subtitle:[d.orderNumber?`הזמנה ${d.orderNumber}`:'',d.phone,d.note].filter(Boolean).join(' · ')||'כרטיס חוב',amount,meta:[paymentLabel,invoiceLabel].filter(Boolean),searchText:entrySearchText([d.customerName,d.orderNumber,d.phone,d.amount,d.note,p.paymentApplied,p.remainingPayment,p.invoiceApplied,p.remainingInvoice,...sourceValues(d.source),paymentLabel,truthLabel(d.supplied,'סופק','לא סופק'),invoiceLabel])}});
   const orders=(Array.isArray(state.customerOrders)?state.customerOrders:[]).map(o=>({group:'customers',kind:'customer-order',id:o.id,context:o.customerName||'לקוח',badge:'מעקב הזמנה',title:o.customerName||o.orderNumber||'הזמנה',subtitle:[o.orderNumber?`הזמנה ${o.orderNumber}`:'',o.note].filter(Boolean).join(' · ')||'מעקב הזמנה',meta:[o.mattresses?`מזרונים: ${o.mattresses}`:''].filter(Boolean),searchText:entrySearchText([o.customerName,o.orderNumber,o.mark1,o.mark2,o.mark3,o.mattresses,o.note])}));
   return [...debts,...orders]
 }

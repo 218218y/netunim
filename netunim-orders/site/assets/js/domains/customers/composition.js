@@ -75,6 +75,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     setCustomerFlag:(...args)=>view.setCustomerFlag(...args),
     saveDebtNote:(...args)=>view.saveDebtNote(...args),
     openDebtModal:(...args)=>editor.openDebtModal(...args),
+    openDebtProgressDetails:(...args)=>editor.openDebtProgressDetails(...args),
     saveDebt:(...args)=>editor.saveDebt(...args),
     deleteDebt:(...args)=>editor.deleteDebt(...args),
     openMorningDocument:(...args)=>documents.openMorningDocument(...args),

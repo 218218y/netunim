@@ -1,10 +1,12 @@
 
 import {assertEntityCollections} from '../shared/data-invariants.js';
+import {validateCustomerDebtProgress} from '../shared/customer-debt-progress.js';
 
 export const ORDER_ENTITY_COLLECTIONS=Object.freeze(['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders']);
 
 export function assertOrderEntityInvariants(d,{includeChecks=false,required=false}={}){
   assertEntityCollections(d,includeChecks?[...ORDER_ENTITY_COLLECTIONS,'checks']:ORDER_ENTITY_COLLECTIONS,{required});
+  if(Array.isArray(d?.customerDebts))d.customerDebts.forEach((debt,index)=>validateCustomerDebtProgress(debt,`customerDebts[${index}]`));
   return d;
 }
 

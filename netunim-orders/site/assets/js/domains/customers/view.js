@@ -1,5 +1,6 @@
-import {esc} from '../../core/values.js';
+import {esc,uid} from '../../core/values.js';
 import {customerDebtFilteredTotal,customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
+import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
@@ -8,10 +9,10 @@ export function createDomainsCustomersView({model, customerUi, bindScrollViewpor
 function filteredCustomerDebtRows(){
   const q=(customerUi.customerSearch||'').trim();
   return (model.state.customerDebts||[]).filter(d=>{
-    const ds=customerDebtStatus(d);
+    const ds=customerDebtStatus(d),progress=customerDebtProgressData(d);
     if(customerUi.customerFilter==='all'&&!customerDebtNeedsAttention(d))return false;
     if(customerUi.customerFilter==='open'&&!customerDebtIsOutstanding(d))return false;
-    if(customerUi.customerFilter==='invoice'&&!(d.paid&&!d.invoiceIssued))return false;
+    if(customerUi.customerFilter==='invoice'&&!(progress.paymentComplete&&!progress.invoiceComplete))return false;
     if(customerUi.customerFilter==='closed'&&ds.key!=='closed')return false;
     if(q&&!`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(q))return false;
     return true;
@@ -58,23 +59,45 @@ function customerOrderInput(o,field,placeholder){return `<input class="inline-in
 
 function customerOrderRow(o){return `<tr data-customer-order-id="${esc(o.id)}" data-customer-bulk-id="${esc(o.id)}" class="${esc(customerUi.customerBulkSelected.has(o.id)?'bulk-selected-row':'')}">${customerBulkCell(o.id)}<td data-label="הזמנה" class="customer-order-field-cell customer-order-col-order">${customerOrderInput(o,'orderNumber','מספר הזמנה')}</td><td data-label="לקוח" class="customer-order-field-cell customer-order-col-customer">${customerOrderInput(o,'customerName','שם לקוח')}</td><td data-label="סימון 1" class="customer-order-field-cell customer-order-col-mark">${customerOrderInput(o,'mark1','סימון 1')}</td><td data-label="סימון 2" class="customer-order-field-cell customer-order-col-mark">${customerOrderInput(o,'mark2','סימון 2')}</td><td data-label="סימון 3" class="customer-order-field-cell customer-order-col-mark">${customerOrderInput(o,'mark3','סימון 3')}</td><td data-label="מזרונים" class="customer-order-field-cell customer-order-col-mattresses">${customerOrderInput(o,'mattresses','מזרונים')}</td><td data-label="הערה" class="customer-order-field-cell customer-order-col-note">${customerOrderInput(o,'note','הערה')}</td><td data-label="פעולות" class="module-actions customer-order-actions"><div class="row-actions"><button class="icon-btn customer-order-add" title="הוסף שורה חדשה" aria-label="הוסף שורה חדשה" data-action="add-customer-order">＋</button><button class="icon-btn customer-order-delete" title="מחק שורה" aria-label="מחק שורה" data-action="delete-customer-order" data-click-arg0="${esc(o.id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></td></tr>`}
 
-function debtToggle(d,field,label){const v=!!d[field];return `<div class="status-toggle binary" title="${esc(label)}"><button class="yes ${esc(v?'active':'')}" data-action="set-customer-flag" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">כן</button><button class="no ${esc(!v?'active':'')}" data-action="set-customer-flag-2" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">לא</button></div>`}
+function debtToggle(d,field,label){
+  if(field==='paid'||field==='invoiceIssued'){
+    const p=customerDebtProgressData(d),complete=field==='paid'?p.paymentComplete:p.invoiceComplete,partial=field==='paid'?p.paymentPartial:p.invoicePartial;
+    if(partial)return `<button type="button" class="debt-partial-chip" title="${esc(label)} חלקית — לחץ לפירוט" data-action="open-debt-progress-details" data-click-arg0="${esc(d.id)}">חלקי</button>`;
+    return `<div class="status-toggle binary" title="${esc(label)}"><button class="yes ${esc(complete?'active':'')}" data-action="set-customer-flag" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">כן</button><button class="no ${esc(!complete?'active':'')}" data-action="set-customer-flag-2" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">לא</button></div>`;
+  }
+  const v=!!d[field];return `<div class="status-toggle binary" title="${esc(label)}"><button class="yes ${esc(v?'active':'')}" data-action="set-customer-flag" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">כן</button><button class="no ${esc(!v?'active':'')}" data-action="set-customer-flag-2" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">לא</button></div>`;
+}
 
 function debtRow(d){
-  const s=customerDebtStatus(d),amountStateClass=d.paid?'is-paid':d.supplied===true?'is-supplied':'';
-  return `<tr data-customer-bulk-id="${esc(d.id)}" class="${esc(s.key==='closed'?'row-closed':'')} ${esc(customerUi.customerBulkSelected.has(d.id)?'bulk-selected-row':'')}">${customerBulkCell(d.id)}<td data-label="לקוח" class="customer-col-name"><b>${esc(d.customerName)}</b>${d.phone?`<div class="customer-phone">${esc(d.phone)}</div>`:''}</td><td data-label="סכום" class="money badtext customer-col-amount customer-debt-amount ${esc(amountStateClass)}"><b>${money(d.amount)}</b></td><td data-label="הזמנה" class="customer-col-order">${esc(d.orderNumber||'—')}</td><td data-label="שולם" class="customer-col-paid">${debtToggle(d,'paid','שולם')}</td><td data-label="סופק" class="customer-col-supplied">${debtToggle(d,'supplied','סופק')}</td><td data-label="חשבונית" class="customer-col-invoice">${debtToggle(d,'invoiceIssued','חשבונית יצאה')}</td><td data-label="מצב" class="customer-col-state"><span class="badge ${esc(s.cls)}">${esc(s.text)}</span></td><td data-label="הערה" class="customer-col-note"><input class="inline-input" value="${esc(d.note||'')}" placeholder="הערה" data-keydown="blur-on-enter" data-blur="save-debt-note" data-blur-arg0="${esc(d.id)}"></td><td data-label="פעולות" class="module-actions customer-col-actions"><div class="row-actions customer-row-actions"><button class="icon-btn" title="עריכה" aria-label="עריכת חוב" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">✎</button>${morningDocumentButton(d)}</div></td></tr>`
+  const s=customerDebtStatus(d),p=customerDebtProgressData(d),amountStateClass=p.paymentComplete?'is-paid':d.supplied===true?'is-supplied':'',partial=s.key==='partial';
+  const amountDetails=p.paymentPartial?`<small class="customer-debt-progress-line">שולם ${money(p.paymentApplied)} · נותר ${money(p.remainingPayment)}</small>`:'';
+  const stateBadge=partial?`<button type="button" class="badge ${esc(s.cls)} customer-debt-state-button" data-action="open-debt-progress-details" data-click-arg0="${esc(d.id)}">${esc(s.text)}</button>`:`<span class="badge ${esc(s.cls)}">${esc(s.text)}</span>`;
+  return `<tr data-customer-bulk-id="${esc(d.id)}" class="${esc(s.key==='closed'?'row-closed':'')} ${esc(customerUi.customerBulkSelected.has(d.id)?'bulk-selected-row':'')}">${customerBulkCell(d.id)}<td data-label="לקוח" class="customer-col-name"><b>${esc(d.customerName)}</b>${d.phone?`<div class="customer-phone">${esc(d.phone)}</div>`:''}</td><td data-label="סכום" class="money badtext customer-col-amount customer-debt-amount ${esc(amountStateClass)}"><b>${money(d.amount)}</b>${amountDetails}</td><td data-label="הזמנה" class="customer-col-order">${esc(d.orderNumber||'—')}</td><td data-label="שולם" class="customer-col-paid">${debtToggle(d,'paid','שולם')}</td><td data-label="סופק" class="customer-col-supplied">${debtToggle(d,'supplied','סופק')}</td><td data-label="חשבונית" class="customer-col-invoice">${debtToggle(d,'invoiceIssued','חשבונית יצאה')}</td><td data-label="מצב" class="customer-col-state">${stateBadge}</td><td data-label="הערה" class="customer-col-note"><input class="inline-input" value="${esc(d.note||'')}" placeholder="הערה" data-keydown="blur-on-enter" data-blur="save-debt-note" data-blur-arg0="${esc(d.id)}"></td><td data-label="פעולות" class="module-actions customer-col-actions"><div class="row-actions customer-row-actions"><button class="icon-btn" title="עריכה" aria-label="עריכת חוב" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">✎</button>${morningDocumentButton(d)}</div></td></tr>`;
+}
+
+function appendProgressAdjustment(d,kind,amount,now){
+  if(Math.abs(Number(amount||0))<0.005)return false;
+  d.debtProgress=Array.isArray(d.debtProgress)?d.debtProgress:[];
+  d.debtProgress.push({id:uid(kind==='payment'?'DPAY':'DINV'),kind,amount:Number(amount),source:'manual',createdAt:now});return true;
 }
 
 function setCustomerFlag(id,field,value){
   const d=model.state.customerDebts.find(x=>x.id===id);
-  if(!d||!['paid','supplied','invoiceIssued'].includes(field)||d[field]===value)return;
+  if(!d||!['paid','supplied','invoiceIssued'].includes(field))return;
   const now=new Date().toISOString();
-  d[field]=value;d.updatedAt=now;
-  if(field==='paid')d.paidAt=value?now:null;
-  if(field==='supplied')d.suppliedAt=value?now:null;
-  if(field==='invoiceIssued')d.invoiceIssuedAt=value?now:null;
-  d.closedAt=d.paid&&d.invoiceIssued?(d.closedAt||now):null;
-  scheduleSave('סטטוס חוב הלקוח עודכן');renderCustomers()
+  if(field==='supplied'){
+    if(d.supplied===value)return;d.supplied=value;d.updatedAt=now;d.suppliedAt=value?now:null;
+  }else{
+    const kind=field==='paid'?'payment':'invoice',before=customerDebtProgressData(d),complete=field==='paid'?before.paymentComplete:before.invoiceComplete,recorded=field==='paid'?before.paymentRecorded:before.invoiceRecorded;
+    if(value){if(complete)return;d[field]=true;if(field==='paid')d.paidAt=d.paidAt||now;else d.invoiceIssuedAt=d.invoiceIssuedAt||now}
+    else{
+      if(!complete&&recorded<=0&&d[field]!==true)return;
+      d[field]=false;appendProgressAdjustment(d,kind,-recorded,now);if(field==='paid')d.paidAt=null;else d.invoiceIssuedAt=null;
+    }
+    d.updatedAt=now;
+  }
+  const after=customerDebtProgressData(d);d.closedAt=after.paymentComplete&&after.invoiceComplete?(d.closedAt||now):null;
+  scheduleSave('סטטוס חוב הלקוח עודכן');renderCustomers();
 }
 
 function saveDebtNote(id,el){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;const v=el.value.trim();if((d.note||'')===v)return;d.note=v;d.updatedAt=new Date().toISOString();scheduleSave('הערת הלקוח עודכנה')}

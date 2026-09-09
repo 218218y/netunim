@@ -1,9 +1,11 @@
+import {customerDebtProgressData} from './customer-debt-progress.js';
+
 function num(value){const n=Number(value);return Number.isFinite(n)?n:0}
 function roundMoney(value){return Math.round((value+Number.EPSILON)*100)/100}
 
 export function ordersOpenCustomerDebtSummaryData(state){
-  const rows=Array.isArray(state?.customerDebts)?state.customerDebts:[],openRows=rows.filter(row=>!row?.paid);
-  return {openTotal:openRows.reduce((sum,row)=>sum+num(row?.amount),0),open:openRows.length};
+  const rows=Array.isArray(state?.customerDebts)?state.customerDebts:[],openRows=rows.filter(row=>!customerDebtProgressData(row).paymentComplete);
+  return {openTotal:openRows.reduce((sum,row)=>sum+customerDebtProgressData(row).remainingPayment,0),open:openRows.length};
 }
 
 export function ordersSupplierBalanceSummaryData(state){

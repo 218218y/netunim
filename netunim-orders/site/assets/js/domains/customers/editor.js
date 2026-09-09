@@ -1,17 +1,20 @@
-import {esc, uid} from '../../core/values.js';
+import {esc,uid,clone} from '../../core/values.js';
+import {money} from '../../core/money.js';
+import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog}){
 
 const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2','mark3','mattresses','note']);
+const DEBT_SCALAR_FIELDS=['customerName','amount','orderNumber','phone','email','taxId','paid','supplied','invoiceIssued','note'];
 
 function addCustomerOrder(){
   const now=new Date().toISOString(),row={id:uid('CORDER'),orderNumber:'',customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:'',createdAt:now,updatedAt:now};
   model.state.customerOrders=Array.isArray(model.state.customerOrders)?model.state.customerOrders:[];
   model.state.customerOrders.push(row);
   if(customerUi){customerUi.customerOrderFilter='all';customerUi.customerSearch=''}
-  scheduleSave('שורת מעקב הזמנה נוספה');renderCustomers();return row.id
+  scheduleSave('שורת מעקב הזמנה נוספה');renderCustomers();return row.id;
 }
 
 function saveCustomerOrderField(id,field,el){
@@ -19,36 +22,84 @@ function saveCustomerOrderField(id,field,el){
   const o=(model.state.customerOrders||[]).find(x=>x.id===id);if(!o)return;
   const value=String(el?.value??'').trim(),before=String(o[field]||'');
   if(before===value)return;
-  o[field]=value;
-  o.updatedAt=new Date().toISOString();scheduleSave('מעקב ההזמנה עודכן')
+  o[field]=value;o.updatedAt=new Date().toISOString();scheduleSave('מעקב ההזמנה עודכן');
 }
 
 async function deleteCustomerOrder(id){
   const o=(model.state.customerOrders||[]).find(x=>x.id===id);if(!o)return;
   const label=o.customerName||o.orderNumber||'השורה הנבחרת';
   if(confirmDialog&&!await confirmDialog('מחיקת שורת מעקב',`למחוק את ${label}?`,{confirmText:'מחק שורה'}))return;
-  model.state.customerOrders=model.state.customerOrders.filter(x=>x.id!==id);
-  customerUi?.customerBulkSelected?.delete(id);
-  scheduleSave('שורת מעקב ההזמנה נמחקה',{deleteIntents:{customerOrders:[id]},mutationType:'delete',surface:'orders.delete.customerOrders'});renderCustomers()
+  model.state.customerOrders=model.state.customerOrders.filter(x=>x.id!==id);customerUi?.customerBulkSelected?.delete(id);
+  scheduleSave('שורת מעקב ההזמנה נמחקה',{deleteIntents:{customerOrders:[id]},mutationType:'delete',surface:'orders.delete.customerOrders'});renderCustomers();
+}
+
+function progressModeOptions(mode,kind,p){
+  const partialAmount=kind==='payment'?p.paymentApplied:p.invoiceApplied,label=kind==='payment'?'שולם':'חשבונית יצאה';
+  return `<option value="false" ${mode==='false'?'selected':''}>לא</option><option value="partial" ${mode==='partial'?'selected':''}>חלקי${mode==='partial'?` · ${money(partialAmount)}`:''}</option><option value="true" ${mode==='true'?'selected':''}>כן · במלואו</option>`;
 }
 
 function openDebtModal(id=null){
-  const d=id?model.state.customerDebts.find(x=>x.id===id):null,amountValue=d?Number(d.amount??0):'';
-  modal(d?'עריכת חוב לקוח':'חוב לקוח חדש',`<div class="form-grid"><div class="field"><label>שם לקוח</label><input id="dName" value="${esc(d?.customerName||'')}"></div><div class="field"><label>סכום חוב</label><input id="dAmount" class="number-input" type="number" step="1" value="${esc(Number.isFinite(amountValue)?amountValue:'')}"></div><div class="field"><label>מספר הזמנה</label><input id="dOrder" value="${esc(d?.orderNumber||'')}"></div><div class="field"><label>טלפון</label><input id="dPhone" value="${esc(d?.phone||'')}"></div><div class="field"><label>אימייל <small>(למסמכי Morning)</small></label><input id="dEmail" type="email" value="${esc(d?.email||'')}"></div><div class="field"><label>מספר עוסק / ח.פ. <small>(למסמכי Morning)</small></label><input id="dTaxId" inputmode="numeric" maxlength="9" value="${esc(d?.taxId||'')}"></div><div class="field"><label>שולם</label><select id="dPaid"><option value="false" ${!d?.paid?'selected':''}>לא</option><option value="true" ${d?.paid?'selected':''}>כן</option></select></div><div class="field"><label>סופק</label><select id="dSupplied"><option value="false" ${d?.supplied!==true?'selected':''}>לא</option><option value="true" ${d?.supplied===true?'selected':''}>כן</option></select></div><div class="field"><label>חשבונית יצאה</label><select id="dInvoice"><option value="false" ${!d?.invoiceIssued?'selected':''}>לא</option><option value="true" ${d?.invoiceIssued?'selected':''}>כן</option></select></div><div class="field full"><label>הערה</label><textarea id="dNote">${esc(d?.note||'')}</textarea></div></div>`,`<button class="btn primary" data-action="save-debt" data-click-arg0="${esc(id||'')}">שמור</button>${d?`<button class="btn danger" data-action="delete-debt" data-click-arg0="${esc(d.id)}">מחק</button>`:''}<button class="btn" data-action="close-modal">ביטול</button>`)
+  const d=id?model.state.customerDebts.find(x=>x.id===id):null,amountValue=d?Number(d.amount??0):'',p=customerDebtProgressData(d||{}),paidMode=customerDebtProgressMode(p,'payment'),invoiceMode=customerDebtProgressMode(p,'invoice');
+  const progressSummary=d?`<section class="debt-progress-editor-summary"><div><span>תשלום</span><b>${money(p.paymentApplied)}</b><small>נותר ${money(p.remainingPayment)}</small></div><div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div><button type="button" class="btn small" data-action="open-debt-progress-details" data-click-arg0="${esc(d.id)}">פירוט תנועות</button></section>`:'';
+  modal(d?'עריכת חוב לקוח':'חוב לקוח חדש',`<div class="form-grid"><div class="field"><label>שם לקוח</label><input id="dName" value="${esc(d?.customerName||'')}"></div><div class="field"><label>סכום חוב</label><input id="dAmount" class="number-input" type="number" step="1" value="${esc(Number.isFinite(amountValue)?amountValue:'')}"></div><div class="field"><label>מספר הזמנה</label><input id="dOrder" value="${esc(d?.orderNumber||'')}"></div><div class="field"><label>טלפון</label><input id="dPhone" value="${esc(d?.phone||'')}"></div><div class="field"><label>אימייל <small>(למסמכי Morning)</small></label><input id="dEmail" type="email" value="${esc(d?.email||'')}"></div><div class="field"><label>מספר עוסק / ח.פ. <small>(למסמכי Morning)</small></label><input id="dTaxId" inputmode="numeric" maxlength="9" value="${esc(d?.taxId||'')}"></div><div class="field"><label>שולם</label><select id="dPaid">${progressModeOptions(paidMode,'payment',p)}</select></div><div class="field"><label>סופק</label><select id="dSupplied"><option value="false" ${d?.supplied!==true?'selected':''}>לא</option><option value="true" ${d?.supplied===true?'selected':''}>כן</option></select></div><div class="field"><label>חשבונית יצאה</label><select id="dInvoice">${progressModeOptions(invoiceMode,'invoice',p)}</select></div><div class="field debt-progress-add-field"><label>הוסף תשלום לחוב</label><input id="dAddPayment" class="number-input" type="number" step="0.01" min="0" placeholder="סכום נוסף"></div><div class="field debt-progress-add-field"><label>הוסף סכום חשבונית</label><input id="dAddInvoice" class="number-input" type="number" step="0.01" min="0" placeholder="סכום נוסף"></div><div class="field full"><div class="debt-progress-editor-help">להוספה חלקית בחר <b>חלקי</b> והקלד רק את הסכום שנוסף עכשיו. אפשר לחזור לעריכה ולהוסיף תשלום או חשבונית נוספים בכל פעם. בחירה ב־<b>לא</b> מאפסת את ההתקדמות של אותו סוג באמצעות אירוע איפוס שמבטל את התנועות הקודמות בלי למחוק היסטוריה.</div></div>${progressSummary}<div class="field full"><label>הערה</label><textarea id="dNote">${esc(d?.note||'')}</textarea></div></div>`,`<button class="btn primary" data-action="save-debt" data-click-arg0="${esc(id||'')}">שמור</button>${d?`<button class="btn danger" data-action="delete-debt" data-click-arg0="${esc(d.id)}">מחק</button>`:''}<button class="btn" data-action="close-modal">ביטול</button>`);
+}
+
+function parseAddedAmount(selector,label){
+  const raw=$(selector)?.value?.trim()||'';if(!raw)return 0;const value=Number(raw);
+  if(!Number.isFinite(value)||value<=0){toast(`יש להזין ${label} חיובי ותקין`);return null}return Math.round(value*100)/100;
+}
+
+function addProgressEntry(entries,kind,amount,now){entries.push({id:uid(kind==='payment'?'DPAY':'DINV'),kind,action:'add',amount:Math.round(Number(amount)*100)/100,source:'manual',createdAt:now})}
+function addProgressReset(entries,debt,kind,now){const clears=customerDebtActiveProgressEntries(debt,kind).map(row=>row.id);if(clears.length)entries.push({id:uid(kind==='payment'?'DPAYRESET':'DINVRESET'),kind,action:'reset',clears,source:'manual',createdAt:now});return clears.length>0}
+function sameScalar(a,b){return DEBT_SCALAR_FIELDS.every(key=>JSON.stringify(a?.[key]??null)===JSON.stringify(b?.[key]??null))}
+
+function applyProgressMode(work,entries,kind,mode,addAmount,now){
+  const flag=kind==='payment'?'paid':'invoiceIssued';
+  if(mode==='false'){
+    work[flag]=false;if(addAmount>0){toast(`לא ניתן להוסיף ${kind==='payment'?'תשלום':'חשבונית'} כאשר המצב מוגדר "לא"`);return false}
+    if(addProgressReset(entries,work,kind,now))work.debtProgress=entries;
+    return true;
+  }
+  if(mode==='true'){
+    if(addAmount>0){toast(`כדי להוסיף סכום חלקי יש לבחור במצב "חלקי"`);return false}return true;
+  }
+  work[flag]=false;work.debtProgress=entries;
+  let p=customerDebtProgressData(work),remaining=kind==='payment'?p.remainingPaymentMagnitude:p.remainingInvoiceMagnitude;
+  if(addAmount>remaining+0.004){toast(`הסכום שהוזן (${money(addAmount)}) גבוה מהיתרה שנותרה (${money(remaining)})`);return false}
+  if(addAmount>0){addProgressEntry(entries,kind,addAmount,now);work.debtProgress=entries;p=customerDebtProgressData(work)}
+  const partial=kind==='payment'?p.paymentPartial:p.invoicePartial,complete=kind==='payment'?p.paymentComplete:p.invoiceComplete;
+  if(!partial&&!complete){toast(`כדי לסמן ${kind==='payment'?'תשלום':'חשבונית'} כחלקי יש להזין סכום`);return false}
+  return true;
 }
 
 function saveDebt(id=''){
   const name=$('#dName').value.trim(),rawAmount=$('#dAmount').value.trim(),amount=rawAmount===''?0:Number(rawAmount);
-  if(!name)return toast('יש להזין שם לקוח');
-  if(!Number.isFinite(amount))return toast('יש להזין סכום חוב תקין');
-  let d=id?model.state.customerDebts.find(x=>x.id===id):null;
-  const paid=$('#dPaid').value==='true',supplied=$('#dSupplied').value==='true',invoiceIssued=$('#dInvoice').value==='true',now=new Date().toISOString();
-  const row={...(d||{}),id:d?.id||uid('DEBT'),customerName:name,amount,orderNumber:$('#dOrder').value.trim(),phone:$('#dPhone').value.trim(),email:$('#dEmail')?.value.trim()||'',taxId:$('#dTaxId')?.value.replace(/\D/g,'').slice(0,9)||'',paid,supplied,invoiceIssued,note:$('#dNote').value.trim(),updatedAt:now,paidAt:paid?(d?.paidAt||now):null,suppliedAt:supplied?(d?.suppliedAt||now):null,invoiceIssuedAt:invoiceIssued?(d?.invoiceIssuedAt||now):null,closedAt:paid&&invoiceIssued?(d?.closedAt||now):null};
+  if(!name)return toast('יש להזין שם לקוח');if(!Number.isFinite(amount))return toast('יש להזין סכום חוב תקין');
+  const addPayment=parseAddedAmount('#dAddPayment','סכום תשלום');if(addPayment===null)return;const addInvoice=parseAddedAmount('#dAddInvoice','סכום חשבונית');if(addInvoice===null)return;
+  let d=id?model.state.customerDebts.find(x=>x.id===id):null;const now=new Date().toISOString(),base=d||{},currentProgress=customerDebtProgressData(base),currentPaidMode=customerDebtProgressMode(currentProgress,'payment'),currentInvoiceMode=customerDebtProgressMode(currentProgress,'invoice');
+  const paidMode=$('#dPaid').value,invoiceMode=$('#dInvoice').value,supplied=$('#dSupplied').value==='true',entries=clone(customerDebtProgressEntries(base));
+  const work={...base,amount,debtProgress:entries};
+  work.paid=paidMode==='true'?(d&&currentPaidMode==='true'?d.paid===true:true):false;
+  work.invoiceIssued=invoiceMode==='true'?(d&&currentInvoiceMode==='true'?d.invoiceIssued===true:true):false;
+  if(!applyProgressMode(work,entries,'payment',paidMode,addPayment,now))return;
+  if(!applyProgressMode(work,entries,'invoice',invoiceMode,addInvoice,now))return;
+  const finalProgress=customerDebtProgressData(work),row={...base,id:d?.id||uid('DEBT'),customerName:name,amount,orderNumber:$('#dOrder').value.trim(),phone:$('#dPhone').value.trim(),email:$('#dEmail')?.value.trim()||'',taxId:$('#dTaxId')?.value.replace(/\D/g,'').slice(0,9)||'',paid:work.paid===true,supplied,invoiceIssued:work.invoiceIssued===true,note:$('#dNote').value.trim()};
+  if(entries.length)row.debtProgress=entries;else delete row.debtProgress;
+  const scalarChanged=!d||!sameScalar(d,row),progressChanged=JSON.stringify(customerDebtProgressEntries(d||{}))!==JSON.stringify(entries);
+  if(scalarChanged||!d){row.updatedAt=now;row.paidAt=row.paid?(d?.paidAt||now):(finalProgress.paymentComplete?d?.paidAt||null:null);row.suppliedAt=supplied?(d?.suppliedAt||now):null;row.invoiceIssuedAt=row.invoiceIssued?(d?.invoiceIssuedAt||now):(finalProgress.invoiceComplete?d?.invoiceIssuedAt||null:null);row.closedAt=finalProgress.paymentComplete&&finalProgress.invoiceComplete?(d?.closedAt||(row.paid&&row.invoiceIssued?now:null)):null}else{row.updatedAt=d.updatedAt;row.paidAt=d.paidAt;row.suppliedAt=d.suppliedAt;row.invoiceIssuedAt=d.invoiceIssuedAt;row.closedAt=d.closedAt}
   if(d)Object.assign(d,row);else model.state.customerDebts.push(row);
-  closeModal();scheduleSave(d?'חוב הלקוח עודכן':'חוב הלקוח נוסף');renderCustomers()
+  closeModal();if(scalarChanged||progressChanged||!d)scheduleSave(d?'חוב הלקוח עודכן':'חוב הלקוח נוסף');renderCustomers();
+}
+
+function localDateTime(value){const date=new Date(value||'');return Number.isFinite(date.getTime())?date.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'ללא תאריך'}
+function progressEntryMarkup(row){const payment=row.kind==='payment',reset=row.action==='reset',label=payment?'תשלום':'חשבונית',action=reset?'איפוס':'נוסף';return `<div class="debt-progress-history-row"><div><b>${esc(label)} · ${esc(action)}</b><small>${esc(localDateTime(row.createdAt))} · ${esc(row.source==='manual'?'ידני':row.source||'מערכת')}${reset?` · ${esc((row.clears||[]).length)} תנועות בוטלו`:''}</small></div><strong class="${esc(reset?'warntext':'goodtext')}">${reset?'איפוס':money(row.amount)}</strong></div>`}
+
+function openDebtProgressDetails(id){
+  const d=(model.state.customerDebts||[]).find(x=>x.id===id);if(!d)return toast('חוב הלקוח לא נמצא');const p=customerDebtProgressData(d),rows=customerDebtProgressEntries(d).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));
+  modal(`פירוט חוב · ${d.customerName||'לקוח'}`,`<div class="debt-progress-details"><section class="debt-progress-total"><span>סכום החוב המקורי</span><b>${money(d.amount)}</b></section><section class="debt-progress-detail-grid"><div><span>שולם</span><b>${money(p.paymentApplied)}</b><small>נותר ${money(p.remainingPayment)}</small></div><div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div></section><div class="debt-progress-history"><h4>תנועות שנרשמו</h4>${rows.map(progressEntryMarkup).join('')||'<div class="empty debt-progress-empty">אין תנועות חלקיות. מצב מלא שסומן ידנית נשמר בשדות הסטטוס הרגילים.</div>'}</div></div>`,`<button class="btn primary" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">עריכת החוב</button><button class="btn" data-action="close-modal">סגור</button>`);
 }
 
 async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts'});renderCustomers()}
 
-return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, deleteDebt };
+return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, deleteDebt };
 }

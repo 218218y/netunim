@@ -581,3 +581,26 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
   .morning-browser-table td::before{content:attr(data-label);font-size:11px;color:var(--muted)}
   .morning-browser-table td:last-child{grid-column:1/-1}
 }
+
+/* Customer debt partial-progress states */
+.badge.orange{background:var(--warn-soft);color:var(--warn)}
+.debt-partial-chip{appearance:none;border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);border-radius:999px;background:var(--warn-soft);color:var(--warn);font:inherit;font-size:10px;font-weight:900;line-height:1;padding:5px 8px;cursor:pointer;white-space:nowrap}
+.debt-partial-chip:hover,.debt-partial-chip:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 12%,transparent)}
+.customer-debt-state-button{appearance:none;border:0;font:inherit;cursor:pointer}
+.customer-debt-progress-line{display:block;margin-top:3px;color:var(--muted);font-size:9px;font-weight:750;white-space:nowrap}
+.debt-progress-add-field input{font-variant-numeric:tabular-nums}
+.debt-progress-editor-help{border:1px solid color-mix(in srgb,var(--warn) 24%,#dfe5e8);border-radius:10px;background:var(--warn-soft);padding:9px 10px;color:var(--text);font-size:10px;line-height:1.55}
+.debt-progress-editor-summary{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:8px;align-items:stretch;padding:9px;border:1px solid #e0e7eb;border-radius:11px;background:#fbfcfd}
+.debt-progress-editor-summary>div,.debt-progress-detail-grid>div{display:grid;gap:2px;align-content:center;padding:7px 9px;border:1px solid #e6ebee;border-radius:9px;background:#fff}
+.debt-progress-editor-summary span,.debt-progress-detail-grid span,.debt-progress-total span{color:var(--muted);font-size:9px;font-weight:800}
+.debt-progress-editor-summary b,.debt-progress-detail-grid b,.debt-progress-total b{direction:ltr;font-variant-numeric:tabular-nums}
+.debt-progress-editor-summary small,.debt-progress-detail-grid small{color:var(--muted);font-size:9px}
+.debt-progress-details{display:grid;gap:10px}
+.debt-progress-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 11px;border:1px solid #e0e7eb;border-radius:11px;background:#fbfcfd}
+.debt-progress-total b{font-size:18px}
+.debt-progress-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.debt-progress-history{display:grid;gap:6px}.debt-progress-history h4{margin:2px 0;font-size:11px}
+.debt-progress-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 9px;border:1px solid #e7ecef;border-radius:9px;background:#fff}
+.debt-progress-history-row>div{display:grid;gap:2px}.debt-progress-history-row b{font-size:10px}.debt-progress-history-row small{color:var(--muted);font-size:8.5px}.debt-progress-history-row strong{direction:ltr;font-variant-numeric:tabular-nums;font-size:11px}
+.debt-progress-empty{padding:10px}
+@media(max-width:620px){.debt-progress-editor-summary{grid-template-columns:1fr 1fr}.debt-progress-editor-summary>.btn{grid-column:1/-1}.debt-progress-detail-grid{grid-template-columns:1fr}}
