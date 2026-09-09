@@ -9,23 +9,23 @@ export function createDomainsCustomersEditor({model, customerUi, modal, toast, s
 
 const persistedMorningDebts=new WeakMap();
 
-const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2','mark3','mattresses','note']);
+const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2','mark3','mattresses','note','urgent']);
 const DEBT_SCALAR_FIELDS=['customerName','amount','orderNumber','phone','email','taxId','paid','supplied','invoiceIssued','note'];
 
 function addCustomerOrder(){
-  const now=new Date().toISOString(),row={id:uid('CORDER'),orderNumber:'',customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:'',createdAt:now,updatedAt:now};
+  const now=new Date().toISOString(),row={id:uid('CORDER'),orderNumber:'',customerName:'',mark1:'',mark2:'',mark3:'',mattresses:'',note:'',urgent:false,createdAt:now,updatedAt:now};
   model.state.customerOrders=Array.isArray(model.state.customerOrders)?model.state.customerOrders:[];
   model.state.customerOrders.push(row);
-  if(customerUi){customerUi.customerOrderFilter='all';customerUi.customerSearch=''}
+  if(customerUi)customerUi.customerSearch=''
   scheduleSave('שורת מעקב הזמנה נוספה');renderCustomers();return row.id;
 }
 
 function saveCustomerOrderField(id,field,el){
   if(!CUSTOMER_ORDER_FIELDS.has(field))return;
   const o=(model.state.customerOrders||[]).find(x=>x.id===id);if(!o)return;
-  const value=String(el?.value??'').trim(),before=String(o[field]||'');
+  const booleanField=field==='urgent',value=booleanField?String(el?.value??'').trim()==='true':String(el?.value??'').trim(),before=booleanField?o[field]===true:String(o[field]||'');
   if(before===value)return;
-  o[field]=value;o.updatedAt=new Date().toISOString();scheduleSave('מעקב ההזמנה עודכן');
+  o[field]=value;o.updatedAt=new Date().toISOString();scheduleSave(booleanField?'סימון הדחיפות של ההזמנה עודכן':'מעקב ההזמנה עודכן');
 }
 
 async function deleteCustomerOrder(id){

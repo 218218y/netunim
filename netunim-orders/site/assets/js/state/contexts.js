@@ -52,7 +52,6 @@ return {
   customerUi:{
     customerTab:'debts',
     customerFilter:'all',
-    customerOrderFilter:'all',
     customerSearch:'',
     customerBulkMode:false,
     customerBulkSelected:new Set()

@@ -6,7 +6,7 @@ function harness(state={}){
   const calls={views:[],renders:[],modals:[]};
   const ui={kupaSubView:'bank',checkTab:'open',checkAccount:'עסקי',checkYear:'2026',checkSearchValue:'local'};
   const supplierUi={currentSupplierId:null,filterMode:'pending',searchText:'local',supplierYearView:'current'};
-  const customerUi={customerSearch:'local',customerOrderFilter:'attention',customerTab:'orders',customerFilter:'open'};
+  const customerUi={customerSearch:'local',customerTab:'orders',customerFilter:'open'};
   const serviceUi={serviceSearch:'local',serviceFilter:'open'};
   const warehouseUi={warehouseSearch:'local',warehouseTab:'stock'};
   const previousDocument=globalThis.document,previousRaf=globalThis.requestAnimationFrame;
