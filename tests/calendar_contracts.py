@@ -78,7 +78,17 @@ controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',c
 registered_actions=set(re.findall(r"'(calendar-[^']+)'\s*:\s*\(",(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')))
 ok(bool(controller_actions) and controller_actions <= registered_actions,'calendar actions: every calendar button/change action rendered by the controller is registered in delegated UI actions')
 ok('calendarAuthAction' in main and "'calendar-auth':" in (SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8'),'calendar auth action: composition-root adapter is reachable from the delegated action registry')
-ok('export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();return true})' in main
+lifecycle=(SITE/'assets/js/lifecycle.js').read_text(encoding='utf-8')
+boot_lock=lifecycle.find('await acquirePrimaryTabLock()')
+boot_ready=lifecycle.find("startupMark('primary-tab-ready')",boot_lock)
+app_ready_match=re.search(r'export const appReady\s*=\s*lifecycle\.boot\(\)\.then\(\(\)\s*=>\s*\{',main)
+app_ready_start=app_ready_match.start() if app_ready_match else -1
+app_ready_end=main.find('\nvoid appReady',app_ready_start) if app_ready_start>=0 else -1
+calendar_start=main.find('domainsCalendarController.start()',app_ready_start) if app_ready_start>=0 else -1
+app_ready_return=main.find('return true',calendar_start) if calendar_start>=0 else -1
+ok(boot_lock>=0 and boot_ready>boot_lock and app_ready_start>=0 and app_ready_end>app_ready_start
+   and calendar_start>app_ready_start and app_ready_return>calendar_start and app_ready_return<app_ready_end
+   and main.count('domainsCalendarController.start()')==1
    and "!tab.primaryTab&&ui.currentView!=='calendar'" in controller,
    'calendar startup contract: remembered reconnect starts only after primary-tab election, while an explicitly opened Calendar may still connect')
 ok('accountVerified=false' in auth and 'accountVerified=true' in controller and 'אימות חשבון Google' in controller,'calendar account guard: mutations cannot race a newly connected, not-yet-verified Google account')

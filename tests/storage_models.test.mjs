@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createStorageFiles as kupaFiles} from '../netunim-kupa/site/assets/js/storage/files.js';
 import {createStorageFiles as orderFiles} from '../netunim-orders/site/assets/js/storage/files.js';
 import {createContexts} from '../netunim-orders/site/assets/js/state/contexts.js';
+import {createStoragePersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
 
 function memoryFile(initial='{}'){
  let text=initial,active=0,maxActive=0;
@@ -55,4 +56,12 @@ test('Orders folder writes serialize and back up pre-existing data before replac
  assert.equal(JSON.parse(file.text).businessName,'latest');
  assert.equal(backups[0].payload.businessName,'old');assert.ok(backups[0].name.includes('before-connect'));
  assert.equal(backups.at(-1).payload.businessName,'latest');assert.equal(files.folderWritePromise,null);
+});
+
+
+test('Orders exposes a primary-tab guard for official external side effects without pretending they are local mutations',()=>{
+ const tab={primaryTab:false},calls={guard:0,load:0,render:0};
+ const api=createStoragePersistence({model:{state:{}},tab,session:{},ui:{},normalizeState:value=>value,loadLocal:()=>{calls.load++;return null},showSecondaryTabGuard:()=>{calls.guard++},render:()=>{calls.render++}});
+ assert.equal(api.rejectSecondaryAction(),true);assert.equal(calls.guard,1);assert.equal(calls.load,0);assert.equal(calls.render,0);
+ tab.primaryTab=true;assert.equal(api.rejectSecondaryAction(),false);assert.equal(calls.guard,1);
 });

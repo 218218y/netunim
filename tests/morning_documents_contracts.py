@@ -172,8 +172,17 @@ ok("action==='abandon_reservation'" in edge and "eq('state','reserved')" in edge
    'Morning reload pre-POST recovery: only a still-reserved operation can be atomically abandoned; pending/external issuance is never canceled and must reconcile')
 ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||result.reason==='already-applied'" in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
    'Morning local durability handshake: scheduleSave reports durability and an idempotent replay re-persists an in-memory Morning event before recovery state may clear')
-ok(documents.count("rejectSecondaryMutation?.()") >= 2 and "reason:'write-blocked'" in composition,
-   'Morning debt primary-tab safety: debt-linked issuance is blocked before POST when local mutation authority is unavailable')
+ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
+   'Morning debt primary-tab safety: debt-linked issuance is blocked before POST and rechecked after confirmation when local mutation authority is unavailable')
+ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args)" in composition
+   and "activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents
+   and documents.count('if(rejectCurrentIssuance())return;')>=2,
+   'Morning official issuance single-writer: standalone documents also require the primary tab, while debt-linked documents retain the stronger local-mutation guard')
+ok("blocked=!!data.unresolved||!!data.retryable_reserved||(recoveryStillPending&&!data.operation)" in documents
+   and "if(blocked&&requestedDebtId!==activeDebtId)" in documents
+   and "if(createBusy){toast(" in documents
+   and 'לא שולחים מחדש מתוך הטופס המשוחזר' in documents,
+   'Morning recovery fail-closed scope: reserved/in-flight issuance stays locked and cannot be rebound to another debt before explicit recovery')
 ok('סכום המסמך' in documents and 'רק לאחר אימות ודאי של המסמך ב-Morning' in documents and "impactLine('תשלום'" in documents and "impactLine('חשבונית'" in documents,
    'Morning debt confirmation: partial, excess and per-side consequences are shown before formal issuance')
 ok('operation_id uuid primary key' in sql and 'on public.morning_document_operations(environment,request_fingerprint)' in sql and "where state in ('reserved','pending','created_unverified','needs_reconciliation')" in sql and 'owner_id,environment,request_fingerprint' not in sql and 'document_url' not in sql,

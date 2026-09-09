@@ -31,6 +31,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     supaFetch:(...args)=>cloudAuth.supaFetch(...args),
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+    rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args),
     rejectSecondaryMutation:(...args)=>storagePersistence.rejectSecondaryMutation(...args),
     applyVerifiedDebtDocument:(...args)=>{if(storagePersistence.rejectSecondaryMutation())return {changed:false,reason:'write-blocked'};return editor?.applyVerifiedMorningDocument(...args)||{changed:false,reason:'editor-unavailable'}},
   });

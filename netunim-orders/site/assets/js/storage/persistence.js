@@ -2,6 +2,7 @@
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePersistence({model, tab, session, ui, normalizeState, loadLocal, showSecondaryTabGuard, render, localSnapshot, markCloudPending, setSave, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, writeStateToFolder, cloudEnabled, requestCloudSave, cloudPendingExists, toast, setCloud, folderPermissionPending, sameBusinessData, cloudHasLocalWork, checksHaveLocalWork, loadSession, saveSharedChecksToCloud}){
+function rejectSecondaryAction(){if(tab.primaryTab)return false;showSecondaryTabGuard();return true}
 function rejectSecondaryMutation(){if(session.syncCapabilitiesError){setCloud(session.syncCapabilitiesError.message,'error');return true}if(tab.primaryTab)return false;const saved=loadLocal();if(saved)model.state=normalizeState(saved);render();showSecondaryTabGuard();return true}
 
 function scheduleSave(message='השינויים נשמרו',{deleteIntents={},mutationType='autosave',surface='orders'}={}){
@@ -27,5 +28,5 @@ async function manualSaveNow(){
   if(localOk&&cloudOk&&checksOk&&!cloudHasLocalWork()&&!checksHaveLocalWork())toast(folderPermissionPending()?'הדפדפן והענן שמורים; התיקייה ממתינה לאישור':'הכל שמור ומסונכרן');
 }
 
-return { rejectSecondaryMutation, scheduleSave, manualSaveNow };
+return { rejectSecondaryAction, rejectSecondaryMutation, scheduleSave, manualSaveNow };
 }
