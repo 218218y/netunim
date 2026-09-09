@@ -2,11 +2,12 @@ import {uid, esc} from '../../core/values.js';
 import {checkDateFmt,checkTodayISO} from '../../core/dates.js';
 import {normalizeNoteReminderDate} from './alerts.js';
 import {noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from './reminder-calendar.js';
+import {layoutStickyNoteCard,layoutStickyNoteGrid} from './layout.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsNotesController({model, notesUi, scheduleSave, toast=()=>{}, mountViewLayout, confirmDialog, modal=()=>{}, closeModal=()=>{}, refreshAlertCenter=()=>{}, currentView=()=>'', dateEditorMarkup=()=>'', setDateValue=()=>{}}){
-let reminderPickerMonth='',reminderPickerFocusDate='';
+let reminderPickerMonth='',reminderPickerFocusDate='',notesGridObserver=null,notesLayoutFrame=0;
 function noteDisplayDate(note){const raw=note?.updatedAt||note?.createdAt;if(!raw)return 'נשמר';const d=new Date(raw);if(Number.isNaN(d.getTime()))return 'נשמר';return 'עודכן '+new Intl.DateTimeFormat('he-IL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)}
 
 function noteSortRows(){return [...(model.state.notes||[])].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))}
@@ -15,9 +16,21 @@ function resizeStickyNoteTextarea(el){if(!el)return;el.style.height='auto';el.st
 
 function resizeAllStickyNotes(){document.querySelectorAll('.sticky-note textarea').forEach(resizeStickyNoteTextarea)}
 
+function scheduleNotesLayout({resizeTextareas=false}={}){
+  if(notesLayoutFrame)cancelAnimationFrame(notesLayoutFrame);
+  notesLayoutFrame=requestAnimationFrame(()=>{notesLayoutFrame=0;if(resizeTextareas)resizeAllStickyNotes();layoutStickyNoteGrid()});
+}
+
+function mountNotesLayout(){
+  notesGridObserver?.disconnect();notesGridObserver=null;
+  const grid=document.querySelector('.notes-grid');if(!grid)return;
+  if(typeof ResizeObserver==='function'){notesGridObserver=new ResizeObserver(()=>scheduleNotesLayout({resizeTextareas:true}));notesGridObserver.observe(grid)}
+  resizeAllStickyNotes();layoutStickyNoteGrid(grid);
+}
+
 function addStickyNote(){const now=new Date().toISOString(),note={id:uid('NOTE'),content:'',createdAt:now,updatedAt:now};model.state.notes.unshift(note);notesUi.notesBulkSelected.clear();scheduleSave('פתק חדש נוסף');renderNotes();requestAnimationFrame(()=>{const el=document.querySelector(`[data-note-id="${CSS.escape(String(note.id))}"] textarea`);if(el){resizeStickyNoteTextarea(el);el.focus()}})}
 
-function updateStickyNote(id,el){const note=model.state.notes.find(x=>x.id===id);if(!note)return;note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);scheduleSave('הפתק עודכן')}
+function updateStickyNote(id,el){const note=model.state.notes.find(x=>x.id===id);if(!note)return;note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);layoutStickyNoteCard(el.closest('.sticky-note'));const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);scheduleSave('הפתק עודכן')}
 
 async function deleteStickyNote(id){const note=model.state.notes.find(x=>x.id===id);if(!note)return;if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;model.state.notes=model.state.notes.filter(x=>x.id!==id);notesUi.notesBulkSelected.delete(id);scheduleSave('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'orders.delete.notes'});refreshAlertCenter();renderNotes()}
 
@@ -104,7 +117,7 @@ async function deleteSelectedStickyNotes(){const valid=new Set(model.state.notes
 
 function stickyNoteCard(note){const selected=notesUi.notesBulkSelected.has(note.id),reminderDate=normalizeNoteReminderDate(note.reminderDate);return `<article class="sticky-note ${esc(selected?'bulk-selected-card':'')} ${reminderDate?'has-reminder':''}" data-note-id="${esc(note.id)}">${notesUi.notesBulkMode?`<label class="sticky-note-select" title="בחר פתק"><input type="checkbox" data-note-bulk-check ${selected?'checked':''} data-change="toggle-notes-bulk-row" data-change-arg0="${esc(note.id)}"></label>`:''}<div class="sticky-note-paper"><textarea aria-label="תוכן הפתק" placeholder="כתוב כאן הערה או תזכורת…" data-input="update-sticky-note" data-input-arg0="${esc(note.id)}">${esc(note.content)}</textarea></div><footer class="sticky-note-footer"><span class="sticky-note-date" data-note-date>${esc(noteDisplayDate(note))}</span><div class="sticky-note-footer-actions"><button class="btn small sticky-note-reminder ${reminderDate?'active':''}" type="button" data-action="open-sticky-note-reminder" data-click-arg0="${esc(note.id)}" title="${esc(reminderDate?'לחץ לביטול ההתראה':'הוסף התראה להערה')}">${esc(reminderButtonLabel(note))}</button><button class="btn danger small" type="button" data-action="delete-sticky-note" data-click-arg0="${esc(note.id)}">מחק</button></div></footer></article>`}
 
-function renderNotes(){const rows=noteSortRows();$('#main').innerHTML=`<div class="notes-view"><section class="hero notes-hero"><div><h1>הערות</h1></div><div class="notes-actions"><button class="btn primary" data-action="add-sticky-note">+ פתק חדש</button>${notesBulkControls()}</div></section><div class="notes-grid">${rows.map(stickyNoteCard).join('')||`<div class="notes-empty"><b>אין עדיין פתקים</b>לחץ על „פתק חדש” כדי לרשום תזכורת ראשונה.</div>`}</div></div>`;mountViewLayout({sourceSelector:'.notes-view',headCount:1,className:'notes-view',scrollKey:'notes'});requestAnimationFrame(()=>{resizeAllStickyNotes();syncNotesBulkUi()})}
+function renderNotes(){const rows=noteSortRows();$('#main').innerHTML=`<div class="notes-view"><section class="hero notes-hero"><div><h1>הערות</h1></div><div class="notes-actions"><button class="btn primary" data-action="add-sticky-note">+ פתק חדש</button>${notesBulkControls()}</div></section><div class="notes-grid">${rows.map(stickyNoteCard).join('')||`<div class="notes-empty"><b>אין עדיין פתקים</b>לחץ על „פתק חדש” כדי לרשום תזכורת ראשונה.</div>`}</div></div>`;mountViewLayout({sourceSelector:'.notes-view',headCount:1,className:'notes-view',scrollKey:'notes'});requestAnimationFrame(()=>{mountNotesLayout();syncNotesBulkUi()})}
 
 return { noteDisplayDate, noteSortRows, resizeStickyNoteTextarea, resizeAllStickyNotes, addStickyNote, updateStickyNote, deleteStickyNote, openStickyNoteReminder, changeStickyNoteReminderMonth, selectStickyNoteReminderDate, handleStickyNoteReminderCalendarKeydown, syncStickyNoteReminderCalendar, saveStickyNoteReminder, removeStickyNoteReminder, toggleNotesBulkMode, toggleNotesBulkRow, toggleNotesBulkVisible, notesBulkControls, syncNotesBulkUi, deleteSelectedStickyNotes, stickyNoteCard, renderNotes };
 }

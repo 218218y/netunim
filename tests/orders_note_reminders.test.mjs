@@ -6,6 +6,14 @@ import {createStateNormalization} from '../netunim-orders/site/assets/js/state/n
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 import {noteReminderCalendarDays,noteReminderCalendarMarkup,noteReminderMonthKey,shiftNoteReminderFocusDate,shiftNoteReminderMonth} from '../netunim-orders/site/assets/js/domains/notes/reminder-calendar.js';
 import {createUiDateEditor,shiftDateEditorIso} from '../netunim-orders/site/assets/js/ui/date-editor.js';
+import {stickyNoteGridSpan} from '../netunim-orders/site/assets/js/domains/notes/layout.js';
+
+
+test('sticky notes masonry uses each card height instead of the tallest card in a shared row',()=>{
+  assert.equal(stickyNoteGridSpan(210,{rowHeight:4,gap:8}),19);
+  assert.equal(stickyNoteGridSpan(402,{rowHeight:4,gap:8}),35);
+  assert.ok(stickyNoteGridSpan(402,{rowHeight:4,gap:8})>stickyNoteGridSpan(210,{rowHeight:4,gap:8}));
+});
 
 test('note reminder model accepts real ISO dates and activates reminders from their date onward',()=>{
   assert.equal(normalizeNoteReminderDate('2026-09-07'),'2026-09-07');
