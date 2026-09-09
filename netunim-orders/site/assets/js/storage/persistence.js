@@ -5,11 +5,12 @@ export function createStoragePersistence({model, tab, session, ui, normalizeStat
 function rejectSecondaryMutation(){if(session.syncCapabilitiesError){setCloud(session.syncCapabilitiesError.message,'error');return true}if(tab.primaryTab)return false;const saved=loadLocal();if(saved)model.state=normalizeState(saved);render();showSecondaryTabGuard();return true}
 
 function scheduleSave(message='השינויים נשמרו',{deleteIntents={},mutationType='autosave',surface='orders'}={}){
-  if(rejectSecondaryMutation())return;
+  if(rejectSecondaryMutation())return false;
   const generation=++session.localGeneration,localOk=localSnapshot();
   if(cloudEnabled()){markCloudPending(undefined,'',{deleteIntents,mutationType,surface});session.cloudSaveRequested=true;session.cloudSaveMessage=message;session.ordersOutboxCommitPromise?.then(()=>{if(generation===session.localGeneration)setSave('מקומי: שינוי שמור וממתין לסנכרון','',folderSaveTitle())},()=>{setSave('השינוי לא נשמר באחסון הדפדפן — אין לסגור את החלון','error');setCloud('ענן: השמירה נעצרה — אחסון מקומי נכשל','error')})}
   setSave(localOk?'מקומי: שומר…':'מקומי: שגיאה',localOk?'':'error',folderSaveTitle());
   clearTimeout(session.saveTimer);session.saveTimer=setTimeout(async()=>{session.saveTimer=null;try{if(folderBackupAvailable())await writeStateToFolder();else syncFolderAccessButton()}catch(e){console.error('folder save',e)}if(generation===session.localGeneration&&localOk)setSave('מקומי: שמור','',folderSaveTitle());if(cloudEnabled()){try{await session.ordersOutboxCommitPromise;await requestCloudSave(message)}catch(error){console.error('durable staging',error);setSave('השינוי לא נשמר — אין לסגור את החלון','error')}}},180);
+  return localOk;
 }
 
 async function manualSaveNow(){

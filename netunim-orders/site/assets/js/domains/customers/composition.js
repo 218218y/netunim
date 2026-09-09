@@ -88,5 +88,6 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     createMorningDocument:(...args)=>documents.createMorningDocument(...args),
     openMorningExistingDocument:(...args)=>documents.openExistingDocument(...args),
     reconcileMorningDocument:(...args)=>documents.reconcile(...args),
+    recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args),
   };
 }

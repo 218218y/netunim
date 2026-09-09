@@ -21,6 +21,8 @@ documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
+morning_debt_recovery=(SITE/'assets/js/domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
+persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
@@ -141,11 +143,38 @@ ok("data.verified!==true" in documents and "data.operation?.state==='created'&&!
    'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
 ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
    'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
+ok('id="morningApplyPayment" type="checkbox" checked' in documents and 'id="morningApplyInvoice" type="checkbox" checked' in documents and 'paymentSupported&&' in documents and 'invoiceSupported&&' in documents,
+   'Morning debt allocation UI: payment and invoice allocation are independent explicit opt-outs with safe update-by-default behavior')
+ok('אם התשלום או החשבונית כבר נרשמו ידנית בחוב' in documents and 'סכום החוב כבר הוקטן ידנית' in documents and 'בטל „זקוף כתשלום לחוב”' in documents and 'בטל „זקוף כחשבונית לחוב”' in documents and 'כדי למנוע קיזוז כפול' in documents,
+   'Morning debt allocation warning: manual progress or a manually reduced debt is surfaced before issuance so a historical receipt/invoice is not silently deducted twice')
+read_form=documents.split('function readForm()',1)[1].split('function currentDebt()',1)[0]
+ok('applyPayment' not in read_form and 'applyInvoice' not in read_form and 'morningApplyPayment' not in read_form and 'morningApplyInvoice' not in read_form,
+   'Morning debt allocation privacy boundary: local debt-allocation choices are never included in the Morning backend document payload')
+ok('applyPayment=true,applyInvoice=true' in morning_debt and "reason:'skipped-by-policy'" in morning_debt and 'paymentSelected=' in morning_debt and 'invoiceSelected=' in morning_debt,
+   'Morning debt allocation engine: verified documents can independently affect payment, invoice, both, or neither without weakening idempotency')
 ok('Math.min(documentCents,paymentRemainingCents)' in morning_debt and 'Math.min(documentCents,invoiceRemainingCents)' in morning_debt and 'paymentUnapplied' in morning_debt and 'invoiceUnapplied' in morning_debt,
    'Morning debt caps: document value can close remaining balances but can never overpay or over-invoice the local debt')
+reserve_call_pos=documents.find("backend('reserve',payload)")
+recovery_save_pos=documents.find('persistRecoveryContext(recoveryContext(type,amount,policy))')
+create_call_pos=documents.find("backend('create',payload)")
+ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
+   'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
+ok("return {version:1,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time}" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
+   'Morning reload recovery storage stays minimal: no PDF, signed URL, customer payload or permanent document metadata is retained locally')
+ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,
+   'Morning reload recovery verification: operation, document type and exact cent amount must match before a recovered debt can mutate')
+ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and main.count('recoverPendingMorningOperation({quiet:')>=3,
+   'Morning reload recovery lifecycle: startup, online return and tab visibility all resume pending verification through the customer-domain API')
+reserve_edge=edge.split('async function reserve(ownerId:string,body:any)',1)[1].split('async function abandonReservation',1)[0]
+ok("action==='reserve'" in edge and 'reserveOperation(ownerId,input,fingerprint)' in reserve_edge and "morningRequest('/documents'" not in reserve_edge,
+   'Morning reload preflight: the dedicated server reserve action creates durable ledger evidence without ever entering the Morning document POST window')
+ok("action==='abandon_reservation'" in edge and "eq('state','reserved')" in edge and 'abandoned:false' in edge and 'claimReservedOperation' in edge,
+   'Morning reload pre-POST recovery: only a still-reserved operation can be atomically abandoned; pending/external issuance is never canceled and must reconcile')
+ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||result.reason==='already-applied'" in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
+   'Morning local durability handshake: scheduleSave reports durability and an idempotent replay re-persists an in-memory Morning event before recovery state may clear')
 ok(documents.count("rejectSecondaryMutation?.()") >= 2 and "reason:'write-blocked'" in composition,
    'Morning debt primary-tab safety: debt-linked issuance is blocked before POST when local mutation authority is unavailable')
-ok('סכום המסמך' in documents and 'החוב יעודכן רק לאחר אימות ודאי' in documents and "impactLine('תשלום'" in documents and "impactLine('חשבונית'" in documents,
+ok('סכום המסמך' in documents and 'רק לאחר אימות ודאי של המסמך ב-Morning' in documents and "impactLine('תשלום'" in documents and "impactLine('חשבונית'" in documents,
    'Morning debt confirmation: partial, excess and per-side consequences are shown before formal issuance')
 ok('operation_id uuid primary key' in sql and 'on public.morning_document_operations(environment,request_fingerprint)' in sql and "where state in ('reserved','pending','created_unverified','needs_reconciliation')" in sql and 'owner_id,environment,request_fingerprint' not in sql and 'document_url' not in sql,
    'Ledger has globally unique operation IDs, account-wide unresolved fingerprint protection and no permanent content-level uniqueness or signed URL column')

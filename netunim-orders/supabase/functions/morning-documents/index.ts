@@ -198,6 +198,31 @@ async function reconcileRow(ownerId:string,row:OperationRow){
     await updateOperation(ownerId,row.operation_id,{state:'needs_reconciliation',error_code:'waiting_for_reconciliation',error_message:'Waiting before retrying Morning search'});return {...row,state:'needs_reconciliation'} as OperationRow;
   }catch(error){console.error('morning reconciliation failed',row.operation_id,error);const fallback:OperationState=row.document_id?'created_unverified':'needs_reconciliation';await updateOperation(ownerId,row.operation_id,{state:fallback,error_code:'reconciliation_unavailable',error_message:'Morning reconciliation unavailable'});return {...row,state:fallback} as OperationRow}
 }
+async function reserve(ownerId:string,body:any){
+  if(!configured())return json({ok:false,code:MORNING_ENV_VALID?'morning_not_configured':'morning_invalid_environment',message:MORNING_ENV_VALID?'Morning אינו מוגדר ב-Supabase':'MORNING_ENV חייב להיות production או sandbox'},503);
+  let input;try{input=normalizeInput(body)}catch(error:any){const code=String(error?.message||'invalid_document');return json({ok:false,code,message:userMessage(code)},400)}
+  if(!input.operationId)return json({ok:false,code:'missing_operation_id',message:'מזהה הפעולה חסר'},400);
+  try{await validateLinkedDocument(input)}catch(error:any){if(error?.code==='linked_document_not_linkable')return json({ok:false,code:'linked_document_not_linkable',message:'החשבונית שנבחרה אינה פתוחה או אינה מתאימה לקישור'},400);return dbError(error,'morning_link_validation_failed')}
+  const fingerprint=await sha256(JSON.stringify(input.fingerprintSource));
+  try{
+    const reserved=await reserveOperation(ownerId,input,fingerprint),row=reserved.row;
+    if(row.state==='reserved')return json({ok:true,reserved:true,operation:{operation_id:row.operation_id,state:row.state}});
+    if(row.state==='created'&&row.document_id&&row.verified_at)return json({ok:true,reserved:false,verified:true,operation:{operation_id:row.operation_id,state:row.state,verified_at:row.verified_at},document:{id:row.document_id,number:row.document_number,type:row.document_type,amount:Number(row.amount),date:row.document_date,allocationNumber:row.allocation_number||''}});
+    return json({ok:false,code:'morning_operation_unresolved',message:'פעולת ההפקה כבר קיימת ואינה במצב הזמנה מוקדמת בטוח. לא נשלח מסמך נוסף.',uncertain:row.state!=='failed',operation_id:row.operation_id},409);
+  }catch(error:any){
+    if(error?.code==='operation_unresolved'){const blocked=error?.blocked as OperationRow|undefined,ownOperation=blocked?.owner_id===ownerId?blocked.operation_id:undefined;return json({ok:false,code:'morning_operation_unresolved',message:'קיים ניסיון הפקה זהה שעדיין לא הסתיים. לא נשלח מסמך נוסף.',uncertain:true,...(ownOperation?{operation_id:ownOperation}:{})},409)}
+    if(error?.code==='operation_id_conflict')return json({ok:false,code:'morning_operation_conflict',message:'מזהה הפעולה כבר שייך לבקשה אחרת'},409);
+    return dbError(error,'morning_operation_reserve_failed');
+  }
+}
+async function abandonReservation(ownerId:string,body:any){
+  const id=clean(body?.operation_id,80);if(!id||!isUuid(id))return json({ok:false,code:'invalid_operation_id',message:'מזהה פעולה אינו תקין'},400);
+  try{
+    const now=new Date().toISOString(),{data,error}=await admin.from('morning_document_operations').update({state:'failed',error_code:'client_recovery_abandoned_reservation',error_message:'Client recovery abandoned a pre-issuance reservation before Morning POST started',client_name:'',description:'',updated_at:now}).eq('owner_id',ownerId).eq('environment',MORNING_ENV).eq('operation_id',id).eq('state','reserved').select('*').maybeSingle();
+    if(error)throw error;if(data)return json({ok:true,abandoned:true,operation:data});
+    return json({ok:true,abandoned:false,operation:await readOperation(ownerId,id)});
+  }catch(error){return dbError(error,'morning_reservation_abandon_failed')}
+}
 async function status(ownerId:string,body:any){
   if(!configured())return json({ok:true,configured:false,available:false,configuration_error:MORNING_ENV_VALID?null:'invalid_environment',operation:null,unresolved:false,environment:MORNING_ENV_RAW});
   const id=clean(body?.operation_id,80);if(id&&!isUuid(id))return json({ok:false,code:'invalid_operation_id',message:'מזהה פעולה אינו תקין'},400);
@@ -268,5 +293,5 @@ async function getDocumentPdf(body:any){
 Deno.serve(async(req:Request)=>{
   if(req.method==='OPTIONS')return new Response('ok',{headers:corsHeaders});if(req.method!=='POST')return json({ok:false,code:'method_not_allowed'},405);if(!SUPABASE_URL||!PUBLISHABLE_KEY||!SECRET_KEY)return json({ok:false,code:'supabase_backend_not_configured',message:'Supabase Edge Function configuration is incomplete'},503);
   const user=await requireUser(req);if(!user)return json({ok:false,code:'morning_cloud_auth_required',message:'נדרשת התחברות לענן לפני שימוש ב-Morning'},401);const body=await req.json().catch(()=>({})),action=String(body?.action||'');
-  if(action==='status')return status(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
+  if(action==='status')return status(user.id,body);if(action==='reserve')return reserve(user.id,body);if(action==='abandon_reservation')return abandonReservation(user.id,body);if(action==='preview')return preview(user.id,body);if(action==='create')return create(user.id,body);if(action==='search_documents')return searchDocuments(body);if(action==='get_document')return getDocument(body);if(action==='document_links')return getDocument(body,true);if(action==='document_pdf')return getDocumentPdf(body);return json({ok:false,code:'morning_unknown_action',message:'פעולת Morning אינה מוכרת'},400);
 });

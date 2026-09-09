@@ -9,8 +9,8 @@ const add=(id,kind,amount)=>({id,kind,action:'add',amount,source:'manual',create
 
 function debt(extra={}){return {id:'D1',customerName:'לקוח',amount:1000,paid:false,invoiceIssued:false,supplied:false,debtProgress:[],...extra}}
 
-function apply(row,type,amount,operation=op(1),verifiedAt='2026-09-09T10:00:00.000Z'){
- return applyVerifiedMorningDocumentToDebt(row,{operationId:operation,type,amount,verifiedAt});
+function apply(row,type,amount,operation=op(1),verifiedAt='2026-09-09T10:00:00.000Z',policy={}){
+ return applyVerifiedMorningDocumentToDebt(row,{operationId:operation,type,amount,verifiedAt,...policy});
 }
 
 test('type 320 closes both payment and invoice when verified for the full debt',()=>{
@@ -47,7 +47,7 @@ test('document above original debt never creates an overpaid or over-invoiced lo
 
 test('same Morning operation is idempotent across immediate verification and later reconciliation',()=>{
  const row=debt(),operation=op(7);assert.equal(apply(row,320,400,operation).changed,true);const snapshot=structuredClone(row);const replay=apply(row,320,400,operation,'2026-09-09T11:00:00.000Z');
- assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied-or-no-balance');assert.deepEqual(row,snapshot);
+ assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.deepEqual(row,snapshot);
  assert.equal(row.debtProgress.filter(x=>x.id===morningDebtProgressEntryId(operation,'payment')).length,1);assert.equal(row.debtProgress.filter(x=>x.id===morningDebtProgressEntryId(operation,'invoice')).length,1);
 });
 
@@ -66,11 +66,26 @@ test('non-positive debt is deliberately ineligible for automatic Morning progres
 });
 
 
-test('customer editor persists and renders a verified Morning debt mutation exactly once',()=>{
- const row=debt(),model={state:{customerDebts:[row]}},saves=[],renders=[];
- const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(message,meta)=>saves.push({message,meta}),closeModal:()=>{},renderCustomers:()=>renders.push(true),confirmDialog:async()=>true});
+test('manual partial payment is not deducted twice when receipt payment allocation is explicitly disabled',()=>{
+ const row=debt({debtProgress:[add('MANUAL-P1','payment',300)]});
+ const before=customerDebtProgressData(row);assert.equal(before.paymentApplied,300);assert.equal(before.remainingPayment,700);
+ const impact=morningDebtImpact(row,400,300,{applyPayment:false});assert.equal(impact.paymentSupported,true);assert.equal(impact.paymentAffected,false);assert.equal(impact.paymentApply,0);
+ const result=apply(row,400,300,op(11),'2026-09-09T15:00:00.000Z',{applyPayment:false});assert.equal(result.changed,false);assert.equal(result.reason,'skipped-by-policy');
+ const after=customerDebtProgressData(row);assert.equal(after.paymentApplied,300);assert.equal(after.remainingPayment,700);assert.equal(row.debtProgress.length,1);
+});
+
+test('invoice-receipt can update invoice while deliberately not re-recording an already manual payment',()=>{
+ const row=debt({debtProgress:[add('MANUAL-P2','payment',250)]});
+ const result=apply(row,320,250,op(12),'2026-09-09T15:10:00.000Z',{applyPayment:false,applyInvoice:true});assert.equal(result.changed,true);
+ const progress=customerDebtProgressData(row);assert.equal(progress.paymentApplied,250);assert.equal(progress.invoiceApplied,250);assert.equal(progress.remainingPayment,750);assert.equal(progress.remainingInvoice,750);
+ assert.equal(row.debtProgress.filter(item=>item.kind==='payment').length,1);assert.equal(row.debtProgress.filter(item=>item.kind==='invoice'&&item.source==='morning').length,1);
+});
+
+test('customer editor renders a verified Morning mutation once but re-persists an idempotent replay for crash recovery',()=>{
+ const row=debt(),model={state:{customerDebts:[row]}},saves=[],renders=[],persistResults=[false,true];
+ const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return persistResults.shift()},closeModal:()=>{},renderCustomers:()=>renders.push(true),confirmDialog:async()=>true});
  const input={debtId:row.id,operationId:op(9),type:400,amount:250,verifiedAt:'2026-09-09T14:00:00.000Z'};
- const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
- const replay=editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(saves.length,1);assert.equal(renders.length,1);
- const missing=editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,1);
+ const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,false);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
+ const replay=editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.equal(replay.persisted,true);assert.equal(saves.length,2);assert.equal(renders.length,1);assert.equal(saves[1].meta.surface,'orders.morning.customerDebt');
+ const missing=editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,2);
 });

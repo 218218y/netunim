@@ -120,10 +120,15 @@ function openDebtProgressDetails(id){
 }
 
 
-function applyVerifiedMorningDocument({debtId,operationId,type,amount,verifiedAt}={}){
+function applyVerifiedMorningDocument({debtId,operationId,type,amount,verifiedAt,applyPayment=true,applyInvoice=true}={}){
   const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
-  const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt});
-  if(result.changed){scheduleSave('חוב הלקוח עודכן לפי מסמך Morning מאומת',{surface:'orders.morning.customerDebt'});renderCustomers()}
+  const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt,applyPayment,applyInvoice});
+  if(result.changed||result.reason==='already-applied'){
+    // A replay can mean the first verified application changed memory but localSnapshot failed.
+    // Re-attempt durable persistence before recovery is allowed to clear its operation binding.
+    const persisted=scheduleSave(result.changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'עדכון החוב מ-Morning נשמר מחדש לאחר התאוששות',{surface:'orders.morning.customerDebt'});
+    if(result.changed)renderCustomers();return {...result,persisted:persisted!==false};
+  }
   return result;
 }
 

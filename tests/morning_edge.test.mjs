@@ -36,7 +36,7 @@ const mockFetch=async(url,init={})=>{
 };
 const context=vm.createContext({console,Response,Request,URL,AbortController,TextEncoder,crypto:globalThis.crypto,atob:globalThis.atob,setTimeout,clearTimeout,fetch:mockFetch,createClient:()=>({from:()=>new Query(),auth:{getUser:async()=>({data:{user:{id:owner}}})}}),Deno:{env:{get:key=>({SUPABASE_URL:'https://example.supabase.co',SUPABASE_ANON_KEY:'test',SUPABASE_SERVICE_ROLE_KEY:'test',MORNING_CLIENT_ID:'test',MORNING_CLIENT_SECRET:'test',MORNING_ENV:'sandbox'})[key]},serve:handler=>{servedHandler=handler}}});
 const source=readFileSync(new URL('../netunim-orders/supabase/functions/morning-documents/index.ts',import.meta.url),'utf8').replace(/^import .*?;\r?\n/,'');
-vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
+vm.runInContext(stripTypeScriptTypes(source)+`\nglobalThis.api={create,status,reserve,abandonReservation,searchInput,searchDocuments,getDocument,getDocumentPdf,normalizeInput,validateLinkedDocument,readResponseBytesBounded,validatePreviewPdfBase64,sha256};`,context);
 const api=context.api;
 const body=(amount=100,description='Test document')=>({operation_id:crypto.randomUUID(),document:{type:305,amount,date:'2026-09-08',description,client:{name:'Test'}}});
 const decode=async response=>({status:response.status,...await response.json()});
@@ -47,6 +47,13 @@ assert.equal(postCount,1,'same operation never POSTs twice during a race');
 assert.ok(results.every(r=>[200,409].includes(r.status)));
 assert.ok(!('debt_id' in rows[0]));assert.ok(!('document_url' in rows[0]));
 assert.equal(rows[0].environment,'sandbox');assert.equal(rows[0].state,'created');assert.ok(rows[0].issuance_started_at,'external issuance window starts only after the atomic reservation claim');assert.ok(rows[0].verified_at,'created means canonical read-back was persisted');
+// Reload recovery first creates a server-side reservation without entering the external Morning POST window.
+const reloadReservation=body(77,'Reload reservation'),postsBeforeReserve=postCount,reservedReply=await decode(await api.reserve(owner,reloadReservation));assert.equal(reservedReply.reserved,true);assert.equal(postCount,postsBeforeReserve,'reserve action must never issue a Morning document');
+const reservedForReload=rows.find(row=>row.operation_id===reloadReservation.operation_id);assert.equal(reservedForReload.state,'reserved');assert.equal(reservedForReload.issuance_started_at,undefined,'pre-issue reserve must not mark the external issuance window as started');
+const abandonedReserved=await decode(await api.abandonReservation(owner,{operation_id:reservedForReload.operation_id}));assert.equal(abandonedReserved.abandoned,true);assert.equal(reservedForReload.state,'failed');assert.equal(reservedForReload.error_code,'client_recovery_abandoned_reservation');
+const pendingForReload={operation_id:crypto.randomUUID(),owner_id:owner,environment:'sandbox',state:'pending',request_fingerprint:'reload-pending',created_at:new Date().toISOString(),updated_at:new Date().toISOString(),issuance_started_at:new Date().toISOString()};rows.push(pendingForReload);
+const refusedPendingAbandon=await decode(await api.abandonReservation(owner,{operation_id:pendingForReload.operation_id}));assert.equal(refusedPendingAbandon.abandoned,false);assert.equal(pendingForReload.state,'pending','once the external issuance window starts, reload recovery may reconcile but never cancel');
+
 const replayed=await decode(await api.create(owner,first));assert.equal(replayed.replayed,true);assert.equal(replayed.verified,true);
 const laterIdentical=await decode(await api.create(owner,body(100)));assert.equal(laterIdentical.verified,true);assert.equal(postCount,2,'a distinct later operation may intentionally issue identical business content; exactly-once is scoped to operation_id, not content forever');
 const changed={...first,document:{...first.document,amount:101}};
