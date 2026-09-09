@@ -233,13 +233,15 @@ ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_
 ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
-ok('.customer-work-panel{border-radius:14px;margin-inline:-6px}' in orders_css
-   and '.customer-table{min-width:840px!important;table-layout:fixed}' in orders_css
+ok('.customer-work-panel{border-radius:14px}' in orders_css
+   and '.customer-table{min-width:778px!important;table-layout:fixed}' in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
-   and '.customer-table .customer-col-state{width:98px}' in orders_css
-   and '.customer-table .customer-col-note{width:130px;min-width:0}' in orders_css
-   and '.customers-view .customer-work-panel{margin-inline:0}' in orders_css,
-   "orders customers: debt table reclaims shell gutter and uses a compact column budget without leaking the desktop bleed into mobile cards")
+   and '.customer-table .customer-col-name{width:126px;min-width:126px}' in orders_css
+   and '.customer-table .customer-col-state{width:106px}' in orders_css
+   and '.customer-table .customer-col-note{width:120px;min-width:0}' in orders_css
+   and '.customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}' in orders_css
+   and 'customer-work-panel{border-radius:14px;margin' not in orders_css,
+   "orders customers: non-scrolling shell does not reserve an RTL scrollbar gutter, the customer edge remains visible, and the debt table fits a 778px compact desktop budget without negative-margin clipping")
 
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
