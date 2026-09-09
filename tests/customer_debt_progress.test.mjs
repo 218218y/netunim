@@ -108,11 +108,19 @@ test('direct table reset of a progressed debt writes a reset event, never a nega
  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
 });
 
-test('partial customer row stays compact and exposes details instead of adding another permanent status column',()=>{
+test('partial customer row makes the unpaid balance primary and exposes clearly-labeled details actions',()=>{
  const debt={id:'D1',customerName:'לקוח',amount:1000,supplied:true,paid:false,invoiceIssued:false,note:'',debtProgress:[add('P1','payment',250)]};
  const view=createDomainsCustomersView({model:{state:{customerDebts:[debt],customerOrders:[]}},customerUi:{customerBulkMode:false,customerBulkSelected:new Set()},bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
  const html=view.debtRow(debt);
- assert.match(html,/debt-partial-chip/);assert.match(html,/data-action="open-debt-progress-details"/);assert.match(html,/שולם/);assert.match(html,/נותר/);assert.match(html,/badge orange/);
+ assert.match(html,/customer-debt-amount is-payment-partial/);assert.match(html,/750/);assert.doesNotMatch(html,/customer-debt-amount is-supplied/);
+ assert.match(html,/שולם/);assert.match(html,/250/);assert.match(html,/debt-partial-chip/);assert.match(html,/data-action="open-debt-progress-details"/);assert.match(html,/debt-details-icon/);assert.match(html,/badge orange/);assert.match(html,/הצג פירוט חוב/);
+});
+
+test('debt progress details promote the remaining amount and keep the original debt as secondary context',()=>{
+ const debt={id:'D1',customerName:'לקוח',amount:1000,supplied:true,paid:false,invoiceIssued:false,note:'',debtProgress:[add('P1','payment',250)]},model={state:{customerDebts:[debt]}};
+ let title='',body='';const editor=createDomainsCustomersEditor({model,customerUi:{},modal:(nextTitle,nextBody)=>{title=nextTitle;body=nextBody},toast:()=>{},scheduleSave:()=>{},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
+ editor.openDebtProgressDetails('D1');
+ assert.match(title,/פירוט חוב/);assert.match(body,/debt-progress-total-remaining/);assert.match(body,/נותר לתשלום/);assert.match(body,/750/);assert.match(body,/חוב מקורי/);assert.match(body,/1,000/);assert.match(body,/שולם/);assert.match(body,/250/);
 });
 
 test('Orders merge unions concurrent debt progress events and makes concurrent resets safe',()=>{

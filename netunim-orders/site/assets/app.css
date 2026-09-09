@@ -593,10 +593,13 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 
 /* Customer debt partial-progress states */
 .badge.orange{background:var(--warn-soft);color:var(--warn)}
-.debt-partial-chip{appearance:none;border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);border-radius:999px;background:var(--warn-soft);color:var(--warn);font:inherit;font-size:10px;font-weight:900;line-height:1;padding:5px 8px;cursor:pointer;white-space:nowrap}
+.customer-debt-amount.is-payment-partial{background:var(--warn-soft)!important;box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--warn) 48%,#e9c765);color:#7d5710!important}
+.customer-debt-amount.is-payment-partial>b{font-size:14px;font-weight:900}
+.debt-partial-chip{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid color-mix(in srgb,var(--warn) 34%,transparent);border-radius:999px;background:var(--warn-soft);color:var(--warn);font:inherit;font-size:10px;font-weight:900;line-height:1;padding:5px 8px;cursor:pointer;white-space:nowrap}
 .debt-partial-chip:hover,.debt-partial-chip:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--warn) 12%,transparent)}
-.customer-debt-state-button{appearance:none;border:0;font:inherit;cursor:pointer}
-.customer-debt-progress-line{display:block;margin-top:3px;color:var(--muted);font-size:9px;font-weight:750;white-space:nowrap}
+.customer-debt-state-button{appearance:none;border:0;font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.debt-details-icon{width:12px;height:12px;flex:0 0 12px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.customer-debt-progress-line{display:block;margin-top:3px;color:var(--warn);font-size:9px;font-weight:800;white-space:nowrap}
 .debt-progress-add-field[hidden]{display:none}.debt-progress-add-field input{font-variant-numeric:tabular-nums}
 .debt-progress-editor-help{border:1px solid color-mix(in srgb,var(--warn) 24%,#dfe5e8);border-radius:10px;background:var(--warn-soft);padding:9px 10px;color:var(--text);font-size:10px;line-height:1.55}
 .debt-progress-editor-summary{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:8px;align-items:stretch;padding:9px;border:1px solid #e0e7eb;border-radius:11px;background:#fbfcfd}
@@ -606,7 +609,10 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .debt-progress-editor-summary small,.debt-progress-detail-grid small{color:var(--muted);font-size:9px}
 .debt-progress-details{display:grid;gap:10px}
 .debt-progress-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 11px;border:1px solid #e0e7eb;border-radius:11px;background:#fbfcfd}
+.debt-progress-total>div{display:grid;gap:2px}.debt-progress-total small{color:var(--muted);font-size:9px;font-weight:700}
 .debt-progress-total b{font-size:18px}
+.debt-progress-total-remaining{padding:13px 14px;border-color:color-mix(in srgb,var(--warn) 38%,#e0e7eb);background:var(--warn-soft);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 12%,transparent)}
+.debt-progress-total-remaining span{color:var(--warn);font-size:11px}.debt-progress-total-remaining b{color:var(--warn);font-size:25px;font-weight:950}
 .debt-progress-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .debt-progress-history{display:grid;gap:6px}.debt-progress-history h4{margin:2px 0;font-size:11px}
 .debt-progress-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 9px;border:1px solid #e7ecef;border-radius:9px;background:#fff}
