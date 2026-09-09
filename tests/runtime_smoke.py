@@ -89,7 +89,7 @@ for label, site in apps:
                       const customerVisibleTotal=()=>document.querySelector('[data-customer-visible-total]')?.textContent||'';
                       const debtTotal=rows=>money(rows.reduce((sum,d)=>sum+Number(d.amount||0),0));
                       const customerAllRows=state.customerDebts.filter(d=>!(d.paid&&d.invoiceIssued)),customerOutstandingTotal=rows=>debtTotal(rows.filter(d=>!d.paid)),customerAllExpected=customerOutstandingTotal(customerAllRows),customerAllTotal=customerVisibleTotal();
-                      const customerAllHasPaidMissingInvoice=customerAllRows.some(d=>d.paid&&!d.invoiceIssued)&&[...document.querySelectorAll('.customer-table tbody tr')].some(row=>row.textContent?.includes('שולם · חסרה חשבונית'));
+                      const customerAllHasPaidMissingInvoice=customerAllRows.some(d=>d.paid&&!d.invoiceIssued)&&[...document.querySelectorAll('.customer-table tbody tr')].some(row=>row.textContent?.includes('שולם-ללא ח״מ'));
                       customerFilter='open';renderCustomers();await frame();const customerOpenExpected=customerOutstandingTotal(state.customerDebts.filter(d=>!d.paid)),customerOpenTotal=customerVisibleTotal();
                       customerFilter='invoice';renderCustomers();await frame();const customerInvoiceExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&!d.invoiceIssued)),customerInvoiceTotal=customerVisibleTotal();
                       customerFilter='closed';renderCustomers();await frame();const customerClosedExpected=debtTotal(state.customerDebts.filter(d=>d.paid&&d.invoiceIssued)),customerClosedTotal=customerVisibleTotal();
@@ -156,7 +156,7 @@ for label, site in apps:
                            serviceBefore>0&&near(serviceAfter,serviceBefore)&&
                            warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
                            summaryWasActive&&supplierNavActive&&summaryNavInactive,
-                        supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierHmHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerLayout,
+                        supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierHmHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerAllHasPaidMissingInvoice,customerLayout,
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
                         serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
                         summaryWasActive,supplierNavActive,summaryNavInactive
