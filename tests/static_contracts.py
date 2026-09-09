@@ -97,6 +97,10 @@ for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
 # 2. Current post-cutover ownership/contracts.
 ks = browser_code(K / "site")
 os = browser_code(O / "site")
+number_markup = ks + os + (K / "site/index.html").read_text(encoding="utf-8") + (O / "site/index.html").read_text(encoding="utf-8")
+fractional_step = re.search(r'\bstep\s*=\s*"[^"]*0\.\d+[^"]*"|\bstep\s*=\s*\'[^\']*0\.\d+[^\']*\'', number_markup)
+ok(fractional_step is None,
+   "money number inputs: spinner increments stay on whole units; decimals remain manual-entry only")
 ok("KUPA_CHECKS_TABLE" not in os and "saveChecksToKupaCloud" not in os and "reconcileKupaBankForChecks" not in os,
    "orders: legacy Kupa-as-check-owner code removed")
 ok("delete x.checks" in ks, "kupa: cloud payload removes checks")

@@ -1,6 +1,6 @@
 import {esc,uid} from '../../core/values.js';
 import {customerDebtFilteredTotal,customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
-import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
+import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../../shared/customer-debt-progress.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
@@ -75,10 +75,10 @@ function debtRow(d){
   return `<tr data-customer-bulk-id="${esc(d.id)}" class="${esc(s.key==='closed'?'row-closed':'')} ${esc(customerUi.customerBulkSelected.has(d.id)?'bulk-selected-row':'')}">${customerBulkCell(d.id)}<td data-label="לקוח" class="customer-col-name"><b>${esc(d.customerName)}</b>${d.phone?`<div class="customer-phone">${esc(d.phone)}</div>`:''}</td><td data-label="סכום" class="money badtext customer-col-amount customer-debt-amount ${esc(amountStateClass)}"><b>${money(d.amount)}</b>${amountDetails}</td><td data-label="הזמנה" class="customer-col-order">${esc(d.orderNumber||'—')}</td><td data-label="שולם" class="customer-col-paid">${debtToggle(d,'paid','שולם')}</td><td data-label="סופק" class="customer-col-supplied">${debtToggle(d,'supplied','סופק')}</td><td data-label="חשבונית" class="customer-col-invoice">${debtToggle(d,'invoiceIssued','חשבונית יצאה')}</td><td data-label="מצב" class="customer-col-state">${stateBadge}</td><td data-label="הערה" class="customer-col-note"><input class="inline-input" value="${esc(d.note||'')}" placeholder="הערה" data-keydown="blur-on-enter" data-blur="save-debt-note" data-blur-arg0="${esc(d.id)}"></td><td data-label="פעולות" class="module-actions customer-col-actions"><div class="row-actions customer-row-actions"><button class="icon-btn" title="עריכה" aria-label="עריכת חוב" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">✎</button>${morningDocumentButton(d)}</div></td></tr>`;
 }
 
-function appendProgressAdjustment(d,kind,amount,now){
-  if(Math.abs(Number(amount||0))<0.005)return false;
+function appendProgressReset(d,kind,now){
+  const clears=customerDebtActiveProgressEntries(d,kind).map(row=>row.id);if(!clears.length)return false;
   d.debtProgress=Array.isArray(d.debtProgress)?d.debtProgress:[];
-  d.debtProgress.push({id:uid(kind==='payment'?'DPAY':'DINV'),kind,amount:Number(amount),source:'manual',createdAt:now});return true;
+  d.debtProgress.push({id:uid(kind==='payment'?'DPAYRESET':'DINVRESET'),kind,action:'reset',clears,source:'manual',createdAt:now});return true;
 }
 
 function setCustomerFlag(id,field,value){
@@ -88,11 +88,11 @@ function setCustomerFlag(id,field,value){
   if(field==='supplied'){
     if(d.supplied===value)return;d.supplied=value;d.updatedAt=now;d.suppliedAt=value?now:null;
   }else{
-    const kind=field==='paid'?'payment':'invoice',before=customerDebtProgressData(d),complete=field==='paid'?before.paymentComplete:before.invoiceComplete,recorded=field==='paid'?before.paymentRecorded:before.invoiceRecorded;
+    const kind=field==='paid'?'payment':'invoice',before=customerDebtProgressData(d),complete=field==='paid'?before.paymentComplete:before.invoiceComplete,activeCount=customerDebtActiveProgressEntries(d,kind).length;
     if(value){if(complete)return;d[field]=true;if(field==='paid')d.paidAt=d.paidAt||now;else d.invoiceIssuedAt=d.invoiceIssuedAt||now}
     else{
-      if(!complete&&recorded<=0&&d[field]!==true)return;
-      d[field]=false;appendProgressAdjustment(d,kind,-recorded,now);if(field==='paid')d.paidAt=null;else d.invoiceIssuedAt=null;
+      if(!complete&&!activeCount&&d[field]!==true)return;
+      d[field]=false;appendProgressReset(d,kind,now);if(field==='paid')d.paidAt=null;else d.invoiceIssuedAt=null;
     }
     d.updatedAt=now;
   }

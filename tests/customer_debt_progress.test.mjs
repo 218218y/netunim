@@ -69,6 +69,45 @@ test('manual editor appends repeated partial additions, rejects overflow and res
  }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
 });
 
+
+test('debt editor only exposes amount-entry fields in partial mode and money spinners use whole-shekel steps',()=>{
+ const listeners={},paymentSelect={value:'false',addEventListener:(type,fn)=>{listeners.payment=fn}},invoiceSelect={value:'true',addEventListener:(type,fn)=>{listeners.invoice=fn}},paymentField={hidden:false},invoiceField={hidden:false},paymentInput={value:'',disabled:false},invoiceInput={value:'',disabled:false};
+ const fields={'#dPaid':paymentSelect,'#dInvoice':invoiceSelect,'#dAddPaymentField':paymentField,'#dAddInvoiceField':invoiceField,'#dAddPayment':paymentInput,'#dAddInvoice':invoiceInput};
+ let body='';const previous=globalThis.document;globalThis.document={querySelector:selector=>fields[selector]||null};
+ try{
+  const editor=createDomainsCustomersEditor({model:{state:{customerDebts:[]}},customerUi:{},modal:(_title,html)=>{body=html},toast:()=>{},scheduleSave:()=>{},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
+  editor.openDebtModal();
+  assert.match(body,/id="dAddPayment"[^>]*step="1"/);assert.match(body,/id="dAddInvoice"[^>]*step="1"/);assert.doesNotMatch(body,/step="0\.01"/);
+  assert.equal(paymentField.hidden,true);assert.equal(paymentInput.disabled,true);assert.equal(invoiceField.hidden,true);assert.equal(invoiceInput.disabled,true);
+  paymentSelect.value='partial';listeners.payment();assert.equal(paymentField.hidden,false);assert.equal(paymentInput.disabled,false);
+  paymentInput.value='12.34';paymentSelect.value='false';listeners.payment();assert.equal(paymentField.hidden,true);assert.equal(paymentInput.disabled,true);assert.equal(paymentInput.value,'');
+ }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
+});
+
+test('partial additions that reach the full debt stamp completion times and later reset clears them safely',()=>{
+ const model={state:{customerDebts:[]}};let saves=0;
+ const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:()=>{saves++},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
+ const fields={'#dName':{value:'לקוח'},'#dAmount':{value:'1000'},'#dOrder':{value:''},'#dPhone':{value:''},'#dEmail':{value:''},'#dTaxId':{value:''},'#dPaid':{value:'partial'},'#dSupplied':{value:'false'},'#dInvoice':{value:'partial'},'#dAddPayment':{value:'1000'},'#dAddInvoice':{value:'1000'},'#dNote':{value:''}};
+ const previous=globalThis.document;globalThis.document={querySelector:selector=>fields[selector]||null};
+ try{
+  editor.saveDebt();const debt=model.state.customerDebts[0],firstUpdated=debt.updatedAt;
+  assert.equal(customerDebtProgressData(debt).paymentComplete,true);assert.equal(customerDebtProgressData(debt).invoiceComplete,true);assert.ok(debt.paidAt);assert.ok(debt.invoiceIssuedAt);assert.ok(debt.closedAt);assert.ok(firstUpdated);
+  fields['#dPaid'].value='false';fields['#dInvoice'].value='false';fields['#dAddPayment'].value='';fields['#dAddInvoice'].value='';editor.saveDebt(debt.id);
+  const p=customerDebtProgressData(debt);assert.equal(p.paymentComplete,false);assert.equal(p.invoiceComplete,false);assert.equal(debt.paidAt,null);assert.equal(debt.invoiceIssuedAt,null);assert.equal(debt.closedAt,null);
+  assert.equal(debt.debtProgress.filter(row=>row.action==='reset').length,2);assert.ok(debt.debtProgress.every(row=>row.action==='add'||row.action==='reset'));assert.ok(debt.debtProgress.filter(row=>row.action==='add').every(row=>row.amount>0));assert.equal(saves,2);
+ }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
+});
+
+test('direct table reset of a progressed debt writes a reset event, never a negative adjustment',()=>{
+ const debt={id:'D1',customerName:'לקוח',amount:1000,paid:false,invoiceIssued:false,supplied:false,note:'',debtProgress:[add('P1','payment',300)]},model={state:{customerDebts:[debt],customerOrders:[]}};let saves=0;
+ const main={innerHTML:'',querySelector:()=>null},previous=globalThis.document;globalThis.document={querySelector:selector=>selector==='#main'?main:null};
+ try{
+  const view=createDomainsCustomersView({model,customerUi:{customerTab:'debts',customerFilter:'all',customerSearch:'',customerBulkMode:false,customerBulkSelected:new Set()},bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{saves++}});
+  view.setCustomerFlag('D1','paid',false);
+  assert.equal(customerDebtProgressData(debt).paymentApplied,0);assert.equal(debt.debtProgress.length,2);assert.equal(debt.debtProgress[1].action,'reset');assert.deepEqual(debt.debtProgress[1].clears,['P1']);assert.equal('amount' in debt.debtProgress[1],false);assert.equal(saves,1);
+ }finally{if(previous===undefined)delete globalThis.document;else globalThis.document=previous}
+});
+
 test('partial customer row stays compact and exposes details instead of adding another permanent status column',()=>{
  const debt={id:'D1',customerName:'לקוח',amount:1000,supplied:true,paid:false,invoiceIssued:false,note:'',debtProgress:[add('P1','payment',250)]};
  const view=createDomainsCustomersView({model:{state:{customerDebts:[debt],customerOrders:[]}},customerUi:{customerBulkMode:false,customerBulkSelected:new Set()},bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>({}),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
@@ -86,6 +125,27 @@ test('Orders merge unions concurrent debt progress events and makes concurrent r
  let p=customerDebtProgressData(result.state.customerDebts[0]);assert.equal(p.paymentApplied,125);assert.equal(result.state.customerDebts[0].debtProgress.length,3);
  const localReset=structuredClone(base),remoteReset=structuredClone(base);localReset.customerDebts[0].debtProgress.push(reset('R2','payment',['P1']));remoteReset.customerDebts[0].debtProgress.push(reset('R3','payment',['P1']));
  result=merge.merge3(base,localReset,remoteReset);assert.deepEqual(result.conflicts,[]);assert.equal(customerDebtProgressData(result.state.customerDebts[0]).paymentApplied,0);
+});
+
+
+test('Orders merge treats progress timestamps as metadata and safely combines realistic concurrent editor updates',()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const base=normalization.normalizeState(baseOrderState([{id:'D',customerName:'לקוח',amount:1000,paid:false,invoiceIssued:false,updatedAt:'2026-09-09T08:00:00.000Z'}]));
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.customerDebts[0].debtProgress=[add('P1','payment',600,'2026-09-09T09:00:00.000Z')];local.customerDebts[0].updatedAt='2026-09-09T09:00:00.000Z';
+ remote.customerDebts[0].debtProgress=[add('P2','payment',500,'2026-09-09T10:00:00.000Z')];remote.customerDebts[0].updatedAt='2026-09-09T10:00:00.000Z';
+ const result=merge.merge3(base,local,remote),debt=result.state.customerDebts[0],p=customerDebtProgressData(debt);
+ assert.deepEqual(result.conflicts,[]);assert.equal(p.paymentRecorded,1100);assert.equal(p.paymentApplied,1000);assert.equal(p.paymentComplete,true);assert.equal(debt.updatedAt,'2026-09-09T10:00:00.000Z');assert.equal(debt.paidAt,'2026-09-09T10:00:00.000Z');
+});
+
+test('Orders merge combines a concurrent reset and new addition even when both sides update row metadata',()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const base=normalization.normalizeState(baseOrderState([{id:'D',customerName:'לקוח',amount:1000,paid:false,invoiceIssued:false,updatedAt:'2026-09-09T08:00:00.000Z',debtProgress:[add('P1','payment',300,'2026-09-09T08:00:00.000Z')]}]));
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.customerDebts[0].debtProgress.push(reset('R1','payment',['P1'],'2026-09-09T09:00:00.000Z'));local.customerDebts[0].updatedAt='2026-09-09T09:00:00.000Z';
+ remote.customerDebts[0].debtProgress.push(add('P2','payment',125,'2026-09-09T10:00:00.000Z'));remote.customerDebts[0].updatedAt='2026-09-09T10:00:00.000Z';
+ const result=merge.merge3(base,local,remote),debt=result.state.customerDebts[0];
+ assert.deepEqual(result.conflicts,[]);assert.equal(customerDebtProgressData(debt).paymentApplied,125);assert.deepEqual(customerDebtActiveProgressEntries(debt,'payment').map(row=>row.id),['P2']);assert.equal(debt.updatedAt,'2026-09-09T10:00:00.000Z');
 });
 
 test('Orders validation rejects malformed or mutable debt-progress history',()=>{

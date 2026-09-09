@@ -48,7 +48,7 @@ test('rights editor writes only to rights and routes add/edit actions independen
   let modalSave=null,modalBody='',saved='',cashOpened=0,rightOpened=0;
   const model={state:{cash:[],rights:[]}};
   const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,body,_s,onSave)=>{modalBody=body;modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup});
-  editor.openRightModal();assert.match(modalBody,/step="0\.01"/);assert.match(modalBody,/inputmode="decimal"/);modalSave();
+  editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);modalSave();
   assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].amount,75.48);assert.equal(saved,'תנועת הזכות נשמרה');
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
   actions['open-cash-modal']({dataset:{}},{});actions['open-right-modal']({dataset:{}},{});
