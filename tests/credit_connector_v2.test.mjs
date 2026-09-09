@@ -17,6 +17,7 @@ import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCa
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
+import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
 const amexMonth=new Date('2026-12-01T00:00:00.000Z');
@@ -57,10 +58,25 @@ const billedBeforeCutoff=parseVisaCalMonthData({statusCode:1,result:{bankAccount
 assert.equal(billedBeforeCutoff.length,0,'the historical cutoff still applies to the billing date and does not leak older debit cycles');
 
 let genericOptions=null;
-const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS'}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
+const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS'},{identifier:'max-pending-1',status:'pending',date:'2026-09-03T05:00:00.000Z',processedDate:'2026-09-03T05:00:00.000Z',chargedAmount:-120,chargedCurrency:'ILS'}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
 const genericResult=await genericAdapter.scrape();
 assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'native MAX/Isracard purchase-date filtering is disabled so Netunim can apply the canonical billing-date boundary');
 assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
+assert.equal(genericResult.accounts[0].pendingTransactions.length,1,'MAX pending status remains authoritative even when upstream fills processedDate with the purchase date');
+assert.equal(genericResult.accounts[0].pendingTransactions[0].id,'max-pending-1');
+assert.equal(genericResult.accounts[0].months.flatMap(row=>row.transactions).some(tx=>tx.id==='max-pending-1'),false,'a pending approval can never be promoted into finalized monthly billing by its placeholder processedDate');
+
+const isracardProfile={profileId:'isracard-digital',provider:'isracard',label:'ישראכרט',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
+let isracardDigitalOptions=null;
+const isracardDigitalAdapter=createCreditProviderAdapter({profile:isracardProfile,CompanyTypes:{isracard:'isracard'},createScraper:()=>{throw new Error('published legacy Isracard scraper must not own v42')},isracardScrapeImpl:async options=>{isracardDigitalOptions={...options,onDiagnostic:undefined,now:undefined};return {success:true,accounts:[{accountNumber:'7392',balance:-1400,cardFrame:10000,txns:[{identifier:'isr-approved',status:'pending',date:'2026-09-03T05:10:00.000Z',processedDate:'2026-09-03T05:10:00.000Z',chargedAmount:-300,chargedCurrency:'ILS'},{identifier:'isr-approved',status:'pending',date:'2026-09-03T05:10:00.000Z',processedDate:'2026-09-03T05:10:00.000Z',chargedAmount:-300,chargedCurrency:'ILS'}]}]}} ,browserPath:'chrome.exe',now:()=>new Date(fixedNow),syncMode:'daily'});
+const isracardDigitalResult=await isracardDigitalAdapter.scrape();
+assert.equal(isracardDigitalOptions.browserPath,'chrome.exe','Isracard v42 DigitalV3 uses the installed Chrome/Edge executable');
+assert.equal(isracardDigitalResult.accounts[0].pendingTransactions.length,1,'DigitalV3 approvals repeated across billing-month requests are deduplicated by their stable issuer confirmation identity');
+assert.equal(isracardDigitalResult.accounts[0].months.flatMap(row=>row.transactions).some(tx=>tx.status==='pending'),false,'Isracard pending approvals stay outside finalized monthly slices');
+assert.equal(isracardDigitalResult.accounts[0].months.find(row=>row.month==='2026-09').providerSchemaVersion,ISRACARD_DIGITAL_V3_SCHEMA_VERSION,'Isracard v42 reports the local DigitalV3 connector schema truthfully');
+assert.equal(isracardDigitalResult.accounts[0].availableCredit,8600,'Isracard DigitalV3 limitUsed and creditLimit semantics produce issuer available credit without a client-side pending double subtraction');
+const isracardApproved=normalizeIsracardDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'isr-abc'});
+assert.equal(isracardApproved.status,'pending');assert.equal(isracardApproved.processedDate,isracardApproved.date,'Isracard DigitalV3 pending rows intentionally carry purchase time in processedDate but remain pending by explicit status');
 
 const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
 let amexDigitalOptions=null;
@@ -183,7 +199,7 @@ const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',st
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
 assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);
 assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
-const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:41,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
+const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:42,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
 
 const identityRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-v2-'));
 try{

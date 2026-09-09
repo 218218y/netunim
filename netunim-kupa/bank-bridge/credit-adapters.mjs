@@ -14,6 +14,7 @@ import {
 } from './isracard-camoufox.mjs';
 import {safeCreditResponseShape} from './credit-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,scrapeAmexDigitalV3} from './amex-digitalv3.mjs';
+import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isracard-digitalv3.mjs';
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
@@ -229,9 +230,16 @@ export class VisaCalAdapter extends CreditProviderAdapter {
 function transactionBillingDate(tx){return tx?.processedDate||tx?.date||''}
 function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
 function genericMonthlyAccount(account,provider,{startDate,futureMonths,now},schemaVersion=CREDIT_PROVIDER_SCHEMA_VERSION){
-  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],unassigned=[],cutoff=Date.parse(startDate);
+  const normalized=normalizeCreditScrapeAccount(account,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],pendingSeen=new Set(),unassigned=[],cutoff=Date.parse(startDate);
   for(const tx of normalized.txns){
-    if(tx.status==='pending'&&!tx.processedDate){pending.push(tx);continue}
+    // Provider status is authoritative. MAX and Isracard-group DigitalV3 intentionally set
+    // processedDate on approvals to the purchase date, so processedDate must never promote
+    // a pending authorization into a finalized billing-month transaction.
+    if(tx.status==='pending'){
+      const key=tx.id?`${tx.id}|${tx.date||''}|${tx.chargedAmount??tx.originalAmount??''}`:'';
+      if(!key||!pendingSeen.has(key)){pending.push(tx);if(key)pendingSeen.add(key)}
+      continue;
+    }
     const billingDate=transactionBillingDate(tx),billingTime=Date.parse(billingDate),key=transactionMonth(tx);
     if(Number.isFinite(cutoff)&&Number.isFinite(billingTime)&&billingTime<cutoff)continue;
     if(byMonth.has(key))byMonth.get(key).push(tx);else if(!key)unassigned.push(tx);
@@ -245,22 +253,18 @@ export class GenericScraperAdapter extends CreditProviderAdapter {
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 
-export class IsracardAdapter extends GenericScraperAdapter {
-  constructor(options={}){super(options);this.identityDir=options.identityDir;this.allowCamoufoxFallback=options.allowCamoufoxFallback!==false}
-  async scrape(){try{return await super.scrape()}catch(error){if(!this.allowCamoufoxFallback||!isCamoufoxRetryableNativeFailure(error))throw error;return this.scrapeCamoufox()}}
-  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.onDiagnostic({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
-}
-
-export class AmexAdapter extends CreditProviderAdapter {
-  constructor(options={}){super(options);this.connectorVersion=AMEX_DIGITAL_V3_SCHEMA_VERSION;Object.assign(this,{browserPath:options.browserPath,interactive:!!options.interactive,identityDir:options.identityDir,allowCamoufoxFallback:options.allowCamoufoxFallback!==false,amexScrapeImpl:options.amexScrapeImpl||scrapeAmexDigitalV3})}
+class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
+  constructor(options={},schemaVersion='',scrapeImpl=null){
+    super(options);this.connectorVersion=schemaVersion;Object.assign(this,{browserPath:options.browserPath,interactive:!!options.interactive,identityDir:options.identityDir,allowCamoufoxFallback:options.allowCamoufoxFallback!==false,digitalScrapeImpl:scrapeImpl});
+  }
   async scrape(){
     const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),started=Date.now();
     try{
-      const result=await this.amexScrapeImpl({credentials:profile.credentials,browserPath:this.browserPath,interactive:this.interactive,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,onDiagnostic:event=>this.event({browserEngine:'chromium',...event}),now:this.now});
-      if(!result?.success)throw safeError('American Express DigitalV3 לא השלים את הסנכרון.','CREDIT_PROVIDER_DATA_ERROR',{stage:'DigitalV3'});
+      const result=await this.digitalScrapeImpl({credentials:profile.credentials,browserPath:this.browserPath,interactive:this.interactive,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,onDiagnostic:event=>this.event({browserEngine:'chromium',...event}),now:this.now});
+      if(!result?.success)throw safeError(`${profile.label||profile.provider} DigitalV3 לא השלים את הסנכרון.`,'CREDIT_PROVIDER_DATA_ERROR',{stage:'DigitalV3'});
       const syncedAt=this.now().toISOString();
       this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});
-      return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate:scope.startDate,futureMonths:scope.futureMonths,now:this.now()},AMEX_DIGITAL_V3_SCHEMA_VERSION)),errors:[]};
+      return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate:scope.startDate,futureMonths:scope.futureMonths,now:this.now()},this.connectorVersion)),errors:[]};
     }catch(error){
       const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';
       this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});
@@ -271,12 +275,20 @@ export class AmexAdapter extends CreditProviderAdapter {
   async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.onDiagnostic({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
 }
 
+export class IsracardAdapter extends IsracardGroupDigitalV3Adapter {
+  constructor(options={}){super(options,ISRACARD_DIGITAL_V3_SCHEMA_VERSION,options.isracardScrapeImpl||scrapeIsracardDigitalV3)}
+}
+
+export class AmexAdapter extends IsracardGroupDigitalV3Adapter {
+  constructor(options={}){super(options,AMEX_DIGITAL_V3_SCHEMA_VERSION,options.amexScrapeImpl||scrapeAmexDigitalV3)}
+}
+
 async function camoufoxProfileResult(adapter,options){
   try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString();return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label,browserEngine:'camoufox'}))}}catch(error){const failure=creditThrownScrapeFailure(error,adapter.profile);if(!failure.browserEngine)failure.browserEngine='camoufox';throw failure}
 }
 
-export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[],allowCamoufoxFallback=true,amexScrapeImpl=null}={}){
-  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode,excludedAccountNumbers,allowCamoufoxFallback,amexScrapeImpl};
+export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[],allowCamoufoxFallback=true,isracardScrapeImpl=null,amexScrapeImpl=null}={}){
+  const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode,excludedAccountNumbers,allowCamoufoxFallback,isracardScrapeImpl,amexScrapeImpl};
   if(profile.provider==='visaCal')return new VisaCalAdapter(common);
   if(profile.provider==='max')return new MaxAdapter({...common,companyId:CompanyTypes.max});
   if(profile.provider==='isracard')return new IsracardAdapter({...common,companyId:CompanyTypes.isracard});

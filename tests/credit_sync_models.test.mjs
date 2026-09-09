@@ -18,12 +18,14 @@ import {
   creditSyncHasIncludedCards,
   creditSyncScrapeSelection,
   creditKnownFutureCommitment,
+  creditPendingAuthorizationAmount,
   creditUpcomingCharge,
   creditFrameStatus,
   creditSyncSummary,
   mergeCreditSyncResult,
   normalizeCreditSync,
   syncedInstallmentsData,
+  syncedPendingTransactionsData,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
@@ -100,24 +102,30 @@ const missingNumbers=normalizeCreditScrapeAccount({accountNumber:'0000',balance:
 assert.equal(missingNumbers.balance,null);assert.equal(missingNumbers.cardFrame,null);assert.equal(missingNumbers.availableCredit,null);
 
 
-const availabilityAccount=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',txns:[
+const availabilitySync=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',txns:[
   {id:'past',processedDate:'2026-08-10',chargedAmount:-90,chargedCurrency:'ILS',status:'completed'},
   {id:'next-a',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',status:'completed'},
   {id:'next-refund',processedDate:'2026-09-10',chargedAmount:50,chargedCurrency:'ILS',status:'completed'},
   {id:'later',processedDate:'2026-10-10',chargedAmount:-450,chargedCurrency:'ILS',status:'completed'},
-  {id:'pending-no-billing-date',date:'2026-09-02',chargedAmount:-100,chargedCurrency:'ILS',status:'pending'},
+  {id:'pending-with-purchase-placeholder',date:'2026-09-02',processedDate:'2026-09-02',transactionDate:'2026-09-02',chargedAmount:-100,chargedCurrency:'ILS',description:'אישור טרי',status:'pending'},
   {id:'foreign',processedDate:'2026-09-12',chargedAmount:-80,chargedCurrency:'USD',status:'completed'},
-]}]}],cardMappings:{'availability:5555':{included:true,manualFrame:5000}}}).profiles[0].accounts[0];
-assert.equal(creditKnownFutureCommitment(availabilityAccount,'2026-09-02'),650,'computed availability subtracts only known future ILS billing rows; pending rows with no billing date and foreign currency do not get guessed into the frame');
+]}]}],cardMappings:{'availability:5555':{included:true,manualFrame:5000,cardName:'ישראכרט בדיקה'}}});
+const availabilityAccount=availabilitySync.profiles[0].accounts[0];
+assert.equal(availabilityAccount.pendingTransactions[0].id,'pending-with-purchase-placeholder','legacy flat feeds classify explicit pending status as pending even when processedDate is populated');
+assert.equal(creditKnownFutureCommitment(availabilityAccount,'2026-09-02'),650,'completed future commitment stays separate from pending issuer authorizations and foreign currency');
+assert.equal(creditPendingAuthorizationAmount(availabilityAccount),100,'pending ILS authorization amount is tracked separately for calculated-frame fallback');
 assert.deepEqual(creditUpcomingCharge(availabilityAccount,'isracard','2026-09-02'),{amount:200,date:'2026-09-10',source:'transactions'},'Isracard upcoming debit is recovered deterministically from the earliest synchronized future billing date');
 const manualFrameStatus=creditFrameStatus(availabilityAccount,{manualFrame:5000},'2026-09-02');
-assert.deepEqual(manualFrameStatus,{frame:5000,available:4350,commitments:650,source:'manual_frame_calculated',frameSource:'manual'},'manual frame is a fallback only when issuer frame/available credit is absent');
+assert.deepEqual(manualFrameStatus,{frame:5000,available:4250,commitments:650,pendingAuthorizations:100,source:'manual_frame_calculated',frameSource:'manual'},'manual frame fallback subtracts completed future commitments plus live pending ILS authorizations');
 const issuerFrameStatus=creditFrameStatus({...availabilityAccount,cardFrame:6000},{manualFrame:5000},'2026-09-02');
-assert.equal(issuerFrameStatus.available,5350);assert.equal(issuerFrameStatus.source,'issuer_frame_calculated');assert.equal(issuerFrameStatus.frame,6000,'issuer frame always overrides a stored manual fallback');
+assert.equal(issuerFrameStatus.available,5250);assert.equal(issuerFrameStatus.pendingAuthorizations,100);assert.equal(issuerFrameStatus.source,'issuer_frame_calculated');assert.equal(issuerFrameStatus.frame,6000,'issuer frame always overrides a stored manual fallback while pending authorizations still reserve calculated availability');
 const directAvailableStatus=creditFrameStatus({...availabilityAccount,cardFrame:6000,availableCredit:4321},{manualFrame:9000},'2026-09-02');
-assert.equal(directAvailableStatus.available,4321);assert.equal(directAvailableStatus.source,'issuer_available','issuer-provided available credit is authoritative and is never reduced a second time');
+assert.equal(directAvailableStatus.available,4321);assert.equal(directAvailableStatus.pendingAuthorizations,100);assert.equal(directAvailableStatus.source,'issuer_available','issuer-provided available credit is authoritative and is never reduced a second time for the pending approvals it already includes');
 assert.deepEqual(creditUpcomingCharge({balance:-321,balanceDate:'2026-09-10',txns:[]},'visaCal','2026-09-02'),{amount:321,date:'2026-09-10',source:'issuer_balance'},'Cal balance is allowed only as a documented next-debit fallback');
 assert.equal(creditUpcomingCharge({balance:-1250,txns:[]},'max','2026-09-02'),null,'MAX balance represents utilized credit and is never mislabeled as an upcoming debit');
+const pendingReviewRows=syncedPendingTransactionsData({creditSync:availabilitySync});
+assert.equal(pendingReviewRows.length,1);assert.equal(pendingReviewRows[0].description,'אישור טרי');assert.equal(pendingReviewRows[0].amount,100);assert.equal(pendingReviewRows[0].card,'ישראכרט בדיקה','pending approvals are immediately available to the credit-page review selector');
+assert.equal(syncedInstallmentsData({creditSync:availabilitySync}).some(row=>row.status==='pending'),false,'pending approvals remain excluded from finalized Kupa cash-flow obligations until the issuer settles them');
 const manualMappingSync=normalizeCreditSync({version:3,profiles:[{profileId:'manual-frame',provider:'amex',accounts:[{accountNumber:'7777',txns:[]}]}],cardMappings:{'manual-frame:7777':{included:true,manualFrame:12345.67}}});
 assert.equal(manualMappingSync.cardMappings['manual-frame:7777'].manualFrame,12345.67,'manual frame survives normalization in the existing v3 schema without triggering the destructive v2-to-v3 cutover');
 assert.equal(normalizeCreditSync({version:3,cardMappings:{bad:{manualFrame:-1}}}).cardMappings.bad.manualFrame,null,'invalid negative manual frame fails closed');
@@ -392,7 +400,7 @@ const controllerModel={state:{creditSync:normalizeCreditSync({})}};
 const creditController=createDomainsCreditController({
   model:controllerModel,
   saveState:async()=>{},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:41,contractVersion:2,profiles:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:42,contractVersion:2,profiles:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 for(const method of ['creditSyncUiState','refreshCreditBridgeStatus','copySafeCreditDiagnostics','openCreditConnectionModal','deleteCreditConnection','resetCreditSync','refreshCreditSync','setCreditCardMapping','setCreditAutoRefresh','setCreditAutoMode','maybeAutoRefreshCreditSync']){
@@ -402,11 +410,11 @@ assert.equal('setCreditSyncMode' in creditController,false,'credit controller no
 await creditController.refreshCreditBridgeStatus();
 creditController.setCreditAutoMode('full');assert.equal(creditController.creditSyncUiState().autoMode,'full','Kupa stores the selected automatic credit horizon independently of the on/off toggle');creditController.setCreditAutoRefresh(false);
 
-let automaticSyncOptions=null;const automaticModel={state:{creditSync:normalizeCreditSync({})}},automaticController=createDomainsCreditController({model:automaticModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},bridge:{creditStatus:async()=>({bridgeVersion:41,contractVersion:2,profiles:[{profileId:'auto-profile'}]}),syncCreditCards:async options=>{automaticSyncOptions=structuredClone(options);return {syncedAt:new Date().toISOString(),attemptedCount:1,deferredCount:0,profiles:[{profileId:'auto-profile',provider:'max',coreComplete:true,accounts:[]}],errors:[]}}},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:normalizeCreditSync({})}}),claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>true});automaticController.setCreditAutoMode('full');assert.equal(await automaticController.refreshCreditSync({auto:true}),undefined);assert.equal(automaticSyncOptions.syncMode,'full','Kupa once-per-day automatic refresh sends the user-selected full horizon instead of hard-coding daily');automaticController.setCreditAutoRefresh(false);
+let automaticSyncOptions=null;const automaticModel={state:{creditSync:normalizeCreditSync({})}},automaticController=createDomainsCreditController({model:automaticModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:true}),toast:()=>{},render:()=>{},bridge:{creditStatus:async()=>({bridgeVersion:42,contractVersion:2,profiles:[{profileId:'auto-profile'}]}),syncCreditCards:async options=>{automaticSyncOptions=structuredClone(options);return {syncedAt:new Date().toISOString(),attemptedCount:1,deferredCount:0,profiles:[{profileId:'auto-profile',provider:'max',coreComplete:true,accounts:[]}],errors:[]}}},modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,refreshFinanceCloudSnapshot:async()=>({verified:true,state:{creditSync:normalizeCreditSync({})}}),claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>true});automaticController.setCreditAutoMode('full');assert.equal(await automaticController.refreshCreditSync({auto:true}),undefined);assert.equal(automaticSyncOptions.syncMode,'full','Kupa once-per-day automatic refresh sends the user-selected full horizon instead of hard-coding daily');automaticController.setCreditAutoRefresh(false);
 
 const deferredToasts=[],deferredModel={state:{creditSync:normalizeCreditSync({version:4,syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'deferred-profile',provider:'amex',attemptedAt:'2026-09-01T00:00:00Z',accounts:[]}]})}},deferredController=createDomainsCreditController({
   model:deferredModel,saveState:async()=>{},saveFinancePatch:async()=>({saved:false}),toast:message=>deferredToasts.push(message),render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:41,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
+  bridge:{creditStatus:async()=>({bridgeVersion:42,contractVersion:2,profiles:[{profileId:'deferred-profile'}],lastErrors:[{profileId:'deferred-profile',provider:'amex',severity:'deferred',deferred:true,code:'CREDIT_AUTOMATION_BLOCKED',at:'2026-09-01T00:00:00Z',originalFailureAt:'2026-09-01T00:00:00Z',retryAfterAt:'2026-09-04T00:00:00Z'}],lastAttemptedCount:0,lastDeferredCount:1}),syncCreditCards:async()=>({attemptedCount:0,deferredCount:1,profiles:[],errors:[]})},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 const beforeDeferredAttempt=deferredModel.state.creditSync.profiles[0].attemptedAt;await deferredController.refreshCreditSync({interactive:true,auto:false});
@@ -417,7 +425,7 @@ const resetModel={state:{credits:[{id:'manual-kept'}],creditSync:normalizeCredit
 const resetController=createDomainsCreditController({
   model:resetModel,
   saveState:async()=>{resetSaveCalls++},toast:()=>{},render:()=>{},
-  bridge:{creditStatus:async()=>({bridgeVersion:41,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
+  bridge:{creditStatus:async()=>({bridgeVersion:42,contractVersion:2,profiles:[{profileId:'old'}]}),resetCreditProfiles:async()=>{resetBridgeCalls++;return {ok:true,profiles:[]}}},
   modal:()=>{},armModalDraftGuard:()=>{},closeModal:()=>{},confirmDialog:async()=>true,
 });
 await resetController.resetCreditSync();

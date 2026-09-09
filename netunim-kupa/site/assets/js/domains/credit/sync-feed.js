@@ -42,7 +42,7 @@ function legacyMonthSlices(txns,fetchedAt){const groups=new Map(),unassigned=[];
 function withAccountTransactions(account,txns){account.txns=txns;Object.defineProperty(account,'toJSON',{value(){const serialized={};for(const [key,value] of Object.entries(this))if(key!=='txns')serialized[key]=value;return serialized},configurable:true,enumerable:false});return account}
 
 export function normalizeCreditAccount(account={},fallbackFetchedAt=null){
-  const legacyTxns=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditTransaction).filter(tx=>tx.date||tx.processedDate||tx.id),legacyPending=legacyTxns.filter(tx=>tx.status==='pending'&&!tx.processedDate),hasMonthly=Array.isArray(account.months)&&account.months.length>0,legacy=hasMonthly?{months:[],unassigned:[]}:legacyMonthSlices(legacyTxns.filter(tx=>!legacyPending.includes(tx)),iso(fallbackFetchedAt)),months=(hasMonthly?account.months:legacy.months).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:legacyPending).map(normalizeCreditTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:legacy.unassigned).map(normalizeCreditTransaction);
+  const legacyTxns=(Array.isArray(account.txns)?account.txns:[]).map(normalizeCreditTransaction).filter(tx=>tx.date||tx.processedDate||tx.id),legacyPending=legacyTxns.filter(tx=>tx.status==='pending'),hasMonthly=Array.isArray(account.months)&&account.months.length>0,legacy=hasMonthly?{months:[],unassigned:[]}:legacyMonthSlices(legacyTxns.filter(tx=>tx.status!=='pending'),iso(fallbackFetchedAt)),months=(hasMonthly?account.months:legacy.months).map(normalizeCreditMonthSlice).filter(slice=>slice.month),pendingTransactions=(Array.isArray(account.pendingTransactions)?account.pendingTransactions:legacyPending).map(normalizeCreditTransaction),unassignedTransactions=(Array.isArray(account.unassignedTransactions)?account.unassignedTransactions:legacy.unassigned).map(normalizeCreditTransaction);
   const txns=[...months.flatMap(slice=>slice.transactions),...pendingTransactions,...unassignedTransactions].filter(tx=>tx.date||tx.processedDate||tx.id),balance=finite(account.balance),cardFrame=finite(account.cardFrame),availableCredit=finite(account.availableCredit),framePresent=cardFrame!==null||balance!==null||availableCredit!==null,frameStatus=['fresh','stale','missing'].includes(String(account.frameStatus))?String(account.frameStatus):framePresent?'fresh':'missing';
   const seen=new Set();
   const result={
@@ -159,6 +159,14 @@ export function creditKnownFutureCommitment(account={},asOf=todayISO()){
   for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(date&&date>=asOf&&amount)total+=amount}
   return Math.round(total*100)/100;
 }
+export function creditPendingAuthorizationAmount(account={}){
+  let total=0;
+  for(const tx of Array.isArray(account?.txns)?account.txns:[]){
+    if(tx?.status!=='pending'||!isShekelTransaction(tx))continue;
+    total+=transactionForecastAmount(tx);
+  }
+  return Math.round(total*100)/100;
+}
 export function creditUpcomingCharge(account={},provider='',asOf=todayISO()){
   const byDate=new Map();
   for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(!date||date<asOf||!amount)continue;byDate.set(date,(byDate.get(date)||0)+amount)}
@@ -168,11 +176,12 @@ export function creditUpcomingCharge(account={},provider='',asOf=todayISO()){
   return null;
 }
 export function creditFrameStatus(account={},mapping={},asOf=todayISO()){
-  const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf);
-  if(directAvailable!==null)return {frame:issuerFrame,available:Math.round(directAvailable*100)/100,commitments,source:'issuer_available',frameSource:issuerFrame!==null?'issuer':null};
+  const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf),pendingAuthorizations=creditPendingAuthorizationAmount(account);
+  // MAX/Isracard/Amex issuer availability already includes live authorizations; never subtract pending twice.
+  if(directAvailable!==null)return {frame:issuerFrame,available:Math.round(directAvailable*100)/100,commitments,pendingAuthorizations,source:'issuer_available',frameSource:issuerFrame!==null?'issuer':null};
   const frame=issuerFrame!==null?issuerFrame:manualFrame;
-  if(frame===null)return {frame:null,available:null,commitments,source:'unavailable',frameSource:null};
-  return {frame,available:Math.round((frame-commitments)*100)/100,commitments,source:issuerFrame!==null?'issuer_frame_calculated':'manual_frame_calculated',frameSource:issuerFrame!==null?'issuer':'manual'};
+  if(frame===null)return {frame:null,available:null,commitments,pendingAuthorizations,source:'unavailable',frameSource:null};
+  return {frame,available:Math.round((frame-commitments-pendingAuthorizations)*100)/100,commitments,pendingAuthorizations,source:issuerFrame!==null?'issuer_frame_calculated':'manual_frame_calculated',frameSource:issuerFrame!==null?'issuer':'manual'};
 }
 function accountPresentation(profile,account,mapping={}){
   const accountClass=mapping.account==='ביתי'?'ביתי':mapping.account==='עסקי'?'עסקי':profile.defaultAccount;
@@ -180,6 +189,23 @@ function accountPresentation(profile,account,mapping={}){
   return {accountClass,cardName:cardName||'כרטיס אשראי',ownerLabel:profile.ownerLabel||'',hidden:mapping.hidden===true};
 }
 function synchronizedCardKey(profile,account){return `sync:${profile.profileId}:${account.accountNumber}`}
+
+export function syncedPendingTransactionsData(state){
+  const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();
+  for(const profile of sync.profiles)for(const account of profile.accounts){
+    const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
+    if(mapping.included!==true||mapping.hidden===true)continue;
+    const presentation=accountPresentation(profile,account,mapping);
+    for(const [index,tx] of account.txns.entries()){
+      if(tx.status!=='pending')continue;
+      const transactionDate=String(tx.transactionDate||tx.date||tx.processedDate||'').slice(0,10),amount=transactionForecastAmount(tx),currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS';
+      const stable=tx.id?`${tx.id}|${transactionDate}|${amount}|${currency}`:`idless-${index}|${transactionDate}|${amount}|${currency}|${tx.description}`;
+      const identity=`${profile.profileId}|${account.accountNumber}|${stable}`;if(seen.has(identity))continue;seen.add(identity);
+      rows.push({id:identity,source:'credit_pending',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,transactionDate,amount,currency,isShekel:isShekelTransaction(tx),status:'pending'});
+    }
+  }
+  return rows.sort((a,b)=>String(b.transactionDate).localeCompare(String(a.transactionDate))||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he'));
+}
 
 export function syncedInstallmentsData(state){
   const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();

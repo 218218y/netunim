@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
 import {creditMonthlyDetailData,creditDetailItemIdentity,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
-import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
+import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary,syncedPendingTransactionsData} from './sync-feed.js';
 import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
 import {searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
@@ -111,6 +111,20 @@ function creditDetailState(){
   const detailFocusLabel=detailFocus?.cardKey?summaryCard(detailMonth?.items.find(item=>rowCardKey(item)===detailFocus.cardKey)||{}):'';
   return {detailMonths,detailFocus,detailItems,focusedCount:focusedItems.length,detailFocusLabel};
 }
+function creditPendingAmount(item){
+  if(item.amount===null||!Number.isFinite(Number(item.amount)))return 'לא נמסר';
+  if(item.isShekel)return money(item.amount);
+  const formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(item.amount);
+  return `${formatted} ${esc(item.currency||'')}`;
+}
+function creditPendingSectionMarkup(){
+  const scoped=syncedPendingTransactionsData(model.state).filter(item=>filterMatch(ui,item)),searching=String(ui.creditSearchValue||'').trim().length>0,items=scoped.filter(item=>creditSearchMatch(ui.creditSearchValue,item));
+  if(!scoped.length)return '';
+  const totalIls=scoped.filter(item=>item.isShekel).reduce((sum,item)=>sum+(Number(item.amount)||0),0),searchMeta=searching?`${items.length} מתוך ${scoped.length}`:`${scoped.length} ממתינות`,frameNote=Number.isFinite(totalIls)&&Math.abs(totalIls)>0.004?` · אישורים שקליים ${money(totalIls)}`:'';
+  return `<section id="credit-pending-transactions" class="section credit-detail-section credit-pending-section" style="margin-top:16px"><div class="section-head credit-detail-section-head"><div><h3>עסקאות ממתינות</h3><small class="credit-search-count">${esc(searchMeta)}${frameNote}</small></div><span class="badge blue">טרם חויבו סופית</span></div><div class="soft-note">אלו אישורים שהחברה עדיין מציגה כממתינים. הם מוצגים מיד לבקרה ומשפיעים על חישוב מסגרת רק כשאין נתון מסגרת פנויה ישיר מהחברה; הם אינם נכנסים לתחזית החיובים החודשית עד שהחברה קובעת חיוב סופי.</div><div class="credit-detail-table-wrap"><table class="credit-detail-table"><thead><tr><th class="credit-detail-col-card">כרטיס</th><th class="credit-detail-col-description">תיאור</th><th class="credit-detail-col-transaction-date">תאריך עסקה</th><th class="credit-detail-col-total">סכום אישור</th><th class="credit-detail-col-status">מצב</th></tr></thead><tbody>${items.length?items.map(item=>`<tr class="credit-synced-detail-row"><td class="credit-detail-card"><b>${esc(item.card)}</b><small>${esc([item.account,item.ownerLabel,CREDIT_PROVIDER_LABELS[item.provider]||item.provider].filter(Boolean).join(' · '))}</small></td><td class="credit-detail-description" title="${esc(item.description||'')}">${esc(item.description)||'—'}</td><td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="amount credit-detail-total">${creditPendingAmount(item)}</td><td class="credit-detail-status"><span class="badge blue">ממתינה</span></td></tr>`).join(''):`<tr><td colspan="5"><div class="empty compact">אין עסקאות ממתינות המתאימות לחיפוש.</div></td></tr>`}</tbody></table></div></section>`;
+}
+function creditTransactionSectionsMarkup(){return `<div id="credit-transaction-sections">${creditPendingSectionMarkup()}${creditDetailSectionMarkup()}</div>`}
+
 function creditDetailSectionMarkup(){
   const {detailMonths,detailFocus,detailItems,focusedCount,detailFocusLabel}=creditDetailState();
   const searching=String(ui.creditSearchValue||'').trim().length>0;
@@ -119,10 +133,10 @@ function creditDetailSectionMarkup(){
 }
 function setCreditSearch(value){
   ui.creditSearchValue=String(value||'');
-  const current=document.getElementById('credit-active-transactions');
+  const current=document.getElementById('credit-transaction-sections');
   if(!current)return;
   const holder=document.createElement('div');
-  holder.innerHTML=creditDetailSectionMarkup();
+  holder.innerHTML=creditTransactionSectionsMarkup();
   const next=holder.firstElementChild;
   if(next)current.replaceWith(next);
   syncBulkUi('credits');
@@ -175,7 +189,7 @@ function renderCredit(){
     ${expensesHubTabsMarkup()}
     <section class="section credit-sync-section">
       <div class="credit-command-row">
-        <div class="credit-view-tools">${localSearchMarkup({value:ui.creditSearchValue||'',placeholder:'חיפוש בעסקאות ותשלומים…',label:'חיפוש בעסקאות ותשלומי האשראי המוצגים',inputAction:'credit-search',className:'credit-search-field'})}</div>
+        <div class="credit-view-tools">${localSearchMarkup({value:ui.creditSearchValue||'',placeholder:'חיפוש בעסקאות, ממתינות ותשלומים…',label:'חיפוש בעסקאות הממתינות ובתשלומי האשראי המוצגים',inputAction:'credit-search',className:'credit-search-field'})}</div>
         <div class="credit-sync-quick-actions"><button id="creditSyncToggle" type="button" class="credit-sync-toggle ${syncHeadline.tone} ${ui.creditSyncOpen?'open':''}" data-action="toggle-credit-sync-options" aria-expanded="${ui.creditSyncOpen===true}" aria-controls="creditSyncPanel">${creditSyncHeadlineMarkup(syncHeadline)}<span class="credit-sync-chevron" aria-hidden="true">⌄</span></button><button class="btn primary credit-sync-refresh" type="button" data-action="refresh-credit-sync" ${syncUi.busy?'disabled':''}>${syncUi.busy?'מעדכן…':'רענן'}</button></div>
       </div>
       <div id="creditSyncPanel" class="credit-sync-settings-body" ${ui.creditSyncOpen?'':'hidden'}>
@@ -208,7 +222,7 @@ function renderCredit(){
 
     <section class="section credit-forecast-section"><div class="section-head"><div><h3>${esc(forecastTitle)}</h3></div></div><div class="section-body"><div class="credit-forecast-list">${forecastRows}</div></div></section>
 
-    ${creditDetailSectionMarkup()}
+    ${creditTransactionSectionsMarkup()}
     ${summary.hasData?renderSyncedAccounts(summary):''}`;
 
   syncBulkUi('credits');
@@ -249,7 +263,8 @@ function renderSyncedAccounts(summary){
 function creditFrameMarkup(status){
   if(status.available===null)return '<div class="credit-live-frame unavailable"><span>מסגרת פנויה</span><b>לא זמינה</b><small>הזן מסגרת ידנית בהגדרות הכרטיס</small></div>';
   const direct=status.source==='issuer_available',manual=status.source==='manual_frame_calculated',label=direct?'מסגרת פנויה · נתון החברה':manual?'מסגרת פנויה · מסגרת ידנית':'מסגרת פנויה · מחושבת';
-  const detail=direct?(status.frame!==null?`מתוך ${money(status.frame)}`:''):`מתוך ${money(status.frame)} · חיובים עתידיים ידועים ${money(status.commitments)}`;
+  const pending=Number(status.pendingAuthorizations)||0;
+  const detail=direct?(status.frame!==null?`מתוך ${money(status.frame)} · כולל אישורים ממתינים לפי נתון החברה`:'כולל אישורים ממתינים לפי נתון החברה'):`מתוך ${money(status.frame)} · חיובים עתידיים ידועים ${money(status.commitments)}${Math.abs(pending)>0.004?` · אישורים ממתינים ${money(pending)}`:''}`;
   return `<div class="credit-live-frame"><span>${label}</span><b>${money(status.available)}</b>${detail?`<small>${detail}</small>`:''}</div>`;
 }
 function creditDetailMonthTabs(months,selectedKey){
