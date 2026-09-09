@@ -20,6 +20,7 @@ sql=SQL.read_text(encoding='utf-8')
 documents=(SITE/'assets/js/domains/customers/documents.js').read_text(encoding='utf-8')
 view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
+morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
@@ -73,8 +74,8 @@ ok("createDomainsCustomers" in composition and "openMorningDocument" in main and
 for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
-ok("openMorningDocumentModal({prefill:null})" in documents and "openStandaloneMorningDocument" in documents and "debt_id" not in documents and "open-morning-standalone" in view,
-   'Morning standalone documents: general document creation shares the prefill flow and has no debt scope')
+ok("openMorningDocumentModal({prefill:null,debtId:''})" in documents and "openStandaloneMorningDocument" in documents and "debt_id" not in documents and "open-morning-standalone" in view,
+   'Morning standalone documents: general document creation shares the form flow but carries no debt scope to the backend')
 ok('ללא חוב מקושר' not in documents,
    'Morning standalone document UI: redundant unlinked-debt hero copy stays removed')
 ok('customer-morning-actions' in view and 'הצג מסמכים' in view and view.find('open-morning-documents') < view.find('open-morning-standalone') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
@@ -133,8 +134,19 @@ if browser_lifecycle.returncode!=0:
     print(browser_lifecycle.stderr)
 
 migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql')).read_text(encoding='utf-8')
-ok(all(name not in documents for name in ('applyCreatedOperations','scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration,
-   'Morning cannot change debt flags, amounts or debt storage')
+ok(all(name not in documents for name in ('scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration
+   and 'applyVerifiedDebtDocument' in documents and 'applyVerifiedMorningDocument' in editor and 'applyVerifiedMorningDocumentToDebt' in morning_debt,
+   'Morning debt boundary: server/ledger stay debt-agnostic while the customer domain applies only a verified client-side progress event')
+ok("data.verified!==true" in documents and "data.operation?.state==='created'&&!!data.operation?.verified_at" in documents and documents.count('applyVerifiedOperation(')>=3,
+   'Morning debt application gate: immediate create and reconciliation reach debt progress only after canonical verification')
+ok("MORNING:${operation}:" in morning_debt and "source:'morning'" in morning_debt and 'existingIds.has(id)' in morning_debt,
+   'Morning debt idempotency: one deterministic progress entry per operation and side prevents double credit on replay/reconciliation')
+ok('Math.min(documentCents,paymentRemainingCents)' in morning_debt and 'Math.min(documentCents,invoiceRemainingCents)' in morning_debt and 'paymentUnapplied' in morning_debt and 'invoiceUnapplied' in morning_debt,
+   'Morning debt caps: document value can close remaining balances but can never overpay or over-invoice the local debt')
+ok(documents.count("rejectSecondaryMutation?.()") >= 2 and "reason:'write-blocked'" in composition,
+   'Morning debt primary-tab safety: debt-linked issuance is blocked before POST when local mutation authority is unavailable')
+ok('סכום המסמך' in documents and 'החוב יעודכן רק לאחר אימות ודאי' in documents and "impactLine('תשלום'" in documents and "impactLine('חשבונית'" in documents,
+   'Morning debt confirmation: partial, excess and per-side consequences are shown before formal issuance')
 ok('operation_id uuid primary key' in sql and 'on public.morning_document_operations(environment,request_fingerprint)' in sql and "where state in ('reserved','pending','created_unverified','needs_reconciliation')" in sql and 'owner_id,environment,request_fingerprint' not in sql and 'document_url' not in sql,
    'Ledger has globally unique operation IDs, account-wide unresolved fingerprint protection and no permanent content-level uniqueness or signed URL column')
 ok("morning_document_operations_document_uidx" in sql and 'on public.morning_document_operations(environment,document_id)' in sql and "where document_id is not null" in sql and "created_verified_check" in sql,

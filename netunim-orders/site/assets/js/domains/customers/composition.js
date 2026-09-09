@@ -6,7 +6,7 @@ import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 
 export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor}){
-  let view;
+  let view,editor;
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
     customerUi,model,
@@ -31,6 +31,8 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     supaFetch:(...args)=>cloudAuth.supaFetch(...args),
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+    rejectSecondaryMutation:(...args)=>storagePersistence.rejectSecondaryMutation(...args),
+    applyVerifiedDebtDocument:(...args)=>{if(storagePersistence.rejectSecondaryMutation())return {changed:false,reason:'write-blocked'};return editor?.applyVerifiedMorningDocument(...args)||{changed:false,reason:'editor-unavailable'}},
   });
   view=createDomainsCustomersView({
     model,customerUi,
@@ -45,7 +47,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
     morningDocumentButton:(...args)=>documents.documentButton(...args),
   });
-  const editor=createDomainsCustomersEditor({
+  editor=createDomainsCustomersEditor({
     model,customerUi,
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),

@@ -1,6 +1,7 @@
 import {esc,uid,clone} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
+import {applyVerifiedMorningDocumentToDebt} from './morning-debt.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -110,14 +111,23 @@ function saveDebt(id=''){
 }
 
 function localDateTime(value){const date=new Date(value||'');return Number.isFinite(date.getTime())?date.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'ללא תאריך'}
-function progressEntryMarkup(row){const payment=row.kind==='payment',reset=row.action==='reset',label=payment?'תשלום':'חשבונית',action=reset?'איפוס':'נוסף';return `<div class="debt-progress-history-row"><div><b>${esc(label)} · ${esc(action)}</b><small>${esc(localDateTime(row.createdAt))} · ${esc(row.source==='manual'?'ידני':row.source||'מערכת')}${reset?` · ${esc((row.clears||[]).length)} תנועות בוטלו`:''}</small></div><strong class="${esc(reset?'warntext':'goodtext')}">${reset?'איפוס':money(row.amount)}</strong></div>`}
+function progressSourceLabel(source){return source==='manual'?'ידני':source==='morning'?'Morning':source||'מערכת'}
+function progressEntryMarkup(row){const payment=row.kind==='payment',reset=row.action==='reset',label=payment?'תשלום':'חשבונית',action=reset?'איפוס':'נוסף';return `<div class="debt-progress-history-row"><div><b>${esc(label)} · ${esc(action)}</b><small>${esc(localDateTime(row.createdAt))} · ${esc(progressSourceLabel(row.source))}${reset?` · ${esc((row.clears||[]).length)} תנועות בוטלו`:''}</small></div><strong class="${esc(reset?'warntext':'goodtext')}">${reset?'איפוס':money(row.amount)}</strong></div>`}
 
 function openDebtProgressDetails(id){
   const d=(model.state.customerDebts||[]).find(x=>x.id===id);if(!d)return toast('חוב הלקוח לא נמצא');const p=customerDebtProgressData(d),rows=customerDebtProgressEntries(d).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));
   modal(`פירוט חוב · ${d.customerName||'לקוח'}`,`<div class="debt-progress-details"><section class="debt-progress-total"><span>סכום החוב המקורי</span><b>${money(d.amount)}</b></section><section class="debt-progress-detail-grid"><div><span>שולם</span><b>${money(p.paymentApplied)}</b><small>נותר ${money(p.remainingPayment)}</small></div><div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div></section><div class="debt-progress-history"><h4>תנועות שנרשמו</h4>${rows.map(progressEntryMarkup).join('')||'<div class="empty debt-progress-empty">אין תנועות חלקיות. מצב מלא שסומן ידנית נשמר בשדות הסטטוס הרגילים.</div>'}</div></div>`,`<button class="btn primary" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">עריכת החוב</button><button class="btn" data-action="close-modal">סגור</button>`);
 }
 
+
+function applyVerifiedMorningDocument({debtId,operationId,type,amount,verifiedAt}={}){
+  const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
+  const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt});
+  if(result.changed){scheduleSave('חוב הלקוח עודכן לפי מסמך Morning מאומת',{surface:'orders.morning.customerDebt'});renderCustomers()}
+  return result;
+}
+
 async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts'});renderCustomers()}
 
-return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, deleteDebt };
+return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
 }

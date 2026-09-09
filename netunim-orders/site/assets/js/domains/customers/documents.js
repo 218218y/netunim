@@ -1,6 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
+import {morningDebtImpact} from './morning-debt.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
@@ -16,8 +17,8 @@ function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser}){
-let activeOperationId='',modalGeneration=0,createBusy=false,blocked=false,completed=false;
+export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryMutation}){
+let activeOperationId='',activeDebtId='',issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false;
 function defaultDescription(d,standalone=false){if(standalone)return'';const order=cleanText(d?.orderNumber,80);return order?`הזמנה ${order}`:`עבור ${cleanText(d?.customerName,120)||'לקוח'}`}
 function newOperationId(){return globalThis.crypto.randomUUID()}
 
@@ -87,12 +88,14 @@ function foot(){return `<button class="btn primary" data-action="morning-create"
 function openMorningDocument(debtId){
   const d=(model.state.customerDebts||[]).find(item=>item.id===debtId);if(!d)return toast('חוב הלקוח לא נמצא');
   const {customerName,amount,orderNumber,phone,email,taxId}=d;
-  return openMorningDocumentModal({prefill:{customerName,amount,orderNumber,phone,email,taxId}});
+  return openMorningDocumentModal({prefill:{customerName,amount,orderNumber,phone,email,taxId},debtId:d.id});
 }
-function openStandaloneMorningDocument(){return openMorningDocumentModal({prefill:null})}
-async function openMorningDocumentModal({prefill=null}={}){
-  // Retain an uncertain operation in memory across closing/reopening the dialog.
-  if(!blocked&&!createBusy){activeOperationId=newOperationId();completed=false}
+function openStandaloneMorningDocument(){return openMorningDocumentModal({prefill:null,debtId:''})}
+async function openMorningDocumentModal({prefill=null,debtId=''}={}){
+  const requestedDebtId=String(debtId||'');
+  // Retain an uncertain operation and its original debt scope across closing/reopening the dialog.
+  if(blocked&&issuanceContext&&issuanceContext.operationId===activeOperationId&&requestedDebtId!==issuanceContext.debtId){toast('יש ניסיון הפקה קודם שעדיין ממתין לאימות. יש להשלים את בדיקת ההפקה שלו לפני פתיחת מסמך עבור חוב אחר.');return}
+  if(!blocked&&!createBusy){activeOperationId=newOperationId();activeDebtId=requestedDebtId;issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId)activeDebtId=issuanceContext.debtId;
   modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   modal('הפקת מסמך Morning',formBody(prefill||{},DEFAULT_DOCUMENT_TYPE,dateEditorMarkup,{standalone:!prefill}),foot());
@@ -126,6 +129,35 @@ function readForm(){
   return payload;
 }
 
+
+function currentDebt(){return activeDebtId?(model.state.customerDebts||[]).find(row=>row.id===activeDebtId)||null:null}
+function impactLine(label,affected,apply,remainingBefore,remainingAfter,completeBefore,unapplied){
+  if(!affected)return `${label}: ללא שינוי.`;
+  if(completeBefore)return `${label}: כבר הושלם בחוב; המסמך לא יוסיף סכום נוסף.`;
+  const appliedText=apply>0?`יירשמו ${money(apply)}`:'לא יירשם סכום';
+  const remainingText=remainingAfter<=0?'והמצב ייסגר במלואו':`ויישארו ${money(remainingAfter)}`;
+  return `${label}: ${appliedText} ${remainingText}.${unapplied>0?` ${money(unapplied)} מסכום המסמך לא ייזקפו לצד הזה של החוב, כי היתרה לפני ההפקה היא ${money(remainingBefore)}.`:''}`;
+}
+function debtImpactConfirmation(type,amount){
+  if(!activeDebtId)return'';
+  const debt=currentDebt();if(!debt)return'\n\n⚠ שורת החוב שממנה נפתח המסמך כבר אינה קיימת. המסמך יופק ב-Morning אך לא יעדכן חוב מקומי.';
+  const impact=morningDebtImpact(debt,type,amount),lines=[];
+  if(!impact.eligible)return'\n\n⚠ החוב אינו חוב חיובי פעיל, ולכן המסמך לא יעדכן אוטומטית את מצב התשלום או החשבונית.';
+  if(impact.relation==='over')lines.push(`⚠ סכום המסמך ${money(impact.documentAmount)} גבוה מסכום החוב ${money(impact.targetMagnitude)}. ההפרש לא ייזקף לחוב זה.`);
+  else if(impact.relation==='partial')lines.push(`המסמך חלקי ביחס לחוב: ${money(impact.documentAmount)} מתוך ${money(impact.targetMagnitude)}.`);
+  lines.push(impactLine('תשלום',impact.paymentAffected,impact.paymentApply,impact.paymentRemainingBefore,impact.paymentRemainingAfter,impact.paymentCompleteBefore,impact.paymentUnapplied));
+  lines.push(impactLine('חשבונית',impact.invoiceAffected,impact.invoiceApply,impact.invoiceRemainingBefore,impact.invoiceRemainingAfter,impact.invoiceCompleteBefore,impact.invoiceUnapplied));
+  lines.push('החוב יעודכן רק לאחר אימות ודאי של המסמך ב-Morning.');
+  return `\n\nעדכון החוב לאחר אימות:\n${lines.join('\n')}`;
+}
+function applyVerifiedOperation({operationId,type,amount,verifiedAt}={}){
+  if(!activeDebtId||!operationId||issuanceContext?.operationId!==operationId||issuanceContext.debtId!==activeDebtId)return {changed:false,reason:'unbound-operation'};
+  const result=applyVerifiedDebtDocument?.({debtId:activeDebtId,operationId,type,amount,verifiedAt})||{changed:false,reason:'no-handler'};
+  if(result.reason==='missing-debt')toast('המסמך אומת ב-Morning, אך שורת החוב כבר אינה קיימת ולכן לא עודכנה.');
+  else if(result.reason==='write-blocked')toast('המסמך אומת ב-Morning, אך עדכון החוב נעצר כי אין כרגע הרשאת כתיבה מקומית. יש לרענן ולבדוק את מצב החוב לפני פעולה נוספת.');
+  return result;
+}
+
 function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;el.className=`morning-connection ${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){
   const result=currentField('morningOperationResult');if(!result)return;
@@ -143,8 +175,8 @@ async function refreshStatus({reconcile=false}={}){
     // A status read can race a still-running Edge request before its reservation.
     // Missing metadata is not proof that an uncertain issuance did not happen.
     blocked=!!data.unresolved;renderOperation(data.operation);
-    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at;if(verifiedCreated){completed=true;markModalDraftSaved?.()}
-    if(data.operation?.state==='failed'){completed=false;activeOperationId=newOperationId()}
+    const verifiedCreated=data.operation?.state==='created'&&!!data.operation?.verified_at;if(verifiedCreated){applyVerifiedOperation({operationId:data.operation.operation_id,type:data.operation.document_type,amount:Number(data.operation.amount),verifiedAt:data.operation.verified_at});completed=true;markModalDraftSaved?.()}
+    if(data.operation?.state==='failed'){completed=false;activeOperationId=newOperationId();issuanceContext=null}
     const envLabel=data.environment==='sandbox'?'Sandbox':'Production';
     if(!data.configured)connectionStatus('error','Morning אינו מוגדר בשרת');
     else if(data.available===false)connectionStatus('error',blocked?'Morning אינו זמין כרגע והפקה קודמת עדיין חסומה עד לאימות.':'Morning אינו זמין כרגע. הפקת מסמכים חסומה ליתר ביטחון.');
@@ -165,13 +197,17 @@ async function createMorningDocument(button){
   if(createBusy||blocked||completed)return;
   let payload;try{payload=readForm()}catch(error){return toast(error.message)}
   const generation=modalGeneration,type=payload.document.type,amount=payload.document.amount,clientName=payload.document.client.name;
+  if(activeDebtId&&rejectSecondaryMutation?.())return;
   createBusy=true;setBusy(button,true,'מפיק…');
   try{
-    const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});
+    const confirmed=await confirmDialog('הפקת מסמך רשמי',`להפיק ${documentLabel(type)} על סך ${money(amount)} עבור ${clientName}?\nלאחר ההפקה המסמך יקבל מספר רשמי ב-Morning.${debtImpactConfirmation(type,amount)}`,{confirmText:'הפק מסמך',cancelText:'חזור לעריכה',tone:'primary'});
     if(!confirmed||!isActive(generation))return;
+    if(activeDebtId&&rejectSecondaryMutation?.())return;
+    issuanceContext={operationId:activeOperationId,debtId:activeDebtId};
     // Conservatively retain the operation even when the browser loses the Edge response.
     blocked=true;
     const data=await backend('create',payload);if(data.verified!==true||!data.document?.id)throw new Error('השרת לא החזיר אימות קנוני למסמך. לא יישלח ניסיון נוסף לפני בדיקת מצב ההפקה.');
+    applyVerifiedOperation({operationId:activeOperationId,type:data.document.type??type,amount:data.document.amount??amount,verifiedAt:new Date().toISOString()});
     documentsBrowser.invalidateCache();
     let pdfLoaded=false;if(isActive(generation))pdfLoaded=await documentsBrowser.viewDocument(data.document.id,null,{quiet:true});
     if(isActive(generation)){
@@ -190,7 +226,7 @@ async function createMorningDocument(button){
       if(button){button.dataset.idleLabel='ננעל למניעת כפילות';button.textContent='ננעל למניעת כפילות'}
     }else{
       // Only explicit server rejection is safely retryable; transport loss remains uncertain.
-      if(error?.status&&error.status<500&&!error?.details?.uncertain){blocked=false;activeOperationId=newOperationId()}
+      if(error?.status&&error.status<500&&!error?.details?.uncertain){blocked=false;activeOperationId=newOperationId();issuanceContext=null}
       if(isActive(generation))connectionStatus(blocked?'warning':'error',blocked?'ההפקה ממתינה לאימות. לא נשלח ניסיון נוסף.':error.message);
     }
     toast(error.message||'יש לבדוק את מצב ההפקה');
