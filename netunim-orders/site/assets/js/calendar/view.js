@@ -15,6 +15,19 @@ export function parseDateKey(value){
 
 export function normalizeViewMode(value){return CALENDAR_VIEW_MODES.includes(String(value||''))?String(value):'week'}
 
+export function reconcileCalendarEndDate(startDate,endDate,{endWasManual=false,source='start'}={}){
+  const start=parseDateKey(startDate),end=parseDateKey(endDate);
+  if(!start)return{endDate:String(endDate||''),endManual:!!endWasManual};
+  const startKey=localDateKey(start);
+  if(source==='end'){
+    if(!end||localDateKey(end)<startKey)return{endDate:startKey,endManual:false};
+    const endKey=localDateKey(end);
+    return{endDate:endKey,endManual:endKey>startKey};
+  }
+  if(!endWasManual||!end||localDateKey(end)<startKey)return{endDate:startKey,endManual:false};
+  return{endDate:localDateKey(end),endManual:true};
+}
+
 export function normalizeFocusDate(value,now=new Date()){
   const parsed=parseDateKey(value);
   return parsed?localDateKey(parsed):localDateKey(now);

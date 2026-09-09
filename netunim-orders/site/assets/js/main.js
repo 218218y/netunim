@@ -739,6 +739,7 @@ const domainsCalendarController=createDomainsCalendarController({
   requestCloudLogin:()=>uiCloud.loginModal('calendar'),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
 });
 
 const domainsNotesController=createDomainsNotesController({
@@ -1023,8 +1024,13 @@ const uiActions=createUiActions({
   calendarRefresh:(...args)=>domainsCalendarController.refreshCalendar(...args),
   calendarAuthAction:(...args)=>domainsCalendarController.calendarAuthAction(...args),
   calendarNewEvent:(...args)=>domainsCalendarController.newEvent(...args),
+  calendarDayCreate:(...args)=>domainsCalendarController.calendarDayCreate(...args),
   calendarOpenEvent:(...args)=>domainsCalendarController.openCalendarEvent(...args),
   calendarToggleAllDay:(...args)=>domainsCalendarController.toggleCalendarAllDay(...args),
+  calendarSyncStartDate:(...args)=>domainsCalendarController.syncCalendarStartDate(...args),
+  calendarSyncEndDate:(...args)=>domainsCalendarController.syncCalendarEndDate(...args),
+  calendarSaveQuickEvent:(...args)=>domainsCalendarController.saveQuickCalendarEvent(...args),
+  calendarExpandQuickEvent:(...args)=>domainsCalendarController.expandQuickCalendarEvent(...args),
   calendarSaveEvent:(...args)=>domainsCalendarController.saveCalendarEvent(...args),
   calendarDeleteEvent:(...args)=>domainsCalendarController.deleteCalendarEvent(...args),
 });

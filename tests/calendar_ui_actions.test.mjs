@@ -11,8 +11,13 @@ const actions=createUiActions({
   calendarRefresh:record('refresh'),
   calendarAuthAction:record('auth'),
   calendarNewEvent:record('new'),
+  calendarDayCreate:record('day-create'),
   calendarOpenEvent:record('open'),
   calendarToggleAllDay:record('toggle'),
+  calendarSyncStartDate:record('start-date'),
+  calendarSyncEndDate:record('end-date'),
+  calendarSaveQuickEvent:record('quick-save'),
+  calendarExpandQuickEvent:record('quick-details'),
   calendarSaveEvent:record('save'),
   calendarDeleteEvent:record('delete'),
 });
@@ -21,17 +26,20 @@ const element={dataset:{clickArg0:'calendar-key'}};
 const event={};
 for(const name of [
   'calendar-prev-period','calendar-today','calendar-next-period','calendar-set-view','calendar-refresh',
-  'calendar-auth','calendar-new-event','calendar-new-day','calendar-open-event',
-  'calendar-toggle-all-day','calendar-save-event','calendar-delete-event',
+  'calendar-auth','calendar-new-event','calendar-new-day','calendar-day-create','calendar-open-event',
+  'calendar-toggle-all-day','calendar-start-date-change','calendar-end-date-change','calendar-quick-save','calendar-quick-details','calendar-save-event','calendar-delete-event',
 ]){
   assert.equal(typeof actions[name],'function',`${name} must be registered`);
   actions[name](element,event);
 }
 
-assert.equal(calls.length,12);
+assert.equal(calls.length,17);
 assert.ok(calls.some(call=>call[0]==='auth'),'calendar auth action must be reachable');
 assert.ok(calls.some(call=>call[0]==='view'&&call[1]==='calendar-key'),'view selector must preserve its mode argument');
 assert.ok(calls.some(call=>call[0]==='new'&&call[1]==='calendar-key'),'day shortcut must preserve its date argument');
+assert.ok(calls.some(call=>call[0]==='day-create'&&call[1]==='calendar-key'&&call[2]===event),'blank-day action must preserve both its date and click detail event');
+assert.ok(calls.some(call=>call[0]==='start-date'&&call[1]===element),'start-date action must preserve its changed editor value element');
+assert.ok(calls.some(call=>call[0]==='end-date'&&call[1]===element),'end-date action must preserve its changed editor value element');
 assert.ok(calls.some(call=>call[0]==='open'&&call[1]==='calendar-key'),'open action must preserve its event key');
 assert.ok(calls.some(call=>call[0]==='save'&&call[1]==='calendar-key'),'save action must preserve its event key');
 assert.ok(calls.some(call=>call[0]==='delete'&&call[1]==='calendar-key'),'delete action must preserve its event key');

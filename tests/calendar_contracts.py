@@ -97,6 +97,8 @@ ok('resumeKnownConnectionSilently' in controller and 'calendarAuth.restore()' in
 ok('hydrateLegacyConnectionPreference' in controller and "getMeta('accountId')" in controller,'calendar reconnect migration: existing installations inherit their previously verified Calendar account once')
 
 ok('data-click-arg0="month"' in controller and 'data-click-arg0="week"' in controller and 'data-click-arg0="day"' in controller and 'calendar-prev-period' in controller and 'calendar-next-period' in controller,'calendar view controls: month/week/day and period navigation are rendered from one focused-date model')
+ok('calendar-day-create-zone' in controller and 'calendar-day-create' in controller and 'CALENDAR_DAY_SINGLE_CLICK_DELAY_MS' in controller,'calendar creation UX: blank day space has a dedicated click target and single/double clicks are disambiguated before opening an editor')
+ok("change:'calendar-start-date-change'" in controller and "change:'calendar-end-date-change'" in controller and 'reconcileCalendarEndDate' in controller and 'setDateValue' in controller,'calendar date range: editor start/end dates are linked through the shared date editor instead of waiting for save-time validation')
 toolbar_markup=re.search(r'function toolbarMarkup\(\)\{.*?return `(.*?)`\}',controller,re.S)
 toolbar_source=toolbar_markup.group(1) if toolbar_markup else ''
 nav_pos=toolbar_source.find('<div class="calendar-nav-actions">')

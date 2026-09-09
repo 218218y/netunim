@@ -52,11 +52,54 @@ try:
           for(let i=0;i<40&&!document.querySelector(`[data-calendar-day="${today}"]`);i++)await new Promise(r=>setTimeout(r,25));
           await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
           const todayButton={visible:focusVisible(),monthActive:document.querySelector('[data-action="calendar-set-view"][data-click-arg0="month"]')?.classList.contains('active')===true};
+          const shiftKey=(iso,days)=>{const [y,m,d]=iso.split('-').map(Number),date=new Date(y,m-1,d,12);date.setDate(date.getDate()+days);return key(date)};
+          const pickDate=(id,value)=>{const hidden=document.querySelector('#'+id),picker=hidden?.closest('[data-date-editor]')?.querySelector('[data-date-picker]');if(!picker)return false;picker.value=value;picker.dispatchEvent(new Event('change',{bubbles:true}));return true};
+
+          let zone=document.querySelector(`[data-calendar-day="${today}"] .calendar-day-create-zone`);
+          zone?.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));
+          await new Promise(r=>setTimeout(r,380));
+          const quickOpened=!!document.querySelector('#calendarQuickSummary')&&document.querySelector('#calendarQuickDate')?.value===today;
+          document.querySelector('#calendarQuickSummary').value='תור מהיר אופליין';
+          document.querySelector('#calendarQuickStartTime').value='13:00';
+          document.querySelector('#calendarQuickEndTime').value='14:00';
+          document.querySelector('[data-action="calendar-quick-save"]').click();
+          let quickQueue=[],quickOptimistic=false,quickPending=false,quickClosed=false;
+          for(let i=0;i<80;i++){
+            quickQueue=await storage.listOperations();
+            quickOptimistic=[...document.querySelectorAll('.calendar-event-title')].some(el=>el.textContent==='תור מהיר אופליין');
+            quickPending=!![...document.querySelectorAll('.calendar-event')].find(el=>el.textContent.includes('תור מהיר אופליין'))?.classList.contains('pending');
+            quickClosed=!document.querySelector('#modalBackdrop')?.classList.contains('open');
+            if(quickQueue.some(op=>op.body?.summary==='תור מהיר אופליין')&&quickOptimistic&&quickPending&&quickClosed)break;
+            await new Promise(r=>setTimeout(r,25));
+          }
+          const quickInsert=quickQueue.find(op=>op.body?.summary==='תור מהיר אופליין')||{};
+          const quickCreate={opened:quickOpened,queued:quickInsert.type==='insert',optimistic:quickOptimistic,pending:quickPending,closed:quickClosed};
+
+          zone=document.querySelector(`[data-calendar-day="${today}"] .calendar-day-create-zone`);
+          zone?.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));
+          zone?.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:2}));
+          await new Promise(r=>setTimeout(r,30));
+          const doubleOpenedFull=!!document.querySelector('#calendarSummary')&&!document.querySelector('#calendarQuickSummary')&&document.querySelector('#calendarStartDate')?.value===today;
+          const start1=shiftKey(today,1),manualEnd=shiftKey(today,3),start2=shiftKey(today,2),start4=shiftKey(today,4);
+          const pickedStart1=pickDate('calendarStartDate',start1);
+          await new Promise(r=>setTimeout(r,10));
+          const linked1=document.querySelector('#calendarEndDate')?.value===start1&&document.querySelector('#calendarEndDate')?.closest('[data-date-editor]')?.dataset.dateMin===start1;
+          const pickedManualEnd=pickDate('calendarEndDate',manualEnd);
+          await new Promise(r=>setTimeout(r,10));
+          const manualMarked=document.querySelector('#calendarEndDate')?.dataset.calendarEndManual==='1';
+          const pickedStart2=pickDate('calendarStartDate',start2);
+          await new Promise(r=>setTimeout(r,10));
+          const manualPreserved=document.querySelector('#calendarEndDate')?.value===manualEnd;
+          const pickedStart4=pickDate('calendarStartDate',start4);
+          await new Promise(r=>setTimeout(r,10));
+          const clamped=document.querySelector('#calendarEndDate')?.value===start4&&document.querySelector('#calendarEndDate')?.dataset.calendarEndManual==='0';
+          const endEditor=document.querySelector('#calendarEndDate')?.closest('[data-date-editor]');
+          const displayedEnd=`20${endEditor?.querySelector('[data-date-part="year"]')?.value}-${endEditor?.querySelector('[data-date-part="month"]')?.value}-${endEditor?.querySelector('[data-date-part="day"]')?.value}`;
+          const dateLink={doubleOpenedFull,pickedStart1,pickedManualEnd,pickedStart2,pickedStart4,linked1,manualMarked,manualPreserved,clamped,displaySynced:displayedEnd===start4};
+
           document.querySelector('#calendarNewButton').click();
           await new Promise(r=>setTimeout(r,20));
           document.querySelector('#calendarSummary').value='תור אופליין חדש';
-          document.querySelector('#calendarStartDate').value=today;
-          document.querySelector('#calendarEndDate').value=today;
           document.querySelector('#calendarStartTime').value='11:00';
           document.querySelector('#calendarEndTime').value='12:00';
           document.querySelector('[data-action="calendar-save-event"]').click();
@@ -66,13 +109,13 @@ try:
             optimistic=[...document.querySelectorAll('.calendar-event-title')].some(el=>el.textContent==='תור אופליין חדש');
             pendingMarker=!![...document.querySelectorAll('.calendar-event')].find(el=>el.textContent.includes('תור אופליין חדש'))?.classList.contains('pending');
             modalClosed=!document.querySelector('#modalBackdrop')?.classList.contains('open');
-            if(queue.length>=1&&optimistic&&pendingMarker&&modalClosed)break;
+            if(queue.length>=2&&optimistic&&pendingMarker&&modalClosed)break;
             await new Promise(r=>setTimeout(r,25));
           }
-          const insert=queue[0]||{};
+          const insert=queue.find(op=>op.body?.summary==='תור אופליין חדש')||{};
           const generatedId=String(insert.eventId||'');
           const beforeReload={count:queue.length,type:insert.type,idValid:/^[0-9a-f]{32}$/.test(generatedId),optimistic,pendingMarker,modalClosed};
-          return {initial,week,day,todayButton,beforeReload};
+          return {initial,week,day,todayButton,quickCreate,dateLink,beforeReload};
         })()""",timeout=30)
         # Wait for reload, then confirm the journal and optimistic overlay survived it.
         browser._navigate()
@@ -84,7 +127,7 @@ try:
           document.querySelector('[data-view="calendar"]').click();
           for(let i=0;i<40&&!document.querySelector('.calendar-board');i++)await new Promise(r=>setTimeout(r,25));
           const queue=await storage.listOperations();
-          return {count:queue.length,visible:[...document.querySelectorAll('.calendar-event-title')].some(el=>el.textContent==='תור אופליין חדש'),pending:document.querySelector('#calendarStatus')?.textContent.includes('ממתינים')===true};
+          return {count:queue.length,visible:[...document.querySelectorAll('.calendar-event-title')].some(el=>el.textContent==='תור אופליין חדש'),quickVisible:[...document.querySelectorAll('.calendar-event-title')].some(el=>el.textContent==='תור מהיר אופליין'),pending:document.querySelector('#calendarStatus')?.textContent.includes('ממתינים')===true};
         })()""",timeout=30)
         errors=browser.drain_serious_errors()
         print(json.dumps({'result':result,'survived':survived,'errors':errors},ensure_ascii=False))
@@ -93,10 +136,12 @@ try:
             result['initial']['newEnabled'] and result['initial']['offline'] and result['initial']['weekActive'] and result['initial']['todayPresent'] and
             result['week']['active'] and result['week']['days']==7 and result['week']['immediate'] and result['day']['active'] and result['day']['days']==1 and result['day']['immediate'] and
             result['todayButton']['visible'] and result['todayButton']['monthActive'] and
-            result['beforeReload']['count']==1 and result['beforeReload']['type']=='insert' and
+            result['quickCreate']['opened'] and result['quickCreate']['queued'] and result['quickCreate']['optimistic'] and result['quickCreate']['pending'] and result['quickCreate']['closed'] and
+            result['dateLink']['doubleOpenedFull'] and result['dateLink']['pickedStart1'] and result['dateLink']['pickedManualEnd'] and result['dateLink']['pickedStart2'] and result['dateLink']['pickedStart4'] and result['dateLink']['linked1'] and result['dateLink']['manualMarked'] and result['dateLink']['manualPreserved'] and result['dateLink']['clamped'] and result['dateLink']['displaySynced'] and
+            result['beforeReload']['count']==2 and result['beforeReload']['type']=='insert' and
             result['beforeReload']['idValid'] and result['beforeReload']['optimistic'] and
             result['beforeReload']['pendingMarker'] and result['beforeReload']['modalClosed'] and
-            survived['count']==1 and survived['visible'] and survived['pending'] and not errors
+            survived['count']==2 and survived['visible'] and survived['quickVisible'] and survived['pending'] and not errors
         )
         ok=expected
 except Exception as exc:

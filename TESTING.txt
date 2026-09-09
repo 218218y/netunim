@@ -7,6 +7,9 @@ npm run offline:update
 
 python tools/sync-assets.py
 
+ cd ..
+netunim\deploy_all.bat --preflight-only
+
 NETUNIM TESTING
 ===============
 
