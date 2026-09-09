@@ -57,6 +57,7 @@ import {createCalendarAuth} from './calendar/auth.js';
 import {createCalendarApi} from './calendar/api.js';
 import {createCalendarJournal} from './calendar/journal.js';
 import {createDomainsCalendarController} from './domains/calendar/controller.js';
+import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
@@ -1017,22 +1018,7 @@ const uiActions=createUiActions({
   toggleNotesBulkRow:(...args)=>domainsNotesController.toggleNotesBulkRow(...args),
   toggleNotesBulkVisible:(...args)=>domainsNotesController.toggleNotesBulkVisible(...args),
   deleteSelectedStickyNotes:(...args)=>domainsNotesController.deleteSelectedStickyNotes(...args),
-  calendarPrevPeriod:()=>domainsCalendarController.changePeriod(-1),
-  calendarNextPeriod:()=>domainsCalendarController.changePeriod(1),
-  calendarToday:(...args)=>domainsCalendarController.goToday(...args),
-  calendarSetView:(...args)=>domainsCalendarController.setViewMode(...args),
-  calendarRefresh:(...args)=>domainsCalendarController.refreshCalendar(...args),
-  calendarAuthAction:(...args)=>domainsCalendarController.calendarAuthAction(...args),
-  calendarNewEvent:(...args)=>domainsCalendarController.newEvent(...args),
-  calendarDayCreate:(...args)=>domainsCalendarController.calendarDayCreate(...args),
-  calendarOpenEvent:(...args)=>domainsCalendarController.openCalendarEvent(...args),
-  calendarToggleAllDay:(...args)=>domainsCalendarController.toggleCalendarAllDay(...args),
-  calendarSyncStartDate:(...args)=>domainsCalendarController.syncCalendarStartDate(...args),
-  calendarSyncEndDate:(...args)=>domainsCalendarController.syncCalendarEndDate(...args),
-  calendarSaveQuickEvent:(...args)=>domainsCalendarController.saveQuickCalendarEvent(...args),
-  calendarExpandQuickEvent:(...args)=>domainsCalendarController.expandQuickCalendarEvent(...args),
-  calendarSaveEvent:(...args)=>domainsCalendarController.saveCalendarEvent(...args),
-  calendarDeleteEvent:(...args)=>domainsCalendarController.deleteCalendarEvent(...args),
+  ...createCalendarActionPorts(domainsCalendarController),
 });
 
 const uiGlobalSearch=createUiGlobalSearch({

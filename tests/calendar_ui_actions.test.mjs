@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {createUiActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createCalendarActionPorts} from '../netunim-orders/site/assets/js/domains/calendar/action-ports.js';
 
 const calls=[];
 const record=name=>(...args)=>calls.push([name,...args]);
@@ -43,4 +44,33 @@ assert.ok(calls.some(call=>call[0]==='end-date'&&call[1]===element),'end-date ac
 assert.ok(calls.some(call=>call[0]==='open'&&call[1]==='calendar-key'),'open action must preserve its event key');
 assert.ok(calls.some(call=>call[0]==='save'&&call[1]==='calendar-key'),'save action must preserve its event key');
 assert.ok(calls.some(call=>call[0]==='delete'&&call[1]==='calendar-key'),'delete action must preserve its event key');
+const portCalls=[];
+function recordPort(name){return(...args)=>portCalls.push([name,...args])}
+const ports=createCalendarActionPorts({
+  changePeriod:value=>portCalls.push(['period',value]),
+  goToday:recordPort('today'),
+  setViewMode:recordPort('view'),
+  refreshCalendar:recordPort('refresh'),
+  calendarAuthAction:recordPort('auth'),
+  newEvent:recordPort('new'),
+  calendarDayCreate:recordPort('day-create'),
+  openCalendarEvent:recordPort('open'),
+  toggleCalendarAllDay:recordPort('toggle'),
+  syncCalendarStartDate:recordPort('start-date'),
+  syncCalendarEndDate:recordPort('end-date'),
+  saveQuickCalendarEvent:recordPort('quick-save'),
+  expandQuickCalendarEvent:recordPort('quick-details'),
+  saveCalendarEvent:recordPort('save'),
+  deleteCalendarEvent:recordPort('delete'),
+});
+ports.calendarPrevPeriod();
+ports.calendarNextPeriod();
+ports.calendarDayCreate('2026-09-09',event);
+ports.calendarSyncStartDate(element);
+ports.calendarSaveQuickEvent();
+assert.deepEqual(portCalls.slice(0,2),[['period',-1],['period',1]],'calendar period ports must preserve direction');
+assert.ok(portCalls.some(call=>call[0]==='day-create'&&call[1]==='2026-09-09'&&call[2]===event),'calendar day port must preserve the click event');
+assert.ok(portCalls.some(call=>call[0]==='start-date'&&call[1]===element),'calendar start-date port must preserve the editor element');
+assert.ok(portCalls.some(call=>call[0]==='quick-save'),'calendar quick-save port must remain wired');
+
 console.log('CALENDAR UI ACTION TESTS PASSED');

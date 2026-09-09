@@ -77,7 +77,8 @@ ok('renderCalendar, renderSettings' in navigation and "ui.currentView==='calenda
 controller_actions=set(re.findall(r'data-(?:action|change)="(calendar-[^"]+)"',controller))
 registered_actions=set(re.findall(r"'(calendar-[^']+)'\s*:\s*\(",(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')))
 ok(bool(controller_actions) and controller_actions <= registered_actions,'calendar actions: every calendar button/change action rendered by the controller is registered in delegated UI actions')
-ok('calendarAuthAction' in main and "'calendar-auth':" in (SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8'),'calendar auth action: composition-root adapter is reachable from the delegated action registry')
+calendar_action_ports=(SITE/'assets/js/domains/calendar/action-ports.js').read_text(encoding='utf-8')
+ok('createCalendarActionPorts' in main and 'calendarAuthAction' in calendar_action_ports and "'calendar-auth':" in (SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8'),'calendar auth action: calendar action port is reachable from the delegated action registry')
 lifecycle=(SITE/'assets/js/lifecycle.js').read_text(encoding='utf-8')
 boot_lock=lifecycle.find('await acquirePrimaryTabLock()')
 boot_ready=lifecycle.find("startupMark('primary-tab-ready')",boot_lock)
@@ -119,7 +120,7 @@ ok("autoIncrement:true" in storage and "pending-operations" in storage,'calendar
 ok("error?.status!==409" in journal and 'getEvent' in journal and 'insertMatches' in journal,'calendar journal: duplicate create retry confirms both the preassigned ID and intended event content')
 ok("error?.status===404||error?.status===410" in journal,'calendar journal: repeated deletes acknowledge already-deleted events')
 ok('accounts.google.com/gsi' not in headers and 'https://www.googleapis.com' in headers and "script-src 'self'" in headers and "frame-src blob:;" in headers and 'Cross-Origin-Opener-Policy: same-origin' in headers,'calendar security: CSP/COOP prohibit remote iframes; local Morning PDF blobs and Calendar API access remain allowed')
-ok('./assets/js/calendar/journal.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker,'calendar PWA: calendar journal/view/controller modules are part of the deterministic app shell')
+ok('./assets/js/calendar/journal.js' in worker and './assets/js/calendar/view.js' in worker and './assets/js/domains/calendar/controller.js' in worker and './assets/js/domains/calendar/action-ports.js' in worker,'calendar PWA: calendar journal/view/controller/action-port modules are part of the deterministic app shell')
 ok((ROOT/'netunim-orders/GOOGLE_CALENDAR_SETUP.txt').is_file(),'calendar setup: deployment/OAuth instructions are included')
 
 if errors:
