@@ -10,6 +10,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
     customerUi,model,
+    rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     renderCustomers:(...args)=>view.renderCustomers(...args),
     toast:(...args)=>uiStatus.toast(...args),
     scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
@@ -37,6 +38,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
   });
   view=createDomainsCustomersView({
     model,customerUi,
+    rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     bindScrollViewport:(...args)=>uiLayout.bindScrollViewport(...args),
     mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
     customerStats:(...args)=>selectors.customerStats(...args),
@@ -50,6 +52,8 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
   });
   editor=createDomainsCustomersEditor({
     model,customerUi,
+    isDebtRecoveryPending:(...args)=>documents.isDebtRecoveryPending(...args),
+    rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     modal:(...args)=>uiModal.modal(...args),
     toast:(...args)=>uiStatus.toast(...args),
     scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),

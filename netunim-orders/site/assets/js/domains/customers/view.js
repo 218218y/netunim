@@ -5,7 +5,7 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersView({model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>''}){
+export function createDomainsCustomersView({model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>'',rejectDebtRecoveryMutation=()=>false}){
 function filteredCustomerDebtRows(){
   const q=(customerUi.customerSearch||'').trim();
   return (model.state.customerDebts||[]).filter(d=>{
@@ -84,6 +84,7 @@ function appendProgressReset(d,kind,now){
 function setCustomerFlag(id,field,value){
   const d=model.state.customerDebts.find(x=>x.id===id);
   if(!d||!['paid','supplied','invoiceIssued'].includes(field))return;
+  if(field!=='supplied'&&rejectDebtRecoveryMutation(id))return;
   const now=new Date().toISOString();
   if(field==='supplied'){
     if(d.supplied===value)return;d.supplied=value;d.updatedAt=now;d.suppliedAt=value?now:null;

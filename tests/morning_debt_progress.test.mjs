@@ -87,5 +87,6 @@ test('customer editor renders a verified Morning mutation once but re-persists a
  const input={debtId:row.id,operationId:op(9),type:400,amount:250,verifiedAt:'2026-09-09T14:00:00.000Z'};
  const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,false);assert.equal(saves.length,1);assert.equal(renders.length,1);assert.equal(saves[0].meta.surface,'orders.morning.customerDebt');
  const replay=editor.applyVerifiedMorningDocument(input);assert.equal(replay.changed,false);assert.equal(replay.reason,'already-applied');assert.equal(replay.persisted,true);assert.equal(saves.length,2);assert.equal(renders.length,1);assert.equal(saves[1].meta.surface,'orders.morning.customerDebt');
+ const duplicate=editor.applyVerifiedMorningDocument(input);assert.equal(duplicate.persisted,true);assert.equal(saves.length,2,'durable duplicate does not save again');assert.equal(renders.length,1);
  const missing=editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,2);
 });

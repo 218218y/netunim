@@ -29,17 +29,20 @@ function reconcileDebtMetadata(row,...sources){
   return row;
 }
 
+function comparableProgress(entry){if(entry===undefined)return undefined;const value=clone(entry);delete value.createdAt;return value}
 function mergeDebtProgress(base,local,remote,conflicts,debtId){
   const bm=new Map(progressRows(base).map(x=>[String(x?.id),x])),lm=new Map(progressRows(local).map(x=>[String(x?.id),x])),rm=new Map(progressRows(remote).map(x=>[String(x?.id),x]));
   const keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];
   for(const id of keys){
     const b=bm.get(id),l=lm.get(id),r=rm.get(id);
     if(b!==undefined){
-      if((l!==undefined&&!eq(l,b))||(r!==undefined&&!eq(r,b))){conflicts.push(`customerDebt:${debtId}`);continue}
+      if((l!==undefined&&!eq(comparableProgress(l),comparableProgress(b)))||(r!==undefined&&!eq(comparableProgress(r),comparableProgress(b)))){conflicts.push(`customerDebt:${debtId}`);continue}
       out.push(clone(b));continue;
     }
-    if(l!==undefined&&r!==undefined&&!eq(l,r)){conflicts.push(`customerDebt:${debtId}`);continue}
-    out.push(clone(l!==undefined?l:r));
+    if(l!==undefined&&r!==undefined&&!eq(comparableProgress(l),comparableProgress(r))){conflicts.push(`customerDebt:${debtId}`);continue}
+    const entry=clone(l!==undefined?l:r);
+    if(l!==undefined&&r!==undefined){const createdAt=earliestTimestamp([l.createdAt,r.createdAt]);if(createdAt)entry.createdAt=createdAt;else delete entry.createdAt}
+    out.push(entry);
   }
   return out.sort((a,b)=>String(a?.createdAt||'').localeCompare(String(b?.createdAt||''))||String(a?.id||'').localeCompare(String(b?.id||'')));
 }
@@ -63,4 +66,3 @@ export function mergeCustomerDebtArray(base,local,remote,conflicts,preferLocalCo
   }
   return out;
 }
-

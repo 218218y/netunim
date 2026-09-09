@@ -5,7 +5,9 @@ import {applyVerifiedMorningDocumentToDebt} from './morning-debt.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog}){
+export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false}){
+
+const persistedMorningDebts=new WeakMap();
 
 const CUSTOMER_ORDER_FIELDS=new Set(['orderNumber','customerName','mark1','mark2','mark3','mattresses','note']);
 const DEBT_SCALAR_FIELDS=['customerName','amount','orderNumber','phone','email','taxId','paid','supplied','invoiceIssued','note'];
@@ -61,6 +63,11 @@ function openDebtModal(id=null){
   const paymentHidden=paidMode==='partial'?'':' hidden',invoiceHidden=invoiceMode==='partial'?'':' hidden';
   modal(d?'עריכת חוב לקוח':'חוב לקוח חדש',`<div class="form-grid"><div class="field"><label>שם לקוח</label><input id="dName" value="${esc(d?.customerName||'')}"></div><div class="field"><label>סכום חוב</label><input id="dAmount" class="number-input" type="number" step="1" value="${esc(Number.isFinite(amountValue)?amountValue:'')}"></div><div class="field"><label>מספר הזמנה</label><input id="dOrder" value="${esc(d?.orderNumber||'')}"></div><div class="field"><label>טלפון</label><input id="dPhone" value="${esc(d?.phone||'')}"></div><div class="field"><label>אימייל <small>(למסמכי Morning)</small></label><input id="dEmail" type="email" value="${esc(d?.email||'')}"></div><div class="field"><label>מספר עוסק / ח.פ. <small>(למסמכי Morning)</small></label><input id="dTaxId" inputmode="numeric" maxlength="9" value="${esc(d?.taxId||'')}"></div><div class="field"><label>שולם</label><select id="dPaid">${progressModeOptions(paidMode,'payment',p)}</select></div><div class="field"><label>סופק</label><select id="dSupplied"><option value="false" ${d?.supplied!==true?'selected':''}>לא</option><option value="true" ${d?.supplied===true?'selected':''}>כן</option></select></div><div class="field"><label>חשבונית יצאה</label><select id="dInvoice">${progressModeOptions(invoiceMode,'invoice',p)}</select></div><div id="dAddPaymentField" class="field debt-progress-add-field"${paymentHidden}><label>הוסף תשלום לחוב</label><input id="dAddPayment" class="number-input" type="number" step="1" min="0" inputmode="decimal" placeholder="סכום נוסף"${paidMode==='partial'?'':' disabled'}></div><div id="dAddInvoiceField" class="field debt-progress-add-field"${invoiceHidden}><label>הוסף סכום חשבונית</label><input id="dAddInvoice" class="number-input" type="number" step="1" min="0" inputmode="decimal" placeholder="סכום נוסף"${invoiceMode==='partial'?'':' disabled'}></div><div class="field full"><div class="debt-progress-editor-help">כדי לרשום סכום חלקי בחר <b>חלקי</b>; רק אז יופיע שדה הסכום המתאים. הקלד בכל פעם רק את הסכום שנוסף עכשיו. אפשר להקליד אגורות ידנית, אבל החיצים משנים בשקלים שלמים. בחירה ב־<b>לא</b> מאפסת את ההתקדמות של אותו סוג באמצעות אירוע איפוס שמבטל את התנועות הקודמות בלי למחוק היסטוריה.</div></div>${progressSummary}<div class="field full"><label>הערה</label><textarea id="dNote">${esc(d?.note||'')}</textarea></div></div>`,`<button class="btn primary" data-action="save-debt" data-click-arg0="${esc(id||'')}">שמור</button>${d?`<button class="btn danger" data-action="delete-debt" data-click-arg0="${esc(d.id)}">מחק</button>`:''}<button class="btn" data-action="close-modal">ביטול</button>`);
   bindDebtProgressEditorFields();
+  if(d&&isDebtRecoveryPending(d.id)){
+    for(const id of ['dAmount','dPaid','dInvoice','dAddPayment','dAddInvoice']){const field=$('#'+id);if(field)field.disabled=true}
+    const button=document.querySelector('[data-action="delete-debt"]');if(button)button.disabled=true;
+    const notice=document.createElement('p');notice.className='debt-progress-editor-help';notice.setAttribute('role','status');notice.textContent='קיימת הפקת Morning שממתינה לאימות עבור חוב זה. יש להשלים בדיקת מצב הפקה לפני שינוי התשלום/חשבונית.';$('#dAmount')?.closest('.form-grid')?.prepend(notice);
+  }
 }
 
 function parseAddedAmount(selector,label){
@@ -97,6 +104,7 @@ function saveDebt(id=''){
   const addPayment=parseAddedAmount('#dAddPayment','סכום תשלום');if(addPayment===null)return;const addInvoice=parseAddedAmount('#dAddInvoice','סכום חשבונית');if(addInvoice===null)return;
   let d=id?model.state.customerDebts.find(x=>x.id===id):null;const now=new Date().toISOString(),base=d||{},currentProgress=customerDebtProgressData(base),currentPaidMode=customerDebtProgressMode(currentProgress,'payment'),currentInvoiceMode=customerDebtProgressMode(currentProgress,'invoice');
   const paidMode=$('#dPaid').value,invoiceMode=$('#dInvoice').value,supplied=$('#dSupplied').value==='true',entries=clone(customerDebtProgressEntries(base));
+  if(d&&(amount!==Number(d.amount)||paidMode!==currentPaidMode||invoiceMode!==currentInvoiceMode||addPayment>0||addInvoice>0)&&rejectDebtRecoveryMutation(id))return;
   const work={...base,amount,debtProgress:entries};
   work.paid=paidMode==='true'?(d&&currentPaidMode==='true'?d.paid===true:true):false;
   work.invoiceIssued=invoiceMode==='true'?(d&&currentInvoiceMode==='true'?d.invoiceIssued===true:true):false;
@@ -124,15 +132,17 @@ function applyVerifiedMorningDocument({debtId,operationId,type,amount,verifiedAt
   const d=(model.state.customerDebts||[]).find(row=>row.id===debtId);if(!d)return {changed:false,reason:'missing-debt'};
   const result=applyVerifiedMorningDocumentToDebt(d,{operationId,type,amount,verifiedAt,applyPayment,applyInvoice});
   if(result.changed||result.reason==='already-applied'){
+    if(!result.changed&&persistedMorningDebts.get(d)===JSON.stringify(d))return {...result,persisted:true};
     // A replay can mean the first verified application changed memory but localSnapshot failed.
     // Re-attempt durable persistence before recovery is allowed to clear its operation binding.
     const persisted=scheduleSave(result.changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'עדכון החוב מ-Morning נשמר מחדש לאחר התאוששות',{surface:'orders.morning.customerDebt'});
+    if(persisted!==false)persistedMorningDebts.set(d,JSON.stringify(d));
     if(result.changed)renderCustomers();return {...result,persisted:persisted!==false};
   }
   return result;
 }
 
-async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts'});renderCustomers()}
+async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts'});renderCustomers()}
 
 return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
 }

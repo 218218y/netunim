@@ -2,6 +2,8 @@
 from isolated_sync_postgres import IsolatedPostgres, ROOT, OWNER
 from morning_schema_contract import assert_morning_schema_contract
 import json
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 
 MIGRATION=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql'))
 HARDENING=next((ROOT/'supabase/migrations').glob('*_morning_verified_creation.sql'))
@@ -116,4 +118,18 @@ with IsolatedPostgres(schema_files=[MIGRATION,HARDENING,GLOBAL_IDEMPOTENCY,OWNER
     assert db.sql("select count(*) from public.morning_document_operations").strip()=='0'
     assert db.sql("select count(*) from information_schema.columns where table_name='morning_document_operations' and column_name='verified_at'").strip()=='1'
     assert_morning_schema_contract(json.loads(db.sql((ROOT/'supabase/schema_inventory.sql').read_text(encoding='utf-8'))))
+    db.sql(f"insert into auth.users values('{OTHER_OWNER}')")
+    barrier=Barrier(2)
+    def reserve_concurrently(index):
+        barrier.wait()
+        owner=(OWNER,OTHER_OWNER)[index]
+        try:
+            db.sql(f"insert into public.morning_document_operations(owner_id,operation_id,environment,request_fingerprint,state,document_type,amount,document_date) values('{owner}','00000000-0000-4000-8000-00000000000{index+1}','sandbox','concurrent-identical','reserved',320,30,current_date)")
+            return 'reserved'
+        except RuntimeError as error:
+            assert 'morning_document_operations_unresolved_fingerprint_uidx' in str(error), str(error)
+            return 'blocked'
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert sorted(pool.map(reserve_concurrently,range(2)))==['blocked','reserved']
+    assert db.sql("select count(*) from public.morning_document_operations where request_fingerprint='concurrent-identical'").strip()=='1'
 print('PASS Morning SQL: migration guard, verification hardening, account-wide fingerprint/document uniqueness, owner-retained issuance evidence, atomic pre-issue reservation, fresh install, environments and permissions')

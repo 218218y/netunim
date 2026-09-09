@@ -47,7 +47,7 @@ export function morningDebtRecoveryMatchesVerified(context,{operationId,type,amo
   return record.operationId===clean(operationId,80)&&record.type===Number(type)&&moneyCents(record.amount)===moneyCents(amount);
 }
 
-const DURABLE_NO_MUTATION_REASONS=new Set(['standalone','skipped-by-policy','no-balance','ineligible-debt','missing-debt']);
+const DURABLE_NO_MUTATION_REASONS=new Set(['standalone','skipped-by-policy','no-balance','ineligible-debt']);
 export function morningVerifiedApplicationDurable(result){
   if(!result||typeof result!=='object'||result.persisted===false)return false;
   if(result.changed===true||result.reason==='already-applied')return result.persisted===true;

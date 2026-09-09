@@ -127,4 +127,11 @@ const preflight=await servedHandler(new Request('https://example.supabase.co/fun
 assert.equal(preflight.status,200);assert.equal(preflight.headers.get('Access-Control-Allow-Origin'),'*');assert.match(preflight.headers.get('Access-Control-Allow-Headers')||'',/authorization/i);
 const anonymous=await decode(await servedHandler(new Request('https://example.supabase.co/functions/v1/morning-documents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'status'})})));
 assert.equal(anonymous.status,401);assert.equal(anonymous.code,'morning_cloud_auth_required');
+failure='timeout';
+const accountRacePosts=postCount,accountRace=await Promise.all([api.create(owner,body(201,'Concurrent account fingerprint')),api.create(otherOwner,body(201,'Concurrent account fingerprint'))]);
+const accountRaceResults=await Promise.all(accountRace.map(decode));
+assert.equal(postCount,accountRacePosts+1,'different users and operation IDs racing on identical content issue only one POST');
+assert.equal(accountRaceResults.filter(result=>result.status===409).length,1);
+assert.equal(rows.filter(row=>row.request_fingerprint===rows.find(row=>row.amount===201).request_fingerprint&&['pending','needs_reconciliation'].includes(row.state)).length,1);
+failure='';
 console.log('PASS Morning Edge: account-wide unresolved deduplication with safe cross-user reconciliation, operation-scoped exactly-once, atomic pre-issue reservation, verified create semantics, safe 429 handling, read-back failure blocking, races, replay, uncertain POST, reconciliation, outage visibility, owner isolation, search whitelist, manual invoice linking, bounded transient PDF, CORS and auth');

@@ -156,3 +156,18 @@ test('Orders validation rejects malformed or mutable debt-progress history',()=>
  local.customerDebts[0].debtProgress[0].amount=25;
  const result=merge.merge3(base,local,remote);assert.ok(result.conflicts.includes('customerDebt:D'),'existing ledger entries are immutable; edits must conflict rather than rewrite history');
 });
+
+test('same Morning event verified at different times merges without a business conflict',()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const base=normalization.normalizeState(baseOrderState([{id:'D',amount:100}])),local=structuredClone(base),remote=structuredClone(base);
+ local.customerDebts[0].debtProgress=[{...add('MORNING:operation:payment','payment',30),source:'morning'}];
+ remote.customerDebts[0].debtProgress=[{...local.customerDebts[0].debtProgress[0],createdAt:'2026-09-09T12:00:00.000Z'}];
+ const result=merge.merge3(base,local,remote);
+ assert.deepEqual(result.conflicts,[]);assert.equal(result.state.customerDebts[0].debtProgress.length,1);
+ assert.equal(customerDebtProgressData(result.state.customerDebts[0]).paymentApplied,30);
+ assert.deepEqual(merge.merge3(base,remote,local).state.customerDebts,result.state.customerDebts,'metadata choice is deterministic');
+ const edited=structuredClone(result.state);edited.customerDebts[0].debtProgress[0].createdAt='2026-09-09T13:00:00.000Z';
+ assert.deepEqual(merge.merge3(result.state,edited,result.state).state.customerDebts[0].debtProgress,result.state.customerDebts[0].debtProgress,'known events remain byte-for-byte immutable');
+ remote.customerDebts[0].debtProgress[0].amount=31;
+ assert.ok(merge.merge3(base,local,remote).conflicts.includes('customerDebt:D'),'same ID with a different amount must conflict');
+});

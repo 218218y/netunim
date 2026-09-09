@@ -87,7 +87,7 @@ test('saved allocation policy survives reload and prevents a manual payment from
 
 
 test('verified recovery durability uses an explicit safe allowlist and unknown outcomes fail closed',()=>{
-  for(const reason of ['standalone','skipped-by-policy','no-balance','ineligible-debt','missing-debt'])assert.equal(morningVerifiedApplicationDurable({changed:false,reason}),true,reason);
+  for(const reason of ['standalone','skipped-by-policy','no-balance','ineligible-debt'])assert.equal(morningVerifiedApplicationDurable({changed:false,reason}),true,reason);
   assert.equal(morningVerifiedApplicationDurable({changed:true,persisted:true}),true);
   assert.equal(morningVerifiedApplicationDurable({changed:false,reason:'already-applied',persisted:true}),true);
   for(const result of [
@@ -95,6 +95,7 @@ test('verified recovery durability uses an explicit safe allowlist and unknown o
     {changed:true},
     {changed:true,persisted:false},
     {changed:false,reason:'already-applied'},
+    {changed:false,reason:'missing-debt'},
     {changed:false,reason:'write-blocked'},
     {changed:false,reason:'verification-mismatch'},
     {changed:false,reason:'no-handler'},

@@ -93,3 +93,6 @@ with BrowserSession(ROOT/'netunim-orders/site','morning-workflow') as browser:
     print(json.dumps(result))
     assert result and all(result.values())
 print('PASS Morning UI workflows')
+
+from runtime_morning_audit import run as run_safety_audit
+run_safety_audit()
