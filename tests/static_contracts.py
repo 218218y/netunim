@@ -234,18 +234,25 @@ ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;borde
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
 ok('.customer-work-panel{border-radius:14px}' in orders_css
-   and '.customer-table{min-width:730px!important;table-layout:fixed}' in orders_css
+   and '.customer-table{width:min(100%,1000px)!important;max-width:1000px;min-width:0!important;table-layout:fixed;margin-inline-start:0;margin-inline-end:auto}' in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
-   and '.customer-table .customer-col-name{width:126px;min-width:126px}' in orders_css
-   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}' in orders_css
-   and '.customer-table .customer-col-state{width:88px;padding-inline:2px;text-align:center}' in orders_css
+   and '.customer-table .customer-col-name{width:146px;min-width:0}' in orders_css
+   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:98px;padding-inline:4px}' in orders_css
+   and '.customer-table .customer-col-state{width:96px;padding-inline:4px;text-align:center}' in orders_css
    and '.customer-table .customer-col-note{width:auto;min-width:0}' in orders_css
+   and '@media(min-width:1200px){.customer-table{width:min(calc(100% - 24px),1500px)!important;max-width:1500px}' in orders_css
+   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}' in orders_css
+   and '.customer-table .customer-col-note{width:22.5%}' in orders_css
+   and '@media(max-width:900px)' in orders_css
+   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}' in orders_css
+   and '@media(max-width:700px) and (min-width:601px)' in orders_css
+   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}' in orders_css
    and '.status-toggle button{min-width:38px;padding:5px 7px' in orders_css
    and '.customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css
    and 'customer-work-panel{border-radius:14px;margin' not in orders_css
    and '.customer-table .status-toggle button{min-width:26px' not in orders_css,
-   "orders customers: compact debt columns keep the normal yes/no control size, use equal toggle-column spacing, absorb wide-screen surplus in the note column, and fit a 730px desktop budget without clipping")
+   "orders customers: debt table uses a bounded responsive width, balances wide-screen surplus across columns, preserves normal yes/no controls with comfortable equal spacing, and has narrow fallbacks that do not force horizontal scrolling")
 ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
