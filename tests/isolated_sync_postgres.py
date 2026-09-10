@@ -29,6 +29,11 @@ class IsolatedPostgres:
         try:
             bootstrap='fixture_bootstrap' if self.demotable_postgres else 'postgres'
             self.run('initdb','-D',str(self.tmp/'data'),'-U',bootstrap,'-A','trust','--encoding=UTF8','--no-locale')
+            # Every fixture client uses explicit loopback TCP. Ubuntu's PostgreSQL
+            # defaults to /var/run/postgresql for Unix sockets, which the unprivileged
+            # CI user cannot write. Do not depend on (or chmod) host service state.
+            with (self.tmp/'data/postgresql.conf').open('a',encoding='utf8') as config:
+                config.write("\nunix_socket_directories = ''\n")
             self.run('pg_ctl','-D',str(self.tmp/'data'),'-l',str(self.tmp/'server.log'),'-o',f'-p {self.port} -h 127.0.0.1','start')
             if self.demotable_postgres:
                 # PostgreSQL 18 cannot demote its bootstrap superuser. A separate
@@ -67,7 +72,14 @@ insert into auth.users values('''+quote(OWNER)+''');''')
             # Windows server grandchildren inherit pipe handles; use a file for pg_ctl.
             with (self.tmp/'control.log').open('w',encoding='utf8') as log:
                 result=subprocess.run(command,stdin=subprocess.DEVNULL,stdout=log,stderr=log,env=self.env,timeout=30)
-            if result.returncode:raise RuntimeError((self.tmp/'control.log').read_text(encoding='utf8',errors='replace'))
+            if result.returncode:
+                # Preserve the server's actual startup error before __exit__ removes
+                # the disposable cluster; pg_ctl alone only says to inspect its log.
+                diagnostics=[]
+                for name in ('control.log','server.log'):
+                    path=self.tmp/name
+                    if path.is_file():diagnostics.append(name+':\n'+path.read_text(encoding='utf8',errors='replace')[-8000:])
+                raise RuntimeError('\n'.join(diagnostics))
             return ''
         result=subprocess.run(command,input=input,encoding='utf8',errors='replace',capture_output=True,env=self.env,timeout=90)
         if result.returncode:raise RuntimeError(result.stderr[-8000:])

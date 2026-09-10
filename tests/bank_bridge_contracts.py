@@ -1,3 +1,4 @@
+# JavaScript model tests run once via node_models.py in the canonical full gate.
 from pathlib import Path
 import json
 import subprocess
@@ -20,51 +21,11 @@ for rel in ['assets/js/domains/bank/bridge.js','assets/js/domains/bank/feed.js',
     ok(r.returncode==0,f'bank site: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
 
-r=subprocess.run(['node',str(ROOT/'tests/bank_bridge_models.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'bank bridge models: staged data/feed/MFA model tests pass')
-
-r=subprocess.run(['node',str(ROOT/'tests/bank_transaction_order.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'bank transaction order: smart history preserves pending/direct-bank sequence and balanceAfter continuity')
-
-r=subprocess.run(['node',str(ROOT/'tests/credit_sync_models.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'credit sync models: multi-profile, cutover/rollback and forecast semantics pass')
-
-r=subprocess.run(['node',str(ROOT/'tests/credit_connector_v2.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'credit connector v2: monthly adapters, identity continuity, cooldown and diagnostic fixtures pass')
-
 ORDERS_SITE=ROOT/'netunim-orders/site'
 for rel in ['assets/js/domains/finance/bridge.js','assets/js/domains/finance/bank-feed.js','assets/js/domains/finance/credit-feed.js','assets/js/domains/finance/controller.js','assets/js/domains/finance/view.js','assets/js/domains/finance/bank-reconciliation-view.js','assets/js/domains/finance/bank-transaction-detail-view.js','assets/js/domains/bank/alerts.js','assets/js/domains/bank/cache.js','assets/js/cloud/transport.js','assets/js/lifecycle.js','assets/js/ui/actions.js','assets/js/ui/alert-center.js','assets/js/ui/cloud.js','assets/js/main.js']:
     r=subprocess.run(['node','--check',str(ORDERS_SITE/rel)],capture_output=True,text=True)
     ok(r.returncode==0,f'orders finance sync: {rel} has valid JavaScript syntax')
     if r.returncode: print(r.stderr)
-
-r=subprocess.run(['node',str(ROOT/'tests/orders_finance_sync_models.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'orders finance sync models: shared freshness and conflict-safe cross-app updates pass')
-
-r=subprocess.run(['node',str(ROOT/'tests/bank_archive_transport.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'bank archive transport: collision-safe identities and paginated archive reads pass')
-
-r=subprocess.run(['node',str(ROOT/'tests/bank_alerts.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'bank alerts: returned-cheque classification, reason extraction and incident-specific acknowledgement semantics pass')
-
-r=subprocess.run(['node',str(ROOT/'tests/cross_app_finance_freshness.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if r.stdout: print(r.stdout.strip())
-if r.stderr: print(r.stderr.strip())
-ok(r.returncode==0,'cross-app finance freshness: Kupa rechecks the shared cloud clock before automatic bank/credit scraping')
 
 server=(BRIDGE/'server.mjs').read_text(encoding='utf-8')
 lib=(BRIDGE/'lib.mjs').read_text(encoding='utf-8')
@@ -260,7 +221,6 @@ ok("localStorage.setItem(CREDIT_AUTO_KEY" in credit_controller and 'username' no
 ok("creditSync:{version:4,contractVersion:2,mode:'synced'" in contexts and 'n.creditSync=normalizeCreditSync(n.creditSync)' in normalization, 'credit state: new state starts in the monthly-LKG v4 model over connector contract v2')
 ok('isShekelTransaction' in credit_feed and 'foreign-currency rows' in credit_feed.lower(), 'credit forecast safety: non-ILS charged amounts do not silently enter shekel cash-flow totals')
 ok('./assets/js/domains/credit/sync-feed.js' in worker and './assets/js/domains/credit/controller.js' in worker, 'credit PWA: synchronization modules are part of the deterministic app shell')
-
 
 ok("FINANCE_TABLE='finance_sync_documents'" in orders_cloud_transport and '/rest/v1/rpc/save_finance_sync_document' not in orders_cloud_transport and 'FINANCE_RPC' in orders_cloud_transport and 'rpcSaveFinanceSync' in orders_cloud_transport, 'Orders finance ownership: bank/credit payloads use the dedicated revision-checked finance document instead of Kupa backups')
 ok('saveBankSyncSnapshot' in orders_finance_controller and 'save_bank_sync_snapshot' in orders_cloud_transport and 'prepareKupaWriteState(candidate)' in orders_finance_controller, 'Orders Kupa concurrency: bank snapshot metadata and isolated finance bank state commit atomically while ordinary Kupa mutations still strip finance payloads')
