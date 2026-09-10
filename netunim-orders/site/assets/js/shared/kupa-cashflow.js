@@ -18,6 +18,99 @@ function shekelTransaction(tx){const currency=String(tx?.chargedCurrency||tx?.or
 function creditMappingKey(profileId,accountNumber){return `${String(profileId||'').trim()}:${String(accountNumber||'').trim()}`}
 function synchronizedCardKey(profile,account){return `sync:${profile?.profileId||''}:${account?.accountNumber||''}`}
 function transactionForecastAmount(tx){const charged=finite(tx?.chargedAmount),original=finite(tx?.originalAmount),value=charged!==null?charged:original;return value===null||value===0?0:-value}
+function creditCardKey(row){return row?.creditAccountKey||`manual:${row?.card||''}`}
+function bankFeedForAccount(kupa,account){
+  const role=accountRole(account),bank=kupa?.bank&&typeof kupa.bank==='object'?kupa.bank:{};
+  if(role==='ביתי')return bank.homeFeed&&typeof bank.homeFeed==='object'?bank.homeFeed:null;
+  if(bank.source==='manual')return null;
+  return bank.feed&&typeof bank.feed==='object'?bank.feed:null;
+}
+function bankTransactionDay(row){return isoDay(row?.date)||isoDay(row?.processedDate)}
+function bankTransactionSearchText(row){return [row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail].map(value=>String(value||'').toLowerCase()).join(' ')}
+const CREDIT_SETTLEMENT_MARKERS={
+  visaCal:['כאל','כרטיסי אשראי לישראל'],
+  max:['מקס','max'],
+  isracard:['ישראכרט','isracard'],
+  amex:['אמריקן אקספרס','american express','amex','פרימיום אקספרס','premium express'],
+};
+function providerHintsForRows(rows){
+  const providers=new Set();
+  for(const row of rows){
+    const provider=String(row?.provider||'').trim();if(provider)providers.add(provider);
+    const card=String(row?.card||'').toLowerCase();
+    if(card.includes('כאל')||card.includes(' cal'))providers.add('visaCal');
+    if(card.includes('מקס')||card.includes('max'))providers.add('max');
+    if(card.includes('ישראכרט')||card.includes('isracard'))providers.add('isracard');
+    if(card.includes('אמריקן')||card.includes('american express')||card.includes('amex'))providers.add('amex');
+  }
+  return [...providers];
+}
+function bankRowLooksLikeCreditSettlement(row,providers=[]){
+  if(row?.status==='pending'||row?.presenceState==='missing')return false;
+  const text=bankTransactionSearchText(row);
+  if(!text)return false;
+  if(text.includes('אשראי')||text.includes('credit card'))return true;
+  return providers.some(provider=>(CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>text.includes(String(marker).toLowerCase())));
+}
+function moneyCents(value){return Math.round(num(value)*100)}
+function settlementRowsForLatestElapsedCycle(installments,start,reference){
+  const latestByCard=new Map();
+  for(const row of installments){
+    if(!row?.date||row.date>=reference||row.date>=start)continue;
+    const key=creditCardKey(row),current=latestByCard.get(key);
+    if(!current||row.date>current)latestByCard.set(key,row.date);
+  }
+  return installments.filter(row=>row?.date&&latestByCard.get(creditCardKey(row))===row.date);
+}
+function settlementGroupKey(row,level){
+  const due=String(row?.date||'');
+  if(level==='card')return `${due}|${creditCardKey(row)}`;
+  if(level==='profile'){const profile=String(row?.profileId||'').trim();return profile?`${due}|${profile}`:`${due}|${creditCardKey(row)}`}
+  if(level==='provider'){const provider=String(row?.provider||'').trim();return provider?`${due}|${provider}`:`${due}|${creditCardKey(row)}`}
+  return due;
+}
+function bankSettlementMatchIndexes(bankRows,groupRows,used,reference){
+  const due=groupRows.reduce((min,row)=>!min||row.date<min?row.date:min,''),expected=-moneyCents(groupRows.reduce((sum,row)=>sum+num(row.amount),0));
+  if(!due||!expected)return [];
+  const providers=providerHintsForRows(groupRows),sameSign=value=>expected<0?value<0:value>0,candidates=[];
+  for(let index=0;index<bankRows.length;index++){
+    if(used.has(index))continue;
+    const row=bankRows[index],day=bankTransactionDay(row),value=moneyCents(row?.amount);
+    if(!day||day<due||day>reference||!sameSign(value)||Math.abs(value)>Math.abs(expected)||!bankRowLooksLikeCreditSettlement(row,providers))continue;
+    candidates.push({index,value});
+  }
+  const exact=candidates.find(item=>item.value===expected);if(exact)return[exact.index];
+  if(candidates.length<2||candidates.length>12)return null;
+  const target=Math.abs(expected),positive=candidates.map(item=>({index:item.index,value:Math.abs(item.value)})).filter(item=>item.value<=target),reachable=new Map([[0,[]]]);
+  for(const item of positive){
+    for(const [sum,indexes] of [...reachable.entries()]){
+      const next=sum+item.value;if(next>target||reachable.has(next))continue;
+      const nextIndexes=[...indexes,item.index];if(next===target)return nextIndexes;reachable.set(next,nextIndexes);
+    }
+  }
+  return null;
+}
+function pendingCreditSettlementData(kupa,account,installments,start,reference){
+  const feed=bankFeedForAccount(kupa,account);
+  if(!feed||!isoDay(feed.syncedAt))return {rows:[],total:0};
+  const candidates=settlementRowsForLatestElapsedCycle(installments,start,reference);
+  if(!candidates.length)return {rows:[],total:0};
+  const bankRows=Array.isArray(feed.transactions)?feed.transactions:[],unresolved=new Set(candidates.map((_,index)=>index)),used=new Set();
+  for(const level of ['card','profile','provider','date']){
+    const groups=new Map();
+    for(const index of unresolved){
+      const row=candidates[index],key=settlementGroupKey(row,level);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(index);
+    }
+    for(const indexes of groups.values()){
+      const rows=indexes.map(index=>candidates[index]),match=bankSettlementMatchIndexes(bankRows,rows,used,reference);
+      if(match===null)continue;
+      if(match.length){for(const bankIndex of match)used.add(bankIndex)}
+      for(const index of indexes)unresolved.delete(index);
+    }
+  }
+  const rows=[...unresolved].map(index=>candidates[index]).sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card),'he'));
+  return {rows,total:rows.reduce((sum,row)=>sum+num(row.amount),0)};
+}
 
 function accountTransactions(account={}){
   const direct=Array.isArray(account.txns)?account.txns:[];
@@ -65,9 +158,9 @@ export function kupaExpenseOccurrencesForMonthData(kupa,key){
 export function kupaExpenseRowsBetweenData(kupa,start,end){if(!isoDay(start)||!isoDay(end))return[];return monthKeysBetween(start,end).flatMap(key=>kupaExpenseOccurrencesForMonthData(kupa,key)).filter(row=>row.dueDate>=start&&row.dueDate<=end)}
 
 export function kupaNextAccountCreditCycleData(kupa,account='עסקי',reference=localTodayISO()){
-  const ref=isoDay(reference)||localTodayISO(),future=kupaAccountInstallmentsData(kupa,account).filter(row=>row.date>=ref),byCard=new Map(),cardKey=row=>row.creditAccountKey||`manual:${row.card}`;
-  for(const row of future){const key=cardKey(row),current=byCard.get(key);if(!current||row.date<current)byCard.set(key,row.date)}
-  const rows=future.filter(row=>byCard.get(cardKey(row))===row.date).sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card),'he')),targetDate=rows.length?rows.reduce((max,row)=>row.date>max?row.date:max,rows[0].date):ref,targetMonth=monthKey(targetDate)||monthKey(ref),[year,month]=targetMonth.split('-').map(Number),targetEnd=`${year}-${pad2(month)}-${pad2(daysInMonth(year,month))}`;
+  const ref=isoDay(reference)||localTodayISO(),future=kupaAccountInstallmentsData(kupa,account).filter(row=>row.date>=ref),byCard=new Map();
+  for(const row of future){const key=creditCardKey(row),current=byCard.get(key);if(!current||row.date<current)byCard.set(key,row.date)}
+  const rows=future.filter(row=>byCard.get(creditCardKey(row))===row.date).sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card),'he')),targetDate=rows.length?rows.reduce((max,row)=>row.date>max?row.date:max,rows[0].date):ref,targetMonth=monthKey(targetDate)||monthKey(ref),[year,month]=targetMonth.split('-').map(Number),targetEnd=`${year}-${pad2(month)}-${pad2(daysInMonth(year,month))}`;
   return {rows,total:rows.reduce((sum,row)=>sum+row.amount,0),targetDate,targetMonth,targetEnd};
 }
 
@@ -92,7 +185,7 @@ export function kupaAccountCheckDepositsData(kupa,account='עסקי',reference=l
 
 export function kupaAccountCashflowData(kupa,account='עסקי',reference=localTodayISO()){
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role),start=kupaAccountBankAsOfDateData(kupa,role,ref),cycle=kupaNextAccountCreditCycleData(kupa,role,ref);
-  const installments=kupaAccountInstallmentsData(kupa,role),elapsedCreditRows=installments.filter(row=>row.date>=start&&row.date<ref),elapsedExpenseRows=kupaExpenseRowsBetweenData(kupa,start,ref).filter(row=>row.dueDate<ref&&expenseBelongsTo(row,role)),targetExpenseRows=kupaExpenseOccurrencesForMonthData(kupa,cycle.targetMonth).filter(row=>row.dueDate>=ref&&expenseBelongsTo(row,role)),checkDeposits=kupaAccountCheckDepositsData(kupa,role,ref,cycle.targetMonth);
-  const creditRows=[...elapsedCreditRows,...cycle.rows].filter((row,index,all)=>all.findIndex(candidate=>candidate.creditId===row.creditId&&candidate.part===row.part)===index),expenseRows=[...elapsedExpenseRows,...targetExpenseRows].filter((row,index,all)=>all.findIndex(candidate=>candidate.id===row.id&&candidate.dueDate===row.dueDate)===index),credit=creditRows.reduce((sum,row)=>sum+row.amount,0),expenses=expenseRows.reduce((sum,row)=>sum+num(row.amount),0),checks=checkDeposits.total,targetExpenseTotal=targetExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),total=credit+expenses,expectedChange=checks-total,projected=balance===null?null:balance+expectedChange;
-  return {account:role,balance,credit,expenses,checks,total,expectedChange,start,end:cycle.targetEnd,targetMonth:cycle.targetMonth,nextCreditRows:cycle.rows,nextCreditTotal:cycle.total,elapsedCredit:elapsedCreditRows.reduce((sum,row)=>sum+row.amount,0),elapsedExpenses:elapsedExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),targetExpenseRows,targetExpenseTotal,checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
+  const installments=kupaAccountInstallmentsData(kupa,role),elapsedCreditRows=installments.filter(row=>row.date>=start&&row.date<ref),settlingCredit=pendingCreditSettlementData(kupa,role,installments,start,ref),elapsedExpenseRows=kupaExpenseRowsBetweenData(kupa,start,ref).filter(row=>row.dueDate<ref&&expenseBelongsTo(row,role)),targetExpenseRows=kupaExpenseOccurrencesForMonthData(kupa,cycle.targetMonth).filter(row=>row.dueDate>=ref&&expenseBelongsTo(row,role)),checkDeposits=kupaAccountCheckDepositsData(kupa,role,ref,cycle.targetMonth);
+  const creditRows=[...elapsedCreditRows,...settlingCredit.rows,...cycle.rows].filter((row,index,all)=>all.findIndex(candidate=>candidate.creditId===row.creditId&&candidate.part===row.part)===index),expenseRows=[...elapsedExpenseRows,...targetExpenseRows].filter((row,index,all)=>all.findIndex(candidate=>candidate.id===row.id&&candidate.dueDate===row.dueDate)===index),credit=creditRows.reduce((sum,row)=>sum+row.amount,0),expenses=expenseRows.reduce((sum,row)=>sum+num(row.amount),0),checks=checkDeposits.total,targetExpenseTotal=targetExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),total=credit+expenses,expectedChange=checks-total,projected=balance===null?null:balance+expectedChange;
+  return {account:role,balance,credit,expenses,checks,total,expectedChange,start,end:cycle.targetEnd,targetMonth:cycle.targetMonth,nextCreditRows:cycle.rows,nextCreditTotal:cycle.total,settlingCreditRows:settlingCredit.rows,settlingCredit:settlingCredit.total,elapsedCredit:elapsedCreditRows.reduce((sum,row)=>sum+row.amount,0),elapsedExpenses:elapsedExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),targetExpenseRows,targetExpenseTotal,checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
 }

@@ -309,6 +309,14 @@ assert.equal(staleOrders.total,staleKupaCycle.total);assert.equal(staleOrders.pr
 const billingReference=todayISO(),billingDate=shiftDay(billingReference,7),purchaseDate=addMonthsISO(billingReference,-1),billingMonthStart=`${billingReference.slice(0,7)}-01T00:00:00.000Z`;
 const billingRows=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{trnIntId:'cal-current-cycle-regression',trnTypeCode:'5',trnPurchaseDate:`${purchaseDate}T00:00:00.000Z`,debCrdDate:`${billingDate}T00:00:00.000Z`,trnAmt:19305.96,amtBeforeConvAndIndex:19305.96,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'חיוב שנקנה בחודש קודם'}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date(billingMonthStart)});
 assert.equal(billingRows.length,1,'the fast-source regression row survives the current-cycle billing boundary before it reaches cash-flow');
+const originalTimezone=process.env.TZ;
+try{
+  process.env.TZ='Asia/Jerusalem';
+  const localMidnightBillingRows=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{trnIntId:'cal-local-midnight',trnTypeCode:'5',trnPurchaseDate:'2026-08-31T00:00:00',debCrdDate:'2026-09-10T00:00:00',trnAmt:321.45,amtBeforeConvAndIndex:321.45,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'חצות מקומי'}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date('2026-09-01T00:00:00.000Z')});
+  assert.equal(localMidnightBillingRows[0]?.processedDate?.slice(0,10),'2026-09-10','Cal offset-less billing midnight keeps the issuer calendar day even on an Israel-time workstation');
+  const localMidnightDueDayCashflow=kupaAccountCashflowData({creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'cal-local',provider:'visaCal',accounts:[{accountNumber:'1010',txns:localMidnightBillingRows}]}],cardMappings:{'cal-local:1010':{included:true,hidden:false,account:'עסקי'}}}),credits:[],checks:[],cash:[],cards:[],expenses:[],cashflowSettings:{businessMinimum:0},bank:{currentBalance:10000,asOfDate:'2026-09-10',source:'hapoalim',feed:{syncedAt:'2026-09-10T08:00:00.000Z',balance:10000,transactions:[]},adjustments:[]}},'עסקי','2026-09-10');
+  assert.equal(localMidnightDueDayCashflow.credit,321.45,'the exact Cal due-day row remains an active checking obligation on the 10th before the bank posts it');assert.equal(localMidnightDueDayCashflow.projected,9678.55);
+}finally{if(originalTimezone===undefined)delete process.env.TZ;else process.env.TZ=originalTimezone}
 const billingCashflowState={version:4,checks:[],cash:[],cards:[],credits:[],bank:{currentBalance:10000,asOfDate:billingReference,adjustments:[]},cashflowSettings:{businessMinimum:0,homeMinimum:null},expenses:[{id:'fixed-2150',description:'הוצאות קבועות',account:'עסקי',date:billingDate,amount:2150,recurring:true,active:true}],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'cal-current-cycle',provider:'visaCal',accounts:[{accountNumber:'9715',txns:billingRows}]}],cardMappings:{'cal-current-cycle:9715':{included:true,hidden:false,account:'עסקי'}}})};
 const billingKupaCycle=bankNextCycleCommitmentsData(billingCashflowState),billingOrdersCycle=kupaAccountCashflowData(billingCashflowState,'עסקי',billingReference);
 assert.equal(billingKupaCycle.credit,19305.96,'Kupa future checking includes the issuer monthly credit debit after a fast refresh');
@@ -324,6 +332,41 @@ const persistedKupaCycle=bankNextCycleCommitmentsData(persistedBillingCashflowSt
 assert.equal(persistedKupaCycle.credit,19305.96,'Kupa cash-flow reconstructs credit directly from durable monthly slices after a cloud round-trip');
 assert.equal(persistedOrdersCycle.credit,persistedKupaCycle.credit,'Orders uses the same shared monthly-slice cash-flow source as Kupa after persistence');
 assert.equal(persistedOrdersCycle.projected,-11455.96);assert.equal(persistedOrdersCycle.alert.reason,'negative','Orders cannot lose synchronized credit merely because the derived txns cache was not serialized');
+
+const settlementCreditSync=normalizeCreditSync({version:4,profiles:[
+  {profileId:'settle-business',provider:'max',label:'MAX עסקי',defaultAccount:'עסקי',accounts:[{accountNumber:'1010',txns:[
+    {id:'business-sep',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-1000,chargedCurrency:'ILS',status:'completed',description:'מחזור ספטמבר'},
+    {id:'business-oct',processedDate:'2026-10-10T00:00:00.000Z',chargedAmount:-1200,chargedCurrency:'ILS',status:'completed',description:'מחזור אוקטובר'},
+  ]}]},
+  {profileId:'settle-home',provider:'amex',label:'AMEX ביתי',defaultAccount:'ביתי',accounts:[{accountNumber:'1515',txns:[
+    {id:'home-sep',processedDate:'2026-09-15T00:00:00.000Z',chargedAmount:-500,chargedCurrency:'ILS',status:'completed',description:'מחזור ספטמבר'},
+    {id:'home-oct',processedDate:'2026-10-15T00:00:00.000Z',chargedAmount:-600,chargedCurrency:'ILS',status:'completed',description:'מחזור אוקטובר'},
+  ]}]},
+],cardMappings:{
+  'settle-business:1010':{included:true,hidden:false,account:'עסקי',cardName:'MAX עסקי'},
+  'settle-home:1515':{included:true,hidden:false,account:'ביתי',cardName:'AMEX ביתי'},
+}});
+const settlementBeforePosting={version:4,checks:[],cash:[],cards:[],credits:[],expenses:[],cashflowSettings:{businessMinimum:0,homeMinimum:0},creditSync:settlementCreditSync,bank:{
+  currentBalance:10000,asOfDate:'2026-09-11',source:'hapoalim',adjustments:[],
+  feed:{syncedAt:'2026-09-11T08:00:00.000Z',balance:10000,transactions:[{id:'same-amount-not-credit',date:'2026-09-11T00:00:00.000Z',processedDate:'2026-09-11T00:00:00.000Z',amount:-1000,status:'completed',description:'שכירות'}]},
+  homeFeed:{syncedAt:'2026-09-16T08:00:00.000Z',balance:5000,transactions:[{id:'home-pending-card',date:'2026-09-16T00:00:00.000Z',processedDate:'2026-09-16T00:00:00.000Z',amount:-500,status:'pending',description:'American Express'}]},
+}};
+const businessAwaitingBank=kupaAccountCashflowData(settlementBeforePosting,'עסקי','2026-09-11');
+assert.equal(businessAwaitingBank.settlingCredit,1000,'a due-on-10 credit cycle stays in cash-flow after the bank snapshot date advances but before the card debit is posted');
+assert.equal(businessAwaitingBank.nextCreditTotal,1200,'the following monthly cycle remains a separate future obligation while the prior debit is awaiting bank posting');
+assert.equal(businessAwaitingBank.credit,2200);assert.equal(businessAwaitingBank.projected,7800,'cash-flow subtracts both the unsettled due debit and the next cycle instead of temporarily overstating checking');
+const homeAwaitingBank=kupaAccountCashflowData(settlementBeforePosting,'ביתי','2026-09-16');
+assert.equal(homeAwaitingBank.settlingCredit,500,'a due-on-15 home-card cycle is isolated to the home account and remains pending until a completed home-bank debit appears');
+assert.equal(homeAwaitingBank.nextCreditTotal,600);assert.equal(homeAwaitingBank.projected,3900,'a pending bank row is not treated as proof that the home balance already contains the debit');
+const settlementAfterPosting=JSON.parse(JSON.stringify(settlementBeforePosting));
+settlementAfterPosting.bank.currentBalance=9000;settlementAfterPosting.bank.feed.balance=9000;settlementAfterPosting.bank.feed.transactions=[{id:'max-posted',date:'2026-09-11T00:00:00.000Z',processedDate:'2026-09-11T00:00:00.000Z',amount:-1000,status:'completed',description:'MAX'}];
+settlementAfterPosting.bank.homeFeed.balance=4500;settlementAfterPosting.bank.homeFeed.transactions=[{id:'amex-posted',date:'2026-09-16T00:00:00.000Z',processedDate:'2026-09-16T00:00:00.000Z',amount:-500,status:'completed',description:'American Express'}];
+const businessPosted=kupaAccountCashflowData(settlementAfterPosting,'עסקי','2026-09-11'),homePosted=kupaAccountCashflowData(settlementAfterPosting,'ביתי','2026-09-16');
+assert.equal(businessPosted.settlingCredit,0);assert.equal(businessPosted.credit,1200);assert.equal(businessPosted.projected,businessAwaitingBank.projected,'once the MAX debit appears, the lower bank balance replaces the temporary settlement hold with no projected-balance jump');
+assert.equal(homePosted.settlingCredit,0);assert.equal(homePosted.credit,600);assert.equal(homePosted.projected,homeAwaitingBank.projected,'home cash-flow has the same no-double-count continuity when the AMEX debit reaches the bank feed');
+const manualSnapshotAfterDue=JSON.parse(JSON.stringify(settlementBeforePosting));manualSnapshotAfterDue.bank.source='manual';
+const manualCycle=kupaAccountCashflowData(manualSnapshotAfterDue,'עסקי','2026-09-11');
+assert.equal(manualCycle.settlingCredit,0,'a manual bank snapshot remains authoritative and does not reuse an old synchronized feed as settlement evidence');
 
 const legacyModeState={...syncedState,creditSync:{...syncedState.creditSync,mode:'manual'}};
 assert.equal(normalizeCreditSync(legacyModeState.creditSync).mode,'synced','a legacy manual mode flag is normalized away');

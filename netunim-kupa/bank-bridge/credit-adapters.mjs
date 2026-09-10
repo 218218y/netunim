@@ -46,7 +46,11 @@ function monthKey(value){const d=new Date(value);return `${d.getUTCFullYear()}-$
 function monthStart(value){const d=new Date(value);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1))}
 function addMonths(value,count){const d=monthStart(value);return new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+count,1))}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
-function safeDate(value){if(!value)return null;const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString():null}
+function safeDate(value){
+  if(!value)return null;
+  const raw=String(value).trim(),floatingIso=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(raw),d=new Date(floatingIso?`${raw}Z`:raw);
+  return Number.isFinite(d.getTime())?d.toISOString():null;
+}
 function safeError(message,code,extra={}){const e=new Error(message);e.code=code;Object.assign(e,extra);return e}
 function safeSuffix(value){const digits=String(value??'').replace(/\D/g,'');return digits?digits.slice(-4):text(value,4)}
 function errorFetchStatus(error){
