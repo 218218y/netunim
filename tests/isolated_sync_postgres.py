@@ -29,6 +29,11 @@ class IsolatedPostgres:
         try:
             bootstrap='fixture_bootstrap' if self.demotable_postgres else 'postgres'
             self.run('initdb','-D',str(self.tmp/'data'),'-U',bootstrap,'-A','trust','--encoding=UTF8','--no-locale')
+            # Every fixture client uses explicit loopback TCP. Ubuntu's PostgreSQL
+            # defaults to /var/run/postgresql for Unix sockets, which the unprivileged
+            # CI user cannot write. Do not depend on (or chmod) host service state.
+            with (self.tmp/'data/postgresql.conf').open('a',encoding='utf8') as config:
+                config.write("\nunix_socket_directories = ''\n")
             self.run('pg_ctl','-D',str(self.tmp/'data'),'-l',str(self.tmp/'server.log'),'-o',f'-p {self.port} -h 127.0.0.1','start')
             if self.demotable_postgres:
                 # PostgreSQL 18 cannot demote its bootstrap superuser. A separate
