@@ -60,8 +60,11 @@ jobs:
       - name: Install PostgreSQL 18 for the current migration contract
         if: matrix.postgres
         run: |
-          # The runner's configured PGDG repository supplies supported majors.
-          # Its preinstalled PostgreSQL 16 cannot execute MAINTAIN grants (17+).
+          # Configure the official signed PGDG repository explicitly: runner images
+          # retain PostgreSQL 16 binaries but may remove their build-time APT source.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl --fail --silent --show-error --location https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          printf '%s\n' 'Types: deb' 'URIs: https://apt.postgresql.org/pub/repos/apt' 'Suites: noble-pgdg' 'Components: main' 'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' | sudo tee /etc/apt/sources.list.d/netunim-pgdg.sources > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends postgresql-18
           echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
