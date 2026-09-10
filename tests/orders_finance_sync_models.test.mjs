@@ -131,6 +131,11 @@ const forecastState={credits:[],creditSync:normalizeCreditSync({version:3,profil
 const rollingForecast=creditMonthBuckets(forecastState,{view:'rolling12',asOf:'2026-09-01'});
 assert.deepEqual(rollingForecast.months.map(month=>month.key),['2026-09','2026-11','2027-03'],'rolling 12-month forecast omits empty months and already-collected history');
 assert.equal(rollingForecast.rows.find(row=>row.description==='ספטמבר').totalAmount,100,'a synchronized ILS row without originalAmount keeps its charged amount as the displayed transaction total');
+const ordersCurrentMonthCarry={credits:[],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'month-carry',provider:'max',accounts:[{accountNumber:'6767',balanceDate:'2026-09-10',pendingStatus:'success',txns:[{id:'sep-already-dated',processedDate:'2026-09-05',chargedAmount:-1000,chargedCurrency:'ILS',description:'חיוב ספטמבר מוקדם',status:'completed'}],pendingTransactions:[{id:'sep-pending',date:'2026-09-09',processedDate:'2026-09-09',chargedAmount:-125,chargedCurrency:'ILS',description:'ממתינה ספטמבר',status:'pending'}]}]}],cardMappings:{'month-carry:6767':{included:true,hidden:false,account:'עסקי'}}})};
+const ordersCurrentMonthBucket=creditMonthBuckets(ordersCurrentMonthCarry,{view:'rolling12',asOf:'2026-09-10'}).months.find(month=>month.key==='2026-09'),ordersCurrentMonthDetail=creditDetailMonths(ordersCurrentMonthCarry,{asOf:'2026-09-10'}).find(month=>month.key==='2026-09');
+assert.equal(ordersCurrentMonthBucket.total,1125,'Orders current-month strip keeps completed rows dated earlier in the month together with fresh pending approvals');
+assert.equal(ordersCurrentMonthBucket.total,ordersCurrentMonthDetail.total,'Orders current-month strip and transactions/payments table use the same complete billing-month total');
+assert.equal(ordersCurrentMonthBucket.items.some(row=>row.description==='חיוב ספטמבר מוקדם'),true,'Orders credit forecast month scope starts at the first day of the current month, not at the current day');
 const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-01'});
 assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
 

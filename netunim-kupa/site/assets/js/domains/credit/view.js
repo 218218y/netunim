@@ -1,7 +1,7 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
-import {creditMonthlyDetailData,creditDetailItemIdentity,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
+import {creditMonthlyDetailData,creditDetailItemIdentity,creditForecastInstallmentsData,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary,syncedPendingForecastData} from './sync-feed.js';
 import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status.js';
 import {searchMatch} from '../../core/search.js';
@@ -88,7 +88,7 @@ function cardFilterMarkup(ui,cards){
   return `<div class="credit-filter-chip-row"><span class="credit-filter-label">כרטיסים</span><div class="credit-filter-chips"><button type="button" class="credit-filter-chip ${ui.creditCardFilter==='all'?'active':''}" data-action="credit-card-filter" data-click-arg0="all"><span>כל הכרטיסים</span><small>${esc(scoped.length)}</small></button>${scoped.map(card=>`<button type="button" class="credit-filter-chip card ${ui.creditCardFilter===card.creditAccountKey?'active':''}" data-action="credit-card-filter" data-click-arg0="${esc(card.creditAccountKey)}"><span>${esc(card.name)}</span><small>${esc(card.account)}${card.ownerLabel?` · ${esc(card.ownerLabel)}`:''}</small></button>`).join('')}</div></div>`;
 }
 
-export function createDomainsCreditView({model, ui, pendingInstallments, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup}){
+export function createDomainsCreditView({model, ui, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup}){
 function creditDetailState(){
   const detailData=creditMonthlyDetailData(model.state);
   const detailMonths=detailData.months.map(month=>{
@@ -142,7 +142,7 @@ function expensesHubTabsMarkup(){
 function renderCredit(){
   if(!['credit','expenses'].includes(ui.expensesTab))ui.expensesTab='credit';
   if(ui.expensesTab==='expenses'){document.getElementById('content').innerHTML=`${expensesHubTabsMarkup()}${expensesMarkup()}`;return}
-  const pendingForecast=syncedPendingForecastData(model.state),allFuture=[...pendingInstallments(),...pendingForecast],summary=creditSyncSummary(model.state),syncUi=creditSyncUiState(),includedCards=includedCardModels(summary);
+  const pendingForecast=syncedPendingForecastData(model.state),allFuture=[...creditForecastInstallmentsData(model.state),...pendingForecast],summary=creditSyncSummary(model.state),syncUi=creditSyncUiState(),includedCards=includedCardModels(summary);
   if(!['all','עסקי','ביתי'].includes(ui.creditAccountFilter))ui.creditAccountFilter='all';
   const filterCards=includedCards.filter(card=>primaryCardFilterMatch(ui,card));
   const availableProviders=new Set(filterCards.map(x=>x.provider));

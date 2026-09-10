@@ -23,6 +23,11 @@ export function allInstallmentsData(state){return [...syncedInstallmentsData(sta
 
 export function pendingInstallmentsData(state){return allInstallmentsData(state).filter(x=>x.date>=todayISO())}
 
+// Credit-page month summaries intentionally keep the whole current billing month visible.
+// Cash-flow selectors above/below still use exact-day cutoffs, so already-due charges are never
+// reintroduced into bank projections just to make the credit UI month total complete.
+export function creditForecastInstallmentsData(state,asOf=todayISO()){const currentMonth=monthKey(asOf);return allInstallmentsData(state).filter(x=>monthKey(x.date)>=currentMonth)}
+
 // Credit-page visibility and Kupa cash-flow ownership are intentionally separate.
 // Every explicitly included card remains visible in credit reporting, while only
 // obligations classified as business are allowed to affect business cash/bank math.

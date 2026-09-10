@@ -444,7 +444,6 @@ const domainsExpensesView=createDomainsExpensesView({
 const domainsCreditView=createDomainsCreditView({
   model,
   ui,
-  pendingInstallments:(...args)=>domainsCreditSelectors.pendingInstallments(...args),
   syncBulkUi:(...args)=>uiBulk.syncBulkUi(...args),
   bulkControls:(...args)=>uiBulk.bulkControls(...args),
   bulkHeader:(...args)=>uiBulk.bulkHeader(...args),
