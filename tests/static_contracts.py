@@ -259,6 +259,17 @@ ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in
    "orders supplier/warehouse width: RTL view shells do not reserve an unused left scrollbar gutter, and the warehouse scrollbar uses the compact 8px track instead of consuming extra content width")
 ok('@media(min-width:701px){.customers-view .customer-work-table,.supplier-view-shell .supplier-table-panel .table-wrap{background:linear-gradient(to bottom,#f8f5f2 0 35px,#e3ddd7 35px 36px,#fff 36px) top/100% 100% no-repeat}}' in orders_css,
    "orders customer/supplier table headers: the sticky header paint spans the full scroll viewport without widening either table or changing horizontal overflow")
+ok('--scroll-track:#eee7e1;--scroll-thumb:#b8a69a;--scroll-thumb-hover:#9f8b7d' in orders_css
+   and '*{scrollbar-width:thin;scrollbar-color:var(--scroll-thumb) var(--scroll-track)}' in orders_css
+   and '*::-webkit-scrollbar-track{background:var(--scroll-track);border-radius:999px}' in orders_css
+   and '*::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}' in orders_css,
+   "orders scrollbars: table and view scroll tracks/thumbs use opaque shared colors in Firefox and WebKit")
+ok('.col-row-actions{width:78px;position:sticky;left:0;z-index:2}' in orders_css
+   and 'background:inherit!important' not in orders_css[orders_css.find('.col-row-actions{width:78px'):orders_css.find('.status-toggle{', orders_css.find('.col-row-actions{width:78px'))]
+   and 'th.col-row-actions{background:#f8f5f2!important;z-index:4}' in orders_css
+   and 'td.col-row-actions{background:#fff}' in orders_css
+   and 'tr.pending td.col-row-actions{background:var(--marker-yellow)}' in orders_css,
+   "orders supplier table: sticky action header is painted like the rest of the header while the body action cell remains opaque and follows row states")
 
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
