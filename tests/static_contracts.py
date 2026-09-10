@@ -249,6 +249,11 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and 'width:min(calc(100% - 24px),1500px)' not in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}' in orders_css
    and '.customer-table .customer-col-note{width:22.5%}' in orders_css
+   and orders_css.count('.customer-table .customer-col-actions{width:72px}') == 4
+   and '.customer-table .customer-col-actions{width:5%}' not in orders_css
+   and '.customer-table .customer-col-actions{width:44px}' not in orders_css
+   and '.customer-table .customer-col-actions{width:40px}' not in orders_css
+   and '.customer-table .customer-col-actions{width:30px}' not in orders_css
    and '@media(max-width:900px)' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}' in orders_css
    and '@media(max-width:700px) and (min-width:601px)' in orders_css
@@ -258,7 +263,7 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css
    and 'customer-work-panel{border-radius:14px;margin' not in orders_css
    and '.customer-table .status-toggle button{min-width:26px' not in orders_css,
-   "orders customers: debt table keeps a continuous full available width up to the 1500px cap across the former 1101-1199px dead zone, balances wide-screen surplus across columns, preserves normal yes/no controls with comfortable equal spacing, and has narrow fallbacks that do not force horizontal scrolling")
+   "orders customers: debt table keeps a continuous full available width up to the 1500px cap, reserves the real action-button width at every desktop breakpoint, preserves normal yes/no controls, and avoids intrinsic-content horizontal overflow")
 ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
