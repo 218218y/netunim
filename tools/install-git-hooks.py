@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import os
+import shlex
 import stat
 import subprocess
 import sys
@@ -11,7 +12,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'tools/git-hooks/pre-commit'
-MARKER = b'NETUNIM_MANAGED_HOOK: asset-sync-v1'
+MANAGED_MARKER = b'NETUNIM_MANAGED_HOOK:'
+PYTHON_PLACEHOLDER = b'@PYTHON_EXECUTABLE@'
 
 
 def active_hook_path() -> Path:
@@ -33,8 +35,16 @@ def is_current(target: Path, expected: bytes) -> bool:
     return executable and target.read_bytes() == expected
 
 
+def rendered_hook() -> bytes:
+    template = SOURCE.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    if template.count(PYTHON_PLACEHOLDER) != 1:
+        raise RuntimeError(f'{SOURCE} must contain exactly one Python executable placeholder')
+    executable = str(Path(sys.executable).resolve()).replace('\\', '/')
+    return template.replace(PYTHON_PLACEHOLDER, shlex.quote(executable).encode('utf-8'))
+
+
 def install(check: bool = False) -> int:
-    expected = SOURCE.read_bytes().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    expected = rendered_hook()
     target = active_hook_path()
     if is_current(target, expected):
         print(f'OK: NETUNIM pre-commit hook is installed at {target}')
@@ -43,7 +53,7 @@ def install(check: bool = False) -> int:
         print(f'ERROR: NETUNIM pre-commit hook is missing or outdated: {target}', file=sys.stderr)
         print('Run: python tools/install-git-hooks.py', file=sys.stderr)
         return 1
-    if target.exists() and (not target.is_file() or MARKER not in target.read_bytes()):
+    if target.exists() and (not target.is_file() or MANAGED_MARKER not in target.read_bytes()):
         print(f'ERROR: refusing to overwrite an unmanaged pre-commit hook: {target}', file=sys.stderr)
         print('Integrate tools/git-hooks/pre-commit into the existing hook manually.', file=sys.stderr)
         return 2

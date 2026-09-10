@@ -2,6 +2,7 @@
 from contextlib import redirect_stdout
 import importlib.util
 import io
+import os
 from pathlib import Path
 import re
 import shutil
@@ -224,13 +225,20 @@ class StagedAssetContracts(unittest.TestCase):
             [sys.executable, 'tools/install-git-hooks.py', '--check'], cwd=self.root,
             capture_output=True, text=True, check=True,
         )
+        installed_hook = (self.root / '.git/hooks/pre-commit').read_text(encoding='utf-8')
+        self.assertIn(str(Path(sys.executable).resolve()).replace('\\', '/'), installed_hook)
+        self.assertNotIn('@PYTHON_EXECUTABLE@', installed_hook)
         source = 'shared/html.js'
         updated = (self.root / source).read_bytes() + b'\n// hook integration change\n'
         (self.root / source).write_bytes(updated)
         self.git('add', '--', source)
+        # Simulate GitHub Desktop failing to load the user's shell environment:
+        # Git remains available, while python/python3/py are deliberately absent from PATH.
+        git_directory = str(Path(shutil.which('git')).resolve().parent)
         commit = subprocess.run(
             ['git', 'commit', '-m', 'exercise managed hook'], cwd=self.root,
             capture_output=True, text=True, check=True,
+            env={**os.environ, 'PATH': git_directory},
         )
         self.assertIn('STAGED kupa: synchronized shared source: html.js', commit.stdout + commit.stderr)
         for app in ('kupa', 'orders'):

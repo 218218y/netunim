@@ -17,9 +17,10 @@ From the repository root, run:
 python tools/install-git-hooks.py
 ```
 
-The installer resolves Git's active hook directory, installs only the NETUNIM-managed `pre-commit` hook, normalizes
-it to LF, and marks it executable. It updates an older managed copy atomically and refuses to overwrite an unrelated
-existing hook. Check the installation without changing anything with:
+The installer resolves Git's active hook directory, pins the verified absolute path of the current Python interpreter,
+installs only the NETUNIM-managed `pre-commit` hook, normalizes it to LF, and marks it executable. Pinning the interpreter
+keeps the hook independent of GitHub Desktop's shell/PATH loading. The installer updates an older managed copy atomically
+and refuses to overwrite an unrelated existing hook. Check the installation without changing anything with:
 
 ```text
 python tools/install-git-hooks.py --check
@@ -31,8 +32,9 @@ Git hooks are local metadata and are not transferred by clone/pull, so each new 
 
 ## GitHub Desktop
 
-GitHub Desktop 3.6+ runs commit hooks and shows their output. On Windows, keep **File > Options > Git > Hooks >
-Load Git hook environment variables from shell** enabled so the hook can find the installed Python 3.10+ runtime.
+GitHub Desktop 3.6+ runs commit hooks and shows their output. The NETUNIM hook does not depend on **Load Git hook
+environment variables from shell**, because its installer records the absolute Python 3.10+ interpreter path. That
+option may remain enabled for other hooks. If Python is moved or reinstalled, rerun the hook installer once.
 
 The hook synchronizes from the Git index—the exact snapshot selected for the commit—not blindly from every modified
 working-tree file. Generated outputs for selected asset changes are added to the same commit. Unchecked or partially

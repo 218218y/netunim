@@ -13,6 +13,9 @@ netunim\deploy_all.bat --preflight-only
 cd..
 netunim\verify.bat --no-pause
 
+פעם אחת להריץ כדי לאפשר הרצה אוטומטית של תיקון לפני גיט
+python tools/install-git-hooks.py
+
 NETUNIM TESTING
 ===============
 
@@ -27,7 +30,8 @@ Normal local setup:
   python tools/install-git-hooks.py
 
 The last command installs the repository-managed pre-commit hook. GitHub Desktop runs it automatically when
-creating a commit (keep "Load Git hook environment variables from shell" enabled under Options > Git > Hooks).
+creating a commit. The installer pins the verified absolute Python path, so this hook does not depend on GitHub
+Desktop successfully loading PATH from the configured shell. Rerun the installer if Python is moved or reinstalled.
 The hook runs sync-assets.py against the exact staged/index snapshot, stages only its generated shared copies and
 service-worker metadata, and also refreshes the working tree. This preserves unchecked files and partially staged
 content instead of accidentally adding them to the commit. Verify or repair the local installation at any time with:

@@ -1,5 +1,8 @@
 #!/bin/sh
-# NETUNIM_MANAGED_HOOK: asset-sync-v1
+# NETUNIM_MANAGED_HOOK: asset-sync-v2
+
+# Replaced with the verified interpreter path by tools/install-git-hooks.py.
+python_executable=@PYTHON_EXECUTABLE@
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   echo "ERROR: NETUNIM asset hook could not locate the repository root." >&2
@@ -7,19 +10,12 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
 }
 cd "$repo_root" || exit 1
 
-if command -v python >/dev/null 2>&1 && python -c "import sys; raise SystemExit(sys.version_info < (3, 10))" >/dev/null 2>&1; then
-  PYTHONUTF8=1 python tools/sync-assets.py --staged
-  exit $?
-fi
-if command -v python3 >/dev/null 2>&1 && python3 -c "import sys; raise SystemExit(sys.version_info < (3, 10))" >/dev/null 2>&1; then
-  PYTHONUTF8=1 python3 tools/sync-assets.py --staged
-  exit $?
-fi
-if command -v py >/dev/null 2>&1 && py -3 -c "import sys; raise SystemExit(sys.version_info < (3, 10))" >/dev/null 2>&1; then
-  PYTHONUTF8=1 py -3 tools/sync-assets.py --staged
-  exit $?
+if [ ! -f "$python_executable" ]; then
+  echo "ERROR: NETUNIM's configured Python interpreter is no longer available:" >&2
+  echo "  $python_executable" >&2
+  echo "Run 'python tools/install-git-hooks.py' to refresh the local hook." >&2
+  exit 1
 fi
 
-echo "ERROR: NETUNIM pre-commit asset sync requires Python 3.10 or newer." >&2
-echo "Install Python, then retry the commit. No commit was created." >&2
-exit 1
+PYTHONUTF8=1 "$python_executable" tools/sync-assets.py --staged
+exit $?
