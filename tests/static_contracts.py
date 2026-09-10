@@ -406,6 +406,18 @@ ok("const task=controller.refreshBank({interactive});renderKupa();await task;ren
 ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/domains/finance/reporting.js").read_text(encoding="utf-8")
    and ".filter(month=>Math.round(month.total*100)!==0)" in (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8"),
    "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
+ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
+   and "tr.pending:hover td{background:var(--marker-yellow-hover)}" in orders_css
+   and ".credit-pending-detail-row td{background:var(--marker-yellow)}" in orders_css
+   and ".credit-pending-detail-row:hover td{background:var(--marker-yellow-hover)}" in orders_css
+   and ".bank-transaction-pending{display:inline-flex;padding:2px 6px;border-radius:999px;background:var(--warn-soft);color:var(--warn)" in orders_css
+   and ".credit-transaction-pending{background:var(--warn-soft);color:var(--warn)}" in orders_css
+   and ".bank-transactions-table tbody tr.pending td{background:#fffdf8}" in kupa_css
+   and ".credit-detail-table tbody tr.credit-pending-detail-row td{background:#fffdf8}" in kupa_css
+   and ".credit-detail-table tbody tr.credit-pending-detail-row:hover td{background:#fffdf8}" in kupa_css
+   and ".bank-transaction-pending{display:inline-flex;align-items:center;padding:3px 6px;border-radius:999px;background:#fff3d8;color:#866622" in kupa_css
+   and ".credit-transaction-pending{background:#fff3d8;color:#866622}" in kupa_css,
+   "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
 ok("const BANK_BRIDGE_VERSION=34" in orders_finance_controller,
