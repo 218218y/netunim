@@ -67,7 +67,14 @@ insert into auth.users values('''+quote(OWNER)+''');''')
             # Windows server grandchildren inherit pipe handles; use a file for pg_ctl.
             with (self.tmp/'control.log').open('w',encoding='utf8') as log:
                 result=subprocess.run(command,stdin=subprocess.DEVNULL,stdout=log,stderr=log,env=self.env,timeout=30)
-            if result.returncode:raise RuntimeError((self.tmp/'control.log').read_text(encoding='utf8',errors='replace'))
+            if result.returncode:
+                # Preserve the server's actual startup error before __exit__ removes
+                # the disposable cluster; pg_ctl alone only says to inspect its log.
+                diagnostics=[]
+                for name in ('control.log','server.log'):
+                    path=self.tmp/name
+                    if path.is_file():diagnostics.append(name+':\n'+path.read_text(encoding='utf8',errors='replace')[-8000:])
+                raise RuntimeError('\n'.join(diagnostics))
             return ''
         result=subprocess.run(command,input=input,encoding='utf8',errors='replace',capture_output=True,env=self.env,timeout=90)
         if result.returncode:raise RuntimeError(result.stderr[-8000:])
