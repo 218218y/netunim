@@ -77,7 +77,12 @@ export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CRED
     // foreign-only approvals stay visible with a zero ILS contribution until the issuer
     // supplies a current/final billing amount.
     const forecastAmount=pending.pendingFresh&&pending.isShekel?pending.amount:0;
-    items.push({source:'credit_pending',pending,id:pending.id,date:pending.date,amount:forecastAmount,displayAmount:pending.amount,displayCurrency:pending.currency,part:1,totalParts:1,transactionDate:pending.transactionDate,account:pending.account,ownerLabel:pending.ownerLabel,provider:pending.provider,profileId:pending.profileId,accountNumber:pending.accountNumber,creditAccountKey:pending.creditAccountKey,card:pending.card,description:pending.description,foreignCurrency:pending.foreignCurrency===true,originalAmount:pending.originalAmount,originalCurrency:pending.originalCurrency||'',pendingFresh:pending.pendingFresh,chargeDateSource:pending.chargeDateSource,status:'pending'});
+    // Keep provisional billing and purchase value separate. Some issuers (notably MAX pending
+    // approvals) can expose chargedAmount=0 until settlement while originalAmount already contains
+    // the real authorized purchase amount. That zero must remain zero in the provisional monthly
+    // charge, but it must not erase the known purchase value in the "transaction amount" column.
+    const pendingOriginal=Number(pending.originalAmount),transactionAmount=pending.foreignCurrency!==true&&Number.isFinite(pendingOriginal)&&Math.abs(pendingOriginal)>0.004?Math.abs(pendingOriginal):pending.amount;
+    items.push({source:'credit_pending',pending,id:pending.id,date:pending.date,amount:forecastAmount,displayAmount:pending.amount,transactionAmount,displayCurrency:pending.currency,part:1,totalParts:1,transactionDate:pending.transactionDate,account:pending.account,ownerLabel:pending.ownerLabel,provider:pending.provider,profileId:pending.profileId,accountNumber:pending.accountNumber,creditAccountKey:pending.creditAccountKey,card:pending.card,description:pending.description,foreignCurrency:pending.foreignCurrency===true,originalAmount:pending.originalAmount,originalCurrency:pending.originalCurrency||'',pendingFresh:pending.pendingFresh,chargeDateSource:pending.chargeDateSource,status:'pending'});
   }
   for(const foreign of syncedForeignCurrencyTransactionsData(state)){
     const key=monthKey(foreign.date);if(!key||key<cutoffMonth)continue;

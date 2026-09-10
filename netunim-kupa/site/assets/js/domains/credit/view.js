@@ -278,8 +278,8 @@ function syncedMonthlyCreditRow(item){
   return `<tr class="credit-synced-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate)}</td><td class="credit-detail-charge"><b>${dateFmt(item.date)}</b><div class="amount credit-month-charge-amount">${money(item.amount)}</div></td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(series.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span>${partial?'<div class="muted credit-detail-partial">אופק חלקי</div>':''}</td><td class="credit-detail-actions"></td></tr>`;
 }
 function pendingAmountMarkup(item){
-  const amount=Number(item.displayAmount);if(!Number.isFinite(amount))return '<span class="muted">לא נמסר</span>';
   if(item.foreignCurrency&&Number.isFinite(Number(item.originalAmount))&&item.originalCurrency){const formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(Number(item.originalAmount));return `${formatted} ${esc(item.originalCurrency)}`}
+  const amount=Number(item.transactionAmount);if(!Number.isFinite(amount))return '<span class="muted">לא נמסר</span>';
   if(item.pending?.isShekel)return money(amount);
   const formatted=new Intl.NumberFormat('he-IL',{maximumFractionDigits:2}).format(amount);return `${formatted} ${esc(item.displayCurrency||'')}`;
 }
