@@ -1,11 +1,13 @@
 import {num} from '../../core/money.js';
 import {addMonthsISO, todayISO, dObj, monthKey, localISO} from '../../core/dates.js';
-import {syncedInstallmentsData, syncedCreditSeries} from './sync-feed.js';
+import {syncedInstallmentsData, syncedCreditSeries, syncedPendingTransactionsData, syncedForeignCurrencyTransactionsData} from './sync-feed.js';
 
 export const CREDIT_DETAIL_HISTORY_MONTHS=3;
 
 export function creditDetailItemIdentity(item={}){
   if(item.source==='manual')return `manual:${String(item.record?.id||'')}:${String(item.date||'')}:${Number(item.part||1)}`;
+  if(item.source==='credit_pending')return `pending:${String(item.pending?.id||item.id||'')}:${String(item.date||'')}`;
+  if(item.source==='credit_foreign')return `foreign:${String(item.foreign?.id||item.id||'')}:${String(item.date||'')}:${Number(item.part||1)}`;
   return `sync:${String(item.series?.id||'')}:${String(item.date||'')}:${Number(item.part||1)}`;
 }
 
@@ -65,8 +67,21 @@ export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CRED
   for(const series of syncedCreditSeries(state,asOf)){
     for(const charge of series.items){
       const key=monthKey(charge.date);if(!key||key<cutoffMonth)continue;
-      items.push({source:'credit_sync',series,charge,date:charge.date,amount:charge.amount,part:charge.part,totalParts:charge.totalParts,transactionDate:charge.transactionDate||series.transactionDate||'',account:series.account,ownerLabel:series.ownerLabel,provider:series.provider,profileId:series.profileId,accountNumber:series.accountNumber,creditAccountKey:`sync:${series.profileId}:${series.accountNumber}`,card:series.card,description:series.description});
+      items.push({source:'credit_sync',series,charge,date:charge.date,amount:charge.amount,part:charge.part,totalParts:charge.totalParts,transactionDate:charge.transactionDate||series.transactionDate||'',account:series.account,ownerLabel:series.ownerLabel,provider:series.provider,profileId:series.profileId,accountNumber:series.accountNumber,creditAccountKey:`sync:${series.profileId}:${series.accountNumber}`,card:series.card,description:series.description,foreignCurrency:series.foreignCurrency===true,originalCurrency:series.originalCurrency||'',status:'completed'});
     }
+  }
+  for(const pending of syncedPendingTransactionsData(state,asOf)){
+    const key=monthKey(pending.date);if(!key||key<cutoffMonth)continue;
+    // Pending authorizations are first-class credit-page rows. Only a fresh, ILS-valued
+    // approval contributes to the provisional credit-page monthly forecast; stale LKG or
+    // foreign-only approvals stay visible with a zero ILS contribution until the issuer
+    // supplies a current/final billing amount.
+    const forecastAmount=pending.pendingFresh&&pending.isShekel?pending.amount:0;
+    items.push({source:'credit_pending',pending,id:pending.id,date:pending.date,amount:forecastAmount,displayAmount:pending.amount,displayCurrency:pending.currency,part:1,totalParts:1,transactionDate:pending.transactionDate,account:pending.account,ownerLabel:pending.ownerLabel,provider:pending.provider,profileId:pending.profileId,accountNumber:pending.accountNumber,creditAccountKey:pending.creditAccountKey,card:pending.card,description:pending.description,foreignCurrency:pending.foreignCurrency===true,originalAmount:pending.originalAmount,originalCurrency:pending.originalCurrency||'',pendingFresh:pending.pendingFresh,chargeDateSource:pending.chargeDateSource,status:'pending'});
+  }
+  for(const foreign of syncedForeignCurrencyTransactionsData(state)){
+    const key=monthKey(foreign.date);if(!key||key<cutoffMonth)continue;
+    items.push({source:'credit_foreign',foreign,id:foreign.id,date:foreign.date,amount:0,displayAmount:foreign.amount,displayCurrency:foreign.currency,part:foreign.part,totalParts:foreign.totalParts,transactionDate:foreign.transactionDate,account:foreign.account,ownerLabel:foreign.ownerLabel,provider:foreign.provider,profileId:foreign.profileId,accountNumber:foreign.accountNumber,creditAccountKey:foreign.creditAccountKey,card:foreign.card,description:foreign.description,foreignCurrency:true,originalAmount:foreign.originalAmount,originalCurrency:foreign.originalCurrency||'',status:foreign.status||'completed'});
   }
   for(const record of Array.isArray(state?.credits)?state.credits:[]){
     for(const charge of rawCreditSchedule(record)){

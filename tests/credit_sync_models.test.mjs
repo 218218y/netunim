@@ -26,6 +26,9 @@ import {
   normalizeCreditSync,
   syncedInstallmentsData,
   syncedPendingTransactionsData,
+  syncedPendingForecastData,
+  syncedForeignCurrencyTransactionsData,
+  creditTransactionIsForeignCurrency,
   syncedCreditSeries,
 } from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {creditSyncHeadlineState} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
@@ -102,7 +105,7 @@ const missingNumbers=normalizeCreditScrapeAccount({accountNumber:'0000',balance:
 assert.equal(missingNumbers.balance,null);assert.equal(missingNumbers.cardFrame,null);assert.equal(missingNumbers.availableCredit,null);
 
 
-const availabilitySync=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',txns:[
+const availabilitySync=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',balanceDate:'2026-09-10',txns:[
   {id:'past',processedDate:'2026-08-10',chargedAmount:-90,chargedCurrency:'ILS',status:'completed'},
   {id:'next-a',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',status:'completed'},
   {id:'next-refund',processedDate:'2026-09-10',chargedAmount:50,chargedCurrency:'ILS',status:'completed'},
@@ -123,9 +126,19 @@ const directAvailableStatus=creditFrameStatus({...availabilityAccount,cardFrame:
 assert.equal(directAvailableStatus.available,4321);assert.equal(directAvailableStatus.pendingAuthorizations,100);assert.equal(directAvailableStatus.source,'issuer_available','issuer-provided available credit is authoritative and is never reduced a second time for the pending approvals it already includes');
 assert.deepEqual(creditUpcomingCharge({balance:-321,balanceDate:'2026-09-10',txns:[]},'visaCal','2026-09-02'),{amount:321,date:'2026-09-10',source:'issuer_balance'},'Cal balance is allowed only as a documented next-debit fallback');
 assert.equal(creditUpcomingCharge({balance:-1250,txns:[]},'max','2026-09-02'),null,'MAX balance represents utilized credit and is never mislabeled as an upcoming debit');
-const pendingReviewRows=syncedPendingTransactionsData({creditSync:availabilitySync});
-assert.equal(pendingReviewRows.length,1);assert.equal(pendingReviewRows[0].description,'אישור טרי');assert.equal(pendingReviewRows[0].amount,100);assert.equal(pendingReviewRows[0].card,'ישראכרט בדיקה','pending approvals are immediately available to the credit-page review selector');
+const pendingReviewRows=syncedPendingTransactionsData({creditSync:availabilitySync},'2026-09-02');
+assert.equal(pendingReviewRows.length,1);assert.equal(pendingReviewRows[0].description,'אישור טרי');assert.equal(pendingReviewRows[0].amount,100);assert.equal(pendingReviewRows[0].card,'ישראכרט בדיקה','pending approvals are immediately available to the credit-page transaction selector');
+assert.equal(pendingReviewRows[0].date,'2026-09-10');assert.equal(pendingReviewRows[0].chargeDateSource,'issuer_next_charge','pending approval uses the issuer next-cycle date rather than its purchase date when projecting the credit-page month');
+const pendingForecastRows=syncedPendingForecastData({creditSync:availabilitySync},'2026-09-02');
+assert.equal(pendingForecastRows.length,1);assert.equal(pendingForecastRows[0].amount,100);assert.equal(pendingForecastRows[0].status,'pending','fresh ILS approvals participate provisionally in the credit-page forecast without becoming finalized Kupa obligations');
+const availabilityDetail=creditMonthlyDetailData({credits:[],creditSync:availabilitySync},'2026-09-02').months.find(month=>month.key==='2026-09');
+assert.equal(availabilityDetail.total,300,'credit-page September total provisionally includes 200 finalized ILS plus the 100 pending approval');
+assert.equal(availabilityDetail.items.some(item=>item.source==='credit_pending'&&item.status==='pending'&&item.description==='אישור טרי'),true,'pending approval is a first-class row inside the ordinary transactions/payments month');
 assert.equal(syncedInstallmentsData({creditSync:availabilitySync}).some(row=>row.status==='pending'),false,'pending approvals remain excluded from finalized Kupa cash-flow obligations until the issuer settles them');
+const stalePendingSync=normalizeCreditSync({version:4,profiles:[{profileId:'stale-pending',provider:'max',accounts:[{accountNumber:'4444',balanceDate:'2026-09-10',pendingStatus:'provider_error',pendingTransactions:[{id:'stale-auth',status:'pending',transactionDate:'2026-09-03',processedDate:'2026-09-03',chargedAmount:-70,chargedCurrency:'ILS',description:'אישור ישן'}]}]}],cardMappings:{'stale-pending:4444':{included:true,hidden:false}}});
+assert.equal(syncedPendingTransactionsData({creditSync:stalePendingSync},'2026-09-03').length,1,'Last Known Good pending approval stays visible when the issuer pending endpoint temporarily fails');
+assert.equal(syncedPendingForecastData({creditSync:stalePendingSync},'2026-09-03').length,0,'stale pending data cannot reserve a monthly ILS forecast as if it were fresh');
+assert.equal(creditMonthlyDetailData({credits:[],creditSync:stalePendingSync},'2026-09-03').months.find(month=>month.key==='2026-09').total,0,'stale pending row remains visible but contributes zero to the month total');
 const manualMappingSync=normalizeCreditSync({version:3,profiles:[{profileId:'manual-frame',provider:'amex',accounts:[{accountNumber:'7777',txns:[]}]}],cardMappings:{'manual-frame:7777':{included:true,manualFrame:12345.67}}});
 assert.equal(manualMappingSync.cardMappings['manual-frame:7777'].manualFrame,12345.67,'manual frame survives normalization in the existing v3 schema without triggering the destructive v2-to-v3 cutover');
 assert.equal(normalizeCreditSync({version:3,cardMappings:{bad:{manualFrame:-1}}}).cardMappings.bad.manualFrame,null,'invalid negative manual frame fails closed');
@@ -364,6 +377,15 @@ assert.equal(syncedCreditSeries(hiddenState,'2026-09-01').some(r=>r.profileId===
 
 const foreign=normalizeCreditSync({version:3,profiles:[{profileId:'fx',provider:'visaCal',label:'כאל',defaultAccount:'עסקי',accounts:[{accountNumber:'9999',txns:[{id:'usd',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-100,chargedCurrency:'USD',originalAmount:-100,originalCurrency:'USD',description:'עסקה דולרית'}]}]}],cardMappings:{[creditCardMappingKey('fx','9999')]:{included:true,hidden:false,account:'עסקי'}}});
 assert.equal(syncedInstallmentsData({creditSync:foreign}).length,0,'foreign-currency amounts never silently enter an ILS cash-flow forecast');
+const foreignDisplay=syncedForeignCurrencyTransactionsData({creditSync:foreign});
+assert.equal(foreignDisplay.length,1);assert.equal(foreignDisplay[0].amount,100);assert.equal(foreignDisplay[0].currency,'USD','true foreign-billed transactions remain visible with their issuer currency instead of being discarded');
+const foreignDetail=creditMonthlyDetailData({credits:[],creditSync:foreign},'2026-09-01').months.find(month=>month.key==='2026-09');
+assert.equal(foreignDetail.total,0);assert.equal(foreignDetail.items[0].source,'credit_foreign');assert.equal(foreignDetail.items[0].foreignCurrency,true,'foreign-billed detail row is shown but cannot alter an ILS month total without an issuer conversion');
+const convertedFx=normalizeCreditSync({version:3,profiles:[{profileId:'fx-ils',provider:'max',accounts:[{accountNumber:'8888',txns:[{id:'usd-ils',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',originalAmount:-10000,originalCurrency:'JPY',description:'מטח שחויב בשקלים'}]}]}],cardMappings:{[creditCardMappingKey('fx-ils','8888')]:{included:true,hidden:false}}});
+assert.equal(creditTransactionIsForeignCurrency(convertedFx.profiles[0].accounts[0].txns[0]),true,'original foreign currency is preserved as an FX fact even after the issuer supplies an ILS billing amount');
+const convertedFxSeries=syncedCreditSeries({creditSync:convertedFx},'2026-09-01')[0];
+assert.equal(convertedFxSeries.foreignCurrency,true,'ILS-billed foreign purchase stays in ordinary ILS totals and receives the FX marker');
+assert.equal(convertedFxSeries.totalAmount,250,'a foreign original amount can never be mislabeled as an ILS series total after conversion');
 assert.equal(CREDIT_PROVIDER_LABELS.visaCal,'כאל');
 
 const pendingAndIdless=normalizeCreditSync({version:1,profiles:[{profileId:'p-cal',provider:'visaCal',label:'כאל',defaultAccount:'עסקי',accounts:[{accountNumber:'1111',txns:[

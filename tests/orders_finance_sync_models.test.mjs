@@ -72,6 +72,28 @@ assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{a
 const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
 assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
 
+const ordersPendingLegacy=normalizeCreditSync({version:3,profiles:[{profileId:'pending-legacy',provider:'max',accounts:[{accountNumber:'5656',txns:[{id:'approval-with-date',date:'2026-09-09T10:00:00Z',processedDate:'2026-09-09T10:00:00Z',chargedAmount:-200,chargedCurrency:'ILS',description:'אישור חדש',status:'pending'}]}]}],cardMappings:{'pending-legacy:5656':{included:true,manualFrame:1000}}});
+const ordersPendingLegacyAccount=ordersPendingLegacy.profiles[0].accounts[0];
+assert.equal(ordersPendingLegacyAccount.pendingTransactions.length,1,'Orders treats the issuer pending status as authoritative even when processedDate is present');
+assert.equal(ordersPendingLegacyAccount.months.length,0,'legacy pending approvals stay outside finalized month slices');
+assert.equal(creditFrameStatus(ordersPendingLegacyAccount,ordersPendingLegacy.cardMappings['pending-legacy:5656'],'2026-09-01').available,800,'calculated frame fallback subtracts live pending authorizations');
+const ordersPendingDirect=normalizeCreditSync({version:4,profiles:[{profileId:'pending-direct',provider:'max',accounts:[{accountNumber:'5757',cardFrame:1000,availableCredit:650,pendingStatus:'success',pendingTransactions:[{id:'approval-direct',date:'2026-09-09T10:00:00Z',processedDate:'2026-09-09T10:00:00Z',chargedAmount:-200,chargedCurrency:'ILS',status:'pending'}]}]}],cardMappings:{'pending-direct:5757':{included:true}}});
+assert.equal(creditFrameStatus(ordersPendingDirect.profiles[0].accounts[0],ordersPendingDirect.cardMappings['pending-direct:5757'],'2026-09-01').available,650,'issuer available credit remains authoritative and pending is never subtracted twice');
+
+const ordersPendingDetailState={credits:[],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'pending-detail',provider:'max',defaultAccount:'עסקי',accounts:[{accountNumber:'5858',balanceDate:'2026-09-10',pendingStatus:'success',pendingTransactions:[{id:'pending-detail-row',date:'2026-09-09T10:00:00Z',processedDate:'2026-09-09T10:00:00Z',chargedAmount:-125,chargedCurrency:'ILS',description:'עסקה ממתינה',status:'pending'}]}]}],cardMappings:{'pending-detail:5858':{included:true,hidden:false,account:'עסקי'}}})};
+const ordersPendingSeptember=creditDetailMonths(ordersPendingDetailState,{asOf:'2026-09-01'}).find(month=>month.key==='2026-09');
+assert.equal(ordersPendingSeptember.total,125,'fresh ILS pending authorization is provisionally included in the Orders monthly credit forecast');
+assert.equal(ordersPendingSeptember.items[0].source,'credit_pending');assert.equal(ordersPendingSeptember.items[0].status,'pending');assert.equal(ordersPendingSeptember.items[0].date,'2026-09-10','pending approval is projected to the issuer next-cycle date when available');
+const ordersStalePendingState={credits:[],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'pending-stale',provider:'visaCal',accounts:[{accountNumber:'5959',balanceDate:'2026-09-10',pendingStatus:'provider_error',pendingTransactions:[{id:'pending-stale-row',date:'2026-09-09T10:00:00Z',chargedAmount:-90,chargedCurrency:'ILS',description:'אישור קודם',status:'pending'}]}]}],cardMappings:{'pending-stale:5959':{included:true,hidden:false,account:'עסקי'}}})};
+const ordersStaleSeptember=creditDetailMonths(ordersStalePendingState,{asOf:'2026-09-01'}).find(month=>month.key==='2026-09');
+assert.equal(ordersStaleSeptember.items.length,1,'stale Last Known Good pending data remains visible for operator review');assert.equal(ordersStaleSeptember.total,0,'stale pending data never inflates the ILS forecast');
+const ordersFxState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'fx-detail',provider:'max',accounts:[{accountNumber:'6060',txns:[{id:'jpy-ils',date:'2026-09-02',processedDate:'2026-09-10',originalAmount:-10000,originalCurrency:'JPY',chargedAmount:-250,chargedCurrency:'ILS',description:'רכישה ביפן',status:'completed'},{id:'usd-direct',date:'2026-09-03',processedDate:'2026-09-11',originalAmount:-40,originalCurrency:'USD',chargedAmount:-40,chargedCurrency:'USD',description:'חיוב דולר',status:'completed'}]}]}],cardMappings:{'fx-detail:6060':{included:true,hidden:false,account:'עסקי'}}})};
+const ordersFxSeptember=creditDetailMonths(ordersFxState,{asOf:'2026-09-01'}).find(month=>month.key==='2026-09');
+const ordersJpyRow=ordersFxSeptember.items.find(row=>row.creditId.includes('jpy-ils')),ordersUsdRow=ordersFxSeptember.items.find(row=>row.creditId.includes('usd-direct'));
+assert.equal(ordersJpyRow.foreignCurrency,true);assert.equal(ordersJpyRow.amount,250);assert.equal(ordersJpyRow.totalAmount,250,'an ILS-billed FX purchase never reinterprets the foreign original amount as ILS');
+assert.equal(ordersUsdRow.source,'credit_foreign');assert.equal(ordersUsdRow.amount,0,'a genuinely foreign-billed transaction stays visible but does not enter ILS totals');
+
+
 const selectionFeed=normalizeCreditSync({version:3,profiles:[
   {profileId:'max-filter',provider:'max',label:'MAX',defaultAccount:'עסקי',accounts:[{accountNumber:'1111',cardFrame:1000,availableCredit:700,txns:[{id:'m1',processedDate:'2026-09-12',chargedAmount:-50,chargedCurrency:'ILS',status:'completed'}]}]},
   {profileId:'isr-filter',provider:'isracard',label:'ישראכרט',defaultAccount:'עסקי',accounts:[{accountNumber:'2222',txns:[{id:'i1',processedDate:'2026-09-15',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]},
@@ -104,6 +126,7 @@ const forecastState={credits:[],creditSync:normalizeCreditSync({version:3,profil
 ]}]}],cardMappings:{[forecastKey]:{included:true,hidden:false,account:'עסקי'}}})};
 const rollingForecast=creditMonthBuckets(forecastState,{view:'rolling12',asOf:'2026-09-01'});
 assert.deepEqual(rollingForecast.months.map(month=>month.key),['2026-09','2026-11','2027-03'],'rolling 12-month forecast omits empty months and already-collected history');
+assert.equal(rollingForecast.rows.find(row=>row.description==='ספטמבר').totalAmount,100,'a synchronized ILS row without originalAmount keeps its charged amount as the displayed transaction total');
 const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-01'});
 assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
 
