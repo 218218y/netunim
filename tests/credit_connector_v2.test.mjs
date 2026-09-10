@@ -77,6 +77,7 @@ assert.equal(isracardDigitalResult.accounts[0].months.find(row=>row.month==='202
 assert.equal(isracardDigitalResult.accounts[0].availableCredit,8600,'Isracard DigitalV3 limitUsed and creditLimit semantics produce issuer available credit without a client-side pending double subtraction');
 const isracardApproved=normalizeIsracardDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'isr-abc'});
 assert.equal(isracardApproved.status,'pending');assert.equal(isracardApproved.processedDate,isracardApproved.date,'Isracard DigitalV3 pending rows intentionally carry purchase time in processedDate but remain pending by explicit status');
+assert.equal(isracardApproved.transactionTime,'12:34','Isracard preserves the issuer-supplied purchase clock independently of the billing date');
 
 const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
 let amexDigitalOptions=null;
@@ -112,8 +113,10 @@ assert.deepEqual(logonWithoutUserNameWire,{MisparZihuy:'123456789',Sisma:'fixed-
 assert.equal(buildAmexDigitalV3LogonRequest({returnCode:'1',userName:'issuer-user'},amexCredentials).KodMishtamesh,'issuer-user','when Amex supplies userName, performLogonI preserves it unchanged');
 const approved=normalizeAmexDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'abc',extraDetails:'memo'});
 assert.equal(approved.status,'pending');assert.equal(approved.originalAmount,-75);assert.equal(approved.chargedAmount,-75);assert.equal(approved.date,approved.transactionDate,'DigitalV3 pending rows preserve the exact purchase date separately for ordering/audit');
+assert.equal(approved.transactionTime,'12:34','Amex pending approvals preserve the explicit issuer transaction clock');
 const voucher=normalizeAmexDigitalV3Voucher({purchaseDate:'06/09/2026',purchaseTime:'08:15:00',businessName:'עסק 2',originalAmount:300,originalCurrencyIso:'ILS',billingAmount:100,seqVoucherNumber:'v1',currentInstallmentNum:2,numberOfInstallment:3},'2026-09-10T00:00:00.000Z');
 assert.deepEqual(voucher.installments,{number:2,total:3});assert.equal(voucher.processedDate,'2026-09-10T00:00:00.000Z');assert.equal(voucher.transactionDate,voucher.date,'DigitalV3 settled rows retain purchase date before installment billing-date normalization');
+assert.equal(voucher.transactionTime,'08:15','Amex completed vouchers preserve purchaseTime for the transactions table');
 const amexBadPassword=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('invalid');error.code='CREDIT_INVALID_PASSWORD';error.stage='LoginPassword';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
 await assert.rejects(()=>amexBadPassword.scrape(),error=>error.code==='CREDIT_INVALID_PASSWORD'&&error.browserEngine==='chromium','invalid Amex credentials never trigger a second browser engine login attempt');
 const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('html');error.code='CREDIT_LOGIN_HTML_RESPONSE';error.stage='LoginApi';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});

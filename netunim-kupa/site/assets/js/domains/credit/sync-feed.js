@@ -8,6 +8,7 @@ function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ')
 function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 function nonNegativeMoney(value){const n=finite(value);return n!==null&&n>=0?Math.round(n*100)/100:null}
 function iso(value){if(!value)return null;const d=new Date(value);return Number.isFinite(d.getTime())?d.toISOString():null}
+function transactionTime(value){const match=/^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(String(value??'').trim());if(!match)return '';const hour=Number(match[1]),minute=Number(match[2]);return hour>=0&&hour<=23&&minute>=0&&minute<=59?`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`:''}
 function safeCreditErrorMessage(value){const raw=String(value??'').trim(),secretField=new RegExp(`\\b${['pass','word'].join('')}\\b\\s*[:=]`,'i');if(/fetch(?:Post|Get)WithinPage|<!DOCTYPE|<html|\b(?:Sisma|MisparZihuy|cardSuffix|KodMishtamesh|extraHeaders)\b/i.test(raw)||secretField.test(raw))return 'חברת האשראי החזירה תשובה טכנית שלא ניתן להציג בבטחה. נסה שוב לאחר עדכון ה‑Bank Bridge או השתמש ברענון עם חלון אבחון.';return text(raw||'סנכרון האשראי נכשל',260)}
 function creditErrorComponent(error={}){const given=String(error.component||'');if(['core_transactions','forecast_transactions','pending','frames','profile'].includes(given))return given;if(error.tier==='core')return 'core_transactions';if(error.tier==='forecast'||error.code==='CREDIT_PARTIAL_FORECAST')return 'forecast_transactions';if(error.stage==='Frames')return 'frames';if(error.stage==='Pending')return 'pending';return 'profile'}
 function creditErrorSeverity(error={}){const given=String(error.severity||'');if(['error','warning','deferred','info'].includes(given))return given;if(error.deferred===true||['CREDIT_AUTOMATION_BLOCKED','CREDIT_PROVIDER_RATE_LIMITED'].includes(String(error.code||'')))return 'deferred';return ['forecast_transactions','pending','frames'].includes(creditErrorComponent(error))?'warning':'error'}
@@ -22,6 +23,7 @@ export function normalizeCreditTransaction(txn={}){
     date:iso(txn.date),
     processedDate:iso(txn.processedDate),
     transactionDate:iso(txn.transactionDate),
+    transactionTime:transactionTime(txn.transactionTime),
     originalAmount:original,
     originalCurrency:text(txn.originalCurrency||'',12),
     chargedAmount:charged,
@@ -210,10 +212,10 @@ function buildPendingRows(state,asOf=todayISO(),{includeHidden=false}={}){
     const presentation=accountPresentation(profile,account,mapping),pendingFresh=account.pendingStatus==='success';
     for(const [index,tx] of account.txns.entries()){
       if(tx.status!=='pending')continue;
-      const transactionDate=transactionOriginDate(tx)||String(tx.transactionDate||tx.date||tx.processedDate||'').slice(0,10),amount=transactionForecastAmount(tx),currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',projection=pendingProjectionDate(account,tx,asOf),originalAmount=finite(tx.originalAmount),originalCurrency=text(tx.originalCurrency||'',12),foreignCurrency=creditTransactionIsForeignCurrency(tx);
+      const transactionDate=transactionOriginDate(tx)||String(tx.transactionDate||tx.date||tx.processedDate||'').slice(0,10),txTime=transactionTime(tx.transactionTime),amount=transactionForecastAmount(tx),currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',projection=pendingProjectionDate(account,tx,asOf),originalAmount=finite(tx.originalAmount),originalCurrency=text(tx.originalCurrency||'',12),foreignCurrency=creditTransactionIsForeignCurrency(tx);
       const stable=tx.id?`${tx.id}|${transactionDate}|${amount}|${currency}`:`idless-${index}|${transactionDate}|${amount}|${currency}|${tx.description}`;
       const identity=`${profile.profileId}|${account.accountNumber}|${stable}`;if(seen.has(identity))continue;seen.add(identity);
-      rows.push({id:identity,source:'credit_pending',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,transactionDate,date:projection.date,provisionalChargeDate:projection.date,chargeDateSource:projection.source,amount,currency,isShekel:isShekelTransaction(tx),foreignCurrency,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency,pendingFresh,status:'pending'});
+      rows.push({id:identity,source:'credit_pending',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,transactionDate,transactionTime:txTime,date:projection.date,provisionalChargeDate:projection.date,chargeDateSource:projection.source,amount,currency,isShekel:isShekelTransaction(tx),foreignCurrency,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency,pendingFresh,status:'pending'});
     }
   }
   return rows.sort((a,b)=>String(b.transactionDate).localeCompare(String(a.transactionDate))||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he'));
@@ -236,11 +238,11 @@ export function syncedForeignCurrencyTransactionsData(state){
     for(const [index,tx] of account.txns.entries()){
       if(tx.status==='pending'||isShekelTransaction(tx))continue;
       const date=creditChargeDate(tx),amount=transactionForecastAmount(tx);if(!date||!amount)continue;
-      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,transactionDate=transactionOriginDate(tx),currency=text(tx.chargedCurrency||tx.originalCurrency||'',12);
+      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,transactionDate=transactionOriginDate(tx),txTime=transactionTime(tx.transactionTime),currency=text(tx.chargedCurrency||tx.originalCurrency||'',12);
       const stable=tx.id?`${tx.id}|${date}|${amount}|${currency}|${part}`:`idless-${index}|${date}|${amount}|${currency}|${part}|${tx.description}`;
       const identity=`${profile.profileId}|${account.accountNumber}|${stable}`;if(seen.has(identity))continue;seen.add(identity);
       const originalAmount=finite(tx.originalAmount);
-      rows.push({id:identity,source:'credit_foreign',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,description:tx.description,transactionDate,date,amount,currency,part,totalParts,foreignCurrency:true,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency:text(tx.originalCurrency||'',12),status:tx.status||'completed'});
+      rows.push({id:identity,source:'credit_foreign',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,description:tx.description,transactionDate,transactionTime:txTime,date,amount,currency,part,totalParts,foreignCurrency:true,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency:text(tx.originalCurrency||'',12),status:tx.status||'completed'});
     }
   }
   return rows.sort((a,b)=>String(b.transactionDate||b.date).localeCompare(String(a.transactionDate||a.date))||String(a.card).localeCompare(String(b.card),'he'));
@@ -300,9 +302,9 @@ export function syncedCreditSeries(state,asOf=todayISO()){
       if(tx.status==='pending'||!isShekelTransaction(tx))continue;
       const chargeDate=String(tx.processedDate||tx.date||'').slice(0,10),amount=transactionForecastAmount(tx);
       if(!chargeDate||!amount)continue;
-      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,key=syncedSeriesKey(profile,account,tx,index),transactionDate=transactionOriginDate(tx);
+      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,key=syncedSeriesKey(profile,account,tx,index),transactionDate=transactionOriginDate(tx),txTime=transactionTime(tx.transactionTime);
       if(!groups.has(key))groups.set(key,{id:key,source:'credit_sync',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,ownerLabel:presentation.ownerLabel,account:presentation.accountClass,card:presentation.cardName,description:tx.description,totalParts,items:[],originalCandidates:[],foreignCurrency:false,originalCurrencies:new Set()});
-      const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.foreignCurrency=group.foreignCurrency||creditTransactionIsForeignCurrency(tx);if(tx.originalCurrency)group.originalCurrencies.add(text(tx.originalCurrency,12));group.items.push({date:chargeDate,amount,part,totalParts,transactionDate});
+      const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.foreignCurrency=group.foreignCurrency||creditTransactionIsForeignCurrency(tx);if(tx.originalCurrency)group.originalCurrencies.add(text(tx.originalCurrency,12));group.items.push({date:chargeDate,amount,part,totalParts,transactionDate,transactionTime:txTime});
       const original=finite(tx.originalAmount);if(original!==null&&original!==0&&shekelCurrency(tx.originalCurrency||tx.chargedCurrency||'ILS'))group.originalCandidates.push(-original);
     }
   }
@@ -318,10 +320,10 @@ export function syncedCreditSeries(state,asOf=todayISO()){
     const remainingCount=Math.max(0,group.totalParts-completedCount),futureItems=items.filter(x=>x.date>=asOf);
     const remainingAmount=futureItems.reduce((sum,x)=>sum+x.amount,0),knownTotal=items.reduce((sum,x)=>sum+x.amount,0);
     const originalTotal=group.originalCandidates.find(v=>Number.isFinite(v)&&Math.abs(v)>=Math.abs(knownTotal)-0.01);
-    const totalAmount=originalTotal??knownTotal,lastChargeDate=items.reduce((latest,item)=>item.date>latest?item.date:latest,''),transactionDate=items.map(item=>item.transactionDate).filter(Boolean).sort()[0]||'';
+    const totalAmount=originalTotal??knownTotal,lastChargeDate=items.reduce((latest,item)=>item.date>latest?item.date:latest,''),transactionDate=items.map(item=>item.transactionDate).filter(Boolean).sort()[0]||'',transactionTime=items.map(item=>item.transactionTime).find(Boolean)||'';
     const partial=remainingCount>futureItems.length;
     const originalCurrency=group.originalCurrencies.size===1?[...group.originalCurrencies][0]:'';
-    result.push({...group,originalCurrencies:undefined,items,totalAmount,transactionDate,originalCurrency,completedCount,remainingCount,next,remainingAmount,lastChargeDate,partial,complete:remainingCount===0});
+    result.push({...group,originalCurrencies:undefined,items,totalAmount,transactionDate,transactionTime,originalCurrency,completedCount,remainingCount,next,remainingAmount,lastChargeDate,partial,complete:remainingCount===0});
   }
   return result.sort((a,b)=>{
     const an=a.next?.date||'9999-12-31',bn=b.next?.date||'9999-12-31';return an.localeCompare(bn)||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he');

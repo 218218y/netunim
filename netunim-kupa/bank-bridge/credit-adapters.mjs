@@ -51,6 +51,7 @@ function safeDate(value){
   const raw=String(value).trim(),floatingIso=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?$/.test(raw),d=new Date(floatingIso?`${raw}Z`:raw);
   return Number.isFinite(d.getTime())?d.toISOString():null;
 }
+function explicitTransactionTime(value){const match=/[T\s](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/.exec(String(value??'').trim());if(!match)return '';const time=`${match[1]}:${match[2]}`;return time==='00:00'?'':time}
 function safeError(message,code,extra={}){const e=new Error(message);e.code=code;Object.assign(e,extra);return e}
 function safeSuffix(value){const digits=String(value??'').replace(/\D/g,'');return digits?digits.slice(-4):text(value,4)}
 function errorFetchStatus(error){
@@ -119,7 +120,7 @@ export function normalizeVisaCalTransaction(transaction={}){
   return normalizeCreditScrapeTransaction({
     identifier:pending?'':transaction.trnIntId,
     type:[CAL_TRANSACTION_TYPES.regular,CAL_TRANSACTION_TYPES.standingOrder].includes(String(transaction.trnTypeCode))?'normal':'installments',
-    status:pending?'pending':'completed',date,processedDate:pending?purchaseDate:safeDate(transaction.debCrdDate),transactionDate:purchaseDate,
+    status:pending?'pending':'completed',date,processedDate:pending?purchaseDate:safeDate(transaction.debCrdDate),transactionDate:purchaseDate,transactionTime:explicitTransactionTime(transaction.trnPurchaseDate),
     originalAmount:Number.isFinite(originalBase)?originalBase*(credit?1:-1):null,originalCurrency:calCurrency(transaction.trnCurrencySymbol),
     chargedAmount:Number.isFinite(chargedBase)?-chargedBase:null,chargedCurrency:pending?'':calCurrency(transaction.debCrdCurrencySymbol),
     description:text(transaction.merchantName,220)||'עסקת אשראי',memo:text(transaction.transTypeCommentDetails,260),installments,

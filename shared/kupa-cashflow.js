@@ -52,7 +52,14 @@ function bankRowLooksLikeCreditSettlement(row,providers=[]){
   if(text.includes('אשראי')||text.includes('credit card'))return true;
   return providers.some(provider=>(CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>text.includes(String(marker).toLowerCase())));
 }
+function bankRowExplicitlyMatchesProvider(row,provider){
+  if(!provider||row?.status==='pending'||row?.presenceState==='missing')return false;
+  const text=bankTransactionSearchText(row);if(!text)return false;
+  return (CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>text.includes(String(marker).toLowerCase()));
+}
 function moneyCents(value){return Math.round(num(value)*100)}
+function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
+function bankTextHasCardSuffix(row,suffix){return !!suffix&&new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
 function settlementRowsForLatestElapsedCycle(installments,start,reference){
   const latestByCard=new Map();
   for(const row of installments){
@@ -90,6 +97,47 @@ function bankSettlementMatchIndexes(bankRows,groupRows,used,reference){
   }
   return null;
 }
+function strongSettlementRows(bankRows,groupRows,used,reference){
+  const provider=String(groupRows[0]?.provider||'').trim(),due=groupRows.reduce((min,row)=>!min||row.date<min?row.date:min,'');if(!provider||!due)return[];
+  return bankRows.map((row,index)=>({row,index,day:bankTransactionDay(row),value:moneyCents(row?.amount)})).filter(item=>!used.has(item.index)&&item.day&&item.day>=due&&item.day<=reference&&item.value<0&&bankRowExplicitlyMatchesProvider(item.row,provider));
+}
+function resolveStrongSettlementEvidence(bankRows,candidates,unresolved,used,reference){
+  const groups=new Map();
+  for(const index of unresolved){const row=candidates[index],provider=String(row?.provider||'').trim(),due=String(row?.date||'');if(!provider||!due)continue;const key=`${due}|${provider}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(index)}
+  const resolveIndexes=(indexes,bankIndexes=[])=>{for(const index of indexes)unresolved.delete(index);for(const index of bankIndexes)used.add(index)};
+  for(const indexes of groups.values()){
+    let remaining=indexes.filter(index=>unresolved.has(index));if(!remaining.length)continue;
+    let rows=remaining.map(index=>candidates[index]),strong=strongSettlementRows(bankRows,rows,used,reference);if(!strong.length)continue;
+    const cardGroups=()=>{const map=new Map();for(const index of remaining.filter(value=>unresolved.has(value))){const row=candidates[index],key=creditCardKey(row);if(!map.has(key))map.set(key,[]);map.get(key).push(index)}return map};
+    // A bank description that names the actual card suffix is stronger than any amount
+    // estimate. It remains valid even when the issuer total and the posted bank debit differ.
+    for(const cardIndexes of cardGroups().values()){
+      const suffix=cardSuffixForRows(cardIndexes.map(index=>candidates[index]));if(!suffix)continue;
+      const hits=strong.filter(item=>!used.has(item.index)&&bankTextHasCardSuffix(item.row,suffix));
+      if(hits.length!==1)continue;resolveIndexes(cardIndexes,[hits[0].index]);
+    }
+    remaining=indexes.filter(index=>unresolved.has(index));if(!remaining.length)continue;
+    rows=remaining.map(index=>candidates[index]);strong=strongSettlementRows(bankRows,rows,used,reference);if(!strong.length)continue;
+    let cards=[...cardGroups().values()];
+    if(cards.length===1){resolveIndexes(cards[0],strong.map(item=>item.index));continue}
+    // If the bank has one explicit provider debit per unresolved card, the bank is the
+    // authoritative record of what actually posted; do not require the issuer estimate
+    // to equal those debits cent-for-cent.
+    if(strong.length===cards.length){resolveIndexes(remaining,strong.map(item=>item.index));continue}
+    const cardAmounts=cards.map(cardIndexes=>({indexes:cardIndexes,amount:Math.abs(moneyCents(cardIndexes.reduce((sum,index)=>sum+num(candidates[index]?.amount),0)))}));
+    if(strong.length===1){
+      const item=strong[0],actual=Math.abs(item.value),aggregate=cardAmounts.reduce((sum,card)=>sum+card.amount,0),aggregateError=Math.abs(actual-aggregate),errors=cardAmounts.map((card,index)=>({index,error:Math.abs(actual-card.amount)})).sort((a,b)=>a.error-b.error),best=errors[0],second=errors[1];
+      if(aggregateError<best.error){resolveIndexes(remaining,[item.index]);continue}
+      if(best&&(!second||best.error<second.error)&&best.error<aggregateError){resolveIndexes(cardAmounts[best.index].indexes,[item.index]);continue}
+    }
+    // For a partially posted split cycle, consume only bank rows that have a unique
+    // closest card amount. Unmatched cards stay in cash-flow until their own debit is seen.
+    const proposals=[];
+    for(const item of strong){const actual=Math.abs(item.value),errors=cardAmounts.map((card,index)=>({index,error:Math.abs(actual-card.amount)})).sort((a,b)=>a.error-b.error);if(errors[0]&&(!errors[1]||errors[0].error<errors[1].error))proposals.push({item,cardIndex:errors[0].index})}
+    const counts=new Map();for(const proposal of proposals)counts.set(proposal.cardIndex,(counts.get(proposal.cardIndex)||0)+1);
+    for(const proposal of proposals){if(counts.get(proposal.cardIndex)!==1)continue;const card=cardAmounts[proposal.cardIndex];if(!card.indexes.some(index=>unresolved.has(index)))continue;resolveIndexes(card.indexes,[proposal.item.index])}
+  }
+}
 function pendingCreditSettlementData(kupa,account,installments,start,reference){
   const feed=bankFeedForAccount(kupa,account);
   if(!feed||!isoDay(feed.syncedAt))return {rows:[],total:0};
@@ -108,6 +156,7 @@ function pendingCreditSettlementData(kupa,account,installments,start,reference){
       for(const index of indexes)unresolved.delete(index);
     }
   }
+  resolveStrongSettlementEvidence(bankRows,candidates,unresolved,used,reference);
   const rows=[...unresolved].map(index=>candidates[index]).sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card),'he'));
   return {rows,total:rows.reduce((sum,row)=>sum+num(row.amount),0)};
 }

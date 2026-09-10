@@ -39,6 +39,7 @@ import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleC
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
+import {creditRows as ordersCreditRows} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {todayISO,localISO,dObj,addMonthsISO} from '../netunim-kupa/site/assets/js/core/dates.js';
 
 assert.equal(CREDIT_SYNC_VERSION,4,'credit feed v4 adds monthly Last Known Good coverage without changing the synced-primary/additive-manual calculation model');
@@ -85,7 +86,7 @@ assert.match(htmlFailure.message,/ValidateIdData/,'Amex immediate-close diagnost
 const normalizedAccount=normalizeCreditScrapeAccount({
   accountNumber:'4321',balance:-1250.75,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:15000,
   txns:[
-    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',transactionDate:'2026-08-18T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',installments:{number:1,total:3},status:'completed'},
+    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',transactionDate:'2026-08-18T00:00:00.000Z',transactionTime:'14:27',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',installments:{number:1,total:3},status:'completed'},
     {identifier:'refund-1',date:'2026-08-22T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:50,originalCurrency:'ILS',chargedAmount:50,chargedCurrency:'ILS',description:'זיכוי',status:'completed'},
   ],
 });
@@ -95,6 +96,7 @@ assert.equal(normalizedAccount.availableCredit,null,'an issuer credit limit is n
 assert.equal(normalizedAccount.txns[0].installments.total,3);
 assert.equal(normalizedAccount.txns[0].chargedAmount,-100);
 assert.equal(normalizedAccount.txns[0].transactionDate,'2026-08-18T00:00:00.000Z','optional issuer purchase date survives the safe bridge normalization independently of billing date');
+assert.equal(normalizedAccount.txns[0].transactionTime,'14:27','an explicit issuer purchase clock survives bridge normalization as a separate local clock value');
 const maxFrame=normalizeCreditScrapeAccount({accountNumber:'9999',balance:-1250.75,cardFrame:15000},'max');
 assert.equal(maxFrame.availableCredit,13749.25,'MAX OpenToBuy is recovered exactly from the scraper-defined balance and credit limit');
 const isracardFrame=normalizeCreditScrapeAccount({accountNumber:'8742',balance:-10847.5,cardFrame:23500},'isracard');
@@ -364,6 +366,37 @@ settlementAfterPosting.bank.homeFeed.balance=4500;settlementAfterPosting.bank.ho
 const businessPosted=kupaAccountCashflowData(settlementAfterPosting,'עסקי','2026-09-11'),homePosted=kupaAccountCashflowData(settlementAfterPosting,'ביתי','2026-09-16');
 assert.equal(businessPosted.settlingCredit,0);assert.equal(businessPosted.credit,1200);assert.equal(businessPosted.projected,businessAwaitingBank.projected,'once the MAX debit appears, the lower bank balance replaces the temporary settlement hold with no projected-balance jump');
 assert.equal(homePosted.settlingCredit,0);assert.equal(homePosted.credit,600);assert.equal(homePosted.projected,homeAwaitingBank.projected,'home cash-flow has the same no-double-count continuity when the AMEX debit reaches the bank feed');
+
+const settlementDifferentAmount=JSON.parse(JSON.stringify(settlementBeforePosting));
+settlementDifferentAmount.bank.currentBalance=8992;settlementDifferentAmount.bank.feed.balance=8992;settlementDifferentAmount.bank.feed.transactions=[{id:'max-posted-different',date:'2026-09-11T00:00:00.000Z',amount:-1008,status:'completed',description:'MAX חיוב כרטיס'}];
+const differentAmountCycle=kupaAccountCashflowData(settlementDifferentAmount,'עסקי','2026-09-11');
+assert.equal(differentAmountCycle.settlingCredit,0,'an explicit MAX bank debit settles the single due card even when the actual bank amount differs from the issuer-derived cycle estimate');
+assert.equal(differentAmountCycle.projected,7792,'after a mismatched actual debit posts, projected checking uses the actual lower bank balance plus only future obligations instead of double-counting the old estimate');
+
+const genericDifferentAmount=JSON.parse(JSON.stringify(settlementDifferentAmount));genericDifferentAmount.bank.feed.transactions[0].description='חיוב כרטיס אשראי';
+const genericDifferentCycle=kupaAccountCashflowData(genericDifferentAmount,'עסקי','2026-09-11');
+assert.equal(genericDifferentCycle.settlingCredit,1000,'a generic credit-card label with a different amount is not strong enough to guess which issuer cycle posted');
+
+const splitMappings={'split:1111':{included:true,hidden:false,account:'עסקי',cardName:'MAX 1111'},'split:2222':{included:true,hidden:false,account:'עסקי',cardName:'MAX 2222'}};
+const splitCreditSync=normalizeCreditSync({version:4,profiles:[{profileId:'split',provider:'max',defaultAccount:'עסקי',accounts:[
+  {accountNumber:'1111',txns:[{id:'a-sep',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS',status:'completed',description:'A'},{id:'a-oct',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS',status:'completed',description:'A next'}]},
+  {accountNumber:'2222',txns:[{id:'b-sep',processedDate:'2026-09-10',chargedAmount:-2000,chargedCurrency:'ILS',status:'completed',description:'B'},{id:'b-oct',processedDate:'2026-10-10',chargedAmount:-2100,chargedCurrency:'ILS',status:'completed',description:'B next'}]},
+]}],cardMappings:splitMappings});
+const splitBase={version:4,checks:[],cash:[],cards:[],credits:[],expenses:[],cashflowSettings:{businessMinimum:0},creditSync:splitCreditSync,bank:{currentBalance:10000,asOfDate:'2026-09-11',source:'hapoalim',adjustments:[],feed:{syncedAt:'2026-09-11T08:00:00.000Z',balance:10000,transactions:[]}}};
+const splitPartial=JSON.parse(JSON.stringify(splitBase));splitPartial.bank.currentBalance=8992;splitPartial.bank.feed.balance=8992;splitPartial.bank.feed.transactions=[{id:'max-one-card',date:'2026-09-11',amount:-1008,status:'completed',description:'MAX'}];
+const splitPartialCycle=kupaAccountCashflowData(splitPartial,'עסקי','2026-09-11');
+assert.equal(splitPartialCycle.settlingCredit,2000,'when only one of several MAX card debits has posted, amount structure resolves the uniquely closest card and keeps the other card pending');
+const splitPosted=JSON.parse(JSON.stringify(splitBase));splitPosted.bank.currentBalance=7007;splitPosted.bank.feed.balance=7007;splitPosted.bank.feed.transactions=[{id:'max-card-a',date:'2026-09-11',amount:-1008,status:'completed',description:'MAX'},{id:'max-card-b',date:'2026-09-11',amount:-1985,status:'completed',description:'MAX'}];
+const splitPostedCycle=kupaAccountCashflowData(splitPosted,'עסקי','2026-09-11');
+assert.equal(splitPostedCycle.settlingCredit,0,'one explicit MAX bank debit per due card settles a split monthly charge even when neither actual amount equals the issuer estimate exactly');
+assert.equal(splitPostedCycle.projected,3807,'split actual debits are represented once through the bank balance while only the next 3,200 credit cycle remains forecast');
+const aggregatePosted=JSON.parse(JSON.stringify(splitBase));aggregatePosted.bank.currentBalance=7007;aggregatePosted.bank.feed.balance=7007;aggregatePosted.bank.feed.transactions=[{id:'max-aggregate',date:'2026-09-11',amount:-2993,status:'completed',description:'MAX'}];
+assert.equal(kupaAccountCashflowData(aggregatePosted,'עסקי','2026-09-11').settlingCredit,0,'a single provider debit that is structurally closer to the whole MAX cycle than to any individual card is treated as the aggregate posted cycle even with an amount difference');
+
+const dayNinePending=normalizeCreditSync({version:4,profiles:[{profileId:'pending-cutoff',provider:'max',accounts:[{accountNumber:'9090',pendingStatus:'success',pendingTransactions:[{id:'sep-9-pending',status:'pending',date:'2026-09-09T20:00:00.000Z',transactionDate:'2026-09-09T20:00:00.000Z',transactionTime:'23:00',chargedAmount:-250,chargedCurrency:'ILS',description:'עסקה מ-9 שטרם שובצה'}]}]}],cardMappings:{'pending-cutoff:9090':{included:true,hidden:false,account:'עסקי'}}});
+assert.equal(syncedInstallmentsData({creditSync:dayNinePending}).length,0,'a transaction made on the 9th that the issuer still marks pending is not forced into the current monthly debit before the issuer assigns its final billing date');
+assert.equal(syncedPendingTransactionsData({creditSync:dayNinePending},'2026-09-10')[0].transactionTime,'23:00','pending issuer transaction time remains available for the transaction browser without changing billing-cycle classification');
+assert.equal(ordersCreditRows({creditSync:dayNinePending},'2026-09-10')[0].transactionTime,'23:00','Orders preserves the same issuer-supplied transaction clock as Kupa');
 const manualSnapshotAfterDue=JSON.parse(JSON.stringify(settlementBeforePosting));manualSnapshotAfterDue.bank.source='manual';
 const manualCycle=kupaAccountCashflowData(manualSnapshotAfterDue,'עסקי','2026-09-11');
 assert.equal(manualCycle.settlingCredit,0,'a manual bank snapshot remains authoritative and does not reuse an old synchronized feed as settlement evidence');
