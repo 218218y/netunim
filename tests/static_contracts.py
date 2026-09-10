@@ -264,12 +264,15 @@ ok('--scroll-track:#eee7e1;--scroll-thumb:#b8a69a;--scroll-thumb-hover:#9f8b7d' 
    and '*::-webkit-scrollbar-track{background:var(--scroll-track);border-radius:999px}' in orders_css
    and '*::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}' in orders_css,
    "orders scrollbars: table and view scroll tracks/thumbs use opaque shared colors in Firefox and WebKit")
-ok('.col-row-actions{width:78px;position:sticky;left:0;z-index:2}' in orders_css
-   and 'background:inherit!important' not in orders_css[orders_css.find('.col-row-actions{width:78px'):orders_css.find('.status-toggle{', orders_css.find('.col-row-actions{width:78px'))]
-   and 'th.col-row-actions{background:#f8f5f2!important;z-index:4}' in orders_css
-   and 'td.col-row-actions{background:#fff}' in orders_css
-   and 'tr.pending td.col-row-actions{background:var(--marker-yellow)}' in orders_css,
-   "orders supplier table: sticky action header is painted like the rest of the header while the body action cell remains opaque and follows row states")
+ok('.col-row-actions{width:78px}' in orders_css
+   and '.col-row-actions{width:78px;position:sticky' not in orders_css
+   and 'th.col-row-actions{background:#f8f5f2!important;z-index:3}' in orders_css
+   and 'td.col-row-actions{position:sticky;left:0;z-index:2;background:transparent!important;pointer-events:none}' in orders_css
+   and 'td.col-row-actions .row-actions{pointer-events:auto}' in orders_css
+   and 'td.col-row-actions .icon-btn{background:#fff;border-color:#eadfd6;box-shadow:0 1px 3px rgba(70,50,36,.08)}' in orders_css
+   and 'td.col-row-actions{background:#fff}' not in orders_css
+   and 'tr.pending td.col-row-actions{background:var(--marker-yellow)}' not in orders_css,
+   "orders supplier table: only body action controls stay horizontally sticky; the empty header cell does not cover the note heading, and the sticky body cell is transparent/click-through so note text remains visible and usable beneath the buttons")
 
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
