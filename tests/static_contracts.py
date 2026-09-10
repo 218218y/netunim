@@ -234,15 +234,18 @@ ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;borde
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
 ok('.customer-work-panel{border-radius:14px}' in orders_css
-   and '.customer-table{min-width:756px!important;table-layout:fixed}' in orders_css
+   and '.customer-table{min-width:730px!important;table-layout:fixed}' in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
    and '.customer-table .customer-col-name{width:126px;min-width:126px}' in orders_css
-   and '.customer-table .customer-col-state{width:94px}' in orders_css
-   and '.customer-table .customer-col-note{width:110px;min-width:0}' in orders_css
+   and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}' in orders_css
+   and '.customer-table .customer-col-state{width:88px;padding-inline:2px;text-align:center}' in orders_css
+   and '.customer-table .customer-col-note{width:auto;min-width:0}' in orders_css
+   and '.status-toggle button{min-width:38px;padding:5px 7px' in orders_css
    and '.customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css
-   and 'customer-work-panel{border-radius:14px;margin' not in orders_css,
-   "orders customers: non-scrolling shell does not reserve an RTL scrollbar gutter, the customer edge remains visible, the inner scrolling table does not reserve a second gutter, and the debt table fits a 756px compact desktop budget without negative-margin clipping")
+   and 'customer-work-panel{border-radius:14px;margin' not in orders_css
+   and '.customer-table .status-toggle button{min-width:26px' not in orders_css,
+   "orders customers: compact debt columns keep the normal yes/no control size, use equal toggle-column spacing, absorb wide-screen surplus in the note column, and fit a 730px desktop budget without clipping")
 ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
