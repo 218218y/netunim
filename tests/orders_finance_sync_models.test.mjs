@@ -72,7 +72,7 @@ assert.equal(ordersFrameMerged.profiles[0].accounts[0].cardFrame,5000,'Orders pr
 const ordersFrameFeed=normalizeCreditSync({version:3,profiles:[{profileId:'limits',provider:'amex',accounts:[{accountNumber:'3333',txns:[{id:'sep',processedDate:'2026-09-10',chargedAmount:-300,chargedCurrency:'ILS',status:'completed'},{id:'oct',processedDate:'2026-10-10',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]}],cardMappings:{'limits:3333':{included:true,manualFrame:4000}}});
 const ordersFrameAccount=ordersFrameFeed.profiles[0].accounts[0];
 assert.equal(creditFrameStatus(ordersFrameAccount,ordersFrameFeed.cardMappings['limits:3333'],'2026-09-01').available,3500,'Orders uses the same manual-frame fallback calculation as Kupa');
-assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions'},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
+assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions',pendingAmount:0,estimated:false},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
 const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
 assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
 
@@ -133,9 +133,9 @@ assert.deepEqual(rollingForecast.months.map(month=>month.key),['2026-09','2026-1
 assert.equal(rollingForecast.rows.find(row=>row.description==='ספטמבר').totalAmount,100,'a synchronized ILS row without originalAmount keeps its charged amount as the displayed transaction total');
 const ordersCurrentMonthCarry={credits:[],creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'month-carry',provider:'max',accounts:[{accountNumber:'6767',balanceDate:'2026-09-10',pendingStatus:'success',txns:[{id:'sep-already-dated',processedDate:'2026-09-05',chargedAmount:-1000,chargedCurrency:'ILS',description:'חיוב ספטמבר מוקדם',status:'completed'}],pendingTransactions:[{id:'sep-pending',date:'2026-09-09',processedDate:'2026-09-09',chargedAmount:-125,chargedCurrency:'ILS',description:'ממתינה ספטמבר',status:'pending'}]}]}],cardMappings:{'month-carry:6767':{included:true,hidden:false,account:'עסקי'}}})};
 const ordersCurrentMonthBucket=creditMonthBuckets(ordersCurrentMonthCarry,{view:'rolling12',asOf:'2026-09-10'}).months.find(month=>month.key==='2026-09'),ordersCurrentMonthDetail=creditDetailMonths(ordersCurrentMonthCarry,{asOf:'2026-09-10'}).find(month=>month.key==='2026-09');
-assert.equal(ordersCurrentMonthBucket.total,1125,'Orders current-month strip keeps completed rows dated earlier in the month together with fresh pending approvals');
-assert.equal(ordersCurrentMonthBucket.total,ordersCurrentMonthDetail.total,'Orders current-month strip and transactions/payments table use the same complete billing-month total');
-assert.equal(ordersCurrentMonthBucket.items.some(row=>row.description==='חיוב ספטמבר מוקדם'),true,'Orders credit forecast month scope starts at the first day of the current month, not at the current day');
+assert.equal(ordersCurrentMonthBucket.total,125,'Orders forecast contains only unposted cycles from the exact as-of day while retaining fresh pending approvals');
+assert.equal(ordersCurrentMonthDetail.total,1125,'Orders billing-month detail retains the complete September history independently of the forward forecast');
+assert.equal(ordersCurrentMonthBucket.items.some(row=>row.description==='חיוב ספטמבר מוקדם'),false,'Orders never reintroduces an elapsed cycle merely because it shares the current calendar month');
 const yearForecast=creditMonthBuckets(forecastState,{view:'2026',asOf:'2026-09-01'});
 assert.deepEqual(yearForecast.months.map(month=>month.key),['2026-09','2026-11'],'year forecast shows only future months that actually carry a non-zero charge');
 

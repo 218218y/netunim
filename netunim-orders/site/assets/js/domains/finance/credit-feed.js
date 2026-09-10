@@ -1,4 +1,5 @@
 import {checkTodayISO} from '../../core/dates.js';
+import {creditAccountUpcomingChargeData,creditPendingAuthorizationTotalData,creditTransactionAmountData} from '../../shared/credit-billing-cycles.js';
 
 export const CREDIT_SYNC_VERSION=4;
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
@@ -59,14 +60,12 @@ export function mergeCreditSyncResult(current,payload={}){
   return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:payload.syncedAt?iso(payload.syncedAt):base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 
-function transactionForecastAmount(tx){const amount=tx?.chargedAmount!==null&&tx?.chargedAmount!==undefined?finite(tx.chargedAmount):finite(tx?.originalAmount);return amount===null||amount===0?0:-amount}
 function normalizedCreditCurrency(value){return text(value||'',12).toUpperCase().replace(/\s+/g,'')}
 function isShekelCurrency(value){const currency=normalizedCreditCurrency(value);return !currency||['ILS','NIS','₪','ש״ח','שח'].includes(currency)}
-function isShekelTransaction(tx){return isShekelCurrency(tx?.chargedCurrency||tx?.originalCurrency||'ILS')}
 export function creditTransactionIsForeignCurrency(tx={}){const original=normalizedCreditCurrency(tx.originalCurrency),charged=normalizedCreditCurrency(tx.chargedCurrency);return (!!original&&!isShekelCurrency(original))|| (!!charged&&!isShekelCurrency(charged))}
 function creditChargeDate(tx){return String(tx?.processedDate||tx?.date||'').slice(0,10)}
-function knownFutureChargeAmount(tx){if(tx?.status==='pending'||!isShekelTransaction(tx))return 0;return transactionForecastAmount(tx)}
+function knownFutureChargeAmount(tx){if(tx?.status==='pending')return 0;const amount=creditTransactionAmountData(tx);return amount.included?amount.amount:0}
 export function creditKnownFutureCommitment(account={},asOf=checkTodayISO()){let total=0;for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(date&&date>=asOf&&amount)total+=amount}return Math.round(total*100)/100}
-export function creditPendingAuthorizationAmount(account={}){let total=0;for(const tx of Array.isArray(account?.txns)?account.txns:[]){if(tx?.status!=='pending'||!isShekelTransaction(tx))continue;total+=transactionForecastAmount(tx)}return Math.round(total*100)/100}
-export function creditUpcomingCharge(account={},provider='',asOf=checkTodayISO()){const byDate=new Map();for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(!date||date<asOf||!amount)continue;byDate.set(date,(byDate.get(date)||0)+amount)}for(const date of [...byDate.keys()].sort()){const amount=Math.round((byDate.get(date)||0)*100)/100;if(amount>0.004)return {amount,date,source:'transactions'}}if(provider==='visaCal'){const raw=finite(account?.balance);if(raw!==null)return {amount:Math.round(Math.abs(raw)*100)/100,date:String(account?.balanceDate||'').slice(0,10),source:'issuer_balance'}}return null}
+export function creditPendingAuthorizationAmount(account={}){return creditPendingAuthorizationTotalData(account)}
+export function creditUpcomingCharge(account={},provider='',asOf=checkTodayISO()){return creditAccountUpcomingChargeData(account,provider,asOf)}
 export function creditFrameStatus(account={},mapping={},asOf=checkTodayISO()){const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf),pendingAuthorizations=creditPendingAuthorizationAmount(account);if(directAvailable!==null)return {frame:issuerFrame,available:Math.round(directAvailable*100)/100,commitments,pendingAuthorizations,source:'issuer_available',frameSource:issuerFrame!==null?'issuer':null};const frame=issuerFrame!==null?issuerFrame:manualFrame;if(frame===null)return {frame:null,available:null,commitments,pendingAuthorizations,source:'unavailable',frameSource:null};return {frame,available:Math.round((frame-commitments-pendingAuthorizations)*100)/100,commitments,pendingAuthorizations,source:issuerFrame!==null?'issuer_frame_calculated':'manual_frame_calculated',frameSource:issuerFrame!==null?'issuer':'manual'}}

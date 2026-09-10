@@ -188,8 +188,8 @@ function updateBridgePanel(){
 }
 
 function renderBank(){
-  const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth);
-  const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth);
+  const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth),cycleDate=dateFmt(cycle.targetDate);
+  const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth),homeCycleDate=dateFmt(homeCycle.targetDate);
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses,businessCashflowAlert=cashflowAlertForAccount(after,model.state.cashflowSettings,'עסקי'),homeCashflowAlert=cashflowAlertForAccount(homeAfter,model.state.cashflowSettings,'ביתי');
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
@@ -199,20 +199,20 @@ function renderBank(){
       <div class="bank-input-row"><input id="bankBalanceInput" type="number" step="1" inputmode="numeric" placeholder="הקלד יתרת עו״ש עסקי" value="${esc(bank===null?'':bank)}"><button type="button" class="btn primary" data-action="save-bank-balance">שמור צילום מצב</button></div>
       <small>${esc(bankSnapshotLabel())} · החשבון העסקי מחושב מול אשראי והוצאות עסקיים ובתוספת צ׳קים עסקיים צפויים</small>
     </div>
-    <div class="bank-mini"><div class="bank-label">אשראי עסקי במחזור הקרוב</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${cycleLabel}`:'אין חיובי אשראי עסקיים עתידיים'}</div></div>
-    <div class="bank-mini"><div class="bank-label">הוצאות עסקיות למחזור הקרוב</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">הוצאות עסקיות של ${esc(cycleLabel)} בלבד</div></div>
-    <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד יום ${esc(cycle.checkCutoffDay)} בחודש החיוב הקרוב</div></div>
-    <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש עסקי פחות אשראי והוצאות, ובתוספת צ׳קים עסקיים הצפויים להפקדה לפני יום החיתוך</div></div>
+    <div class="bank-mini"><div class="bank-label">אשראי עסקי עד אופק התזרים</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditCycles.length?`${esc(cycle.nextCreditCycles.length)} מחזורים עד ${esc(cycleDate)} · ${esc(cycleLabel)}`:'אין חיובי אשראי עסקיים עתידיים'}${cycle.forecastIncomplete?' · אומדן ₪ חלקי: קיימים חיובים ללא סכום שקלי עדכני':''}</div></div>
+    <div class="bank-mini"><div class="bank-label">הוצאות עסקיות עד אופק התזרים</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות העסקיות עד ${esc(cycleDate)}</div></div>
+    <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(cycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+    <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי באופק ${esc(cycleDate)}</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק</div></div>
     <div class="bank-account-summary-label home"><b>חשבון ביתי</b><span>התחייבויות ביתיות בלבד</span></div>
     <div class="bank-entry bank-home-entry">
       <label>עובר ושב ביתי בבנק — היתרה לחישובי הבית</label>
       <div class="bank-readonly-value">${formatNullableMoney(homeBank)}</div>
       <small>${esc(homeBankSnapshotLabel())} · החשבון הביתי מחושב מול אשראי והוצאות ביתיים ובתוספת צ׳קים ביתיים צפויים</small>
     </div>
-    <div class="bank-mini"><div class="bank-label">אשראי ביתי במחזור הקרוב</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditRows.length?`חיוב אחד קדימה לכל כרטיס · ${homeCycleLabel}`:'אין חיובי אשראי ביתיים עתידיים'}</div></div>
-    <div class="bank-mini"><div class="bank-label">הוצאות ביתיות למחזור הקרוב</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">הוצאות ביתיות של ${esc(homeCycleLabel)} בלבד</div></div>
-    <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד יום ${esc(homeCycle.checkCutoffDay)} בחודש החיוב הקרוב</div></div>
-    <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי אחרי המחזור הקרוב</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש ביתי פחות אשראי והוצאות, ובתוספת צ׳קים ביתיים הצפויים להפקדה לפני יום החיתוך</div></div>
+    <div class="bank-mini"><div class="bank-label">אשראי ביתי עד אופק התזרים</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditCycles.length?`${esc(homeCycle.nextCreditCycles.length)} מחזורים עד ${esc(homeCycleDate)} · ${esc(homeCycleLabel)}`:'אין חיובי אשראי ביתיים עתידיים'}${homeCycle.forecastIncomplete?' · אומדן ₪ חלקי: קיימים חיובים ללא סכום שקלי עדכני':''}</div></div>
+    <div class="bank-mini"><div class="bank-label">הוצאות ביתיות עד אופק התזרים</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות הביתיות עד ${esc(homeCycleDate)}</div></div>
+    <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(homeCycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+    <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי באופק ${esc(homeCycleDate)}</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק</div></div>
   </div>
   <section class="section bank-sync-section">
     <div class="bank-command-row">

@@ -1,4 +1,5 @@
 import {todayISO} from '../../core/dates.js';
+import {creditAccountUpcomingChargeData,creditBillingRowsData,creditPendingAuthorizationTotalData,creditTransactionAmountData} from '../../shared/credit-billing-cycles.js';
 
 export const CREDIT_SYNC_VERSION=4;
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
@@ -152,9 +153,8 @@ export function creditSyncScrapeSelection(value={}){
 }
 
 function transactionForecastAmount(tx){
-  const amount=tx.chargedAmount!==null?tx.chargedAmount:tx.originalAmount;
-  if(amount===null||!Number.isFinite(amount)||amount===0)return 0;
-  return -amount;
+  const charged=finite(tx.chargedAmount),original=finite(tx.originalAmount),amount=charged!==null&&Math.abs(charged)>0.0001?charged:original;
+  return amount===null||!Number.isFinite(amount)||Math.abs(amount)<=0.0001?0:-amount;
 }
 // Foreign-currency rows stay visible in issuer data but never silently enter ILS Kupa totals.
 function normalizedCurrency(value){return text(value||'',12).toUpperCase().replace(/\s+/g,'')}
@@ -165,27 +165,17 @@ export function creditTransactionIsForeignCurrency(tx={}){
   return (!!original&&!shekelCurrency(original))|| (!!charged&&!shekelCurrency(charged));
 }
 function creditChargeDate(tx){return String(tx?.processedDate||tx?.date||'').slice(0,10)}
-function knownFutureChargeAmount(tx){if(tx?.status==='pending'||!isShekelTransaction(tx))return 0;return transactionForecastAmount(tx)}
+function knownFutureChargeAmount(tx){if(tx?.status==='pending')return 0;const amount=creditTransactionAmountData(tx);return amount.included?amount.amount:0}
 export function creditKnownFutureCommitment(account={},asOf=todayISO()){
   let total=0;
   for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(date&&date>=asOf&&amount)total+=amount}
   return Math.round(total*100)/100;
 }
 export function creditPendingAuthorizationAmount(account={}){
-  let total=0;
-  for(const tx of Array.isArray(account?.txns)?account.txns:[]){
-    if(tx?.status!=='pending'||!isShekelTransaction(tx))continue;
-    total+=transactionForecastAmount(tx);
-  }
-  return Math.round(total*100)/100;
+  return creditPendingAuthorizationTotalData(account);
 }
 export function creditUpcomingCharge(account={},provider='',asOf=todayISO()){
-  const byDate=new Map();
-  for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(!date||date<asOf||!amount)continue;byDate.set(date,(byDate.get(date)||0)+amount)}
-  for(const date of [...byDate.keys()].sort()){const amount=Math.round((byDate.get(date)||0)*100)/100;if(amount>0.004)return {amount,date,source:'transactions'}}
-  // Visa Cal defines account.balance as the next debit. MAX uses balance for utilized credit instead, so it must never be relabeled as an upcoming debit.
-  if(provider==='visaCal'){const raw=finite(account?.balance);if(raw!==null)return {amount:Math.round(Math.abs(raw)*100)/100,date:String(account?.balanceDate||'').slice(0,10),source:'issuer_balance'}}
-  return null;
+  return creditAccountUpcomingChargeData(account,provider,asOf);
 }
 export function creditFrameStatus(account={},mapping={},asOf=todayISO()){
   const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf),pendingAuthorizations=creditPendingAuthorizationAmount(account);
@@ -202,35 +192,13 @@ function accountPresentation(profile,account,mapping={}){
 }
 function synchronizedCardKey(profile,account){return `sync:${profile.profileId}:${account.accountNumber}`}
 
-function pendingProjectionDate(account,tx,asOf=todayISO()){
-  const reference=String(asOf||todayISO()).slice(0,10),transactionDate=transactionOriginDate(tx),issuerDate=String(account?.balanceDate||'').slice(0,10);
-  // Every supported issuer exposes a next-cycle date when it knows one: Cal Frames.nextDebitDate,
-  // MAX CycleSummary.Date, and Isracard/Amex DigitalV3 cardChargeNext.billingDate. Prefer that
-  // issuer fact for a provisional forecast. If it is absent/stale, keep an active approval in
-  // the current day/month instead of pretending its purchase date is a final billing date.
-  if(/^\d{4}-\d{2}-\d{2}$/.test(issuerDate)&&issuerDate>=reference&&(!transactionDate||issuerDate>=transactionDate))return {date:issuerDate,source:'issuer_next_charge'};
-  return {date:reference||transactionDate,source:'current_cycle_estimate'};
-}
 function buildPendingRows(state,asOf=todayISO(),{includeHidden=false}={}){
-  const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();
-  for(const profile of sync.profiles)for(const account of profile.accounts){
-    const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
-    if(mapping.included!==true||(!includeHidden&&mapping.hidden===true))continue;
-    const presentation=accountPresentation(profile,account,mapping),pendingFresh=account.pendingStatus==='success';
-    for(const [index,tx] of account.txns.entries()){
-      if(tx.status!=='pending')continue;
-      const transactionDate=transactionOriginDate(tx)||String(tx.transactionDate||tx.date||tx.processedDate||'').slice(0,10),txTime=transactionTime(tx.transactionTime),amount=transactionForecastAmount(tx),currency=text(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',projection=pendingProjectionDate(account,tx,asOf),originalAmount=finite(tx.originalAmount),originalCurrency=text(tx.originalCurrency||'',12),foreignCurrency=creditTransactionIsForeignCurrency(tx);
-      const stable=tx.id?`${tx.id}|${transactionDate}|${amount}|${currency}`:`idless-${index}|${transactionDate}|${amount}|${currency}|${tx.description}`;
-      const identity=`${profile.profileId}|${account.accountNumber}|${stable}`;if(seen.has(identity))continue;seen.add(identity);
-      rows.push({id:identity,source:'credit_pending',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,transactionDate,transactionTime:txTime,date:projection.date,provisionalChargeDate:projection.date,chargeDateSource:projection.source,amount,currency,isShekel:isShekelTransaction(tx),foreignCurrency,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency,pendingFresh,status:'pending'});
-    }
-  }
-  return rows.sort((a,b)=>String(b.transactionDate).localeCompare(String(a.transactionDate))||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he'));
+  return creditBillingRowsData(state,{asOf,includeHidden}).filter(row=>row.status==='pending').map(row=>({...row,id:row.creditId,provisionalChargeDate:row.date,currency:row.displayCurrency})).sort((a,b)=>String(b.transactionDate).localeCompare(String(a.transactionDate))||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he'));
 }
 
 export function syncedPendingTransactionsData(state,asOf=todayISO()){return buildPendingRows(state,asOf)}
 export function syncedPendingForecastData(state,asOf=todayISO()){
-  return buildPendingRows(state,asOf,{includeHidden:true}).filter(row=>row.pendingFresh&&row.isShekel&&row.date>=String(asOf).slice(0,10)&&Number.isFinite(Number(row.amount))&&Math.abs(Number(row.amount))>0.004).map(row=>({...row,creditId:`PENDING:${row.id}`,part:1,totalParts:1}));
+  return buildPendingRows(state,asOf,{includeHidden:true}).filter(row=>row.includedInIlsTotal&&row.date>=String(asOf).slice(0,10)&&Number.isFinite(Number(row.amount))&&Math.abs(Number(row.amount))>0.004);
 }
 
 // Completed rows whose issuer charge is genuinely non-ILS must still be visible in the
