@@ -83,6 +83,12 @@ function normalizedMapping(raw={},legacyInclude=false){
     manualFrame:nonNegativeMoney(raw.manualFrame),
   };
 }
+function normalizeSettlementWarningAcks(value={}){
+  const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},rows=[];
+  for(const [rawKey,rawAt] of Object.entries(source)){const key=text(rawKey,240),at=iso(rawAt);if(key&&at)rows.push([key,at])}
+  rows.sort((a,b)=>b[1].localeCompare(a[1]));
+  return Object.fromEntries(rows.slice(0,120));
+}
 
 export function normalizeCreditSync(value={}){
   const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},sourceVersion=Math.trunc(Number(source.version)||1),legacyInclude=sourceVersion<2;
@@ -107,6 +113,7 @@ export function normalizeCreditSync(value={}){
     profiles,
     errors:(Array.isArray(source.errors)?source.errors:[]).slice(0,40).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),component:creditErrorComponent(e),severity:creditErrorSeverity(e),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),originalFailureAt:iso(e?.originalFailureAt||e?.at),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||source.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)})),
     cardMappings:mappings,
+    settlementWarningAcks:normalizeSettlementWarningAcks(source.settlementWarningAcks),
   };
 }
 

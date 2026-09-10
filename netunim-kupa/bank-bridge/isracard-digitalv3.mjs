@@ -3,7 +3,7 @@
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Isracard can use the current DigitalV3 flow.
 
-export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-pr1159-netunim-v42';
+export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-2026-09-netunim-v43';
 export const ISRACARD_LOGIN_BASE_URL='https://digital.isracard.co.il';
 export const ISRACARD_WEB_BASE_URL='https://web.isracard.co.il';
 export const ISRACARD_LOGIN_COMPANY_CODE='11';
@@ -147,9 +147,15 @@ async function login(page,credentials,onDiagnostic){
   await navigate(page,`${ISRACARD_WEB_BASE_URL}/transactions`,{stage:'TransactionsPage',onDiagnostic});
 }
 
+export function parseIsracardDigitalV3Cards(response){
+  if(!response?.isSuccess||!response?.data)throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה רשימת כרטיסים תקינה.'),'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  let cards=response.data.cardsList;
+  if(typeof cards==='string'){try{cards=JSON.parse(cards)}catch{throw safeError('ישראכרט החזירה cardsList מקודד שאינו JSON תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'})}}
+  if(!Array.isArray(cards))throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה cardsList במבנה הנתמך.'),'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  return cards;
+}
 function activeIsracardCards(response){
-  if(!response?.isSuccess||!response?.data||!Array.isArray(response.data.cardsList))throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה רשימת כרטיסים תקינה.'),'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
-  return response.data.cardsList.filter(card=>String(card?.companyCode)===ISRACARD_LOGIN_COMPANY_CODE&&card?.isActive===true&&card?.isBlock!==true);
+  return parseIsracardDigitalV3Cards(response).filter(card=>String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
 }
 function cardBalance(card){const value=Number(card?.limitData?.limitUsed);return Number.isFinite(value)?-value:null}
 function cardFrame(card){const value=Number(card?.limitData?.creditLimitAmount);return Number.isFinite(value)?value:null}
@@ -170,13 +176,13 @@ async function fetchCards(page,onDiagnostic){
 }
 async function effectiveBillingDate(page,card,month,onDiagnostic){
   await randomDelay();const key=monthKey(month);
-  const response=await pagePost(page,`${ISRACARD_WEB_BASE_URL}/ocp/transactions/DigitalV3.Transactions/GetMonthlyBilling`,{cards:[{cardStatus:Number(card.cardStatus),cardSuffix:card.cardSuffix,companyCode:ISRACARD_TRANSACTIONS_COMPANY_CODE,serviceType:Number(card.serviceType),isPartner:!!card.isPartner}],billingDate:monthBillingLabel(month)},{headers:JSON_HEADERS,stage:`Billing ${key}`,onDiagnostic});
+  const response=await pagePost(page,`${ISRACARD_WEB_BASE_URL}/ocp/transactions/DigitalV3.Transactions/GetMonthlyBilling`,{cards:[{cardStatus:Number.isFinite(Number(card.cardStatus))?Number(card.cardStatus):0,cardSuffix:card.cardSuffix,companyCode:Number(card.companyCode||ISRACARD_TRANSACTIONS_COMPANY_CODE),serviceType:Number.isFinite(Number(card.serviceType))?Number(card.serviceType):0,isPartner:!!card.isPartner}],billingDate:monthBillingLabel(month)},{headers:JSON_HEADERS,stage:`Billing ${key}`,onDiagnostic});
   if(!response?.isSuccess||!response?.data||typeof response.data.cards!=='object')throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה תאריך חיוב תקין.'),'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:`Billing ${key}`});
   const billing=response.data.cards?.[card.cardSuffix];return billing?.billingDate?parseIsraeliDate(billing.billingDate):null;
 }
 async function monthTransactions(page,card,month,isNextBillingDate,processedDateIso,onDiagnostic){
   await randomDelay();const key=monthKey(month);
-  const response=await pagePost(page,`${ISRACARD_WEB_BASE_URL}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,{card4Number:card.cardSuffix,isNextBillingDate,cardStatus:Number(card.cardStatus),billingMonth:monthRequestDate(month),companyCode:ISRACARD_TRANSACTIONS_COMPANY_CODE,isPartner:!!card.isPartner},{headers:JSON_HEADERS,stage:`Transactions ${key}`,onDiagnostic});
+  const response=await pagePost(page,`${ISRACARD_WEB_BASE_URL}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,{card4Number:card.cardSuffix,isNextBillingDate,cardStatus:0,billingMonth:monthRequestDate(month),companyCode:Number(card.companyCode||ISRACARD_TRANSACTIONS_COMPANY_CODE),isPartner:false},{headers:JSON_HEADERS,stage:`Transactions ${key}`,onDiagnostic});
   if(!response?.isSuccess||!response?.data)throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה עסקאות חודש תקינות.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:`Transactions ${key}`});
   const txns=[];
   for(const txn of response.data.approvals?.approvedTransactions??[])txns.push(normalizeIsracardDigitalV3ApprovedTransaction(txn));
@@ -196,8 +202,9 @@ export async function scrapeIsracardDigitalV3({credentials,browserPath,interacti
     diagnostic(onDiagnostic,{stage:'BrowserLaunch'});
     const identity=await prepareIsracardDigitalV3Page(page);diagnostic(onDiagnostic,{stage:'BrowserIdentity',identityState:`webdriver-${identity.webdriver}`});
     await login(page,credentials,onDiagnostic);diagnostic(onDiagnostic,{stage:'Login'});
-    const cards=await fetchCards(page,onDiagnostic),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),currentMonth=startOfUtcMonth(now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]]));
-    for(const month of months){const isNextBillingDate=month>currentMonth;for(const card of cards){const effective=await effectiveBillingDate(page,card,month,onDiagnostic),processed=effective||month.toISOString(),txns=await monthTransactions(page,card,month,isNextBillingDate,processed,onDiagnostic);txnsByCard.get(card.cardSuffix).push(...txns)}}
+    const cards=await fetchCards(page,onDiagnostic),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]]));
+    // Current DigitalV3 traffic keeps isNextBillingDate=true for every billingMonth; billingMonth itself selects the cycle.
+    for(const month of months){for(const card of cards){const effective=await effectiveBillingDate(page,card,month,onDiagnostic),processed=effective||month.toISOString(),txns=await monthTransactions(page,card,month,true,processed,onDiagnostic);txnsByCard.get(card.cardSuffix).push(...txns)}}
     const accounts=cards.map(card=>({accountNumber:card.cardSuffix,balance:cardBalance(card),balanceDate:cardBalanceDate(card),cardFrame:cardFrame(card),txns:fixInstallments(txnsByCard.get(card.cardSuffix)||[])}));
     success=true;diagnostic(onDiagnostic,{stage:'Complete'});return {success:true,accounts};
   }catch(error){if(String(error?.code||'').startsWith('CREDIT_'))throw error;throw safeError('מסלול ישראכרט DigitalV3 נכשל לפני השלמת הסנכרון.','CREDIT_PROVIDER_DATA_ERROR',{stage:String(error?.stage||'DigitalV3').slice(0,80)})}

@@ -279,6 +279,16 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
 
   async function setCreditCardMapping(profileId,accountNumber,field,value){try{await mutateFinanceCloud(kupa=>{const sync=normalizeCreditSync(kupa.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};if(field==='included')current.included=!!value;else if(field==='hidden')current.hidden=!!value;else if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';else if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);else if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0))throw new Error('מסגרת ידנית חייבת להיות מספר חיובי או אפס');current.manualFrame=amount===null?null:Math.round(amount*100)/100}else return null;sync.cardMappings[key]=current;kupa.creditSync=sync;return kupa});toast('שיוך כרטיס האשראי עודכן');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}}
 
+  async function acknowledgeCreditSettlementWarning(warningId){
+    const id=String(warningId||'').trim();
+    if(!id.startsWith('credit_settlement_unmatched:'))return false;
+    try{
+      await mutateFinanceCloud(finance=>{const sync=normalizeCreditSync(finance.creditSync);sync.settlementWarningAcks={...(sync.settlementWarningAcks||{}),[id]:new Date().toISOString()};finance.creditSync=normalizeCreditSync(sync);return finance});
+      toast('אזהרת התאמת האשראי סומנה כנבדקה');
+      return true;
+    }catch(error){toast(error?.message||'שמירת אישור האזהרה נכשלה');return false}
+  }
+
   function clearTimer(name){if(local[name]){clearTimeout(local[name]);local[name]=null}}
   function autoWait(lastSyncAt,intervalMs){const time=lastSyncAt?Date.parse(lastSyncAt):NaN;return Number.isFinite(time)?Math.max(1000,time+intervalMs-Date.now()+250):1000}
   function scheduleBankAuto(){clearTimer('bankTimer');if(!loadSession()||!bridge.bankAutoEnabled()||!bridge.getBridgeToken())return;const retryWait=typeof bridge.bankAttemptDelayMs==='function'?bridge.bankAttemptDelayMs():0,wait=Math.max(autoWait(bankLastSyncAt(checksSession.kupaCloudReadState),BANK_AUTO_INTERVAL_MS),retryWait+250);local.bankTimer=setTimeout(()=>{local.bankTimer=null;maybeAutoRefreshBank().catch(error=>console.error('orders bank auto refresh',error))},wait)}
@@ -290,5 +300,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
   function setCreditAutoMode(value){bridge.setCreditAutoMode(value);scheduleCreditAuto()}
 
-  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
+  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
 }

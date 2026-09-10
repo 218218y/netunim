@@ -2,10 +2,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
+import {normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from './amex-digitalv3.mjs';
+import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from './isracard-digitalv3.mjs';
+
 const PROVIDERS={
-  isracard:{baseUrl:'https://digital.isracard.co.il',companyCode:'11'},
-  amex:{baseUrl:'https://he.americanexpress.co.il',companyCode:'77'},
+  isracard:{baseUrl:'https://digital.isracard.co.il',webBaseUrl:'https://web.isracard.co.il',companyCode:'11',transactionCompanyCode:11},
+  amex:{baseUrl:'https://he.americanexpress.co.il',webBaseUrl:'https://web.americanexpress.co.il',companyCode:'77',transactionCompanyCode:77},
 };
+const DIGITAL_CARD_LIST_COMPANY_CODE='99';
+const DIGITAL_CARD_SUFFIX_LENGTH=4;
+const DIGITAL_JSON_HEADERS={'Content-Type':'application/json',Accept:'application/json'};
 const COUNTRY_CODE='212';
 const ID_TYPE='1';
 const LOGIN_TIMEOUT_MS=90_000;
@@ -126,19 +132,19 @@ export function classifyCamoufoxProviderResponse({stage='',status=0,text='',retr
   if(Number(status)<200||Number(status)>=300)return {code:'CREDIT_PROVIDER_HTTP_ERROR',message:`שירות חברת האשראי החזיר HTTP ${Number(status)||'לא ידוע'} בשלב ${stage||'לא ידוע'}.`,stage,httpStatus:Number(status)||0};
   return null;
 }
-async function pageFetchJson(page,{url,method='GET',data=null,stage}){
-  const result=await page.evaluate(async ({url,method,data,timeoutMs})=>{
+async function pageFetchJson(page,{url,method='GET',data=null,stage,headers=null}){
+  const result=await page.evaluate(async ({url,method,data,headers,timeoutMs})=>{
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
     try{
       const options={method,credentials:'include',signal:controller.signal};
       if(method==='POST'){
         options.body=JSON.stringify(data||{});
-        options.headers={'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'};
+        options.headers=headers||{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'};
       }
       const response=await fetch(url,options),text=response.status===204?'':await response.text();
       return {status:response.status,text,contentType:response.headers.get('content-type')||'',retryAfter:response.headers.get('retry-after')||''};
     }finally{clearTimeout(timer)}
-  },{url,method,data,timeoutMs:FETCH_TIMEOUT_MS});
+  },{url,method,data,headers,timeoutMs:FETCH_TIMEOUT_MS});
   const text=String(result?.text||''),status=Number(result?.status)||0;
   const responseFailure=classifyCamoufoxProviderResponse({stage,status,text,retryAfter:result?.retryAfter||''});
   if(responseFailure)throw safeError(responseFailure.message,responseFailure.code,{stage:responseFailure.stage,httpStatus:responseFailure.httpStatus,retryAfterAt:responseFailure.retryAfterAt||null});
@@ -187,6 +193,48 @@ async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
   const data=await pageFetchJson(page,{url:transactionsUrl(servicesUrl,month),stage:`CardsTransactionsList ${monthKey(month)}`});
   return {data:parseIsracardFamilyTransactionsResponse(data,accountResult.accounts,startDate,month),semanticEmptyStages:[...(accountResult.semanticEmpty?['DashboardMonth']:[]),...(providerMonthIsEmpty(data)?['CardsTransactionsList']:[])]};
 }
+
+
+function digitalCardsList(response){
+  if(!response?.isSuccess||!response?.data)throw safeError('חברת האשראי לא החזירה רשימת כרטיסים תקינה ב-DigitalV3.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  let cards=response.data.cardsList;
+  if(typeof cards==='string'){try{cards=JSON.parse(cards)}catch{throw safeError('חברת האשראי החזירה cardsList מקודד שאינו JSON תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'})}}
+  if(!Array.isArray(cards))throw safeError('חברת האשראי לא החזירה cardsList במבנה DigitalV3 הנתמך.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  const own=cards.filter(card=>String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
+  if(!own.length)throw safeError('חברת האשראי לא החזירה כרטיס פעיל מתאים לאחר הכניסה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  return own;
+}
+function digitalBillingLabel(month){return `${two(month.getUTCMonth()+1)}/${month.getUTCFullYear()}`}
+function digitalMonthRequestDate(month){return `01/${two(month.getUTCMonth()+1)}/${month.getUTCFullYear()}`}
+async function primeDigitalSession(page,cfg){
+  const stage='TransactionsPage',response=await page.goto(`${cfg.webBaseUrl}/transactions`,{waitUntil:'load',timeout:LOGIN_TIMEOUT_MS}),status=Number(response?.status?.()||0);
+  if(status===403)throw safeError('חברת האשראי חסמה את סשן Camoufox בכניסה לשירות DigitalV3.','CREDIT_AUTOMATION_BLOCKED',{stage,httpStatus:status,browserEngine:'camoufox'});
+  if(status===429)throw safeError('חברת האשראי הגבילה זמנית את סשן Camoufox בכניסה לשירות DigitalV3.','CREDIT_PROVIDER_RATE_LIMITED',{stage,httpStatus:status});
+  if(status>=400)throw safeError(`שירות DigitalV3 לא נטען (HTTP ${status}).`,'CREDIT_PROVIDER_HTTP_ERROR',{stage,httpStatus:status});
+}
+async function fetchDigitalCards(page,cfg){
+  await randomDelay();
+  const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetCardList`,method:'POST',stage:'CardList',headers:DIGITAL_JSON_HEADERS,data:{companyCode:DIGITAL_CARD_LIST_COMPANY_CODE,cardSuffixLength:DIGITAL_CARD_SUFFIX_LENGTH}});
+  return digitalCardsList(response);
+}
+async function fetchDigitalBillingDate(page,cfg,card,month){
+  await randomDelay();const stage=`Billing ${monthKey(month)}`,companyCode=Number(card?.companyCode||cfg.transactionCompanyCode);
+  const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetMonthlyBilling`,method:'POST',stage,headers:DIGITAL_JSON_HEADERS,data:{cards:[{cardStatus:Number.isFinite(Number(card?.cardStatus))?Number(card.cardStatus):0,cardSuffix:String(card.cardSuffix),companyCode,serviceType:Number.isFinite(Number(card?.serviceType))?Number(card.serviceType):0,isPartner:!!card?.isPartner}],billingDate:digitalBillingLabel(month)}});
+  if(!response?.isSuccess||!response?.data||typeof response.data.cards!=='object')throw safeError('חברת האשראי לא החזירה תאריך חיוב תקין ב-DigitalV3.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
+  const billing=response.data.cards?.[card.cardSuffix];return parseIsracardDate(billing?.billingDate)||month.toISOString();
+}
+function digitalNormalizers(provider){return provider==='amex'?{approved:normalizeAmexDigitalV3ApprovedTransaction,voucher:normalizeAmexDigitalV3Voucher}:{approved:normalizeIsracardDigitalV3ApprovedTransaction,voucher:normalizeIsracardDigitalV3Voucher}}
+async function fetchDigitalTransactions(page,cfg,provider,card,month,processedDate){
+  await randomDelay();const stage=`Transactions ${monthKey(month)}`,companyCode=Number(card?.companyCode||cfg.transactionCompanyCode);
+  const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,method:'POST',stage,headers:DIGITAL_JSON_HEADERS,data:{card4Number:String(card.cardSuffix),isNextBillingDate:true,cardStatus:0,billingMonth:digitalMonthRequestDate(month),companyCode,isPartner:false}});
+  if(!response?.isSuccess||!response?.data)throw safeError('חברת האשראי לא החזירה עסקאות חודש תקינות ב-DigitalV3.','CREDIT_PROVIDER_DATA_ERROR',{stage});
+  const normalize=digitalNormalizers(provider),pending=[],completed=[];
+  for(const raw of response.data.approvals?.approvedTransactions??[]){const tx=normalize.approved(raw);if(tx?.date)pending.push(tx)}
+  for(const raw of response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[]){const tx=normalize.voucher(raw,processedDate);if(tx?.date)completed.push(tx)}
+  for(const group of response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[]){const groupDate=parseIsracardDate(group?.totalVouchersCurrencyDate?.dateImmediateVouchers)||processedDate;for(const raw of group?.immediateVouchersCurrencyDate??[]){const tx=normalize.voucher(raw,groupDate);if(tx?.date)completed.push(tx)}}
+  return {completed:completed.map(tx=>tx?.installments&&Number(tx.installments.number)>1?{...tx,date:shiftInstallmentDate(tx.date,tx.installments)}:tx),pending};
+}
+function pendingDigitalKey(tx){return `${String(tx?.identifier||tx?.id||'')}|${String(tx?.transactionDate||tx?.date||'')}|${String(tx?.chargedAmount??tx?.originalAmount??'')}`}
 
 async function fetchCardBalances(page,cfg,now){
   const started=Date.now(),fetchedAt=now().toISOString(),url=`${cfg.baseUrl}${CARD_LIST_PAGE_PATH}`;
@@ -362,8 +410,8 @@ export async function doctorCamoufox(){
   return true;
 }
 
-function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-6.10.0-camoufox-v4',lastErrorCode:code,lastErrorAt:at}}
-function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-6.10.0-camoufox-v4',lastErrorCode:'',lastErrorAt:null}}
+function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-digitalv3-camoufox-v5',lastErrorCode:code,lastErrorAt:at}}
+function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-digitalv3-camoufox-v5',lastErrorCode:'',lastErrorAt:null}}
 function publicMonthError(error,month,tier,at){return {code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage:String(error?.stage||`Transactions ${month}`).slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת חודש מחברת האשראי נכשלה',at,retryAfterAt:error?.retryAfterAt||null,month,tier}}
 
 export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,startDate,futureMonthsToScrape=1,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date()}){
@@ -372,24 +420,22 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
   const cfg=PROVIDERS[provider],servicesUrl=`${cfg.baseUrl}/services/ProxyRequestHandler.ashx`;let browser,page;
   try{
     ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir,onDiagnostic,correlationId,provider}));
-    await login(page,provider,credentials,servicesUrl);
-    const months=buildCreditMonths(startDate,futureMonthsToScrape,now()),current=addUtcMonths(new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),1),results=[],knownAccounts=new Set(),errors=[];
-    for(const month of months){const key=monthKey(month),tier=month<=current?'core':'forecast',started=Date.now();try{const monthResult=await fetchTransactionsForMonth(page,servicesUrl,month,startDate),data=monthResult.data;Object.keys(data).forEach(account=>knownAccounts.add(account));results.push({month:key,tier,data,at:now().toISOString()});for(const emptyStage of monthResult.semanticEmptyStages)onDiagnostic({correlationId,provider,stage:`${emptyStage}Empty`,month:key,durationMs:Date.now()-started});onDiagnostic({correlationId,provider,stage:'Transactions',month:key,durationMs:Date.now()-started})}catch(error){const at=now().toISOString();results.push({month:key,tier,error,at});errors.push(publicMonthError(error,key,tier,at));onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}}
-    if(!knownAccounts.size&&results.some(result=>!result.error))throw safeError('חברת האשראי לא החזירה כרטיסים באף חודש תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardMonth'});
-    // Frames are deliberately fetched only after transaction coverage is complete.
-    // A card-list/WAF/UI failure must never turn already-successful transaction data
-    // into a failed scrape. The caller will preserve the prior frame as Last Known Good.
-    const frameResult=await fetchCardBalances(page,cfg,now),missingFrameAccounts=[];
-    onDiagnostic({correlationId,provider,stage:'Frames',durationMs:frameResult.durationMs,errorClass:frameResult.errorCode||undefined,httpStatus:frameResult.httpStatus||0});
-    const accounts=[...knownAccounts].map(accountNumber=>{
-      const frame=frameResult.balances.get(cardSuffix(accountNumber)),frameOk=!!frame;
-      if(!frameOk)missingFrameAccounts.push(accountNumber);
-      return {accountNumber,balance:frame?.balance??null,balanceDate:frame?.balanceDate??null,cardFrame:frame?.cardFrame??null,frameStatus:frameOk?'fresh':'missing',frameFetchStatus:frameOk?'success':frameResult.fetchStatus==='provider_error'?'provider_error':'unavailable',frameFetchedAt:frameOk?frameResult.fetchedAt:null,frameErrorCode:frameOk?'':'CREDIT_FRAMES_UNAVAILABLE',frameErrorAt:frameOk?null:now().toISOString(),months:results.map(result=>result.error?coverageFailure(result.month,result.tier,result.error,result.at):coverageSuccess(result.month,result.tier,result.data[accountNumber]||[],result.at)),pendingTransactions:[],pendingStatus:'missing'};
-    });
+    await login(page,provider,credentials,servicesUrl);await primeDigitalSession(page,cfg);
+    const cards=await fetchDigitalCards(page,cfg),months=buildCreditMonths(startDate,futureMonthsToScrape,now()),states=new Map(cards.map(card=>[String(card.cardSuffix),{card,months:[],pending:new Map()}])),errors=[];
+    const currentMonth=new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),coreEnd=addUtcMonths(currentMonth,1);
+    for(const month of months){const key=monthKey(month),tier=month<=coreEnd?'core':'forecast';for(const state of states.values()){
+      const started=Date.now(),at=now().toISOString();try{
+        const processedDate=await fetchDigitalBillingDate(page,cfg,state.card,month),result=await fetchDigitalTransactions(page,cfg,provider,state.card,month,processedDate),transactions=result.completed.filter(tx=>transactionInBillingWindow(tx,startDate));
+        state.months.push(coverageSuccess(key,tier,transactions,at));for(const tx of result.pending){const pkey=pendingDigitalKey(tx);if(!state.pending.has(pkey))state.pending.set(pkey,tx)}
+        onDiagnostic({correlationId,provider,stage:'Transactions',month:key,accountSuffix:cardSuffix(state.card.cardSuffix),durationMs:Date.now()-started});
+      }catch(error){state.months.push(coverageFailure(key,tier,error,at));errors.push({...publicMonthError(error,key,tier,at),accountSuffix:cardSuffix(state.card.cardSuffix)});onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,accountSuffix:cardSuffix(state.card.cardSuffix),durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}
+    }}
+    const frameResult=await fetchCardBalances(page,cfg,now),missingFrameAccounts=[];onDiagnostic({correlationId,provider,stage:'Frames',durationMs:frameResult.durationMs,errorClass:frameResult.errorCode||undefined,httpStatus:frameResult.httpStatus||0});
+    const accounts=[...states.entries()].map(([accountNumber,state])=>{const frame=frameResult.balances.get(cardSuffix(accountNumber)),frameOk=!!frame;if(!frameOk)missingFrameAccounts.push(accountNumber);return {accountNumber,balance:frame?.balance??null,balanceDate:frame?.balanceDate??null,cardFrame:frame?.cardFrame??null,frameStatus:frameOk?'fresh':'missing',frameFetchStatus:frameOk?'success':frameResult.fetchStatus==='provider_error'?'provider_error':'unavailable',frameFetchedAt:frameOk?frameResult.fetchedAt:null,frameErrorCode:frameOk?'':'CREDIT_FRAMES_UNAVAILABLE',frameErrorAt:frameOk?null:now().toISOString(),months:state.months,pendingTransactions:[...state.pending.values()],pendingStatus:'success',pendingFetchedAt:now().toISOString()}});
     if(missingFrameAccounts.length)errors.push({code:'CREDIT_FRAMES_UNAVAILABLE',stage:'Frames',component:'frames',severity:'warning',httpStatus:frameResult.httpStatus||0,message:frameResult.fetchStatus==='provider_error'?'עסקאות האשראי סונכרנו, אך דף המסגרות של החברה לא היה זמין; Last Known Good או המסגרת הידנית נשמרים.':`עסקאות האשראי סונכרנו, אך לא התקבלה מסגרת עבור ${missingFrameAccounts.length} כרטיסים; Last Known Good או המסגרת הידנית נשמרים.`,at:now().toISOString()});
-    const coreComplete=!results.some(result=>result.tier==='core'&&result.error),forecastFailures=results.filter(result=>result.tier==='forecast'&&result.error).length,coreFailures=results.filter(result=>result.tier==='core'&&result.error).length;
-    if(forecastFailures)errors.unshift({code:'CREDIT_PARTIAL_FORECAST',stage:'Forecast',httpStatus:0,message:`חסרים ${forecastFailures} חודשי תחזית; Last Known Good נשמר.`,at:now().toISOString()});
-    if(coreFailures)errors.unshift({code:'CREDIT_CORE_COVERAGE_INCOMPLETE',stage:'CoreCoverage',httpStatus:0,message:`חסרים ${coreFailures} חודשי ליבה; זמן ההצלחה המלאה לא התקדם.`,at:now().toISOString()});
+    const allSlices=accounts.flatMap(account=>account.months),coreComplete=!allSlices.some(slice=>slice.tier==='core'&&slice.fetchStatus!=='success'),forecastFailures=allSlices.filter(slice=>slice.tier==='forecast'&&slice.fetchStatus!=='success').length,coreFailures=allSlices.filter(slice=>slice.tier==='core'&&slice.fetchStatus!=='success').length;
+    if(forecastFailures)errors.unshift({code:'CREDIT_PARTIAL_FORECAST',stage:'Forecast',httpStatus:0,message:`חסרים ${forecastFailures} מקטעי תחזית; Last Known Good נשמר.`,at:now().toISOString()});
+    if(coreFailures)errors.unshift({code:'CREDIT_CORE_COVERAGE_INCOMPLETE',stage:'CoreCoverage',httpStatus:0,message:`חסרים ${coreFailures} מקטעי ליבה; זמן ההצלחה המלאה לא התקדם.`,at:now().toISOString()});
     return {success:true,coreComplete,accounts,errors};
   }catch(e){if(String(e?.code||'').startsWith('CREDIT_'))throw e;throw safeError(`סנכרון Camoufox נכשל: ${cleanText(e?.message||e,180)}`,'CREDIT_CAMOUFOX_FAILED')}
   finally{try{await page?.close()}catch{}try{await browser?.close()}catch{}}

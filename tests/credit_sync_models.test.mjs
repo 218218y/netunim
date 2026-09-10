@@ -145,6 +145,11 @@ const stalePendingSync=normalizeCreditSync({version:4,profiles:[{profileId:'stal
 assert.equal(syncedPendingTransactionsData({creditSync:stalePendingSync},'2026-09-03').length,1,'Last Known Good pending approval stays visible when the issuer pending endpoint temporarily fails');
 assert.equal(syncedPendingForecastData({creditSync:stalePendingSync},'2026-09-03').length,0,'stale pending data cannot reserve a monthly ILS forecast as if it were fresh');
 assert.equal(creditMonthlyDetailData({credits:[],creditSync:stalePendingSync},'2026-09-03').months.find(month=>month.key==='2026-09').total,0,'stale pending row remains visible but contributes zero to the month total');
+const settlementAckId='credit_settlement_unmatched:עסקי:2026-09-10:max:sync:settle-business:1010';
+const ackSync=normalizeCreditSync({version:4,settlementWarningAcks:{[settlementAckId]:'2026-09-12T09:15:00Z',invalid:'not-a-date'}});
+assert.deepEqual(Object.keys(ackSync.settlementWarningAcks),[settlementAckId],'settlement-warning acknowledgement is durable finance-sync state while malformed acknowledgements fail closed');
+assert.equal(mergeCreditSyncResult(ackSync,{profiles:[],errors:[]}).settlementWarningAcks[settlementAckId],'2026-09-12T09:15:00.000Z','issuer refresh preserves user acknowledgement instead of resurfacing an already-reviewed unmatched-settlement warning');
+
 const manualMappingSync=normalizeCreditSync({version:3,profiles:[{profileId:'manual-frame',provider:'amex',accounts:[{accountNumber:'7777',txns:[]}]}],cardMappings:{'manual-frame:7777':{included:true,manualFrame:12345.67}}});
 assert.equal(manualMappingSync.cardMappings['manual-frame:7777'].manualFrame,12345.67,'manual frame survives normalization in the existing v3 schema without triggering the destructive v2-to-v3 cutover');
 assert.equal(normalizeCreditSync({version:3,cardMappings:{bad:{manualFrame:-1}}}).cardMappings.bad.manualFrame,null,'invalid negative manual frame fails closed');
@@ -376,6 +381,26 @@ assert.equal(differentAmountCycle.projected,7792,'after a mismatched actual debi
 const genericDifferentAmount=JSON.parse(JSON.stringify(settlementDifferentAmount));genericDifferentAmount.bank.feed.transactions[0].description='חיוב כרטיס אשראי';
 const genericDifferentCycle=kupaAccountCashflowData(genericDifferentAmount,'עסקי','2026-09-11');
 assert.equal(genericDifferentCycle.settlingCredit,1000,'a generic credit-card label with a different amount is not strong enough to guess which issuer cycle posted');
+
+const settlementHardCap=JSON.parse(JSON.stringify(settlementBeforePosting));
+settlementHardCap.bank.asOfDate='2026-09-12';settlementHardCap.bank.feed.syncedAt='2026-09-12T08:00:00.000Z';
+const businessHardCap=kupaAccountCashflowData(settlementHardCap,'עסקי','2026-09-12');
+assert.equal(businessHardCap.settlingCredit,0,'an unmatched due-on-10 cycle is never held past the hard two-day reconciliation window');
+assert.equal(businessHardCap.expiredSettlementCredit,1000,'the released estimate remains observable as an unmatched-settlement diagnostic instead of disappearing silently');
+assert.equal(businessHardCap.expiredSettlementWarnings.length,1);assert.equal(businessHardCap.expiredSettlementWarnings[0].dueDate,'2026-09-10');assert.equal(businessHardCap.expiredSettlementWarnings[0].releaseDate,'2026-09-12');
+assert.equal(businessHardCap.credit,1200);assert.equal(businessHardCap.projected,8800,'from the 12th onward the old estimated debit is removed from checking cash-flow even without a bank match, preventing month-over-month accumulation');
+const homeHardCap=JSON.parse(JSON.stringify(settlementBeforePosting));homeHardCap.bank.homeFeed.syncedAt='2026-09-17T08:00:00.000Z';
+const homeHardCapCycle=kupaAccountCashflowData(homeHardCap,'ביתי','2026-09-17');
+assert.equal(homeHardCapCycle.settlingCredit,0);assert.equal(homeHardCapCycle.expiredSettlementCredit,500);assert.equal(homeHardCapCycle.expiredSettlementWarnings[0].releaseDate,'2026-09-17','a due-on-15 home cycle follows the same 15→17 hard cap independently of the business account');
+const lateMatchedAfterCap=JSON.parse(JSON.stringify(settlementHardCap));lateMatchedAfterCap.bank.currentBalance=8992;lateMatchedAfterCap.bank.feed.balance=8992;lateMatchedAfterCap.bank.feed.syncedAt='2026-09-13T08:00:00.000Z';lateMatchedAfterCap.bank.feed.transactions=[{id:'late-max-posted',date:'2026-09-13',amount:-1008,status:'completed',description:'מקס איט פיננסי'}];
+const lateMatchedCycle=kupaAccountCashflowData(lateMatchedAfterCap,'עסקי','2026-09-13');
+assert.equal(lateMatchedCycle.expiredSettlementWarnings.length,0,'if a delayed bank debit is later observed, the unmatched warning disappears automatically even after the hard cap already released the estimate');
+
+for(const [provider,bankLabel] of [['visaCal','כרטיסי אשראי ל'],['max','מקס איט פיננסי'],['isracard','ישראכרט בע"מ'],['amex','אמריקן אקספרס']]){
+  const profileId=`provider-label-${provider}`,mappingKey=`${profileId}:9090`,providerSync=normalizeCreditSync({version:4,profiles:[{profileId,provider,defaultAccount:'עסקי',accounts:[{accountNumber:'9090',txns:[{id:`${provider}-sep`,processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS',status:'completed',description:'מחזור ספטמבר'},{id:`${provider}-oct`,processedDate:'2026-10-10',chargedAmount:-1200,chargedCurrency:'ILS',status:'completed',description:'מחזור אוקטובר'}]}]}],cardMappings:{[mappingKey]:{included:true,hidden:false,account:'עסקי'}}});
+  const providerState={version:4,checks:[],cash:[],cards:[],credits:[],expenses:[],cashflowSettings:{businessMinimum:0},creditSync:providerSync,bank:{currentBalance:8992,asOfDate:'2026-09-11',source:'hapoalim',adjustments:[],feed:{syncedAt:'2026-09-11T08:00:00.000Z',balance:8992,transactions:[{id:`${provider}-posted`,date:'2026-09-11',amount:-1008,status:'completed',description:'חיוב מוסדי',partyName:bankLabel,bankReference:'institution-reference'}]}}};
+  assert.equal(kupaAccountCashflowData(providerState,'עסקי','2026-09-11').settlingCredit,0,`${provider}: the bank institution name alone settles a posted debit with a different amount; last-4 digits are optional evidence, not a requirement`);
+}
 
 const splitMappings={'split:1111':{included:true,hidden:false,account:'עסקי',cardName:'MAX 1111'},'split:2222':{included:true,hidden:false,account:'עסקי',cardName:'MAX 2222'}};
 const splitCreditSync=normalizeCreditSync({version:4,profiles:[{profileId:'split',provider:'max',defaultAccount:'עסקי',accounts:[

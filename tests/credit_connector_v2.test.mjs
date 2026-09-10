@@ -16,8 +16,8 @@ import {
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
-import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
-import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
+import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
+import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
 const amexMonth=new Date('2026-12-01T00:00:00.000Z');
@@ -37,6 +37,11 @@ const plan=buildCreditMonthPlan({startDate:new Date('2026-05-01T00:00:00Z'),futu
 assert.equal(plan.at(-1).month,'2027-09','the connector keeps the full +12-month issuer horizon');
 assert.equal(plan.find(row=>row.month==='2026-10').tier,'core','the nearest future month is part of required core coverage');
 assert.equal(plan.find(row=>row.month==='2026-11').tier,'forecast','later issuer months are forecast enrichment');
+
+const encodedDigitalCards=JSON.stringify([{cardSuffix:'7392',companyCode:'11',isActive:true,isBlock:false},{cardSuffix:'6774',companyCode:'77',isActive:true,isBlock:false}]);
+assert.deepEqual(parseIsracardDigitalV3Cards({isSuccess:true,data:{cardsList:encodedDigitalCards}}).map(card=>card.cardSuffix),['7392','6774'],'Isracard DigitalV3 accepts the current production cardsList contract when the provider returns the list as a JSON-encoded string');
+assert.deepEqual(parseAmexDigitalV3Cards({isSuccess:true,data:{cardsList:encodedDigitalCards}}).map(card=>card.companyCode),['11','77'],'Amex DigitalV3 accepts the same current string-encoded cardsList contract and preserves each card companyCode for per-card transaction requests');
+assert.throws(()=>parseIsracardDigitalV3Cards({isSuccess:true,data:{cardsList:'{broken'}}),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR'&&error.stage==='CardList','malformed string-encoded cardsList fails closed instead of silently losing cards');
 
 function response(body,{status=200,headers={}}={}){return {status,headers:{get:name=>headers[String(name).toLowerCase()]||null},text:async()=>typeof body==='string'?body:JSON.stringify(body)}}
 function transaction(card,month){return {trnIntId:`${card}-${month}`,trnTypeCode:'5',trnPurchaseDate:`${month}-02T00:00:00.000Z`,debCrdDate:`${month}-10T00:00:00.000Z`,trnAmt:25,amtBeforeConvAndIndex:25,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'fixture merchant',transTypeCommentDetails:''}}
@@ -58,9 +63,11 @@ const billedBeforeCutoff=parseVisaCalMonthData({statusCode:1,result:{bankAccount
 assert.equal(billedBeforeCutoff.length,0,'the historical cutoff still applies to the billing date and does not leak older debit cycles');
 
 let genericOptions=null;
-const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS'},{identifier:'max-pending-1',status:'pending',date:'2026-09-03T05:00:00.000Z',processedDate:'2026-09-03T05:00:00.000Z',chargedAmount:-120,chargedCurrency:'ILS'}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
+const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T14:27:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-08-28T14:27:00'}},{identifier:'max-pending-1',status:'pending',date:'2026-09-03T05:00:00.000Z',processedDate:'2026-09-03T05:00:00.000Z',chargedAmount:-120,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-09-03T05:00:00'}}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
 const genericResult=await genericAdapter.scrape();
 assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'native MAX/Isracard purchase-date filtering is disabled so Netunim can apply the canonical billing-date boundary');
+assert.equal(genericOptions.includeRawTransaction,true,'MAX requests raw transaction data only in-memory so an explicit provider purchase clock can be extracted before the raw payload is discarded');
+assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].transactionTime,'14:27','MAX preserves an explicit clock embedded in the provider purchaseDate without inventing one when the provider supplies date-only midnight');
 assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
 assert.equal(genericResult.accounts[0].pendingTransactions.length,1,'MAX pending status remains authoritative even when upstream fills processedDate with the purchase date');
 assert.equal(genericResult.accounts[0].pendingTransactions[0].id,'max-pending-1');
