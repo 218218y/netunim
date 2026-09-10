@@ -1,3 +1,4 @@
+# JavaScript model tests run once via node_models.py in the canonical full gate.
 from pathlib import Path
 import re
 import subprocess
@@ -11,41 +12,10 @@ def ok(condition,message):
     print(('PASS' if condition else 'FAIL'),message)
     if not condition: errors.append(message)
 
-result=subprocess.run(['node',str(ROOT/'tests/calendar_journal.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if result.stdout: print(result.stdout.strip())
-if result.stderr: print(result.stderr.strip())
-ok(result.returncode==0,'calendar journal: idempotent retry and durable failure contracts pass')
-
-api_result=subprocess.run(['node',str(ROOT/'tests/calendar_api.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if api_result.stdout: print(api_result.stdout.strip())
-if api_result.stderr: print(api_result.stderr.strip())
-ok(api_result.returncode==0,'calendar API: hidden calendars are included and free/busy-only calendars cannot break event sync')
-
-actions_result=subprocess.run(['node',str(ROOT/'tests/calendar_ui_actions.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if actions_result.stdout: print(actions_result.stdout.strip())
-if actions_result.stderr: print(actions_result.stderr.strip())
-ok(actions_result.returncode==0,'calendar UI: delegated calendar actions invoke their composition-root adapters with preserved arguments')
-
-view_result=subprocess.run(['node',str(ROOT/'tests/calendar_view.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if view_result.stdout: print(view_result.stdout.strip())
-if view_result.stderr: print(view_result.stderr.strip())
-ok(view_result.returncode==0,'calendar view: month/week/day ranges and focus navigation are deterministic')
-
-auth_result=subprocess.run(['node',str(ROOT/'tests/calendar_auth.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if auth_result.stdout: print(auth_result.stdout.strip())
-if auth_result.stderr: print(auth_result.stderr.strip())
-ok(auth_result.returncode==0,'calendar auth: server token restore, redirect start and disconnect contracts pass')
-
-
 backend_result=subprocess.run([sys.executable,str(ROOT/'tests/calendar_oauth_backend_contracts.py')],cwd=ROOT,capture_output=True,text=True)
 if backend_result.stdout: print(backend_result.stdout.strip())
 if backend_result.stderr: print(backend_result.stderr.strip())
 ok(backend_result.returncode==0,'calendar auth backend: server-side refresh-token storage and callback security contracts pass')
-
-storage_result=subprocess.run(['node',str(ROOT/'tests/calendar_storage.test.mjs')],cwd=ROOT,capture_output=True,text=True)
-if storage_result.stdout: print(storage_result.stdout.strip())
-if storage_result.stderr: print(storage_result.stderr.strip())
-ok(storage_result.returncode==0,'calendar storage: remembered Google-account preference survives reload without persisting an access token')
 
 index=(SITE/'index.html').read_text(encoding='utf-8')
 nav=re.search(r'<nav class="nav" id="nav">(.*?)</nav>',index,re.S)

@@ -1,0 +1,2 @@
+# Exact CI resolution of the compatible range in requirements.txt.
+websocket-client==1.9.0

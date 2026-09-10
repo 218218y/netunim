@@ -1,0 +1,116 @@
+name: Full verification
+
+# Every push (including tags), PR merge candidate and merge-queue candidate.
+# No path filters and no cancellation of older pushes: every pushed version runs.
+on:
+  push:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONUTF8: '1'
+  PYTHONUNBUFFERED: '1'
+
+jobs:
+  plan:
+    name: Plan verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build matrix from the canonical local suite inventory
+        id: plan
+        run: echo "matrix=$(python3 tests/run_all.py --ci-matrix)" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify / ${{ matrix.group }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+          cache: pip
+          cache-dependency-path: tests/requirements-ci.txt
+      - name: Install locked verification dependencies
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          python -m pip install -r tests/requirements-ci.txt
+      - name: Locate the runner's disposable PostgreSQL tools
+        if: matrix.postgres
+        run: |
+          test -x /usr/lib/postgresql/16/bin/postgres
+          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/16/bin/postgres --version
+      - name: Locate the runner's real Chrome browser
+        if: matrix.browser
+        run: |
+          browser_path="$(command -v google-chrome)"
+          "$browser_path" --version
+          echo "NETUNIM_BROWSER=$browser_path" >> "$GITHUB_ENV"
+      - name: Run every suite in this group
+        env:
+          VERIFY_GROUP: ${{ matrix.group }}
+        run: python tests/run_all.py --group "$VERIFY_GROUP" --keep-going --report-dir ".work/ci/$VERIFY_GROUP"
+      - name: Preserve test logs and timing reports even after failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verification-${{ matrix.group }}
+          path: .work/ci/${{ matrix.group }}/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+  windows:
+    name: Windows deployment contracts
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Exercise actual cmd.exe entrypoints with isolated upload stubs
+        run: python tests/windows_deploy_contracts.py
+
+  complete:
+    name: Verification complete
+    if: always()
+    needs: [plan, verify, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every group and Windows deployment contracts to pass
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+        run: |
+          printf 'Plan: %s\nSuites: %s\nWindows: %s\n' "$PLAN_RESULT" "$VERIFY_RESULT" "$WINDOWS_RESULT"
+          test "$PLAN_RESULT" = success
+          test "$VERIFY_RESULT" = success
+          test "$WINDOWS_RESULT" = success

@@ -2,11 +2,11 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 rem Internal per-site deployment engine. Verification is intentionally owned by
-rem deploy_site.bat (single-site) or deploy_all.bat (two-site) so the repository
-rem test suite has exactly one authoritative gate per deployment operation.
+rem normal entrypoints (local full suite) or fast entrypoints (full GitHub CI
+rem for the clean local commit). Both paths retain every guard in this engine.
 if not "%NETUNIM_DEPLOY_VERIFIED%"=="1" (
-  echo ERROR: deploy_site_core.bat is internal and requires a successful repository verification gate.
-  echo Use deploy_all.bat or an application's deploy_site.bat instead.
+  echo ERROR: deploy_site_core.bat is internal and requires successful full verification locally or in GitHub.
+  echo Use a normal or fast public deployment entrypoint instead.
   exit /b 2
 )
 if "%~1"=="" exit /b 2

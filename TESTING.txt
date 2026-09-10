@@ -84,7 +84,8 @@ After changing a public asset or canonical shared source:
   verify.bat --no-pause
 
 The cache name intentionally changes for real public-content changes. Checkout-only LF/CRLF differences do not
-change it. Verification checks drift without modifying files. Both deployment scripts run this complete gate first.
+change it. Verification checks drift without modifying files. The normal deployment scripts run this complete gate first.
+GitHub Actions and the separate *_fast.bat entrypoints are documented in CI_DEPLOYMENT.md.
 For safe deployment-path verification without Wrangler or upload:
   netunim-kupa\deploy_site.bat --preflight-only
   netunim-orders\deploy_site.bat --preflight-only
@@ -126,7 +127,10 @@ service_worker_contracts.py: complete shell, install/activate, app-scoped cleanu
   offline fallback that rejects conflicting assets from unrelated origin caches.
 module_contracts.py: deterministic shared copies/cache manifest, normalized cross-platform text hashing,
   byte-exact binary hashing, read-only/idempotent generation, acyclic local module graph, layer boundaries,
-  no runtime globals/test APIs, pinned ESLint rules and direct Node tests.
+  no runtime globals/test APIs and pinned ESLint rules.
+node_models.py: all tests/*.test.mjs files discovered automatically, with two isolated Node workers.
+verification_plan.py: one complete suite inventory for local full verification and the GitHub Actions matrix.
+runtime_sync_postgres.py: real browser/HTTP/PostgreSQL synchronization, lost acknowledgements and merge conflicts.
 runtime_smoke.py: boot, tabs, lists and scroll restoration in real Chromium.
 runtime_events.py: delegated actions, keyboard, focus/blur dates, series, draft guard, bulk and drag/drop.
 runtime_security.py: hostile business fields and IDs in lists, selectors and modal HTML under production CSP.
