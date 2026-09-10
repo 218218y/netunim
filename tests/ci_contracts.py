@@ -26,6 +26,23 @@ def successful_fixture():
 
 
 class VerificationContracts(unittest.TestCase):
+    def setUp(self):
+        self.environment = patch.dict(os.environ)
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+        # Synthetic reports below must not pollute the real CI job summary.
+        os.environ.pop("GITHUB_STEP_SUMMARY", None)
+
+    def test_browser_startup_fails_immediately_if_chrome_exits(self):
+        import browser_harness
+        from unittest.mock import Mock
+        process = Mock(returncode=7)
+        process.poll.return_value = 7
+        with patch.object(browser_harness.urllib.request, "urlopen") as request:
+            with self.assertRaisesRegex(RuntimeError, "exit 7"):
+                browser_harness._wait_json("http://127.0.0.1:1/json/list", timeout=30, process=process)
+            request.assert_not_called()
+
     def test_matrix_is_a_complete_disjoint_partition_of_the_full_local_gate(self):
         validate_plan()
         matrix = ci_matrix()["include"]

@@ -72,7 +72,8 @@ GitHub בודק את קצה כל push; אם push אחד כולל כמה commits,
 הזמן הכולל קרוב לזמן הקבוצה האיטית ביותר בתוספת הכנת המכונות ותורים. המקביליות מקצרת זמן המתנה, אך אינה
 מפחיתה בהכרח את סך דקות החישוב. מגבלות המקביליות והחיוב של חשבון GitHub עדיין חלות.
 נשמר cache להורדות npm ו־pip; `npm ci` מתקין בכל ריצה לפי ה־lockfile. אין cache של תוצאות בדיקות.
-מכונות Ubuntu 24.04 מספקות Chrome ו־PostgreSQL 16; ההגדרה בודקת שהכלים קיימים ועוצרת אם חסרים.
+מכונות Ubuntu 24.04 מספקות Chrome; בקבוצות המסד מותקן PostgreSQL 18 ממאגר PGDG הרשמי המוגדר במכונה.
+PostgreSQL 16 המותקן מראש אינו מתאים: המיגרציות דורשות את הרשאת MAINTAIN שנוספה ב־17.
 Node 24 ו־Python 3.14 מוגדרים במפורש, תלויות Python של CI מקובעות, ופעולות GitHub מקובעות ל־SHA.
 Dependabot מציע עדכונים לפעולות בקבוצה חודשית.
 
@@ -100,6 +101,7 @@ python tests/run_all.py --ci-matrix
 - [מטריצות והרצה מקבילית](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)
 - [בדיקות חובה, דילוגים ותלות בבדיקות אחרות](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks)
 - [התוכנות במכונות Ubuntu 24.04](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md)
+- [התקנת PostgreSQL ב־Ubuntu](https://www.postgresql.org/download/linux/ubuntu/)
 - [התקנה ו־cache של Node](https://github.com/actions/setup-node)
 - [התקנה ו־cache של Python](https://github.com/actions/setup-python)
 - [דילוג באמצעות הודעת commit](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs)

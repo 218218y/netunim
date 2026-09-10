@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -35,6 +36,10 @@ def preflight(*, require_browser: bool, require_postgres: bool = True) -> int:
         missing = [name for name in ("postgres", "initdb", "pg_ctl", "psql") if not shutil.which(name)]
         if missing:
             return fail(f"PostgreSQL server tools required on PATH: {', '.join(missing)}")
+        version = subprocess.check_output(["postgres", "--version"], text=True, timeout=10)
+        major = re.search(r"PostgreSQL\) (\d+)", version)
+        if not major or int(major.group(1)) < 17:
+            return fail("PostgreSQL 17+ is required by the migration MAINTAIN grants; CI uses PostgreSQL 18.")
     # The disposable PostgreSQL fixture imports the browser harness too.
     if require_browser or require_postgres:
         if importlib.util.find_spec("websocket") is None:

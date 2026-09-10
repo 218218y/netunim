@@ -78,10 +78,12 @@ def _free_port() -> int:
     raise RuntimeError('No free localhost port in the dynamic range')
 
 
-def _wait_json(url: str, timeout: float = 10.0):
+def _wait_json(url: str, timeout: float = 10.0, *, process=None):
     end = time.time() + timeout
     last = None
     while time.time() < end:
+        if process is not None and process.poll() is not None:
+            raise RuntimeError(f"Chrome exited before DevTools became ready (exit {process.returncode})")
         try:
             with urllib.request.urlopen(url, timeout=0.5) as response:
                 return json.load(response)
@@ -226,8 +228,17 @@ class BrowserSession:
             "--no-first-run",
             "about:blank",
         ]
-        self.proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        pages = _wait_json(f"http://127.0.0.1:{devtools_port}/json/list")
+        browser_log = self.tmp / 'browser.log'
+        with browser_log.open('w', encoding='utf-8') as log:
+            self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            # A fresh CI machine can need more than 10s for its first Chrome boot.
+            # Poll readiness, fail immediately on process exit, and leave application
+            # assertions/timeouts unchanged. Include stderr before temp cleanup.
+            pages = _wait_json(f"http://127.0.0.1:{devtools_port}/json/list", timeout=30, process=self.proc)
+        except Exception as error:
+            diagnostics = browser_log.read_text(encoding='utf-8', errors='replace')[-8000:]
+            raise RuntimeError(f"{error}\nChrome startup log:\n{diagnostics}") from error
         self.devtools_url = f'http://127.0.0.1:{devtools_port}'
         page = next((item for item in pages if item.get("type") == "page"), None)
         if not page:

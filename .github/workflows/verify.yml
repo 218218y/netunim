@@ -57,12 +57,15 @@ jobs:
         run: |
           npm ci --ignore-scripts --no-audit --no-fund
           python -m pip install -r tests/requirements-ci.txt
-      - name: Locate the runner's disposable PostgreSQL tools
+      - name: Install PostgreSQL 18 for the current migration contract
         if: matrix.postgres
         run: |
-          test -x /usr/lib/postgresql/16/bin/postgres
-          echo /usr/lib/postgresql/16/bin >> "$GITHUB_PATH"
-          /usr/lib/postgresql/16/bin/postgres --version
+          # The runner's configured PGDG repository supplies supported majors.
+          # Its preinstalled PostgreSQL 16 cannot execute MAINTAIN grants (17+).
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-18
+          echo /usr/lib/postgresql/18/bin >> "$GITHUB_PATH"
+          /usr/lib/postgresql/18/bin/postgres --version
       - name: Locate the runner's real Chrome browser
         if: matrix.browser
         run: |
