@@ -133,6 +133,15 @@ class SyncAssetContracts(unittest.TestCase):
             self.assertEqual((self.root / f'netunim-{app}/site/assets/js/shared/html.js').read_bytes(), source.read_bytes())
         self.run_sync(check=True)
 
+    def test_removed_shared_source_removes_obsolete_public_copies(self):
+        source = self.root / 'shared/html.js'
+        copies = [self.root / f'netunim-{app}/site/assets/js/shared/html.js' for app in ('kupa', 'orders')]
+        source.unlink()
+        self.run_sync(check=True, expected=1)
+        self.run_sync()
+        self.assertTrue(all(not path.exists() for path in copies))
+        self.run_sync(check=True)
+
     def test_asset_order_uses_case_sensitive_posix_paths_on_every_os(self):
         assets = self.root / 'netunim-kupa/site/assets'
         for name in ('z.js', 'A.js', 'a-helper.js', 'Z-helper.js'):
@@ -149,6 +158,85 @@ class SyncAssetContracts(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'CACHE declaration'):
             self.run_sync(check=True, expected=1)
         self.assertEqual(self.snapshot(), before)
+
+
+class StagedAssetContracts(unittest.TestCase):
+    def setUp(self):
+        self.scratch = tempfile.TemporaryDirectory(prefix='netunim-staged-assets-')
+        self.addCleanup(self.scratch.cleanup)
+        self.root = Path(self.scratch.name)
+        for relative in ('shared', 'netunim-kupa/site', 'netunim-orders/site'):
+            shutil.copytree(ROOT / relative, self.root / relative)
+        (self.root / 'tools/git-hooks').mkdir(parents=True)
+        for relative in ('sync-assets.py', 'install-git-hooks.py', 'git-hooks/pre-commit'):
+            shutil.copyfile(ROOT / 'tools' / relative, self.root / 'tools' / relative)
+        self.git('init', '-b', 'main')
+        self.git('config', 'user.name', 'Asset Test')
+        self.git('config', 'user.email', 'asset-test@example.invalid')
+        self.git('config', 'commit.gpgsign', 'false')
+        self.git('config', 'core.autocrlf', 'false')
+        self.git('add', '.')
+        self.git('-c', 'core.hooksPath=NUL', 'commit', '-m', 'fixture')
+
+    def git(self, *args, input=None):
+        result = subprocess.run(
+            ['git', *args], cwd=self.root, input=input, capture_output=True, check=True
+        )
+        return result.stdout
+
+    def run_tool(self, *args):
+        return subprocess.run(
+            [sys.executable, 'tools/sync-assets.py', *args],
+            cwd=self.root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+    def index_bytes(self, relative):
+        return self.git('show', f':{relative}')
+
+    def test_staged_sync_uses_index_snapshot_and_preserves_unstaged_content(self):
+        asset = 'netunim-kupa/site/assets/app.js'
+        worker = 'netunim-kupa/site/service-worker.js'
+        original = (self.root / asset).read_bytes()
+        staged = original + b'\n// staged asset change\n'
+        unstaged = staged + b'// deliberately unstaged asset change\n'
+        (self.root / asset).write_bytes(staged)
+        self.git('add', '--', asset)
+        (self.root / asset).write_bytes(unstaged)
+
+        result = self.run_tool('--staged')
+        self.assertIn('STAGED kupa: refreshed service-worker shell and cache key', result.stdout)
+        self.assertEqual(self.index_bytes(asset), staged)
+        self.assertEqual((self.root / asset).read_bytes(), unstaged)
+        self.assertNotEqual(self.index_bytes(worker), (self.root / worker).read_bytes())
+        self.assertEqual(self.run_tool('--staged').stdout, '')
+        self.run_tool('--check')
+
+    def test_installed_hook_fixes_and_commits_generated_outputs(self):
+        install = subprocess.run(
+            [sys.executable, 'tools/install-git-hooks.py'], cwd=self.root,
+            capture_output=True, text=True, check=True,
+        )
+        self.assertIn('INSTALLED:', install.stdout)
+        subprocess.run(
+            [sys.executable, 'tools/install-git-hooks.py', '--check'], cwd=self.root,
+            capture_output=True, text=True, check=True,
+        )
+        source = 'shared/html.js'
+        updated = (self.root / source).read_bytes() + b'\n// hook integration change\n'
+        (self.root / source).write_bytes(updated)
+        self.git('add', '--', source)
+        commit = subprocess.run(
+            ['git', 'commit', '-m', 'exercise managed hook'], cwd=self.root,
+            capture_output=True, text=True, check=True,
+        )
+        self.assertIn('STAGED kupa: synchronized shared source: html.js', commit.stdout + commit.stderr)
+        for app in ('kupa', 'orders'):
+            copy = f'netunim-{app}/site/assets/js/shared/html.js'
+            self.assertEqual(self.git('show', f'HEAD:{copy}'), updated)
+        self.assertEqual(self.git('status', '--porcelain'), b'')
 
 
 if __name__ == '__main__':

@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "hooks:install": "python tools/install-git-hooks.py",
+    "hooks:check": "python tools/install-git-hooks.py --check",
     "lint": "eslint .",
     "test": "python tests/run_all.py",
     "updates:check": "node tools/check-updates.mjs",

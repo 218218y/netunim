@@ -24,6 +24,20 @@ This refactor was checked with Node 24 and Python 3.14 on Windows.
 Normal local setup:
   python -m pip install -r tests/requirements.txt
   npm ci
+  python tools/install-git-hooks.py
+
+The last command installs the repository-managed pre-commit hook. GitHub Desktop runs it automatically when
+creating a commit (keep "Load Git hook environment variables from shell" enabled under Options > Git > Hooks).
+The hook runs sync-assets.py against the exact staged/index snapshot, stages only its generated shared copies and
+service-worker metadata, and also refreshes the working tree. This preserves unchecked files and partially staged
+content instead of accidentally adding them to the commit. Verify or repair the local installation at any time with:
+  npm run hooks:check
+  npm run hooks:install
+
+This is intentionally a pre-commit hook rather than pre-push: at pre-push time the commit already exists, so an
+automatic repair would not be part of the version uploaded to GitHub. CI keeps the read-only --check gate as the
+authoritative backstop. GitHub Desktop can bypass commit hooks, but that should be reserved for diagnosing a broken
+local Python/hook installation; the CI check will still reject unsynchronized assets.
 
 The ChatGPT offline installer uses a content-addressed cache outside the repository (by default
 `~/.cache/netunim/offline/...` on the Linux repair host); it never uses or replaces the normal root `node_modules`.
