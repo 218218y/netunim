@@ -1,5 +1,6 @@
 import {esc} from '../../core/values.js';
 import {money, wholeShekel, moneyWhole} from '../../core/money.js';
+import {checkDateFmt} from '../../core/dates.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -20,7 +21,7 @@ function setSummarySupplierYearView(value,{render=true}={}){
 }
 
 function summaryMarkup({embedded=false}={}){
-  const st=totalStats(),cst=customerStats(),kupaNet=checksSession.kupaNetReadout?.net??null,supplierNetWhole=wholeShekel(st.net),customerOpenWhole=wholeShekel(cst.openTotal),kupaNetWhole=kupaNet===null?null:wholeShekel(kupaNet),expected=kupaNetWhole===null?null:supplierNetWhole+customerOpenWhole+kupaNetWhole,yearView=summaryYearView(),years=supplierArchiveYears();
+  const st=totalStats(),cst=customerStats(),kupaReadout=checksSession.kupaNetReadout,kupaNet=kupaReadout?.net??null,horizon=kupaReadout?.targetDate?checkDateFmt(kupaReadout.targetDate):'',partial=kupaReadout?.forecastIncomplete===true,supplierNetWhole=wholeShekel(st.net),customerOpenWhole=wholeShekel(cst.openTotal),kupaNetWhole=kupaNet===null?null:wholeShekel(kupaNet),expected=kupaNetWhole===null?null:supplierNetWhole+customerOpenWhole+kupaNetWhole,yearView=summaryYearView(),years=supplierArchiveYears();
   const suppliers=model.state.suppliers.map(s=>{const tx=supplierPeriodTx(s.id,yearView),financial=supplierFinancialStats(s.id,yearView),b=supplierBalance(s.id);return{id:s.id,name:s.name,b,financial,txCount:tx.length,pending:tx.filter(t=>t.supplied===false).length,missing:tx.filter(t=>t.invoiceReceived===false).length,hm:tx.filter(t=>t.hmIssued).length,unsigned:tx.filter(t=>t.signed===false).length}}).sort((a,b)=>Math.abs(b.financial.net)-Math.abs(a.financial.net)||a.name.localeCompare(b.name,'he'));
   const periodTotals=suppliers.reduce((acc,s)=>{acc.debit+=s.financial.debit;acc.credit+=s.financial.credit;return acc},{debit:0,credit:0});periodTotals.net=periodTotals.credit-periodTotals.debit;
   const yearLabel=yearView==='current'?'שנה שוטפת':yearView==='all'?'כל השנים':`שנת ${yearView}`,yearOptions=years.map(year=>`<option value="${esc(year)}" ${String(year)===yearView?'selected':''}>${esc(year)}</option>`).join('');
@@ -29,13 +30,13 @@ function summaryMarkup({embedded=false}={}){
   <article class="forecast-card">
     <div class="forecast-label">מאזן תזרימי צפוי לאחר גביית הלקוחות ותשלום לספקים</div>
     <div class="forecast-value ${esc(expected===null?'':expected<0?'badtext':'goodtext')}">${expected===null?'—':moneyWhole(expected)}</div>
-    <div class="forecast-formula"><span>חוב לקוחות פתוח <b>${moneyWhole(customerOpenWhole)}</b></span><span class="formula-op">+</span><span>נטו ספקים <b class="${esc(supplierNetWhole<0?'badtext':'goodtext')}">${moneyWhole(supplierNetWhole)}</b></span><span class="formula-op">+</span><span>מאזן קופה נטו <b class="${esc(kupaNetWhole===null?'':kupaNetWhole<0?'badtext':'goodtext')}">${kupaNetWhole===null?'—':moneyWhole(kupaNetWhole)}</b></span><span class="formula-op">=</span><span><b class="${esc(expected===null?'':expected<0?'badtext':'goodtext')}">${expected===null?'—':moneyWhole(expected)}</b></span></div>
-    <div class="forecast-note">חוב לקוחות פתוח + נטו ספקים + מאזן קופה נטו. זהו מאזן תזרימי צפוי ולא חישוב רווח חשבונאי.</div>
+    <div class="forecast-formula"><span>חוב לקוחות פתוח <b>${moneyWhole(customerOpenWhole)}</b></span><span class="formula-op">+</span><span>נטו ספקים <b class="${esc(supplierNetWhole<0?'badtext':'goodtext')}">${moneyWhole(supplierNetWhole)}</b></span><span class="formula-op">+</span><span>עו״ש תזרימי עסקי${partial?' · חלקי':''} <b class="${esc(kupaNetWhole===null?'':kupaNetWhole<0?'badtext':'goodtext')}">${kupaNetWhole===null?'—':moneyWhole(kupaNetWhole)}</b></span><span class="formula-op">=</span><span><b class="${esc(expected===null?'':expected<0?'badtext':'goodtext')}">${expected===null?'—':moneyWhole(expected)}</b></span></div>
+    <div class="forecast-note">חוב לקוחות פתוח + נטו ספקים + העו״ש התזרימי העסקי עד אופק החיוב${horizon?` ${esc(horizon)}`:''}. זהו מאזן תזרימי צפוי ולא חישוב רווח חשבונאי.${partial?' אומדן האשראי חלקי משום שחסר סכום שקלי מלא או שכיסוי החברה מבוסס LKG/קריאה חסרה.':''}</div>
   </article>
   <div class="finance-side-grid">
     <div class="kpi"><div class="label">חוב לקוחות פתוח</div><div class="value goodtext">${money(cst.openTotal)}</div><div class="sub">${esc(cst.open)} חובות שטרם שולמו</div></div>
     <div class="kpi"><div class="label">נטו ספקים</div><div class="value ${esc(supplierNetWhole<0?'badtext':'goodtext')}">${moneyWhole(supplierNetWhole)}</div><div class="sub">זכות אצל ספקים פחות חוב לספקים</div></div>
-    <div class="kpi kupa-net-kpi"><div class="label">מאזן קופה נטו</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש − כל האשראי העתידי − חודש הוצאות + קופה צ'קים${kupaNet===null?' · ממתין לקריאה מהענן':''}</div></div>
+    <div class="kpi kupa-net-kpi"><div class="label">עו״ש תזרימי עסקי${partial?' · חלקי':''}</div><div class="value ${esc(kupaNet===null?'':kupaNet<0?'badtext':'goodtext')}">${kupaNet===null?'—':money(kupaNet)}</div><div class="sub">עו״ש − אשראי והוצאות עד האופק + צ'קים עד האופק${horizon?` · ${esc(horizon)}`:''}${kupaNet===null?' · ממתין לקריאה מהענן':''}${partial?' · סכום/כיסוי אשראי אינו מלא':''}</div></div>
   </div>
 </section>
 <section class="summary-section customer-summary-section"><div class="summary-section-head"><div><h2>סיכום חובות לקוחות</h2><p>הסיכום כולל רק חובות שטרם שולמו; חוב שסומן כשולם יוצא מהחישוב.</p></div></div><div class="customer-summary-grid">

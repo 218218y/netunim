@@ -130,8 +130,8 @@ test('Orders readout includes only business synchronized credit and business che
  ]}],cardMappings:{[businessKey]:{included:true,account:'עסקי'},[homeKey]:{included:true,account:'ביתי'}}}};
  assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),200,'credit reporting still sees both included cards');
  assert.equal(kupaBusinessInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75,'business readout excludes the included home card');
- const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,status:'בקופה'},{id:'H',account:'ביתי',amount:500,status:'בקופה'}]},kupa);
- assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.checks,40);assert.equal(readout.net,965);
+ const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,dueDate:'2099-01-05',status:'בקופה'},{id:'H',account:'ביתי',amount:500,dueDate:'2099-01-05',status:'בקופה'}]},kupa);
+ assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.checks,40);assert.equal(readout.net,965);assert.equal(readout.targetDate,'2099-01-10');
 });
 test('merge preserves independent changes and detects deletion versus edit',()=>{
  const base=[{id:'A',value:1},{id:'B',value:2}],local=[{id:'A',value:3},{id:'B',value:2}],remote=[{id:'A',value:1},{id:'B',value:4}];

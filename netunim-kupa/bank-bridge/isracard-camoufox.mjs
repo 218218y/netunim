@@ -94,7 +94,7 @@ function shiftInstallmentDate(iso,installments){
   const lastDay=new Date(Date.UTC(targetFirst.getUTCFullYear(),targetFirst.getUTCMonth()+1,0)).getUTCDate();
   return new Date(Date.UTC(targetFirst.getUTCFullYear(),targetFirst.getUTCMonth(),Math.min(date.getUTCDate(),lastDay))).toISOString();
 }
-export function transactionInBillingWindow(tx,startDate){const cutoff=Date.parse(startDate),billing=Date.parse(tx?.processedDate||tx?.date||'');return !Number.isFinite(cutoff)||!Number.isFinite(billing)||billing>=cutoff}
+export function transactionInBillingWindow(tx,startDate){const cutoff=Date.parse(startDate),billing=Date.parse(tx?.processedDate||'');return !Number.isFinite(cutoff)||!Number.isFinite(billing)||billing>=cutoff}
 
 export function normalizeIsracardFamilyTransaction(txn={},processedDate=null){
   if(String(txn?.dealSumType)==='1'||String(txn?.voucherNumberRatz)==='000000000'||String(txn?.voucherNumberRatzOutbound)==='000000000')return null;
@@ -221,7 +221,7 @@ async function fetchDigitalBillingDate(page,cfg,card,month){
   await randomDelay();const stage=`Billing ${monthKey(month)}`,companyCode=Number(card?.companyCode||cfg.transactionCompanyCode);
   const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetMonthlyBilling`,method:'POST',stage,headers:DIGITAL_JSON_HEADERS,data:{cards:[{cardStatus:Number.isFinite(Number(card?.cardStatus))?Number(card.cardStatus):0,cardSuffix:String(card.cardSuffix),companyCode,serviceType:Number.isFinite(Number(card?.serviceType))?Number(card.serviceType):0,isPartner:!!card?.isPartner}],billingDate:digitalBillingLabel(month)}});
   if(!response?.isSuccess||!response?.data||typeof response.data.cards!=='object')throw safeError('חברת האשראי לא החזירה תאריך חיוב תקין ב-DigitalV3.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage});
-  const billing=response.data.cards?.[card.cardSuffix];return parseIsracardDate(billing?.billingDate)||month.toISOString();
+  const billing=response.data.cards?.[card.cardSuffix];return parseIsracardDate(billing?.billingDate)||null;
 }
 function digitalNormalizers(provider){return provider==='amex'?{approved:normalizeAmexDigitalV3ApprovedTransaction,voucher:normalizeAmexDigitalV3Voucher}:{approved:normalizeIsracardDigitalV3ApprovedTransaction,voucher:normalizeIsracardDigitalV3Voucher}}
 async function fetchDigitalTransactions(page,cfg,provider,card,month,processedDate){

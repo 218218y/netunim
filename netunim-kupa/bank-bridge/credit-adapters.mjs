@@ -137,7 +137,7 @@ export function parseVisaCalMonthData(data,{startDate=null}={}){
     const regular=Array.isArray(account?.debitDates)?account.debitDates:[],immediate=Array.isArray(account?.immidiateDebits?.debitDays)?account.immidiateDebits.debitDays:[];
     for(const debitDay of [...regular,...immediate]){
       if(!Array.isArray(debitDay?.transactions))throw safeError('כאל החזירה debit day ללא מערך עסקאות.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Transactions'});
-      for(const raw of debitDay.transactions){const tx=normalizeVisaCalTransaction(raw),billingDate=tx.processedDate||tx.date;if(!startDate||!billingDate||Date.parse(billingDate)>=Date.parse(startDate))rows.push(tx)}
+      for(const raw of debitDay.transactions){const tx=normalizeVisaCalTransaction(raw),billingDate=tx.processedDate;if(!startDate||!billingDate||Date.parse(billingDate)>=Date.parse(startDate))rows.push(tx)}
     }
   }
   return rows;
@@ -232,7 +232,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
   }
 }
 
-function transactionBillingDate(tx){return tx?.processedDate||tx?.date||''}
+function transactionBillingDate(tx){return tx?.processedDate||''}
 function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
 function genericMonthlyAccount(account,provider,{startDate,futureMonths,now},schemaVersion=CREDIT_PROVIDER_SCHEMA_VERSION){
   const source=provider==='max'&&Array.isArray(account?.txns)?{...account,txns:account.txns.map(tx=>({...tx,transactionTime:tx?.transactionTime||explicitTransactionTime(tx?.rawTransaction?.purchaseDate)}))}:account;

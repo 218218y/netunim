@@ -1,5 +1,5 @@
 import {todayISO} from '../../core/dates.js';
-import {creditAccountUpcomingChargeData,creditBillingRowsData,creditPendingAuthorizationTotalData,creditTransactionAmountData} from '../../shared/credit-billing-cycles.js';
+import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditBillingRowsData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
 
 export const CREDIT_SYNC_VERSION=4;
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
@@ -36,7 +36,7 @@ export function normalizeCreditTransaction(txn={}){
   };
 }
 
-function transactionMonth(tx){const value=tx?.processedDate||tx?.date;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}
+function transactionMonth(tx){const value=tx?.processedDate;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}
 function normalizeCreditMonthSlice(slice={}){
   const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice.month||''))?String(slice.month):'',fetchStatus=['success','provider_error','schema_error','network_error'].includes(String(slice.fetchStatus))?String(slice.fetchStatus):slice.status==='fresh'?'success':'provider_error',status=['fresh','stale','missing'].includes(String(slice.status))?String(slice.status):fetchStatus==='success'?'fresh':'missing';
   return {month,tier:slice.tier==='forecast'?'forecast':'core',status,fetchStatus,fetchedAt:iso(slice.fetchedAt),transactions:(Array.isArray(slice.transactions)?slice.transactions:[]).map(normalizeCreditTransaction),providerSchemaVersion:text(slice.providerSchemaVersion||'',80),lastErrorCode:fetchStatus==='success'?'':text(slice.lastErrorCode||'CREDIT_PROVIDER_DATA_ERROR',80),lastErrorAt:fetchStatus==='success'?null:iso(slice.lastErrorAt)};
@@ -152,24 +152,15 @@ export function creditSyncScrapeSelection(value={}){
   return rows;
 }
 
-function transactionForecastAmount(tx){
-  const charged=finite(tx.chargedAmount),original=finite(tx.originalAmount),amount=charged!==null&&Math.abs(charged)>0.0001?charged:original;
-  return amount===null||!Number.isFinite(amount)||Math.abs(amount)<=0.0001?0:-amount;
-}
 // Foreign-currency rows stay visible in issuer data but never silently enter ILS Kupa totals.
 function normalizedCurrency(value){return text(value||'',12).toUpperCase().replace(/\s+/g,'')}
 function shekelCurrency(value){const currency=normalizedCurrency(value);return !currency||['ILS','NIS','₪','ש״ח','שח'].includes(currency)}
-function isShekelTransaction(tx){return shekelCurrency(tx.chargedCurrency||tx.originalCurrency||'ILS')}
 export function creditTransactionIsForeignCurrency(tx={}){
   const original=normalizedCurrency(tx.originalCurrency),charged=normalizedCurrency(tx.chargedCurrency);
   return (!!original&&!shekelCurrency(original))|| (!!charged&&!shekelCurrency(charged));
 }
-function creditChargeDate(tx){return String(tx?.processedDate||tx?.date||'').slice(0,10)}
-function knownFutureChargeAmount(tx){if(tx?.status==='pending')return 0;const amount=creditTransactionAmountData(tx);return amount.included?amount.amount:0}
 export function creditKnownFutureCommitment(account={},asOf=todayISO()){
-  let total=0;
-  for(const tx of Array.isArray(account?.txns)?account.txns:[]){const date=creditChargeDate(tx),amount=knownFutureChargeAmount(tx);if(date&&date>=asOf&&amount)total+=amount}
-  return Math.round(total*100)/100;
+  return creditAccountKnownFutureCommitmentData(account,asOf);
 }
 export function creditPendingAuthorizationAmount(account={}){
   return creditPendingAuthorizationTotalData(account);
@@ -185,12 +176,6 @@ export function creditFrameStatus(account={},mapping={},asOf=todayISO()){
   if(frame===null)return {frame:null,available:null,commitments,pendingAuthorizations,source:'unavailable',frameSource:null};
   return {frame,available:Math.round((frame-commitments-pendingAuthorizations)*100)/100,commitments,pendingAuthorizations,source:issuerFrame!==null?'issuer_frame_calculated':'manual_frame_calculated',frameSource:issuerFrame!==null?'issuer':'manual'};
 }
-function accountPresentation(profile,account,mapping={}){
-  const accountClass=mapping.account==='ביתי'?'ביתי':mapping.account==='עסקי'?'עסקי':profile.defaultAccount;
-  const cardName=mapping.cardName||[CREDIT_PROVIDER_LABELS[profile.provider]||profile.label,account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' ');
-  return {accountClass,cardName:cardName||'כרטיס אשראי',ownerLabel:profile.ownerLabel||'',hidden:mapping.hidden===true};
-}
-function synchronizedCardKey(profile,account){return `sync:${profile.profileId}:${account.accountNumber}`}
 
 function buildPendingRows(state,asOf=todayISO(),{includeHidden=false}={}){
   return creditBillingRowsData(state,{asOf,includeHidden}).filter(row=>row.status==='pending').map(row=>({...row,id:row.creditId,provisionalChargeDate:row.date,currency:row.displayCurrency})).sort((a,b)=>String(b.transactionDate).localeCompare(String(a.transactionDate))||String(a.card).localeCompare(String(b.card),'he')||String(a.description).localeCompare(String(b.description),'he'));
@@ -205,83 +190,22 @@ export function syncedPendingForecastData(state,asOf=todayISO()){
 // credit transaction browser. They are presentation/reporting data only: without an
 // issuer-supplied ILS billing amount they contribute zero to every ILS cash-flow total.
 export function syncedForeignCurrencyTransactionsData(state){
-  const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();
-  for(const profile of sync.profiles)for(const account of profile.accounts){
-    const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
-    if(mapping.included!==true||mapping.hidden===true)continue;
-    const presentation=accountPresentation(profile,account,mapping);
-    for(const [index,tx] of account.txns.entries()){
-      if(tx.status==='pending'||isShekelTransaction(tx))continue;
-      const date=creditChargeDate(tx),amount=transactionForecastAmount(tx);if(!date||!amount)continue;
-      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,transactionDate=transactionOriginDate(tx),txTime=transactionTime(tx.transactionTime),currency=text(tx.chargedCurrency||tx.originalCurrency||'',12);
-      const stable=tx.id?`${tx.id}|${date}|${amount}|${currency}|${part}`:`idless-${index}|${date}|${amount}|${currency}|${part}|${tx.description}`;
-      const identity=`${profile.profileId}|${account.accountNumber}|${stable}`;if(seen.has(identity))continue;seen.add(identity);
-      const originalAmount=finite(tx.originalAmount);
-      rows.push({id:identity,source:'credit_foreign',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,creditAccountKey:synchronizedCardKey(profile,account),card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,description:tx.description,transactionDate,transactionTime:txTime,date,amount,currency,part,totalParts,foreignCurrency:true,originalAmount:originalAmount===null?null:-originalAmount,originalCurrency:text(tx.originalCurrency||'',12),status:tx.status||'completed'});
-    }
-  }
-  return rows.sort((a,b)=>String(b.transactionDate||b.date).localeCompare(String(a.transactionDate||a.date))||String(a.card).localeCompare(String(b.card),'he'));
+  return creditBillingRowsData(state,{includeHidden:false}).filter(row=>row.source==='credit_foreign').map(row=>({...row,id:row.creditId,amount:row.displayAmount,currency:row.displayCurrency})).sort((a,b)=>String(b.transactionDate||b.date).localeCompare(String(a.transactionDate||a.date))||String(a.card).localeCompare(String(b.card),'he'));
 }
 
 export function syncedInstallmentsData(state){
-  const sync=normalizeCreditSync(state?.creditSync),rows=[],seen=new Set();
-  for(const profile of sync.profiles){
-    for(const account of profile.accounts){
-      const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
-      if(mapping.included!==true)continue;
-      const presentation=accountPresentation(profile,account,mapping);
-      for(const [txIndex,tx] of account.txns.entries()){
-        if(tx.status==='pending')continue;
-        const date=String(tx.processedDate||tx.date||'').slice(0,10),amount=transactionForecastAmount(tx);
-        if(!date||!amount||!isShekelTransaction(tx))continue;
-        const part=tx.installments?.number||1,totalParts=tx.installments?.total||1;
-        const stableId=tx.id?`${tx.id}|${date}|${amount}|${tx.description}|${part}`:`idless-${txIndex}|${date}|${amount}|${tx.description}|${part}`;
-        const identity=`${profile.profileId}|${account.accountNumber}|${stableId}`;
-        if(seen.has(identity))continue;seen.add(identity);
-        rows.push({creditId:`SYNC:${identity}`,creditAccountKey:synchronizedCardKey(profile,account),date,amount,part,totalParts,card:presentation.cardName,account:presentation.accountClass,ownerLabel:presentation.ownerLabel,hidden:presentation.hidden,description:tx.description,source:'credit_sync',profileId:profile.profileId,accountNumber:account.accountNumber,provider:profile.provider,status:tx.status,foreignCurrency:creditTransactionIsForeignCurrency(tx),originalCurrency:text(tx.originalCurrency||'',12)});
-      }
-    }
-  }
-  return rows.sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card)));
-}
-
-function shiftMonthDate(value,delta){
-  const raw=String(value||'').slice(0,10);if(!raw)return '';
-  const [y,m,d]=raw.split('-').map(Number);if(!y||!m||!d)return raw;
-  const first=new Date(Date.UTC(y,m-1+delta,1)),last=new Date(Date.UTC(first.getUTCFullYear(),first.getUTCMonth()+1,0)).getUTCDate();
-  first.setUTCDate(Math.min(d,last));return first.toISOString().slice(0,10);
-}
-function transactionOriginDate(tx){
-  const explicit=String(tx?.transactionDate||'').slice(0,10);if(explicit)return explicit;
-  const part=tx?.installments?.number||1;return shiftMonthDate(tx?.date||tx?.processedDate||'',-(part-1));
-}
-function syncedSeriesKey(profile,account,tx,index){
-  const part=tx.installments?.number||1,total=tx.installments?.total||1,originDate=transactionOriginDate(tx);
-  if(total>1){
-    const baseId=text(tx.id||'',120).replace(new RegExp(`_${part}$`),'');
-    if(baseId)return `${profile.profileId}|${account.accountNumber}|installment|${baseId}|${total}|${originDate}`;
-    return `${profile.profileId}|${account.accountNumber}|installment|${text(tx.description,160)}|${total}|${originDate}`;
-  }
-  return `${profile.profileId}|${account.accountNumber}|single|${tx.id||`idless-${index}`}|${String(tx.date||tx.processedDate||'').slice(0,10)}|${text(tx.description,160)}`;
+  return creditBillingRowsData(state,{includeHidden:true}).filter(row=>row.source==='credit_sync'&&row.status!=='pending'&&row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004).sort((a,b)=>a.date.localeCompare(b.date)||String(a.card).localeCompare(String(b.card)));
 }
 
 // Converts normalized issuer rows into purchase/series rows for the detailed credit table.
 // Progress is based only on explicit installment numbers and issuer charge dates; missing future rows are flagged instead of invented.
 export function syncedCreditSeries(state,asOf=todayISO()){
-  const sync=normalizeCreditSync(state?.creditSync),groups=new Map();
-  for(const profile of sync.profiles)for(const account of profile.accounts){
-    const mapping=sync.cardMappings[creditCardMappingKey(profile.profileId,account.accountNumber)]||{};
-    if(mapping.included!==true||mapping.hidden===true)continue;
-    const presentation=accountPresentation(profile,account,mapping);
-    for(const [index,tx] of account.txns.entries()){
-      if(tx.status==='pending'||!isShekelTransaction(tx))continue;
-      const chargeDate=String(tx.processedDate||tx.date||'').slice(0,10),amount=transactionForecastAmount(tx);
-      if(!chargeDate||!amount)continue;
-      const part=tx.installments?.number||1,totalParts=tx.installments?.total||1,key=syncedSeriesKey(profile,account,tx,index),transactionDate=transactionOriginDate(tx),txTime=transactionTime(tx.transactionTime);
-      if(!groups.has(key))groups.set(key,{id:key,source:'credit_sync',profileId:profile.profileId,provider:profile.provider,accountNumber:account.accountNumber,ownerLabel:presentation.ownerLabel,account:presentation.accountClass,card:presentation.cardName,description:tx.description,totalParts,items:[],originalCandidates:[],foreignCurrency:false,originalCurrencies:new Set()});
-      const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.foreignCurrency=group.foreignCurrency||creditTransactionIsForeignCurrency(tx);if(tx.originalCurrency)group.originalCurrencies.add(text(tx.originalCurrency,12));group.items.push({date:chargeDate,amount,part,totalParts,transactionDate,transactionTime:txTime});
-      const original=finite(tx.originalAmount);if(original!==null&&original!==0&&shekelCurrency(tx.originalCurrency||tx.chargedCurrency||'ILS'))group.originalCandidates.push(-original);
-    }
+  const groups=new Map(),rows=creditBillingRowsData(state,{asOf,includeHidden:false}).filter(row=>row.source==='credit_sync'&&row.status!=='pending'&&row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
+  for(const row of rows){
+    const key=row.series?.id||row.creditId,part=row.part||1,totalParts=row.totalParts||1;
+    if(!groups.has(key))groups.set(key,{id:key,source:'credit_sync',profileId:row.profileId,provider:row.provider,accountNumber:row.accountNumber,ownerLabel:row.ownerLabel,account:row.account,card:row.card,description:row.description,totalParts,items:[],originalCandidates:[],foreignCurrency:false,originalCurrencies:new Set()});
+    const group=groups.get(key);group.totalParts=Math.max(group.totalParts,totalParts);group.foreignCurrency=group.foreignCurrency||row.foreignCurrency;if(row.originalCurrency)group.originalCurrencies.add(text(row.originalCurrency,12));group.items.push({date:row.date,amount:row.amount,part,totalParts,transactionDate:row.transactionDate,transactionTime:row.transactionTime});
+    if(Number.isFinite(Number(row.totalAmount))&&Number(row.totalAmount)!==0)group.originalCandidates.push(Number(row.totalAmount));
   }
   const result=[];
   for(const group of groups.values()){

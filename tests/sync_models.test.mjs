@@ -226,10 +226,10 @@ test('Orders polling asks Kupa refresh to invalidate a visible balance when a ne
 
 
 test('Orders Kupa net uses business expenses only and excludes cash while keeping checks',()=>{
- const ordersState={checks:[{id:'CHK',name:'לקוח',amount:300,dueDate:'2099-09-20',status:'בקופה'}]};
+ const ordersState={checks:[{id:'CHK',name:'לקוח',amount:300,dueDate:'2099-09-12',status:'בקופה'},{id:'AFTER',name:'לקוח אחר',amount:900,dueDate:'2099-09-20',status:'בקופה'}]};
  const kupa={bank:{currentBalance:5000,asOfDate:'2099-09-01',adjustments:[]},credits:[{id:'CR',active:true,totalAmount:100,installments:1,firstChargeDate:'2099-09-15',card:'עסקי',account:'עסקי'}],creditSync:{profiles:[],cardMappings:{}},expenses:[{id:'EXP-B',active:true,recurring:false,date:'2099-09-10',amount:100,account:'עסקי'},{id:'EXP-H',active:true,recurring:false,date:'2099-09-11',amount:2150,account:'ביתי'}],cash:[{id:'CASH',amount:1000}]};
  const readout=computeKupaNetReadoutData(ordersState,kupa);
- assert.equal(readout.credit,100);assert.equal(readout.expenses,100,'home expenses must not reduce the Orders balance');assert.equal(readout.cash,1000);assert.equal(readout.checks,300);assert.equal(readout.kupa,300);assert.equal(readout.net,5100,'Orders balance is bank - future business credit - one month business expenses + checks only');
+ assert.equal(readout.credit,100);assert.equal(readout.expenses,100,'home expenses must not reduce the Orders balance');assert.equal(readout.cash,1000);assert.equal(readout.checks,300);assert.equal(readout.kupa,300);assert.equal(readout.targetDate,'2099-09-15');assert.equal(readout.net,5100,'Orders dashboard uses bank - business credit and expenses through the exact horizon + business checks through that same horizon');
 });
 
 test('Kupa dashboard adds the canonical Orders customer and supplier balances to its cash-inclusive base net',()=>{

@@ -72,7 +72,7 @@ assert.equal(ordersFrameMerged.profiles[0].accounts[0].cardFrame,5000,'Orders pr
 const ordersFrameFeed=normalizeCreditSync({version:3,profiles:[{profileId:'limits',provider:'amex',accounts:[{accountNumber:'3333',txns:[{id:'sep',processedDate:'2026-09-10',chargedAmount:-300,chargedCurrency:'ILS',status:'completed'},{id:'oct',processedDate:'2026-10-10',chargedAmount:-200,chargedCurrency:'ILS',status:'completed'}]}]}],cardMappings:{'limits:3333':{included:true,manualFrame:4000}}});
 const ordersFrameAccount=ordersFrameFeed.profiles[0].accounts[0];
 assert.equal(creditFrameStatus(ordersFrameAccount,ordersFrameFeed.cardMappings['limits:3333'],'2026-09-01').available,3500,'Orders uses the same manual-frame fallback calculation as Kupa');
-assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions',pendingAmount:0,estimated:false},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
+assert.deepEqual(creditUpcomingCharge(ordersFrameAccount,'amex','2026-09-01'),{amount:300,date:'2026-09-10',source:'transactions',pendingAmount:0,estimated:false,status:'finalized',incompleteCount:0,missingAmountCount:0,coverageGapCount:0,stalePendingCount:0,unconvertedCount:0,unknownAmountCount:0,amountKnown:true,complete:true},'Orders derives Amex upcoming debit from synchronized billing rows instead of an unavailable account balance');
 const ordersLimitSummary=creditSummary({creditSync:ordersFrameFeed,credits:[]});
 assert.equal(ordersLimitSummary.availableCreditKnownCount,1);assert.equal(ordersLimitSummary.availableCreditUnknownCount,0,'Orders exposes a complete available-credit total when every included card has an issuer or manual frame');
 

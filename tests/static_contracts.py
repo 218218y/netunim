@@ -291,6 +291,7 @@ orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
 ok("getChecksPending:(...args)=>storageChecks.getChecksPending(...args)" in orders_main[orders_main.find("const syncChecks=createSyncChecks({"):orders_main.find("const domainsFinanceController=createDomainsFinanceController({")],
    "orders cloud sync composition: shared-checks durable outbox reader is injected into createSyncChecks")
 orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
+orders_credit_detail_view = (O / "site/assets/js/domains/finance/credit-detail-view.js").read_text(encoding="utf-8")
 orders_checks_view = (O / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 kupa_checks_view = (K / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
@@ -324,6 +325,10 @@ ok('class="credit-filter-separator"' in orders_finance_view
    and '.credit-filter-separator{flex:0 0 1px;width:1px;height:24px' in orders_css
    and '.credit-filter-card-row{display:grid;grid-template-columns:70px minmax(0,1fr)' in orders_css,
    "orders credit filters: account and provider chips share one row with a visual divider, while card chips open on a dedicated second row only for a selected provider")
+ok('creditFilteredSummary' in orders_finance_view
+   and 'creditFiltersMarkup(s,filtered)' in orders_finance_view
+   and 'creditUnassignedNotice(filtered)' in orders_finance_view,
+   "orders credit filters: displayed totals, partial counts and unassigned warnings obey the same active account/provider/card scope as the main forecast")
 ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in orders_finance_view
    and "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`" in orders_finance_view
    and '.finance-sync-settings-body[hidden]{display:none}' in orders_css
@@ -384,8 +389,9 @@ ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות
 ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
    and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד','סה״כ קופה','חוב לקוחות פתוח','נטו ספקים','מאזן כולל נטו'))
    and 'עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות עסקיות + קופה + חוב לקוחות פתוח + נטו ספקים' in kupa_dashboard_view
-   and 'class="grid kpis"' not in kupa_dashboard_view,
-   "kupa dashboard: cash-inclusive Kupa position is extended by canonical open-customer and supplier-net balances before the combined total")
+   and 'class="grid kpis"' not in kupa_dashboard_view
+   and 'forecastIncomplete' in kupa_dashboard_view and 'סכום ₪ ידוע בלבד' in kupa_dashboard_view,
+   "kupa dashboard: cash-inclusive Kupa position is extended by canonical open-customer and supplier-net balances, and incomplete credit can never look exact")
 bank_model=(K / "site/assets/js/domains/bank/model.js").read_text(encoding="utf-8")
 shared_kupa_cashflow=(ROOT / "shared/kupa-cashflow.js").read_text(encoding="utf-8")
 shared_credit_cycles=(ROOT / "shared/credit-billing-cycles.js").read_text(encoding="utf-8")
@@ -396,11 +402,11 @@ kupa_dashboard_controller=(K / "site/assets/js/domains/dashboard/controller.js")
 kupa_cloud_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
 kupa_css=(K / "site/assets/app.css").read_text(encoding="utf-8")
-ok("kupaExpenseBelongsToAccountData(x,'עסקי')" in orders_bank_readout
-   and 'net:bank-credit-expenses+checks' in orders_bank_readout and 'kupa:checks' in orders_bank_readout
-   and "עו״ש − כל האשראי העתידי − חודש הוצאות + קופה צ'קים" in orders_dashboard_view
+ok("sharedKupaAccountCashflowData({...kupa,checks},'עסקי',checkTodayISO())" in orders_bank_readout
+   and 'net:cashflow.projected' in orders_bank_readout and 'kupa:cashflow.checks' in orders_bank_readout
+   and "עו״ש − אשראי והוצאות עד האופק + צ'קים עד האופק" in orders_dashboard_view
    and "קופה מזומן וצ'קים" not in orders_dashboard_view,
-   "Orders balance: only business expenses reduce the Kupa readout and cash is excluded while shared checks remain included")
+   "Orders balance: the primary dashboard delegates exact-horizon business cash-flow to the shared engine, excludes cash and includes shared checks")
 ok("ordersFinanceSummaryData" in orders_finance_shared
    and (K / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
    and (O / "site/assets/js/shared/orders-finance.js").read_text(encoding="utf-8") == orders_finance_shared
@@ -429,9 +435,9 @@ ok('button data-action="set-page"' in kupa_dashboard_view
 ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
    and "const task=controller.refreshCredit({interactive,syncMode});renderKupa();await task;renderKupa()" in orders_finance_view,
    "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")
-ok(".filter(month=>Math.round(month.total*100)!==0)" in (O / "site/assets/js/domains/finance/reporting.js").read_text(encoding="utf-8")
-   and ".filter(month=>Math.round(month.total*100)!==0)" in (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8"),
-   "credit forecast UI: Orders and Kupa omit zero-total months while preserving the underlying future-credit data")
+ok(".filter(month=>Math.round(month.total*100)!==0||month.partial)" in (O / "site/assets/js/domains/finance/reporting.js").read_text(encoding="utf-8")
+   and ".filter(month=>Math.round(month.total*100)!==0||month.partial)" in (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8"),
+   "credit forecast UI: Orders and Kupa omit empty zero-total months but retain partial cycles whose ILS amount is still unknown")
 ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    and "tr.pending:hover td{background:var(--marker-yellow-hover)}" in orders_css
    and ".credit-pending-detail-row td{background:var(--marker-yellow)}" in orders_css
@@ -452,7 +458,7 @@ ok("const CREDIT_BRIDGE_VERSION=42" in orders_finance_controller and "CREDIT_CON
    "orders Kupa UI: credit controls require Bridge v42 / Credit Connector contract v2 so older bridges cannot silently miss the Isracard/Amex DigitalV3 pending path")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in orders_finance_view,
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
-ok("תוספת ידנית · קריאה בלבד" in orders_finance_view and "+ תוספת ידנית" not in orders_finance_view
+ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,
    "orders Kupa UI: manual credit rows are read-only and manual-add/bulk-delete controls stay Kupa-only")
 ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,

@@ -2,16 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as kupaEngine from '../netunim-kupa/site/assets/js/shared/credit-billing-cycles.js';
 import * as ordersEngine from '../netunim-orders/site/assets/js/shared/credit-billing-cycles.js';
-import {kupaAccountCashflowData as kupaCashflow} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
+import {kupaAccountCashflowData as kupaCashflow,kupaReconciledCreditRowsData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as ordersCashflow} from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
-import {allInstallmentsData,creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {allInstallmentsData,creditForecastInstallmentsData,creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditFrameStatus as kupaFrameStatus} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {creditRows as ordersCreditRows,creditDetailMonths as ordersDetailMonths} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {creditAccountModels as ordersCreditAccountModels,creditRows as ordersCreditRows,creditDetailMonths as ordersDetailMonths,creditMonthBuckets as ordersCreditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {creditFrameStatus as ordersFrameStatus} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
+import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
+import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 
 function stateFor(accounts,{provider='max',profileId='cards',accountRole='עסקי'}={}){
   const mappings={};for(const account of accounts)mappings[`${profileId}:${account.accountNumber}`]={included:true,hidden:false,account:accountRole};
-  return {version:4,credits:[],checks:[],expenses:[],cashflowSettings:{businessMinimum:0,businessCheckCutoffDay:14},bank:{currentBalance:10000,asOfDate:'2026-09-01',source:'hapoalim',adjustments:[],feed:{syncedAt:'2026-09-01T08:00:00Z',balance:10000,transactions:[]}},creditSync:{version:4,profiles:[{profileId,provider,defaultAccount:accountRole,accounts}],cardMappings:mappings}};
+  return {version:4,credits:[],checks:[],expenses:[],cash:[],cashflowSettings:{businessMinimum:0,businessCheckCutoffDay:14},bank:{currentBalance:10000,asOfDate:'2026-09-01',source:'hapoalim',adjustments:[],feed:{syncedAt:'2026-09-01T08:00:00Z',balance:10000,transactions:[]}},creditSync:{version:4,profiles:[{profileId,provider,defaultAccount:accountRole,accounts}],cardMappings:mappings}};
 }
 
 const twoCards=stateFor([
@@ -99,6 +101,102 @@ test('a credit debit already posted by the bank on its due date is not counted t
   const notPosted=stateFor([account]);notPosted.bank.asOfDate='2026-09-10';notPosted.bank.feed.syncedAt='2026-09-10T08:00:00Z';
   const stillDue=kupaCashflow(notPosted,'עסקי','2026-09-10');
   assert.equal(stillDue.targetDate,'2026-09-10');assert.equal(stillDue.credit,1000,'the due cycle remains forecast when no matching bank debit exists');
+
+  const finalOnly=stateFor([{accountNumber:'2020',pendingStatus:'success',txns:[{id:'final-only',status:'completed',processedDate:'2026-09-10',chargedAmount:-500,chargedCurrency:'ILS'}]}]);
+  finalOnly.bank.asOfDate='2026-09-10';finalOnly.bank.feed.syncedAt='2026-09-10T08:00:00Z';finalOnly.bank.feed.transactions=[{date:'2026-09-10',amount:-500,description:'מקס איט פיננסים'}];
+  assert.equal(ordersCreditAccountModels(finalOnly,'2026-09-10')[0].upcomingCharge,null,'Orders live card cannot fall back to a raw transaction after the reconciled engine proved that cycle settled');
+});
+
+test('a settled card cycle rolls any surviving pending authorization into the next proven cycle',()=>{
+  const account={accountNumber:'1010',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'},
+    {id:'late-pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
+  ]},posted=stateFor([account]);
+  posted.bank.asOfDate='2026-09-10';posted.bank.feed.syncedAt='2026-09-10T08:00:00Z';posted.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'מקס איט פיננסים'}];
+  const result=kupaCashflow(posted,'עסקי','2026-09-10'),rolled=result.nextCreditRows.find(row=>row.status==='pending');
+  assert.equal(result.targetDate,'2026-10-10');assert.equal(result.credit,1200);
+  assert.equal(rolled.date,'2026-10-10');assert.equal(rolled.chargeDateSource,'bank_settlement_next_known_cycle','bank settlement is stronger evidence than a stale pending-cycle assignment');
+  const kupaForecast=creditForecastInstallmentsData(posted,'2026-09-10'),ordersForecast=ordersCreditMonthBuckets(posted,{view:'all',asOf:'2026-09-10'}),ordersUpcoming=ordersCreditAccountModels(posted,'2026-09-10')[0].upcomingCharge;
+  assert.equal(kupaForecast.some(row=>row.status==='pending'&&row.date==='2026-09-10'),false);assert.equal(kupaForecast.some(row=>row.status==='pending'&&row.date==='2026-10-10'),true);
+  assert.equal(ordersForecast.rows.some(row=>row.status==='pending'&&row.date==='2026-09-10'),false);assert.equal(ordersForecast.rows.some(row=>row.status==='pending'&&row.date==='2026-10-10'),true,'the primary Orders forecast reconciles a bank-settled cycle instead of showing stale same-day pending money');
+  assert.equal(ordersUpcoming.date,'2026-10-10');assert.equal(ordersUpcoming.amount,1200,'Orders live upcoming charge uses the same bank-reconciled cycle as its dashboard and forecast');
+  posted.expenses=[{id:'sep-after-settlement',active:true,recurring:false,account:'עסקי',date:'2026-09-12',amount:50},{id:'oct-after-settlement',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:60}];
+  const longTerm=bankLongTermPositionData(posted,'2026-09-10');
+  assert.equal(longTerm.credit,1200);assert.equal(longTerm.targetMonth,'2026-10');assert.equal(longTerm.expenses,60);assert.equal(longTerm.forecastIncomplete,false,'Kupa long-term balance keeps its all-future meaning and advances its expense month without counting the settled September cycle again');
+  const kupaDetail=creditMonthlyDetailData(posted,'2026-09-10').months,ordersDetail=ordersDetailMonths(posted,{asOf:'2026-09-10'});
+  assert.equal(kupaDetail.find(month=>month.key==='2026-09').items.some(row=>row.status==='pending'),false);assert.equal(kupaDetail.find(month=>month.key==='2026-10').items.some(row=>row.status==='pending'),true);
+  assert.equal(ordersDetail.find(month=>month.key==='2026-09').items.some(row=>row.status==='pending'),false);assert.equal(ordersDetail.find(month=>month.key==='2026-10').items.some(row=>row.status==='pending'),true,'Orders detail uses the same reconciled pending-cycle assignment as its forecast');
+});
+
+test('a settled pending authorization without a proven next cycle stays visibly unassigned',()=>{
+  const account={accountNumber:'1010',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
+    {id:'late-pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
+  ]},posted=stateFor([account]);
+  posted.bank.asOfDate='2026-09-10';posted.bank.feed.syncedAt='2026-09-10T08:00:00Z';posted.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'מקס איט פיננסים'}];
+  const result=kupaCashflow(posted,'עסקי','2026-09-10'),rows=kupaReconciledCreditRowsData(posted,'עסקי','2026-09-10'),pending=rows.find(row=>row.status==='pending'),ordersUpcoming=ordersCreditAccountModels(posted,'2026-09-10')[0].upcomingCharge;
+  assert.equal(result.credit,0);assert.equal(result.forecastIncomplete,true);assert.equal(result.unassignedCreditRows.length,1,'unassigned pending remains explicit in the cash-flow contract');
+  assert.equal(pending.date,'');assert.equal(pending.chargeDateSource,'unassigned_after_bank_settlement');assert.equal(pending.includedInIlsTotal,false,'the engine must not invent the same day next month');
+  assert.equal(ordersUpcoming.date,'');assert.equal(ordersUpcoming.unassignedCount,1);assert.equal(ordersUpcoming.complete,false,'Orders live card status reports the uncertainty instead of falling back to the raw settled cycle');
+  const longTerm=bankLongTermPositionData(posted,'2026-09-10');
+  assert.equal(longTerm.credit,0);assert.equal(longTerm.forecastIncomplete,true);assert.equal(longTerm.unassignedCount,1,'Kupa long-term balance fails closed when settlement leaves no proven next billing cycle');
+  const kupaDetail=creditMonthlyDetailData(posted,'2026-09-10').months,ordersDetail=ordersDetailMonths(posted,{asOf:'2026-09-10'});
+  assert.equal(kupaDetail.find(month=>month.key==='2026-09').items.filter(row=>row.status!=='pending').length,1);assert.equal(kupaDetail.at(-1).key,'unassigned');assert.equal(kupaDetail.at(-1).items[0].status,'pending');
+  assert.equal(ordersDetail.find(month=>month.key==='2026-09').items.filter(row=>row.status!=='pending').length,1);assert.equal(ordersDetail.at(-1).key,'unassigned');assert.equal(ordersDetail.at(-1).items[0].status,'pending');
+});
+
+test('completed transactions without issuer billing dates infer a real cycle or stay unassigned, never use purchase date',()=>{
+  const inferred={accountNumber:'infer-final',pendingStatus:'success',txns:[
+    {id:'jul',status:'completed',processedDate:'2026-07-10',chargedAmount:-1,chargedCurrency:'ILS'},
+    {id:'aug',status:'completed',processedDate:'2026-08-10',chargedAmount:-1,chargedCurrency:'ILS'},
+    {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1,chargedCurrency:'ILS'},
+    {id:'missing-date',status:'completed',date:'2026-09-11',transactionDate:'2026-09-11',chargedAmount:-200,chargedCurrency:'ILS'},
+  ]},inferredState=stateFor([inferred]),row=kupaEngine.creditBillingRowsData(inferredState,{asOf:'2026-09-11'}).find(item=>item.creditId.includes('missing-date'));
+  assert.equal(row.date,'2026-10-10');assert.equal(row.chargeDateSource,'inferred_billing_day');assert.notEqual(row.date,row.transactionDate);
+
+  const unknown={accountNumber:'unknown-final',pendingStatus:'success',txns:[{id:'unknown-final-row',status:'completed',date:'2026-09-11',transactionDate:'2026-09-11',chargedAmount:-200,chargedCurrency:'ILS'}]},unknownState=stateFor([unknown]),unknownRow=kupaEngine.creditBillingRowsData(unknownState,{asOf:'2026-09-11'})[0];
+  assert.equal(unknownRow.date,'');assert.equal(unknownRow.chargeDateSource,'unassigned');assert.equal(unknownRow.includedInIlsTotal,false);
+  assert.equal(creditMonthlyDetailData(unknownState,'2026-09-11').months.at(-1).key,'unassigned');assert.equal(ordersDetailMonths(unknownState,{asOf:'2026-09-11'}).at(-1).key,'unassigned');
+  assert.equal(kupaFrameStatus(unknown,{manualFrame:1000},'2026-09-11').available,1000);assert.equal(ordersFrameStatus(unknown,{manualFrame:1000},'2026-09-11').available,1000,'fallback card-frame availability never turns a purchase date into a future billing commitment');
+
+  const hintedAccount={accountNumber:'hinted-final',balanceDate:'2026-10-15',pendingStatus:'success',months:[{month:'2026-09',providerSchemaVersion:'isracard-digitalv3',transactions:[{id:'hinted',status:'completed',transactionDate:'2026-08-28',chargedAmount:-75,chargedCurrency:'ILS'}]}]},hintedState=stateFor([hintedAccount]),hintedRow=kupaEngine.creditBillingRowsData(hintedState,{asOf:'2026-09-01'})[0];
+  assert.equal(hintedRow.date,'2026-09-15');assert.equal(hintedRow.chargeDateSource,'issuer_next_charge_day');assert.equal(hintedRow.billingDateConfidence,'inferred','a trusted issuer month slice can use the issuer next-charge day without pretending the exact date was supplied');
+  assert.equal(kupaEngine.creditBillingISODate('2026-02-31'),'');assert.equal(kupaEngine.creditBillingISODate('2026-13-10'),'','impossible calendar dates fail closed before they can become billing cycles');
+});
+
+test('every known-date missing amount keeps its cycle in the horizon as an explicit partial estimate',()=>{
+  const account={accountNumber:'partial',pendingStatus:'success',txns:[
+    {id:'partial-sep',status:'completed',processedDate:'2026-09-15',chargedAmount:null,originalAmount:null,chargedCurrency:'ILS'},
+    {id:'known-oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-100,chargedCurrency:'ILS'},
+  ]},state=stateFor([account]),row=kupaEngine.creditBillingRowsData(state,{asOf:'2026-09-10'})[0],cycle=kupaEngine.creditBillingCyclesData(state,{asOf:'2026-09-10'})[0],horizon=kupaCashflow(state,'עסקי','2026-09-10'),upcoming=kupaEngine.creditAccountUpcomingChargeData(account,'max','2026-09-10');
+  assert.equal(row.source,'credit_unknown');assert.equal(row.amountStatus,'unknown_amount');assert.equal(row.unconverted,false);
+  assert.equal(cycle.status,'incomplete');assert.equal(cycle.unknownAmountCount,1);assert.equal(horizon.targetDate,'2026-09-15');assert.equal(horizon.forecastIncomplete,true);assert.equal(horizon.incompleteCreditRows.length,1);
+  assert.equal(upcoming.date,'2026-09-15');assert.equal(upcoming.amount,0);assert.equal(upcoming.amountKnown,false,'the known partial September cycle must not be skipped in favor of October');
+  const longTerm=bankLongTermPositionData(state,'2026-09-10');
+  assert.equal(longTerm.credit,100);assert.equal(longTerm.forecastIncomplete,true);assert.equal(longTerm.missingAmountCount,1,'Kupa long-term balance includes known future ILS while declaring the missing amount');
+});
+
+test('stale and missing issuer month coverage remains an explicit best-effort partial forecast',()=>{
+  const account={accountNumber:'coverage',balanceDate:'2026-10-15',pendingStatus:'success',months:[
+    {month:'2026-09',status:'stale',fetchStatus:'provider_error',providerSchemaVersion:'isracard-digitalv3',transactions:[{id:'sep-lkg',status:'completed',processedDate:'2026-09-15',chargedAmount:-400,chargedCurrency:'ILS'}]},
+    {month:'2026-10',status:'missing',fetchStatus:'provider_error',providerSchemaVersion:'isracard-digitalv3',transactions:[]},
+  ]},state=stateFor([account],{provider:'isracard'});
+  const september=kupaCashflow(state,'עסקי','2026-09-10'),staleRow=september.nextCreditRows.find(row=>row.creditId.includes('sep-lkg'));
+  assert.equal(september.targetDate,'2026-09-15');assert.equal(september.credit,400,'a stale LKG amount remains the conservative best available cash-flow estimate');
+  assert.equal(staleRow.coverageIncomplete,true);assert.equal(september.forecastIncomplete,true,'LKG money is never presented as a complete issuer forecast');
+  state.bank.asOfDate='2026-09-16';state.bank.feed.syncedAt='2026-09-16T08:00:00Z';state.bank.feed.transactions=[{date:'2026-09-15',amount:-400,description:'ישראכרט בע״מ'}];
+  const october=kupaCashflow(state,'עסקי','2026-09-16'),placeholder=october.incompleteCreditRows.find(row=>row.coverageIncomplete);
+  assert.equal(october.targetDate,'2026-10-15');assert.equal(october.credit,0);assert.equal(placeholder.chargeDateSource,'issuer_next_charge_day','a missing issuer slice retains the inferred cycle date but never invents an amount');
+  const ordersOctober=ordersCreditMonthBuckets(state,{view:'all',asOf:'2026-09-16'}).months.find(month=>month.key==='2026-10');
+  assert.equal(ordersOctober.partial,true);assert.equal(ordersOctober.coverageGapCount,1);assert.equal(ordersOctober.total,0,'Orders keeps a zero-known missing cycle visible instead of silently skipping it');
+});
+
+test('Orders dashboard readout is a thin adapter over the exact shared cash-flow horizon',()=>{
+  const kupa=structuredClone(twoCards);kupa.bank.asOfDate='2026-09-11';kupa.bank.feed.syncedAt='2026-09-11T08:00:00Z';kupa.expenses=[{id:'sep',active:true,recurring:false,account:'עסקי',date:'2026-09-20',amount:100},{id:'oct-in',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:200},{id:'oct-out',active:true,recurring:false,account:'עסקי',date:'2026-10-11',amount:300}];
+  const checks=[{id:'in',status:'בקופה',account:'עסקי',dueDate:'2026-10-09',amount:400},{id:'out',status:'בקופה',account:'עסקי',dueDate:'2026-10-11',amount:500}],readout=computeKupaNetReadoutData({checks},kupa),shared=ordersCashflow({...kupa,checks},'עסקי','2026-09-10');
+  assert.equal(readout.targetDate,'2026-10-10');assert.equal(readout.credit,3100);assert.equal(readout.expenses,300);assert.equal(readout.checks,400);assert.equal(readout.net,7000);
+  assert.equal(readout.net,shared.projected);assert.deepEqual(readout.nextCreditCycles,shared.nextCreditCycles,'Orders dashboard and its main Bank view consume the same cycles, not parallel formulas');
 });
 
 test('expenses and checks obey the same exact horizon across intervening months',()=>{
