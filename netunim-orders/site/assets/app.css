@@ -351,6 +351,8 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 .customers-view .customer-work-panel{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
 .customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}
 .customers-view .customer-work-table>.customer-bottom-summary{margin:12px 2px 2px}
+/* כותרת טבלה רציפה: צובעים את כל רוחב אזור הגלילה בלי לשנות את גאומטריית הטבלה. */
+@media(min-width:701px){.customers-view .customer-work-table,.supplier-view-shell .supplier-table-panel .table-wrap{background:linear-gradient(to bottom,#f8f5f2 0 35px,#e3ddd7 35px 36px,#fff 36px) top/100% 100% no-repeat}}
 .checks-page .view-head{display:flex;flex-direction:column;gap:12px}
 .supplier-table-panel tbody td{padding-top:var(--supplier-row-padding-y);padding-bottom:var(--supplier-row-padding-y)}
 .customer-table tbody td,.customer-orders-table tbody td{padding-top:var(--customer-row-padding-y);padding-bottom:var(--customer-row-padding-y)}

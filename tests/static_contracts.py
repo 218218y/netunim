@@ -257,6 +257,8 @@ ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
    "orders supplier/warehouse width: RTL view shells do not reserve an unused left scrollbar gutter, and the warehouse scrollbar uses the compact 8px track instead of consuming extra content width")
+ok('@media(min-width:701px){.customers-view .customer-work-table,.supplier-view-shell .supplier-table-panel .table-wrap{background:linear-gradient(to bottom,#f8f5f2 0 35px,#e3ddd7 35px 36px,#fff 36px) top/100% 100% no-repeat}}' in orders_css,
+   "orders customer/supplier table headers: the sticky header paint spans the full scroll viewport without widening either table or changing horizontal overflow")
 
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
