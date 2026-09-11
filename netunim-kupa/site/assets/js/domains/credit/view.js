@@ -1,5 +1,5 @@
 import {esc} from '../../core/values.js';
-import {money} from '../../core/money.js';
+import {moneyWithCents as money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
 import {creditMonthlyDetailData,creditDetailItemIdentity,creditForecastInstallmentsData,CREDIT_DETAIL_HISTORY_MONTHS} from './model.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
@@ -278,7 +278,7 @@ function creditDescriptionCell(item){
   return `<td class="credit-detail-description" title="${esc(item.description||'')}"><div class="credit-detail-description-line"><span>${esc(item.description)||'—'}</span>${fx}${missing}${coverage}</div></td>`;
 }
 function syncedMonthlyCreditRow(item){
-  const series=item.series||{},status=item.date?chargeStatus(item.date):{label:'מחזור לא ודאי',cls:'orange'},partial=!item.date||(series.partial&&item.date>=todayISO())||item.coverageIncomplete,chargeDate=item.date?dateFmt(item.date):'לא נקבע',chargeAmount=item.includedInIlsTotal?`<div class="amount credit-month-charge-amount">${money(item.amount)}</div>`:'<div class="muted credit-month-charge-amount">לא נכלל בסה״כ ₪</div>';
+  const series=item.series||{},status=item.date?chargeStatus(item.date):{label:'מחזור לא ודאי',cls:'orange'},partial=!item.date||(series.partial&&item.date>=todayISO())||item.coverageIncomplete,chargeDate=item.date?dateFmt(item.date):'לא נקבע',chargeAmount=item.amountSource==='issuer_not_billed'?'<div class="muted credit-month-charge-amount">לא נכלל בחיוב לפי כאל</div>':item.includedInIlsTotal?`<div class="amount credit-month-charge-amount">${money(item.amount)}</div>`:'<div class="muted credit-month-charge-amount">לא נכלל בסה״כ ₪</div>';
   return `<tr class="credit-synced-detail-row" data-credit-search-id="${esc(creditDetailItemIdentity(item))}">${syncedBulkPlaceholder()}${creditCardDetailCell(item,CREDIT_PROVIDER_LABELS[item.provider]||'מסונכרן')}${creditDescriptionCell(item)}<td class="credit-detail-transaction-date">${transactionDateCell(item.transactionDate,item.transactionTime)}</td><td class="credit-detail-charge"><b>${esc(chargeDate)}</b>${chargeAmount}${billingDateEstimateMarkup(item)}</td><td class="credit-detail-installment">${installmentCell(item)}</td><td class="amount credit-detail-total">${money(series.totalAmount)}</td><td class="credit-detail-status"><span class="badge ${esc(status.cls)}">${esc(status.label)}</span>${partial?`<div class="muted credit-detail-partial">${!item.date?'אין מועד חיוב אמין':item.coverageIncomplete?'כיסוי חברה חלקי':'אופק חלקי'}</div>`:''}</td><td class="credit-detail-actions"></td></tr>`;
 }
 function pendingAmountMarkup(item){

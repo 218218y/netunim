@@ -116,6 +116,23 @@ def run_breakdown(app):
               document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
               return true;
             }})()""")
+        credit_setup = "state=normalizeState(fixture);domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
+        browser.evaluate("(()=>{"+breakdown_fixture+f"""
+          fixture.creditSync.profiles=[{{profileId:'test',provider:'visaCal',accounts:[{{accountNumber:'2222',txns:[
+            {{id:'billed',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-1369.78,chargedCurrency:'ILS',originalAmount:-1369.78,originalCurrency:'ILS',chargeAmountStatus:'reported',description:'חיוב מאומת'}},
+            {{id:'reward',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:15.01,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'החזר CashCal'}},
+            {{id:'fee',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:-17.90,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'דמי כרטיס'}}
+          ]}}]}}];
+          ui.creditDetailFocus={{monthKey:due.slice(0,7),cardKey:''}};
+          {credit_setup}
+          const rows=[...document.querySelectorAll('.credit-detail-table tbody tr')];
+          for(const name of ['החזר CashCal','דמי כרטיס']){{
+            const row=rows.find(row=>row.textContent.includes(name));
+            if(!row||!row.textContent.includes('לא נכלל בחיוב לפי כאל'))throw new Error('Informational CAL row is missing or appears as a charge: '+name);
+          }}
+          if(!rows.some(row=>row.textContent.includes('1,369.78')))throw new Error('Confirmed CAL debit is missing');
+          return true;
+        }})()""")
         action = 'orders-cashflow-alert-lead' if app == 'orders' else 'update-cashflow-alert-lead'
         browser.evaluate(f"""(()=>{{
           uiSettings.renderSettings();

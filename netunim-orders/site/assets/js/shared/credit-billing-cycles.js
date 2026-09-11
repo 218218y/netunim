@@ -22,6 +22,9 @@ function accountRole(value){return value==='ביתי'||value==='home'?'ביתי'
 
 export function creditTransactionAmountData(tx={}){
   const charged=finite(tx.chargedAmount),original=finite(tx.originalAmount),chargedCurrency=normalizedCurrency(tx.chargedCurrency),originalCurrency=normalizedCurrency(tx.originalCurrency),chargedShekel=creditBillingIsShekelCurrency(chargedCurrency||originalCurrency),originalShekel=creditBillingIsShekelCurrency(originalCurrency||chargedCurrency);
+  if(tx.status!=='pending'&&tx.chargeAmountStatus==='not_billed')return {amount:0,rawAmount:0,currency:'ILS',included:true,estimated:false,source:'issuer_not_billed'};
+  if(tx.status!=='pending'&&tx.chargeAmountStatus==='missing')return {amount:0,rawAmount:null,currency:chargedCurrency||originalCurrency||'ILS',included:false,estimated:false,source:'unknown'};
+  if(tx.status!=='pending'&&tx.chargeAmountStatus==='reported'&&charged===0)return {amount:0,rawAmount:0,currency:chargedCurrency||originalCurrency||'ILS',included:true,estimated:false,source:'charged_amount'};
   if(charged!==null&&Math.abs(charged)>0.0001){
     if(chargedShekel)return {amount:roundMoney(-charged),rawAmount:charged,currency:'ILS',included:true,estimated:false,source:'charged_amount'};
     return {amount:0,rawAmount:charged,currency:chargedCurrency||originalCurrency,included:false,estimated:false,source:'foreign_only'};
@@ -200,7 +203,7 @@ function enrichSeries(rows){
 
 function cycleRows(rows){
   const groups=new Map();
-  for(const row of rows){if(!row.date)continue;const key=`${row.creditAccountKey}|${row.date}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
+  for(const row of rows){if(!row.date||row.amountSource==='issuer_not_billed')continue;const key=`${row.creditAccountKey}|${row.date}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
   return [...groups.entries()].map(([id,items])=>{const finalized=items.filter(row=>row.status!=='pending'&&row.includedInIlsTotal),pending=items.filter(row=>row.status==='pending'&&row.includedInIlsTotal),unconverted=items.filter(row=>row.amountStatus==='foreign_unconverted'),unknownAmount=items.filter(row=>row.amountStatus==='unknown_amount'),stalePending=items.filter(row=>row.status==='pending'&&!row.pendingFresh),missingAmount=items.filter(row=>row.amountStatus!=='known_ils'),coverageGap=items.filter(row=>row.coverageIncomplete),incomplete=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);return {id,creditAccountKey:items[0].creditAccountKey,billingDate:items[0].date,date:items[0].date,billingMonth:items[0].billingMonth,card:items[0].card,account:items[0].account,provider:items[0].provider,profileId:items[0].profileId,accountNumber:items[0].accountNumber,hidden:items[0].hidden,rows:items,finalizedTotal:roundMoney(finalized.reduce((sum,row)=>sum+row.amount,0)),pendingTotal:roundMoney(pending.reduce((sum,row)=>sum+row.amount,0)),total:roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),pendingCount:pending.length,unconvertedCount:unconverted.length,unknownAmountCount:unknownAmount.length,stalePendingCount:stalePending.length,missingAmountCount:missingAmount.length,coverageGapCount:coverageGap.length,incompleteCount:incomplete.length,status:incomplete.length?'incomplete':pending.length||items.some(row=>row.amountEstimated||row.billingDateConfidence==='inferred')?'estimated':'finalized'} }).sort((a,b)=>a.billingDate.localeCompare(b.billingDate)||String(a.card).localeCompare(String(b.card),'he'));
 }
 

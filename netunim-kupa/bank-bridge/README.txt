@@ -307,3 +307,9 @@ Bridge v41 removes only that local over-validation. It builds the performLogonI 
 
 This is a contract-alignment fix, not another anti-bot workaround. The Chromium identity, dwell, DigitalV3 data endpoints, bounded Camoufox fallback and issuer-wide rate-limit behavior from v40 remain unchanged.
 
+
+
+Bridge v43 — CAL billed amounts, statement validation, and local calendar dates
+----------------------------------------------------------------------------
+Re-run install_bank_bridge.bat and perform a full CAL refresh after updating both sites.
+CAL finalized chargedAmount no longer falls back to the original transaction amount when its charge is blank or explicitly zero. Blank amounts stay unknown unless the explicit ILS cycle total agrees with all charged rows, in which case those blank rows remain informational and excluded from cash-flow. Refund signs and installment charged amounts remain unchanged. Date/time instants from CAL are converted to Israel local calendar fields; explicit group debit dates define cycles. The public CAL client uses debitDates[].totalDebits[].amount for statement headings; verified fully-known differences are represented by a clearly named statement adjustment, never by overwriting purchases. Existing stored snapshots require a successful refresh; no guessed historical date migration is applied.

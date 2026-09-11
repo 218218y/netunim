@@ -564,3 +564,31 @@ test('generic exact debit compares finalized cents separately from pending estim
   assert.equal(rows.some(row=>row.accountNumber==='2222'&&row.date==='2026-09-10'),false);
   assert.ok(rows.some(row=>row.accountNumber==='3333'&&row.date==='2026-09-10'));
 });
+
+test('a proven CAL debit anchors the only remaining same-issuer same-cycle bank debit',()=>{
+  for(const reverseCards of [false,true])for(const reverseBanks of [false,true]){
+    const state=stateFor([['6550',1363.17],['9715',1372.67]].map(([accountNumber,amount])=>({accountNumber,txns:[{id:'sep',status:'completed',processedDate:'2026-09-09',chargedAmount:-amount,chargedCurrency:'ILS'}]})),{provider:'visaCal',accountRole:'ביתי'});
+    state.bank.homeFeed={balance:9000,syncedAt:'2026-09-11',transactions:[1363.17,1369.78].map(amount=>({date:'2026-09-10',amount:-amount,description:'כרטיסי אשראי ל'}))};
+    if(reverseCards)state.creditSync.profiles[0].accounts.reverse();if(reverseBanks)state.bank.homeFeed.transactions.reverse();
+    const result=kupaCashflow(state,'ביתי','2026-09-11');
+    assert.equal(result.expiredSettlementWarnings.length,0,'the second debit is uniquely identified after the first exact match');
+    assert.deepEqual(result,ordersCashflow(state,'ביתי','2026-09-11'));
+  }
+});
+
+test('settlement elimination needs an anchor and one unambiguous remaining debit and card',()=>{
+  const make=(amounts,debits,description='כרטיסי אשראי ל')=>{
+    const state=stateFor(amounts.map((amount,i)=>({accountNumber:String(6550+i),txns:[{id:'sep',status:'completed',processedDate:'2026-09-09',chargedAmount:-amount,chargedCurrency:'ILS'}]})),{provider:'visaCal',accountRole:'ביתי'});
+    state.bank.homeFeed={balance:9000,syncedAt:'2026-09-11',transactions:debits.map(amount=>({date:'2026-09-10',amount:-amount,description}))};return state;
+  };
+  for(const [amounts,debits,label,count] of [
+    [[1363.17,1372.67],[1362,1369.78],'כרטיסי אשראי ל',2],
+    [[1363.17,1372.67],[1363.17],'כרטיסי אשראי ל',1],
+    [[1363.17,1372.67],[1363.17,1369.78,10],'כרטיסי אשראי ל',1],
+    [[1363.17,1372.67,1400],[1363.17,1369.78],'כרטיסי אשראי ל',2],
+    [[1363.17,1372.67],[1363.17,1369.78],'חיוב כרטיס אשראי',1],
+    [[1363.17,1363.17],[1363.17,1369.78],'כרטיסי אשראי ל',2],
+  ])assert.equal(kupaCashflow(make(amounts,debits,label),'ביתי','2026-09-11').expiredSettlementWarnings.length,count,JSON.stringify({amounts,debits,label}));
+  const late=make([1363.17,1372.67],[1363.17,1369.78]);late.bank.homeFeed.transactions[1].date='2026-09-11';
+  assert.equal(kupaCashflow(late,'ביתי','2026-09-11').expiredSettlementWarnings.length,1,'elimination cannot extend the settlement window');
+});

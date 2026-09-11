@@ -28,6 +28,7 @@ export function normalizeCreditTransaction(txn={}){
     originalAmount:original,
     originalCurrency:text(txn.originalCurrency||'',12),
     chargedAmount:charged,
+    ...(['reported','missing','not_billed'].includes(txn.chargeAmountStatus)?{chargeAmountStatus:txn.chargeAmountStatus}:{}),
     chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',
     description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',
     memo:text(txn.memo||'',260),

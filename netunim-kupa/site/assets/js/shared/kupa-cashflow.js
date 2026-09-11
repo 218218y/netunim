@@ -157,21 +157,43 @@ function provenSettlementGroupIndexes(groups,banks){
     subsets(bankIndexes,indexes=>{if(indexes.length>1&&indexes.reduce((sum,index)=>sum+banks[index].value,0)===group.expected)add(indexes,[cardIndex],2)});
   }
   const byBank=banks.map((_,index)=>claims.filter(claim=>claim.banks&(1<<index)));
-  let visits=0,overflow=false,best=null,guaranteed=0;
+  function settledByElimination(cards,usedBanks,anchors){
+    let settled=cards;
+    for(const [bankIndex,bank] of banks.entries()){
+      if(usedBanks&(1<<bankIndex)||bank.value>=0)continue;
+      const remaining=bank.eligible.filter(index=>!(cards&(1<<index)));
+      if(remaining.length!==1)continue;
+      const index=remaining[0],group=groups[index],provider=String(group.rows[0]?.provider||'');
+      if(!group.proven||!CREDIT_SETTLEMENT_MARKERS[provider]||!bankRowExplicitlyMatchesProvider(bank.row,provider))continue;
+      // An exact/strong match in this same issuer cycle must anchor elimination.
+      // Do not infer settlement merely by counting provider debits and cards.
+      if(!bank.eligible.some(other=>(anchors&(1<<other))&&groups[other].due===group.due&&groups[other].rows[0]?.provider===provider))continue;
+      if(banks.filter((other,i)=>!(usedBanks&(1<<i))&&other.eligible.includes(index)).length!==1)continue;
+      settled|=1<<index;
+    }
+    return settled;
+  }
+  let visits=0,overflow=false,best=null,guaranteed=0,explanations=[];
   const compare=(a,b)=>{for(let i=0;i<3;i++)if(a[i]!==b[i])return a[i]-b[i];return 0};
-  function search(remaining,cards,score){
+  function search(remaining,cards,score,usedBanks=0){
     if(++visits>50000){overflow=true;return}
-    if(!remaining){const comparison=best?compare(score,best):1;if(comparison>0){best=score;guaranteed=cards}else if(comparison===0)guaranteed&=cards;return}
+    if(!remaining){const comparison=best?compare(score,best):1;if(comparison>0){best=score;guaranteed=cards;explanations=[{cards,usedBanks}]}else if(comparison===0){guaranteed&=cards;explanations.push({cards,usedBanks})}return}
     const bit=remaining&-remaining,index=31-Math.clz32(bit);
-    search(remaining^bit,cards,score);
+    search(remaining^bit,cards,score,usedBanks);
     for(const claim of byBank[index]){
       if(overflow)return;
       if((remaining&claim.banks)!==claim.banks||(cards&claim.cards))continue;
-      search(remaining^claim.banks,cards|claim.cards,score.map((value,i)=>value+claim.score[i]));
+      search(remaining^claim.banks,cards|claim.cards,score.map((value,i)=>value+claim.score[i]),usedBanks|claim.banks);
     }
   }
   search((1<<banks.length)-1,0,[0,0,0]);
-  return overflow?[]:groups.flatMap((_,index)=>guaranteed&(1<<index)?[index]:[]);
+  if(overflow)return [];
+  // Only an independently guaranteed cycle may anchor elimination. Applying
+  // elimination inside a tied assignment would incorrectly turn ambiguity
+  // itself into proof (two equal cards, one exact and one different debit).
+  const anchors=guaranteed;
+  guaranteed=explanations.reduce((common,item)=>common&settledByElimination(item.cards,item.usedBanks,anchors),(1<<groups.length)-1);
+  return groups.flatMap((_,index)=>guaranteed&(1<<index)?[index]:[]);
 }
 function settlementWarningId(account,rows){
   const first=rows[0]||{},due=String(first.date||''),cardKey=creditCardKey(first),provider=String(first.provider||'manual');
@@ -184,7 +206,7 @@ function expiredSettlementWarnings(account,rows){
 }
 function pendingCreditSettlementData(kupa,account,settlementRows,start,reference){
   const feed=bankFeedForAccount(kupa,account),hasFeed=!!isoDay(feed?.syncedAt);
-  const unresolvedRows=settlementRows.filter(row=>row.date<reference&&row.bankSettlementState!=='settled'&&((hasFeed&&row.date<start)||!row.includedInIlsTotal||row.coverageIncomplete));
+  const unresolvedRows=settlementRows.filter(row=>row.date<reference&&row.bankSettlementState!=='settled'&&(!row.includedInIlsTotal||row.coverageIncomplete||moneyCents(row.amount)!==0)&&((hasFeed&&row.date<start)||!row.includedInIlsTotal||row.coverageIncomplete));
   const expiredRows=[],rows=[];
   for(const row of unresolvedRows){const releaseDate=addDaysISO(row.date,CREDIT_SETTLEMENT_MAX_HOLD_DAYS);if(releaseDate&&reference>=releaseDate)expiredRows.push(row);else rows.push(row)}
   return {rows,total:rows.reduce((sum,row)=>sum+num(row.amount),0),expiredRows,expiredTotal:expiredRows.reduce((sum,row)=>sum+num(row.amount),0),warnings:expiredSettlementWarnings(account,expiredRows)};
@@ -206,7 +228,7 @@ function rollForwardSettledCycleRows(rows,settlement,reference,{retainSettledCom
 function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCompleted=false,includeHidden=true}={}){
   // Visibility is a presentation choice, never evidence that another card paid.
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),start=kupaAccountBankAsOfDateData(kupa,role,ref),forecastStart=start>ref?start:ref,billingRows=creditBillingRowsData(kupa,{asOf:forecastStart,includeHidden:true}).filter(row=>row.account===role);
-  const finalized=billingRows.filter(row=>row.status!=='pending'),recentStart=addDaysISO(forecastStart,-CREDIT_SETTLEMENT_MAX_HOLD_DAYS);
+  const finalized=billingRows.filter(row=>row.status!=='pending'&&row.amountSource!=='issuer_not_billed'),recentStart=addDaysISO(forecastStart,-CREDIT_SETTLEMENT_MAX_HOLD_DAYS);
   // A newer charge on the same card must not hide an earlier incomplete cycle.
   // Keep whole cycles (including their known rows) for correct aggregate amounts.
   const selectedCycles=new Set([...settlementRowsForLatestElapsedCycle(finalized,forecastStart,forecastStart),...finalized.filter(row=>row.date&&row.date<=forecastStart&&(row.date>=recentStart||!row.includedInIlsTotal||row.coverageIncomplete))].map(row=>settlementGroupKey(row,'card')));
@@ -227,7 +249,7 @@ function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCom
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));
   const current=settlementRows.filter(row=>row.date===forecastStart),currentSettlement={rows:current.filter(row=>row.bankSettlementState!=='settled'),settledCardKeys:new Set(current.filter(row=>row.bankSettlementState==='settled').map(creditCardKey))};
   const annotated=billingRows.map(row=>states.has(creditRowKey(row))?{...row,bankSettlementState:states.get(creditRowKey(row))}:row);
-  const reconciledRows=rollForwardSettledCycleRows(annotated,currentSettlement,forecastStart,{retainSettledCompleted}).filter(row=>(includeHidden||!row.hidden)&&(retainSettledCompleted||row.bankSettlementState!=='settled'));
+  const reconciledRows=rollForwardSettledCycleRows(annotated,currentSettlement,forecastStart,{retainSettledCompleted}).filter(row=>(includeHidden||!row.hidden)&&(retainSettledCompleted||(row.bankSettlementState!=='settled'&&row.amountSource!=='issuer_not_billed')));
   const elapsedIncompleteCreditRows=settlingCredit.rows.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);
   return {role,ref,start,forecastStart,currentSettlement,settlingCredit,elapsedIncompleteCreditRows,rows:reconciledRows,installments:reconciledRows.filter(row=>row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004),unassignedRows:reconciledRows.filter(row=>!row.date)};
 }
