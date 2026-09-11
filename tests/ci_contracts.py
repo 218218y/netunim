@@ -60,6 +60,14 @@ class VerificationContracts(unittest.TestCase):
         for name in ("orders_scroll_race", "orders_note_reminders", "calendar_local_cloud_auth", "calendar_local_controller", "morning_edge"):
             self.assertIn(f"tests/{name}.test.mjs", discovered)
 
+    def test_ci_dependency_installs_do_not_restore_cross_run_package_caches(self):
+        workflow = (ROOT / '.github/workflows/verify.yml').read_text(encoding='utf8')
+        self.assertIn('package-manager-cache: false', workflow)
+        self.assertNotIn('cache: npm', workflow)
+        self.assertNotIn('cache: pip', workflow)
+        self.assertIn('npm ci --cache "$RUNNER_TEMP/netunim-npm-cache"', workflow)
+        self.assertIn('python -m pip install --no-cache-dir -r tests/requirements-ci.txt', workflow)
+
     def test_child_failure_is_preserved_and_keep_going_runs_the_rest(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

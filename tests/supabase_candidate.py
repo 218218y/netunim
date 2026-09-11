@@ -21,6 +21,14 @@ def one_function(inventory, key):
     return rows[0]
 
 
+def normalized_sql_text(value):
+    # Production may preserve CRLF inside pg_proc.prosrc while pg_get_functiondef()
+    # generates its wrapper with LF. Disposable replay reads migration files through
+    # Python, which normalizes the same SQL body to LF. Newline style is not SQL
+    # semantics and is already normalized by the repository-wide schema drift check.
+    return value.replace('\r\n', '\n').replace('\r', '\n')
+
+
 target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
 reviewed = json.loads((ROOT / 'supabase' / target['schema_snapshot']).read_text(encoding='utf8'))
 receipt = json.loads((ROOT / 'supabase' / target['deployment_receipt']).read_text(encoding='utf8'))
@@ -75,12 +83,14 @@ assert candidate_contract == reviewed_contract, \
     'instant-credit migration changed merge function ACL/signature/security metadata'
 
 bank_migration_pending = any(row['name'] == 'bank_instant_credit_reconciliation' for row in receipt_pending)
+candidate_definition = normalized_sql_text(bank_merge['definition'])
+reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
-    assert bank_merge['definition'] != reviewed_bank_merge['definition'], \
+    assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    assert bank_merge == reviewed_bank_merge, \
-        'authenticated Production bank merge function differs from replayed candidate'
+    assert candidate_definition == reviewed_definition, \
+        'authenticated Production bank merge SQL differs semantically from replayed candidate'
 
 required_bank_merge_fragments = (
     'v_amount>0', "v_description ~ 'מיידי|זה.?ב'", 'pending_party_norm', 'pending_detail_digits',
