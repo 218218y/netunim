@@ -6,6 +6,8 @@ from runtime_morning_cloud import LOCAL_CLOUD
 SETUP = LOCAL_CLOUD + r"""
 window.auditAssert=(ok,msg)=>{if(!ok)throw new Error(msg)};
 window.auditWait=async fn=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,10))}throw new Error('audit timeout')};
+window.auditConfirmation=()=>({open:!!document.getElementById('confirmBackdrop')?.classList.contains('open'),title:document.getElementById('confirmTitle')?.textContent||'',message:document.getElementById('confirmMessage')?.textContent||''});
+window.auditWaitForIssueConfirmation=async()=>{const before=window.auditConfirmation();window.auditAssert(!before.open,'stale confirmation before Morning issue: '+before.title+' | '+before.message);await window.auditWait(()=>{const current=window.auditConfirmation();return current.open&&current.title==='הפקת מסמך רשמי'&&current.message.includes('Audit fixture')})};
 window.auditCalls=[];
 window.auditServer=JSON.parse(localStorage.getItem('audit.server')||'{}');
 window.auditSetServer=patch=>{Object.assign(window.auditServer,patch);localStorage.setItem('audit.server',JSON.stringify(window.auditServer))};
@@ -32,8 +34,8 @@ window.auditIssue=async(type,amount,policy={})=>{
  document.querySelector('input[name="morningDocumentType"][value="'+type+'"]').click();
  document.getElementById('morningAmount').value=String(amount);
  for(const [key,value] of Object.entries(policy))document.getElementById(key).checked=value;
- document.querySelector('[data-action="morning-create"]').click();
- await window.auditWait(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
+ const pendingConfirmation=window.auditWaitForIssueConfirmation();document.querySelector('[data-action="morning-create"]').click();
+ await pendingConfirmation;
  document.getElementById('confirmAccept').click();
  await window.auditWait(()=>window.auditServer.operation&&document.querySelector('[data-action="morning-create"]').textContent!=='מפיק…');
 };
@@ -234,7 +236,7 @@ def ownership():
         js(browser, r"""
         window.auditAssert(primaryTab,'first tab lost ownership');await window.auditIssue(320,20);
         window.auditSetServer({operation:null});await window.auditOpen();
-        document.querySelector('[data-action="morning-create"]').click();await window.auditWait(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
+        const pendingConfirmation=window.auditWaitForIssueConfirmation();document.querySelector('[data-action="morning-create"]').click();await pendingConfirmation;
         const before=window.auditCalls.filter(c=>['reserve','create'].includes(c.action)).length;
         primaryTab=false;document.getElementById('confirmAccept').click();await new Promise(r=>setTimeout(r,100));
         window.auditAssert(window.auditCalls.filter(c=>['reserve','create'].includes(c.action)).length===before,'ownership loss during confirmation issued Morning');primaryTab=true;return true;

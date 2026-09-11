@@ -50,6 +50,14 @@ def main() -> int:
     ok &= check("armModalDraftGuard" in kupa_modal and "modalHasUnsavedDraft" in kupa_modal, "kupa: existing draft snapshot guard is preserved")
     ok &= check("confirmDialog('לצאת בלי לשמור?'" in kupa_modal, "kupa: dirty-form dismissal uses styled confirmation")
 
+    morning_runtime = read(ROOT / "tests/runtime_morning.py")
+    morning_audit = read(ROOT / "tests/runtime_morning_audit.py")
+    generic_open_wait = "waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'))"
+    generic_audit_wait = "auditWait(()=>document.getElementById('confirmBackdrop').classList.contains('open'))"
+    ok &= check("waitForIssueConfirmation" in morning_runtime and generic_open_wait not in morning_runtime, "Morning workflow waits for the requested issue confirmation instead of any open queued dialog")
+    ok &= check("Stale confirmation before Morning issue" in morning_runtime and "confirmation=" in morning_runtime, "Morning workflow fails diagnostically on stale confirmation state")
+    ok &= check("auditWaitForIssueConfirmation" in morning_audit and generic_audit_wait not in morning_audit, "Morning safety audit correlates confirmation waits with the issue request")
+
     if not ok:
         print("\nConfirmation contracts failed.")
         return 1
