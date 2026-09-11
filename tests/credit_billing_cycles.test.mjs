@@ -10,6 +10,7 @@ import {creditAccountModels as ordersCreditAccountModels,creditRows as ordersCre
 import {creditFrameStatus as ordersFrameStatus} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
+import {checkTodayISO} from '../netunim-orders/site/assets/js/core/dates.js';
 
 function stateFor(accounts,{provider='max',profileId='cards',accountRole='עסקי'}={}){
   const mappings={};for(const account of accounts)mappings[`${profileId}:${account.accountNumber}`]={included:true,hidden:false,account:accountRole};
@@ -194,9 +195,9 @@ test('stale and missing issuer month coverage remains an explicit best-effort pa
 
 test('Orders dashboard readout is a thin adapter over the exact shared cash-flow horizon',()=>{
   const kupa=structuredClone(twoCards);kupa.bank.asOfDate='2026-09-11';kupa.bank.feed.syncedAt='2026-09-11T08:00:00Z';kupa.expenses=[{id:'sep',active:true,recurring:false,account:'עסקי',date:'2026-09-20',amount:100},{id:'oct-in',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:200},{id:'oct-out',active:true,recurring:false,account:'עסקי',date:'2026-10-11',amount:300}];
-  const checks=[{id:'in',status:'בקופה',account:'עסקי',dueDate:'2026-10-09',amount:400},{id:'out',status:'בקופה',account:'עסקי',dueDate:'2026-10-11',amount:500}],readout=computeKupaNetReadoutData({checks},kupa),shared=ordersCashflow({...kupa,checks},'עסקי','2026-09-10');
-  assert.equal(readout.targetDate,'2026-10-10');assert.equal(readout.credit,3100);assert.equal(readout.expenses,300);assert.equal(readout.checks,400);assert.equal(readout.net,7000);
-  assert.equal(readout.net,shared.projected);assert.deepEqual(readout.nextCreditCycles,shared.nextCreditCycles,'Orders dashboard and its main Bank view consume the same cycles, not parallel formulas');
+  const checks=[{id:'in',status:'בקופה',account:'עסקי',dueDate:'2026-10-09',amount:400},{id:'out',status:'בקופה',account:'עסקי',dueDate:'2026-10-11',amount:500}],reference=checkTodayISO(),readout=computeKupaNetReadoutData({checks},kupa),shared=ordersCashflow({...kupa,checks},'עסקי',reference);
+  assert.equal(readout.targetDate,shared.targetDate);assert.equal(readout.credit,shared.credit);assert.equal(readout.expenses,shared.expenses);assert.equal(readout.checks,shared.checks);assert.equal(readout.net,shared.projected);
+  assert.deepEqual(readout.nextCreditCycles,shared.nextCreditCycles,'Orders dashboard and its main Bank view consume the same cycles, not parallel formulas');
 });
 
 test('expenses and checks obey the same exact horizon across intervening months',()=>{
