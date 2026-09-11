@@ -31,7 +31,7 @@ function summaryMarkup({embedded=false}={}){
     <div class="forecast-label">מאזן תזרימי צפוי לאחר גביית הלקוחות ותשלום לספקים</div>
     <div class="forecast-value ${esc(expected===null?'':expected<0?'badtext':'goodtext')}">${expected===null?'—':moneyWhole(expected)}</div>
     <div class="forecast-formula"><span>חוב לקוחות פתוח <b>${moneyWhole(customerOpenWhole)}</b></span><span class="formula-op">+</span><span>נטו ספקים <b class="${esc(supplierNetWhole<0?'badtext':'goodtext')}">${moneyWhole(supplierNetWhole)}</b></span><span class="formula-op">+</span><span>עו״ש תזרימי עסקי${partial?' · חלקי':''} <b class="${esc(kupaNetWhole===null?'':kupaNetWhole<0?'badtext':'goodtext')}">${kupaNetWhole===null?'—':moneyWhole(kupaNetWhole)}</b></span><span class="formula-op">=</span><span><b class="${esc(expected===null?'':expected<0?'badtext':'goodtext')}">${expected===null?'—':moneyWhole(expected)}</b></span></div>
-    <div class="forecast-note">חוב לקוחות פתוח + נטו ספקים + העו״ש התזרימי העסקי עד אופק החיוב${horizon?` ${esc(horizon)}`:''}. זהו מאזן תזרימי צפוי ולא חישוב רווח חשבונאי.${partial?' אומדן האשראי חלקי משום שחסר סכום שקלי מלא או שכיסוי החברה מבוסס LKG/קריאה חסרה.':''}</div>
+    <div class="forecast-note">חוב לקוחות פתוח + נטו ספקים + העו״ש התזרימי העסקי עד אופק החיוב${horizon?` ${esc(horizon)}`:''}. זהו מאזן תזרימי צפוי ולא חישוב רווח חשבונאי.${partial?' התחזית חלקית: חסרים נתוני אשראי או נדרשת בדיקה של חיוב בנק קבוע. הסיבה מוצגת בפירוט השינוי הצפוי.':''}</div>
   </article>
   <div class="finance-side-grid">
     <div class="kpi"><div class="label">חוב לקוחות פתוח</div><div class="value goodtext">${money(cst.openTotal)}</div><div class="sub">${esc(cst.open)} חובות שטרם שולמו</div></div>

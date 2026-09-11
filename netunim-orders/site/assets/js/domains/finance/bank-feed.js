@@ -87,6 +87,7 @@ export function normalizeBankFeed(feed){
     creditLimitUsedPercent:feed.creditLimitUsedPercent===null||feed.creditLimitUsedPercent===undefined||feed.creditLimitUsedPercent===''?null:(Number.isFinite(Number(feed.creditLimitUsedPercent))?Number(feed.creditLimitUsedPercent):null),
     syncedAt,
     transactions,
+    recurringDebitHistory:(Array.isArray(feed.recurringDebitHistory)?feed.recurringDebitHistory:[]).map(normalizeBankFeedTransaction),
     transactionWarning:cleanText(feed.transactionWarning,320),
     directSnapshot:normalizeDirectSnapshot(feed.directSnapshot),
   };

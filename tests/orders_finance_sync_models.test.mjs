@@ -322,7 +322,12 @@ assert.equal(financeRow.state.bank.archiveBaselineAudit.business.sourceCount,1,'
 assert.equal(financeRow.state.bank.archiveBaselineAudit.business.accountKey,'1-10','baseline audit is tied to the exact business account');
 assert.equal(cloudRow.state.bank.snapshotSeq,4,'atomic bank snapshot advances the Kupa check watermark together with finance state');
 const baselineAudit=structuredClone(financeRow.state.bank.archiveBaselineAudit);
+const retainedPension={id:'old-pension',date:'2025-08-15T00:00:00.000Z',description:'מגדל חברה לביט',amount:-1183.57,status:'completed'},retainedMortgage={id:'old-mortgage',date:'2025-08-15T00:00:00.000Z',description:'פועלים-משכנתא',amount:-1113.29,status:'completed'};
+financeRow.state.bank.feed.recurringDebitHistory=[retainedPension];
+financeRow.state.bank.homeFeed.recurringDebitHistory=[retainedMortgage];
 assert.equal(await controller.refreshBank({interactive:false,auto:false}),true);
+assert.deepEqual(financeRow.state.bank.feed.recurringDebitHistory,[retainedPension],'Orders atomic bank sync retains recurring sources outside current coverage');
+assert.deepEqual(financeRow.state.bank.homeFeed.recurringDebitHistory,[retainedMortgage],'home recurring history survives the same atomic refresh independently');
 assert.deepEqual(financeRow.state.bank.archiveBaselineAudit,baselineAudit,'rolling 30-day refresh never overwrites the certified 365-day baseline audit');
 assert.equal(financeRow.state.bank.archiveAudit.historyDays,30,'rolling refresh still records a separate latest audit');
 assert.equal(bankFetchCalls,2);

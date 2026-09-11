@@ -1,3 +1,4 @@
+import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {uid} from '../../core/values.js';
 import {wholeMoney} from '../../core/money.js';
@@ -41,9 +42,12 @@ function completeTransactionCoverage(snapshot){
   return {complete:coverage.complete===true&&!warning&&valid,from:valid?from:null,to:valid?to:null,days:Number(coverage.days)||null,warning};
 }
 function sharedBankLastSyncAt(state=model.state){const feed=normalizeBankFeed(state?.bank?.feed);return feed?.syncedAt||state?.bank?.bankSyncAt||(state?.bank?.source==='hapoalim'?state?.bank?.updatedAt:null)||null}
-function feedFromSnapshot(snapshot,fetchedAt){
+function feedFromSnapshot(snapshot,fetchedAt,role){
   if(!snapshot||!Number.isFinite(Number(snapshot.balance)))return null;
-  return normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
+  const feed=normalizeBankFeed({provider:'hapoalim',accountNumber:accountIdOf(snapshot),balance:Number(snapshot.balance),availableBalance:snapshot.availableBalance,creditLimit:snapshot.creditLimit,creditLimitUsed:snapshot.creditLimitUsed,creditLimitUsedPercent:snapshot.creditLimitUsedPercent,syncedAt:fetchedAt,transactions:snapshot.transactions||[],transactionWarning:snapshot.transactionWarning||''});
+  const previous=role==='home'?model.state.bank?.homeFeed:model.state.bank?.feed;
+  feed.recurringDebitHistory=bankRecurringDebitHistoryData(previous,feed,role,completeTransactionCoverage(snapshot));
+  return feed;
 }
 function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
 function applyBridgeAccountFields(target,source={}){
@@ -214,7 +218,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
       const requireExactArchive=historyDays>=365,businessAudit=assertBankArchiveCoverage(businessMerge,businessArchive,{role:'עסקי',requireExactCount:requireExactArchive}),homeAudit=home&&homeAccount?assertBankArchiveCoverage(homeMerge,homeArchive,{role:'ביתי',requireExactCount:requireExactArchive}):null;
       archiveAudit={version:3,verifiedAt:fetchedAt,historyDays,business:{...businessAudit,accountKey:businessAccount,reconciliation:businessMerge?.result||null,coverage:businessCoverage},home:homeAudit?{...homeAudit,accountKey:homeAccount,reconciliation:homeMerge?.result||null,coverage:homeCoverage}:null};
     }
-    const businessFeed=feedFromSnapshot({...business,transactions:businessArchive},fetchedAt),homeFeed=home?feedFromSnapshot({...home,transactions:homeArchive},fetchedAt):null;
+    const businessFeed=feedFromSnapshot({...business,transactions:businessArchive},fetchedAt,'business'),homeFeed=home?feedFromSnapshot({...home,transactions:homeArchive},fetchedAt,'home'):null;
     const warnings=[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:''].filter(Boolean);
     const previousBank=model.state.bank&&typeof model.state.bank==='object'?model.state.bank:{};
     const exactBackfillVerified=cloudArchive&&historyDays>=365&&completeTransactionCoverage(business).complete&&!homeFailure&&(!home||completeTransactionCoverage(home).complete),archiveBaselineAudit=exactBackfillVerified?archiveAudit:(previousBank.archiveBaselineAudit||null);

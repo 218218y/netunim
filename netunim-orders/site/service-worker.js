@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-364945cdfea0';
+const CACHE='orders-app-shell-esm-b5139ba1af85';
 const SHELL=[
   './',
   './index.html',
@@ -78,6 +78,7 @@ const SHELL=[
   './assets/js/domains/warehouse/view.js',
   './assets/js/lifecycle.js',
   './assets/js/main.js',
+  './assets/js/shared/bank-recurring-debits.js',
   './assets/js/shared/bank-transaction-order.js',
   './assets/js/shared/calendar.js',
   './assets/js/shared/cashflow-breakdown.js',

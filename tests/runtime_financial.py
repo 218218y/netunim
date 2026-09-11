@@ -152,8 +152,38 @@ def run_breakdown(app):
         print(f'{app}: cash-flow drilldown opens and closes for both accounts, totals match, desktop/mobile fit')
 
 
+def run_recurring_debits(app):
+    with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-recurring-debits") as browser:
+        result = browser.evaluate(r"""(async()=>{
+          const {kupaAccountCashflowData}=await import('./assets/js/shared/kupa-cashflow.js');
+          const {cashflowBreakdownMarkup}=await import('./assets/js/shared/cashflow-breakdown.js');
+          const fixture={expenses:[],checks:[],credits:[],cashflowSettings:{homeCheckCutoffDay:20},bank:{homeFeed:{balance:10000,syncedAt:'2026-09-16',transactions:[
+            {id:'p-aug',date:'2026-08-16',description:'פועלים-משכנתא',amount:-1113.29,status:'completed'},
+            {id:'m-aug',date:'2026-08-16',description:'בנק מרכנתיל די',amount:-4908.33,status:'completed'}
+          ]}}};
+          const pending=kupaAccountCashflowData(fixture,'ביתי','2026-09-16');
+          if(pending.expenses!==6021.62||pending.projected!==3978.38)throw new Error('Missing overdue debit');
+          const panel=document.createElement('div');panel.id='recurring-test';panel.innerHTML=cashflowBreakdownMarkup(pending);document.body.replaceChildren(panel);
+          if(!panel.textContent.includes('ממתין לרישום בבנק')||!panel.textContent.includes('16/08/2026'))throw new Error('Missing provenance or pending status');
+          fixture.bank.homeFeed.transactions.push({id:'p-sep',date:'2026-09-16',description:'פועלים-משכנתא',amount:-1120,status:'completed'});
+          fixture.bank.homeFeed.balance-=1120;
+          const posted=kupaAccountCashflowData(fixture,'ביתי','2026-09-16');
+          if(posted.expenses!==4908.33||posted.projected!==3971.67)throw new Error('Posted debit counted twice');
+          if(posted.recurringObligations[0].nextAmount!==1120||posted.recurringObligations[0].nextDueDate!=='2026-10-15')throw new Error('Next estimate did not roll forward');
+          return true;
+        })()""")
+        assert result is True
+        for width in (1280, 390):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            assert browser.evaluate("document.getElementById('recurring-test').scrollWidth<=window.innerWidth+2")
+        assert not browser.drain_serious_errors()
+        print(f'{app}: recurring bank estimates retain overdue debits, settle once, and show source on desktop/mobile')
+
+
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok
 run_breakdown('kupa')
 run_breakdown('orders')
+run_recurring_debits('kupa')
+run_recurring_debits('orders')
 raise SystemExit(0 if ok else 1)

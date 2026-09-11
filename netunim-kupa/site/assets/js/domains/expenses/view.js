@@ -1,3 +1,4 @@
+import {bankRecurringObligationsMarkup} from '../../shared/cashflow-breakdown.js';
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
@@ -14,10 +15,10 @@ function accountDivider(account,rows,colspan,detail=''){
   return `<tr class="expense-account-divider ${tone}"><td colspan="${colspan}"><div class="expense-account-divider-inner"><b>חשבון ${esc(account)}</b><span class="expense-account-divider-line" aria-hidden="true"></span><small>${detail?`${esc(detail)} · `:''}${rows.length} הוצאות · ${money(total)}</small></div></td></tr>`;
 }
 function cycleAccountRows(account,cycle){
-  const all=[...(cycle?.targetExpenseRows||[])].filter(row=>accountOf(row)===account),rows=all.filter(expenseMatches).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||'')||(a.description||'').localeCompare(b.description||'','he'));
+  const all=[...(cycle?.expenseRows||cycle?.targetExpenseRows||[])].filter(row=>accountOf(row)===account),rows=all.filter(expenseMatches).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||'')||(a.description||'').localeCompare(b.description||'','he'));
   const detail=`מחזור ${monthLabel(cycle.targetMonth)}`;
   const empty=String(ui.expenseSearchValue||'').trim()&&all.length?'אין הוצאות בחשבון הזה המתאימות לחיפוש.':`אין הוצאות ${expenseAccountLabel(account)} במחזור הזה.`;
-  const body=rows.length?rows.map(r=>`<tr data-expense-id="${esc(r.id)}"><td><b>${esc(r.description)}</b></td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.dueDate)}</td><td>${esc(r.type)}</td><td><span class="badge ${esc(r.recurring!==false?'green':'')}">${r.recurring!==false?'כל חודש':'חד־פעמית'}</span></td><td><button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button></td></tr>`).join(''):`<tr class="expense-account-empty"><td colspan="6"><div class="empty">${esc(empty)}</div></td></tr>`;
+  const body=rows.length?rows.map(r=>`<tr data-expense-id="${esc(r.id)}"><td><b>${esc(r.description)}</b></td><td class="amount">${money(r.amount)}</td><td>${dateFmt(r.dueDate)}</td><td>${esc(r.type)}</td><td><span class="badge ${esc(r.recurring!==false?'green':'')}">${r.recurring!==false?'כל חודש':'חד־פעמית'}</span></td><td>${r.source==='bank_recurring'?`<small>${r.bankSettlementState==='awaiting'?'ממתין לרישום בבנק':'אומדן אוטומטי'}</small>`:`<button type="button" class="iconbtn" data-action="open-expense-modal-2" data-click-arg0="${esc(r.id)}">עריכה</button>`}</td></tr>`).join(''):`<tr class="expense-account-empty"><td colspan="6"><div class="empty">${esc(empty)}</div></td></tr>`;
   return accountDivider(account,rows,6,detail)+body;
 }
 function configuredAccountRows(account,rows){
@@ -30,6 +31,7 @@ function expensesResultsMarkup(){
   const businessCycle=bankNextCycleCommitments(),homeCycle=bankHomeNextCycleCommitments();
   const allRows=[...model.state.expenses].sort((a,b)=>(a.description||'').localeCompare(b.description||'','he'));
   return `<section class="section"><div class="section-head"><div><h3>הוצאות לפי חשבון</h3><div class="muted">עסקי: ${esc(monthLabel(businessCycle.targetMonth))} · ביתי: ${esc(monthLabel(homeCycle.targetMonth))}</div></div><button type="button" class="btn primary" data-action="open-expense-modal">+ הוצאה חדשה</button></div><div class="table-scroll"><table class="expenses-account-table"><thead><tr><th>תיאור</th><th>סכום</th><th>מועד</th><th>סוג</th><th>חוזרת</th><th></th></tr></thead><tbody>${cycleAccountRows('עסקי',businessCycle)}${cycleAccountRows('ביתי',homeCycle)}</tbody></table></div></section>
+    <section class="section" style="margin-top:16px">${bankRecurringObligationsMarkup(businessCycle)}${bankRecurringObligationsMarkup(homeCycle)}</section>
     <section class="section" style="margin-top:16px"><div class="section-head"><div><h3>הגדרת הוצאות קבועות ונוספות</h3></div></div><div class="table-scroll"><table class="expenses-account-table"><thead><tr><th>תיאור</th><th>חשבון</th><th>סכום</th><th>יום / תאריך בסיס</th><th>סוג</th><th>חוזרת</th><th>פעיל</th><th></th></tr></thead><tbody>${configuredAccountRows('עסקי',allRows)}${configuredAccountRows('ביתי',allRows)}</tbody></table></div></section>`;
 }
 function expensesMarkup(){return `<div class="expenses-surface"><div class="view-search-row expenses-view-search">${localSearchMarkup({value:ui.expenseSearchValue||'',placeholder:'חיפוש בהוצאות לפי תיאור, סכום, סוג או חשבון…',label:'חיפוש בהוצאות',inputAction:'expense-search',className:'wide'})}</div><div id="expensesResults">${expensesResultsMarkup()}</div></div>`}
