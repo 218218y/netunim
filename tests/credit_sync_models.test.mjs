@@ -415,13 +415,13 @@ const splitCreditSync=normalizeCreditSync({version:4,profiles:[{profileId:'split
 const splitBase={version:4,checks:[],cash:[],cards:[],credits:[],expenses:[],cashflowSettings:{businessMinimum:0},creditSync:splitCreditSync,bank:{currentBalance:10000,asOfDate:'2026-09-11',source:'hapoalim',adjustments:[],feed:{syncedAt:'2026-09-11T08:00:00.000Z',balance:10000,transactions:[]}}};
 const splitPartial=JSON.parse(JSON.stringify(splitBase));splitPartial.bank.currentBalance=8992;splitPartial.bank.feed.balance=8992;splitPartial.bank.feed.transactions=[{id:'max-one-card',date:'2026-09-11',amount:-1008,status:'completed',description:'MAX'}];
 const splitPartialCycle=kupaAccountCashflowData(splitPartial,'עסקי','2026-09-11');
-assert.equal(splitPartialCycle.settlingCredit,2000,'when only one of several MAX card debits has posted, amount structure resolves the uniquely closest card and keeps the other card pending');
+assert.equal(splitPartialCycle.settlingCredit,3000,'a closest amount is not proof of which card settled');
 const splitPosted=JSON.parse(JSON.stringify(splitBase));splitPosted.bank.currentBalance=7007;splitPosted.bank.feed.balance=7007;splitPosted.bank.feed.transactions=[{id:'max-card-a',date:'2026-09-11',amount:-1008,status:'completed',description:'MAX'},{id:'max-card-b',date:'2026-09-11',amount:-1985,status:'completed',description:'MAX'}];
 const splitPostedCycle=kupaAccountCashflowData(splitPosted,'עסקי','2026-09-11');
-assert.equal(splitPostedCycle.settlingCredit,0,'one explicit MAX bank debit per due card settles a split monthly charge even when neither actual amount equals the issuer estimate exactly');
-assert.equal(splitPostedCycle.projected,3807,'split actual debits are represented once through the bank balance while only the next 3,200 credit cycle remains forecast');
+assert.equal(splitPostedCycle.settlingCredit,3000,'the number of bank rows alone cannot prove one debit per card');
+assert.equal(splitPostedCycle.projected,807,'ambiguous old estimates stay reserved within the reconciliation window');
 const aggregatePosted=JSON.parse(JSON.stringify(splitBase));aggregatePosted.bank.currentBalance=7007;aggregatePosted.bank.feed.balance=7007;aggregatePosted.bank.feed.transactions=[{id:'max-aggregate',date:'2026-09-11',amount:-2993,status:'completed',description:'MAX'}];
-assert.equal(kupaAccountCashflowData(aggregatePosted,'עסקי','2026-09-11').settlingCredit,0,'a single provider debit that is structurally closer to the whole MAX cycle than to any individual card is treated as the aggregate posted cycle even with an amount difference');
+assert.equal(kupaAccountCashflowData(aggregatePosted,'עסקי','2026-09-11').settlingCredit,3000,'an approximate aggregate is not proof of settlement');
 
 const dayNinePending=normalizeCreditSync({version:4,profiles:[{profileId:'pending-cutoff',provider:'max',accounts:[{accountNumber:'9090',pendingStatus:'success',pendingTransactions:[{id:'sep-9-pending',status:'pending',date:'2026-09-09T20:00:00.000Z',transactionDate:'2026-09-09T20:00:00.000Z',transactionTime:'23:00',chargedAmount:-250,chargedCurrency:'ILS',description:'עסקה מ-9 שטרם שובצה'}]}]}],cardMappings:{'pending-cutoff:9090':{included:true,hidden:false,account:'עסקי'}}});
 assert.equal(syncedInstallmentsData({creditSync:dayNinePending}).length,0,'a transaction made on the 9th that the issuer still marks pending is not forced into the current monthly debit before the issuer assigns its final billing date');

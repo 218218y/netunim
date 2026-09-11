@@ -97,6 +97,22 @@ def run_breakdown(app):
                   return true;
                 }})()""")
                 assert result is True
+        for days in (1, 2):
+            browser.evaluate("(()=>{"+breakdown_fixture+f"""
+              const past=new Date(now.getFullYear(),now.getMonth(),now.getDate()-{days}),pastDay=[past.getFullYear(),String(past.getMonth()+1).padStart(2,'0'),String(past.getDate()).padStart(2,'0')].join('-');
+              fixture.creditSync.profiles[0].accounts[0].txns=[{{id:'elapsed-unknown',status:'completed',processedDate:pastDay,chargedAmount:null,originalAmount:null,chargedCurrency:'ILS'}}];
+              {setup}
+              return true;
+            }})()""")
+            action = 'orders-cashflow-breakdown' if app == 'orders' else 'cashflow-breakdown'
+            browser.evaluate(f"""(()=>{{
+              document.querySelector('[data-action="{action}"][data-click-arg0="business"]').click();
+              const text=document.querySelector('#modal .cashflow-breakdown').textContent;
+              if({days}===1&&!text.includes('התחזית חלקית'))throw new Error('Elapsed unknown amount disappeared from partial forecast');
+              if({days}===2&&!text.includes('סכום לא ידוע'))throw new Error('Expired unknown amount has no explicit warning');
+              document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
+              return true;
+            }})()""")
         errors = browser.drain_serious_errors()
         assert not errors, errors
         print(f'{app}: cash-flow drilldown opens and closes for both accounts, totals match, desktop/mobile fit')

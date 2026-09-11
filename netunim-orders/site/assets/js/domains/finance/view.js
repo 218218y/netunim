@@ -97,7 +97,7 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
   }
   function creditSettlementWarningsMarkup(s){
     const rows=creditSettlementWarnings(s);if(!rows.length)return '';
-    return `<div class="finance-sync-diagnostics credit-settlement-warnings">${rows.map(item=>`<div class="finance-sync-detail warn"><b>חיוב אשראי לא הותאם לתנועת בנק</b><span>${esc(item.card)} · חשבון ${esc(item.account)} · מועד חיוב ${checkDateFmt(item.dueDate)} · סכום תחזית ${money(item.amount)}</span><small>כדי למנוע חיוב כפול מצטבר, הסכום הוסר אוטומטית מהעו״ש התזרימי החל מ־${esc(checkDateFmt(item.releaseDate))}. אם החיוב נדחה בפועל, יש לבדוק את תנועות הבנק.</small><button type="button" class="btn" data-action="ack-orders-credit-settlement-warning" data-click-arg0="${esc(item.id)}">בדקתי · הסר אזהרה</button></div>`).join('')}</div>`;
+    return `<div class="finance-sync-diagnostics credit-settlement-warnings">${rows.map(item=>`<div class="finance-sync-detail warn"><b>חיוב אשראי לא הותאם לתנועת בנק</b><span>${esc(item.card)} · חשבון ${esc(item.account)} · מועד חיוב ${checkDateFmt(item.dueDate)} · ${item.amountKnown===false?'סכום לא ידוע':`סכום תחזית ${money(item.amount)}`}</span><small>חלון ההמתנה הסתיים ב־${esc(checkDateFmt(item.releaseDate))}. החיוב אינו נכלל כעת בעו״ש התזרימי, אך לא הוכח שנפרע; יש לבדוק את תנועות הבנק.</small><button type="button" class="btn" data-action="ack-orders-credit-settlement-warning" data-click-arg0="${esc(item.id)}">בדקתי · הסר אזהרה</button></div>`).join('')}</div>`;
   }
 
   function creditSyncPanelMarkup(s){

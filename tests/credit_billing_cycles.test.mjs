@@ -250,7 +250,7 @@ test('pending freshness has an inclusive two-calendar-day limit and rejects unkn
   const account={accountNumber:'2222',balanceDate:'2026-09-15',pendingStatus:'success',pendingFetchedAt:'2026-09-08T23:59:59Z',txns:[{id:'p',status:'pending',transactionDate:'2026-09-08',chargedAmount:-100,chargedCurrency:'ILS'}]};
   const state=stateFor([account]);
   assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,100);
-  for(const fetched of ['2026-08-20T12:00:00Z','2026-09-07T23:59:59Z','',null,'invalid','2026-09-10invalid','2026-09-11']){
+  for(const fetched of ['2026-08-20T12:00:00Z','2026-09-07T00:00:00Z','',null,'invalid','2026-09-10invalid','2026-09-11']){
     account.pendingFetchedAt=fetched;
     const result=kupaCashflow(state,'עסקי','2026-09-10');
     assert.equal(result.credit,0);assert.equal(result.forecastIncomplete,true);assert.equal(result.incompleteCreditRows[0].pendingFresh,false);
@@ -303,4 +303,119 @@ test('cashflow contributing rows reconcile to signed totals, including refunds a
   const html=cashflowBreakdownMarkup(result);
   assert.ok(html.includes('2222'));assert.ok(html.includes('15/09/2026'));assert.ok(html.includes('02/09/2026'));assert.ok(html.includes('100.12'));
   assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));
+});
+
+test('settlement never arbitrarily chooses equal card cycles, regardless of input order',()=>{
+  for(const generic of [false,true])for(const reverse of [false,true]){
+    const accounts=['2222','3333'].map(accountNumber=>({accountNumber,balanceDate:'2026-09-10',pendingStatus:'success',pendingFetchedAt:'2026-09-10',txns:[
+      {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
+      {id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'},
+      ...(accountNumber==='2222'?[{id:'pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'}]:[]),
+    ]}));
+    const state=stateFor(reverse?accounts.reverse():accounts);
+    if(generic){const profile=state.creditSync.profiles[0];state.creditSync.profiles=[{...profile,accounts:profile.accounts.filter(a=>a.accountNumber==='2222')},{...profile,provider:'visaCal',accounts:profile.accounts.filter(a=>a.accountNumber==='3333')}]}
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:generic?'חיוב כרטיס אשראי':'MAX'}];
+    const result=kupaCashflow(state,'עסקי','2026-09-10');
+    assert.equal(result.credit,2100);assert.equal(result.nextCreditCycles.length,2);
+    assert.equal(result.creditRows.find(row=>row.status==='pending').date,'2026-09-10');
+    state.creditSync.cardMappings['cards:3333'].hidden=true;
+    const detail=creditMonthlyDetailData(state,'2026-09-10');
+    assert.equal(detail.months.flatMap(month=>month.items).find(row=>row.status==='pending').date,'2026-09-10','hiding another card cannot turn an ambiguous settlement into proof');
+  }
+});
+
+test('past-due unknown and FX amounts stay incomplete until bank proof or explicit expiry',()=>{
+  for(const future of [false,true])for(const amount of [{chargedAmount:null},{chargedAmount:-50,chargedCurrency:'USD',originalAmount:-50,originalCurrency:'USD'}]){
+    const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',...amount},...(future?[{id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'}]:[])]}]);
+    state.bank.asOfDate='2026-09-11';state.bank.feed.syncedAt='2026-09-11';
+    const waiting=kupaCashflow(state,'עסקי','2026-09-11'),long=bankLongTermPositionData(state,'2026-09-11');
+    assert.equal(waiting.forecastIncomplete,true);assert.equal(waiting.elapsedIncompleteCreditRows.length,1);assert.equal(waiting.credit,future?1100:0);
+    assert.equal(long.forecastIncomplete,true);assert.equal(long.missingAmountCount,1);
+    assert.equal(ordersCreditAccountModels(state,'2026-09-11')[0].upcomingCharge.complete,false);
+    assert.ok(cashflowBreakdownMarkup(waiting).includes('התחזית חלקית'));
+    assert.deepEqual(waiting,ordersCashflow(state,'עסקי','2026-09-11'));
+    state.bank.feed.transactions=[{date:'2026-09-11',amount:-1000,description:'MAX'}];
+    assert.equal(kupaCashflow(state,'עסקי','2026-09-11').forecastIncomplete,false);assert.equal(bankLongTermPositionData(state,'2026-09-11').forecastIncomplete,false);
+    state.bank.feed.transactions=[];state.bank.asOfDate='2026-09-12';state.bank.feed.syncedAt='2026-09-12';
+    const expired=kupaCashflow(state,'עסקי','2026-09-12');
+    assert.equal(expired.forecastIncomplete,false);assert.equal(expired.expiredSettlementWarnings.length,1);assert.equal(expired.expiredSettlementWarnings[0].amountKnown,false);
+    assert.ok(cashflowBreakdownMarkup(expired).includes('סכום לא ידוע'));
+    assert.equal(bankLongTermPositionData(state,'2026-09-12').expiredSettlementWarnings.length,1);
+  }
+});
+
+test('pending calendar freshness uses the same local day as asOf, including DST boundaries',()=>{
+  const prior=process.env.TZ;
+  try{
+    process.env.TZ='Asia/Jerusalem';
+    const account={pendingStatus:'success',pendingFetchedAt:'2026-09-10T22:00:00Z'};
+    assert.equal(kupaEngine.creditPendingFreshData(account,'2026-09-13'),true);
+    assert.equal(kupaEngine.creditPendingFreshData(account,'2026-09-14'),false);
+    account.pendingFetchedAt='2026-03-26T22:30:00Z';
+    assert.equal(kupaEngine.creditPendingFreshData(account,'2026-03-29'),true);
+    account.pendingFetchedAt='2026-10-24T22:30:00Z';
+    assert.equal(kupaEngine.creditPendingFreshData(account,'2026-10-27'),true);
+    account.pendingFetchedAt='2026-09-11';assert.equal(kupaEngine.creditPendingFreshData(account,'2026-09-13'),true);
+  }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior}
+});
+
+test('global settlement respects suffixes, exact aggregates, splits and competing explanations',()=>{
+  const make=(amounts,debits)=>{
+    const state=stateFor(amounts.map((amount,index)=>({accountNumber:String(2222+index*1111),txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:amount===null?null:-amount,chargedCurrency:'ILS'}]})));
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=debits.map(([amount,description='MAX'])=>({date:'2026-09-10',amount:-amount,description}));return state;
+  };
+  const remaining=state=>kupaReconciledCreditRowsData(state,'עסקי','2026-09-10').filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber).sort();
+  for(const reverse of [false,true]){
+    const cases=[
+      [[1000,1000],[[1000,'MAX 3333']],['2222']],
+      [[1000,2000],[[1000,'MAX 3333']],['2222']],
+      [[1000,1000],[[2000]],[]],
+      [[1000,1000],[[1000],[1000]],[]],
+      [[1000,1000,2000],[[2000]],['2222','3333','4444']],
+      [[1000,2000],[[1000]],['3333']],
+      [[1000],[[600,'חיוב כרטיס אשראי'],[400,'חיוב כרטיס אשראי']],[]],
+      [[1000,600,400],[[600,'חיוב כרטיס אשראי'],[400,'חיוב כרטיס אשראי']],['2222','3333','4444']],
+      [[1000,null],[[1000]],['2222','3333']],
+    ];
+    for(const [amounts,debits,expected] of cases){const state=make(amounts,debits);if(reverse){state.creditSync.profiles[0].accounts.reverse();state.bank.feed.transactions.reverse()}assert.deepEqual(remaining(state),expected,JSON.stringify({amounts,debits,reverse}))}
+  }
+});
+
+test('elapsed and same-day cycles compete globally for the same bank evidence',()=>{
+  const state=stateFor(['2222','3333'].map((accountNumber,index)=>({accountNumber,txns:[{id:'due',status:'completed',processedDate:index?'2026-09-11':'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]})));
+  state.bank.asOfDate='2026-09-11';state.bank.feed.syncedAt='2026-09-11';state.bank.feed.transactions=[{date:'2026-09-11',amount:-1000,description:'MAX'}];
+  const result=kupaCashflow(state,'עסקי','2026-09-11');assert.equal(result.credit,2000);assert.equal(result.settlingCredit,1000);
+  state.bank.feed.transactions[0].description='MAX 3333';
+  const identified=kupaCashflow(state,'עסקי','2026-09-11');assert.equal(identified.credit,1000);assert.equal(identified.settlingCredit,1000,'one bank debit cannot close both the elapsed and same-day card');
+});
+
+test('large independent card sets settle; oversized connected ambiguities fail closed',()=>{
+  const accounts=Array.from({length:13},(_,index)=>({accountNumber:String(1000+index),txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]})),state=stateFor(accounts);
+  state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=accounts.map(account=>({date:'2026-09-10',amount:-1000,description:`MAX ${account.accountNumber}`}));
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,0);
+  state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'MAX'}];
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,13000);
+});
+
+test('unknown elapsed amounts stay visible with old or missing bank snapshots in both accounts',()=>{
+  for(const accountRole of ['עסקי','ביתי'])for(const bankMode of ['old','missing']){
+    const state=stateFor([{accountNumber:'2222',txns:[{id:'unknown',status:'completed',processedDate:'2026-09-10',chargedAmount:null}]}],{accountRole});
+    state.bank.asOfDate='2026-09-09';state.bank.feed.syncedAt='2026-09-09';state.bank.homeFeed={balance:5000,syncedAt:'2026-09-09',transactions:[]};
+    if(bankMode==='missing'){state.bank.feed=null;state.bank.homeFeed=null}
+    const waiting=kupaCashflow(state,accountRole,'2026-09-11');
+    assert.equal(waiting.forecastIncomplete,true);assert.equal(waiting.incompleteCreditRows.length,1);assert.equal(waiting.elapsedIncompleteCreditRows.length,1);
+    assert.deepEqual(waiting,ordersCashflow(state,accountRole,'2026-09-11'));
+    const expired=kupaCashflow(state,accountRole,'2026-09-12');
+    assert.equal(expired.forecastIncomplete,false);assert.equal(expired.expiredSettlementWarnings.length,1);
+    if(accountRole==='עסקי'){assert.equal(bankLongTermPositionData(state,'2026-09-11').missingAmountCount,1);assert.equal(bankLongTermPositionData(state,'2026-09-12').missingAmountCount,0)}
+  }
+});
+
+test('a newer charge on the same card cannot hide an earlier missing cycle or its warning',()=>{
+  const state=stateFor([{accountNumber:'2222',txns:[{id:'unknown',status:'completed',processedDate:'2026-09-10',chargedAmount:null},{id:'newer',status:'completed',processedDate:'2026-09-11',chargedAmount:-500,chargedCurrency:'ILS'}]}]);
+  state.bank.asOfDate='2026-09-11';state.bank.feed.syncedAt='2026-09-11';
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-11').elapsedIncompleteCreditRows.length,1);
+  state.bank.asOfDate='2026-09-12';state.bank.feed.syncedAt='2026-09-12';
+  const result=kupaCashflow(state,'עסקי','2026-09-12');
+  assert.equal(result.credit,500);assert.equal(result.expiredSettlementWarnings.filter(row=>row.dueDate==='2026-09-10').length,1);
 });

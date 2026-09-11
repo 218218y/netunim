@@ -34,9 +34,10 @@ export function creditTransactionAmountData(tx={}){
 }
 
 // Day-based forecast: a successful snapshot is usable on its fetch day and the
-// next two calendar days. Missing/invalid/future timestamps never prove freshness.
+// next two LOCAL calendar days, matching localTodayISO/asOf (not elapsed hours).
+// Date-only legacy values already represent a calendar date; do not shift them.
 export function creditPendingFreshData(account={},asOf=localTodayISO()){
-  const fetched=creditBillingISODate(account.pendingFetchedAt),reference=creditBillingISODate(asOf);
+  const raw=String(account.pendingFetchedAt||''),timestamp=new Date(raw),fetched=/^\d{4}-\d{2}-\d{2}$/.test(raw)?creditBillingISODate(raw):creditBillingISODate(raw)&&Number.isFinite(timestamp.getTime())?`${timestamp.getFullYear()}-${pad2(timestamp.getMonth()+1)}-${pad2(timestamp.getDate())}`:'',reference=creditBillingISODate(asOf);
   if(account.pendingStatus!=='success'||!fetched||!reference||!Number.isFinite(Date.parse(account.pendingFetchedAt)))return false;
   const age=(Date.parse(reference)-Date.parse(fetched))/86400000;
   return age>=0&&age<=2;
