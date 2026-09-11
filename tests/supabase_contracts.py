@@ -251,6 +251,13 @@ class SupabaseContracts(unittest.TestCase):
         current_audit['canonical_migrations'] = [
             {k: row[k] for k in ('version', 'name')} for row in reviewed
         ]
+        # A post-deployment authenticated audit would also contain a server ledger for the
+        # newly reviewed suffix. Model that evidence rather than reusing the old Production
+        # server hashes, which necessarily have the previous migration count.
+        current_audit['server_migration_manifest'] = json.loads(json.dumps(reviewed))
+        current_audit['migration_storage_formats'] = verify_server_manifest(
+            current_audit['server_migration_manifest'], reviewed
+        )
         self.assertEqual(
             release_contract_errors(target, current_receipt, current_audit, reviewed, jobs), []
         )

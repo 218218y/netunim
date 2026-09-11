@@ -234,7 +234,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
 
   async function acknowledgeMissingBankTransaction(transactionId){
     const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0){toast('לא ניתן לזהות את תנועת הבנק לסימון');return false}
-    try{const result=await acknowledgeBankTransactionMissing(id),at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.missingAcknowledgedAt=at});toast('התנועה סומנה כנבדקה. היא נשמרת בהיסטוריה אך לא תופיע עוד כאזהרה פעילה.');return true}catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
+    try{const result=await acknowledgeBankTransactionMissing(id),at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.missingAcknowledgedAt=at});toast('התנועה סומנה כנבדקה. התיעוד נשמר בארכיון, והיא הוסרה מההיסטוריה החכמה ומהאזהרות.');return true}catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
   }
 
   async function acknowledgePersistentBankAlert(transactionId,alertKind){

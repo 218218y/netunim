@@ -4,6 +4,7 @@ function valueDate(row){return String(row?.processedDate||'')}
 function dayKey(row){return rowDate(row).slice(0,10)}
 function pending(row){return row?.status==='pending'}
 function numericId(row){const n=Number(row?.archiveId);return Number.isSafeInteger(n)&&n>0?n:0}
+export function bankSmartHistoryVisible(row){return !(row?.presenceState==='missing'&&!!row?.missingAcknowledgedAt)}
 
 /**
  * Canonical ordering for the smart bank-history view.
@@ -19,7 +20,7 @@ function numericId(row){const n=Number(row?.archiveId);return Number.isSafeInteg
  * their warning UI makes that deliberate exception explicit.
  */
 export function bankSmartHistoryRows(rows,{directTransactions=[],isMissingActive=()=>false}={}){
-  const source=Array.isArray(rows)?rows:[],direct=Array.isArray(directTransactions)?directTransactions:[],rank=new Map();
+  const source=(Array.isArray(rows)?rows:[]).filter(bankSmartHistoryVisible),direct=Array.isArray(directTransactions)?directTransactions:[],rank=new Map();
   direct.forEach((row,index)=>{const key=rowKey(row);if(key&&!rank.has(key))rank.set(key,index)});
   return source.map((row,index)=>({row,index,key:rowKey(row)})).sort((a,b)=>{
     const missingDelta=Number(!!isMissingActive(b.row))-Number(!!isMissingActive(a.row));

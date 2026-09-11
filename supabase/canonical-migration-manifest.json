@@ -48,5 +48,10 @@
     "version": "20260908204500",
     "name": "morning_preissue_reservation",
     "sha256": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec"
+  },
+  {
+    "version": "20260910211500",
+    "name": "bank_instant_credit_reconciliation",
+    "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
   }
 ]

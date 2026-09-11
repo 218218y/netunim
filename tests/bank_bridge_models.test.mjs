@@ -218,6 +218,16 @@ assert.equal(settledTransfer.status,'completed','the same transfer becomes compl
 assert.equal(pendingTransfer.memo,'','pending transfer may legitimately have no beneficiary text');
 assert.match(settledTransfer.memo,/ויס חנה/,'settled transfer may gain beneficiary text that did not exist on the pending placeholder');
 assert.deepEqual([pendingTransfer.amount,pendingTransfer.description,pendingTransfer.balanceAfter,pendingTransfer.activityTypeCode],[settledTransfer.amount,settledTransfer.description,settledTransfer.balanceAfter,settledTransfer.activityTypeCode],'pending-to-completed reconciliation has connector-preserved bank facts even when serial and beneficiary text change');
+const pendingInstantCredit=normalizeHapoalimTransaction({referenceNumber:0,eventDate:'20260910',valueDate:'20260910',eventAmount:6800,eventActivityTypeCode:1,activityDescription:'זיכוי מיידי',serialNumber:0,beneficiaryDetailsData:{partyHeadline:'המבצע:',partyName:'יס יונתן פרץ סורקיס פסיה',messageHeadline:'עבור:',messageDetail:'017-663-087113599'}});
+const settledInstantCredit=normalizeHapoalimTransaction({referenceNumber:0,eventDate:'20260911',valueDate:'20260911',eventAmount:6800,eventActivityTypeCode:1,activityDescription:'זיכוי ממרכנתיל',serialNumber:912,beneficiaryDetailsData:{partyHeadline:'המבצע:',partyName:'פרץ סורקיס פסיה',messageHeadline:'עבור:',messageDetail:'תשלום מח-ן:087113599'}});
+assert.equal(pendingInstantCredit.status,'pending','instant credit starts as pending while its bank serial is zero');
+assert.equal(settledInstantCredit.status,'completed','instant credit settles when the bank assigns a real serial');
+assert.deepEqual([pendingInstantCredit.amount,pendingInstantCredit.activityTypeCode],[settledInstantCredit.amount,settledInstantCredit.activityTypeCode],'instant-credit amount and direction survive settlement even when the activity label changes');
+assert.notEqual(pendingInstantCredit.description,settledInstantCredit.description,'the real instant-credit regression changes the bank activity description across settlement');
+assert.equal(pendingInstantCredit.partyName,'יס יונתן פרץ סורקיס פסיה','pending instant credit preserves the full beneficiary/initiator name separately from memo');
+assert.equal(settledInstantCredit.partyName,'פרץ סורקיס פסיה','settled instant credit preserves the shortened bank party name separately from memo');
+assert.equal(pendingInstantCredit.messageDetail,'017-663-087113599','pending instant credit preserves the long account detail needed for conservative reconciliation');
+assert.equal(settledInstantCredit.messageDetail,'תשלום מח-ן:087113599','settled instant credit preserves the shortened account suffix needed for conservative reconciliation');
 assert.match(inbound.memo,/לקוח/,'beneficiary details are normalized into a compact memo');
 assert.equal(inbound.balanceAfter,4321.5,'raw Hapoalim currentBalance is preserved as the authoritative balance after the transaction');
 assert.equal(normalizeHapoalimTransaction({...rawInbound,currentBalance:null}).balanceAfter,null,'missing bank row balance stays unknown instead of being coerced to zero');

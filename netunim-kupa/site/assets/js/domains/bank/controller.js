@@ -251,7 +251,7 @@ async function acknowledgeMissingBankTransaction(transactionId){
     await acknowledgeBankTransactionMissing(id);
     for(const role of ['business','home']){const cache=bankDisplayArchive[role];if(Array.isArray(cache.rows)&&cache.rows.some(row=>Number(row?.archiveId)===id)){cache.rows=null;cache.directSnapshot=null}}
     await ensureBankDisplayArchive();
-    toast('התנועה סומנה כנבדקה. היא נשמרת בהיסטוריה אך לא תופיע עוד כאזהרה פעילה.');render();return true;
+    toast('התנועה סומנה כנבדקה. התיעוד נשמר בארכיון, והיא הוסרה מההיסטוריה החכמה ומהאזהרות.');render();return true;
   }catch(error){toast(error?.message||'סימון התנועה כנבדקה נכשל');return false}
 }
 

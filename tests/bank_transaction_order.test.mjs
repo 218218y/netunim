@@ -33,4 +33,9 @@ const missing=tx('missing',{date:'2026-08-31T12:00:00.000Z',presenceState:'missi
 const withWarning=bankSmartHistoryRows([pendingDebit,missing],{directTransactions:[pendingDebit],isMissingActive:row=>row.presenceState==='missing'&&!row.missingAcknowledgedAt});
 assert.equal(withWarning[0].id,'missing','active missing warnings remain pinned above the normal bank sequence');
 
-console.log('PASS bank transaction order: pending/source-order reconciliation preserves authoritative balanceAfter sequence');
+// Once the operator explicitly approves a disappearance, Smart History should stop presenting the
+// stale row. The archive record is retained server-side; this is only a display projection.
+const acknowledgedMissing=tx('ack-missing',{date:'2026-08-30T12:00:00.000Z',presenceState:'missing',missingAcknowledgedAt:'2026-09-11T00:01:00.000Z',archiveId:5});
+assert.deepEqual(bankSmartHistoryRows([newerSettled,acknowledgedMissing]).map(row=>row.id),['newer-settled'],'acknowledged missing rows are hidden from Smart History instead of lingering indefinitely');
+
+console.log('PASS bank transaction order: source ordering, pending priority and acknowledged-missing visibility are correct');

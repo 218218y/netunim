@@ -39,6 +39,10 @@
     {
       "version": "20260908204500",
       "name": "morning_preissue_reservation"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation"
     }
   ]
 }

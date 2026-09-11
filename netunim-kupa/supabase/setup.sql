@@ -734,6 +734,8 @@ declare
   v_description text;
   v_memo text;
   v_party_name text;
+  v_party_norm text;
+  v_detail_digits text;
   v_status text;
   v_balance numeric;
   v_activity integer;
@@ -774,6 +776,8 @@ begin
     v_description:=coalesce(r->>'description','');
     v_memo:=coalesce(r->>'memo','');
     v_party_name:=coalesce(r->>'partyName','');
+    v_party_norm:=lower(regexp_replace(btrim(v_party_name),'[[:space:]]+',' ','g'));
+    v_detail_digits:=regexp_replace(coalesce(nullif(r->>'messageDetail',''),r->>'memo',''),'[^0-9]','','g');
     v_status:=case when r->>'status'='pending' then 'pending' else 'completed' end;
     v_balance:=nullif(r->>'balanceAfter','')::numeric;
     v_activity:=nullif(r->>'activityTypeCode','')::integer;
@@ -816,15 +820,20 @@ begin
     end if;
 
     -- A Hapoalim pending row is a temporary state of the same movement. While pending, the bank
-    -- commonly returns serial=0 and sparse beneficiary text; after settlement it assigns a serial
-    -- and enriches memo/party fields. Those enriched fields must therefore never be required to
-    -- identify the old placeholder. Reconcile only one UNIQUE pending candidate using facts that
-    -- the current connector preserves across both states: account, amount and a tight date window,
-    -- plus either a non-zero bank reference or the exact bank-provided balance/activity pair.
-    -- Ambiguity deliberately leaves rows separate rather than risking a false financial merge.
+    -- commonly returns serial=0 and can later change both the activity label and beneficiary text.
+    -- Reference/balance matches remain preferred. Instant credits (including Zahav-style credits)
+    -- get one additional fail-closed identity: same positive amount, same/adjacent bank day,
+    -- compatible activity direction, a long beneficiary-name phrase contained in the other state,
+    -- and the same >=8-digit account suffix from messageDetail (memo is only a fallback source).
+    -- The candidate must still be UNIQUE; ambiguity deliberately leaves rows separate.
     if v_status='completed' and v_date is not null then
       select count(*),min(b.id) into v_candidates,v_candidate
       from public.bank_transactions b
+      cross join lateral (
+        select
+          lower(regexp_replace(btrim(coalesce(b.party_name,'')),'[[:space:]]+',' ','g')) as pending_party_norm,
+          regexp_replace(coalesce(nullif(b.message_detail,''),b.memo,''),'[^0-9]','','g') as pending_detail_digits
+      ) hints
       where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
         and b.status='pending' and b.amount=v_amount
         and b.transaction_date between (v_date-interval '3 days') and (v_date+interval '3 days')
@@ -836,6 +845,23 @@ begin
             and b.balance_after is not distinct from v_balance
             and b.activity_type_code=v_activity
             and b.description=v_description)
+          or
+          (
+            v_amount>0
+            and (v_description ~ 'מיידי|זה.?ב' or coalesce(b.description,'') ~ 'מיידי|זה.?ב')
+            and b.transaction_date between (v_date-interval '1 day') and (v_date+interval '1 day')
+            and (v_activity is null or b.activity_type_code is null or b.activity_type_code=v_activity)
+            and length(v_party_norm)>=8 and length(hints.pending_party_norm)>=8
+            and array_length(regexp_split_to_array(v_party_norm,'[[:space:]]+'),1)>=2
+            and array_length(regexp_split_to_array(hints.pending_party_norm,'[[:space:]]+'),1)>=2
+            and (
+              position(' '||v_party_norm||' ' in ' '||hints.pending_party_norm||' ')>0
+              or position(' '||hints.pending_party_norm||' ' in ' '||v_party_norm||' ')>0
+            )
+            and length(v_detail_digits)>=8 and length(hints.pending_detail_digits)>=8
+            and right(v_detail_digits,least(length(v_detail_digits),length(hints.pending_detail_digits)))
+              =right(hints.pending_detail_digits,least(length(v_detail_digits),length(hints.pending_detail_digits)))
+          )
         );
       if v_candidates=1 then
         v_pending_id:=v_candidate;
