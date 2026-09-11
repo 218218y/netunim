@@ -215,6 +215,7 @@ const drilldownUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'busi
 const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:drilldownCreditSync,cards:[],credits:[]},bank:{},creditSync:drilldownCreditSync,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
 drilldownView.renderKupa();
 assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-focus"[^>]*data-click-arg0="2026-09"[^>]*data-click-arg1="sync:p1:1234"/,'Orders forecast rows expose the same month/card drilldown identity as Kupa');
+assert.match(drilldownMain.innerHTML,/תאריך החיוב[^<]*15\.09\.2026/,'Orders future monthly card shows the card billing date next to the card metadata');
 drilldownView.setCreditDetailFocus('2026-09','sync:p1:1234');
 assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:'sync:p1:1234'});
 assert.equal(drilldownScrolled,1,'Orders forecast drilldown scrolls to the transactions region after rendering');
@@ -234,6 +235,7 @@ assert.doesNotMatch(frameUiMain.innerHTML,/credit-available-total/,'Orders remov
 assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3>[\s\S]*מסגרת כוללת:<\/span><b>[^<]*2,000[\s\S]*מסגרת פנויה:<\/span><b>[^<]*1,500/,'the transactions heading carries total and available frames for the current all-card selection');
 assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*חיוב קרוב · כל הכרטיסים[\s\S]*350[\s\S]*מסגרת כוללת · כל הכרטיסים[\s\S]*2,000[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'live issuer data ends with one all-card card containing upcoming charge, total frame and available frame');
 frameView.setCreditProviderFilter('max');
+assert.match(frameUiMain.innerHTML,/credit-filter-chip card[\s\S]*תאריך החיוב/,'Orders card filter shows a small billing-date label once a provider is selected');
 assert.equal(frameMountCalls.at(-1).resetTop,true,'changing the credit provider explicitly resets the Kupa credit viewport to the start');
 assert.match(frameUiMain.innerHTML,/<h3>עסקאות ותשלומים<\/h3>[\s\S]*מסגרת כוללת:<\/span><b>[^<]*1,000[\s\S]*מסגרת פנויה:<\/span><b>[^<]*700/,'the transactions-header total and available frames follow the selected provider/card filter instead of the global total');
 assert.match(frameUiMain.innerHTML,/credit-live-total-card[\s\S]*מסגרת כוללת · כל הכרטיסים[\s\S]*2,000[\s\S]*מסגרת פנויה · כל הכרטיסים[\s\S]*1,500/,'the bottom all-card live summary remains global even while the transaction filter is narrowed');

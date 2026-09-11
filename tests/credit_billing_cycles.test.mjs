@@ -241,8 +241,15 @@ test('an inferred final next cycle is not proof for rolling pending forward',()=
   const result=kupaCashflow(state,'עסקי','2026-09-10'),pending=result.unassignedCreditRows[0];
   assert.equal(result.credit,1100);assert.equal(result.forecastIncomplete,true);assert.equal(pending.chargeDateSource,'unassigned_after_bank_settlement');
   assert.equal(pending.date,'');assert.equal(pending.amount,0);
-  const upcoming=ordersCreditAccountModels(state,'2026-09-10')[0].upcomingCharge;
+  const accountModel=ordersCreditAccountModels(state,'2026-09-10')[0],upcoming=accountModel.upcomingCharge;
   assert.equal(upcoming.complete,false);assert.equal(upcoming.unassignedCount,1);assert.equal(upcoming.status,'incomplete');
+  assert.equal(accountModel.billingDate,'2026-10-10','the card display date may use the next defensible cycle without changing the pending transaction itself');
+  const kupaDetail=creditMonthlyDetailData(state,'2026-09-10').months,ordersDetail=ordersDetailMonths(state,{asOf:'2026-09-10'}),kupaOctober=kupaDetail.find(month=>month.key==='2026-10'),ordersOctober=ordersDetail.find(month=>month.key==='2026-10'),kupaPending=kupaOctober.items.find(row=>row.status==='pending'),ordersPending=ordersOctober.items.find(row=>row.status==='pending');
+  assert.equal(kupaPending.date,'');assert.equal(ordersPending.date,'','the financial pending row remains undated in both apps');
+  assert.equal(kupaPending.detailCycleUncertain,true);assert.equal(ordersPending.detailCycleUncertain,true);
+  assert.equal(kupaPending.detailDisplayBillingDate,'2026-10-10');assert.equal(ordersPending.detailDisplayBillingDate,'2026-10-10','the uncertain row is displayed beside the next same-card charge after the settled cycle');
+  assert.equal(kupaOctober.items[0].creditId,kupaPending.creditId);assert.equal(ordersOctober.items[0].creditId,ordersPending.creditId,'uncertain-cycle rows stay at the head of the selected billing month');
+  assert.equal(kupaDetail.some(month=>month.key==='unassigned'),false);assert.equal(ordersDetail.some(month=>month.key==='unassigned'),false,'a defensible next cycle removes the need for a separate uncertain-cycle tab');
   assert.equal(kupaCashflow(state,'עסקי','2026-09-11').unassignedCreditRows[0].date,'','reopening tomorrow must not restore an inferred pending cycle');
 });
 

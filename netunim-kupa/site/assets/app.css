@@ -273,3 +273,5 @@ button.bank-cashflow-metric:focus-visible,.cashflow-breakdown-trigger:focus-visi
 .cashflow-breakdown th{white-space:normal;position:static}.cashflow-breakdown th:first-child{width:44%}.cashflow-breakdown td[dir=ltr]{text-align:end;font-variant-numeric:tabular-nums}
 .cashflow-breakdown small{display:block;color:var(--muted,#666);font-size:11px}.cashflow-breakdown tfoot{font-weight:bold}
 .cashflow-breakdown-total{display:grid;grid-template-columns:72% 28%;align-items:center;border-top:1px solid var(--line,#ddd)}.cashflow-breakdown-total>*{min-width:0;padding:12px 5px}.cashflow-breakdown-total>b{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}
+
+.credit-detail-cycle-divider td{padding:7px 10px!important;background:#f7f9f8!important;border-top:1px solid #e1e7e4;border-bottom:1px solid #e1e7e4}.credit-detail-cycle-divider td b{font-size:11px}.credit-detail-cycle-divider td small{display:block;margin-top:2px;color:var(--muted);font-size:9px;font-weight:700;white-space:normal}.credit-detail-cycle-divider.uncertain td{background:#fffaf0!important}.credit-detail-cycle-divider.certain td{background:#f7f9f8!important}

@@ -115,6 +115,14 @@ export function creditPendingBillingDateData(account={},tx={},asOf=localTodayISO
   return {date:'',source:'unassigned',confidence:'unassigned'};
 }
 
+export function creditAccountNextDisplayBillingDateData(account={},asOf=localTodayISO()){
+  const reference=creditBillingISODate(asOf)||localTodayISO(),issuerDate=creditBillingISODate(account?.balanceDate);
+  if(issuerDate&&issuerDate>=reference)return {date:issuerDate,source:'issuer_next_charge',confidence:'issuer'};
+  const known=knownBillingDates(account,reference,'');if(known.length)return {date:known[0],source:'known_future_cycle',confidence:'known_cycle'};
+  const day=inferredBillingDay(account);if(day!==null)return {date:nextDateForBillingDay(day,reference,''),source:'inferred_billing_day',confidence:'inferred'};
+  return {date:'',source:'unassigned',confidence:'unassigned'};
+}
+
 function transactionDisplayAmount(tx,amountData){
   const original=finite(tx?.originalAmount),charged=finite(tx?.chargedAmount);
   if(original!==null&&Math.abs(original)>0.0001)return -original;

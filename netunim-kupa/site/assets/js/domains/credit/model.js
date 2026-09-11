@@ -1,7 +1,7 @@
 import {num} from '../../core/money.js';
 import {addMonthsISO,todayISO,dObj,monthKey,localISO} from '../../core/dates.js';
 import {creditBillingRowsData,creditCyclesThroughHorizonData} from '../../shared/credit-billing-cycles.js';
-import {kupaReconciledCreditDetailRowsData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
+import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
 
 export const CREDIT_DETAIL_HISTORY_MONTHS=3;
 
@@ -41,14 +41,4 @@ export function nextAccountCreditCycleData(state,account='עסקי',reference=to
 export function nextBusinessCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'עסקי',reference)}
 export function nextHomeCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'ביתי',reference)}
 
-export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
-  const currentMonth=monthKey(asOf),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(state,'all',asOf),byMonth=new Map(),unassigned=[];
-  for(const row of rows){
-    const key=monthKey(row.date);if(!key){unassigned.push(row);continue}if(key<cutoffMonth)continue;
-    if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=row.amount;month.items.push(row);
-  }
-  const detailSort=(a,b)=>String(b.transactionDate||b.date||'').localeCompare(String(a.transactionDate||a.date||''))||String(b.date||'').localeCompare(String(a.date||''))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he');
-  for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort(detailSort);month.missingAmountCount=month.items.filter(row=>row.amountStatus!=='known_ils').length;month.coverageGapCount=month.items.filter(row=>row.coverageIncomplete).length;month.incompleteCount=month.items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;month.partial=month.incompleteCount>0}
-  const months=[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key));if(unassigned.length){unassigned.sort(detailSort);months.push({key:'unassigned',total:0,items:unassigned,uncertain:true,partial:true,incompleteCount:unassigned.length,missingAmountCount:unassigned.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:unassigned.filter(row=>row.coverageIncomplete).length})}
-  return {months,cutoffMonth,historyMonths:safeHistory,currentMonth,unassigned};
-}
+export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){return kupaReconciledCreditDetailMonthsData(state,asOf,historyMonths)}

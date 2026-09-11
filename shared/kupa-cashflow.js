@@ -1,5 +1,5 @@
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
-import {creditBillingISODate,creditBillingRowsData,creditCyclesThroughHorizonData,creditCyclesThroughHorizonRowsData} from './credit-billing-cycles.js';
+import {creditAccountNextDisplayBillingDateData,creditBillingISODate,creditBillingRowsData,creditCyclesThroughHorizonData,creditCyclesThroughHorizonRowsData} from './credit-billing-cycles.js';
 
 function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
 function num(value){const n=Number(value);return Number.isFinite(n)?n:0}
@@ -265,8 +265,38 @@ export function kupaReconciledCreditDetailRowsData(kupa,account='all',reference=
   return reconciledCreditRowsForAccount(kupa,account,reference,options).rows;
 }
 
+function creditDetailRowSort(a,b){return String(b.transactionDate||b.date||'').localeCompare(String(a.transactionDate||a.date||''))||String(b.date||'').localeCompare(String(a.date||''))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he')}
+function creditAccountDisplayContext(kupa,rows){
+  const datesByCard=new Map(),accountsByCard=new Map();
+  for(const row of rows){if(!row?.date)continue;const key=creditCardKey(row);if(!datesByCard.has(key))datesByCard.set(key,[]);datesByCard.get(key).push({date:row.date,source:row.chargeDateSource||'reconciled_cycle',confidence:row.billingDateConfidence||'known_cycle'})}
+  for(const dates of datesByCard.values())dates.sort((a,b)=>a.date.localeCompare(b.date));
+  const sync=kupa?.creditSync&&typeof kupa.creditSync==='object'&&!Array.isArray(kupa.creditSync)?kupa.creditSync:{};
+  for(const profile of Array.isArray(sync.profiles)?sync.profiles:[])for(const account of Array.isArray(profile?.accounts)?profile.accounts:[])accountsByCard.set(`sync:${String(profile.profileId||'').trim()}:${String(account.accountNumber||'').trim()}`,account);
+  return {datesByCard,accountsByCard};
+}
+function creditUnassignedDisplayTarget(row,context,reference){
+  const afterSettled=row?.chargeDateSource==='unassigned_after_bank_settlement',floor=afterSettled?addDaysISO(reference,1):reference,key=creditCardKey(row),known=(context.datesByCard.get(key)||[]).find(item=>item.date>=floor);
+  if(known)return known;const account=context.accountsByCard.get(key);if(!account)return null;const next=creditAccountNextDisplayBillingDateData(account,floor);return next.date&&next.date>=floor?next:null;
+}
+export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayISO(),historyMonths=3){
+  const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=new Map(),unassigned=[],unplacedUnassigned=[];
+  const add=(key,row)=>{if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=num(row.amount);month.items.push(row)};
+  for(const row of rows){const key=monthKey(row.date);if(key){if(key>=cutoffMonth)add(key,row);continue}unassigned.push(row);const target=creditUnassignedDisplayTarget(row,displayContext,ref);if(target?.date){const targetMonth=monthKey(target.date);if(targetMonth){add(targetMonth,{...row,detailCycleUncertain:true,detailDisplayBillingDate:target.date,detailDisplayBillingDateSource:target.source,detailDisplayBillingDateConfidence:target.confidence});continue}}unplacedUnassigned.push({...row,detailCycleUncertain:true})}
+  for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort((a,b)=>(b.detailCycleUncertain===true)-(a.detailCycleUncertain===true)||creditDetailRowSort(a,b));month.uncertainCount=month.items.filter(row=>row.detailCycleUncertain===true).length;month.missingAmountCount=month.items.filter(row=>row.amountStatus!=='known_ils').length;month.coverageGapCount=month.items.filter(row=>row.coverageIncomplete).length;month.incompleteCount=month.items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;month.partial=month.incompleteCount>0}
+  const months=[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key));if(unplacedUnassigned.length){unplacedUnassigned.sort(creditDetailRowSort);months.push({key:'unassigned',total:0,items:unplacedUnassigned,uncertain:true,uncertainCount:unplacedUnassigned.length,partial:true,incompleteCount:unplacedUnassigned.length,missingAmountCount:unplacedUnassigned.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:unplacedUnassigned.filter(row=>row.coverageIncomplete).length})}
+  return {months,cutoffMonth,historyMonths:safeHistory,currentMonth,unassigned,unplacedUnassigned};
+}
+
 export function kupaReconciledCardUpcomingChargeData(kupa,creditAccountKey,reference=localTodayISO()){
   return kupaCardUpcomingChargeFromRowsData(kupaReconciledCreditRowsData(kupa,'all',reference),creditAccountKey,reference);
+}
+
+export function kupaCardDisplayBillingDateFromRowsData(inputRows,creditAccountKey,account={},reference=localTodayISO()){
+  const ref=isoDay(reference)||localTodayISO(),rows=(Array.isArray(inputRows)?inputRows:[]).filter(row=>row.creditAccountKey===creditAccountKey),afterSettled=rows.some(row=>!row.date&&row.chargeDateSource==='unassigned_after_bank_settlement'),floor=afterSettled?addDaysISO(ref,1):ref,upcoming=kupaCardUpcomingChargeFromRowsData(rows,creditAccountKey,floor);
+  if(upcoming?.date)return {date:upcoming.date,source:'reconciled_upcoming_cycle',confidence:'known_cycle'};
+  const known=rows.filter(row=>row.date&&row.date>=floor).sort((a,b)=>a.date.localeCompare(b.date))[0];
+  if(known)return {date:known.date,source:String(known.chargeDateSource||'reconciled_upcoming_cycle'),confidence:String(known.billingDateConfidence||'known_cycle')};
+  return creditAccountNextDisplayBillingDateData(account,floor);
 }
 
 export function kupaCardUpcomingChargeFromRowsData(inputRows,creditAccountKey,reference=localTodayISO()){
