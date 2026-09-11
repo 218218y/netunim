@@ -1,12 +1,12 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "verified_at": "2026-09-08 18:43:06.920798+00",
+  "verified_at": "2026-09-11 04:55:49.662891+00",
   "production_postflight": "PASS",
   "text_hash_normalization": "lf-v1",
-  "source_audit": "audit/production-postflight-20260908T184306920798Z.json",
-  "source_audit_sha256": "784ff8c592e8ae4de4fb0cb10c44abb7f1459939ea08be8b92d19a027be5eaff",
+  "source_audit": "audit/production-postflight-20260911T045549662891Z.json",
+  "source_audit_sha256": "9e2f1307a2f6b16895ab07831f997786d8f276f42fdac8f7b77a6c532574ae73",
   "schema_snapshot": "audit/morning-schema-live.json",
-  "schema_snapshot_sha256": "52afd07e994c7a5793173cbe79a51b0f05f750102ff978d9ecbb51f368b6214e",
+  "schema_snapshot_sha256": "350dc135c77ba8f5699290d672042019843a0d10fc03fd82301e6b5a5e3d35fe",
   "migration_manifest": [
     {
       "version": "20260906200304",
@@ -57,6 +57,11 @@
       "version": "20260908204500",
       "name": "morning_preissue_reservation",
       "sha256": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation",
+      "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
     }
   ],
   "retention_jobs": [

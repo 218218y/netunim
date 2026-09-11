@@ -65,21 +65,26 @@ Node also trusts the system's certificate authorities. TLS verification stays
 enabled. This avoids certificate failures on networks using a trusted proxy;
 Cloudflare authentication and upload permissions remain required for upload.
 
-For the Morning ledger upgrade, the database operator first runs
+For any reviewed database release, the database operator first runs
 `verify.bat --no-pause`, checks `supabase migration list --workdir .`, and reviews
 `supabase db push --dry-run --workdir .`. Production must be an exact prefix of
-the local chain, with only the intended migrations pending. Apply that suffix
-once with `supabase db push --workdir .`, then deploy the Edge Function with
+the local chain, with only the intended migrations pending. Apply that exact suffix
+once with `supabase db push --workdir .`. Deploy an Edge Function only when that
+reviewed release also changes one; for the Morning function, use
 `supabase functions deploy morning-documents --workdir netunim-orders
---project-ref bupoidcurcxuypfrjqio --no-verify-jwt --use-api`. Keep existing secrets.
-The root `supabase/migrations` is the only migration chain; the function source
-lives under `netunim-orders/supabase/functions`. Do not run migration push from
-the function directory, repair history, seed, or reset the linked database.
+--project-ref bupoidcurcxuypfrjqio --no-verify-jwt --use-api` and keep existing secrets.
+The root `supabase/migrations` is the only migration chain. Do not run migration push
+from a function directory, repair history, seed, or reset the linked Production database.
 
-Generate an independent expectation with
-`python tools/supabase_candidate_schema.py --output .work/morning-candidate.json`
-(use a new filename on another run). This replays the canonical chain on isolated
-PostgreSQL, verifies the Morning invariants and preserves the existing backup
+Generate an independent expectation with a release-specific private filename, for example
+`python tools/supabase_candidate_schema.py --output .work/database-release-candidate.json`
+(use a new filename on another run). The tool authenticates the last Production receipt,
+proves it is an exact prefix of the reviewed migration chain, reconstructs that prefix in
+isolated PostgreSQL (including explicitly reviewed Production-only historical relations),
+proves the reconstructed prefix equals the authenticated Production schema, and only then
+applies the pending suffix in the same disposable database. This is release-agnostic: it
+must not contain an allow-list of objects that one particular migration is allowed to
+change. It still verifies the Morning invariants because they remain part of the database
 contract. It does not create Production evidence or touch application data.
 
 Generate fresh capture SQL with `python tools/supabase_capture_query.py`, execute
@@ -87,7 +92,7 @@ it using the authenticated Production connector, and save the returned JSON row
 to a private local file. Within five minutes, run:
 
 ```text
-python tools/supabase_postflight.py --expected .work/morning-candidate.json --capture .work/production-capture.json --record-release
+python tools/supabase_postflight.py --expected .work/database-release-candidate.json --capture .work/production-capture.json --record-release
 ```
 
 Only a complete live schema, retention, migration-history and SQL-hash PASS

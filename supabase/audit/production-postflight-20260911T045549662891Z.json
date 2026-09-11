@@ -1,0 +1,260 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "verified_at": "2026-09-11 04:55:49.662891+00",
+  "production_postflight": "PASS",
+  "schema_drift": [],
+  "build_fingerprint": "1b871f6d26c0c32fb3588be040d9ed6470f481d558676fa758aabaffdebccc4c",
+  "canonical_migrations": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index"
+    },
+    {
+      "version": "20260907035930",
+      "name": "retention_cron_jobs"
+    },
+    {
+      "version": "20260908103011",
+      "name": "morning_operation_ledger"
+    },
+    {
+      "version": "20260908190000",
+      "name": "morning_verified_creation"
+    },
+    {
+      "version": "20260908194500",
+      "name": "morning_global_idempotency"
+    },
+    {
+      "version": "20260908203000",
+      "name": "morning_ledger_owner_retention"
+    },
+    {
+      "version": "20260908204500",
+      "name": "morning_preissue_reservation"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation"
+    }
+  ],
+  "migration_manifest": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline",
+      "sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker",
+      "sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates",
+      "sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index",
+      "sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "name": "retention_cron_jobs",
+      "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    },
+    {
+      "version": "20260908103011",
+      "name": "morning_operation_ledger",
+      "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+    },
+    {
+      "version": "20260908190000",
+      "name": "morning_verified_creation",
+      "sha256": "58fc15f0f7fa56a8681ba201c41f31edf0fbaba149f18d9dbbb5237c15f21b8d"
+    },
+    {
+      "version": "20260908194500",
+      "name": "morning_global_idempotency",
+      "sha256": "7db16bc878f89c0eb59718a176fc5dc1036bb6159569aaf9a523e74da1693349"
+    },
+    {
+      "version": "20260908203000",
+      "name": "morning_ledger_owner_retention",
+      "sha256": "8d7795af8ba40ae9fb71820d3fb9a12d81c08b2141c6bfbbc63887b4587d3c7b"
+    },
+    {
+      "version": "20260908204500",
+      "name": "morning_preissue_reservation",
+      "sha256": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation",
+      "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
+    }
+  ],
+  "server_migration_manifest": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline",
+      "sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker",
+      "sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates",
+      "sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index",
+      "sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "name": "retention_cron_jobs",
+      "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    },
+    {
+      "version": "20260908103011",
+      "name": "morning_operation_ledger",
+      "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+    },
+    {
+      "version": "20260908190000",
+      "name": "morning_verified_creation",
+      "sha256": "f67ab07cd83f88faf8326a3d4ae53ba63e2ef6745496ade0002d9fa0deea4b90"
+    },
+    {
+      "version": "20260908194500",
+      "name": "morning_global_idempotency",
+      "sha256": "42889e54f2dc67b5cdd9219a3204fe6c1441a86928890343353e48bea9501bc5"
+    },
+    {
+      "version": "20260908203000",
+      "name": "morning_ledger_owner_retention",
+      "sha256": "0f0aef3b94d83a270a3c246d4321cec10f93d2f4e8227a55a2016e4b6f61bdba"
+    },
+    {
+      "version": "20260908204500",
+      "name": "morning_preissue_reservation",
+      "sha256": "151646783f0031a48205ceaf187f0553fa957374096fa5a85410f950396d1f40"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation",
+      "sha256": "65bd00492802a97946c7ea500c780fb19ac3ab60e475f9eb01ef998ef5f26a81"
+    }
+  ],
+  "migration_storage_formats": [
+    {
+      "version": "20260906200304",
+      "storage": "file-lf-v1",
+      "server_sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "storage": "file-lf-v1",
+      "server_sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "storage": "file-lf-v1",
+      "server_sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "storage": "file-lf-v1",
+      "server_sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "storage": "file-lf-v1",
+      "server_sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    },
+    {
+      "version": "20260908103011",
+      "storage": "file-lf-v1",
+      "server_sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+    },
+    {
+      "version": "20260908190000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "f67ab07cd83f88faf8326a3d4ae53ba63e2ef6745496ade0002d9fa0deea4b90"
+    },
+    {
+      "version": "20260908194500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "42889e54f2dc67b5cdd9219a3204fe6c1441a86928890343353e48bea9501bc5"
+    },
+    {
+      "version": "20260908203000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "0f0aef3b94d83a270a3c246d4321cec10f93d2f4e8227a55a2016e4b6f61bdba"
+    },
+    {
+      "version": "20260908204500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "151646783f0031a48205ceaf187f0553fa957374096fa5a85410f950396d1f40"
+    },
+    {
+      "version": "20260910211500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "65bd00492802a97946c7ea500c780fb19ac3ab60e475f9eb01ef998ef5f26a81"
+    }
+  ],
+  "operations": {
+    "jobs": [
+      {
+        "jobid": 1,
+        "active": true,
+        "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+        "jobname": "netunim-sync-ledger-retention-weekly",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "17 3 * * 0",
+        "username": "postgres"
+      },
+      {
+        "jobid": 2,
+        "active": true,
+        "command": "select * from netunim_internal.prune_document_backups();",
+        "jobname": "netunim-document-backup-retention-daily",
+        "database": "postgres",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "43 3 * * *",
+        "username": "postgres"
+      }
+    ],
+    "pg_cron": true,
+    "database": "postgres",
+    "timezone": "GMT",
+    "server_port": 5432,
+    "full_visibility": true,
+    "launch_active_jobs": "on"
+  },
+  "inventory_sha256": "91cc8fdfeb0a6356307b4b9fe9ba47e172911f57de7b4f8534447666b17db191",
+  "inventory_hash_format": "postgres-jsonb-text-sha256-v1",
+  "inventory_hash_match": true,
+  "scope": "Authenticated read-only Production schema/catalog fingerprint, security metadata, retention jobs and migration SQL verification. The full schema inventory fingerprint exactly matches the materialized reviewed snapshot; no business mutation or Morning document issuance was performed."
+}
