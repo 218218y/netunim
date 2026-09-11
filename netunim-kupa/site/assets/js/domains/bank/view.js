@@ -1,6 +1,8 @@
+import {cashflowBreakdownMarkup} from '../../shared/cashflow-breakdown.js';
+import {kupaAccountCashflowData} from '../../shared/kupa-cashflow.js';
 import {cashflowAlertForAccount} from '../../shared/cashflow.js';
 import {esc} from '../../core/values.js';
-import {money, formatNullableMoney} from '../../core/money.js';
+import {money, moneyWithCents, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 import {syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
@@ -8,7 +10,7 @@ import {localSearchMarkup} from '../../ui/search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 
-export function createDomainsBankView({model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,dateEditorMarkup}){
+export function createDomainsBankView({modal,closeModal,model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,dateEditorMarkup}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
@@ -187,6 +189,8 @@ function updateBridgePanel(){
   const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup(s);
 }
 
+function openCashflowBreakdown(role){const account=role==='home'?'ביתי':'עסקי';modal(`פירוט שינוי צפוי · ${account}`,cashflowBreakdownMarkup(kupaAccountCashflowData(model.state,account)),'סגור',()=>closeModal(true))}
+
 function renderBank(){
   const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth),cycleDate=dateFmt(cycle.targetDate);
   const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth),homeCycleDate=dateFmt(homeCycle.targetDate);
@@ -202,6 +206,7 @@ function renderBank(){
     <div class="bank-mini"><div class="bank-label">אשראי עסקי עד אופק התזרים</div><div class="bank-value">${money(cycle.nextCreditTotal)}</div><div class="muted">${cycle.nextCreditCycles.length?`${esc(cycle.nextCreditCycles.length)} מחזורים עד ${esc(cycleDate)} · ${esc(cycleLabel)}`:'אין חיובי אשראי עסקיים עתידיים'}${cycle.forecastIncomplete?' · אומדן ₪ חלקי: חסר סכום מלא או שכיסוי החברה הוא LKG/חסר':''}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות עסקיות עד אופק התזרים</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות העסקיות עד ${esc(cycleDate)}</div></div>
     <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(cycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+    <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="business" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(cycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
     <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי באופק ${esc(cycleDate)}${cycle.forecastIncomplete?' · תחזית חלקית':''}</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${cycle.forecastIncomplete?' · הסכום אינו סופי עד השלמת נתוני האשראי':''}</div></div>
     <div class="bank-account-summary-label home"><b>חשבון ביתי</b><span>התחייבויות ביתיות בלבד</span></div>
     <div class="bank-entry bank-home-entry">
@@ -212,6 +217,7 @@ function renderBank(){
     <div class="bank-mini"><div class="bank-label">אשראי ביתי עד אופק התזרים</div><div class="bank-value">${money(homeCycle.nextCreditTotal)}</div><div class="muted">${homeCycle.nextCreditCycles.length?`${esc(homeCycle.nextCreditCycles.length)} מחזורים עד ${esc(homeCycleDate)} · ${esc(homeCycleLabel)}`:'אין חיובי אשראי ביתיים עתידיים'}${homeCycle.forecastIncomplete?' · אומדן ₪ חלקי: חסר סכום מלא או שכיסוי החברה הוא LKG/חסר':''}</div></div>
     <div class="bank-mini"><div class="bank-label">הוצאות ביתיות עד אופק התזרים</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות הביתיות עד ${esc(homeCycleDate)}</div></div>
     <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(homeCycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
+    <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="home" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(homeCycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
     <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי באופק ${esc(homeCycleDate)}${homeCycle.forecastIncomplete?' · תחזית חלקית':''}</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${homeCycle.forecastIncomplete?' · הסכום אינו סופי עד השלמת נתוני האשראי':''}</div></div>
   </div>
   <section class="section bank-sync-section">
@@ -256,5 +262,5 @@ function renderBank(){
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {renderBank,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
+return {renderBank,openCashflowBreakdown,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

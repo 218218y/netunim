@@ -548,6 +548,8 @@ const domainsBankController=createDomainsBankController({
 });
 
 const domainsBankView=createDomainsBankView({
+  modal:(...args)=>uiModal.modal(...args),
+  closeModal:(...args)=>uiModal.closeModal(...args),
   model,
   ui,
   bankAsOfDate:(...args)=>domainsBankSelectors.bankAsOfDate(...args),
@@ -775,6 +777,7 @@ const uiActions=createUiActions({
   saveBankBridgeToken:(...args)=>domainsBankController.saveBankBridgeToken(...args),
   configureBankBridge:(...args)=>domainsBankController.configureBankBridge(...args),
   selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
+  openCashflowBreakdown:(...args)=>domainsBankView.openCashflowBreakdown(...args),
   setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),
   setBankDataView:(...args)=>domainsBankView.setBankDataView(...args),
   acknowledgeMissingBankTransaction:(...args)=>domainsBankController.acknowledgeMissingBankTransaction(...args),

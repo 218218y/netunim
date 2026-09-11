@@ -1,0 +1,9 @@
+import {money} from '../../core/money.js';
+import {kupaAccountCashflowData} from '../bank/readout.js';
+
+export function bankBalanceFactsMarkup(feed,role,kupa){
+  const balance=feed?.balance===null||feed?.balance===undefined?null:Number(feed.balance),available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance);
+    const roleName=role==='home'?'ביתי':'עסקי',difference=Number.isFinite(balance)&&Number.isFinite(available)?available-balance:null,cashflow=kupaAccountCashflowData(kupa,roleName),cashflowFacts=cashflow.projected===null?'':`<span class="bank-cashflow-summary"${cashflow.forecastIncomplete?' title="אומדן האשראי חלקי: חסר סכום שקלי מלא או שכיסוי החברה הוא LKG/חסר"':''}><button type="button" class="bank-cashflow-metric bank-cashflow-outflow" data-action="orders-cashflow-breakdown" data-click-arg0="${role}" aria-haspopup="dialog"><span>שינוי צפוי</span><b>${money(cashflow.expectedChange)}</b></button><span class="bank-cashflow-metric bank-cashflow-projected ${cashflow.alert.active?'bank-cashflow-alert':''} ${cashflow.forecastIncomplete?'bank-cashflow-incomplete':''}"><span>עו״ש תזרימי${cashflow.forecastIncomplete?' · חלקי':''}</span><b>${money(cashflow.projected)}</b></span></span>`;
+    const balanceFacts=Number.isFinite(balance)?`<div class="bank-compact-balance"><span class="bank-primary-balance"><span>יתרה ${roleName}</span><b>${money(balance)}</b></span>${Number.isFinite(available)?`<span class="bank-balance-separator" aria-hidden="true"></span><span class="bank-available-balance"><span>למשיכה</span><b>${money(available)}</b><span class="bank-balance-delta" title="הפרש בין היתרה ליתרה הזמינה למשיכה">(${money(difference)})</span></span>`:''}${cashflowFacts?`<span class="bank-balance-separator" aria-hidden="true"></span>${cashflowFacts}`:''}</div>`:'';
+  return balanceFacts;
+}

@@ -62,6 +62,48 @@ oexpr = r"""(()=>{
 })()"""
 oexpected = {"returnAfterSnapshot": 1000, "pendingDeposit": 1000}
 
+breakdown_fixture = r"""
+ const now=new Date(),today=[now.getFullYear(),String(now.getMonth()+1).padStart(2,'0'),String(now.getDate()).padStart(2,'0')].join('-');
+ const later=new Date(now.getFullYear(),now.getMonth(),now.getDate()+10),due=[later.getFullYear(),String(later.getMonth()+1).padStart(2,'0'),String(later.getDate()).padStart(2,'0')].join('-');
+ const fixture={version:4,credits:[],cash:[],cards:[],cashflowSettings:{businessCheckCutoffDay:28,homeCheckCutoffDay:28},bank:{currentBalance:10000,asOfDate:today,updatedAt:today,source:'hapoalim',adjustments:[],feed:{balance:10000,syncedAt:today,transactions:[]},homeFeed:{balance:5000,syncedAt:today,transactions:[]}},
+   checks:[{id:'b-check',name:'צ׳ק עסקי',account:'עסקי',status:'בקופה',amount:50,dueDate:today},{id:'h-check',name:'צ׳ק ביתי',account:'ביתי',status:'בקופה',amount:60,dueDate:today}],
+   expenses:[{id:'b-exp',name:'הוצאה עסקית',account:'עסקי',active:true,recurring:false,amount:30,date:today},{id:'h-exp',name:'הוצאה ביתית',account:'ביתי',active:true,recurring:false,amount:40,date:today}],
+   creditSync:{version:4,profiles:[{profileId:'test',provider:'max',accounts:[{accountNumber:'2222',pendingStatus:'success',pendingFetchedAt:today,balanceDate:due,txns:[{id:'b',status:'completed',processedDate:due,chargedAmount:-100.11,chargedCurrency:'ILS'},{id:'p',status:'pending',transactionDate:today,chargedAmount:-10.10,chargedCurrency:'ILS'}]},{accountNumber:'3333',txns:[{id:'h',status:'completed',processedDate:due,chargedAmount:-2000.22,chargedCurrency:'ILS'}]}]}],cardMappings:{'test:2222':{included:true,account:'עסקי'},'test:3333':{included:true,account:'ביתי'}}}};
+"""
+
+
+def run_breakdown(app):
+    with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-breakdown") as browser:
+        setup = "state=normalizeState(fixture);domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';ui.bankAccountView='business';domainsFinanceView.renderKupa();"
+        browser.evaluate("(()=>{"+breakdown_fixture+setup+"return true;})()")
+        for width in (1280, 390):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            for role, card, other, expected in [('business', '2222', '3333', '90.21'), ('home', '3333', '2222', '1,980.22')]:
+                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else ''
+                action = 'orders-cashflow-breakdown' if app == 'orders' else 'cashflow-breakdown'
+                result = browser.evaluate(f"""(()=>{{
+                  {select}
+                  const trigger=document.querySelector('[data-action="{action}"][data-click-arg0="{role}"]');
+                  if(!trigger||trigger.tagName!=='BUTTON')throw new Error('Missing cash-flow button, including when available balance is absent');
+                  trigger.click();
+                  const panel=document.querySelector('#modal .cashflow-breakdown'),backdrop=document.getElementById('modalBackdrop');
+                  if(!panel||!backdrop.classList.contains('open'))throw new Error('Cash-flow button failed to open the dialog');
+                  const text=panel.textContent;
+                  if(!text.includes('{card}')||text.includes('{other}')||!text.includes('{expected}'))throw new Error('Wrong account or total: '+text);
+                  if(panel.querySelectorAll('tfoot').length!==3)throw new Error('Missing credit, expense or check subtotal');
+                  if(panel.scrollWidth>panel.clientWidth+2)throw new Error('Drilldown overflows at {width}px');
+                  const close=document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]');close.click();
+                  if(backdrop.classList.contains('open'))throw new Error('Dialog close button failed');
+                  return true;
+                }})()""")
+                assert result is True
+        errors = browser.drain_serious_errors()
+        assert not errors, errors
+        print(f'{app}: cash-flow drilldown opens and closes for both accounts, totals match, desktop/mobile fit')
+
+
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok
+run_breakdown('kupa')
+run_breakdown('orders')
 raise SystemExit(0 if ok else 1)

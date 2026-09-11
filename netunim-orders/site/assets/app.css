@@ -628,3 +628,16 @@ td.tri-status-no{background:var(--status-bad-strong)!important}td.tri-status-yes
 @media(max-width:620px){.debt-progress-editor-summary{grid-template-columns:1fr 1fr}.debt-progress-editor-summary>.btn{grid-column:1/-1}.debt-progress-detail-grid{grid-template-columns:1fr}}
 .morning-debt-update-panel{background:#fffaf0;border-color:#ead9ad}.morning-debt-update-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.morning-debt-update-option{display:flex;align-items:flex-start;gap:8px;padding:9px 10px;border:1px solid #e7d6aa;border-radius:10px;background:#fff;cursor:pointer}.morning-debt-update-option[hidden]{display:none}.morning-debt-update-option input{margin-top:2px}.morning-debt-update-option b{display:block;font-size:11px}.morning-debt-update-option small{display:block;margin-top:2px;color:var(--muted);font-size:9px;line-height:1.4}.morning-debt-update-warning{margin-top:8px;padding:8px 9px;border-radius:9px;background:#fff4d9;color:#73591e;font-size:9px;line-height:1.55}.morning-debt-update-warning strong{font-weight:850}
 @media(max-width:760px){.morning-debt-update-options{grid-template-columns:1fr}}
+
+/* Shared cash-flow drilldown, with account/date scope and signed contributions. */
+button.bank-cashflow-metric{font:inherit;border:0;background:transparent;padding:3px;border-radius:6px;cursor:pointer}
+button.bank-cashflow-metric:hover,.cashflow-breakdown-trigger:hover{background:var(--soft,#edf3f5)}
+button.bank-cashflow-metric:focus-visible,.cashflow-breakdown-trigger:focus-visible{outline:2px solid var(--accent,#167d8d);outline-offset:3px}
+.cashflow-breakdown-trigger{cursor:pointer;text-align:start;font:inherit;color:inherit;display:flex;flex-direction:column;gap:6px}
+.cashflow-breakdown{max-height:65vh;overflow:auto;font-size:13px}
+.cashflow-breakdown-section{margin:16px 0}.cashflow-breakdown-section h3{font-size:14px;margin:8px 0}
+.cashflow-breakdown table{width:100%;min-width:0;border-collapse:collapse;text-align:start;table-layout:fixed}
+.cashflow-breakdown th,.cashflow-breakdown td{padding:9px 5px;border-bottom:1px solid var(--line,#ddd);text-align:start;overflow-wrap:anywhere}
+.cashflow-breakdown th{white-space:normal;position:static}.cashflow-breakdown th:first-child{width:44%}.cashflow-breakdown td[dir=ltr]{text-align:end;font-variant-numeric:tabular-nums}
+.cashflow-breakdown small{display:block;color:var(--muted,#666);font-size:11px}.cashflow-breakdown tfoot{font-weight:bold}
+.cashflow-breakdown-total{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:12px 0;border-top:1px solid var(--line,#ddd)}

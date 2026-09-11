@@ -829,6 +829,7 @@ const uiActions=createUiActions({
   dismissBankAlert:(...args)=>uiAlertCenter.dismissBankAlert(...args),
   dismissNoteAlert:(...args)=>uiAlertCenter.dismissNoteAlert(...args),
   setKupaSection:(...args)=>domainsFinanceView.setKupaSection(...args),
+  openOrdersCashflowBreakdown:(...args)=>domainsFinanceView.openCashflowBreakdown(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
   acknowledgeOrdersBankMissing:(...args)=>domainsFinanceView.acknowledgeBankMissing(...args),

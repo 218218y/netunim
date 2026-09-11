@@ -33,10 +33,20 @@ export function creditTransactionAmountData(tx={}){
   return {amount:0,rawAmount:null,currency:chargedCurrency||originalCurrency||'ILS',included:false,estimated:true,source:'unknown'};
 }
 
-export function creditPendingAuthorizationTotalData(account={}){
-  if(account?.pendingStatus!=='success')return 0;
+// Day-based forecast: a successful snapshot is usable on its fetch day and the
+// next two calendar days. Missing/invalid/future timestamps never prove freshness.
+export function creditPendingFreshData(account={},asOf=localTodayISO()){
+  const fetched=creditBillingISODate(account.pendingFetchedAt),reference=creditBillingISODate(asOf);
+  if(account.pendingStatus!=='success'||!fetched||!reference||!Number.isFinite(Date.parse(account.pendingFetchedAt)))return false;
+  const age=(Date.parse(reference)-Date.parse(fetched))/86400000;
+  return age>=0&&age<=2;
+}
+
+export function creditPendingAuthorizationTotalData(account={},asOf=localTodayISO()){
+  if(!creditPendingFreshData(account,asOf))return 0;
+  const entries=accountTransactionEntries(account),matched=matchedPendingIndexes(entries);
   let total=0;
-  for(const tx of accountTransactions(account)){if(tx?.status!=='pending')continue;const amount=creditTransactionAmountData(tx);if(amount.included)total+=amount.amount}
+  for(const [index,{tx}] of entries.entries()){if(tx?.status!=='pending'||matched.has(index))continue;const amount=creditTransactionAmountData(tx);if(amount.included)total+=amount.amount}
   return roundMoney(total);
 }
 
@@ -97,7 +107,6 @@ export function creditPendingBillingDateData(account={},tx={},asOf=localTodayISO
   const reference=creditBillingISODate(asOf)||localTodayISO(),transactionDate=transactionOriginDate(tx),issuerDate=creditBillingISODate(account.balanceDate);
   if(issuerDate&&issuerDate>=reference&&(!transactionDate||issuerDate>=transactionDate))return {date:issuerDate,source:'issuer_next_charge',confidence:'issuer'};
   const known=knownBillingDates(account,reference,transactionDate);if(known.length)return {date:known[0],source:'known_future_cycle',confidence:'known_cycle'};
-  const inferredDay=inferredBillingDay(account);if(inferredDay!==null)return {date:nextDateForBillingDay(inferredDay,reference,transactionDate),source:'inferred_billing_day',confidence:'inferred'};
   return {date:'',source:'unassigned',confidence:'unassigned'};
 }
 
@@ -120,16 +129,38 @@ function transactionIdentity(profile,account,tx,index,date,amountData){
   return `${String(profile?.profileId||'')}|${String(account?.accountNumber||'')}|${stable}`;
 }
 
+function correlationKey(tx){
+  // Account/provider scope is supplied by the caller. Require a precise purchase
+  // minute, merchant, signed original amount and explicit currency. Date-only
+  // and installment matches are intentionally left visible rather than guessed.
+  if(!tx||transactionTotalParts(tx)>1)return '';
+  const date=creditBillingISODate(tx.transactionDate)||creditBillingISODate(tx.date),time=transactionTime(tx.transactionTime),merchant=String(tx.description||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase(),amount=finite(tx.originalAmount),currency=normalizedCurrency(tx.originalCurrency);
+  if(!date||!time||!merchant||amount===null||!amount||!currency)return '';
+  return JSON.stringify([date,time,merchant,roundMoney(amount),creditBillingIsShekelCurrency(currency)?'ILS':currency]);
+}
+
+function matchedPendingIndexes(entries){
+  const ids=new Set(entries.filter(entry=>entry.tx&&entry.tx.status!=='pending').flatMap(({tx})=>[tx.id,tx.identifier].map(value=>String(value||'').trim()).filter(Boolean))),groups=new Map(),matched=new Set();
+  for(const [index,{tx}] of entries.entries()){
+    if(!tx)continue;
+    if(tx.status==='pending'&&[tx.id,tx.identifier].some(value=>value&&ids.has(String(value).trim())))matched.add(index);
+    const key=correlationKey(tx);if(!key)continue;
+    if(!groups.has(key))groups.set(key,{pending:[],final:[]});groups.get(key)[tx.status==='pending'?'pending':'final'].push(index);
+  }
+  for(const group of groups.values())if(group.pending.length===1&&group.final.length===1)matched.add(group.pending[0]);
+  return matched;
+}
+
 function synchronizedRows(state,asOf,includeHidden){
   const sync=state?.creditSync&&typeof state.creditSync==='object'&&!Array.isArray(state.creditSync)?state.creditSync:{},mappings=sync.cardMappings&&typeof sync.cardMappings==='object'&&!Array.isArray(sync.cardMappings)?sync.cardMappings:{},rows=[];
   for(const profile of Array.isArray(sync.profiles)?sync.profiles:[])for(const account of Array.isArray(profile?.accounts)?profile.accounts:[]){
     const mapping=mappings[cardMappingKey(profile,account)]||{};if(mapping.included!==true)continue;
     const hidden=mapping.hidden===true;if(hidden&&!includeHidden)continue;
-    const transactions=accountTransactionEntries(account),completedIds=new Set(transactions.filter(entry=>entry.tx?.status!=='pending').map(entry=>String(entry.tx?.id||entry.tx?.identifier||'').trim()).filter(Boolean)),seen=new Set(),role=accountRole(mapping.account||profile.defaultAccount),cardName=mapping.cardName||[PROVIDER_LABELS[profile.provider]||profile.label||profile.provider||'כרטיס אשראי',account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' '),pendingFresh=account.pendingStatus==='success';
+    const transactions=accountTransactionEntries(account),matchedPending=matchedPendingIndexes(transactions),seen=new Set(),role=accountRole(mapping.account||profile.defaultAccount),cardName=mapping.cardName||[PROVIDER_LABELS[profile.provider]||profile.label||profile.provider||'כרטיס אשראי',account.accountNumber?`••${String(account.accountNumber).slice(-4)}`:''].filter(Boolean).join(' '),pendingFresh=creditPendingFreshData(account,asOf);
     for(const [index,entry] of transactions.entries()){
       const tx=entry.tx;
       if(entry.coveragePlaceholder){const projection=creditFinalizedBillingDateData(account,{},entry.billingMonthHint),date=projection.date,identity=`coverage|${String(profile.profileId||'')}|${String(account.accountNumber||'')}|${entry.billingMonthHint||index}`;rows.push({source:'credit_unknown',creditId:`SYNC:${identity}`,profileId:String(profile.profileId||''),provider:String(profile.provider||''),accountNumber:String(account.accountNumber||''),creditAccountKey:synchronizedCardKey(profile,account),date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:'',transactionTime:'',amount:0,displayAmount:0,transactionAmount:0,displayCurrency:'ILS',isShekel:true,foreignCurrency:false,originalAmount:null,originalCurrency:'',part:1,totalParts:1,card:hidden?'כרטיסים מוסתרים':cardName,account:role,ownerLabel:String(profile.ownerLabel||''),hidden,description:'כיסוי נתוני האשראי לחודש אינו מלא',memo:'',status:'coverage_missing',pendingFresh:false,chargeDateSource:projection.source,billingDateConfidence:projection.confidence,includedInIlsTotal:false,amountEstimated:true,amountSource:'coverage_missing',amountStatus:'unknown_amount',unconverted:false,unknownAmount:true,uncertainBillingDate:!date,coverageIncomplete:true,coverageStatus:entry.coverageStatus,totalAmount:0});continue}
-      const pending=tx?.status==='pending',id=String(tx?.id||tx?.identifier||'').trim();if(pending&&id&&completedIds.has(id))continue;
+      const pending=tx?.status==='pending';if(matchedPending.has(index))continue;
       const projection=pending?creditPendingBillingDateData(account,tx,asOf):creditFinalizedBillingDateData(account,tx,entry.billingMonthHint),date=projection.date,amountData=creditTransactionAmountData(tx),freshEnough=!pending||pendingFresh,includedInIlsTotal=!!date&&amountData.included&&freshEnough,amount=includedInIlsTotal?amountData.amount:0,identity=transactionIdentity(profile,account,tx,index,date,amountData),coverageIncomplete=entry.coverageIncomplete===true||(pending&&!pendingFresh),coverageStatus=entry.coverageStatus||(pending&&!pendingFresh?String(account.pendingStatus||'missing'):'');
       if(seen.has(identity))continue;seen.add(identity);
       const original=finite(tx?.originalAmount),foreignCurrency=(!!normalizedCurrency(tx?.originalCurrency)&&!creditBillingIsShekelCurrency(tx.originalCurrency))|| (!!normalizedCurrency(tx?.chargedCurrency)&&!creditBillingIsShekelCurrency(tx.chargedCurrency)),part=pending?1:transactionPart(tx),totalParts=pending?1:transactionTotalParts(tx),source=pending?'credit_pending':amountData.included?'credit_sync':amountData.source==='foreign_only'?'credit_foreign':'credit_unknown',amountStatus=amountData.included?'known_ils':amountData.source==='foreign_only'?'foreign_unconverted':'unknown_amount';
@@ -169,7 +200,7 @@ function enrichSeries(rows){
 function cycleRows(rows){
   const groups=new Map();
   for(const row of rows){if(!row.date)continue;const key=`${row.creditAccountKey}|${row.date}`;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
-  return [...groups.entries()].map(([id,items])=>{const finalized=items.filter(row=>row.status!=='pending'&&row.includedInIlsTotal),pending=items.filter(row=>row.status==='pending'&&row.includedInIlsTotal),unconverted=items.filter(row=>row.amountStatus==='foreign_unconverted'),unknownAmount=items.filter(row=>row.amountStatus==='unknown_amount'),stalePending=items.filter(row=>row.status==='pending'&&!row.pendingFresh),missingAmount=items.filter(row=>row.amountStatus!=='known_ils'),coverageGap=items.filter(row=>row.coverageIncomplete),incomplete=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);return {id,creditAccountKey:items[0].creditAccountKey,billingDate:items[0].date,date:items[0].date,billingMonth:items[0].billingMonth,card:items[0].card,account:items[0].account,provider:items[0].provider,profileId:items[0].profileId,accountNumber:items[0].accountNumber,hidden:items[0].hidden,rows:items,finalizedTotal:roundMoney(finalized.reduce((sum,row)=>sum+row.amount,0)),pendingTotal:roundMoney(pending.reduce((sum,row)=>sum+row.amount,0)),total:roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),pendingCount:pending.length,unconvertedCount:unconverted.length,unknownAmountCount:unknownAmount.length,stalePendingCount:stalePending.length,missingAmountCount:missingAmount.length,coverageGapCount:coverageGap.length,incompleteCount:incomplete.length,status:incomplete.length?'incomplete':pending.length?'estimated':'finalized'} }).sort((a,b)=>a.billingDate.localeCompare(b.billingDate)||String(a.card).localeCompare(String(b.card),'he'));
+  return [...groups.entries()].map(([id,items])=>{const finalized=items.filter(row=>row.status!=='pending'&&row.includedInIlsTotal),pending=items.filter(row=>row.status==='pending'&&row.includedInIlsTotal),unconverted=items.filter(row=>row.amountStatus==='foreign_unconverted'),unknownAmount=items.filter(row=>row.amountStatus==='unknown_amount'),stalePending=items.filter(row=>row.status==='pending'&&!row.pendingFresh),missingAmount=items.filter(row=>row.amountStatus!=='known_ils'),coverageGap=items.filter(row=>row.coverageIncomplete),incomplete=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);return {id,creditAccountKey:items[0].creditAccountKey,billingDate:items[0].date,date:items[0].date,billingMonth:items[0].billingMonth,card:items[0].card,account:items[0].account,provider:items[0].provider,profileId:items[0].profileId,accountNumber:items[0].accountNumber,hidden:items[0].hidden,rows:items,finalizedTotal:roundMoney(finalized.reduce((sum,row)=>sum+row.amount,0)),pendingTotal:roundMoney(pending.reduce((sum,row)=>sum+row.amount,0)),total:roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),pendingCount:pending.length,unconvertedCount:unconverted.length,unknownAmountCount:unknownAmount.length,stalePendingCount:stalePending.length,missingAmountCount:missingAmount.length,coverageGapCount:coverageGap.length,incompleteCount:incomplete.length,status:incomplete.length?'incomplete':pending.length||items.some(row=>row.amountEstimated||row.billingDateConfidence==='inferred')?'estimated':'finalized'} }).sort((a,b)=>a.billingDate.localeCompare(b.billingDate)||String(a.card).localeCompare(String(b.card),'he'));
 }
 
 export function creditBillingModelData(state={},options={}){

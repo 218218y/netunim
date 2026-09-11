@@ -11,6 +11,7 @@ import {creditFrameStatus as ordersFrameStatus} from '../netunim-orders/site/ass
 import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {checkTodayISO} from '../netunim-orders/site/assets/js/core/dates.js';
+import {cashflowBreakdownMarkup} from '../shared/cashflow-breakdown.js';
 
 function stateFor(accounts,{provider='max',profileId='cards',accountRole='עסקי'}={}){
   const mappings={};for(const account of accounts)mappings[`${profileId}:${account.accountNumber}`]={included:true,hidden:false,account:accountRole};
@@ -44,7 +45,7 @@ test('pending billing-date hierarchy never falls back to today',()=>{
   assert.deepEqual(kupaEngine.creditPendingBillingDateData(known,known.txns[1],'2026-09-11'),{date:'2026-10-10',source:'known_future_cycle',confidence:'known_cycle'},'a stale balance date yields to a known future monthly slice');
 
   const inferred={accountNumber:'3',pendingStatus:'success',txns:[{id:'jul',status:'completed',processedDate:'2026-07-10',chargedAmount:-1,chargedCurrency:'ILS'},{id:'aug',status:'completed',processedDate:'2026-08-10',chargedAmount:-1,chargedCurrency:'ILS'},{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1,chargedCurrency:'ILS'},{id:'inferred',status:'pending',transactionDate:'2026-09-11',chargedAmount:-30,chargedCurrency:'ILS'}]};
-  assert.deepEqual(kupaEngine.creditPendingBillingDateData(inferred,inferred.txns[3],'2026-09-11'),{date:'2026-10-10',source:'inferred_billing_day',confidence:'inferred'});
+  assert.deepEqual(kupaEngine.creditPendingBillingDateData(inferred,inferred.txns[3],'2026-09-11'),{date:'',source:'unassigned',confidence:'unassigned'});
 
   const unknown={accountNumber:'4',pendingStatus:'success',txns:[{id:'unknown',status:'pending',transactionDate:'2026-09-11',chargedAmount:-40,chargedCurrency:'ILS'}]};
   assert.deepEqual(kupaEngine.creditPendingBillingDateData(unknown,unknown.txns[0],'2026-09-11'),{date:'',source:'unassigned',confidence:'unassigned'});
@@ -55,7 +56,7 @@ test('pending billing-date hierarchy never falls back to today',()=>{
 });
 
 test('pending ILS estimates, FX exclusions, freshness and transition deduplication are explicit',()=>{
-  const state=stateFor([{accountNumber:'4545',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
+  const state=stateFor([{accountNumber:'4545',pendingFetchedAt:'2026-09-03T08:00:00Z',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
     {id:'zero-ils',status:'pending',transactionDate:'2026-09-03',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-237.4,originalCurrency:'ILS'},
     {id:'converted',status:'completed',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',originalAmount:-10000,originalCurrency:'JPY'},
     {id:'foreign-only',status:'completed',processedDate:'2026-09-10',chargedAmount:-40,chargedCurrency:'USD',originalAmount:-40,originalCurrency:'USD'},
@@ -80,7 +81,7 @@ test('pending ILS estimates, FX exclusions, freshness and transition deduplicati
 });
 
 test('pending cycles enter checking cash-flow once and Orders/Kupa remain identical',()=>{
-  const state=stateFor([{accountNumber:'7777',balanceDate:'2026-09-10',pendingStatus:'success',txns:[{id:'pending',status:'pending',transactionDate:'2026-09-03',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-237.4,originalCurrency:'ILS'}]}]);
+  const state=stateFor([{accountNumber:'7777',pendingFetchedAt:'2026-09-03T08:00:00Z',balanceDate:'2026-09-10',pendingStatus:'success',txns:[{id:'pending',status:'pending',transactionDate:'2026-09-03',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-237.4,originalCurrency:'ILS'}]}]);
   const kupa=kupaCashflow(state,'עסקי','2026-09-03'),orders=ordersCashflow(state,'עסקי','2026-09-03');
   assert.equal(kupa.credit,237.4);assert.equal(kupa.nextCreditTotal,237.4);assert.equal(kupa.projected,9762.6);
   assert.deepEqual(orders,kupa,'both applications consume the same shared cash-flow and billing-cycle implementation');
@@ -109,7 +110,7 @@ test('a credit debit already posted by the bank on its due date is not counted t
 });
 
 test('a settled card cycle rolls any surviving pending authorization into the next proven cycle',()=>{
-  const account={accountNumber:'1010',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
+  const account={accountNumber:'1010',pendingFetchedAt:'2026-09-10T08:00:00Z',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
     {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
     {id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'},
     {id:'late-pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
@@ -131,7 +132,7 @@ test('a settled card cycle rolls any surviving pending authorization into the ne
 });
 
 test('a settled pending authorization without a proven next cycle stays visibly unassigned',()=>{
-  const account={accountNumber:'1010',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
+  const account={accountNumber:'1010',pendingFetchedAt:'2026-09-10T08:00:00Z',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
     {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
     {id:'late-pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
   ]},posted=stateFor([account]);
@@ -210,4 +211,96 @@ test('generated shared engines have the same public contract and results',()=>{
   assert.deepEqual(Object.keys(kupaEngine).sort(),Object.keys(ordersEngine).sort());
   const summarize=engine=>engine.creditBillingCyclesData(twoCards,{asOf:'2026-09-01'}).map(cycle=>({date:cycle.date,total:cycle.total,pending:cycle.pendingTotal,status:cycle.status}));
   assert.deepEqual(summarize(kupaEngine),summarize(ordersEngine));
+});
+
+test('bank settlement closes an unknown-amount or FX cycle, but absence of bank evidence does not',()=>{
+  for(const amounts of [{chargedAmount:null,originalAmount:null},{chargedAmount:-200,chargedCurrency:'USD',originalAmount:-200,originalCurrency:'USD'}]){
+    const state=stateFor([{accountNumber:'2222',balanceDate:'2026-09-10',pendingFetchedAt:'2026-09-10T08:00:00Z',pendingStatus:'success',txns:[
+      {id:'sep',status:'completed',processedDate:'2026-09-10',...amounts},
+      {id:'pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
+      {id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'},
+    ]}]);
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10T08:00:00Z';
+    const unposted=kupaCashflow(state,'עסקי','2026-09-10');
+    assert.equal(unposted.targetDate,'2026-09-10');assert.equal(unposted.credit,100);assert.equal(unposted.forecastIncomplete,true);
+    state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'MAX'}];
+    const posted=kupaCashflow(state,'עסקי','2026-09-10');
+    assert.equal(posted.targetDate,'2026-10-10');assert.equal(posted.credit,1200);assert.equal(posted.projected,8800);assert.equal(posted.forecastIncomplete,false);
+    assert.equal(posted.creditRows.some(row=>row.date==='2026-09-10'),false);
+    assert.deepEqual(posted,ordersCashflow(state,'עסקי','2026-09-10'));
+  }
+});
+
+test('an inferred final next cycle is not proof for rolling pending forward',()=>{
+  const state=stateFor([{accountNumber:'2222',balanceDate:'2026-09-10',pendingStatus:'success',pendingFetchedAt:'2026-09-10',txns:[
+    ...['07','08','09'].map(month=>({id:month,status:'completed',processedDate:`2026-${month}-10`,chargedAmount:-1000,chargedCurrency:'ILS'})),
+    {id:'inferred-oct',status:'completed',transactionDate:'2026-09-11',chargedAmount:-1100,chargedCurrency:'ILS'},
+    {id:'pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
+  ]}]);
+  state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'MAX'}];
+  const result=kupaCashflow(state,'עסקי','2026-09-10'),pending=result.unassignedCreditRows[0];
+  assert.equal(result.credit,1100);assert.equal(result.forecastIncomplete,true);assert.equal(pending.chargeDateSource,'unassigned_after_bank_settlement');
+  assert.equal(pending.date,'');assert.equal(pending.amount,0);
+  const upcoming=ordersCreditAccountModels(state,'2026-09-10')[0].upcomingCharge;
+  assert.equal(upcoming.complete,false);assert.equal(upcoming.unassignedCount,1);assert.equal(upcoming.status,'incomplete');
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-11').unassignedCreditRows[0].date,'','reopening tomorrow must not restore an inferred pending cycle');
+});
+
+test('pending freshness has an inclusive two-calendar-day limit and rejects unknown timestamps',()=>{
+  const account={accountNumber:'2222',balanceDate:'2026-09-15',pendingStatus:'success',pendingFetchedAt:'2026-09-08T23:59:59Z',txns:[{id:'p',status:'pending',transactionDate:'2026-09-08',chargedAmount:-100,chargedCurrency:'ILS'}]};
+  const state=stateFor([account]);
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,100);
+  for(const fetched of ['2026-08-20T12:00:00Z','2026-09-07T23:59:59Z','',null,'invalid','2026-09-10invalid','2026-09-11']){
+    account.pendingFetchedAt=fetched;
+    const result=kupaCashflow(state,'עסקי','2026-09-10');
+    assert.equal(result.credit,0);assert.equal(result.forecastIncomplete,true);assert.equal(result.incompleteCreditRows[0].pendingFresh,false);
+    assert.equal(kupaEngine.creditPendingAuthorizationTotalData(account,'2026-09-10'),0);
+    assert.equal(kupaFrameStatus(account,{manualFrame:1000},'2026-09-10').available,1000);
+  }
+  account.pendingFetchedAt='2026-09-10';account.pendingStatus='network_error';
+  assert.equal(kupaEngine.creditPendingFreshData(account,'2026-09-10'),false);
+});
+
+test('cross-identifier pending correlation is scoped, unique, minute-precise and currency-aware',()=>{
+  const purchase={transactionDate:'2026-09-09',transactionTime:'12:34',description:'חנות',originalAmount:-100,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS'},pending={...purchase,status:'pending',identifier:''},final={...purchase,status:'completed',identifier:'voucher-1',processedDate:'2026-09-15'},account={accountNumber:'2222',balanceDate:'2026-09-15',pendingStatus:'success',pendingFetchedAt:'2026-09-10',txns:[pending,final]};
+  const pendingRows=accounts=>kupaEngine.creditBillingRowsData(stateFor(accounts),{asOf:'2026-09-10'}).filter(row=>row.status==='pending');
+  assert.equal(pendingRows([account]).length,0);
+  pending.identifier='approval-1';assert.equal(pendingRows([account]).length,0);
+  assert.equal(kupaEngine.creditPendingAuthorizationTotalData(account,'2026-09-10'),0,'fallback frame uses the same correlation');
+  for(const change of [{transactionTime:''},{transactionTime:'12:35'},{transactionDate:'2026-09-08'},{description:'חנות אחרת'},{originalCurrency:'USD'},{originalAmount:100},{installments:{number:1,total:3}}]){
+    assert.equal(pendingRows([{...account,txns:[pending,{...final,...change}]}]).length,1);
+  }
+  assert.equal(pendingRows([{...account,txns:[pending,{...pending,identifier:'approval-2'},final]}]).length,2,'two similar real purchases stay visible');
+  assert.equal(pendingRows([{...account,txns:[pending,final,{...final,identifier:'voucher-2'}]}]).length,1,'ambiguous vouchers cannot consume an approval');
+  assert.equal(pendingRows([{...account,txns:[pending]},{...account,accountNumber:'3333',txns:[final]}]).length,1,'a different card cannot consume this approval');
+});
+
+test('unknown amounts across multiple cards require enough bank evidence',()=>{
+  const state=stateFor(['2222','3333'].map(accountNumber=>({accountNumber,txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:null}]})));
+  state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'MAX'}];
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-10').incompleteCreditRows.length,2,'one generic provider debit cannot identify two unknown card cycles');
+  state.bank.feed.transactions[0].description='MAX 2222';
+  const result=kupaCashflow(state,'עסקי','2026-09-10');
+  assert.equal(result.incompleteCreditRows.length,1);assert.equal(result.incompleteCreditRows[0].accountNumber,'3333');
+});
+
+test('a matching bank amount from a different issuer cannot settle this card',()=>{
+  const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]}]);
+  state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'כרטיסי אשראי לישראל'}];
+  assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,1000);
+  for(const row of [{date:'2026-09-10',amount:-1000,description:'MAX',status:'pending'},{date:'2026-09-10',amount:-1000,description:'MAX',presenceState:'missing'}]){
+    state.bank.feed.transactions=[row];assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,1000);
+  }
+});
+
+test('cashflow contributing rows reconcile to signed totals, including refunds and elapsed expenses',()=>{
+  const state=stateFor([{accountNumber:'2222',txns:[{id:'purchase',processedDate:'2026-09-15',chargedAmount:-100.11,chargedCurrency:'ILS'},{id:'refund',processedDate:'2026-09-15',chargedAmount:20.01,chargedCurrency:'ILS'}]}]);
+  state.expenses=[{id:'old',active:true,recurring:false,date:'2026-09-02',amount:30.03,name:'<script>bad</script>'},{id:'future',active:true,recurring:false,date:'2026-09-14',amount:40.04}];
+  state.checks=[{id:'check',status:'בקופה',dueDate:'2026-09-14',amount:50.05}];
+  const result=kupaCashflow(state,'עסקי','2026-09-10');
+  assert.equal(result.creditRows.length,2);assert.equal(result.expenseRows.length,2);assert.equal(result.checkRows.length,1);
+  assert.equal(result.credit,80.10);assert.equal(result.expenses,70.07);assert.equal(result.expectedChange,-100.12);assert.equal(result.projected,9899.88);
+  const html=cashflowBreakdownMarkup(result);
+  assert.ok(html.includes('2222'));assert.ok(html.includes('15/09/2026'));assert.ok(html.includes('02/09/2026'));assert.ok(html.includes('100.12'));
+  assert.ok(!html.includes('<script>'));assert.ok(html.includes('&lt;script&gt;'));
 });

@@ -162,14 +162,14 @@ export function creditTransactionIsForeignCurrency(tx={}){
 export function creditKnownFutureCommitment(account={},asOf=todayISO()){
   return creditAccountKnownFutureCommitmentData(account,asOf);
 }
-export function creditPendingAuthorizationAmount(account={}){
-  return creditPendingAuthorizationTotalData(account);
+export function creditPendingAuthorizationAmount(account={},asOf=todayISO()){
+  return creditPendingAuthorizationTotalData(account,asOf);
 }
 export function creditUpcomingCharge(account={},provider='',asOf=todayISO()){
   return creditAccountUpcomingChargeData(account,provider,asOf);
 }
 export function creditFrameStatus(account={},mapping={},asOf=todayISO()){
-  const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf),pendingAuthorizations=creditPendingAuthorizationAmount(account);
+  const issuerFrame=finite(account?.cardFrame),directAvailable=finite(account?.availableCredit),manualFrame=nonNegativeMoney(mapping?.manualFrame),commitments=creditKnownFutureCommitment(account,asOf),pendingAuthorizations=creditPendingAuthorizationAmount(account,asOf);
   // MAX/Isracard/Amex issuer availability already includes live authorizations; never subtract pending twice.
   if(directAvailable!==null)return {frame:issuerFrame,available:Math.round(directAvailable*100)/100,commitments,pendingAuthorizations,source:'issuer_available',frameSource:issuerFrame!==null?'issuer':null};
   const frame=issuerFrame!==null?issuerFrame:manualFrame;
