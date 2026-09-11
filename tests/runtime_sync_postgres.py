@@ -105,9 +105,26 @@ def run(db,app,checks,same,index):
             # A fresh storage reader still sees the conflict; another save cannot issue a write.
             before=len(proxy.calls);a.evaluate('(async()=>{await '+save+';return true})()');assert len(proxy.calls)==before
         else:
-            # Kupa schedules the next poll; explicitly join that pending generation.
+            # Kupa schedules the rebased generation via cloudPoll. reconcileCloudPending() is
+            # intentionally non-reentrant, so a one-shot call can race that scheduled poll and
+            # return false while the durable pending generation is still being published. Drain
+            # the pending queue deterministically: either the scheduled poll completes it, or a
+            # retry acquires the sync slot. A real conflict remains fail-closed.
             if not checks and app=='kupa' and done['pending']:
-                a.evaluate("(async()=>{await reconcileCloudPending();return true})()")
+                drained=a.evaluate("""(async()=>{
+                  for(let attempt=0;attempt<200;attempt++){
+                    const pending=await getCloudPending();
+                    if(!pending)return {ok:true};
+                    if(pending.conflict)return {ok:false,conflict:pending.conflict,pending};
+                    await reconcileCloudPending();
+                    const after=await getCloudPending();
+                    if(!after)return {ok:true};
+                    if(after.conflict)return {ok:false,conflict:after.conflict,pending:after};
+                    await new Promise(resolve=>setTimeout(resolve,25));
+                  }
+                  return {ok:false,timeout:true,pending:await getCloudPending()};
+                })()""",timeout=10)
+                assert drained['ok'],drained
                 head=db.head(table,doc)
             assert head['state'][collection][0][field]==newer and head['state'][collection][1][field]==other,(head,done)
         print('PASS real PostgreSQL/HTTP lost-ACK',app,'checks' if checks else 'document','conflict' if same else 'disjoint merge',flush=True)
