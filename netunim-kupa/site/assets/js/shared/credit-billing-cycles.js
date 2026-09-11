@@ -24,12 +24,13 @@ export function creditTransactionAmountData(tx={}){
   const charged=finite(tx.chargedAmount),original=finite(tx.originalAmount),chargedCurrency=normalizedCurrency(tx.chargedCurrency),originalCurrency=normalizedCurrency(tx.originalCurrency),chargedShekel=creditBillingIsShekelCurrency(chargedCurrency||originalCurrency),originalShekel=creditBillingIsShekelCurrency(originalCurrency||chargedCurrency);
   if(tx.status!=='pending'&&tx.chargeAmountStatus==='not_billed')return {amount:0,rawAmount:0,currency:'ILS',included:true,estimated:false,source:'issuer_not_billed'};
   if(tx.status!=='pending'&&tx.chargeAmountStatus==='missing')return {amount:0,rawAmount:null,currency:chargedCurrency||originalCurrency||'ILS',included:false,estimated:false,source:'unknown'};
-  if(tx.status!=='pending'&&tx.chargeAmountStatus==='reported'&&charged===0)return {amount:0,rawAmount:0,currency:chargedCurrency||originalCurrency||'ILS',included:true,estimated:false,source:'charged_amount'};
+  if(tx.status!=='pending'&&charged===null)return {amount:0,rawAmount:null,currency:chargedCurrency||originalCurrency||'ILS',included:false,estimated:false,source:'unknown'};
+  if(tx.status!=='pending'&&charged===0)return {amount:0,rawAmount:0,currency:chargedCurrency||originalCurrency||'ILS',included:true,estimated:false,source:'charged_amount'};
   if(charged!==null&&Math.abs(charged)>0.0001){
     if(chargedShekel)return {amount:roundMoney(-charged),rawAmount:charged,currency:'ILS',included:true,estimated:false,source:'charged_amount'};
     return {amount:0,rawAmount:charged,currency:chargedCurrency||originalCurrency,included:false,estimated:false,source:'foreign_only'};
   }
-  if(original!==null&&Math.abs(original)>0.0001){
+  if(tx.status==='pending'&&original!==null&&Math.abs(original)>0.0001){
     if(originalShekel)return {amount:roundMoney(-original),rawAmount:original,currency:'ILS',included:true,estimated:true,source:'original_ils_estimate'};
     return {amount:0,rawAmount:original,currency:originalCurrency||chargedCurrency,included:false,estimated:true,source:'foreign_only'};
   }
@@ -116,15 +117,15 @@ export function creditPendingBillingDateData(account={},tx={},asOf=localTodayISO
 
 function transactionDisplayAmount(tx,amountData){
   const original=finite(tx?.originalAmount),charged=finite(tx?.chargedAmount);
-  if(original!==null&&Math.abs(original)>0.0001)return Math.abs(original);
-  if(charged!==null&&Math.abs(charged)>0.0001)return Math.abs(charged);
-  return Math.abs(amountData.amount);
+  if(original!==null&&Math.abs(original)>0.0001)return -original;
+  if(charged!==null&&Math.abs(charged)>0.0001)return -charged;
+  return amountData.amount;
 }
 
 function transactionTotalAmount(tx,amountData){
   const original=finite(tx?.originalAmount),charged=finite(tx?.chargedAmount),originalCurrency=normalizedCurrency(tx?.originalCurrency),chargedCurrency=normalizedCurrency(tx?.chargedCurrency);
-  if(amountData.included&&originalCurrency&&!creditBillingIsShekelCurrency(originalCurrency))return charged!==null&&Math.abs(charged)>0.0001&&creditBillingIsShekelCurrency(chargedCurrency)?Math.abs(charged):Math.abs(amountData.amount);
-  if(original!==null&&Math.abs(original)>0.0001&&creditBillingIsShekelCurrency(originalCurrency||chargedCurrency))return Math.abs(original);
+  if(amountData.included&&originalCurrency&&!creditBillingIsShekelCurrency(originalCurrency))return charged!==null&&Math.abs(charged)>0.0001&&creditBillingIsShekelCurrency(chargedCurrency)?-charged:amountData.amount;
+  if(original!==null&&Math.abs(original)>0.0001&&creditBillingIsShekelCurrency(originalCurrency||chargedCurrency))return -original;
   return transactionDisplayAmount(tx,amountData);
 }
 
@@ -168,7 +169,7 @@ function synchronizedRows(state,asOf,includeHidden){
       const projection=pending?creditPendingBillingDateData(account,tx,asOf):creditFinalizedBillingDateData(account,tx,entry.billingMonthHint),date=projection.date,amountData=creditTransactionAmountData(tx),freshEnough=!pending||pendingFresh,includedInIlsTotal=!!date&&amountData.included&&freshEnough,amount=includedInIlsTotal?amountData.amount:0,identity=transactionIdentity(profile,account,tx,index,date,amountData),coverageIncomplete=entry.coverageIncomplete===true||(pending&&!pendingFresh),coverageStatus=entry.coverageStatus||(pending&&!pendingFresh?String(account.pendingStatus||'missing'):'');
       if(seen.has(identity))continue;seen.add(identity);
       const original=finite(tx?.originalAmount),foreignCurrency=(!!normalizedCurrency(tx?.originalCurrency)&&!creditBillingIsShekelCurrency(tx.originalCurrency))|| (!!normalizedCurrency(tx?.chargedCurrency)&&!creditBillingIsShekelCurrency(tx.chargedCurrency)),part=pending?1:transactionPart(tx),totalParts=pending?1:transactionTotalParts(tx),source=pending?'credit_pending':amountData.included?'credit_sync':amountData.source==='foreign_only'?'credit_foreign':'credit_unknown',amountStatus=amountData.included?'known_ils':amountData.source==='foreign_only'?'foreign_unconverted':'unknown_amount';
-      rows.push({source,creditId:`${pending?'PENDING':'SYNC'}:${identity}`,profileId:String(profile.profileId||''),provider:String(profile.provider||''),accountNumber:String(account.accountNumber||''),creditAccountKey:synchronizedCardKey(profile,account),date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:transactionOriginDate(tx),transactionTime:transactionTime(tx?.transactionTime),amount,displayAmount:transactionDisplayAmount(tx,amountData),transactionAmount:transactionDisplayAmount(tx,amountData),displayCurrency:amountData.included?'ILS':amountData.currency,isShekel:amountData.included,foreignCurrency,originalAmount:original===null?null:Math.abs(original),originalCurrency:String(tx?.originalCurrency||'').trim(),part,totalParts,card:hidden?'כרטיסים מוסתרים':cardName,account:role,ownerLabel:String(profile.ownerLabel||''),hidden,description:String(tx?.description||''),memo:String(tx?.memo||''),status:pending?'pending':String(tx?.status||'completed'),pendingFresh,chargeDateSource:projection.source,billingDateConfidence:projection.confidence,includedInIlsTotal,amountEstimated:amountData.estimated||pending,amountSource:amountData.source,amountStatus,unconverted:amountStatus==='foreign_unconverted',unknownAmount:amountStatus==='unknown_amount',uncertainBillingDate:!date,coverageIncomplete,coverageStatus,totalAmount:transactionTotalAmount(tx,amountData)});
+      rows.push({source,creditId:`${pending?'PENDING':'SYNC'}:${identity}`,profileId:String(profile.profileId||''),provider:String(profile.provider||''),accountNumber:String(account.accountNumber||''),creditAccountKey:synchronizedCardKey(profile,account),date,billingDate:date,billingMonth:creditBillingMonthKey(date),transactionDate:transactionOriginDate(tx),transactionTime:transactionTime(tx?.transactionTime),amount,displayAmount:transactionDisplayAmount(tx,amountData),transactionAmount:transactionDisplayAmount(tx,amountData),displayCurrency:amountData.included?'ILS':amountData.currency,isShekel:amountData.included,foreignCurrency,originalAmount:original===null?null:-original,originalCurrency:String(tx?.originalCurrency||'').trim(),part,totalParts,card:hidden?'כרטיסים מוסתרים':cardName,account:role,ownerLabel:String(profile.ownerLabel||''),hidden,description:String(tx?.description||''),memo:String(tx?.memo||''),status:pending?'pending':String(tx?.status||'completed'),pendingFresh,chargeDateSource:projection.source,billingDateConfidence:projection.confidence,includedInIlsTotal,amountEstimated:amountData.estimated||pending,amountSource:amountData.source,amountStatus,unconverted:amountStatus==='foreign_unconverted',unknownAmount:amountStatus==='unknown_amount',uncertainBillingDate:!date,coverageIncomplete,coverageStatus,totalAmount:transactionTotalAmount(tx,amountData)});
     }
   }
   return rows;
@@ -196,7 +197,7 @@ function seriesKey(row){
 function enrichSeries(rows){
   const groups=new Map();
   for(const row of rows.filter(item=>item.source==='credit_sync')){const key=seriesKey(row);if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)}
-  for(const [key,items] of groups){const parts=new Set(items.map(row=>row.part)),totalParts=Math.max(...items.map(row=>row.totalParts)),explicitTotal=items.map(row=>row.totalAmount).find(value=>Number.isFinite(Number(value))&&Number(value)>0),series={id:key,totalAmount:explicitTotal??roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),partial:parts.size<totalParts,transactionDate:items[0]?.transactionDate||'',transactionTime:items[0]?.transactionTime||''};for(const row of items){row.series=series;row.charge={date:row.date,amount:row.amount,part:row.part,totalParts:row.totalParts}}}
+  for(const [key,items] of groups){const parts=new Set(items.map(row=>row.part)),totalParts=Math.max(...items.map(row=>row.totalParts)),explicitTotal=items.map(row=>row.totalAmount).find(value=>Number.isFinite(Number(value))&&Number(value)!==0),series={id:key,totalAmount:explicitTotal??roundMoney(items.reduce((sum,row)=>sum+row.amount,0)),partial:parts.size<totalParts,transactionDate:items[0]?.transactionDate||'',transactionTime:items[0]?.transactionTime||''};for(const row of items){row.series=series;row.charge={date:row.date,amount:row.amount,part:row.part,totalParts:row.totalParts}}}
   for(const row of rows){if(row.source==='credit_pending')row.pending={id:row.creditId,isShekel:row.isShekel};if(row.source==='credit_foreign')row.foreign={id:row.creditId}}
   return rows;
 }

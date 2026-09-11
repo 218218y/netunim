@@ -1,4 +1,5 @@
 import {
+  creditDebitAmount,
   CREDIT_FUTURE_MONTHS,
   CREDIT_HISTORY_DAYS,
   creditProfilePublic,
@@ -266,7 +267,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
 function transactionBillingDate(tx){return tx?.processedDate||''}
 function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
 function genericMonthlyAccount(account,provider,{startDate,futureMonths,now},schemaVersion=CREDIT_PROVIDER_SCHEMA_VERSION){
-  const source=provider==='max'&&Array.isArray(account?.txns)?{...account,txns:account.txns.map(tx=>({...tx,transactionTime:tx?.transactionTime||explicitTransactionTime(tx?.rawTransaction?.purchaseDate)}))}:account;
+  const source=provider==='max'&&Array.isArray(account?.txns)?{...account,txns:account.txns.map(tx=>({...tx,...(hasOwn(tx?.rawTransaction,'actualPaymentAmount')?{chargedAmount:creditDebitAmount(tx.rawTransaction.actualPaymentAmount)}:{}),...(hasOwn(tx?.rawTransaction,'originalAmount')?{originalAmount:creditDebitAmount(tx.rawTransaction.originalAmount)}:{}),transactionTime:tx?.transactionTime||explicitTransactionTime(tx?.rawTransaction?.purchaseDate)}))}:account;
   const normalized=normalizeCreditScrapeAccount(source,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],pendingSeen=new Set(),unassigned=[],cutoff=Date.parse(startDate);
   for(const tx of normalized.txns){
     // Provider status is authoritative. MAX and Isracard-group DigitalV3 intentionally set

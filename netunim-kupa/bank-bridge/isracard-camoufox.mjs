@@ -1,3 +1,4 @@
+import {creditDebitAmount} from './lib.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -110,9 +111,9 @@ export function normalizeIsracardFamilyTransaction(txn={},processedDate=null){
     date,
     processedDate:paymentDate,
     transactionDate:purchaseDate,
-    originalAmount:isOutbound?-Math.abs(outboundAmount):-Math.abs(finiteNumber(txn?.dealSum,0)),
+    originalAmount:creditDebitAmount(isOutbound?txn?.dealSumOutbound:txn?.dealSum),
     originalCurrency:currency(txn?.currentPaymentCurrency??txn?.currencyId),
-    chargedAmount:isOutbound?-Math.abs(finiteNumber(txn?.paymentSumOutbound,0)):-Math.abs(finiteNumber(txn?.paymentSum,0)),
+    chargedAmount:creditDebitAmount(isOutbound?txn?.paymentSumOutbound:txn?.paymentSum),
     chargedCurrency:currency(txn?.currencyId)||'ILS',
     description:cleanText(isOutbound?txn?.fullSupplierNameOutbound:txn?.fullSupplierNameHeb,220)||'עסקת אשראי',
     memo:cleanText(txn?.moreInfo,260),

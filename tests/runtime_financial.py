@@ -120,6 +120,7 @@ def run_breakdown(app):
         browser.evaluate("(()=>{"+breakdown_fixture+f"""
           fixture.creditSync.profiles=[{{profileId:'test',provider:'visaCal',accounts:[{{accountNumber:'2222',txns:[
             {{id:'billed',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-1369.78,chargedCurrency:'ILS',originalAmount:-1369.78,originalCurrency:'ILS',chargeAmountStatus:'reported',description:'חיוב מאומת'}},
+            {{id:'refund',status:'completed',processedDate:due,transactionDate:today,chargedAmount:4.50,chargedCurrency:'ILS',originalAmount:4.50,originalCurrency:'ILS',description:'זיכוי מאומת'}},
             {{id:'reward',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:15.01,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'החזר CashCal'}},
             {{id:'fee',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:-17.90,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'דמי כרטיס'}}
           ]}}]}}];
@@ -131,6 +132,11 @@ def run_breakdown(app):
             if(!row||!row.textContent.includes('לא נכלל בחיוב לפי כאל'))throw new Error('Informational CAL row is missing or appears as a charge: '+name);
           }}
           if(!rows.some(row=>row.textContent.includes('1,369.78')))throw new Error('Confirmed CAL debit is missing');
+          const table=document.querySelector('.credit-detail-table'),amountColumn=[...table.querySelectorAll('thead th')].findIndex(th=>th.textContent.trim()==='סכום עסקה');
+          for(const [name,amount] of [['זיכוי מאומת','-4.50'],['החזר CashCal','-15.01']]){{
+            const row=rows.find(row=>row.textContent.includes(name)),text=row?.children[amountColumn]?.textContent||'';
+            if(!text.includes(amount))throw new Error('Refund transaction amount lost its minus sign: '+name+' '+text);
+          }}
           return true;
         }})()""")
         action = 'orders-cashflow-alert-lead' if app == 'orders' else 'update-cashflow-alert-lead'

@@ -1,3 +1,4 @@
+import {creditDebitAmount} from './lib.mjs';
 // Adapted from israeli-bank-scrapers PR #1159 (commit 1aa792b37feec0001f5d182582cfb53b146ed18b),
 // which was verified end-to-end against real Isracard and American Express accounts.
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
@@ -163,11 +164,11 @@ function cardBalanceDate(card){return card?.cardChargeNext?.billingDate?parseIsr
 
 export function normalizeAmexDigitalV3ApprovedTransaction(txn={}){
   const date=parseIsraeliDate(`${txn.purchaseDate||''} ${txn.israelTransactionTime||''}`,{withTime:true,minuteOnly:true});
-  return {type:'normal',identifier:String(txn.seqConfirmationNumber||''),date,processedDate:date,transactionDate:date,transactionTime:text(txn.israelTransactionTime,5),originalAmount:Number.isFinite(Number(txn.originalAmount))?-Number(txn.originalAmount):null,originalCurrency:text(txn.currencyIso,12),chargedAmount:Number.isFinite(Number(txn.ilsBillingAmount))?-Number(txn.ilsBillingAmount):null,chargedCurrency:'ILS',description:text(txn.businessName,220)||'עסקת אשראי',memo:text(txn.extraDetails,260),category:text(txn.branchCodeDescription,160)||undefined,status:'pending'};
+  return {type:'normal',identifier:String(txn.seqConfirmationNumber||''),date,processedDate:date,transactionDate:date,transactionTime:text(txn.israelTransactionTime,5),originalAmount:creditDebitAmount(txn.originalAmount),originalCurrency:text(txn.currencyIso,12),chargedAmount:creditDebitAmount(txn.ilsBillingAmount),chargedCurrency:'ILS',description:text(txn.businessName,220)||'עסקת אשראי',memo:text(txn.extraDetails,260),category:text(txn.branchCodeDescription,160)||undefined,status:'pending'};
 }
 export function normalizeAmexDigitalV3Voucher(voucher={},processedDateIso=null){
   const date=parseIsraeliDate(`${voucher.purchaseDate||''} ${voucher.purchaseTime||'00:00:00'}`,{withTime:true}),total=Number(voucher.numberOfInstallment),number=Number(voucher.currentInstallmentNum),installments=total>0&&number>0?{number:Math.trunc(number),total:Math.trunc(total)}:null;
-  return {type:installments?'installments':'normal',identifier:String(voucher.seqVoucherNumber||''),date,processedDate:processedDateIso,transactionDate:date,transactionTime:text(voucher.purchaseTime,5),originalAmount:Number.isFinite(Number(voucher.originalAmount))?-Number(voucher.originalAmount):null,originalCurrency:text(voucher.originalCurrencyIso,12),chargedAmount:Number.isFinite(Number(voucher.billingAmount))?-Number(voucher.billingAmount):null,chargedCurrency:'ILS',description:text(voucher.businessName,220)||'עסקת אשראי',memo:text(voucher.moreInfo,260),category:text(voucher.transactionDescription,160)||undefined,installments,status:'completed'};
+  return {type:installments?'installments':'normal',identifier:String(voucher.seqVoucherNumber||''),date,processedDate:processedDateIso,transactionDate:date,transactionTime:text(voucher.purchaseTime,5),originalAmount:creditDebitAmount(voucher.originalAmount),originalCurrency:text(voucher.originalCurrencyIso,12),chargedAmount:creditDebitAmount(voucher.billingAmount),chargedCurrency:'ILS',description:text(voucher.businessName,220)||'עסקת אשראי',memo:text(voucher.moreInfo,260),category:text(voucher.transactionDescription,160)||undefined,installments,status:'completed'};
 }
 
 async function fetchCards(page,onDiagnostic){
