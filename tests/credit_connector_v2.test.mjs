@@ -17,7 +17,7 @@ import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCa
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
-import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
+import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
 const amexMonth=new Date('2026-12-01T00:00:00.000Z');
@@ -85,6 +85,8 @@ assert.equal(isracardDigitalResult.accounts[0].availableCredit,8600,'Isracard Di
 const isracardApproved=normalizeIsracardDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'isr-abc'});
 assert.equal(isracardApproved.status,'pending');assert.equal(isracardApproved.processedDate,isracardApproved.date,'Isracard DigitalV3 pending rows intentionally carry purchase time in processedDate but remain pending by explicit status');
 assert.equal(isracardApproved.transactionTime,'12:34','Isracard preserves the issuer-supplied purchase clock independently of the billing date');
+assert.equal(normalizeIsracardDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'isr-category',branchCodeDescription:'מסעדות'}).category,'מסעדות','Isracard pending DigitalV3 category preserves branchCodeDescription');
+assert.equal(normalizeIsracardDigitalV3Voucher({purchaseDate:'07/09/2026',purchaseTime:'12:34:00',businessName:'עסק',originalAmount:75,originalCurrencyIso:'ILS',billingAmount:75,seqVoucherNumber:'isr-voucher-category',transactionDescription:'רכישה רגילה'},'2026-09-10T00:00:00.000Z').category,'רכישה רגילה','Isracard settled DigitalV3 category preserves transactionDescription');
 
 const amexProfile={profileId:'amex-native',provider:'amex',label:'Amex native',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
 let amexDigitalOptions=null;
@@ -93,6 +95,8 @@ const amexDigitalResult=await amexDigitalAdapter.scrape();
 assert.equal(amexDigitalOptions.browserPath,'chrome.exe','Amex v41 primary path runs through the discovered installed Chrome/Edge executable');
 assert.deepEqual(amexDigitalOptions.credentials,amexProfile.credentials,'Amex DigitalV3 receives the official id/card6Digits/password credential contract unchanged');
 assert.equal(amexDigitalOptions.futureMonthsToScrape,1,'daily Amex DigitalV3 keeps the bounded current+next billing horizon');
+assert.equal(normalizeAmexDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'13:45',businessName:'Amex עסק',originalAmount:90,currencyIso:'ILS',ilsBillingAmount:90,seqConfirmationNumber:'amex-category',branchCodeDescription:'קמעונאות'}).category,'קמעונאות','Amex pending DigitalV3 category preserves branchCodeDescription');
+assert.equal(normalizeAmexDigitalV3Voucher({purchaseDate:'07/09/2026',purchaseTime:'13:45:00',businessName:'Amex עסק',originalAmount:90,originalCurrencyIso:'ILS',billingAmount:90,seqVoucherNumber:'amex-voucher-category',transactionDescription:'עסקה מקומית'},'2026-09-10T00:00:00.000Z').category,'עסקה מקומית','Amex settled DigitalV3 category preserves transactionDescription');
 assert.equal(amexDigitalResult.coreComplete,true,'successful Amex DigitalV3 completes without entering Camoufox fallback');
 assert.equal(amexDigitalResult.accounts[0].months.find(row=>row.month==='2026-09').providerSchemaVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 month slices identify the DigitalV3 schema instead of pretending to be the 6.10 legacy scraper');
 assert.deepEqual({balance:amexDigitalResult.accounts[0].balance,cardFrame:amexDigitalResult.accounts[0].cardFrame,availableCredit:amexDigitalResult.accounts[0].availableCredit},{balance:-1250,cardFrame:10000,availableCredit:8750},'DigitalV3 issuer limit data keeps the existing utilized/frame/available semantics');

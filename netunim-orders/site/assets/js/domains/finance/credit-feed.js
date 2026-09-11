@@ -18,7 +18,7 @@ export function creditCardMappingKey(profileId,accountNumber){return `${text(pro
 
 export function normalizeCreditTransaction(txn={}){
   const charged=finite(txn.chargedAmount),original=finite(txn.originalAmount);
-  return {id:text(txn.id||txn.identifier||'',120),type:text(txn.type||'normal',30)||'normal',date:iso(txn.date),processedDate:iso(txn.processedDate),transactionDate:iso(txn.transactionDate),transactionTime:transactionTime(txn.transactionTime),originalAmount:original,originalCurrency:text(txn.originalCurrency||'',12),chargedAmount:charged,chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',memo:text(txn.memo||'',260),installments:normalizeInstallments(txn.installments),status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed'};
+  return {id:text(txn.id||txn.identifier||'',120),type:text(txn.type||'normal',30)||'normal',date:iso(txn.date),processedDate:iso(txn.processedDate),transactionDate:iso(txn.transactionDate),transactionTime:transactionTime(txn.transactionTime),originalAmount:original,originalCurrency:text(txn.originalCurrency||'',12),chargedAmount:charged,chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',memo:text(txn.memo||'',260),category:text(txn.category||'',160)||undefined,installments:normalizeInstallments(txn.installments),status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed'};
 }
 
 function transactionMonth(tx){const value=tx?.processedDate;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}

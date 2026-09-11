@@ -195,12 +195,14 @@ async function fetchTransactionsForMonth(page,servicesUrl,month,startDate){
 }
 
 
-function digitalCardsList(response){
+function digitalCardsList(response,expectedCompanyCode){
   if(!response?.isSuccess||!response?.data)throw safeError('חברת האשראי לא החזירה רשימת כרטיסים תקינה ב-DigitalV3.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
   let cards=response.data.cardsList;
   if(typeof cards==='string'){try{cards=JSON.parse(cards)}catch{throw safeError('חברת האשראי החזירה cardsList מקודד שאינו JSON תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'})}}
   if(!Array.isArray(cards))throw safeError('חברת האשראי לא החזירה cardsList במבנה DigitalV3 הנתמך.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
-  const own=cards.filter(card=>String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
+  const expected=String(expectedCompanyCode||'').trim();
+  if(!expected)throw safeError('חסר קוד חברת כרטיס לסינון רשימת DigitalV3.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
+  const own=cards.filter(card=>String(card?.companyCode)===expected&&String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
   if(!own.length)throw safeError('חברת האשראי לא החזירה כרטיס פעיל מתאים לאחר הכניסה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'CardList'});
   return own;
 }
@@ -215,7 +217,7 @@ async function primeDigitalSession(page,cfg){
 async function fetchDigitalCards(page,cfg){
   await randomDelay();
   const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetCardList`,method:'POST',stage:'CardList',headers:DIGITAL_JSON_HEADERS,data:{companyCode:DIGITAL_CARD_LIST_COMPANY_CODE,cardSuffixLength:DIGITAL_CARD_SUFFIX_LENGTH}});
-  return digitalCardsList(response);
+  return digitalCardsList(response,cfg.companyCode);
 }
 async function fetchDigitalBillingDate(page,cfg,card,month){
   await randomDelay();const stage=`Billing ${monthKey(month)}`,companyCode=Number(card?.companyCode||cfg.transactionCompanyCode);

@@ -51,7 +51,8 @@ const bank=normalizeBankFeed({balance:1234,syncedAt:'2026-09-01T01:00:00Z',accou
 ]});
 assert.equal(bank.transactions.length,1,'Orders normalizes the same canonical bank feed instead of duplicating rows');
 
-const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'old',date:'2026-08-31T00:00:00Z',chargedAmount:-50}]}]}],cardMappings:{'p1:1111':{included:true,account:'עסקי',cardName:'עסקי'}}});
+const initialCredit=normalizeCreditSync({version:3,syncedAt:'2026-08-31T00:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'old',date:'2026-08-31T00:00:00Z',chargedAmount:-50,category:'בדיקת קטגוריה'}]}]}],cardMappings:{'p1:1111':{included:true,account:'עסקי',cardName:'עסקי'}}});
+assert.equal(initialCredit.profiles[0].accounts[0].txns[0].category,'בדיקת קטגוריה','Orders credit feed preserves issuer category metadata through finance normalization');
 const mergedCredit=mergeCreditSyncResult(initialCredit,{syncedAt:'2026-09-01T00:00:00Z',profiles:[{profileId:'p2',provider:'visaCal',accounts:[{accountNumber:'2222',txns:[{id:'new',date:'2026-09-01T00:00:00Z',chargedAmount:-20}]}]}],errors:[{profileId:'p1',message:'temporary'}]});
 assert.equal(mergedCredit.profiles.length,2,'partial issuer success preserves previous profiles');
 assert.equal(mergedCredit.cardMappings['p1:1111'].included,true,'existing card classification survives cross-app refresh');

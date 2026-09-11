@@ -31,6 +31,7 @@ export function normalizeCreditTransaction(txn={}){
     chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',
     description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',
     memo:text(txn.memo||'',260),
+    category:text(txn.category||'',160)||undefined,
     installments:normalizeInstallments(txn.installments),
     status:['pending','completed'].includes(String(txn.status))?String(txn.status):'completed',
   };

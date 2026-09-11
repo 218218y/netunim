@@ -155,7 +155,7 @@ export function parseIsracardDigitalV3Cards(response){
   return cards;
 }
 function activeIsracardCards(response){
-  return parseIsracardDigitalV3Cards(response).filter(card=>String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
+  return parseIsracardDigitalV3Cards(response).filter(card=>String(card?.companyCode)===ISRACARD_LOGIN_COMPANY_CODE&&String(card?.cardSuffix||'').trim()&&card?.isActive!==false&&card?.isBlock!==true);
 }
 function cardBalance(card){const value=Number(card?.limitData?.limitUsed);return Number.isFinite(value)?-value:null}
 function cardFrame(card){const value=Number(card?.limitData?.creditLimitAmount);return Number.isFinite(value)?value:null}
@@ -163,11 +163,11 @@ function cardBalanceDate(card){return card?.cardChargeNext?.billingDate?parseIsr
 
 export function normalizeIsracardDigitalV3ApprovedTransaction(txn={}){
   const date=parseIsraeliDate(`${txn.purchaseDate||''} ${txn.israelTransactionTime||''}`,{withTime:true,minuteOnly:true});
-  return {type:'normal',identifier:String(txn.seqConfirmationNumber||''),date,processedDate:date,transactionDate:date,transactionTime:text(txn.israelTransactionTime,5),originalAmount:Number.isFinite(Number(txn.originalAmount))?-Number(txn.originalAmount):null,originalCurrency:text(txn.currencyIso,12),chargedAmount:Number.isFinite(Number(txn.ilsBillingAmount))?-Number(txn.ilsBillingAmount):null,chargedCurrency:'ILS',description:text(txn.businessName,220)||'עסקת אשראי',memo:text(txn.extraDetails,260),status:'pending'};
+  return {type:'normal',identifier:String(txn.seqConfirmationNumber||''),date,processedDate:date,transactionDate:date,transactionTime:text(txn.israelTransactionTime,5),originalAmount:Number.isFinite(Number(txn.originalAmount))?-Number(txn.originalAmount):null,originalCurrency:text(txn.currencyIso,12),chargedAmount:Number.isFinite(Number(txn.ilsBillingAmount))?-Number(txn.ilsBillingAmount):null,chargedCurrency:'ILS',description:text(txn.businessName,220)||'עסקת אשראי',memo:text(txn.extraDetails,260),category:text(txn.branchCodeDescription,160)||undefined,status:'pending'};
 }
 export function normalizeIsracardDigitalV3Voucher(voucher={},processedDateIso=null){
   const date=parseIsraeliDate(`${voucher.purchaseDate||''} ${voucher.purchaseTime||'00:00:00'}`,{withTime:true}),total=Number(voucher.numberOfInstallment),number=Number(voucher.currentInstallmentNum),installments=total>0&&number>0?{number:Math.trunc(number),total:Math.trunc(total)}:null;
-  return {type:installments?'installments':'normal',identifier:String(voucher.seqVoucherNumber||''),date,processedDate:processedDateIso,transactionDate:date,transactionTime:text(voucher.purchaseTime,5),originalAmount:Number.isFinite(Number(voucher.originalAmount))?-Number(voucher.originalAmount):null,originalCurrency:text(voucher.originalCurrencyIso,12),chargedAmount:Number.isFinite(Number(voucher.billingAmount))?-Number(voucher.billingAmount):null,chargedCurrency:'ILS',description:text(voucher.businessName,220)||'עסקת אשראי',memo:text(voucher.moreInfo,260),installments,status:'completed'};
+  return {type:installments?'installments':'normal',identifier:String(voucher.seqVoucherNumber||''),date,processedDate:processedDateIso,transactionDate:date,transactionTime:text(voucher.purchaseTime,5),originalAmount:Number.isFinite(Number(voucher.originalAmount))?-Number(voucher.originalAmount):null,originalCurrency:text(voucher.originalCurrencyIso,12),chargedAmount:Number.isFinite(Number(voucher.billingAmount))?-Number(voucher.billingAmount):null,chargedCurrency:'ILS',description:text(voucher.businessName,220)||'עסקת אשראי',memo:text(voucher.moreInfo,260),category:text(voucher.transactionDescription,160)||undefined,installments,status:'completed'};
 }
 
 async function fetchCards(page,onDiagnostic){

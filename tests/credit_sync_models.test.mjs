@@ -86,7 +86,7 @@ assert.match(htmlFailure.message,/ValidateIdData/,'Amex immediate-close diagnost
 const normalizedAccount=normalizeCreditScrapeAccount({
   accountNumber:'4321',balance:-1250.75,balanceDate:'2026-09-10T00:00:00.000Z',cardFrame:15000,
   txns:[
-    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',transactionDate:'2026-08-18T00:00:00.000Z',transactionTime:'14:27',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',installments:{number:1,total:3},status:'completed'},
+    {identifier:'deal-1',type:'installments',date:'2026-08-20T00:00:00.000Z',transactionDate:'2026-08-18T00:00:00.000Z',transactionTime:'14:27',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:-300,originalCurrency:'ILS',chargedAmount:-100,chargedCurrency:'ILS',description:'ספק',category:'ריהוט',installments:{number:1,total:3},status:'completed'},
     {identifier:'refund-1',date:'2026-08-22T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',originalAmount:50,originalCurrency:'ILS',chargedAmount:50,chargedCurrency:'ILS',description:'זיכוי',status:'completed'},
   ],
 });
@@ -97,6 +97,7 @@ assert.equal(normalizedAccount.txns[0].installments.total,3);
 assert.equal(normalizedAccount.txns[0].chargedAmount,-100);
 assert.equal(normalizedAccount.txns[0].transactionDate,'2026-08-18T00:00:00.000Z','optional issuer purchase date survives the safe bridge normalization independently of billing date');
 assert.equal(normalizedAccount.txns[0].transactionTime,'14:27','an explicit issuer purchase clock survives bridge normalization as a separate local clock value');
+assert.equal(normalizedAccount.txns[0].category,'ריהוט','issuer category survives the safe bridge normalization instead of being silently discarded');
 const maxFrame=normalizeCreditScrapeAccount({accountNumber:'9999',balance:-1250.75,cardFrame:15000},'max');
 assert.equal(maxFrame.availableCredit,13749.25,'MAX OpenToBuy is recovered exactly from the scraper-defined balance and credit limit');
 const isracardFrame=normalizeCreditScrapeAccount({accountNumber:'8742',balance:-10847.5,cardFrame:23500},'isracard');
@@ -109,13 +110,14 @@ assert.equal(missingNumbers.balance,null);assert.equal(missingNumbers.cardFrame,
 
 const availabilitySync=normalizeCreditSync({version:3,profiles:[{profileId:'availability',provider:'isracard',accounts:[{accountNumber:'5555',pendingFetchedAt:'2026-09-02T08:00:00Z',balanceDate:'2026-09-10',txns:[
   {id:'past',processedDate:'2026-08-10',chargedAmount:-90,chargedCurrency:'ILS',status:'completed'},
-  {id:'next-a',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',status:'completed'},
+  {id:'next-a',processedDate:'2026-09-10',chargedAmount:-250,chargedCurrency:'ILS',category:'קניות',status:'completed'},
   {id:'next-refund',processedDate:'2026-09-10',chargedAmount:50,chargedCurrency:'ILS',status:'completed'},
   {id:'later',processedDate:'2026-10-10',chargedAmount:-450,chargedCurrency:'ILS',status:'completed'},
   {id:'pending-with-purchase-placeholder',date:'2026-09-02',processedDate:'2026-09-02',transactionDate:'2026-09-02',chargedAmount:-100,chargedCurrency:'ILS',description:'אישור טרי',status:'pending'},
   {id:'foreign',processedDate:'2026-09-12',chargedAmount:-80,chargedCurrency:'USD',status:'completed'},
 ]}]}],cardMappings:{'availability:5555':{included:true,manualFrame:5000,cardName:'ישראכרט בדיקה'}}});
 const availabilityAccount=availabilitySync.profiles[0].accounts[0];
+assert.equal(availabilityAccount.txns.find(tx=>tx.id==='next-a')?.category,'קניות','Kupa credit feed preserves issuer category through local/cloud normalization');
 assert.equal(availabilityAccount.pendingTransactions[0].id,'pending-with-purchase-placeholder','legacy flat feeds classify explicit pending status as pending even when processedDate is populated');
 assert.equal(creditKnownFutureCommitment(availabilityAccount,'2026-09-02'),650,'completed future commitment stays separate from pending issuer authorizations and foreign currency');
 assert.equal(creditPendingAuthorizationAmount(availabilityAccount,'2026-09-02'),100,'pending ILS authorization amount is tracked separately for calculated-frame fallback');
