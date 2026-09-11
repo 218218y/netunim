@@ -440,3 +440,127 @@ test('aggregate settlement requires a single proven clearing provider',()=>{
     if(providers.every(p=>p==='max')){state.bank.feed.transactions[0].description='MAX';assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,0)}
   }
 });
+
+function pendingShellState({future=true,accountRole='עסקי',provider='max',description='MAX'}={}){
+  const state=stateFor([{accountNumber:'2222',balanceDate:'2026-09-10',pendingStatus:'success',pendingFetchedAt:'2026-09-10T08:00:00Z',txns:[
+    {id:'pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-100,chargedCurrency:'ILS'},
+    ...(future?[{id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'}]:[]),
+  ]}],{provider,accountRole});
+  state.bank.currentBalance=9000;state.bank.asOfDate='2026-09-10';
+  const feed={syncedAt:'2026-09-10T08:00:00Z',balance:9000,transactions:[{date:'2026-09-10',amount:-1000,description,status:'completed'}]};
+  if(accountRole==='ביתי')state.bank.homeFeed=feed;else state.bank.feed=feed;
+  return state;
+}
+
+test('bank proof closes a pending-only shell without counting its amount as a final debit',()=>{
+  for(const future of [true,false])for(const accountRole of ['עסקי','ביתי'])for(const description of ['MAX','חיוב כרטיס אשראי 2222']){
+    const state=pendingShellState({future,accountRole,description}),before=structuredClone(state);
+    const result=kupaCashflow(state,accountRole,'2026-09-10'),pending=kupaReconciledCreditRowsData(state,accountRole,'2026-09-10').find(row=>row.status==='pending');
+    assert.equal(result.credit,future?1200:0);assert.equal(result.projected,future?7800:9000);
+    assert.equal(result.forecastIncomplete,!future);assert.equal(result.expiredSettlementWarnings.length,0);
+    assert.equal(pending.date,future?'2026-10-10':'');
+    assert.equal(pending.chargeDateSource,future?'bank_settlement_next_known_cycle':'unassigned_after_bank_settlement');
+    assert.equal(result.incompleteCreditRows.some(row=>row.settlementShell),false,'internal shells never become phantom missing transactions');
+    assert.deepEqual(result,ordersCashflow(state,accountRole,'2026-09-10'));
+    assert.deepEqual(state,before,'reconciliation does not rewrite bank or issuer data');
+    assert.equal(creditMonthlyDetailData(state,'2026-09-10').months.flatMap(month=>month.items).find(row=>row.status==='pending').date,pending.date);
+    assert.equal(ordersDetailMonths(state,{asOf:'2026-09-10'}).flatMap(month=>month.items).find(row=>row.status==='pending').date,pending.date);
+    assert.equal(ordersCreditAccountModels(state,'2026-09-10')[0].upcomingCharge.date,pending.date);
+    if(accountRole==='עסקי')assert.equal(bankLongTermPositionData(state,'2026-09-10').credit,future?1200:0);
+  }
+});
+
+test('pending-only settlement requires strong posted bank evidence, never an equal pending amount',()=>{
+  for(const patch of [
+    {description:'חיוב כרטיס אשראי',amount:-100},
+    {description:'חיוב כרטיס אשראי',amount:-1000},
+    {description:'MAX',status:'pending'},
+    {description:'MAX',presenceState:'missing'},
+    {description:'MAX',amount:100},
+    {description:'MAX',amount:0},
+    {description:'כרטיסי אשראי ל',amount:-100},
+    {date:'2026-09-09'},
+    {date:'2026-09-11'},
+  ]){
+    const state=pendingShellState();Object.assign(state.bank.feed.transactions[0],patch);
+    const result=kupaCashflow(state,'עסקי','2026-09-10');
+    assert.equal(result.targetDate,'2026-09-10',JSON.stringify(patch));assert.equal(result.credit,100);assert.equal(result.projected,8900);
+    assert.equal(result.incompleteCreditRows.length,0,'a rejected shell does not make the pending forecast artificially incomplete');
+  }
+  const noProof=pendingShellState();noProof.creditSync.profiles[0].accounts[0].balanceDate='';
+  assert.equal(kupaReconciledCreditRowsData(noProof,'עסקי','2026-09-10').find(row=>row.status==='pending').chargeDateSource,'known_future_cycle','no current due date is manufactured from the bank row');
+  const inferred=pendingShellState({future:false}),account=inferred.creditSync.profiles[0].accounts[0];
+  account.txns.push(...['06','07','08'].map(month=>({id:month,status:'completed',processedDate:`2026-${month}-10`,chargedAmount:-1000,chargedCurrency:'ILS'})),{id:'inferred-oct',status:'completed',transactionDate:'2026-09-11',chargedAmount:-1100,chargedCurrency:'ILS'});
+  const partial=kupaCashflow(inferred,'עסקי','2026-09-10');
+  assert.equal(partial.credit,1100);assert.equal(partial.forecastIncomplete,true);assert.equal(partial.unassignedCreditRows[0].chargeDateSource,'unassigned_after_bank_settlement');
+});
+
+test('pending-only shells compete globally with other known, unknown and pending card cycles',()=>{
+  for(const kind of ['known','unknown','pending'])for(const reverse of [false,true]){
+    const state=pendingShellState(),first=state.creditSync.profiles[0].accounts[0],other={...structuredClone(first),accountNumber:'3333'};
+    if(kind!=='pending')other.txns=[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:kind==='known'?-1000:null,chargedCurrency:'ILS'}];
+    state.creditSync.profiles[0].accounts.push(other);state.creditSync.cardMappings['cards:3333']={included:true,hidden:true,account:'עסקי'};
+    if(reverse)state.creditSync.profiles[0].accounts.reverse();
+    let rows=kupaReconciledCreditRowsData(state,'עסקי','2026-09-10');
+    assert.equal(rows.find(row=>row.accountNumber==='2222'&&row.status==='pending').date,'2026-09-10',`${kind}: provider alone cannot pick a card`);
+    state.bank.feed.transactions[0].description='MAX 2222';
+    rows=kupaReconciledCreditRowsData(state,'עסקי','2026-09-10');
+    assert.equal(rows.find(row=>row.accountNumber==='2222'&&row.status==='pending').date,'2026-10-10');
+    assert.ok(rows.some(row=>row.accountNumber==='3333'&&row.date==='2026-09-10'),'identifying the shell must not also settle the other card');
+  }
+});
+
+test('multiple pending rows share one shell and finalized arrival preserves the reconciled forecast',()=>{
+  const state=pendingShellState(),account=state.creditSync.profiles[0].accounts[0];
+  account.txns.push({id:'pending-2',status:'pending',transactionDate:'2026-09-09',chargedAmount:-9.50,chargedCurrency:'ILS'});
+  const before=kupaCashflow(state,'עסקי','2026-09-10');assert.equal(before.credit,1209.50);
+  account.txns.push({id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'});
+  const after=kupaCashflow(state,'עסקי','2026-09-10');
+  assert.deepEqual(after.creditRows,before.creditRows);assert.equal(after.projected,before.projected);
+});
+
+test('CAL bank legal names resolve the home debit automatically without a card suffix',()=>{
+  for(const description of ['כרטיסי אשראי ל','כרטיסי אשראי לישראל','\u200fכרטיסי\u00a0אשראי\nל\u200e','כרטיסי אשראי ל.'])for(const finalizedAmount of [1363.17,1372.67]){
+    const state=stateFor([{accountNumber:'9715',balanceDate:'2026-09-09',pendingStatus:'success',pendingFetchedAt:'2026-09-11',txns:[
+      {id:'sep',status:'completed',processedDate:'2026-09-09',chargedAmount:-finalizedAmount,chargedCurrency:'ILS'},
+      {id:'oct',status:'completed',processedDate:'2026-10-09',chargedAmount:-1100,chargedCurrency:'ILS'},
+      {id:'pending',status:'pending',transactionDate:'2026-09-09',chargedAmount:-9.50,chargedCurrency:'ILS'},
+    ]}],{provider:'visaCal',accountRole:'ביתי'});
+    state.bank.homeFeed={syncedAt:'2026-09-11',balance:9000,transactions:[{date:'2026-09-10',amount:-1363.17,description,status:'completed'}]};
+    const result=kupaCashflow(state,'ביתי','2026-09-11');
+    assert.equal(result.expiredSettlementWarnings.length,0,description);
+    assert.equal(result.credit,1109.50,'the remaining pending authorization belongs to the next proven cycle');
+    assert.deepEqual(result,ordersCashflow(state,'ביתי','2026-09-11'));
+    state.bank.homeFeed.transactions=[];
+    assert.equal(kupaCashflow(state,'ביתי','2026-09-11').expiredSettlementWarnings.length,1,'warnings still require an actual bank debit to disappear');
+  }
+});
+
+test('generic bank descriptions settle only a unique exact finalized cents amount',()=>{
+  for(const reverse of [false,true]){
+    const state=stateFor([1363.17,1363.18].map((amount,i)=>({accountNumber:String(9715+i),txns:[{id:'sep',status:'completed',processedDate:'2026-09-09',chargedAmount:-amount,chargedCurrency:'ILS'}]})),{provider:'visaCal',accountRole:'ביתי'});
+    if(reverse)state.creditSync.profiles[0].accounts.reverse();
+    state.bank.homeFeed={syncedAt:'2026-09-11',balance:9000,transactions:[{date:'2026-09-10',amount:-1363.17,description:'חיוב כרטיס אשראי',status:'completed'}]};
+    const result=kupaCashflow(state,'ביתי','2026-09-11');
+    assert.deepEqual(result.expiredSettlementWarnings.map(row=>row.accountNumber),['9716']);
+    for(const description of ['חיוב כרטיס אשראי','כרטיסי אשראי לחודש ספטמבר']){
+      state.bank.homeFeed.transactions[0]={...state.bank.homeFeed.transactions[0],description,amount:-1363.16};
+      assert.equal(kupaCashflow(state,'ביתי','2026-09-11').expiredSettlementWarnings.length,2,'generic text and a near amount are not a proven CAL debit');
+    }
+    state.creditSync.profiles[0].accounts=state.creditSync.profiles[0].accounts.filter(row=>row.accountNumber==='9715');
+    assert.equal(kupaCashflow(state,'ביתי','2026-09-11').expiredSettlementWarnings.length,1,'the word לחודש is not the truncated CAL legal name even with a single card');
+  }
+});
+
+test('generic exact debit compares finalized cents separately from pending estimates',()=>{
+  const state=pendingShellState({provider:'visaCal',description:'חיוב כרטיס אשראי'}),account=state.creditSync.profiles[0].accounts[0];
+  account.txns[0].chargedAmount=-9.50;
+  account.txns.push({id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1363.17,chargedCurrency:'ILS'});
+  state.creditSync.profiles[0].accounts.push({accountNumber:'3333',txns:[{id:'other',status:'completed',processedDate:'2026-09-10',chargedAmount:-1372.67,chargedCurrency:'ILS'}]});
+  state.creditSync.cardMappings['cards:3333']={included:true,account:'עסקי'};
+  state.bank.feed.transactions[0].amount=-1363.17;
+  const rows=kupaReconciledCreditRowsData(state,'עסקי','2026-09-10');
+  assert.equal(rows.find(row=>row.status==='pending').date,'2026-10-10');
+  assert.equal(rows.some(row=>row.accountNumber==='2222'&&row.date==='2026-09-10'),false);
+  assert.ok(rows.some(row=>row.accountNumber==='3333'&&row.date==='2026-09-10'));
+});

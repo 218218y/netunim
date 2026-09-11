@@ -24,7 +24,7 @@ function bankFeedForAccount(kupa,account){
   return bank.feed&&typeof bank.feed==='object'?bank.feed:null;
 }
 function bankTransactionDay(row){return isoDay(row?.date)||isoDay(row?.processedDate)}
-function bankTransactionSearchText(row){return [row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail].map(value=>String(value||'').toLowerCase()).join(' ')}
+function bankTransactionSearchText(row){return [row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail].map(value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,'').replace(/\s+/g,' ').trim()).join(' ')}
 const CREDIT_SETTLEMENT_MAX_HOLD_DAYS=2;
 const CREDIT_SETTLEMENT_MARKERS={
   // Bank feeds usually identify the clearing institution, not the individual card.
@@ -54,12 +54,14 @@ function bankRowLooksLikeCreditSettlement(row,providers=[]){
   const explicit=Object.keys(CREDIT_SETTLEMENT_MARKERS).filter(provider=>bankRowExplicitlyMatchesProvider(row,provider));
   if(explicit.length&&providers.some(provider=>CREDIT_SETTLEMENT_MARKERS[provider])&&!explicit.some(provider=>providers.includes(provider)))return false;
   if(text.includes('אשראי')||text.includes('credit card'))return true;
-  return providers.some(provider=>(CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>text.includes(String(marker).toLowerCase())));
+  return providers.some(provider=>bankRowExplicitlyMatchesProvider(row,provider));
 }
 function bankRowExplicitlyMatchesProvider(row,provider){
   if(!provider||row?.status==='pending'||row?.presenceState==='missing')return false;
   const text=bankTransactionSearchText(row);if(!text)return false;
-  return (CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>text.includes(String(marker).toLowerCase()));
+  // The truncated CAL legal name is common in bank feeds. Do not mistake a
+  // generic phrase such as "credit cards for the month" for that institution.
+  return (CREDIT_SETTLEMENT_MARKERS[provider]||[]).some(marker=>marker==='כרטיסי אשראי ל'?/כרטיסי אשראי ל(?=$|[\s.,:;])/u.test(text):text.includes(String(marker).toLowerCase()));
 }
 function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
@@ -209,9 +211,19 @@ function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCom
   // Keep whole cycles (including their known rows) for correct aggregate amounts.
   const selectedCycles=new Set([...settlementRowsForLatestElapsedCycle(finalized,forecastStart,forecastStart),...finalized.filter(row=>row.date&&row.date<=forecastStart&&(row.date>=recentStart||!row.includedInIlsTotal||row.coverageIncomplete))].map(row=>settlementGroupKey(row,'card')));
   const candidates=finalized.filter(row=>selectedCycles.has(settlementGroupKey(row,'card')));
+  // The bank can post before the issuer supplies any finalized transactions.
+  // A proven pending cycle is an amountless settlement shell, not a posted
+  // amount. Keep it in the global competition, but out of totals and warnings.
+  const finalizedCycles=new Set(finalized.filter(row=>row.status!=='coverage_missing').map(row=>settlementGroupKey(row,'card'))),shellCycles=new Set();
+  for(const row of billingRows){
+    if(row.status!=='pending'||!row.date||row.date!==forecastStart||!['authoritative','issuer','known_cycle','manual'].includes(row.billingDateConfidence))continue;
+    const key=settlementGroupKey(row,'card');if(finalizedCycles.has(key)||shellCycles.has(key))continue;
+    shellCycles.add(key);
+    candidates.push({...row,creditId:`SETTLEMENT_SHELL:${key}`,settlementShell:true,amount:0,includedInIlsTotal:false});
+  }
   const feed=bankFeedForAccount(kupa,role),bankRows=isoDay(feed?.syncedAt)&&Array.isArray(feed.transactions)?feed.transactions:[],unresolved=unresolvedSettlementIndexes(bankRows,candidates,forecastStart);
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
-  const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows,start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
+  const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));
   const current=settlementRows.filter(row=>row.date===forecastStart),currentSettlement={rows:current.filter(row=>row.bankSettlementState!=='settled'),settledCardKeys:new Set(current.filter(row=>row.bankSettlementState==='settled').map(creditCardKey))};
   const annotated=billingRows.map(row=>states.has(creditRowKey(row))?{...row,bankSettlementState:states.get(creditRowKey(row))}:row);
