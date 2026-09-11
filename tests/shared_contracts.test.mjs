@@ -41,8 +41,8 @@ test('intentional app differences are preserved, not deduplicated by name',()=>{
 test('shared cashflow thresholds and alert semantics agree across both apps',()=>{
  const raw={businessMinimum:5000,homeMinimum:3000};
  assert.deepEqual(kupaCashflow.normalizeCashflowSettings(raw),orderCashflow.normalizeCashflowSettings(raw));
- assert.deepEqual(kupaCashflow.normalizeCashflowSettings({businessMinimum:-50,homeMinimum:''}),{version:2,businessMinimum:0,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9});
- assert.deepEqual(kupaCashflow.normalizeCashflowSettings({businessCheckCutoffDay:31,homeCheckCutoffDay:1}),{version:2,businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:31,homeCheckCutoffDay:1});
+ assert.deepEqual(kupaCashflow.normalizeCashflowSettings({businessMinimum:-50,homeMinimum:''}),{version:2,businessMinimum:0,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9,businessAlertLeadDays:14,homeAlertLeadDays:14});
+ assert.deepEqual(kupaCashflow.normalizeCashflowSettings({businessCheckCutoffDay:31,homeCheckCutoffDay:1}),{version:2,businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:31,homeCheckCutoffDay:1,businessAlertLeadDays:14,homeAlertLeadDays:14});
  assert.equal(kupaCashflow.cashflowCheckCutoffDayForAccount({},'עסקי'),14);assert.equal(kupaCashflow.cashflowCheckCutoffDayForAccount({},'ביתי'),9);
  for(const api of [kupaCashflow,orderCashflow]){
    assert.equal(api.cashflowAlertForAccount(-1,raw,'עסקי').reason,'negative','any projected overdraft warns even below/above a configured threshold');

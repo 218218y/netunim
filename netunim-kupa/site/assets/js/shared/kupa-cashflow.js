@@ -103,7 +103,7 @@ function unresolvedSettlementIndexes(bankRows,candidates,reference){
   for(const row of bankRows){
     const day=bankTransactionDay(row),value=moneyCents(row.amount);
     if(!day||day>reference||!value)continue;
-    let eligible=groups.flatMap((group,index)=>day>=group.due&&(!group.next||day<group.next)&&bankRowLooksLikeCreditSettlement(row,group.providers)?[index]:[]);
+    let eligible=groups.flatMap((group,index)=>day>=group.due&&day<addDaysISO(group.due,CREDIT_SETTLEMENT_MAX_HOLD_DAYS)&&(!group.next||day<group.next)&&bankRowLooksLikeCreditSettlement(row,group.providers)?[index]:[]);
     const suffixMatches=eligible.filter(index=>bankTextHasCardSuffix(row,groups[index].suffix));
     if(suffixMatches.length)eligible=suffixMatches;
     if(eligible.length)banks.push({row,value,eligible,suffixMatches});
@@ -145,6 +145,7 @@ function provenSettlementGroupIndexes(groups,banks){
     if(bank.eligible.some(index=>!groups[index].known))continue;
     subsets(bank.eligible,cardIndexes=>{
       if(cardIndexes.some(index=>groups[index].due!==groups[cardIndexes[0]].due))return;
+      if(cardIndexes.length>1){const providers=cardIndexes.map(index=>String(groups[index].rows[0]?.provider||''));if(!CREDIT_SETTLEMENT_MARKERS[providers[0]]||providers.some(provider=>provider!==providers[0]))return}
       if(cardIndexes.reduce((sum,index)=>sum+groups[index].expected,0)===bank.value)add([bankIndex],cardIndexes,2);
     });
   }

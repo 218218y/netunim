@@ -1,3 +1,4 @@
+import {cashflowNotificationData} from '../../shared/cashflow-notification.js';
 import {kupaAccountCashflowData} from './readout.js';
 
 const RETURNED_CHEQUE_ALERT_KIND='returned_cheque';
@@ -72,13 +73,15 @@ export function bankWarningItems(bank){
 
 export function cashflowWarningItems(kupa){
   if(!kupa||typeof kupa!=='object')return [];
-  const rows=[kupaAccountCashflowData(kupa,'עסקי').alert,kupaAccountCashflowData(kupa,'ביתי').alert];
+  const rows=['עסקי','ביתי'].map(account=>cashflowNotificationData(kupaAccountCashflowData(kupa,account),kupa.cashflowSettings));
   return rows.filter(row=>row.active).map(row=>({
     id:`cashflow:${row.account}`,
     kind:'cashflow',
     account:row.account,
     projected:row.projected,
     minimum:row.minimum,
+    breachDate:row.breachDate,
+    daysUntilBreach:row.daysUntilBreach,
     reason:row.reason,
   }));
 }

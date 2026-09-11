@@ -137,11 +137,13 @@ test('Kupa cashflow minimum thresholds merge independently without cross-account
  const base=k.normalizeState({version:4,checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[],cards:[],cashflowSettings:{businessMinimum:null,homeMinimum:null},bank:{adjustments:[]}});
  const local=structuredClone(base),remote=structuredClone(base);
  local.cashflowSettings.businessMinimum=5000;local.cashflowSettings.businessCheckCutoffDay=16;remote.cashflowSettings.homeMinimum=3000;remote.cashflowSettings.homeCheckCutoffDay=8;
+ local.cashflowSettings.businessAlertLeadDays=30;remote.cashflowSettings.homeAlertLeadDays=0;
  const merged=km.mergeState3Way(base,local,remote);
  assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.cashflowSettings.businessMinimum,5000);assert.equal(merged.state.cashflowSettings.homeMinimum,3000);assert.equal(merged.state.cashflowSettings.businessCheckCutoffDay,16);assert.equal(merged.state.cashflowSettings.homeCheckCutoffDay,8);
  const rebased=km.rebaseLocalProgress(base,local,remote);
  assert.equal(rebased.cashflowSettings.businessMinimum,5000);assert.equal(rebased.cashflowSettings.homeMinimum,3000);assert.equal(rebased.cashflowSettings.businessCheckCutoffDay,16);assert.equal(rebased.cashflowSettings.homeCheckCutoffDay,8);
  const cloud=k.prepareKupaCloudState(merged.state);assert.equal(cloud.cashflowSettings.businessMinimum,5000);assert.equal(cloud.cashflowSettings.homeMinimum,3000);assert.equal(cloud.cashflowSettings.businessCheckCutoffDay,16);assert.equal(cloud.cashflowSettings.homeCheckCutoffDay,8);
+ for(const state of [merged.state,rebased,cloud]){assert.equal(state.cashflowSettings.businessAlertLeadDays,30);assert.equal(state.cashflowSettings.homeAlertLeadDays,0)}
 });
 
 test('Kupa cash and rights are independent ledgers across normalization and cloud merge',()=>{

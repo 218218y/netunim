@@ -640,4 +640,4 @@ button.bank-cashflow-metric:focus-visible,.cashflow-breakdown-trigger:focus-visi
 .cashflow-breakdown th,.cashflow-breakdown td{padding:9px 5px;border-bottom:1px solid var(--line,#ddd);text-align:start;overflow-wrap:anywhere}
 .cashflow-breakdown th{white-space:normal;position:static}.cashflow-breakdown th:first-child{width:44%}.cashflow-breakdown td[dir=ltr]{text-align:end;font-variant-numeric:tabular-nums}
 .cashflow-breakdown small{display:block;color:var(--muted,#666);font-size:11px}.cashflow-breakdown tfoot{font-weight:bold}
-.cashflow-breakdown-total{display:flex;justify-content:space-between;gap:15px;align-items:center;padding:12px 0;border-top:1px solid var(--line,#ddd)}
+.cashflow-breakdown-total{display:grid;grid-template-columns:72% 28%;align-items:center;border-top:1px solid var(--line,#ddd)}.cashflow-breakdown-total>*{min-width:0;padding:12px 5px}.cashflow-breakdown-total>b{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}

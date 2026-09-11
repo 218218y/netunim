@@ -352,6 +352,15 @@ assert.equal(await controller.saveCashflowCheckCutoff('business','16'),true,'Ord
 assert.equal(saveCalls,savesBeforeCutoff+1);assert.equal(cloudRow.state.cashflowSettings.businessCheckCutoffDay,16);assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessCheckCutoffDay,16);assert.equal(refreshKupaCalls,refreshesBeforeCutoff+1);
 assert.equal(await controller.saveCashflowCheckCutoff('home','0'),false,'invalid cutoff days are rejected instead of silently normalized');
 assert.equal(saveCalls,savesBeforeCutoff+1,'invalid cutoff never writes the cloud document');
+const savesBeforeLead=saveCalls;
+assert.equal(await controller.saveCashflowAlertLead('business','30'),true);
+assert.equal(await controller.saveCashflowAlertLead('home','0'),true);
+assert.equal(cloudRow.state.cashflowSettings.businessAlertLeadDays,30);
+assert.equal(checksSession.kupaCloudReadState.cashflowSettings.homeAlertLeadDays,0);
+assert.equal(saveCalls,savesBeforeLead+2);
+for(const value of ['',-1,366,1.5,'oops'])assert.equal(await controller.saveCashflowAlertLead('business',value),false);
+assert.equal(saveCalls,savesBeforeLead+2,'invalid notification settings do not write the shared document');
+assert.deepEqual(financeRow.state,financeBeforeThreshold,'notification settings never rewrite bank or credit transactions');
 
 Date.now=realDateNow;
 console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, atomic bank snapshot + archive read-back verification, dual-account feed, newest-first transaction detail and credit mapping preservation');

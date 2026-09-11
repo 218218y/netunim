@@ -92,6 +92,9 @@ def run_breakdown(app):
                   if(!text.includes('{card}')||text.includes('{other}')||!text.includes('{expected}'))throw new Error('Wrong account or total: '+text);
                   if(panel.querySelectorAll('tfoot').length!==3)throw new Error('Missing credit, expense or check subtotal');
                   if(panel.scrollWidth>panel.clientWidth+2)throw new Error('Drilldown overflows at {width}px');
+                  const textRight=element=>{{const range=document.createRange();range.selectNodeContents(element);return range.getBoundingClientRect().right}};
+                  const amountRight=textRight(panel.querySelector('tfoot td[dir="ltr"]'));
+                  for(const total of panel.querySelectorAll('.cashflow-breakdown-total>b'))if(Math.abs(textRight(total)-amountRight)>2)throw new Error('Summary amounts do not align with the amount column at {width}px');
                   const close=document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]');close.click();
                   if(backdrop.classList.contains('open'))throw new Error('Dialog close button failed');
                   return true;
@@ -113,6 +116,14 @@ def run_breakdown(app):
               document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
               return true;
             }})()""")
+        action = 'orders-cashflow-alert-lead' if app == 'orders' else 'update-cashflow-alert-lead'
+        browser.evaluate(f"""(()=>{{
+          uiSettings.renderSettings();
+          const fields=[...document.querySelectorAll('[data-change="{action}"]')];
+          if(fields.length!==2||fields.some(field=>field.value!=='14'))throw new Error('Both account settings must display the 14-day default');
+          if(fields.some(field=>field.min!=='0'||field.max!=='365'))throw new Error('Invalid notification-day limits');
+          return true;
+        }})()""")
         errors = browser.drain_serious_errors()
         assert not errors, errors
         print(f'{app}: cash-flow drilldown opens and closes for both accounts, totals match, desktop/mobile fit')

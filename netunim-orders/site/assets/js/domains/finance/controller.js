@@ -111,6 +111,13 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   }
 
 
+  async function saveCashflowAlertLead(account,value){
+    const parsed=Number(value);
+    if(String(value).trim()===''||!Number.isInteger(parsed)||parsed<0||parsed>365){toast('טווח ההתרעה חייב להיות מספר שלם בין 0 ל־365');return false}
+    if(!loadSession()){toast('יש להתחבר לענן כדי לשמור את ההגדרה המשותפת');return false}
+    try{await mutateKupaCloud(kupa=>{const settings=normalizeCashflowSettings(kupa.cashflowSettings);settings[account==='home'?'homeAlertLeadDays':'businessAlertLeadDays']=parsed;kupa.cashflowSettings=settings;return kupa});toast('טווח ההתרעה נשמר ומשותף לשתי המערכות');return true}catch(error){toast(error?.message||String(error));return false}
+  }
+
   async function saveCashflowCheckCutoff(account,value){
     const parsed=Number(value);
     if(!Number.isInteger(parsed)||parsed<1||parsed>31){toast('יום חישוב הצ׳קים חייב להיות מספר שלם בין 1 ל־31');return false}
@@ -300,5 +307,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
   function setCreditAutoMode(value){bridge.setCreditAutoMode(value);scheduleCreditAuto()}
 
-  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
+  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowAlertLead,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
 }

@@ -1,6 +1,7 @@
 export const CASHFLOW_SETTINGS_VERSION=2;
 export const DEFAULT_BUSINESS_CHECK_CUTOFF_DAY=14;
 export const DEFAULT_HOME_CHECK_CUTOFF_DAY=9;
+export const DEFAULT_CASHFLOW_ALERT_LEAD_DAYS=14;
 
 function finiteNullable(value){
   if(value===null||value===undefined||value==='')return null;
@@ -10,6 +11,7 @@ function finiteNullable(value){
 
 function minimumNullable(value){const n=finiteNullable(value);return n===null?null:Math.max(0,n)}
 function cutoffDay(value,fallback){const n=Number(value);return Number.isInteger(n)&&n>=1&&n<=31?n:fallback}
+function leadDays(value){const n=finiteNullable(value);return Number.isInteger(n)&&n>=0&&n<=365?n:DEFAULT_CASHFLOW_ALERT_LEAD_DAYS}
 
 export function cashflowAccountRole(value){return value==='ביתי'||value==='home'?'ביתי':'עסקי'}
 
@@ -21,6 +23,8 @@ export function normalizeCashflowSettings(raw={}){
     homeMinimum:minimumNullable(source.homeMinimum),
     businessCheckCutoffDay:cutoffDay(source.businessCheckCutoffDay,DEFAULT_BUSINESS_CHECK_CUTOFF_DAY),
     homeCheckCutoffDay:cutoffDay(source.homeCheckCutoffDay,DEFAULT_HOME_CHECK_CUTOFF_DAY),
+    businessAlertLeadDays:leadDays(source.businessAlertLeadDays),
+    homeAlertLeadDays:leadDays(source.homeAlertLeadDays),
   };
 }
 

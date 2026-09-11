@@ -419,3 +419,24 @@ test('a newer charge on the same card cannot hide an earlier missing cycle or it
   const result=kupaCashflow(state,'עסקי','2026-09-12');
   assert.equal(result.credit,500);assert.equal(result.expiredSettlementWarnings.filter(row=>row.dueDate==='2026-09-10').length,1);
 });
+
+test('bank posting date must be inside the half-open settlement window, even with a suffix',()=>{
+  for(const amount of [null,-1000])for(const date of ['2026-09-10','2026-09-11','2026-09-12','2026-10-10'])for(const label of ['MAX','MAX 2222']){
+    const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:amount,chargedCurrency:'ILS'}]}]);
+    state.bank.asOfDate='2026-10-11';state.bank.feed.syncedAt='2026-10-11';state.bank.feed.transactions=[{date,amount:-1000,description:label}];
+    const result=kupaCashflow(state,'עסקי','2026-10-11');
+    assert.equal(result.expiredSettlementWarnings.length,date<'2026-09-12'?0:1,JSON.stringify({date,amount,label}));
+    assert.deepEqual(result,ordersCashflow(state,'עסקי','2026-10-11'));
+  }
+});
+
+test('aggregate settlement requires a single proven clearing provider',()=>{
+  for(const providers of [['max','visaCal'],['max','max'],['','']])for(const reverse of [false,true]){
+    const state=stateFor([]);state.creditSync.profiles=providers.map((provider,index)=>({profileId:`p${index}`,provider,accounts:[{accountNumber:String(index+2222),txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]}]}));
+    state.creditSync.cardMappings={'p0:2222':{included:true},'p1:2223':{included:true}};
+    if(reverse)state.creditSync.profiles.reverse();
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:-2000,description:'חיוב כרטיס אשראי'}];
+    assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,providers.every(p=>p==='max')?0:2000);
+    if(providers.every(p=>p==='max')){state.bank.feed.transactions[0].description='MAX';assert.equal(kupaCashflow(state,'עסקי','2026-09-10').credit,0)}
+  }
+});
