@@ -819,6 +819,7 @@ const lifecycle=createLifecycle({
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
 
 const uiActions=createUiActions({
+  reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();domainsBankCache.renderKupaDependentView()}},
   supplierUi,
   customerUi,
   serviceUi,

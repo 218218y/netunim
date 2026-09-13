@@ -50,6 +50,7 @@ import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
+import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -400,6 +401,7 @@ const domainsChecksView=createDomainsChecksView({
 });
 
 const uiNavigation=createUiNavigation({
+  refreshCheckBankIndicator:()=>{const b=document.getElementById('checkBankAlerts');if(b){const count=checkBankReviewItems(model.state.checks).length;b.hidden=!count;b.textContent=`⚠ צ׳קים (${count})`}},
   ui,
   renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
@@ -745,7 +747,10 @@ const lifecycle=createLifecycle({
 
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
 
+document.getElementById('checkBankAlerts').addEventListener('click',()=>uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true)));
+
 const uiActions=createUiActions({
+  reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args))uiModal.closeModal(true)},
   ui,
   chooseBackupFolder:(...args)=>uiFolders.chooseBackupFolder(...args),
   loadSupabaseState:(...args)=>syncDocument.loadSupabaseState(...args),

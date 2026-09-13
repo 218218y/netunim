@@ -117,6 +117,13 @@ class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 
+class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
+    # Native ESM fans out across many local modules. Windows' small default
+    # accept backlog can reset parallel requests and poison the browser module
+    # cache before test assertions start. Keep accepted sockets fully threaded.
+    request_queue_size = 128
+
+
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
@@ -209,7 +216,7 @@ class BrowserSession:
         port = _free_port()
         directory = str(self.tmp / "site")
         handler = lambda *args, **kwargs: _QuietHandler(*args, directory=directory, **kwargs)
-        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)
+        self.httpd = _RuntimeHTTPServer(("127.0.0.1", port), handler)
         self.http_thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.http_thread.start()
         self.url = f"http://127.0.0.1:{port}/index.html"
@@ -308,7 +315,10 @@ class BrowserSession:
         state = None
         while time.time() < end:
             try:
-                state = self.evaluate("({ready:document.readyState,href:location.href})")
+                # Loading-state inspection must not import test-access.js into a
+                # document which may still be navigating/reloading.
+                response = self.call('Runtime.evaluate', {'expression': '({ready:document.readyState,href:location.href})', 'returnByValue': True})
+                state = response.get('result', {}).get('result', {}).get('value')
                 if state and state.get("href", "").startswith(self.url) and state.get("ready") == "complete":
                     return
             except Exception as error:

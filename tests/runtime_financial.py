@@ -180,10 +180,35 @@ def run_recurring_debits(app):
         print(f'{app}: recurring bank estimates retain overdue debits, settle once, and show source on desktop/mobile')
 
 
+def run_forecast_header(app):
+    with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-forecast-header") as browser:
+        for width in (1280, 390):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            for role in ('business','home'):
+                setup="state=normalizeState(fixture);ui.bankAccountView=role;domainsBankView.renderBank();" if app=='kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
+                result=browser.evaluate("(async()=>{"+f"const role='{role}';"+r"""
+                  const {kupaAccountCashflowData}=await import('./assets/js/shared/kupa-cashflow.js');
+                  const today=new Date().toLocaleDateString('en-CA'),feed={accountNumber:'123',balance:1000,syncedAt:today,transactions:[]};
+                  const fixture={bank:{currentBalance:1000,asOfDate:today,feed,homeFeed:feed},checks:[],credits:[],expenses:[],cash:[],cards:[],cashflowSettings:{businessCheckCutoffDay:14,homeCheckCutoffDay:9}};
+                """+setup+r"""
+                  const target=kupaAccountCashflowData(fixture,role==='home'?'ביתי':'עסקי').targetDate.split('-').reverse().join('.');
+                  const headers=[...document.querySelectorAll('.bank-current-balance,.bank-cashflow-projected')];
+                  const header=headers.find(x=>x.textContent.includes('עו״ש תזרימי ('));
+                  if(!header||!header.textContent.includes(target))throw new Error('Missing actual forecast date '+target);
+                  if(header.scrollWidth>header.clientWidth+2)throw new Error('Forecast header overflows');
+                  return true;
+                })()""")
+                assert result is True
+        assert not browser.drain_serious_errors()
+        print(f'{app}: both account headers display the actual forecast date on desktop/mobile')
+
+
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok
 run_breakdown('kupa')
 run_breakdown('orders')
 run_recurring_debits('kupa')
 run_recurring_debits('orders')
+run_forecast_header('kupa')
+run_forecast_header('orders')
 raise SystemExit(0 if ok else 1)

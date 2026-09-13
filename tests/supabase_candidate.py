@@ -4,6 +4,7 @@ import sys
 from isolated_sync_postgres import IsolatedPostgres, ROOT
 from supabase_authorization import run as authorization
 from morning_schema_contract import assert_morning_schema_contract
+from check_bank_reconciliation import run as check_bank_reconciliation
 
 sys.path.insert(0, str(ROOT / 'tools'))
 from supabase_candidate_schema import (
@@ -89,8 +90,10 @@ if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    assert candidate_definition == reviewed_definition, \
+    without_check_hook=candidate_definition.replace('      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n','')
+    assert without_check_hook == reviewed_definition.replace('      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',''), \
         'authenticated Production bank merge SQL differs semantically from replayed candidate'
+assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
 
 required_bank_merge_fragments = (
     'v_amount>0', "v_description ~ 'מיידי|זה.?ב'", 'pending_party_norm', 'pending_detail_digits',
@@ -112,5 +115,8 @@ with IsolatedPostgres(schema_files=all_files) as db:
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     authorization(db)
+
+with IsolatedPostgres(schema_files=all_files) as db:
+    check_bank_reconciliation(db)
 
 print('PASS candidate migration chain: authenticated prefix replay, generic pending suffix, clean install, authorization and fence regressions pass')

@@ -38,6 +38,12 @@ flows={
  saveModal();await saved();assert(state.checks.length===1&&state.checks[0].dueDate==='2026-09-10','check create/date controls');
  click('mark-deposited');await saved();assert(state.checks[0].status==='הופקד - במעקב'&&bankCurrentBalance()===1000,'deposit preserves authoritative bank balance');
  checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1000,'cleared preserves authoritative bank balance');
+ const auto=state.checks[0];auto.status='הופקד - במעקב';auto.depositDate='2026-09-11';auto.bankMatch={phase:'deposited',eventId:'bank:deposited',transactionId:91,description:'הפק.שיק בסלולר',amount:200,date:'2026-09-11',checkIds:[auto.id],previousStatus:'בקופה',previousDepositDate:null};
+ checkTab='open';setPage('checks');assert(!element('#checkBankAlerts').hidden,'Kupa global check warning');
+ element('#checkBankAlerts').click();assert(element('#modal').textContent.includes('מאשר את ההתאמה'),'Kupa evidence modal');
+ element('#modal [data-action="review-check-bank"][data-click-arg2="accept"]').click();await saved();assert(auto.bankReview==='bank:deposited'&&auto.status==='הופקד - במעקב','Kupa confirmation persists without clearing');
+ auto.bankMatch={...auto.bankMatch,eventId:'bank:again'};setPage('checks');element('[data-action="review-check-bank"][data-click-arg2="reject"]').click();await saved();assert(auto.status==='בקופה'&&auto.bankAutomationDisabled,'Kupa rejection restores pending manual check');
+
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
  const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
  const mainPending=await getCloudPending(),checksPending=await getSharedChecksPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');assert(checksPending&&await clearSharedChecksPending(checksPending.generation),'checks pending exact ACK');
@@ -68,6 +74,10 @@ flows={
  click('set-warehouse-order-status-2');await saved();assert(state.warehouseOrders[0].status==='ordered','warehouse status');
  switchView('kupa');element('[data-action="set-kupa-section"][data-click-arg0="checks"]').click();click('open-check-modal');fill({fName:'Shared customer'});const row=element('#checkSeriesRows .check-series-row');row.querySelector('[data-series-field="amount"]').value='110';
  for(const [part,value]of [['day','10'],['month','09'],['year','26']]){const e=row.querySelector('[data-date-part="'+part+'"]');e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new FocusEvent('blur'))}saveModal();await saved();assert(state.checks.length===1,'shared check create');
+ const auto=state.checks[0];auto.status='הופקד - במעקב';auto.depositDate='2026-09-11';auto.bankMatch={phase:'deposited',eventId:'orders:deposited',transactionId:92,description:'הפק.שיק בסלולר',amount:110,date:'2026-09-11',checkIds:[auto.id],previousStatus:'בקופה',previousDepositDate:null};
+ renderChecks();element('[data-action="review-check-bank"][data-click-arg2="accept"]').click();await saved();assert(auto.bankReview==='orders:deposited'&&auto.status==='הופקד - במעקב','Orders confirmation persists without clearing');
+ openCheckModal(auto.id);fill({fNote:'preserve bank evidence'});saveModal();await saved();assert(state.checks[0].bankMatch.transactionId===92&&state.checks[0].depositDate==='2026-09-11','Editing a note preserves actual bank deposit date and link');
+
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
  const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await saved();click('apply-json-restore');await acceptStyledConfirm();await saved();assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
  switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');

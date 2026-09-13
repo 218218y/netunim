@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {mock} from 'node:test';
 import {createDomainsFinanceBridge,bankRefreshDue,creditRefreshDue,BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS} from '../netunim-orders/site/assets/js/domains/finance/bridge.js';
 import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {creditFrameStatus,creditUpcomingCharge,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
@@ -35,6 +36,8 @@ assert.equal(filteredCreditViewport.scrollTop,0,'an explicit credit-filter navig
 if(realRequestAnimationFrame===undefined)delete globalThis.requestAnimationFrame;else globalThis.requestAnimationFrame=realRequestAnimationFrame;
 
 const now=Date.parse('2026-09-01T02:00:00.000Z');
+// Date.now alone leaves new Date() on the real calendar and makes these fixtures expire.
+mock.timers.enable({apis:['Date'],now:Date.parse('2026-09-01T03:00:00.000Z')});
 const realDateNow=Date.now;
 Date.now=()=>Date.parse('2026-09-01T03:00:00.000Z');
 assert.equal(BANK_AUTO_INTERVAL_MS,4*60*60*1000,'Orders bank cadence matches Kupa at four hours');
@@ -371,4 +374,5 @@ assert.equal(saveCalls,savesBeforeLead+2,'invalid notification settings do not w
 assert.deepEqual(financeRow.state,financeBeforeThreshold,'notification settings never rewrite bank or credit transactions');
 
 Date.now=realDateNow;
+mock.timers.reset();
 console.log('PASS Orders finance sync models: four-hour bank / daily credit freshness, atomic bank snapshot + archive read-back verification, dual-account feed, newest-first transaction detail and credit mapping preservation');

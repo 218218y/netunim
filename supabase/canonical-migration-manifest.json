@@ -53,5 +53,10 @@
     "version": "20260910211500",
     "name": "bank_instant_credit_reconciliation",
     "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
+  },
+  {
+    "version": "20260913120000",
+    "name": "check_bank_reconciliation",
+    "sha256": "2b483a940b412e5b280e05d569e1885e2db982e60225cc7a63be41a8a00addc3"
   }
 ]

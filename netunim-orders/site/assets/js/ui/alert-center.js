@@ -1,3 +1,4 @@
+import {checkBankReviewItems,checkBankReviewCard} from '../shared/check-bank-review.js';
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
 import {checkDateFmt,checkTodayISO} from '../core/dates.js';
@@ -32,6 +33,7 @@ function noteAlertCard(item){
 }
 
 function alertCard(item){
+  if(item.kind==='check_bank')return checkBankReviewCard(item);
   if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing')return bankAlertCard(item);
   if(item.kind==='note_reminder')return noteAlertCard(item);
   const actionAttrs=`type="button" class="alert-center-card ${item.kind==='cashflow'?'cashflow-warning':'check-warning'} alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"`;
@@ -49,6 +51,7 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
     return [
       ...(snapshot.bankAlertsReady===true?bankWarningItems(snapshot.bank):[]),
       ...cashflowWarningItems(snapshot.kupa),
+      ...checkBankReviewItems(model?.state?.checks),
       ...dueCheckWarningItems(model?.state?.checks,today),
       ...noteReminderWarningItems(model?.state?.notes,today),
     ];

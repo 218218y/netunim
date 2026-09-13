@@ -43,6 +43,10 @@
     {
       "version": "20260910211500",
       "name": "bank_instant_credit_reconciliation"
+    },
+    {
+      "version": "20260913120000",
+      "name": "check_bank_reconciliation"
     }
   ]
 }
