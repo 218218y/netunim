@@ -1,0 +1,7 @@
+[functions.google-calendar-oauth]
+verify_jwt = false
+
+[functions.morning-documents]
+# Browser preflight must reach the handler; authenticated POSTs are still
+# fail-closed by requireUser(req) -> auth.getUser() inside the function.
+verify_jwt = false
