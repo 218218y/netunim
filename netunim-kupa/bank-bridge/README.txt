@@ -87,11 +87,11 @@ Bridge v10 — יציבות ניווט ו-feed מלא ל-30 יום
 במסך הקופה כפתורי הרענון, זמן העדכון האחרון וכשל העדכון האחרון נשארים גלויים; מפתח ה-Bridge, פרטי החשבון והעדכון האוטומטי נמצאים תחת 'הגדרות חיבור וסנכרון' הסגורות כברירת מחדל.
 
 
-Cheque deposit enrichment (Bridge v10)
+Cheque deposit enrichment (Bridge v45)
 
 The bridge now treats only an explicit cheque-deposit activityDescription as a cheque deposit. Beneficiary/memo text is never used for classification; this fixes false positives such as Hebrew personal names that happen to contain the letters צק. Returned-cheque and ordinary cheque-debit transactions are not treated as deposits.
 
-The pinned Hapoalim scraper publicly types the pfmDetails response only far enough to extract transactionNumber. It does not publish a stable schema for the per-cheque table or cheque images visible in the bank UI. Bridge v10 therefore does not expose arbitrary primitive pfmDetails fields. Generic values such as transactionStatusCode=0, transactionSum=0, check=false and multiCheck=false are ignored. If a bank response explicitly contains structured cheque rows (positive amount plus cheque number or full bank/branch/account identity), those rows are preserved as checkItems and shown by Kupa. Zero identifiers are rejected.
+The Hapoalim transaction row exposes two independent detail links: pfmDetails and details. The published israeli-bank-scrapers implementation follows pfmDetails for the aggregate transaction number, while Hapoalim transaction schemas also expose details and public captured cheque rows show it pointing at /ServerServices/current-account/cheques/.... Bridge v45 reads both sources for an explicit cheque deposit. PFM remains the aggregate deposit-reference source; the separate details response may contribute only cheque facts and can never replace the deposit reference. Neither public implementation publishes a stable response schema for the per-cheque table or cheque images, so the bridge still refuses to expose arbitrary primitive fields. Generic values such as transactionStatusCode=0, transactionSum=0, check=false and multiCheck=false are ignored. If either bank response explicitly contains structured cheque rows (positive amount plus cheque number or full bank/branch/account identity), those rows are merged, deduplicated, preserved as checkItems and shown by Kupa. Zero identifiers are rejected.
 
 Potential image/scan/document URLs, session values, cookies and tokens are never persisted. At most a boolean document-presence marker survives. A failure to enrich one deposit never invalidates balance or the main transaction feed.
 

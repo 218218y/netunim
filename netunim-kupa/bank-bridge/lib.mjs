@@ -263,6 +263,31 @@ export function normalizeHapoalimAdditionalDetails(payload){
   return {referenceNumber:compactText(referenceNumber,100),checkNumbers:numbers,checkCount,checkItems:cleanItems,hasDocumentReference};
 }
 
+export function mergeHapoalimAdditionalDetails(...sources){
+  const checkNumbers=new Set(),checkItems=[],itemKeys=new Set();
+  let referenceNumber='',declaredCount=0,hasDocumentReference=false;
+  for(const source of sources){
+    if(!source||typeof source!=='object')continue;
+    if(!referenceNumber)referenceNumber=compactText(source.referenceNumber,100);
+    const count=Number(source.checkCount);if(Number.isFinite(count)&&count>0)declaredCount=Math.max(declaredCount,Math.trunc(count));
+    if(source.hasDocumentReference)hasDocumentReference=true;
+    for(const value of Array.isArray(source.checkNumbers)?source.checkNumbers:[]){const clean=compactText(value,80);if(clean&&clean!=='0')checkNumbers.add(clean)}
+    for(const raw of Array.isArray(source.checkItems)?source.checkItems:[]){
+      const item={
+        bankNumber:compactText(raw?.bankNumber,20),branchNumber:compactText(raw?.branchNumber,20),accountNumber:compactText(raw?.accountNumber,40),
+        checkNumber:compactText(raw?.checkNumber,80),amount:Number.isFinite(Number(raw?.amount))&&Number(raw.amount)>0?Number(raw.amount):null,hasDocumentReference:!!raw?.hasDocumentReference,
+      };
+      if(!item.amount||!(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber)))continue;
+      const key=chequeItemKey(item);if(itemKeys.has(key))continue;itemKeys.add(key);checkItems.push(item);
+      if(item.checkNumber&&item.checkNumber!=='0')checkNumbers.add(item.checkNumber);
+      if(item.hasDocumentReference)hasDocumentReference=true;
+    }
+  }
+  const numbers=[...checkNumbers].slice(0,50),items=checkItems.slice(0,50),inferredCount=Math.max(numbers.length,items.length);
+  const checkCount=Math.max(declaredCount,inferredCount)||null;
+  return {referenceNumber,checkNumbers:numbers,checkCount,checkItems:items,hasDocumentReference};
+}
+
 export function buildHapoalimAdditionalDetailsUrl(baseUrl,pfmDetails,accountId){
   const base=new URL(String(baseUrl||'')),url=new URL(String(pfmDetails||''),base);
   if(url.origin!==base.origin){const e=new Error('כתובת פרטי התנועה אינה שייכת לבנק הפועלים');e.code='UNSAFE_DETAIL_URL';throw e}

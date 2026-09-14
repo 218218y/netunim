@@ -14,6 +14,7 @@ import {
   buildHapoalimAdditionalDetailsUrl,
   isHapoalimChequeTransaction,
   normalizeHapoalimAdditionalDetails,
+  mergeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
   SILENT_AUTH_TIMEOUT_MS,
   isTransientNavigationError,
@@ -42,7 +43,7 @@ import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=44;
+const BRIDGE_VERSION=45;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -303,18 +304,35 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
   let reusableReady=initialReady;
   for(const transaction of source){
     const pfmDetails=String(transaction?.pfmDetails||'').trim();
-    if(!pfmDetails||Number(transaction?.serialNumber)===0||!isHapoalimChequeTransaction(transaction)){
+    const transactionDetails=String(transaction?.details||'').trim();
+    if((!pfmDetails&&!transactionDetails)||Number(transaction?.serialNumber)===0||!isHapoalimChequeTransaction(transaction)){
       enriched.push(transaction);continue;
     }
-    try{
-      const extraResult=await pageFetchJson(page,async()=>({url:buildHapoalimAdditionalDetailsUrl(HAPOALIM_BASE_URL,pfmDetails,accountId)}),{initialReady:reusableReady});
-      reusableReady=extraResult.ready;
-      const details=normalizeHapoalimAdditionalDetails({transaction,additionalInformation:extraResult.data});
-      enriched.push({...transaction,...(details.referenceNumber?{referenceNumber:details.referenceNumber}:{}),netunimAdditionalDetails:details});
-    }catch(error){
-      enriched.push({...transaction,netunimAdditionalDetailsWarning:`לא ניתן היה לטעון את פירוט השיק מהבנק: ${error?.message||error}`});
-      reusableReady=null;
-    }
+    const detailSources=[],warnings=[];
+    let pfmNormalized=null;
+    const fetchDetailSource=async(relativeUrl,label,includeTransaction=false)=>{
+      try{
+        const extraResult=await pageFetchJson(page,async()=>({url:buildHapoalimAdditionalDetailsUrl(HAPOALIM_BASE_URL,relativeUrl,accountId)}),{initialReady:reusableReady});
+        reusableReady=extraResult.ready;
+        const normalized=normalizeHapoalimAdditionalDetails(includeTransaction?{transaction,additionalInformation:extraResult.data}:{additionalInformation:extraResult.data});
+        detailSources.push(normalized);
+        return normalized;
+      }catch(error){
+        warnings.push(`${label}: ${error?.message||error}`);reusableReady=null;return null;
+      }
+    };
+    if(pfmDetails)pfmNormalized=await fetchDetailSource(pfmDetails,'פרטי אסמכתה',true);
+    // Hapoalim exposes a second per-transaction `details` link. For cheque rows this can point
+    // at the dedicated /current-account/cheques/... endpoint used by the bank's expanded UI.
+    // Keep it separate from PFM so a cheque-row reference can never replace the deposit reference.
+    if(transactionDetails&&transactionDetails!==pfmDetails)await fetchDetailSource(transactionDetails,'פירוט שיקים',false);
+    const details=mergeHapoalimAdditionalDetails(...detailSources);
+    enriched.push({
+      ...transaction,
+      ...(pfmNormalized?.referenceNumber?{referenceNumber:pfmNormalized.referenceNumber}:{}),
+      ...(detailSources.length?{netunimAdditionalDetails:details}:{}),
+      ...(warnings.length?{netunimAdditionalDetailsWarning:`לא ניתן היה לטעון את כל פירוט השיק מהבנק: ${warnings.join(' | ')}`}:{})
+    });
   }
   return {transactions:enriched,ready:reusableReady};
 }

@@ -20,6 +20,7 @@ import {
   buildHapoalimAdditionalDetailsUrl,
   isHapoalimChequeTransaction,
   normalizeHapoalimAdditionalDetails,
+  mergeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
   isTransientNavigationError,
   SILENT_AUTH_TIMEOUT_MS,
@@ -163,8 +164,8 @@ assert.equal(HAPOALIM_TRANSACTION_LIMIT,1000,'bridge requests the full thirty-da
 assert.equal(BANK_FEED_TRANSACTION_LIMIT,20000,'shared Kupa bank feed preserves complete multi-page bank snapshots without silently trimming them');
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 
-const detailPayload=[{
-  transactionNumber:987654,
+const pfmDetailPayload=[{transactionNumber:855252329256,transactionStatusCode:0,transactionSum:0,check:false,multiCheck:false}];
+const chequeEndpointPayload=[{
   chequeCount:2,
   rows:[
     {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeNumber:'4463454',chequeAmount:830,scanImageUrl:'https://login.bankhapoalim.co.il/temporary/scan?id=secret'},
@@ -172,14 +173,17 @@ const detailPayload=[{
   ],
   sessionToken:'must-not-survive',
 }];
-const chequeDetails=normalizeHapoalimAdditionalDetails(detailPayload);
-assert.equal(chequeDetails.referenceNumber,'987654','Hapoalim additional transaction data exposes the bank transaction reference without guessing');
+const pfmChequeDetails=normalizeHapoalimAdditionalDetails(pfmDetailPayload);
+const dedicatedChequeDetails=normalizeHapoalimAdditionalDetails(chequeEndpointPayload);
+const chequeDetails=mergeHapoalimAdditionalDetails(pfmChequeDetails,dedicatedChequeDetails);
+assert.equal(chequeDetails.referenceNumber,'855252329256','PFM keeps the aggregate Hapoalim deposit reference while the dedicated cheque source is merged separately');
 assert.deepEqual(chequeDetails.checkNumbers,['4463454','80000071'],'explicit per-cheque identifiers are preserved exactly as returned by the bank');
 assert.equal(chequeDetails.checkCount,2,'explicit bank-provided cheque count is preserved');
 assert.deepEqual(chequeDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830],['17','732','105323448','80000071',1000]],'structured bank/branch/account/check-number/amount rows become a deterministic cheque table, including the bank UI row reference shown as אסמכתא (מס׳ צ׳ק)');
 assert.equal(chequeDetails.hasDocumentReference,true,'scan/document presence can be indicated without persisting its URL');
 assert.equal(JSON.stringify(chequeDetails).includes('secret'),false,'document/session values are never persisted into the shared bank feed');
 assert.equal(buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','/details?id=7','12-345-678901'),'https://login.bankhapoalim.co.il/details?id=7&accountId=12-345-678901&lang=he','pfm detail requests stay on Hapoalim origin and add exact account/language parameters');
+assert.equal(buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','/ServerServices/current-account/cheques/10126?view=paying&originalEventDate=20190613&chequeAmount=12840.0','12-345-678901'),'https://login.bankhapoalim.co.il/ServerServices/current-account/cheques/10126?view=paying&originalEventDate=20190613&chequeAmount=12840.0&accountId=12-345-678901&lang=he','the bank-provided dedicated cheque details path is fetched on the authenticated Hapoalim origin without rewriting its cheque parameters');
 assert.throws(()=>buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.co.il','https://example.com/details','12-345-678901'),e=>e?.code==='UNSAFE_DETAIL_URL','foreign pfm detail URLs fail closed');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק.שיק בסלולר'}),true,'bank-provided mobile cheque deposit description is recognized for targeted detail enrichment');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק שיק-ע.ישיר'}),true,'direct-channel cheque deposit remains eligible for targeted enrichment');

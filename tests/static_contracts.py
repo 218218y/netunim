@@ -451,8 +451,8 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=34" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v34 contract")
+ok("const BANK_BRIDGE_VERSION=45" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v45 contract")
 ok("const CREDIT_BRIDGE_VERSION=44" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
    "orders Kupa UI: credit controls require Bridge v44 / Credit Connector contract v2 so older bridges cannot silently miss the Isracard/Amex DigitalV3 pending path")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in orders_finance_view,
