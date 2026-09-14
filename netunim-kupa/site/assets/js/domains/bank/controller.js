@@ -6,7 +6,7 @@ import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
-const BANK_BRIDGE_VERSION=49;
+const BANK_BRIDGE_VERSION=50;
 
 function canonicalJson(value){
   if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;

@@ -290,6 +290,7 @@ orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
 ok("getChecksPending:(...args)=>storageChecks.getChecksPending(...args)" in orders_main[orders_main.find("const syncChecks=createSyncChecks({"):orders_main.find("const domainsFinanceController=createDomainsFinanceController({")],
    "orders cloud sync composition: shared-checks durable outbox reader is injected into createSyncChecks")
 orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
+orders_bank_connection_view = (O / "site/assets/js/domains/finance/bank-connection-view.js").read_text(encoding="utf-8")
 orders_credit_detail_view = (O / "site/assets/js/domains/finance/credit-detail-view.js").read_text(encoding="utf-8")
 orders_checks_view = (O / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
@@ -328,7 +329,8 @@ ok('creditFilteredSummary' in orders_finance_view
    and 'creditFiltersMarkup(s,filtered)' in orders_finance_view
    and 'creditUnassignedNotice(filtered)' in orders_finance_view,
    "orders credit filters: displayed totals, partial counts and unassigned warnings obey the same active account/provider/card scope as the main forecast")
-ok("if(section==='bank')return `${bankSyncPanelMarkup(s)}${bankMarkup(s)}`" in orders_finance_view
+ok("if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===true})}${bankMarkup(s)}`" in orders_finance_view
+   and 'id="ordersBankSyncPanel"' in orders_bank_connection_view
    and "if(section==='credit')return `${creditSyncPanelMarkup(s)}${creditMarkup(s)}`" in orders_finance_view
    and '.finance-sync-settings-body[hidden]{display:none}' in orders_css
    and '.finance-sync-settings-page{min-width:0;border:1px solid #dbe3e8' in orders_css
@@ -452,11 +454,13 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=49" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v49 contract")
+ok("const BANK_BRIDGE_VERSION=50" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v50 contract")
+ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
+   'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
-ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_finance_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics' in orders_main,
+ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics' in orders_main,
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
 ok("const CREDIT_BRIDGE_VERSION=44" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
    "orders Kupa UI: credit controls require Bridge v44 / Credit Connector contract v2 so older bridges cannot silently miss the Isracard/Amex DigitalV3 pending path")

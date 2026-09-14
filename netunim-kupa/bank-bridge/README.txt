@@ -330,3 +330,14 @@ Bridge v49 — local cheque diagnostic export
 The missing multi-cheque number is no longer guessed. Every Hapoalim bank refresh now creates one bounded, local-only diagnostic snapshot containing only transactions that the bank activity description explicitly classifies as cheque deposit, returned cheque or returned-cheque credit. For each such transaction the snapshot records the sanitized original transaction object, the exact pfmDetails/details request path, the sanitized JSON response before normalization, and the normalized/merged cheque-detail result. The file is atomically replaced after each bank refresh and is never copied into the browser feed, Kupa state, Orders state, backups or Supabase.
 
 GET /bank/diagnostics is an authenticated loopback-only export of that latest snapshot. The UI exposes it as "ייצוא אבחון שיקים (TXT)" inside Bank synchronization options in both Kupa and Orders. Credentials, password/user-code fields, cookies, authorization/session/XSRF tokens, HTML and binary/document/image payloads are redacted. Sensitive query parameters such as accountId are redacted while the endpoint path and non-secret cheque/date/amount parameters remain visible. The text file can still contain financial transaction values and should therefore be shared only deliberately. If no refresh has created a snapshot yet, the endpoint reports that a bank refresh is required instead of inventing data.
+
+Bridge v50 — authoritative Hapoalim cheque number mapping
+---------------------------------------------------------
+Diagnostic captures from the live Hapoalim cheque endpoint proved that
+/ServerServices/current-account/cheques/... returns each cheque as a list row with
+`bank`, `branch`, `account`, `number`, and `amount`. Bridge v50 maps the dedicated
+`number` field directly to checkNumber for single deposits, multi-cheque deposits,
+returned cheques, and returned-cheque credits. Transaction/deposit referenceNumber is
+kept only as transaction metadata and is never used as a fallback cheque number.
+The document/image fields remain local/session-scoped evidence only; the shared feed
+continues to persist only hasDocumentReference rather than sensitive document URLs.

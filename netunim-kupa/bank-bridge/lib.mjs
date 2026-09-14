@@ -243,7 +243,7 @@ function nestedSemanticPairsFromObject(value,depth=0){
   return pairs;
 }
 function normalizeChequeItemPairs(pairs){
-  let bankNumber='',branchNumber='',accountNumber='',checkNumber='',rowReference='',amount=null,hasDocumentReference=false;
+  let bankNumber='',branchNumber='',accountNumber='',checkNumber='',amount=null,hasDocumentReference=false;
   for(const [rawKey,rawValue] of pairs){
     const key=String(rawKey||'');
     if(isUnsafeTechnicalDetailKey(key))continue;
@@ -254,26 +254,42 @@ function normalizeChequeItemPairs(pairs){
     if(isBranchNumberKey(key)){if(!branchNumber)branchNumber=compactText(clean,20);continue}
     if(isAccountNumberKey(key)){if(!accountNumber)accountNumber=compactText(clean,40);continue}
     if(isChequeNumberKey(key)){if(!checkNumber)checkNumber=compactText(clean,80);continue}
-    // In the bank's expanded cheque-deposit table the row reference is presented as
-    // "אסמכתא (מס' צ'ק)". Treat a generic reference as the cheque number ONLY when
-    // this row is independently proven by bank+branch+account+amount.
-    if(isTransactionReferenceKey(key)){if(!rowReference)rowReference=compactText(clean,80);continue}
+    // A generic transaction/reference field is not a cheque identifier. The current
+    // Hapoalim cheque endpoint exposes the cheque number in its dedicated `number`
+    // field; labelled semantic cheque-number fields are handled above.
+    if(isTransactionReferenceKey(key))continue;
     if(isChequeAmountKey(key)&&amount===null){
       const n=Number(String(clean).replace(/[,\s₪]/g,''));if(Number.isFinite(n)&&n>0)amount=n;
     }
   }
   const fullAccountIdentity=!!(bankNumber&&branchNumber&&accountNumber);
-  if(!checkNumber&&fullAccountIdentity&&rowReference)checkNumber=rowReference;
   if(!(Number.isFinite(amount)&&amount>0&&(checkNumber||fullAccountIdentity)))return null;
+  return {bankNumber,branchNumber,accountNumber,checkNumber,amount,hasDocumentReference};
+}
+function normalizeHapoalimChequeListItem(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+  // Captured Hapoalim /current-account/cheques/... responses use this exact row
+  // contract: {bank, branch, account, number, amount, ...}. `number` is the bank's
+  // authoritative cheque number. Do not reinterpret the transaction reference.
+  const required=['bank','branch','account','number','amount'];
+  if(!required.every(key=>Object.prototype.hasOwnProperty.call(value,key)))return null;
+  const bankNumber=compactText(meaningfulDetailValue(value.bank),20);
+  const branchNumber=compactText(meaningfulDetailValue(value.branch),20);
+  const accountNumber=compactText(meaningfulDetailValue(value.account),40);
+  const checkNumber=compactText(meaningfulDetailValue(value.number),80);
+  const amountNumber=Number(String(value.amount??'').replace(/[,\s₪]/g,''));
+  const amount=Number.isFinite(amountNumber)&&amountNumber>0?amountNumber:null;
+  const hasDocumentReference=Object.entries(value).some(([key,child])=>isDocumentDetailKey(key)&&!!meaningfulDetailValue(child));
+  if(!bankNumber||!branchNumber||!accountNumber||!amount)return null;
   return {bankNumber,branchNumber,accountNumber,checkNumber,amount,hasDocumentReference};
 }
 function normalizeChequeItemObject(value){
   if(!value||typeof value!=='object'||Array.isArray(value))return null;
-  // Hapoalim may render a table cell as a nested {label,value}-like object. The old
-  // parser walked those nested objects globally, so it could learn the cheque number
-  // but lose its association with the bank/branch/account/amount row. Fold nested
-  // semantic objects into the SAME row; never cross array boundaries (which may hold
-  // several cheques).
+  const nativeChequeItem=normalizeHapoalimChequeListItem(value);
+  if(nativeChequeItem)return nativeChequeItem;
+  // Other Hapoalim views may render a table cell as a nested {label,value}-like
+  // object. Fold nested semantic objects into the SAME row; never cross array
+  // boundaries (which may hold several cheques).
   return normalizeChequeItemPairs(nestedSemanticPairsFromObject(value));
 }
 function normalizeChequeItemSemanticArray(value){
@@ -450,7 +466,6 @@ export function normalizeHapoalimTransaction(txn){
   // transaction counterparty and are not guaranteed to be the cheque's printed account.
   // v47 synthesized a second row from contra* and caused exactly that corruption.
   const combinedExtra=normalizedExtra;
-  const chequeDetailsReference=compactText(txn?.netunimChequeDetailsReference,80);
   const checkDetails=chequeKind?{
     kind:chequeKind,
     checkNumbers:Array.isArray(combinedExtra?.checkNumbers)?combinedExtra.checkNumbers.map(x=>compactText(x,80)).filter(x=>x&&x!=='0').slice(0,50):[],
@@ -463,29 +478,14 @@ export function normalizeHapoalimTransaction(txn){
     warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
   }:null;
   if(checkDetails){
-    // A reference read from the dedicated `details` endpoint is cheque-detail context,
-    // unlike the top-level transaction reference. Use it only for a single returned-
-    // cheque detail row. For plain "החזרת שיק", the bank's own top-level reference is
-    // also the cheque reference when the detail endpoint omitted it; this fallback is
-    // deliberately NOT valid for "הצ שיק חוזר-נט".
-    if(checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber){
-      const returnReference=chequeDetailsReference&&chequeDetailsReference!=='0'?chequeDetailsReference:(chequeKind==='returned'&&bankReference&&bankReference!=='0'?bankReference:'');
-      if(returnReference){checkDetails.checkItems[0].checkNumber=returnReference;if(!checkDetails.checkNumbers.includes(returnReference))checkDetails.checkNumbers.push(returnReference)}
-    }
+    // Cheque identifiers come only from cheque-detail fields supplied by the bank.
+    // Transaction/deposit references remain separate metadata and are never promoted
+    // to cheque numbers, even when they happen to be equal for a particular row.
     const used=new Set(checkDetails.checkItems.map(item=>item.checkNumber).filter(Boolean));
     const remaining=checkDetails.checkNumbers.filter(number=>!used.has(number));
     const missing=checkDetails.checkItems.filter(item=>!item.checkNumber);
     // A single unmatched bank-supplied cheque number has only one possible row.
     if(missing.length===1&&remaining.length===1){missing[0].checkNumber=remaining[0];used.add(remaining[0])}
-    // For an explicit one-cheque deposit Hapoalim exposes the cheque number as the
-    // transaction/deposit reference itself (the public cheque detail URL follows the
-    // same convention). Never apply this to multi-cheque deposits, where the reference
-    // is an aggregate deposit identifier.
-    const declaredCount=Number(checkDetails.checkCount);
-    if(chequeKind==='deposit'&&checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber&&!checkDetails.checkNumbers.length&&bankReference&&bankReference!=='0'&&(!Number.isFinite(declaredCount)||declaredCount<=1)){
-      checkDetails.checkItems[0].checkNumber=bankReference;
-      checkDetails.checkNumbers.push(bankReference);
-    }
     for(const item of checkDetails.checkItems){if(item.checkNumber&&!checkDetails.checkNumbers.includes(item.checkNumber))checkDetails.checkNumbers.push(item.checkNumber)}
   }
   return {

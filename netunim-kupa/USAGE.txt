@@ -115,3 +115,10 @@ Credit feed v3 — בחירת כרטיסים וסיכום חודשי
 
 
 - ב-Bridge v49 נוספה בתוך „אפשרויות סינכרון” פעולה „ייצוא אבחון שיקים (TXT)”. אחרי רענון בנק היא מורידה קובץ מקומי שמכיל רק תנועות שהפועלים זיהה כתנועות שיק, יחד עם שמות השדות והערכים המסוננים של שורת העו״ש ושל תגובות pfmDetails/details לפני ואחרי הנרמול. הקובץ אינו נשמר בענן ואינו נכנס לגיבויים. סיסמה, קוד משתמש, cookies, authorization/session/XSRF tokens, HTML ותמונות/מסמכים בינאריים מושחרים; accountId בכתובות מושחר גם הוא. הקובץ עדיין יכול להכיל סכומים, אסמכתאות ופרטי שיק ולכן יש לשתף אותו רק במכוון. אם עדיין לא בוצע רענון עם v49, הייצוא יבקש לבצע רענון תחילה.
+
+Bank Bridge v50 cheque identity
+-------------------------------
+The bank's authenticated cheque-details response supplies the printed cheque number in
+`details.list[].number`. v50 reads that field directly for all completed cheque detail
+rows, including multi-cheque deposits and returned-cheque credits. Aggregate transaction
+references are not copied into cheque-number fields.

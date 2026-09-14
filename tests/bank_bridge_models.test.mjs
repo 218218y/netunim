@@ -46,7 +46,7 @@ import {
   CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
 
-const chequeDiagnostic=createBankChequeDiagnosticRun({bridgeVersion:49});
+const chequeDiagnostic=createBankChequeDiagnosticRun({bridgeVersion:50});
 recordBankChequeDiagnostic(chequeDiagnostic,{role:'business',chequeKind:'deposit',transaction:{activityDescription:'הפק.שיק בסלולר',referenceNumber:855252329256,password:'do-not-export',details:'/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550'},detailSources:[{source:'פירוט שיקים',request:'https://login.bankhapoalim.co.il/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550&XSRF-TOKEN=secret',response:{rows:[{label:"מס' צ'ק",value:'4463454',accountNumber:'105012322'}],cookie:'session-secret',html:'<!doctype html><html>secret challenge</html>',checkImage:'A'.repeat(1200)},normalized:{checkNumbers:['4463454']}}],mergedAdditionalDetails:{checkNumbers:['4463454']}});
 finishBankChequeDiagnosticRun(chequeDiagnostic);
 const chequeDiagnosticText=formatBankChequeDiagnosticText(chequeDiagnostic);
@@ -181,16 +181,16 @@ assert.equal(BANK_FEED_TRANSACTION_LIMIT,20000,'shared Kupa bank feed preserves 
 assert.equal(ymdDate(new Date(2026,7,30,12,0,0)),'20260830','Hapoalim request dates use local YYYYMMDD');
 
 const pfmDetailPayload=[{transactionNumber:855252329256,transactionStatusCode:0,transactionSum:0,check:false,multiCheck:false}];
-const chequeEndpointPayload=[{
-  chequeCount:2,
-  rows:[
-    {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeNumber:'4463454',chequeAmount:830,scanImageUrl:'https://login.bankhapoalim.co.il/temporary/scan?id=secret'},
-    {bankNumber:17,branchNumber:732,accountNumber:'105323448',referenceNumber:'80000071',chequeAmount:1000},
-  ],
-  sessionToken:'must-not-survive',
-}];
+const chequeEndpointPayload={metadata:null,list:[
+  {bank:52,branch:183,account:105012322,number:4463454,transactionDate:0,amount:830,imageId:'document-1',imageFrontLink:'front-1',imageBackLink:'back-1',formattedAmountForMobile:'₪ 830.00',formattedTransactionDate:null},
+  {bank:17,branch:732,account:105323448,number:80000071,transactionDate:0,amount:1000,imageId:'document-2',imageFrontLink:'front-2',imageBackLink:'back-2',formattedAmountForMobile:'₪ 1,000.00',formattedTransactionDate:null},
+]};
 const pfmChequeDetails=normalizeHapoalimAdditionalDetails(pfmDetailPayload);
 const dedicatedChequeDetails=normalizeHapoalimAdditionalDetails(chequeEndpointPayload);
+const capturedReturnedCreditDetails=normalizeHapoalimAdditionalDetails({metadata:null,list:[{bank:52,branch:183,account:105012322,number:4463454,transactionDate:0,amount:830,imageId:'document-returned',imageFrontLink:'front-returned',imageBackLink:'back-returned',formattedAmountForMobile:'₪ 830.00',formattedTransactionDate:null}]});
+assert.deepEqual(dedicatedChequeDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830],['17','732','105323448','80000071',1000]],'captured Hapoalim details.list rows map their native `number` field directly to the cheque number for multi-cheque deposits');
+assert.deepEqual(dedicatedChequeDetails.checkNumbers,['4463454','80000071'],'native Hapoalim details.list number fields become the authoritative per-cheque identifier list');
+assert.equal(capturedReturnedCreditDetails.checkItems[0]?.checkNumber,'4463454','returned-cheque credit uses details.list[].number directly instead of the unrelated transaction reference');
 const chequeDetails=mergeHapoalimAdditionalDetails(pfmChequeDetails,dedicatedChequeDetails);
 const nestedChequeCells=normalizeHapoalimAdditionalDetails({rows:[
   {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeAmount:830,referenceCell:{label:"אסמכתא (מס' צ'ק)",value:'4463454'}},
@@ -252,13 +252,16 @@ assert.equal(chequeArray.checkCount,3,'explicit cheque-number arrays provide a d
 const rawInbound={referenceNumber:101,eventDate:'20260830',valueDate:'20260830',eventAmount:250,eventActivityTypeCode:1,activityDescription:'העברה נכנסת',serialNumber:9,currentBalance:4321.5,beneficiaryDetailsData:{partyName:'לקוח'}};
 const rawOutbound={referenceNumber:102,eventDate:'20260829',valueDate:'20260829',eventAmount:80,eventActivityTypeCode:2,activityDescription:'הוראת קבע',serialNumber:0,currentBalance:4071.5,beneficiaryDetailsData:{messageDetail:'בדיקה'}};
 const rawCheque={referenceNumber:555,eventDate:'20260828',valueDate:'20260828',eventAmount:1900,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:77,currentBalance:5971.5,netunimAdditionalDetails:chequeDetails};
-const singleCheque=normalizeHapoalimTransaction({referenceNumber:10168,eventDate:'20260901',valueDate:'20260901',eventAmount:550,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:78,currentBalance:6521.5,netunimAdditionalDetails:{referenceNumber:'10168',checkCount:1,checkNumbers:[],checkItems:[{bankNumber:'12',branchNumber:'613',accountNumber:'678542',checkNumber:'',amount:550}],hasDocumentReference:false}});
-assert.equal(singleCheque.checkDetails.checkItems[0].checkNumber,'10168','a proven single-cheque deposit may use its Hapoalim deposit reference as the cheque number when the detail row omits a separate identifier');
-assert.deepEqual(singleCheque.checkDetails.checkNumbers,['10168'],'single-cheque fallback is preserved in the normalized identifier list for search/reconciliation');
+const singleCheque=normalizeHapoalimTransaction({referenceNumber:10168,eventDate:'20260901',valueDate:'20260901',eventAmount:550,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:78,currentBalance:6521.5,netunimAdditionalDetails:normalizeHapoalimAdditionalDetails({metadata:null,list:[{bank:12,branch:613,account:678542,number:10168,transactionDate:0,amount:550,imageId:'document-single'}]})});
+assert.equal(singleCheque.checkDetails.checkItems[0].checkNumber,'10168','single-cheque deposits use the dedicated bank details.list[].number field directly');
+assert.deepEqual(singleCheque.checkDetails.checkNumbers,['10168'],'direct single-cheque identifiers remain searchable after transaction normalization');
+const singleChequeWithoutDirectNumber=normalizeHapoalimTransaction({referenceNumber:10168,eventDate:'20260901',valueDate:'20260901',eventAmount:550,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:78,currentBalance:6521.5,netunimAdditionalDetails:{referenceNumber:'10168',checkCount:1,checkNumbers:[],checkItems:[{bankNumber:'12',branchNumber:'613',accountNumber:'678542',checkNumber:'',amount:550}],hasDocumentReference:false}});
+assert.equal(singleChequeWithoutDirectNumber.checkDetails.checkItems[0].checkNumber,'','a transaction/deposit reference is never promoted to cheque number when the dedicated bank field is missing');
 const multiChequeWithoutNumbers=normalizeHapoalimTransaction({referenceNumber:855252329256,eventDate:'20260820',valueDate:'20260820',eventAmount:1830,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:79,currentBalance:101432.34,netunimAdditionalDetails:{referenceNumber:'855252329256',checkCount:2,checkNumbers:[],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'',amount:830},{bankNumber:'17',branchNumber:'732',accountNumber:'105323448',checkNumber:'',amount:1000}]}});
 assert.deepEqual(multiChequeWithoutNumbers.checkDetails.checkItems.map(x=>x.checkNumber),['',''],'aggregate multi-cheque deposit reference is never copied into individual cheque rows');
-const returnedCheque=normalizeHapoalimTransaction({referenceNumber:4463454,eventDate:'20260912',valueDate:'20260912',eventAmount:830,eventActivityTypeCode:2,activityDescription:'החזרת שיק',serialNumber:81,currentBalance:100602.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:5012322,beneficiaryDetailsData:{messageHeadline:'סיבת החזרה:',messageDetail:'אין כיסוי מספיק'},netunimAdditionalDetails:{referenceNumber:'4463454',checkCount:1,checkNumbers:[],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'',amount:830}]},netunimChequeDetailsReference:'4463454'});
-const returnedChequeCredit=normalizeHapoalimTransaction({referenceNumber:286020666,eventDate:'20260913',valueDate:'20260913',eventAmount:830,eventActivityTypeCode:1,activityDescription:'הצ שיק חוזר-נט',serialNumber:82,currentBalance:101432.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:5012322,netunimAdditionalDetails:{referenceNumber:'4463454',checkCount:1,checkNumbers:[],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'',amount:830}]},netunimChequeDetailsReference:'4463454'});
+const authoritativeReturnedDetails=normalizeHapoalimAdditionalDetails({metadata:null,list:[{bank:52,branch:183,account:105012322,number:4463454,transactionDate:0,amount:830,imageId:'document-returned',originalEventDate:'20260821',formattedOriginalEventDate:'21/08/26'}]});
+const returnedCheque=normalizeHapoalimTransaction({referenceNumber:4463454,eventDate:'20260912',valueDate:'20260912',eventAmount:830,eventActivityTypeCode:2,activityDescription:'החזרת שיק',serialNumber:81,currentBalance:100602.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:5012322,beneficiaryDetailsData:{messageHeadline:'סיבת החזרה:',messageDetail:'אין כיסוי מספיק'},netunimAdditionalDetails:authoritativeReturnedDetails});
+const returnedChequeCredit=normalizeHapoalimTransaction({referenceNumber:286020666,eventDate:'20260913',valueDate:'20260913',eventAmount:830,eventActivityTypeCode:1,activityDescription:'הצ שיק חוזר-נט',serialNumber:82,currentBalance:101432.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:5012322,netunimAdditionalDetails:authoritativeReturnedDetails});
 assert.equal(returnedCheque.cheque,false,'returned cheque identity never turns the debit into a cheque deposit');
 assert.equal(returnedCheque.checkDetails.kind,'returned','returned cheque keeps a typed non-deposit cheque context');
 assert.deepEqual(returnedCheque.checkDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830]],'returned cheque keeps exactly the authoritative expanded-detail row; top-level contra account data cannot synthesize a duplicate or overwrite the printed cheque account');
