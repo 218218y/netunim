@@ -372,6 +372,7 @@ ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-
    "kupa expenses hub: the former Credit navigation is labeled Expenses and defaults to an internal Credit/Expenses surface")
 expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding="utf-8")
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
+orders_bank_detail_view=(O / "site/assets/js/domains/finance/bank-transaction-detail-view.js").read_text(encoding="utf-8")
 orders_actions=(O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and "'bank-date-from'" in source and "'bank-date-to'" in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
@@ -451,8 +452,10 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=45" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v45 contract")
+ok("const BANK_BRIDGE_VERSION=46" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v46 contract")
+ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
+   "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
 ok("const CREDIT_BRIDGE_VERSION=44" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
    "orders Kupa UI: credit controls require Bridge v44 / Credit Connector contract v2 so older bridges cannot silently miss the Isracard/Amex DigitalV3 pending path")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in orders_finance_view,

@@ -176,6 +176,15 @@ const chequeEndpointPayload=[{
 const pfmChequeDetails=normalizeHapoalimAdditionalDetails(pfmDetailPayload);
 const dedicatedChequeDetails=normalizeHapoalimAdditionalDetails(chequeEndpointPayload);
 const chequeDetails=mergeHapoalimAdditionalDetails(pfmChequeDetails,dedicatedChequeDetails);
+const nestedChequeCells=normalizeHapoalimAdditionalDetails({rows:[
+  {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeAmount:830,referenceCell:{label:"אסמכתא (מס' צ'ק)",value:'4463454'}},
+  {bankNumber:17,branchNumber:732,accountNumber:'105323448',chequeAmount:1000,referenceCell:{label:'מספר שיק',value:'80000071'}},
+]});
+assert.deepEqual(nestedChequeCells.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'nested Hapoalim label/value cells stay attached to the same cheque row instead of becoming detached top-level numbers');
+const semanticChequeRow=normalizeHapoalimAdditionalDetails({rows:[[
+  {label:'בנק',value:'12'},{label:'מספר סניף',value:'613'},{label:'מספר חשבון',value:'678542'},{label:"אסמכתא (מס' צ'ק)",value:'10168'},{label:'סכום',value:'550'},
+]]});
+assert.deepEqual(semanticChequeRow.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['12','613','678542','10168',550]],'a row encoded as semantic table cells is reconstructed only within that row and preserves its cheque number');
 assert.equal(chequeDetails.referenceNumber,'855252329256','PFM keeps the aggregate Hapoalim deposit reference while the dedicated cheque source is merged separately');
 assert.deepEqual(chequeDetails.checkNumbers,['4463454','80000071'],'explicit per-cheque identifiers are preserved exactly as returned by the bank');
 assert.equal(chequeDetails.checkCount,2,'explicit bank-provided cheque count is preserved');
@@ -211,6 +220,11 @@ assert.equal(chequeArray.checkCount,3,'explicit cheque-number arrays provide a d
 const rawInbound={referenceNumber:101,eventDate:'20260830',valueDate:'20260830',eventAmount:250,eventActivityTypeCode:1,activityDescription:'העברה נכנסת',serialNumber:9,currentBalance:4321.5,beneficiaryDetailsData:{partyName:'לקוח'}};
 const rawOutbound={referenceNumber:102,eventDate:'20260829',valueDate:'20260829',eventAmount:80,eventActivityTypeCode:2,activityDescription:'הוראת קבע',serialNumber:0,currentBalance:4071.5,beneficiaryDetailsData:{messageDetail:'בדיקה'}};
 const rawCheque={referenceNumber:555,eventDate:'20260828',valueDate:'20260828',eventAmount:1900,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:77,currentBalance:5971.5,netunimAdditionalDetails:chequeDetails};
+const singleCheque=normalizeHapoalimTransaction({referenceNumber:10168,eventDate:'20260901',valueDate:'20260901',eventAmount:550,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:78,currentBalance:6521.5,netunimAdditionalDetails:{referenceNumber:'10168',checkCount:1,checkNumbers:[],checkItems:[{bankNumber:'12',branchNumber:'613',accountNumber:'678542',checkNumber:'',amount:550}],hasDocumentReference:false}});
+assert.equal(singleCheque.checkDetails.checkItems[0].checkNumber,'10168','a proven single-cheque deposit may use its Hapoalim deposit reference as the cheque number when the detail row omits a separate identifier');
+assert.deepEqual(singleCheque.checkDetails.checkNumbers,['10168'],'single-cheque fallback is preserved in the normalized identifier list for search/reconciliation');
+const multiChequeWithoutNumbers=normalizeHapoalimTransaction({referenceNumber:855252329256,eventDate:'20260820',valueDate:'20260820',eventAmount:1830,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:79,currentBalance:101432.34,netunimAdditionalDetails:{referenceNumber:'855252329256',checkCount:2,checkNumbers:[],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'',amount:830},{bankNumber:'17',branchNumber:'732',accountNumber:'105323448',checkNumber:'',amount:1000}]}});
+assert.deepEqual(multiChequeWithoutNumbers.checkDetails.checkItems.map(x=>x.checkNumber),['',''],'aggregate multi-cheque deposit reference is never copied into individual cheque rows');
 const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoalimTransaction(rawOutbound),cheque=normalizeHapoalimTransaction(rawCheque);
 assert.equal(inbound.amount,250,'incoming Hapoalim transaction is positive');
 assert.equal(outbound.amount,-80,'outgoing Hapoalim transaction is negative');

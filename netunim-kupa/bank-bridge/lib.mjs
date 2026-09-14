@@ -186,31 +186,69 @@ function semanticPairsFromObject(value){
   for(const [key,child] of entries){if(child===null||child===undefined||typeof child==='object')continue;pairs.push([key,child])}
   return pairs;
 }
-function normalizeChequeItemObject(value){
-  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+function nestedSemanticPairsFromObject(value,depth=0){
+  if(!value||typeof value!=='object'||Array.isArray(value)||depth>3)return [];
+  const pairs=semanticPairsFromObject(value);
+  for(const [rawKey,child] of Object.entries(value)){
+    if(!child||typeof child!=='object'||Array.isArray(child))continue;
+    const key=String(rawKey||'');
+    if(isUnsafeTechnicalDetailKey(key)||isDocumentDetailKey(key))continue;
+    pairs.push(...nestedSemanticPairsFromObject(child,depth+1));
+  }
+  return pairs;
+}
+function normalizeChequeItemPairs(pairs){
   let bankNumber='',branchNumber='',accountNumber='',checkNumber='',rowReference='',amount=null,hasDocumentReference=false;
-  for(const [rawKey,rawValue] of semanticPairsFromObject(value)){
+  for(const [rawKey,rawValue] of pairs){
     const key=String(rawKey||'');
     if(isUnsafeTechnicalDetailKey(key))continue;
     if(isDocumentDetailKey(key)){if(meaningfulDetailValue(rawValue))hasDocumentReference=true;continue}
     const clean=meaningfulDetailValue(rawValue);if(!clean)continue;
-    if(isBankNumberKey(key)){bankNumber=compactText(clean,20);continue}
-    if(isBranchNumberKey(key)){branchNumber=compactText(clean,20);continue}
-    if(isAccountNumberKey(key)){accountNumber=compactText(clean,40);continue}
-    if(isChequeNumberKey(key)){checkNumber=compactText(clean,80);continue}
+    if(isBankNumberKey(key)){if(!bankNumber)bankNumber=compactText(clean,20);continue}
+    if(isBranchNumberKey(key)){if(!branchNumber)branchNumber=compactText(clean,20);continue}
+    if(isAccountNumberKey(key)){if(!accountNumber)accountNumber=compactText(clean,40);continue}
+    if(isChequeNumberKey(key)){if(!checkNumber)checkNumber=compactText(clean,80);continue}
     // In the bank's expanded cheque-deposit table the row reference is presented as
     // "אסמכתא (מס' צ'ק)". Treat a generic reference as the cheque number ONLY when
-    // this object is independently proven to be a cheque row by bank+branch+account+amount.
-    if(isTransactionReferenceKey(key)){rowReference=compactText(clean,80);continue}
-    if(isChequeAmountKey(key)){
+    // this row is independently proven by bank+branch+account+amount.
+    if(isTransactionReferenceKey(key)){if(!rowReference)rowReference=compactText(clean,80);continue}
+    if(isChequeAmountKey(key)&&amount===null){
       const n=Number(String(clean).replace(/[,\s₪]/g,''));if(Number.isFinite(n)&&n>0)amount=n;
     }
   }
   const fullAccountIdentity=!!(bankNumber&&branchNumber&&accountNumber);
   if(!checkNumber&&fullAccountIdentity&&rowReference)checkNumber=rowReference;
-  // Accept only a real cheque row: positive amount plus an explicit cheque number, or a full bank/branch/account identity.
   if(!(Number.isFinite(amount)&&amount>0&&(checkNumber||fullAccountIdentity)))return null;
   return {bankNumber,branchNumber,accountNumber,checkNumber,amount,hasDocumentReference};
+}
+function normalizeChequeItemObject(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return null;
+  // Hapoalim may render a table cell as a nested {label,value}-like object. The old
+  // parser walked those nested objects globally, so it could learn the cheque number
+  // but lose its association with the bank/branch/account/amount row. Fold nested
+  // semantic objects into the SAME row; never cross array boundaries (which may hold
+  // several cheques).
+  return normalizeChequeItemPairs(nestedSemanticPairsFromObject(value));
+}
+function normalizeChequeItemSemanticArray(value){
+  if(!Array.isArray(value)||!value.length)return null;
+  const pairs=[];let semanticCells=0,objectCells=0;
+  for(const child of value.slice(0,30)){
+    if(!child||typeof child!=='object'||Array.isArray(child))continue;
+    objectCells++;
+    const entries=Object.entries(child);
+    // If a child already looks like a row (rather than one label/value cell), this
+    // array can contain several cheques and must never be collapsed across rows.
+    if(entries.some(([key])=>isBankNumberKey(key)||isBranchNumberKey(key)||isAccountNumberKey(key)||isChequeAmountKey(key)||isChequeNumberKey(key)||isTransactionReferenceKey(key)))return null;
+    const labelEntry=entries.find(([key,field])=>isSemanticLabelKey(key)&&meaningfulDetailValue(field));
+    const valueEntry=entries.find(([key,field])=>isSemanticValueKey(key)&&meaningfulDetailValue(field));
+    if(!labelEntry||!valueEntry||labelEntry[0]===valueEntry[0])continue;
+    pairs.push([meaningfulDetailValue(labelEntry[1]),valueEntry[1]]);semanticCells++;
+  }
+  // Reconstruct only a clearly tabular cheque row: every object in the array must
+  // be one semantic cell, and at least four cells are required to prove row shape.
+  if(semanticCells<4||semanticCells!==objectCells)return null;
+  return normalizeChequeItemPairs(pairs);
 }
 function chequeItemKey(item){return [item.bankNumber,item.branchNumber,item.accountNumber,item.checkNumber,item.amount].join('|')}
 
@@ -232,6 +270,7 @@ export function normalizeHapoalimAdditionalDetails(payload){
   const visit=(value,path='',depth=0)=>{
     if(depth>5||value===null||value===undefined)return;
     if(Array.isArray(value)){
+      addItem(normalizeChequeItemSemanticArray(value));
       if(path&&isChequeNumberKey(path)){for(const child of value.slice(0,50))consumeSemanticField(path,child);return}
       for(const child of value.slice(0,80))visit(child,path,depth+1);
       return;
@@ -329,6 +368,23 @@ export function normalizeHapoalimTransaction(txn){
     hasDocumentReference:!!normalizedExtra?.hasDocumentReference,
     warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
   }:null;
+  if(checkDetails){
+    const used=new Set(checkDetails.checkItems.map(item=>item.checkNumber).filter(Boolean));
+    const remaining=checkDetails.checkNumbers.filter(number=>!used.has(number));
+    const missing=checkDetails.checkItems.filter(item=>!item.checkNumber);
+    // A single unmatched bank-supplied cheque number has only one possible row.
+    if(missing.length===1&&remaining.length===1){missing[0].checkNumber=remaining[0];used.add(remaining[0])}
+    // For an explicit one-cheque deposit Hapoalim exposes the cheque number as the
+    // transaction/deposit reference itself (the public cheque detail URL follows the
+    // same convention). Never apply this to multi-cheque deposits, where the reference
+    // is an aggregate deposit identifier.
+    const declaredCount=Number(checkDetails.checkCount);
+    if(checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber&&!checkDetails.checkNumbers.length&&bankReference&&bankReference!=='0'&&(!Number.isFinite(declaredCount)||declaredCount<=1)){
+      checkDetails.checkItems[0].checkNumber=bankReference;
+      checkDetails.checkNumbers.push(bankReference);
+    }
+    for(const item of checkDetails.checkItems){if(item.checkNumber&&!checkDetails.checkNumbers.includes(item.checkNumber))checkDetails.checkNumbers.push(item.checkNumber)}
+  }
   return {
     id:identifier,
     date:isoFromBankDate(txn?.eventDate),
