@@ -19,6 +19,10 @@ import {
   HAPOALIM_TRANSACTION_LOOKBACK_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
   buildHapoalimAdditionalDetailsUrl,
+  hapoalimCreditSettlementProvider,
+  isHapoalimCreditPermissionDetails,
+  normalizeHapoalimCreditPermissionDetails,
+  mergeHapoalimCreditPermissionDetails,
   isHapoalimChequeTransaction,
   hapoalimChequeTransactionKind,
   normalizeHapoalimAdditionalDetails,
@@ -52,7 +56,7 @@ recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'depo
 recordBankAccountDiagnostic(bankDiagnostic,{role:'business',branchNumber:'613',accountNumber:'634063',balance:10000,availableBalance:9000,transactionCoverage:{complete:true,from:'2026-08-16',to:'2026-09-14',days:30},normalizedTransactionCount:2});
 finishBankDiagnosticRun(bankDiagnostic);
 const bankDiagnosticPayload=bankDiagnosticExportPayload(bankDiagnostic),bankDiagnosticText=JSON.stringify(bankDiagnosticPayload,null,2);
-assert.equal(bankDiagnosticPayload.schemaVersion,2,'bank diagnostics use the structured all-transaction JSON schema');
+assert.equal(bankDiagnosticPayload.schemaVersion,3,'bank diagnostics use the structured all-transaction JSON schema with credit-settlement detail coverage');
 assert.equal(bankDiagnosticPayload.accounts.business.captured,2,'bank diagnostics retain non-cheque and cheque transactions from the same sync');
 assert.equal(bankDiagnosticPayload.accounts.business.activitySummary.some(row=>row.activityDescription==='העברה נכנסת'&&row.sampleReferences.includes('123456789')),true,'bank diagnostics summarize incoming credits with their bank reference');
 assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.rawTransactionFields.includes('referenceCatenatedNumber'),true,'bank diagnostics inventory raw fields that are intentionally not part of the normal feed');
@@ -68,6 +72,10 @@ assert.equal(bankDiagnosticText.includes('A'.repeat(300)),false,'bank diagnostic
 assert.equal(bankDiagnosticText.includes('session=secret'),false,'bank diagnostics strip session query values from document links');
 assert.equal(bankDiagnosticText.includes('token=secret'),false,'bank diagnostics strip token query values from document links');
 assert.equal(sanitizeBankDiagnosticValue({Authorization:'Bearer abc',referenceNumber:4463454}).referenceNumber,4463454,'diagnostic sanitizer redacts secrets without erasing bank business fields');
+const sanitizedCardDiagnostic=sanitizeBankDiagnosticValue({cardNumber:'4580123412345678',rows:[{label:'מספר כרטיס',value:'4580 1234 1234 9876'}]});
+assert.equal(sanitizedCardDiagnostic.cardNumber,'•••• 5678','explicit card-number keys retain only last four digits in local diagnostics');
+assert.equal(sanitizedCardDiagnostic.rows[0].value,'•••• 9876','card-like PAN values are masked even when the semantic label and value are stored in separate fields');
+assert.equal(JSON.stringify(sanitizedCardDiagnostic).includes('4580123412345678'),false,'bank diagnostics never persist a full payment-card number');
 
 const amexInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'123456',voucherNumberRatzOutbound:'777777',dealSumOutbound:'0',fullPurchaseDate:'12/06/2026',fullPaymentDate:'02/07/2026',dealSum:'100.50',paymentSum:'100.50',currencyId:'ש"ח',fullSupplierNameHeb:'  חנות בדיקה  ',moreInfo:'תשלום 2 מתוך 3'},null);
 assert.equal(parseIsracardDate('31/08/2026'),'2026-08-31T00:00:00.000Z','Camoufox adapter parses issuer DD/MM/YYYY dates deterministically');
@@ -241,6 +249,33 @@ assert.equal(hapoalimChequeTransactionKind({activityDescription:'הצ שיק ח�
 assert.equal(isHapoalimChequeTransaction({activityDescription:'שיק'}),false,'ordinary cheque debits are not misclassified as cheque deposits');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'זיכוי מדיסקונט',beneficiaryDetailsData:{partyName:'זרצקי פרידה'}}),false,'beneficiary names containing the Hebrew letters צק cannot trigger cheque-deposit enrichment');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'העברה נכנסת'}),false,'ordinary transfers do not trigger extra cheque-detail requests');
+
+const calPermissionTxn={
+  eventActivityTypeCode:2,activityTypeCode:515,textCode:803,activityDescription:'כרטיסי אשראי ל',englishActionDesc:'VISA',
+  referenceNumber:8547994,referenceCatenatedNumber:80664,eventDate:'20260910',valueDate:'20260910',eventAmount:1363.17,serialNumber:4,
+  details:'/ServerServices/current-account/permissions/8547994?referenceCatenatedNumber=80664&eventAmount=1363.17&originalEventDate=20260910',
+};
+assert.equal(hapoalimCreditSettlementProvider(calPermissionTxn),'visaCal','the Hapoalim-truncated Cal legal name is issuer proof even though VISA alone is only a network name');
+assert.equal(hapoalimCreditSettlementProvider({...calPermissionTxn,activityDescription:'חיוב כרטיס',englishActionDesc:'VISA'}),'','a generic VISA label never guesses that a debit belongs to Cal');
+assert.equal(isHapoalimCreditPermissionDetails(calPermissionTxn),true,'credit settlement enrichment is restricted to the bank-provided current-account permission endpoint');
+assert.equal(isHapoalimCreditPermissionDetails({...calPermissionTxn,details:'/ServerServices/pfm/transactions?id=1'}),false,'PFM detail alone is not mistaken for a permission/card identity endpoint');
+const explicitCreditCards=normalizeHapoalimCreditPermissionDetails({cards:[
+  {cardNumber:'4580-1234-1234-1234'},
+  {cells:[{label:'4 ספרות אחרונות של הכרטיס',value:'5678'}]},
+]});
+assert.deepEqual(explicitCreditCards.cardLast4s,['1234','5678'],'one or several cards are accepted only from bank fields explicitly labelled as card identity');
+const unlabelledCreditNumbers=normalizeHapoalimCreditPermissionDetails({referenceNumber:'7248',referenceCatenatedNumber:'26326',identifier:'319095360',rows:[{label:'מזהה',value:'6774'}]});
+assert.deepEqual(unlabelledCreditNumbers.cardLast4s,[],'issuer references, permission references and other four-digit values are never promoted to a card number without an explicit card label');
+assert.deepEqual(mergeHapoalimCreditPermissionDetails(explicitCreditCards,{cardLast4s:['5678','9012']}),{cardLast4s:['1234','5678','9012']},'card suffixes from multiple explicit bank detail sources merge deterministically');
+const normalizedCalPermission=normalizeHapoalimTransaction({...calPermissionTxn,netunimCreditSettlementDetails:{...explicitCreditCards,detailFetched:true}});
+assert.deepEqual(normalizedCalPermission.creditSettlementDetails.cardLast4s,['1234','5678'],'verified bank-provided card suffixes survive transaction normalization');
+assert.equal(normalizedCalPermission.creditSettlementDetails.permissionReference,'80664','referenceCatenatedNumber is preserved separately as the bank permission identity');
+assert.equal(normalizedCalPermission.creditSettlementDetails.issuerReference,'8547994','referenceNumber remains a separate issuer/bank reference instead of being relabelled as a card number');
+const legacyAmexSettlement=normalizeHapoalimTransaction({eventActivityTypeCode:2,activityTypeCode:491,textCode:40,activityDescription:'אמריקן אקספרס',referenceNumber:6774,referenceCatenatedNumber:352,eventDate:'20260816',valueDate:'20260816',eventAmount:2122,serialNumber:4});
+assert.equal(legacyAmexSettlement.creditSettlementDetails.provider,'amex','legacy Amex bank activity is recognized as an issuer settlement');
+assert.equal(legacyAmexSettlement.creditSettlementDetails.issuerReference,'6774','the observed legacy Amex four-digit reference remains a bank/issuer reference');
+assert.equal(legacyAmexSettlement.creditSettlementDetails.permissionReference,'','a legacy debit without the permission endpoint does not invent a permission identity');
+assert.deepEqual(legacyAmexSettlement.creditSettlementDetails.cardLast4s,[],'a four-digit legacy reference is not called a card number unless the bank explicitly proves that meaning');
 
 const genericPfm=normalizeHapoalimAdditionalDetails([{transactionNumber:7826069983,transactionStatusCode:0,transactionSum:0,check:false,multiCheck:false,checkNumber:0}]);
 assert.equal(genericPfm.referenceNumber,'7826069983','generic PFM payload may still provide a useful aggregate bank transaction reference');

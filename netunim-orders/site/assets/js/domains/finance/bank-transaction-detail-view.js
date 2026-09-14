@@ -15,3 +15,15 @@ export function bankChequeDetails(row){
   const table=items.length?`<div class="bank-cheque-items-wrap"><table class="bank-cheque-items"><thead><tr><th>בנק</th><th>סניף</th><th>חשבון</th><th>מס׳ שיק</th><th>סכום</th><th>מסמך</th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.bankNumber||'—')}</td><td>${esc(item.branchNumber||'—')}</td><td>${esc(item.accountNumber||'—')}</td><td>${esc(item.checkNumber||'—')}</td><td>${money(item.amount)}</td><td>${imageCell(item)}</td></tr>`).join('')}</tbody></table></div>`:'';
   return facts.length||table||details.warning?`<div class="bank-cheque-info" data-cheque-kind="${esc(kind)}">${facts.length?`<div class="bank-cheque-facts">${facts.join('')}</div>`:''}${table}${details.warning?`<div class="bank-feed-warning">${esc(details.warning)}</div>`:''}</div>`:'';
 }
+
+
+export function bankCreditSettlementDetails(row){
+  const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return '';
+  const facts=[],cards=[...new Set((Array.isArray(details.cardLast4s)?details.cardLast4s:[]).filter(value=>/^\d{4}$/.test(String(value))))];
+  if(details.providerLabel)facts.push(`<span><b>חברת אשראי:</b> ${esc(details.providerLabel)}</span>`);
+  if(cards.length)facts.push(`<span><b>${cards.length===1?'כרטיס':'כרטיסים'}:</b> ${cards.map(value=>`•••• ${esc(value)}`).join(', ')}</span>`);
+  if(details.permissionReference)facts.push(`<span><b>מזהה הרשאת חיוב בבנק:</b> ${esc(details.permissionReference)}</span>`);
+  if(details.issuerReference)facts.push(`<span><b>אסמכתת חיוב בבנק:</b> ${esc(details.issuerReference)}</span>`);
+  if(!facts.length&&!details.warning)return '';
+  return `<div class="bank-credit-settlement-info bank-cheque-info">${facts.length?`<div class="bank-cheque-facts">${facts.join('')}</div>`:''}${details.warning?`<div class="bank-feed-warning">${esc(details.warning)}</div>`:''}</div>`;
+}

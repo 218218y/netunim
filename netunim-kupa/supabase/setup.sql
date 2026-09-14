@@ -701,6 +701,7 @@ create table if not exists public.bank_transactions (
   activity_type_code integer,
   cheque boolean not null default false,
   check_details jsonb,
+  credit_settlement_details jsonb,
   first_seen_at timestamptz not null default now(),
   last_changed_at timestamptz not null default now(),
   unique(owner_id,account_key,merge_key)
@@ -903,8 +904,8 @@ begin
     end if;
 
     if v_id is null then
-      insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details)
-      values(v_owner,p_account_key,p_account_role,r->>'mergeKey',v_date,v_processed,v_amount,coalesce(nullif(r->>'currency',''),'ILS'),v_description,coalesce(r->>'memo',''),coalesce(r->>'partyName',''),coalesce(r->>'partyHeadline',''),coalesce(r->>'messageHeadline',''),coalesce(r->>'messageDetail',''),v_status,v_balance,v_reference,v_serial,v_activity,coalesce((r->>'cheque')::boolean,false),r->'checkDetails');
+      insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,memo,party_name,party_headline,message_headline,message_detail,status,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details,credit_settlement_details)
+      values(v_owner,p_account_key,p_account_role,r->>'mergeKey',v_date,v_processed,v_amount,coalesce(nullif(r->>'currency',''),'ILS'),v_description,coalesce(r->>'memo',''),coalesce(r->>'partyName',''),coalesce(r->>'partyHeadline',''),coalesce(r->>'messageHeadline',''),coalesce(r->>'messageDetail',''),v_status,v_balance,v_reference,v_serial,v_activity,coalesce((r->>'cheque')::boolean,false),r->'checkDetails',r->'creditSettlementDetails');
       v_inserted:=v_inserted+1;
     else
       update public.bank_transactions b set
@@ -925,6 +926,7 @@ begin
         activity_type_code=coalesce(v_activity,b.activity_type_code),
         cheque=coalesce((r->>'cheque')::boolean,b.cheque),
         check_details=coalesce(r->'checkDetails',b.check_details),
+        credit_settlement_details=coalesce(r->'creditSettlementDetails',b.credit_settlement_details),
         last_changed_at=now()
       where b.id=v_id and (
         b.merge_key is distinct from coalesce(nullif(r->>'mergeKey',''),b.merge_key)
@@ -944,6 +946,7 @@ begin
         or b.activity_type_code is distinct from coalesce(v_activity,b.activity_type_code)
         or b.cheque is distinct from coalesce((r->>'cheque')::boolean,b.cheque)
         or b.check_details is distinct from coalesce(r->'checkDetails',b.check_details)
+        or b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)
       );
       if found then v_updated:=v_updated+1; end if;
     end if;

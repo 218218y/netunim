@@ -331,6 +331,22 @@ test('settlement never arbitrarily chooses equal card cycles, regardless of inpu
   }
 });
 
+test('explicit structured bank card identity resolves equal same-issuer cycles without parsing unrelated references',()=>{
+  const state=stateFor(['2222','3333'].map(accountNumber=>({accountNumber,txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'},
+  ]})));
+  state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{
+    date:'2026-09-10',amount:-1000,description:'מקס איט פיננסי',bankReference:'34685693',
+    creditSettlementDetails:{provider:'max',providerLabel:'MAX',issuerReference:'34685693',permissionReference:'26326',cardLast4s:['3333'],cardIdentitySource:'bank_detail_explicit',detailFetched:true},
+  }];
+  const result=kupaCashflow(state,'עסקי','2026-09-10');
+  assert.deepEqual(result.creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber),['2222'],'only the explicitly identified card is removed from the same-day payable cycle');
+  assert.equal(result.creditRows.find(row=>row.accountNumber==='3333')?.date,'2026-10-10','structured last-4 identity selects the matching MAX card even when amount/provider are otherwise ambiguous');
+  state.bank.feed.transactions[0].creditSettlementDetails={...state.bank.feed.transactions[0].creditSettlementDetails,cardLast4s:[]};
+  assert.deepEqual(kupaCashflow(state,'עסקי','2026-09-10').creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber).sort(),['2222','3333'],'issuerReference and permissionReference alone never become guessed card suffixes');
+});
+
 test('past-due unknown and FX amounts stay incomplete until bank proof or explicit expiry',()=>{
   for(const future of [false,true])for(const amount of [{chargedAmount:null},{chargedAmount:-50,chargedCurrency:'USD',originalAmount:-50,originalCurrency:'USD'}]){
     const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',...amount},...(future?[{id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'}]:[])]}]);

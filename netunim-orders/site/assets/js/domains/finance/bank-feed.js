@@ -4,6 +4,17 @@ export const BANK_FEED_TRANSACTION_LIMIT=20000;
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function cleanText(value,max=260){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
 function cleanIso(value){const s=String(value||'').trim();return s&&Number.isFinite(Date.parse(s))?new Date(s).toISOString():null}
+function normalizeCreditSettlementDetails(value){
+  if(!value||typeof value!=='object')return null;
+  const provider=['visaCal','max','isracard','amex'].includes(value.provider)?value.provider:'';if(!provider)return null;
+  const cardLast4s=[...new Set((Array.isArray(value.cardLast4s)?value.cardLast4s:[]).map(x=>String(x||'').replace(/\D/g,'')).filter(x=>/^\d{4}$/.test(x)))].slice(0,20);
+  return {
+    provider,providerLabel:cleanText(value.providerLabel,40),issuerReference:cleanText(value.issuerReference,100),permissionReference:cleanText(value.permissionReference,100),
+    bankActivityTypeCode:value.bankActivityTypeCode===null||value.bankActivityTypeCode===undefined||value.bankActivityTypeCode===''?null:(Number.isFinite(Number(value.bankActivityTypeCode))?Number(value.bankActivityTypeCode):null),
+    bankTextCode:value.bankTextCode===null||value.bankTextCode===undefined||value.bankTextCode===''?null:(Number.isFinite(Number(value.bankTextCode))?Number(value.bankTextCode):null),
+    cardLast4s,cardIdentitySource:cardLast4s.length&&value.cardIdentitySource==='bank_detail_explicit'?'bank_detail_explicit':'',detailFetched:value.detailFetched===true,warning:cleanText(value.warning,220),
+  };
+}
 function normalizeCheckDetails(value,fallbackKind=''){
   if(!value||typeof value!=='object')return null;
   const kind=['deposit','returned','returned_credit'].includes(value.kind)?value.kind:(fallbackKind==='deposit'?'deposit':'');
@@ -43,6 +54,7 @@ export function normalizeBankFeedTransaction(value){
     bankSerial:cleanText(row.bankSerial,100),
     cheque:!!row.cheque,
     checkDetails:normalizeCheckDetails(row.checkDetails,row.cheque?'deposit':''),
+    creditSettlementDetails:normalizeCreditSettlementDetails(row.creditSettlementDetails),
     archiveId:Number.isSafeInteger(Number(row.archiveId))&&Number(row.archiveId)>0?Number(row.archiveId):null,
     presenceState:['unknown','present','missing'].includes(row.presenceState)?row.presenceState:'unknown',
     firstSeenAt:cleanIso(row.firstSeenAt),

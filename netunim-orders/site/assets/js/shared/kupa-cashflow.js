@@ -50,6 +50,9 @@ function providerHintsForRows(rows){
 }
 function bankRowLooksLikeCreditSettlement(row,providers=[]){
   if(row?.status==='pending'||row?.presenceState==='missing')return false;
+  const structuredProvider=String(row?.creditSettlementDetails?.provider||'');
+  if(structuredProvider&&providers.some(provider=>CREDIT_SETTLEMENT_MARKERS[provider])&&!providers.includes(structuredProvider))return false;
+  if(structuredProvider&&providers.includes(structuredProvider))return true;
   const text=bankTransactionSearchText(row);
   if(!text)return false;
   const explicit=Object.keys(CREDIT_SETTLEMENT_MARKERS).filter(provider=>bankRowExplicitlyMatchesProvider(row,provider));
@@ -59,6 +62,7 @@ function bankRowLooksLikeCreditSettlement(row,providers=[]){
 }
 function bankRowExplicitlyMatchesProvider(row,provider){
   if(!provider||row?.status==='pending'||row?.presenceState==='missing')return false;
+  const structuredProvider=String(row?.creditSettlementDetails?.provider||'');if(structuredProvider)return structuredProvider===provider;
   const text=bankTransactionSearchText(row);if(!text)return false;
   // The truncated CAL legal name is common in bank feeds. Do not mistake a
   // generic phrase such as "credit cards for the month" for that institution.
@@ -66,7 +70,7 @@ function bankRowExplicitlyMatchesProvider(row,provider){
 }
 function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
-function bankTextHasCardSuffix(row,suffix){return !!suffix&&new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
+function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;const explicit=Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[];if(explicit.includes(String(suffix)))return true;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
 function settlementRowsForLatestElapsedCycle(installments,start,reference){
   const latestByCard=new Map();
   for(const row of installments){

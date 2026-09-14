@@ -9,8 +9,11 @@ const BINARY_KEY_RE=/(?:scan|base64|binary|blob|pdf|documentbytes|filebytes|rawh
 const DOCUMENT_ID_KEY_RE=/^(?:imageId|documentId|scanId)$/i;
 const DOCUMENT_LINK_KEY_RE=/^(?:imageFrontLink|imageBackLink|documentLink)$/i;
 const SENSITIVE_QUERY_RE=/(?:accountid|token|session|auth|authorization|xsrf|csrf|cookie|password|passwd|usercode|username|userid|secret|credential|otp|pin)/i;
+const CARD_NUMBER_KEY_RE=/(?:credit.?card|card).*(?:number|no|num|pan)|(?:number|no|num|pan).*(?:credit.?card|card)|(?:מספר|מס)(?:[ _.-]*)(?:כרטיס)|(?:כרטיס)(?:[ _.-]*)(?:מספר|מס)/i;
 
 function text(value,max=MAX_STRING_LENGTH){return String(value??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').trim().slice(0,max)}
+function maskCardLikeValue(value){const raw=String(value??'');const digits=raw.replace(/\D/g,'');return digits.length>=4?`•••• ${digits.slice(-4)}`:'[REDACTED_CARD]' }
+function maskPotentialPanText(value){return String(value??'').replace(/(?<!\d)(?:\d[ -]?){11,18}\d(?!\d)/g,match=>maskCardLikeValue(match))}
 function marker(kind,value){const size=typeof value==='string'?value.length:ArrayBuffer.isView(value)?value.byteLength:0;return `[REDACTED_${kind}${size?` length=${size}`:''}]`}
 function maybeUrl(value){const raw=String(value||'').trim();return /^(?:https?:\/\/|\/)/i.test(raw)?raw:''}
 function sanitizeUrl(raw){
@@ -50,20 +53,22 @@ function buildActivitySummary(account){
   return [...grouped.values()].sort((a,b)=>b.count-a.count||String(a.activityDescription).localeCompare(String(b.activityDescription),'he'));
 }
 function fieldInventory(account){
-  const rawFields=new Set(),beneficiaryFields=new Set(),normalizedFields=new Set(),checkDetailFields=new Set();
+  const rawFields=new Set(),beneficiaryFields=new Set(),normalizedFields=new Set(),checkDetailFields=new Set(),creditSettlementDetailFields=new Set();
   for(const entry of Array.isArray(account?.transactions)?account.transactions:[]){
     const raw=rawTransactionOf(entry),normalized=normalizedTransactionOf(entry);
     for(const key of Object.keys(raw))rawFields.add(key);
     if(raw?.beneficiaryDetailsData&&typeof raw.beneficiaryDetailsData==='object')for(const key of Object.keys(raw.beneficiaryDetailsData))beneficiaryFields.add(key);
     for(const key of Object.keys(normalized))normalizedFields.add(key);
     const details=normalized?.checkDetails;if(details&&typeof details==='object')for(const key of Object.keys(details))checkDetailFields.add(key);
+    const creditDetails=normalized?.creditSettlementDetails;if(creditDetails&&typeof creditDetails==='object')for(const key of Object.keys(creditDetails))creditSettlementDetailFields.add(key);
   }
-  return {rawTransactionFields:[...rawFields].sort(),beneficiaryDetailsFields:[...beneficiaryFields].sort(),normalizedTransactionFields:[...normalizedFields].sort(),normalizedCheckDetailFields:[...checkDetailFields].sort()};
+  return {rawTransactionFields:[...rawFields].sort(),beneficiaryDetailsFields:[...beneficiaryFields].sort(),normalizedTransactionFields:[...normalizedFields].sort(),normalizedCheckDetailFields:[...checkDetailFields].sort(),normalizedCreditSettlementDetailFields:[...creditSettlementDetailFields].sort()};
 }
 
 export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
   if(value===null||value===undefined)return value??null;
   const keyText=String(key||'');
+  if(CARD_NUMBER_KEY_RE.test(keyText))return maskCardLikeValue(value);
   if(SECRET_KEY_RE.test(keyText))return '[REDACTED_SECRET]';
   if(DOCUMENT_ID_KEY_RE.test(keyText))return marker('DOCUMENT_ID',value);
   if(DOCUMENT_LINK_KEY_RE.test(keyText))return sanitizeUrl(String(value||''));
@@ -73,10 +78,11 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
     const url=maybeUrl(value);if(url)return sanitizeUrl(url);
     if(looksHtml(value))return marker('HTML',value);
     if(looksBinaryString(value))return marker('BINARY',value);
-    const clean=String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'');
+    const clean=maskPotentialPanText(String(value).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,''));
     return clean.length>MAX_STRING_LENGTH?`${clean.slice(0,MAX_STRING_LENGTH)}… [TRUNCATED ${clean.length-MAX_STRING_LENGTH}]`:clean;
   }
-  if(typeof value==='number'||typeof value==='boolean')return value;
+  if(typeof value==='number'){const raw=String(value);return /^\d{12,19}$/.test(raw)?maskCardLikeValue(raw):value}
+  if(typeof value==='boolean')return value;
   if(typeof value==='bigint')return value.toString();
   if(ArrayBuffer.isView(value))return marker('BINARY',value);
   if(Array.isArray(value)){
@@ -95,8 +101,8 @@ export function sanitizeBankDiagnosticValue(value,{key='',depth=0}={}){
 
 export function createBankDiagnosticRun({bridgeVersion=0}={}){
   return {
-    schemaVersion:2,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
-    scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true},
+    schemaVersion:3,bridgeVersion:Number(bridgeVersion)||0,startedAt:new Date().toISOString(),finishedAt:null,
+    scope:{source:'latest-bank-sync',maxTransactionsPerRole:MAX_TRANSACTIONS_PER_ROLE,includesAllTransactionTypes:true,chequeDetailResponses:true,creditSettlementDetailResponses:true},
     security:{localOnly:true,synchronizedToSupabase:false,credentialsRedacted:true,sessionSecretsRedacted:true,binaryPayloadsRedacted:true,documentLinksPathOnly:true},
     accounts:{business:emptyAccount(),home:emptyAccount()},failure:null,
   };
