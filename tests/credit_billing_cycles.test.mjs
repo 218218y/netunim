@@ -366,6 +366,29 @@ test('bank credit settlement card display is cross-source exact and remains fail
   assert.deepEqual(kupaBankCreditSettlementIdentityData(state,legacy,'עסקי').last4s,['3333'],'a four-digit legacy bank reference is accepted only when the synchronized issuer cycle independently matches that same card and amount');
 });
 
+test('bank-native four-digit hints are provider-specific and require a matching synchronized card',()=>{
+  const maxState=stateFor([{accountNumber:'5521',txns:[]},{accountNumber:'6326',txns:[]}],{provider:'max'});
+  const maxBase={date:'2026-09-10',amount:-1,description:'מקס איט פיננסי',creditSettlementDetails:{provider:'max',providerLabel:'MAX',issuerReference:'34685693',bankActivityTypeCode:515,bankTextCode:803,cardLast4s:[],detailFetched:true}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(maxState,{...maxBase,creditSettlementDetails:{...maxBase.creditSettlementDetails,permissionReference:'65521'}},'עסקי'),{last4s:['5521'],source:'bank_permission_suffix_validated',cards:[{last4:'5521',card:''}]},'MAX permission 65521 exposes suffix 5521 only after it matches a synchronized MAX card');
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(maxState,{...maxBase,creditSettlementDetails:{...maxBase.creditSettlementDetails,permissionReference:'26326'}},'עסקי').last4s,['6326'],'MAX permission 26326 exposes suffix 6326');
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(maxState,{...maxBase,creditSettlementDetails:{...maxBase.creditSettlementDetails,permissionReference:'69999'}},'עסקי').last4s,[],'an arbitrary MAX permission suffix is not displayed when no synchronized card confirms it');
+
+  const isracardBusiness=stateFor([{accountNumber:'5360',txns:[]},{accountNumber:'7248',txns:[]}],{provider:'isracard'});
+  const isracardModern={date:'2026-09-10',amount:-17.9,description:'ישראכרט בע"מ',messageDetail:'מזהה 319095360',creditSettlementDetails:{provider:'isracard',providerLabel:'ישראכרט',issuerReference:'20543997',permissionReference:'60910',bankActivityTypeCode:515,bankTextCode:803,cardLast4s:[],detailFetched:true}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(isracardBusiness,isracardModern,'עסקי').last4s,['5360'],'the explicit Isracard bank identifier suffix is accepted only when card 5360 exists in synchronized Isracard data');
+  const legacyIsracard={date:'2026-08-16',amount:-9.62,description:'ישראכרט',creditSettlementDetails:{provider:'isracard',providerLabel:'ישראכרט',issuerReference:'7248',permissionReference:'',bankActivityTypeCode:491,bankTextCode:14,cardLast4s:[],detailFetched:true}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(isracardBusiness,legacyIsracard,'עסקי').last4s,['7248'],'the observed legacy Isracard four-digit bank reference is validated against synchronized card 7248');
+
+  const isracardHome=stateFor([{accountNumber:'0826',txns:[]}],{provider:'isracard',accountRole:'ביתי'});
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(isracardHome,{...isracardModern,messageDetail:'מזהה 318310826'},'ביתי').last4s,['0826'],'home Isracard identifier 318310826 resolves to synchronized suffix 0826');
+
+  const amex=stateFor([{accountNumber:'6774',txns:[]}],{provider:'amex'}),legacyAmex={date:'2026-08-16',amount:-2122,description:'אמריקן אקספרס',creditSettlementDetails:{provider:'amex',providerLabel:'אמריקן אקספרס',issuerReference:'6774',permissionReference:'',bankActivityTypeCode:491,bankTextCode:40,cardLast4s:[],detailFetched:true}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(amex,legacyAmex,'עסקי').last4s,['6774'],'legacy Amex reference 6774 is shown after synchronized-card validation');
+
+  const cal=stateFor([{accountNumber:'6550',txns:[]},{accountNumber:'9715',txns:[]}],{provider:'visaCal',accountRole:'ביתי'}),calRow={date:'2026-09-10',amount:-1,description:'כרטיסי אשראי ל',creditSettlementDetails:{provider:'visaCal',providerLabel:'כאל',issuerReference:'8547994',permissionReference:'80664',bankActivityTypeCode:515,bankTextCode:803,cardLast4s:[],detailFetched:true}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(cal,calRow,'ביתי').last4s,[],'CAL permission references do not masquerade as 6550/9715 when the bank data itself contains no matching suffix');
+});
+
 test('past-due unknown and FX amounts stay incomplete until bank proof or explicit expiry',()=>{
   for(const future of [false,true])for(const amount of [{chargedAmount:null},{chargedAmount:-50,chargedCurrency:'USD',originalAmount:-50,originalCurrency:'USD'}]){
     const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',...amount},...(future?[{id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'}]:[])]}]);

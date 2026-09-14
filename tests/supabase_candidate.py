@@ -85,25 +85,44 @@ assert candidate_contract == reviewed_contract, \
     'instant-credit migration changed merge function ACL/signature/security metadata'
 
 bank_migration_pending = any(row['name'] == 'bank_instant_credit_reconciliation' for row in receipt_pending)
+credit_identity_migration_pending = any(row['name'] == 'bank_credit_settlement_identity' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    def without_check_hooks(definition):
+    def without_pending_upgrade_fragments(definition):
         for fragment in (
             '      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',
             '        and netunim_internal.check_bank_pending_compatible(b,r)\n',
             '          netunim_internal.check_bank_pending_items_equal(b,r)\n          or\n',
         ):
             definition=definition.replace(fragment,'')
+        if credit_identity_migration_pending:
+            # The authenticated snapshot predates the reviewed 18:30 migration. Strip
+            # only that migration's three persistence edits for the semantic baseline
+            # comparison, then assert those edits independently below.
+            definition=definition.replace(',credit_settlement_details)\n',')\n')
+            definition=definition.replace(",r->'creditSettlementDetails');\n",");\n")
+            definition=definition.replace("        credit_settlement_details=coalesce(r->'creditSettlementDetails',b.credit_settlement_details),\n",'')
+            definition=definition.replace("        or b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)\n",'')
         return definition
-    assert without_check_hooks(candidate_definition) == without_check_hooks(reviewed_definition), \
-        'authenticated Production bank merge SQL differs semantically from replayed candidate'
+    assert without_pending_upgrade_fragments(candidate_definition) == without_pending_upgrade_fragments(reviewed_definition), \
+        'authenticated Production bank merge SQL differs semantically from replayed candidate outside reviewed pending migrations'
 assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
 assert 'and netunim_internal.check_bank_pending_compatible(b,r)' in candidate_definition
 assert 'netunim_internal.check_bank_pending_items_equal(b,r)' in candidate_definition
+if credit_identity_migration_pending:
+    credit_columns=[row for row in (candidate.get('columns') or []) if row.get('schema')=='public' and row.get('table')=='bank_transactions' and row.get('name')=='credit_settlement_details']
+    assert len(credit_columns)==1, 'credit settlement migration did not add exactly one bank_transactions.credit_settlement_details column'
+    for fragment in (
+        ',check_details,credit_settlement_details)',
+        "r->'checkDetails',r->'creditSettlementDetails'",
+        "credit_settlement_details=coalesce(r->'creditSettlementDetails',b.credit_settlement_details)",
+        "b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)",
+    ):
+        assert fragment in candidate_definition, f'credit settlement migration is missing reviewed persistence fragment: {fragment}'
 
 required_bank_merge_fragments = (
     'v_amount>0', "v_description ~ 'מיידי|זה.?ב'", 'pending_party_norm', 'pending_detail_digits',

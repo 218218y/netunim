@@ -22,7 +22,10 @@ export function bankCreditSettlementDetails(row,identity={}){
   const facts=[],cards=[...new Set((Array.isArray(identity.last4s)?identity.last4s:Array.isArray(details.cardLast4s)?details.cardLast4s:[]).filter(value=>/^\d{4}$/.test(String(value))))];
   if(details.providerLabel)facts.push(`<span><b>חברת אשראי:</b> ${esc(details.providerLabel)}</span>`);
   if(cards.length)facts.push(`<span><b>${cards.length===1?'כרטיס':'כרטיסים'}:</b> ${cards.map(value=>`•••• ${esc(value)}`).join(', ')}</span>`);
-  if(cards.length&&identity.source&&identity.source!=='bank_detail_explicit')facts.push('<span><b>זיהוי כרטיס:</b> אומת מול מחזור החיוב המסונכרן מחברת האשראי</span>');
+  if(cards.length&&identity.source&&identity.source!=='bank_detail_explicit'){
+    const bankDerived=['bank_permission_suffix_validated','bank_identifier_suffix_validated','legacy_bank_reference_validated'].includes(identity.source);
+    facts.push(`<span><b>זיהוי כרטיס:</b> ${bankDerived?'4 הספרות האחרונות זוהו מנתוני הבנק ואומתו מול הכרטיס המסונכרן':'אומת מול מחזור החיוב המסונכרן מחברת האשראי'}</span>`);
+  }
   if(details.permissionReference)facts.push(`<span><b>מזהה הרשאת חיוב בבנק:</b> ${esc(details.permissionReference)}</span>`);
   if(details.issuerReference)facts.push(`<span><b>אסמכתת חיוב בבנק:</b> ${esc(details.issuerReference)}</span>`);
   if(!facts.length&&!details.warning)return '';

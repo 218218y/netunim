@@ -71,6 +71,32 @@ function bankRowExplicitlyMatchesProvider(row,provider){
 function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
 function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;const explicit=Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[];if(explicit.includes(String(suffix)))return true;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
+function synchronizedProviderCardSuffixes(kupa,provider,account){
+  const role=accountRole(account),sync=kupa?.creditSync&&typeof kupa.creditSync==='object'&&!Array.isArray(kupa.creditSync)?kupa.creditSync:{},mappings=sync.cardMappings&&typeof sync.cardMappings==='object'&&!Array.isArray(sync.cardMappings)?sync.cardMappings:{},suffixes=new Set();
+  for(const profile of Array.isArray(sync.profiles)?sync.profiles:[]){
+    if(String(profile?.provider||'')!==String(provider||''))continue;
+    for(const card of Array.isArray(profile?.accounts)?profile.accounts:[]){
+      const mapping=mappings[`${String(profile?.profileId||'').trim()}:${String(card?.accountNumber||'').trim()}`]||{};
+      if(accountRole(mapping.account||profile?.defaultAccount)!==role)continue;
+      const digits=String(card?.accountNumber||'').replace(/\D/g,''),suffix=digits.slice(-4);if(/^\d{4}$/.test(suffix))suffixes.add(suffix);
+    }
+  }
+  return suffixes;
+}
+function bankCardSuffixHint(row){
+  const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return {suffix:'',source:''};
+  const provider=String(details.provider||''),activity=Number(details.bankActivityTypeCode)||0;
+  if(provider==='max'&&activity===515){const digits=String(details.permissionReference||'').replace(/\D/g,'');if(digits.length>=5)return {suffix:digits.slice(-4),source:'bank_permission_suffix_validated'}}
+  if(provider==='isracard'&&activity===515){const text=[row?.messageDetail,row?.memo].map(value=>String(value||'')).join(' '),match=/(?:^|\s)מזהה\s*[:#-]?\s*(\d{4,})(?:\D|$)/u.exec(text);if(match)return {suffix:match[1].slice(-4),source:'bank_identifier_suffix_validated'}}
+  if((provider==='isracard'||provider==='amex')&&activity===491){const digits=String(details.issuerReference||'').replace(/\D/g,'');if(/^\d{4}$/.test(digits))return {suffix:digits,source:'legacy_bank_reference_validated'}}
+  return {suffix:'',source:''};
+}
+function validatedBankCardSuffixIdentity(kupa,row,account){
+  const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return null;
+  const hint=bankCardSuffixHint(row);if(!hint.suffix)return null;
+  const known=synchronizedProviderCardSuffixes(kupa,String(details.provider||''),account);if(!known.has(hint.suffix))return null;
+  return {last4s:[hint.suffix],source:hint.source,cards:[{last4:hint.suffix,card:''}]};
+}
 function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=null){
   const role=accountRole(account),provider=String(row?.creditSettlementDetails?.provider||'').trim(),day=bankTransactionDay(row),value=moneyCents(row?.amount);
   if(!provider||!CREDIT_SETTLEMENT_MARKERS[provider]||!day||value>=0)return [];
@@ -94,6 +120,7 @@ function bankCreditSettlementIdentityFromRows(kupa,row,account,preparedBillingRo
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return {last4s:[],source:'',cards:[]};
   const explicit=[...new Set((Array.isArray(details.cardLast4s)?details.cardLast4s:[]).map(value=>String(value||'').replace(/\D/g,'')).filter(value=>/^\d{4}$/.test(value)))];
   if(explicit.length)return {last4s:explicit,source:'bank_detail_explicit',cards:explicit.map(last4=>({last4,card:''}))};
+  const bankHint=validatedBankCardSuffixIdentity(kupa,row,account);if(bankHint)return bankHint;
   const candidates=bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows);if(!candidates.length)return {last4s:[],source:'',cards:[]};
   const value=moneyCents(row?.amount),legacyReference=/^\d{4}$/.test(String(details.issuerReference||''))?String(details.issuerReference):'';
   if(legacyReference){
