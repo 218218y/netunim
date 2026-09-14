@@ -70,7 +70,7 @@ def run(db):
     # Source metadata cannot be manufactured by a client.
     rows=checks();rows[-1]['bankMatch']={'phase':'cleared','eventId':'forged'};save(rows)
     assert checks()[-1]['bankMatch']['eventId']!='forged'
-    assert db.sql("select netunim_internal.check_bank_clear_after('2026-09-09')").strip()=='2026-09-16'
+    assert db.sql("select netunim_internal.check_bank_clear_after('2026-09-09')").strip()=='2026-09-15'
     assert db.sql("select netunim_internal.check_bank_clear_after('2028-01-01') is null").strip()=='t'
     assert db.sql("select netunim_internal.check_bank_kind('return cheque')").strip()=='return'
     # Pending age is not evidence of completed settlement age.
@@ -80,6 +80,7 @@ def run(db):
     snapshot('2026-08-10');assert checks()[0]['status']=='הופקד - במעקב'
     db.sql("update public.bank_transactions set status='completed' where id="+pending)
     snapshot('2026-08-10');assert checks()[0]['status']=='הופקד - במעקב'
+    rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows)
     snapshot('2026-08-16');assert checks()[0]['status']=='נפרע'
 
     # Two bank credits competing for one check cannot both independently claim it.

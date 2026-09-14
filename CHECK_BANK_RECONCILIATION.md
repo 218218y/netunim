@@ -43,6 +43,10 @@ come exclusively from the bank. Check workflow changes do not credit an account 
   30 days block settlement of every potentially affected batch member and produce a warning;
   the existing bank return alerts remain available. Partial returns never mark the
   entire batch returned merely because one member's amount matches.
+* A complete snapshot covering a due check's scheduled deposit date creates an
+  `overdue` advisory if no association exists, or `unverified` for a manually deposited
+  check. These advisories do not change status or disable future matching. Dates outside
+  the bank's verified coverage and future checks do not produce absence assertions.
 
 ## Matching and duplicate protection
 
@@ -62,37 +66,75 @@ bank transaction, more than 16 candidates, or a nearby already-linked/manual-cle
 check makes the result require manual review. Bank-provided check numbers/counts narrow
 the candidates when available. No check names are inferred from bank descriptions.
 
+The structured `checkItems` table is the primary evidence. Each row must match its
+own amount and check number; bank, branch and drawer account fields must not contradict
+known identity. Leading zeroes are normalized. A matching aggregate total and set of
+numbers cannot override mismatched individual amounts. The full bank table is validated
+against the deposit total/count before any row is used. Malformed tables cause review,
+not fallback. A known numbered check takes precedence over unnumbered alternatives.
+
+Each bank item can be claimed independently, including a known check inside a deposit
+containing unregistered checks. The original full bank item set and the claimed manual
+members are retained immutably, including their names. An unregistered member can be
+added later, but deletion/rejection of an existing member never releases its bank item.
+If manual check numbers are absent, unique date/amount matches remain available. A whole
+unnumbered equal-amount group can match as a group; a later reduction cannot name its
+individual missing members unless their identities were established. Numbered bank
+items can identify missing members even when their amounts are equal.
+
+Pending references remain references: a single-deposit reference is not automatically
+promoted to a proven check number. Pending evidence is displayed as provisional and
+cannot clear a check. A unique complete set of check identities, including a previously
+claimed numbered manual group, can connect pending and completed rows even when the
+aggregate reference changes. Existing same-reference reconciliation remains available,
+with contradictory item sets blocked. A pending row still present in the current bank
+payload is never deleted. Final/enriched evidence receives a new confirmation identity.
+
+`הצ שיק חוזר-נט` is classified as redeposit. Number/amount/drawer identity must match
+and a returned check's new deposit must be later than the previous return date; uncertain
+same-day sequencing requires review. Each redeposit has its own observation/confirmation
+cycle, so the old return cannot revoke the new deposit. Loss of previously observed item
+details suspends clearing with a distinct warning; it does not assert that the bank
+movement disappeared. The aggregate withdrawal/available balance is not per-check
+settlement evidence and is never used to accelerate clearing.
+
 Claims live in an internal, owner-scoped table unavailable to client writes. The
 archive merger transfers a claim at its existing, proven pending-placeholder collapse;
 the check matcher never independently assumes that equal amounts prove an identity
 change. Conflicting claims suspend automatic settlement. Metadata on check records is
 server-owned and protected against older clients omitting it or a client forging it.
 
-Editing status, amount, due date, account or check number after linking switches that
+Editing status, amount, due date, account or an existing check number after linking switches that
 check to manual control. Editing its name/note preserves the link and actual deposit
 date. The edit form exposes an automatic-tracking checkbox. An explicitly re-enabled
 check can use a new deposit; a rejected old deposit remains reserved.
+Filling a previously blank check number preserves tracking when it agrees with captured
+bank identity. Contradictory enrichment switches to manual control.
 
 ## Settlement calendar
 
-The policy is deliberately conservative: at least **six calendar days**, and after
-three complete eligible business days, starting no earlier than the first complete
+The policy waits until the midnight after **three additional banking days**, starting no earlier than the first complete
 snapshot observing the deposit as completed (and no earlier than the bank's later
-transaction/value date). Fridays, Saturdays and the listed holiday eves/holidays are
-excluded. This is a workflow inference from bank evidence, not a bank-issued guarantee.
+transaction/value date). Saturdays and the published clearing holidays are excluded;
+Fridays and ordinary holiday eves count. Yom Kippur eve is excluded. There is no fixed
+six-calendar-day minimum. Final evidence must be approved, remain present, and be
+observed in a new complete snapshot. This is a workflow inference from bank evidence,
+not a bank-issued guarantee.
 
 The reviewed calendars cover 2026 and 2027. Unknown calendar coverage suspends automatic
 settlement and displays a warning. Update the calendar through a reviewed migration
 when BOI publishes a new year or an exceptional closure; do not silently extrapolate.
 
-Sources inspected on 2026-09-13:
+Sources inspected on 2026-09-14:
 
 * [BOI cheque clearing and annual calendars](https://www.boi.org.il/roles/paymentsystems/ilpaymentsystems/cchmain/)
 * [BOI provisional cheque credit rule](https://www.boi.org.il/media/r3pjw5z5/154.pdf)
+* [BOI clarification on late cheque returns](https://www.boi.org.il/media/2lpot4ey/201720.pdf)
 
 ## Rollout and verification
 
-Apply `supabase/migrations/20260913120000_check_bank_reconciliation.sql` through the
+Apply `supabase/migrations/20260914120000_check_bank_item_reconciliation.sql` after
+`20260913120000_check_bank_reconciliation.sql` through the
 canonical migration/release workflow before publishing the new app assets. The migration
 does not rewrite historical checks on installation. The next complete bank refresh
 starts detection; existing bank credentials and refresh schedules are unchanged.
@@ -111,8 +153,12 @@ the live migration SQL and derives the expected upgraded schema automatically th
 after each already-applied migration. A local migration file alone is never deployment
 evidence. The deployed check migration and live schema were verified on 2026-09-14.
 
-`tests/check_bank_reconciliation.py` runs against real disposable PostgreSQL as part of
+`tests/check_bank_reconciliation.py` and `tests/check_bank_items.py` run against real disposable PostgreSQL as part of
 the candidate-schema suite. It covers grouped deposits, overlap, ambiguous subsets,
 pending maturation, fresh observations, missing movements, partial returns, account
 separation, metadata protection, claim transfer, limits and holidays. UI/model tests
 exercise actual buttons, persistence queues, rejection and note editing in both apps.
+The item suite also exercises the real fenced snapshot RPC for pending/final continuity,
+per-item contradictions, partial known batches, reserved identities, equal-value losses,
+drawer-account separation, number enrichment, missing details and redeposit cycles.
+Private bank diagnostic exports are ignored by Git and are not test fixtures or assets.

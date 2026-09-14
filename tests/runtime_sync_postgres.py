@@ -7,7 +7,7 @@ import json
 import socket
 import threading
 from urllib.parse import urlparse, parse_qs
-from browser_harness import BrowserSession, ROOT, _free_port
+from browser_harness import BrowserSession, ROOT, _free_port, _RuntimeHTTPServer
 from isolated_sync_postgres import IsolatedPostgres, OWNER, quote
 
 class FaultProxy:
@@ -53,7 +53,10 @@ class SyncBrowser(BrowserSession):
                     except ValueError:self.reply([])
                     return
                 super().do_GET()
-        self.httpd=http.server.ThreadingHTTPServer(('127.0.0.1',_free_port()),Handler)
+        # Use the harness's enlarged accept backlog for native ESM fan-out on
+        # Windows. The RPC fault proxy must not reintroduce the default backlog
+        # that can drop module requests before the lost-ACK scenario even starts.
+        self.httpd=_RuntimeHTTPServer(('127.0.0.1',_free_port()),Handler)
         self.http_thread=threading.Thread(target=self.httpd.serve_forever,daemon=True);self.http_thread.start();self.url=f'http://127.0.0.1:{self.httpd.server_port}/index.html'
 
 def run(db,app,checks,same,index):

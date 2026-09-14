@@ -58,5 +58,10 @@
     "version": "20260913120000",
     "name": "check_bank_reconciliation",
     "sha256": "2b483a940b412e5b280e05d569e1885e2db982e60225cc7a63be41a8a00addc3"
+  },
+  {
+    "version": "20260914120000",
+    "name": "check_bank_item_reconciliation",
+    "sha256": "f56a250a559c0c6455de4169d773c3b0596318c64a2ba4e6c46113f0df78e6d1"
   }
 ]

@@ -5,6 +5,7 @@ from isolated_sync_postgres import IsolatedPostgres, ROOT
 from supabase_authorization import run as authorization
 from morning_schema_contract import assert_morning_schema_contract
 from check_bank_reconciliation import run as check_bank_reconciliation
+from check_bank_items import run as check_bank_items
 
 sys.path.insert(0, str(ROOT / 'tools'))
 from supabase_candidate_schema import (
@@ -90,10 +91,19 @@ if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    without_check_hook=candidate_definition.replace('      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n','')
-    assert without_check_hook == reviewed_definition.replace('      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',''), \
+    def without_check_hooks(definition):
+        for fragment in (
+            '      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',
+            '        and netunim_internal.check_bank_pending_compatible(b,r)\n',
+            '          netunim_internal.check_bank_pending_items_equal(b,r)\n          or\n',
+        ):
+            definition=definition.replace(fragment,'')
+        return definition
+    assert without_check_hooks(candidate_definition) == without_check_hooks(reviewed_definition), \
         'authenticated Production bank merge SQL differs semantically from replayed candidate'
 assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
+assert 'and netunim_internal.check_bank_pending_compatible(b,r)' in candidate_definition
+assert 'netunim_internal.check_bank_pending_items_equal(b,r)' in candidate_definition
 
 required_bank_merge_fragments = (
     'v_amount>0', "v_description ~ 'מיידי|זה.?ב'", 'pending_party_norm', 'pending_detail_digits',
@@ -118,5 +128,8 @@ with IsolatedPostgres(schema_files=all_files) as db:
 
 with IsolatedPostgres(schema_files=all_files) as db:
     check_bank_reconciliation(db)
+
+with IsolatedPostgres(schema_files=all_files) as db:
+    check_bank_items(db)
 
 print('PASS candidate migration chain: authenticated prefix replay, generic pending suffix, clean install, authorization and fence regressions pass')

@@ -48,11 +48,16 @@ export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>
 
   function currentAlerts(today=checkTodayISO()){
     const snapshot=financeSnapshot?.()||{};
+    const bankCheckItems=checkBankReviewItems(model?.state?.checks);
+    const explainedChecks=new Set(bankCheckItems.map(item=>item.checkId));
+    for(const check of model?.state?.checks||[]){
+      if(check.bankMatch?.phase==='overdue'&&check.bankReview===check.bankMatch.eventId)explainedChecks.add(check.id);
+    }
     return [
       ...(snapshot.bankAlertsReady===true?bankWarningItems(snapshot.bank):[]),
       ...cashflowWarningItems(snapshot.kupa),
-      ...checkBankReviewItems(model?.state?.checks),
-      ...dueCheckWarningItems(model?.state?.checks,today),
+      ...bankCheckItems,
+      ...dueCheckWarningItems(model?.state?.checks,today).filter(item=>!explainedChecks.has(item.checkId)),
       ...noteReminderWarningItems(model?.state?.notes,today),
     ];
   }

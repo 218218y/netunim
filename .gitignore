@@ -92,3 +92,6 @@ desktop.ini
 *.tmp
 *.temp
 *.log
+
+# Private bank diagnostic exports, never part of a release.
+/netunim-bank-diagnostic_*.json

@@ -47,6 +47,10 @@
     {
       "version": "20260913120000",
       "name": "check_bank_reconciliation"
+    },
+    {
+      "version": "20260914120000",
+      "name": "check_bank_item_reconciliation"
     }
   ]
 }
