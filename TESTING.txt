@@ -7,6 +7,27 @@ npm run offline:update
 
 python tools/sync-assets.py
 
+
+העלאת qsl cli
+```powershell
+supabase --version
+supabase migration list --linked --workdir .
+supabase db push --linked --workdir . --dry-run
+```
+
+ב-dry-run יש לוודא שהמיגרציה הנצרכת `20260914160000_bank_cheque_image_storage_v1.sql` מופיעה כממתינה,
+ושלא מופיעות במפתיע מיגרציות ישנות שכבר אמורות להיות בשרת.
+
+## 2. החלת Supabase
+
+לאחר dry-run תקין:
+
+```powershell
+supabase db push --linked --workdir .
+supabase migration list --linked --workdir .
+python tools/supabase_deploy_gate.py
+```
+
  cd ..
 netunim\deploy_all.bat --preflight-only
 

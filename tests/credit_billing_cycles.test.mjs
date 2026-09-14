@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as kupaEngine from '../netunim-kupa/site/assets/js/shared/credit-billing-cycles.js';
 import * as ordersEngine from '../netunim-orders/site/assets/js/shared/credit-billing-cycles.js';
-import {kupaAccountCashflowData as kupaCashflow,kupaReconciledCreditRowsData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
+import {kupaAccountCashflowData as kupaCashflow,kupaBankCreditSettlementIdentitiesData,kupaBankCreditSettlementIdentityData,kupaReconciledCreditRowsData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as ordersCashflow} from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
 import {allInstallmentsData,creditForecastInstallmentsData,creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditFrameStatus as kupaFrameStatus} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -345,6 +345,25 @@ test('explicit structured bank card identity resolves equal same-issuer cycles w
   assert.equal(result.creditRows.find(row=>row.accountNumber==='3333')?.date,'2026-10-10','structured last-4 identity selects the matching MAX card even when amount/provider are otherwise ambiguous');
   state.bank.feed.transactions[0].creditSettlementDetails={...state.bank.feed.transactions[0].creditSettlementDetails,cardLast4s:[]};
   assert.deepEqual(kupaCashflow(state,'עסקי','2026-09-10').creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber).sort(),['2222','3333'],'issuerReference and permissionReference alone never become guessed card suffixes');
+});
+
+test('bank credit settlement card display is cross-source exact and remains fail-closed on ambiguity',()=>{
+  const state=stateFor([
+    {accountNumber:'2222',txns:[{id:'a',status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]},
+    {accountNumber:'3333',txns:[{id:'b',status:'completed',processedDate:'2026-09-10',chargedAmount:-700,chargedCurrency:'ILS'}]},
+  ]);
+  const details={provider:'max',providerLabel:'MAX',issuerReference:'34685693',permissionReference:'26326',cardLast4s:[],detailFetched:true};
+  const one={date:'2026-09-10',amount:-700,description:'מקס איט פיננסי',creditSettlementDetails:details};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(state,one,'עסקי').last4s,['3333'],'one exact issuer-cycle amount identifies one synchronized card');
+  const aggregate={...one,amount:-1700};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(state,aggregate,'עסקי').last4s.sort(),['2222','3333'],'one exact aggregate debit may identify several synchronized cards');
+  const batched=kupaBankCreditSettlementIdentitiesData(state,[one,aggregate],'עסקי');
+  assert.deepEqual(batched.get(one).last4s,['3333'],'table-scale identification reuses one issuer projection without changing one-card evidence');
+  assert.deepEqual(batched.get(aggregate).last4s.sort(),['2222','3333'],'table-scale identification preserves exact aggregate evidence');
+  state.creditSync.profiles[0].accounts[1].txns[0].chargedAmount=-1000;
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(state,{...one,amount:-1000},'עסקי').last4s,[],'equal same-issuer cycles stay unidentified instead of choosing an arbitrary card');
+  const legacy={date:'2026-09-10',amount:-1000,description:'מקס איט פיננסי',creditSettlementDetails:{...details,issuerReference:'3333',permissionReference:'',bankActivityTypeCode:491}};
+  assert.deepEqual(kupaBankCreditSettlementIdentityData(state,legacy,'עסקי').last4s,['3333'],'a four-digit legacy bank reference is accepted only when the synchronized issuer cycle independently matches that same card and amount');
 });
 
 test('past-due unknown and FX amounts stay incomplete until bank proof or explicit expiry',()=>{

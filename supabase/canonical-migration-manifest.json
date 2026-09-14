@@ -73,5 +73,10 @@
     "version": "20260914160000",
     "name": "bank_cheque_image_storage_v1",
     "sha256": "32ddc0c614033aa8bc6a87219da38db936017e4f28ae54ced7cde9cff204d201"
+  },
+  {
+    "version": "20260914183000",
+    "name": "bank_credit_settlement_identity",
+    "sha256": "3de2afb155dbcae58488bcc9bd4dbaa61910d1a3eaf7cf78c1888f5fb8d45912"
   }
 ]

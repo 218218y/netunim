@@ -59,6 +59,10 @@
     {
       "version": "20260914160000",
       "name": "bank_cheque_image_storage_v1"
+    },
+    {
+      "version": "20260914183000",
+      "name": "bank_credit_settlement_identity"
     }
   ]
 }

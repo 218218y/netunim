@@ -71,6 +71,65 @@ function bankRowExplicitlyMatchesProvider(row,provider){
 function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
 function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;const explicit=Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[];if(explicit.includes(String(suffix)))return true;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
+function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=null){
+  const role=accountRole(account),provider=String(row?.creditSettlementDetails?.provider||'').trim(),day=bankTransactionDay(row),value=moneyCents(row?.amount);
+  if(!provider||!CREDIT_SETTLEMENT_MARKERS[provider]||!day||value>=0)return [];
+  const sourceRows=Array.isArray(preparedBillingRows)?preparedBillingRows:creditBillingRowsData(kupa,{asOf:day,includeHidden:true});
+  const earliest=addDaysISO(day,-CREDIT_SETTLEMENT_MAX_HOLD_DAYS),billingRows=sourceRows.filter(candidate=>candidate?.account===role&&candidate?.provider===provider&&candidate?.status!=='pending'&&candidate?.date&&candidate.date>=earliest&&candidate.date<=day&&['authoritative','issuer','known_cycle'].includes(candidate.billingDateConfidence));
+  const byGroup=new Map();
+  for(const candidate of billingRows){const key=settlementGroupKey(candidate,'card');if(!byGroup.has(key))byGroup.set(key,[]);byGroup.get(key).push(candidate)}
+  return [...byGroup.values()].map(rows=>({
+    rows,due:String(rows[0]?.date||''),cardKey:creditCardKey(rows[0]),provider:String(rows[0]?.provider||''),suffix:cardSuffixForRows(rows),card:String(rows[0]?.card||''),
+    known:rows.every(item=>item.includedInIlsTotal&&!item.coverageIncomplete&&item.amountStatus==='known_ils'),
+    expected:-rows.reduce((sum,item)=>sum+moneyCents(item.amount),0),
+  })).filter(group=>group.suffix&&group.expected<0);
+}
+
+// The bank's modern direct-debit detail endpoint identifies the issuer/permission,
+// but in the observed Hapoalim schema it does not expose a card number. For UI
+// attribution, cross-check the bank debit against the already synchronized issuer
+// billing cycles. Return an identity only when the evidence has one exact solution;
+// equal/ambiguous explanations deliberately remain unidentified.
+function bankCreditSettlementIdentityFromRows(kupa,row,account,preparedBillingRows=null){
+  const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return {last4s:[],source:'',cards:[]};
+  const explicit=[...new Set((Array.isArray(details.cardLast4s)?details.cardLast4s:[]).map(value=>String(value||'').replace(/\D/g,'')).filter(value=>/^\d{4}$/.test(value)))];
+  if(explicit.length)return {last4s:explicit,source:'bank_detail_explicit',cards:explicit.map(last4=>({last4,card:''}))};
+  const candidates=bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows);if(!candidates.length)return {last4s:[],source:'',cards:[]};
+  const value=moneyCents(row?.amount),legacyReference=/^\d{4}$/.test(String(details.issuerReference||''))?String(details.issuerReference):'';
+  if(legacyReference){
+    const matches=candidates.filter(group=>group.suffix===legacyReference&&group.known&&group.expected===value),keys=new Set(matches.map(group=>group.cardKey));
+    if(keys.size===1&&matches.length)return {last4s:[legacyReference],source:'issuer_reference_exact_cycle',cards:[{last4:legacyReference,card:matches[0].card}]};
+  }
+  const known=candidates.filter(group=>group.known);if(!known.length||known.length>12)return {last4s:[],source:'',cards:[]};
+  const solutions=[];
+  for(let bits=1;bits<(1<<known.length);bits++){
+    const selected=known.filter((_,index)=>bits&(1<<index));
+    if(selected.some(group=>group.due!==selected[0].due))continue;
+    if(selected.reduce((sum,group)=>sum+group.expected,0)!==value)continue;
+    solutions.push(selected);
+    if(solutions.length>1)break;
+  }
+  if(solutions.length!==1)return {last4s:[],source:'',cards:[]};
+  const selected=solutions[0],last4s=[...new Set(selected.map(group=>group.suffix))];
+  if(last4s.length!==selected.length)return {last4s:[],source:'',cards:[]};
+  return {last4s,source:selected.length>1?'issuer_cycles_exact_aggregate':'issuer_cycle_exact',cards:selected.map(group=>({last4:group.suffix,card:group.card}))};
+}
+
+export function kupaBankCreditSettlementIdentityData(kupa,row,account='עסקי'){
+  return bankCreditSettlementIdentityFromRows(kupa,row,account);
+}
+
+// Rendering a bank table may include dozens or hundreds of rows. Build the issuer
+// projection once and reuse it for every bank row instead of recalculating all
+// synchronized card cycles per table row. Strong issuer billing dates are stable
+// across the current projection, while each row still applies its own two-day
+// settlement window and exact-cent ambiguity checks.
+export function kupaBankCreditSettlementIdentitiesData(kupa,rows=[],account='עסקי'){
+  const list=Array.isArray(rows)?rows:[],preparedBillingRows=creditBillingRowsData(kupa,{asOf:localTodayISO(),includeHidden:true}),identities=new Map();
+  for(const row of list)identities.set(row,bankCreditSettlementIdentityFromRows(kupa,row,account,preparedBillingRows));
+  return identities;
+}
+
 function settlementRowsForLatestElapsedCycle(installments,start,reference){
   const latestByCard=new Map();
   for(const row of installments){
