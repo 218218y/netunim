@@ -44,6 +44,23 @@ create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
 grant usage on schema auth to public;grant execute on function auth.uid() to public;
+-- Minimal Supabase Storage platform prerequisite. Storage is a platform schema,
+-- not part of Netunim's application-schema baseline, but reviewed migrations may
+-- legitimately create buckets/policies against it. Keep this fixture intentionally
+-- small while preserving the catalog objects those migrations require.
+create schema storage;
+create table storage.buckets(
+ id text primary key,name text not null,public boolean not null default false,
+ file_size_limit bigint,allowed_mime_types text[]
+);
+create table storage.objects(
+ id uuid primary key,bucket_id text not null,name text not null
+);
+alter table storage.objects enable row level security;
+create function storage.foldername(text) returns text[] language sql immutable as $$
+ select case when position('/' in $1)=0 then array[]::text[] else string_to_array(regexp_replace($1,'/[^/]*$',''),'/') end
+$$;
+grant usage on schema storage to authenticated,service_role;
 create schema extensions;grant usage on schema extensions to authenticated;create schema cron;
 create table cron.job(jobid bigint generated always as identity primary key,jobname text,schedule text,command text,active boolean default true,
  username text default current_user,database text default current_database(),nodename text default 'localhost',nodeport integer default inet_server_port(),unique(jobname,username));

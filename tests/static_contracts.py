@@ -454,6 +454,16 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
+bank_image_runtime_pos=orders_main.find('const bankChequeImages=createOrdersBankChequeImageRuntime')
+checks_editor_pos=orders_main.find('const domainsChecksEditor=createDomainsChecksEditor({')
+finance_view_pos=orders_main.find('const domainsFinanceView=createDomainsFinanceView({')
+checks_editor_end=orders_main.find('const syncChecksPersistence=createSyncChecksPersistence({',checks_editor_pos)
+finance_view_end=orders_main.find('const uiAlertCenter=createUiAlertCenter({',finance_view_pos)
+ok(bank_image_runtime_pos>=0 and bank_image_runtime_pos<checks_editor_pos<finance_view_pos
+   and 'downloadBankChequeImage:bankChequeImages.download' not in orders_main[checks_editor_pos:checks_editor_end]
+   and 'downloadBankChequeImage:bankChequeImages.download' in orders_main[finance_view_pos:finance_view_end]
+   and orders_main.count('const bankChequeImages=createOrdersBankChequeImageRuntime')==1,
+   'orders cheque-image composition: runtime is initialized before use, Checks Editor stays uninvolved, and Finance View owns image download wiring')
 ok("const BANK_BRIDGE_VERSION=52" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v52 contract")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),

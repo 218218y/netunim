@@ -117,6 +117,7 @@ const cloudAuth=createCloudAuth({
 });
 
 const domainsFinanceBridge=createDomainsFinanceBridge();
+const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
 
 const calendarStorage=createCalendarStorage();
 const calendarAuth=createCalendarAuth({
@@ -270,7 +271,6 @@ const domainsChecksEditor=createDomainsChecksEditor({
   normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
   scheduleCheckSave:(...args)=>syncChecksPersistence.scheduleCheckSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
-  downloadBankChequeImage:bankChequeImages.download,
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
@@ -576,7 +576,6 @@ const cloudTransport=createCloudTransport({
   supaFetch:(...args)=>cloudAuth.supaFetch(...args),
 });
 
-const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
 
 const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
@@ -642,6 +641,7 @@ const domainsFinanceView=createDomainsFinanceView({
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   modal:(...args)=>uiModal.modal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  downloadBankChequeImage:bankChequeImages.download,
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
