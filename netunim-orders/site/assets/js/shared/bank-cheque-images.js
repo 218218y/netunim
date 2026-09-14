@@ -18,6 +18,24 @@ function validImageBlob(blob){return blob instanceof Blob&&blob.size>0&&blob.siz
 
 export function bankChequeImageWithinRetention(value,{now=Date.now,days=BANK_CHEQUE_IMAGE_RETENTION_DAYS}={}){const itemDay=dateDayNumber(value),today=currentDayNumber(now),age=itemDay===null?NaN:today-itemDay;return Number.isFinite(age)&&age>=0&&age<Math.max(1,Number(days)||BANK_CHEQUE_IMAGE_RETENTION_DAYS)}
 export function bankChequeImageObjectPath(userId,eventDate,imageKey){const uid=String(userId||'').trim(),date=dateDigits(eventDate),key=cleanImageKey(imageKey);if(!uid||!date||!key)return '';return `${uid}/${date}_${key}.img`}
+const IMAGE_DOWNLOAD_EXTENSIONS=new Map([['image/jpeg','jpg'],['image/png','png'],['image/webp','webp'],['image/gif','gif'],['image/bmp','bmp']]);
+
+export function bankChequeImageDownloadName(eventDate,label='image',mimeType=''){
+  const date=dateDigits(eventDate)||'undated',side=/גב|back/i.test(String(label||''))?'back':/חזית|front/i.test(String(label||''))?'front':'image',ext=IMAGE_DOWNLOAD_EXTENSIONS.get(String(mimeType||'').toLowerCase())||'img';
+  return `bank-cheque_${date}_${side}.${ext}`;
+}
+
+export function retainBankChequeImagePreviewUrl(url,{image,backdrop,pageTarget=globalThis,MutationObserverImpl=globalThis.MutationObserver,revokeObjectUrl=value=>globalThis.URL?.revokeObjectURL?.(value)}={}){
+  const value=String(url||'').trim();let released=false,observer=null;
+  const release=()=>{if(released)return;released=true;observer?.disconnect?.();image?.removeEventListener?.('error',release);pageTarget?.removeEventListener?.('pagehide',release);if(value)revokeObjectUrl(value)};
+  if(!value)return release;
+  image?.addEventListener?.('error',release,{once:true});
+  pageTarget?.addEventListener?.('pagehide',release,{once:true});
+  const check=()=>{if(!image?.isConnected||!backdrop?.classList?.contains?.('open'))release()};
+  if(typeof MutationObserverImpl==='function'&&backdrop){observer=new MutationObserverImpl(check);observer.observe(backdrop,{attributes:true,attributeFilter:['class','aria-hidden'],childList:true,subtree:true})}
+  check();
+  return release;
+}
 
 export function bankChequeImageReferences(transactions,{now=Date.now,days=BANK_CHEQUE_IMAGE_RETENTION_DAYS}={}){
   const refs=new Map();

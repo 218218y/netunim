@@ -9,7 +9,7 @@ import {dateInRange,searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
-import {bankChequeImageWithinRetention} from '../../shared/bank-cheque-images.js';
+import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';
 
 export function createDomainsBankView({modal,closeModal,model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 function bankSnapshotLabel(){
@@ -112,7 +112,7 @@ function bankBridgeDiagnosticsMarkup(s){
 
 
 function bankChequeImageButtons(row,item){if(!bankChequeImageWithinRetention(row?.date||row?.processedDate))return item.hasDocumentReference?'קיים בבנק':'—';const buttons=[];if(item.imageFrontKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageFrontKey)}" data-click-arg2="חזית">חזית</button>`);if(item.imageBackKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageBackKey)}" data-click-arg2="גב">גב</button>`);return buttons.length?`<span class="bank-cheque-image-actions">${buttons.join('')}</span>`:item.hasDocumentReference?'קיים בבנק':'—'}
-async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){const blob=await downloadBankChequeImage(eventDate,imageKey);if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שחלפו 60 יום או שהאחסון טרם הוכן).');const url=URL.createObjectURL(blob);modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,'סגור',()=>closeModal(true));const img=document.querySelector('.bank-cheque-image-preview img');img?.addEventListener('load',()=>setTimeout(()=>URL.revokeObjectURL(url),1000),{once:true});img?.addEventListener('error',()=>URL.revokeObjectURL(url),{once:true});return true}
+async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){const blob=await downloadBankChequeImage(eventDate,imageKey);if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שחלפו 60 יום או שהאחסון טרם הוכן).');const url=URL.createObjectURL(blob),filename=bankChequeImageDownloadName(eventDate,label,blob.type);modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,'הורד תמונה',()=>{const link=document.createElement('a');link.href=url;link.download=filename;link.click()});const img=document.querySelector('.bank-cheque-image-preview img'),backdrop=document.getElementById('modalBackdrop');retainBankChequeImagePreviewUrl(url,{image:img,backdrop});return true}
 
 function bankChequeDetailsMarkup(row){
   const details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null;if(!details)return '';

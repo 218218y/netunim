@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {bankChequeImageObjectPath,bankChequeImageReferences,bankChequeImageWithinRetention,createBankChequeImageStorage,BANK_CHEQUE_IMAGE_RETENTION_DAYS} from '../shared/bank-cheque-images.js';
+import {bankChequeImageDownloadName,bankChequeImageObjectPath,bankChequeImageReferences,bankChequeImageWithinRetention,createBankChequeImageStorage,retainBankChequeImagePreviewUrl,BANK_CHEQUE_IMAGE_RETENTION_DAYS} from '../shared/bank-cheque-images.js';
 import {mergeHapoalimAdditionalDetails,normalizeHapoalimTransaction} from '../netunim-kupa/bank-bridge/lib.mjs';
 import {normalizeBankFeedTransaction as normalizeKupaBankFeedTransaction} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {normalizeBankFeedTransaction as normalizeOrdersBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
@@ -41,3 +41,33 @@ assert.deepEqual(deletes,[{prefixes:[`${UID}/20260701_${C}.img`]}],'expired owne
 const downloaded=await storage.download('2026-09-10T09:00:00.000Z',A);
 assert.equal(downloaded?.type,'image/jpeg','private Storage downloads return the image blob for the UI');
 assert.equal(await storage.download('2026-06-01T09:00:00.000Z',A),null,'UI never requests images outside retention even if an old key remains in archived JSON');
+
+assert.equal(bankChequeImageDownloadName('2026-09-10T09:00:00.000Z','חזית','image/jpeg'),'bank-cheque_20260910_front.jpg','download names preserve date, side and the actual image extension');
+assert.equal(bankChequeImageDownloadName('2026-09-10','גב','image/png'),'bank-cheque_20260910_back.png');
+
+let previewOpen=true,observerCallback=null,observerDisconnected=false,revoked=[],imageErrorHandler=null,pagehideHandler=null;
+class FakeMutationObserver{
+  constructor(callback){observerCallback=callback}
+  observe(){}
+  disconnect(){observerDisconnected=true}
+}
+const previewImage={
+  isConnected:true,
+  addEventListener(type,handler){if(type==='error')imageErrorHandler=handler},
+  removeEventListener(type,handler){if(type==='error'&&imageErrorHandler===handler)imageErrorHandler=null},
+};
+const previewBackdrop={classList:{contains:name=>name==='open'&&previewOpen}};
+const previewPage={
+  addEventListener(type,handler){if(type==='pagehide')pagehideHandler=handler},
+  removeEventListener(type,handler){if(type==='pagehide'&&pagehideHandler===handler)pagehideHandler=null},
+};
+retainBankChequeImagePreviewUrl('blob:cheque-preview',{image:previewImage,backdrop:previewBackdrop,pageTarget:previewPage,MutationObserverImpl:FakeMutationObserver,revokeObjectUrl:value=>revoked.push(value)});
+assert.deepEqual(revoked,[],'preview Blob URL remains valid while the modal is open so browser save/download can still read it after image load');
+observerCallback();
+assert.deepEqual(revoked,[],'ordinary modal mutations do not revoke a live preview URL');
+previewOpen=false;
+observerCallback();
+assert.deepEqual(revoked,['blob:cheque-preview'],'closing the modal revokes the preview URL exactly when it is no longer usable');
+assert.equal(observerDisconnected,true,'preview lifecycle observer is disconnected after release');
+assert.equal(imageErrorHandler,null,'preview cleanup removes the image error listener');
+assert.equal(pagehideHandler,null,'preview cleanup removes the page lifecycle listener');
