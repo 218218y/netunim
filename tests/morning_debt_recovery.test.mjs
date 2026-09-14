@@ -14,6 +14,7 @@ import {
   morningFinancialChanges,
 } from '../netunim-orders/site/assets/js/domains/customers/morning-debt-recovery.js';
 import {applyVerifiedMorningDocumentToDebt} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
+import {createDomainsCustomersDocuments} from '../netunim-orders/site/assets/js/domains/customers/documents.js';
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
 
 class MemoryStorage {
@@ -141,4 +142,54 @@ test('verified recovery durability uses an explicit safe allowlist and unknown o
     {changed:false,reason:'unbound-operation'},
     {changed:false,reason:'future-unknown-result'},
   ])assert.equal(morningVerifiedApplicationDurable(result),false,JSON.stringify(result));
+});
+
+
+test('concurrent recovery callers join the same in-flight verification instead of observing a false completion',async()=>{
+  const storage=new MemoryStorage(),debt={id:'debt-race',amount:100,paid:false,invoiceIssued:false};
+  const previous={
+    localStorage:Object.getOwnPropertyDescriptor(globalThis,'localStorage'),
+    document:Object.getOwnPropertyDescriptor(globalThis,'document'),
+    addEventListener:Object.getOwnPropertyDescriptor(globalThis,'addEventListener'),
+  };
+  Object.defineProperty(globalThis,'localStorage',{value:storage,writable:true,configurable:true});
+  Object.defineProperty(globalThis,'document',{value:{querySelector:()=>null,addEventListener:()=>{},hidden:false},writable:true,configurable:true});
+  Object.defineProperty(globalThis,'addEventListener',{value:()=>{},writable:true,configurable:true});
+  try{
+    const context=createMorningDebtRecoveryContext({operationId:OP,debtId:debt.id,type:320,amount:30,financialSnapshot:morningFinancialSnapshot(debt)});
+    assert.equal(saveMorningDebtRecoveryContext(context),true);
+    let releaseStatus,statusStartedResolve,applyCalls=0;
+    const statusStarted=new Promise(resolve=>{statusStartedResolve=resolve});
+    const statusGate=new Promise(resolve=>{releaseStatus=resolve});
+    const documents=createDomainsCustomersDocuments({
+      model:{state:{customerDebts:[debt]}},
+      modal:()=>{},toast:()=>{},confirmDialog:async()=>true,markModalDraftSaved:()=>{},dateEditorMarkup:()=>'',
+      documentsBrowser:{invalidateCache:()=>{},viewDocument:async()=>false},
+      rejectSecondaryIssuance:()=>false,rejectSecondaryMutation:()=>false,refreshForMorningRecovery:async()=>true,
+      applyVerifiedDebtDocument:()=>{applyCalls++;return {changed:true,persisted:true}},
+      supaFetch:async(_path,options)=>{
+        const request=JSON.parse(options.body);
+        assert.equal(request.action,'status');
+        statusStartedResolve();
+        await statusGate;
+        return new Response(JSON.stringify({ok:true,operation:{operation_id:OP,state:'created',document_type:320,amount:30,verified_at:CREATED}}),{headers:{'Content-Type':'application/json'}});
+      },
+    });
+    const first=documents.recoverPendingMorningOperation();
+    await statusStarted;
+    let secondSettled=false;
+    const second=documents.recoverPendingMorningOperation().finally(()=>{secondSettled=true});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(secondSettled,false,'a concurrent await must not return before the active recovery finishes');
+    releaseStatus();
+    const [firstResult,secondResult]=await Promise.all([first,second]);
+    assert.equal(firstResult.state,'created');
+    assert.equal(secondResult.state,'created');
+    assert.equal(applyCalls,1,'the verified Morning operation must be applied exactly once');
+    assert.equal(loadMorningDebtRecoveryContext(),null);
+  }finally{
+    for(const [key,descriptor] of Object.entries(previous)){
+      if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];
+    }
+  }
 });

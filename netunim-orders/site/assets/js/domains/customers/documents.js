@@ -20,8 +20,8 @@ function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
 export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery}){
-let activeOperationId='',activeDebtId='',issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false,recoveryBusy=false,recoveryTimer=null;
-let applicationPromise=null,decisionView=null;
+let activeOperationId='',activeDebtId='',issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false,recoveryTimer=null;
+let applicationPromise=null,recoveryPromise=null,decisionView=null;
 let issuanceInterruptionEpoch=0;
 globalThis.addEventListener?.('offline',()=>{issuanceInterruptionEpoch++});
 globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)issuanceInterruptionEpoch++});
@@ -233,7 +233,7 @@ function saveRecoveryChoice(){
   pendingRecovery=next;issuanceContext=next;markModalDraftSaved?.();return true;
 }
 async function confirmRecoveryChoice(button){
-  if(applicationPromise||recoveryBusy||!saveRecoveryChoice())return;
+  if(applicationPromise||recoveryPromise||!saveRecoveryChoice())return;
   const chosen=loadMorningDebtRecoveryContext();if(!chosen?.resolution)return;
   setBusy(button,true,'מסנכרן ובודק…');
   try{
@@ -328,25 +328,27 @@ async function refreshStatus({reconcile=false}={}){
 }
 
 async function recoverPendingMorningOperation({quiet=false}={}){
+  if(recoveryPromise)return recoveryPromise;
   const stored=loadMorningDebtRecoveryContext();if(stored)pendingRecovery=stored;
-  const context=pendingRecovery;if(!context||recoveryBusy||createBusy)return {ok:true,state:context?'busy':'none'};
-  recoveryBusy=true;
-  try{
-    let data=await backend('status',{operation_id:context.operationId,reconcile:true}),operation=data.operation;
-    if(operation?.state==='reserved'){
-      const abandoned=await abandonRecoveredReservation(context.operationId,{quiet});
-      if(abandoned.abandoned)return {ok:true,state:'abandoned'};
-      operation=abandoned.operation;
-    }
-    if(operation?.state==='created'&&operation.verified_at){
-      const result=await applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result);
-      if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
-      blocked=true;completed=settlement.durable;scheduleRecoveryCheck();if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
-    }
-    if(operation?.state==='failed'){if(!resetOperationAfterTerminal(context.operationId))return {ok:false,state:'cleanup-pending'};toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
-    blocked=true;scheduleRecoveryCheck(operation?60_000:30_000);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
-  }catch(error){scheduleRecoveryCheck(90_000);if(!quiet)toast('ניסיון Morning קודם עדיין ממתין להתאוששות: '+(error?.message||'לא ניתן לבדוק כרגע'));return {ok:false,state:'unavailable',error}}
-  finally{recoveryBusy=false}
+  const context=pendingRecovery;if(!context||createBusy)return {ok:true,state:context?'busy':'none'};
+  recoveryPromise=(async()=>{
+    try{
+      let data=await backend('status',{operation_id:context.operationId,reconcile:true}),operation=data.operation;
+      if(operation?.state==='reserved'){
+        const abandoned=await abandonRecoveredReservation(context.operationId,{quiet});
+        if(abandoned.abandoned)return {ok:true,state:'abandoned'};
+        operation=abandoned.operation;
+      }
+      if(operation?.state==='created'&&operation.verified_at){
+        const result=await applyVerifiedContext(context,{operationId:operation.operation_id,type:operation.document_type,amount:Number(operation.amount),verifiedAt:operation.verified_at}),settlement=settleVerifiedRecovery(context.operationId,result);
+        if(settlement.durable&&settlement.recoveryCleared){blocked=false;completed=true;toast(context.debtId?'הפקת Morning הקודמת אומתה לאחר ההתאוששות והחוב עודכן לפי הבחירות שנשמרו.':'הפקת Morning הקודמת אומתה לאחר ההתאוששות.');return {ok:true,state:'created',result}}
+        blocked=true;completed=settlement.durable;scheduleRecoveryCheck();if(settlement.durable&&!quiet)toast('המסמך אומת והעדכון המקומי נשמר, אך נקודת ההתאוששות עדיין לא נמחקה בבטחה. ההפקה נשארת נעולה עד לניקוי מוצלח.');return {ok:false,state:settlement.durable?'cleanup-pending':'local-pending',result};
+      }
+      if(operation?.state==='failed'){if(!resetOperationAfterTerminal(context.operationId))return {ok:false,state:'cleanup-pending'};toast('ניסיון Morning הקודם הסתיים ללא מסמך מאומת; החוב לא שונה.');return {ok:true,state:'failed'}}
+      blocked=true;scheduleRecoveryCheck(operation?60_000:30_000);if(!quiet)toast('נמצא ניסיון Morning שעדיין ממתין לאימות. המערכת תשמור את הקשר לחוב ולא תזקוף אותו עד לאימות ודאי.');return {ok:true,state:operation?.state||'waiting'};
+    }catch(error){scheduleRecoveryCheck(90_000);if(!quiet)toast('ניסיון Morning קודם עדיין ממתין להתאוששות: '+(error?.message||'לא ניתן לבדוק כרגע'));return {ok:false,state:'unavailable',error}}
+  })().finally(()=>{recoveryPromise=null});
+  return recoveryPromise;
 }
 
 async function previewMorningDocument(button){

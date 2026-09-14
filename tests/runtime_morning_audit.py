@@ -48,7 +48,7 @@ def js(browser, source):
 
 def seed(browser):
     js(browser, SETUP)
-    js(browser, "state=normalizeState({version:5,customerDebts:[{id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false},{id:'OTHER',customerName:'Other fixture',amount:100}]});primaryTab=true;return true;")
+    js(browser, "state=normalizeState({version:5,customerDebts:[{id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false},{id:'OTHER',customerName:'Other fixture',amount:100}]});primaryTab=true;scheduleSave('audit fixture seed');clearTimeout(saveTimer);saveTimer=null;await getCloudPending();return true;")
 
 
 def reload(browser):
@@ -176,6 +176,7 @@ def cleanup_and_persistence():
         await window.auditIssue(320,30);
         window.auditAssert(!!localStorage.getItem('orders.morning.pending-issuance.v1'),'unknown result cleared recovery');
         await reconcileMorningDocument();window.auditAssert(document.querySelector('[data-action="morning-create"]').disabled,'unknown result unlocked issuance');
+        await recoverPendingMorningOperation();window.auditAssert(!!localStorage.getItem('orders.morning.pending-issuance.v1'),'unknown recovery unexpectedly cleared recovery');
         domainsCustomers.editor.applyVerifiedMorningDocument=apply;await recoverPendingMorningOperation();
         window.auditAssert((await window.auditProgress()).paymentApplied===30&&!localStorage.getItem('orders.morning.pending-issuance.v1'),'known replay did not recover');return true;
         """)
@@ -267,7 +268,7 @@ def two_computers():
         with BrowserSession(ROOT/'netunim-orders/site', 'morning-device-A') as a, BrowserSession(ROOT/'netunim-orders/site', 'morning-device-B') as b:
             seed(a)
             if scenario=='reset-and-new-payment':
-                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];return true;")
+                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];scheduleSave('fixture known payment');clearTimeout(saveTimer);saveTimer=null;await getCloudPending();return true;")
             initial=a.evaluate('state')
             for browser in (a,b):
                 js(browser, SETUP)
