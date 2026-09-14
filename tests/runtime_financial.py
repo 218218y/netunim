@@ -92,9 +92,21 @@ def run_breakdown(app):
                   if(!text.includes('{card}')||text.includes('{other}')||!text.includes('{expected}'))throw new Error('Wrong account or total: '+text);
                   if(panel.querySelectorAll('tfoot').length!==3)throw new Error('Missing credit, expense or check subtotal');
                   if(panel.scrollWidth>panel.clientWidth+2)throw new Error('Drilldown overflows at {width}px');
-                  const textRight=element=>{{const range=document.createRange();range.selectNodeContents(element);return range.getBoundingClientRect().right}};
-                  const amountRight=textRight(panel.querySelector('tfoot td[dir="ltr"]'));
-                  for(const total of panel.querySelectorAll('.cashflow-breakdown-total>b'))if(Math.abs(textRight(total)-amountRight)>2)throw new Error('Summary amounts do not align with the amount column at {width}px');
+                  const textRect=element=>{{const range=document.createRange();range.selectNodeContents(element);return range.getBoundingClientRect()}};
+                  // CI Linux and local Windows resolve different system fonts.
+                  // Exercise a wider fallback too: a fitting cell box alone does
+                  // not prove that its unbreakable currency text fits inside it.
+                  for(const font of ['', 'monospace']){{
+                    panel.style.fontFamily=font;
+                    const amountRight=textRect(panel.querySelector('tfoot td[dir="ltr"]')).right;
+                    for(const total of panel.querySelectorAll('.cashflow-breakdown-total>b'))if(Math.abs(textRect(total).right-amountRight)>2)throw new Error('Summary amounts do not align with the amount column at {width}px ('+font+')');
+                    for(const amount of panel.querySelectorAll('td[dir="ltr"],.cashflow-breakdown-total>b')){{
+                      const text=textRect(amount),cell=amount.getBoundingClientRect(),style=getComputedStyle(amount);
+                      if(text.left<cell.left+parseFloat(style.paddingLeft)-2||text.right>cell.right-parseFloat(style.paddingRight)+2)throw new Error('Cash-flow amount overflows its cell at {width}px ('+font+'): '+amount.textContent);
+                    }}
+                    if(panel.scrollWidth>panel.clientWidth+2)throw new Error('Drilldown overflows at {width}px ('+font+')');
+                  }}
+                  panel.style.fontFamily='';
                   const close=document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]');close.click();
                   if(backdrop.classList.contains('open'))throw new Error('Dialog close button failed');
                   return true;
