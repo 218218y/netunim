@@ -647,3 +647,13 @@ button.bank-cashflow-metric:focus-visible,.cashflow-breakdown-trigger:focus-visi
 .check-bank-review{padding:14px;margin:10px 0;border:1px solid #d6b46c;border-radius:12px;background:#fff9eb;color:#382f1e}.check-bank-review p{margin:7px 0;overflow-wrap:anywhere}.check-bank-review .row-actions{display:flex;flex-wrap:wrap;gap:8px}.check-bank-status{display:block;max-width:280px;white-space:normal;margin-top:5px;font-size:11px}
 .bank-cheque-image-actions{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}.bank-cheque-image-btn{min-height:24px!important;padding:3px 7px!important;font-size:9px!important}.bank-cheque-image-preview{display:flex;justify-content:center;align-items:center;min-height:220px;background:#f4f6f5;border:1px solid #dce4df;border-radius:10px;padding:10px;overflow:auto}.bank-cheque-image-preview img{display:block;max-width:100%;max-height:72vh;object-fit:contain;background:#fff;border-radius:6px}
 
+
+/* Cash-flow date exploration is read-only and shares the projection engine. */
+.cashflow-date-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px}
+.cashflow-date-controls>div{display:flex;align-items:center;gap:8px;min-width:0}
+.cashflow-date-controls .date-editor{max-width:100%}
+.cashflow-date-controls p{flex-basis:100%;margin:0}
+.cashflow-breach{color:#991b1b;background:#fff1f2;border:1px solid #fecaca;border-radius:8px;padding:10px;margin:8px 0;font-size:13px}
+button.bank-cashflow-projected,button.bank-current-balance{font:inherit;color:inherit;cursor:pointer;text-align:inherit}
+button.bank-current-balance{background:transparent;border:0}
+button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-visible,.cashflow-breakdown-trigger:focus-visible{outline:2px solid #2563eb;outline-offset:3px}

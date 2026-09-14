@@ -97,12 +97,12 @@ test('a credit debit already posted by the bank on its due date is not counted t
   ]},posted=stateFor([account]);
   posted.bank.asOfDate='2026-09-10';posted.bank.feed.syncedAt='2026-09-10T08:00:00Z';posted.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'מקס איט פיננסי'}];
   const settled=kupaCashflow(posted,'עסקי','2026-09-10');
-  assert.equal(settled.targetDate,'2026-10-10','after the same-day bank debit, the card advances to its next unposted cycle');
+  assert.equal(settled.targetDate,'2026-10-15','after the same-day bank debit, the card advances to its next unposted cycle');
   assert.equal(settled.credit,1100);assert.equal(settled.projected,8900);
 
   const notPosted=stateFor([account]);notPosted.bank.asOfDate='2026-09-10';notPosted.bank.feed.syncedAt='2026-09-10T08:00:00Z';
   const stillDue=kupaCashflow(notPosted,'עסקי','2026-09-10');
-  assert.equal(stillDue.targetDate,'2026-09-10');assert.equal(stillDue.credit,1000,'the due cycle remains forecast when no matching bank debit exists');
+  assert.equal(stillDue.targetDate,'2026-09-15');assert.equal(stillDue.credit,1000,'the due cycle remains forecast when no matching bank debit exists');
 
   const finalOnly=stateFor([{accountNumber:'2020',pendingStatus:'success',txns:[{id:'final-only',status:'completed',processedDate:'2026-09-10',chargedAmount:-500,chargedCurrency:'ILS'}]}]);
   finalOnly.bank.asOfDate='2026-09-10';finalOnly.bank.feed.syncedAt='2026-09-10T08:00:00Z';finalOnly.bank.feed.transactions=[{date:'2026-09-10',amount:-500,description:'מקס איט פיננסים'}];
@@ -117,7 +117,7 @@ test('a settled card cycle rolls any surviving pending authorization into the ne
   ]},posted=stateFor([account]);
   posted.bank.asOfDate='2026-09-10';posted.bank.feed.syncedAt='2026-09-10T08:00:00Z';posted.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'מקס איט פיננסים'}];
   const result=kupaCashflow(posted,'עסקי','2026-09-10'),rolled=result.nextCreditRows.find(row=>row.status==='pending');
-  assert.equal(result.targetDate,'2026-10-10');assert.equal(result.credit,1200);
+  assert.equal(result.targetDate,'2026-10-15');assert.equal(result.credit,1200);
   assert.equal(rolled.date,'2026-10-10');assert.equal(rolled.chargeDateSource,'bank_settlement_next_known_cycle','bank settlement is stronger evidence than a stale pending-cycle assignment');
   const kupaForecast=creditForecastInstallmentsData(posted,'2026-09-10'),ordersForecast=ordersCreditMonthBuckets(posted,{view:'all',asOf:'2026-09-10'}),ordersUpcoming=ordersCreditAccountModels(posted,'2026-09-10')[0].upcomingCharge;
   assert.equal(kupaForecast.some(row=>row.status==='pending'&&row.date==='2026-09-10'),false);assert.equal(kupaForecast.some(row=>row.status==='pending'&&row.date==='2026-10-10'),true);
@@ -125,7 +125,7 @@ test('a settled card cycle rolls any surviving pending authorization into the ne
   assert.equal(ordersUpcoming.date,'2026-10-10');assert.equal(ordersUpcoming.amount,1200,'Orders live upcoming charge uses the same bank-reconciled cycle as its dashboard and forecast');
   posted.expenses=[{id:'sep-after-settlement',active:true,recurring:false,account:'עסקי',date:'2026-09-12',amount:50},{id:'oct-after-settlement',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:60}];
   const longTerm=bankLongTermPositionData(posted,'2026-09-10');
-  assert.equal(longTerm.credit,1200);assert.equal(longTerm.targetMonth,'2026-10');assert.equal(longTerm.expenses,60);assert.equal(longTerm.forecastIncomplete,false,'Kupa long-term balance keeps its all-future meaning and advances its expense month without counting the settled September cycle again');
+  assert.equal(longTerm.credit,1200);assert.equal(longTerm.targetMonth,'2026-09');assert.equal(longTerm.expenses,50);assert.equal(longTerm.forecastIncomplete,false,'Kupa long-term balance keeps its all-future meaning and uses the account expense horizon without counting the settled September credit cycle again');
   const kupaDetail=creditMonthlyDetailData(posted,'2026-09-10').months,ordersDetail=ordersDetailMonths(posted,{asOf:'2026-09-10'});
   assert.equal(kupaDetail.find(month=>month.key==='2026-09').items.some(row=>row.status==='pending'),false);assert.equal(kupaDetail.find(month=>month.key==='2026-10').items.some(row=>row.status==='pending'),true);
   assert.equal(ordersDetail.find(month=>month.key==='2026-09').items.some(row=>row.status==='pending'),false);assert.equal(ordersDetail.find(month=>month.key==='2026-10').items.some(row=>row.status==='pending'),true,'Orders detail uses the same reconciled pending-cycle assignment as its forecast');
@@ -203,7 +203,7 @@ test('Orders dashboard readout is a thin adapter over the exact shared cash-flow
 
 test('expenses and checks obey the same exact horizon across intervening months',()=>{
   const state=structuredClone(twoCards);state.bank.asOfDate='2026-09-11';state.bank.feed.syncedAt='2026-09-11T08:00:00Z';state.expenses=[{id:'sep',active:true,recurring:false,account:'עסקי',date:'2026-09-20',amount:100},{id:'oct-in',active:true,recurring:false,account:'עסקי',date:'2026-10-05',amount:200},{id:'oct-out',active:true,recurring:false,account:'עסקי',date:'2026-10-11',amount:300}];state.checks=[{id:'in',status:'בקופה',account:'עסקי',dueDate:'2026-10-09',amount:400},{id:'out',status:'בקופה',account:'עסקי',dueDate:'2026-10-11',amount:500}];
-  const result=kupaCashflow(state,'עסקי','2026-09-11');
+  const result=kupaCashflow(state,'עסקי','2026-09-11',{targetDate:'2026-10-10'});
   assert.equal(result.targetDate,'2026-10-10');assert.deepEqual(result.targetExpenseRows.map(row=>row.id),['sep','oct-in']);assert.deepEqual(result.checkRows.map(row=>row.id),['in']);assert.equal(result.expenses,300);assert.equal(result.checks,400);
 });
 
@@ -222,10 +222,10 @@ test('bank settlement closes an unknown-amount or FX cycle, but absence of bank 
     ]}]);
     state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10T08:00:00Z';
     const unposted=kupaCashflow(state,'עסקי','2026-09-10');
-    assert.equal(unposted.targetDate,'2026-09-10');assert.equal(unposted.credit,100);assert.equal(unposted.forecastIncomplete,true);
+    assert.equal(unposted.targetDate,'2026-09-15');assert.equal(unposted.credit,100);assert.equal(unposted.forecastIncomplete,true);
     state.bank.feed.transactions=[{date:'2026-09-10',amount:-1000,description:'MAX'}];
     const posted=kupaCashflow(state,'עסקי','2026-09-10');
-    assert.equal(posted.targetDate,'2026-10-10');assert.equal(posted.credit,1200);assert.equal(posted.projected,8800);assert.equal(posted.forecastIncomplete,false);
+    assert.equal(posted.targetDate,'2026-10-15');assert.equal(posted.credit,1200);assert.equal(posted.projected,8800);assert.equal(posted.forecastIncomplete,false);
     assert.equal(posted.creditRows.some(row=>row.date==='2026-09-10'),false);
     assert.deepEqual(posted,ordersCashflow(state,'עסקי','2026-09-10'));
   }
@@ -342,7 +342,7 @@ test('explicit structured bank card identity resolves equal same-issuer cycles w
   }];
   const result=kupaCashflow(state,'עסקי','2026-09-10');
   assert.deepEqual(result.creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber),['2222'],'only the explicitly identified card is removed from the same-day payable cycle');
-  assert.equal(result.creditRows.find(row=>row.accountNumber==='3333')?.date,'2026-10-10','structured last-4 identity selects the matching MAX card even when amount/provider are otherwise ambiguous');
+  assert.equal(result.creditRows.find(row=>row.accountNumber==='3333'),undefined,'the paid card must not pull the still-open account into October');
   state.bank.feed.transactions[0].creditSettlementDetails={...state.bank.feed.transactions[0].creditSettlementDetails,cardLast4s:[]};
   assert.deepEqual(kupaCashflow(state,'עסקי','2026-09-10').creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber).sort(),['2222','3333'],'issuerReference and permissionReference alone never become guessed card suffixes');
 });
@@ -389,12 +389,12 @@ test('bank-native four-digit hints are provider-specific and require a matching 
   assert.deepEqual(kupaBankCreditSettlementIdentityData(cal,calRow,'ביתי').last4s,[],'CAL permission references do not masquerade as 6550/9715 when the bank data itself contains no matching suffix');
 });
 
-test('past-due unknown and FX amounts stay incomplete until bank proof or explicit expiry',()=>{
+test('past-due unknown and FX amounts stay incomplete until bank proof',()=>{
   for(const future of [false,true])for(const amount of [{chargedAmount:null},{chargedAmount:-50,chargedCurrency:'USD',originalAmount:-50,originalCurrency:'USD'}]){
     const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',...amount},...(future?[{id:'oct',status:'completed',processedDate:'2026-10-10',chargedAmount:-1100,chargedCurrency:'ILS'}]:[])]}]);
     state.bank.asOfDate='2026-09-11';state.bank.feed.syncedAt='2026-09-11';
     const waiting=kupaCashflow(state,'עסקי','2026-09-11'),long=bankLongTermPositionData(state,'2026-09-11');
-    assert.equal(waiting.forecastIncomplete,true);assert.equal(waiting.elapsedIncompleteCreditRows.length,1);assert.equal(waiting.credit,future?1100:0);
+    assert.equal(waiting.forecastIncomplete,true);assert.equal(waiting.elapsedIncompleteCreditRows.length,1);assert.equal(waiting.credit,0);
     assert.equal(long.forecastIncomplete,true);assert.equal(long.missingAmountCount,1);
     assert.equal(ordersCreditAccountModels(state,'2026-09-11')[0].upcomingCharge.complete,false);
     assert.ok(cashflowBreakdownMarkup(waiting).includes('התחזית חלקית'));
@@ -403,7 +403,7 @@ test('past-due unknown and FX amounts stay incomplete until bank proof or explic
     assert.equal(kupaCashflow(state,'עסקי','2026-09-11').forecastIncomplete,false);assert.equal(bankLongTermPositionData(state,'2026-09-11').forecastIncomplete,false);
     state.bank.feed.transactions=[];state.bank.asOfDate='2026-09-12';state.bank.feed.syncedAt='2026-09-12';
     const expired=kupaCashflow(state,'עסקי','2026-09-12');
-    assert.equal(expired.forecastIncomplete,false);assert.equal(expired.expiredSettlementWarnings.length,1);assert.equal(expired.expiredSettlementWarnings[0].amountKnown,false);
+    assert.equal(expired.forecastIncomplete,true);assert.equal(expired.expiredSettlementWarnings.length,1);assert.equal(expired.expiredSettlementWarnings[0].amountKnown,false);
     assert.ok(cashflowBreakdownMarkup(expired).includes('סכום לא ידוע'));
     assert.equal(bankLongTermPositionData(state,'2026-09-12').expiredSettlementWarnings.length,1);
   }
@@ -471,8 +471,8 @@ test('unknown elapsed amounts stay visible with old or missing bank snapshots in
     assert.equal(waiting.forecastIncomplete,true);assert.equal(waiting.incompleteCreditRows.length,1);assert.equal(waiting.elapsedIncompleteCreditRows.length,1);
     assert.deepEqual(waiting,ordersCashflow(state,accountRole,'2026-09-11'));
     const expired=kupaCashflow(state,accountRole,'2026-09-12');
-    assert.equal(expired.forecastIncomplete,false);assert.equal(expired.expiredSettlementWarnings.length,1);
-    if(accountRole==='עסקי'){assert.equal(bankLongTermPositionData(state,'2026-09-11').missingAmountCount,1);assert.equal(bankLongTermPositionData(state,'2026-09-12').missingAmountCount,0)}
+    assert.equal(expired.forecastIncomplete,true);assert.equal(expired.expiredSettlementWarnings.length,1);
+    if(accountRole==='עסקי'){assert.equal(bankLongTermPositionData(state,'2026-09-11').missingAmountCount,1);assert.equal(bankLongTermPositionData(state,'2026-09-12').missingAmountCount,1)}
   }
 });
 
@@ -485,12 +485,12 @@ test('a newer charge on the same card cannot hide an earlier missing cycle or it
   assert.equal(result.credit,500);assert.equal(result.expiredSettlementWarnings.filter(row=>row.dueDate==='2026-09-10').length,1);
 });
 
-test('bank posting date must be inside the half-open settlement window, even with a suffix',()=>{
+test('cash-flow settlement accepts late posting only before the following monthly cycle',()=>{
   for(const amount of [null,-1000])for(const date of ['2026-09-10','2026-09-11','2026-09-12','2026-10-10'])for(const label of ['MAX','MAX 2222']){
     const state=stateFor([{accountNumber:'2222',txns:[{id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:amount,chargedCurrency:'ILS'}]}]);
     state.bank.asOfDate='2026-10-11';state.bank.feed.syncedAt='2026-10-11';state.bank.feed.transactions=[{date,amount:-1000,description:label}];
     const result=kupaCashflow(state,'עסקי','2026-10-11');
-    assert.equal(result.expiredSettlementWarnings.length,date<'2026-09-12'?0:1,JSON.stringify({date,amount,label}));
+    assert.equal(result.expiredSettlementWarnings.length,date<'2026-10-10'?0:1,JSON.stringify({date,amount,label}));
     assert.deepEqual(result,ordersCashflow(state,'עסקי','2026-10-11'));
   }
 });
@@ -549,7 +549,7 @@ test('pending-only settlement requires strong posted bank evidence, never an equ
   ]){
     const state=pendingShellState();Object.assign(state.bank.feed.transactions[0],patch);
     const result=kupaCashflow(state,'עסקי','2026-09-10');
-    assert.equal(result.targetDate,'2026-09-10',JSON.stringify(patch));assert.equal(result.credit,100);assert.equal(result.projected,8900);
+    assert.equal(result.targetDate,'2026-09-15',JSON.stringify(patch));assert.equal(result.credit,100);assert.equal(result.projected,8900);
     assert.equal(result.incompleteCreditRows.length,0,'a rejected shell does not make the pending forecast artificially incomplete');
   }
   const noProof=pendingShellState();noProof.creditSync.profiles[0].accounts[0].balanceDate='';
@@ -655,5 +655,5 @@ test('settlement elimination needs an anchor and one unambiguous remaining debit
     [[1363.17,1363.17],[1363.17,1369.78],'כרטיסי אשראי ל',2],
   ])assert.equal(kupaCashflow(make(amounts,debits,label),'ביתי','2026-09-11').expiredSettlementWarnings.length,count,JSON.stringify({amounts,debits,label}));
   const late=make([1363.17,1372.67],[1363.17,1369.78]);late.bank.homeFeed.transactions[1].date='2026-09-11';
-  assert.equal(kupaCashflow(late,'ביתי','2026-09-11').expiredSettlementWarnings.length,1,'elimination cannot extend the settlement window');
+  assert.equal(kupaCashflow(late,'ביתי','2026-09-11').expiredSettlementWarnings.length,0,'late posting is accepted within the monthly cycle');
 });

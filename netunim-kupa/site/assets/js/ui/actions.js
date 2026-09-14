@@ -5,6 +5,7 @@ export function createUiActions({reviewCheckBank, openCashflowBreakdown, ui, cho
 return {
   'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
   'cashflow-breakdown':element=>openCashflowBreakdown(element.dataset.clickArg0),
+  'cashflow-breakdown-date':element=>{openCashflowBreakdown(element.dataset.changeArg0,element.value,element)},
   'select-input':(element,event)=>{element.select()},
   'handle-check-date-part-input':(element,event)=>{handleCheckDatePartInput(element)},
   'handle-check-date-part-blur':(element,event)=>{handleCheckDatePartBlur(element)},

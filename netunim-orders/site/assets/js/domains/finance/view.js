@@ -1,6 +1,6 @@
 import {bankBalanceFactsMarkup} from './bank-cashflow-view.js';
 import {kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
-import {cashflowBreakdownMarkup} from '../../shared/cashflow-breakdown.js';
+import {updateCashflowExplorer,cashflowExplorerMarkup} from '../../shared/cashflow-breakdown.js';
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {checkDateFmt,checkMonthKey,checkMonthLabel,checkTodayISO} from '../../core/dates.js';
@@ -89,7 +89,7 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
   }
   function creditSettlementWarningsMarkup(s){
     const rows=creditSettlementWarnings(s);if(!rows.length)return '';
-    return `<div class="finance-sync-diagnostics credit-settlement-warnings">${rows.map(item=>`<div class="finance-sync-detail warn"><b>חיוב אשראי לא הותאם לתנועת בנק</b><span>${esc(item.card)} · חשבון ${esc(item.account)} · מועד חיוב ${checkDateFmt(item.dueDate)} · ${item.amountKnown===false?'סכום לא ידוע':`סכום תחזית ${money(item.amount)}`}</span><small>חלון ההמתנה הסתיים ב־${esc(checkDateFmt(item.releaseDate))}. החיוב אינו נכלל כעת בעו״ש התזרימי, אך לא הוכח שנפרע; יש לבדוק את תנועות הבנק.</small><button type="button" class="btn" data-action="ack-orders-credit-settlement-warning" data-click-arg0="${esc(item.id)}">בדקתי · הסר אזהרה</button></div>`).join('')}</div>`;
+    return `<div class="finance-sync-diagnostics credit-settlement-warnings">${rows.map(item=>`<div class="finance-sync-detail warn"><b>חיוב אשראי לא הותאם לתנועת בנק</b><span>${esc(item.card)} · חשבון ${esc(item.account)} · מועד חיוב ${checkDateFmt(item.dueDate)} · ${item.amountKnown===false?'סכום לא ידוע':`סכום תחזית ${money(item.amount)}`}</span><small>החיוב עדיין ממתין להתאמה בבנק. הסכום הידוע נשאר בעו״ש התזרימי עד לזיהוי פירעון; יש לבדוק את תנועות הבנק.</small><button type="button" class="btn" data-action="ack-orders-credit-settlement-warning" data-click-arg0="${esc(item.id)}">בדקתי · הסר אזהרה</button></div>`).join('')}</div>`;
   }
 
   function creditSyncPanelMarkup(s){
@@ -105,7 +105,7 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
 
   async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){const blob=await downloadBankChequeImage(eventDate,imageKey);if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שחלפו 60 יום או שהאחסון טרם הוכן).');const url=URL.createObjectURL(blob),filename=bankChequeImageDownloadName(eventDate,label,blob.type);modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,`<a class="btn primary" href="${esc(url)}" download="${esc(filename)}">הורד תמונה</a><button type="button" class="btn" data-action="close-modal">סגור</button>`);const img=document.querySelector('.bank-cheque-image-preview img'),backdrop=document.getElementById('modalBackdrop');retainBankChequeImagePreviewUrl(url,{image:img,backdrop});return true}
   function setKupaSection(section){ui.kupaSubView=KUPA_SECTIONS.includes(section)?section:'bank';renderKupa()}
-  function openCashflowBreakdown(role){const account=role==='home'?'ביתי':'עסקי';modal(`פירוט שינוי צפוי · ${account}`,cashflowBreakdownMarkup(kupaAccountCashflowData(snapshot().kupa,account)),'<button type="button" class="btn primary" data-action="close-modal">סגור</button>')}
+  function openCashflowBreakdown(role,targetDate='',input=null){const account=role==='home'?'ביתי':'עסקי';if(input)return updateCashflowExplorer(input,date=>kupaAccountCashflowData(snapshot().kupa,account,undefined,{targetDate:date}));modal(`פירוט שינוי צפוי · ${account}`,cashflowExplorerMarkup(kupaAccountCashflowData(snapshot().kupa,account,undefined,{targetDate}),'orders-cashflow-breakdown',role,dateEditorMarkup),'<button type="button" class="btn primary" data-action="close-modal">סגור</button>')}
   function setBankAccountView(role){ui.bankAccountView=role==='home'?'home':'business';renderKupa()}
   function setBankDataView(value){ui.bankDataView=value==='direct'?'direct':'history';rerenderBankTransactions()}
   async function acknowledgeBankMissing(transactionId){await controller.acknowledgeMissingBankTransaction(transactionId);renderKupa()}

@@ -12,7 +12,7 @@ function modalFieldState(){
   if(!root)return'[]';
   return JSON.stringify({
     fields:[...root.querySelectorAll('input,select,textarea')]
-      .filter(el=>!el.matches('[data-no-draft-guard]'))
+      .filter(el=>!el.closest('[data-no-draft-guard]'))
       .map(el=>({tag:el.tagName,id:el.id||'',name:el.name||'',type:el.type||'',value:el.value,checked:'checked'in el?!!el.checked:null})),
     draftOrder:[...root.querySelectorAll('[data-modal-draft]')].map(el=>el.getAttribute('data-modal-draft')||''),
   });

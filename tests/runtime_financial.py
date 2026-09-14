@@ -203,6 +203,48 @@ def run_forecast_header(app):
         print(f'{app}: both account headers display the actual forecast date on desktop/mobile')
 
 
+def run_cashflow_date_picker(app):
+    with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-date") as browser:
+        setup = "state=normalizeState(fixture);domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';domainsFinanceView.renderKupa();"
+        action = 'cashflow-breakdown' if app == 'kupa' else 'orders-cashflow-breakdown'
+        for width in (1280, 390):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            for role in ('business', 'home'):
+                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else ''
+                browser.evaluate("(async()=>{"+breakdown_fixture+setup+select+f"""
+                  const {{kupaAccountCashflowData}}=await import('./assets/js/shared/kupa-cashflow.js');
+                  const account='{role}'==='home'?'ביתי':'עסקי';
+                  const original=JSON.stringify(fixture),automatic=kupaAccountCashflowData(fixture,account);
+                  const selector='[data-action="{action}"][data-click-arg0="{role}"]';
+                  const trigger=[...document.querySelectorAll(selector)].find(el=>el.textContent.includes('עו״ש'));
+                  if(!trigger||trigger.tagName!=='BUTTON')throw new Error('Projected balance is not a button');
+                  trigger.click();
+                  let input=document.querySelector('#modal [data-date-value]' );
+                  if(!input||input.value!==automatic.targetDate)throw new Error('Missing date control or incorrect automatic date');
+                  const future=new Date(now.getFullYear(),now.getMonth()+3,8),target=[future.getFullYear(),String(future.getMonth()+1).padStart(2,'0'),String(future.getDate()).padStart(2,'0')].join('-');
+                  const picker=input.closest('[data-date-editor]').querySelector('[data-date-picker]');picker.value=target;picker.dispatchEvent(new Event('change',{{bubbles:true}}));
+                  input=document.querySelector('#modal [data-date-value]');
+                  const expected=kupaAccountCashflowData(fixture,account,undefined,{{targetDate:target}});
+                  const shown=document.querySelector('#modal .cashflow-breakdown-total:last-of-type b').textContent;
+                  const amount=Number(shown.replace(/[^0-9.−-]/g,'').replace('−','-'));
+                  if(input.value!==target||Math.abs(amount-expected.projected)>0.005)throw new Error('Chosen date did not update account projection: '+shown);
+                  const controls=document.querySelector('.cashflow-date-controls');
+                  if(controls.scrollWidth>controls.clientWidth+2)throw new Error('Date controls overflow at {width}px');
+                  const dayInput=controls.querySelector('[data-date-part="day"]');dayInput.focus();dayInput.value='09';dayInput.dispatchEvent(new Event('input',{{bubbles:true}}));
+                  if(!dayInput.isConnected||controls.querySelector('[data-date-part="day"]')!==dayInput)throw new Error('Recalculation replaced the date editor during typing');
+                  const currentPicker=controls.querySelector('[data-date-picker]');currentPicker.value='2020-01-01';currentPicker.dispatchEvent(new Event('change',{{bubbles:true}}));
+                  if(controls.querySelector('[data-cashflow-date-error]').hidden)throw new Error('Historical date did not show a validation message');
+                  document.querySelector('#modal '+selector).click();
+                  if(document.querySelector('#modal [data-date-value]').value!==automatic.targetDate)throw new Error('Automatic reset failed');
+                  if(JSON.stringify(fixture)!==original)throw new Error('Exploration mutated source data');
+                  document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
+                  if(document.getElementById('modalBackdrop').classList.contains('open'))throw new Error('Read-only date change blocks close');
+                  return true;
+                }})()""")
+        assert not browser.drain_serious_errors()
+        print(f'{app}: projected balance opens date exploration for both accounts on desktop/mobile')
+
+
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok
 run_breakdown('kupa')
@@ -211,4 +253,6 @@ run_recurring_debits('kupa')
 run_recurring_debits('orders')
 run_forecast_header('kupa')
 run_forecast_header('orders')
+run_cashflow_date_picker('kupa')
+run_cashflow_date_picker('orders')
 raise SystemExit(0 if ok else 1)

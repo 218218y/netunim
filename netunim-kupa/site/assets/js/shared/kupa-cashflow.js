@@ -1,4 +1,5 @@
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
+import {cashflowNotificationData} from './cashflow-notification.js';
 import {bankRecurringExpensesData} from './bank-recurring-debits.js';
 import {creditAccountNextDisplayBillingDateData,creditBillingISODate,creditBillingRowsData,creditCyclesThroughHorizonData,creditCyclesThroughHorizonRowsData} from './credit-billing-cycles.js';
 
@@ -176,7 +177,7 @@ function settlementGroupKey(row,level){
 // Build all admissible claims before consuming any bank evidence. A claim can
 // cover one card, an exact aggregate, or an exact split debit. Only cycles present
 // in EVERY optimal disjoint explanation are settled. Ties never pick a card.
-function unresolvedSettlementIndexes(bankRows,candidates,reference){
+function unresolvedSettlementIndexes(bankRows,candidates,reference,{monthlySettlement=false}={}){
   const unresolved=new Set(candidates.map((_,index)=>index)),groupMap=new Map();
   for(const [index,row] of candidates.entries()){
     const key=settlementGroupKey(row,'card');
@@ -196,7 +197,7 @@ function unresolvedSettlementIndexes(bankRows,candidates,reference){
   for(const row of bankRows){
     const day=bankTransactionDay(row),value=moneyCents(row.amount);
     if(!day||day>reference||!value)continue;
-    let eligible=groups.flatMap((group,index)=>day>=group.due&&day<addDaysISO(group.due,CREDIT_SETTLEMENT_MAX_HOLD_DAYS)&&(!group.next||day<group.next)&&bankRowLooksLikeCreditSettlement(row,group.providers)?[index]:[]);
+    let eligible=groups.flatMap((group,index)=>day>=group.due&&day<(monthlySettlement?addMonthsISO(group.due,1):addDaysISO(group.due,CREDIT_SETTLEMENT_MAX_HOLD_DAYS))&&(!group.next||day<group.next)&&bankRowLooksLikeCreditSettlement(row,group.providers)?[index]:[]);
     const suffixMatches=eligible.filter(index=>bankTextHasCardSuffix(row,groups[index].suffix));
     if(suffixMatches.length)eligible=suffixMatches;
     if(eligible.length)banks.push({row,value,eligible,suffixMatches});
@@ -316,13 +317,13 @@ function rollForwardSettledCycleRows(rows,settlement,reference,{retainSettledCom
   });
 }
 
-function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCompleted=false,includeHidden=true}={}){
+function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCompleted=false,includeHidden=true,monthlySettlement=false}={}){
   // Visibility is a presentation choice, never evidence that another card paid.
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),start=kupaAccountBankAsOfDateData(kupa,role,ref),forecastStart=start>ref?start:ref,billingRows=creditBillingRowsData(kupa,{asOf:forecastStart,includeHidden:true}).filter(row=>row.account===role);
   const finalized=billingRows.filter(row=>row.status!=='pending'&&row.amountSource!=='issuer_not_billed'),recentStart=addDaysISO(forecastStart,-CREDIT_SETTLEMENT_MAX_HOLD_DAYS);
   // A newer charge on the same card must not hide an earlier incomplete cycle.
   // Keep whole cycles (including their known rows) for correct aggregate amounts.
-  const selectedCycles=new Set([...settlementRowsForLatestElapsedCycle(finalized,forecastStart,forecastStart),...finalized.filter(row=>row.date&&row.date<=forecastStart&&(row.date>=recentStart||!row.includedInIlsTotal||row.coverageIncomplete))].map(row=>settlementGroupKey(row,'card')));
+  const selectedCycles=new Set([...settlementRowsForLatestElapsedCycle(finalized,monthlySettlement?addDaysISO(forecastStart,1):forecastStart,monthlySettlement?addDaysISO(forecastStart,1):forecastStart),...finalized.filter(row=>row.date&&row.date<=forecastStart&&(row.date>=recentStart||!row.includedInIlsTotal||row.coverageIncomplete))].map(row=>settlementGroupKey(row,'card')));
   const candidates=finalized.filter(row=>selectedCycles.has(settlementGroupKey(row,'card')));
   // The bank can post before the issuer supplies any finalized transactions.
   // A proven pending cycle is an amountless settlement shell, not a posted
@@ -334,7 +335,13 @@ function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCom
     shellCycles.add(key);
     candidates.push({...row,creditId:`SETTLEMENT_SHELL:${key}`,settlementShell:true,amount:0,includedInIlsTotal:false});
   }
-  const feed=bankFeedForAccount(kupa,role),bankRows=isoDay(feed?.syncedAt)&&Array.isArray(feed.transactions)?feed.transactions:[],unresolved=unresolvedSettlementIndexes(bankRows,candidates,forecastStart);
+  if(monthlySettlement){
+    // A proven current cycle (including a pending-only shell) supersedes the
+    // historical fallback for that card. Keep explicitly incomplete old cycles.
+    const currentCards=new Set(candidates.filter(row=>row.date===forecastStart).map(creditCardKey));
+    for(let i=candidates.length-1;i>=0;i--)if(candidates[i].date<start&&candidates[i].date<forecastStart&&currentCards.has(creditCardKey(candidates[i]))&&candidates[i].includedInIlsTotal&&!candidates[i].coverageIncomplete)candidates.splice(i,1);
+  }
+  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],unresolved=unresolvedSettlementIndexes(bankRows,candidates,synced&&synced<forecastStart?synced:forecastStart,{monthlySettlement});
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
   const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));
@@ -342,7 +349,7 @@ function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCom
   const annotated=billingRows.map(row=>states.has(creditRowKey(row))?{...row,bankSettlementState:states.get(creditRowKey(row))}:row);
   const reconciledRows=rollForwardSettledCycleRows(annotated,currentSettlement,forecastStart,{retainSettledCompleted}).filter(row=>(includeHidden||!row.hidden)&&(retainSettledCompleted||(row.bankSettlementState!=='settled'&&row.amountSource!=='issuer_not_billed')));
   const elapsedIncompleteCreditRows=settlingCredit.rows.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);
-  return {role,ref,start,forecastStart,currentSettlement,settlingCredit,elapsedIncompleteCreditRows,rows:reconciledRows,installments:reconciledRows.filter(row=>row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004),unassignedRows:reconciledRows.filter(row=>!row.date)};
+  return {role,ref,start,forecastStart,currentSettlement,settlingCredit,settlementRows,elapsedIncompleteCreditRows,rows:reconciledRows,installments:reconciledRows.filter(row=>row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004),unassignedRows:reconciledRows.filter(row=>!row.date)};
 }
 
 export function kupaReconciledCreditRowsData(kupa,account='all',reference=localTodayISO()){
@@ -436,17 +443,65 @@ export function kupaAccountBankAsOfDateData(kupa,account='עסקי',reference=lo
 }
 
 export function kupaAccountCheckDepositsData(kupa,account='עסקי',reference=localTodayISO(),targetMonth=monthKey(reference),horizonDate=''){
-  const role=accountRole(account),cutoffDay=cashflowCheckCutoffDayForAccount(kupa?.cashflowSettings,role),configuredCutoff=monthCutoffISO(targetMonth,cutoffDay),horizon=isoDay(horizonDate),cutoffDate=horizon&&configuredCutoff?horizon<configuredCutoff?horizon:configuredCutoff:configuredCutoff;
+  const role=accountRole(account),cutoffDay=cashflowCheckCutoffDayForAccount(kupa?.cashflowSettings,role),configuredCutoff=monthCutoffISO(targetMonth,cutoffDay),horizon=isoDay(horizonDate),cutoffDate=horizon||configuredCutoff;
   const rows=(Array.isArray(kupa?.checks)?kupa.checks:[]).filter(row=>row?.status==='בקופה'&&accountRole(row?.account)===role).map(row=>({...row,dueDate:isoDay(row?.dueDate)})).filter(row=>row.dueDate&&cutoffDate&&row.dueDate<=cutoffDate).sort((a,b)=>a.dueDate.localeCompare(b.dueDate)||String(a.id||'').localeCompare(String(b.id||'')));
   return {rows,total:rows.reduce((sum,row)=>sum+num(row.amount),0),cutoffDay,cutoffDate};
 }
 
-export function kupaAccountCashflowData(kupa,account='עסקי',reference=localTodayISO()){
-  const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role),reconciliation=reconciledCreditRowsForAccount(kupa,role,ref),{start,forecastStart,rows:reconciledBillingRows,installments:reconciledInstallments,unassignedRows}=reconciliation;let cycle=creditCyclesThroughHorizonRowsData(reconciledBillingRows,role,forecastStart,unassignedRows);
-  if(!cycle.nextCycles.length){const cutoffDay=cashflowCheckCutoffDayForAccount(kupa?.cashflowSettings,role),currentCutoff=monthCutoffISO(monthKey(forecastStart),cutoffDay),fallbackDate=currentCutoff>=forecastStart?currentCutoff:monthCutoffISO(monthKey(addMonthsISO(forecastStart,1)),cutoffDay);cycle={...cycle,targetDate:fallbackDate,targetEnd:fallbackDate,targetMonth:monthKey(fallbackDate)}}
-  const recurring=bankRecurringExpensesData(kupa,role,ref,cycle.targetDate);
-  const elapsedCreditRows=reconciledInstallments.filter(row=>row.date>=start&&row.date<ref),settlingCredit=reconciliation.settlingCredit,elapsedExpenseRows=[...kupaExpenseRowsBetweenData(kupa,start,ref).filter(row=>row.dueDate<ref&&expenseBelongsTo(row,role)),...recurring.rows.filter(row=>row.dueDate<ref)],targetExpenseRows=[...kupaExpenseRowsBetweenData(kupa,forecastStart,cycle.targetDate).filter(row=>expenseBelongsTo(row,role)),...recurring.rows.filter(row=>row.dueDate>=ref)],checkDeposits=kupaAccountCheckDepositsData(kupa,role,forecastStart,cycle.targetMonth,cycle.targetDate);
-  const creditRows=[...elapsedCreditRows,...settlingCredit.rows.filter(row=>row.includedInIlsTotal),...cycle.rows].filter((row,index,all)=>all.findIndex(candidate=>candidate.creditId===row.creditId&&candidate.part===row.part)===index),expenseRows=[...elapsedExpenseRows,...targetExpenseRows].filter((row,index,all)=>all.findIndex(candidate=>candidate.id===row.id&&candidate.dueDate===row.dueDate)===index),credit=creditRows.reduce((sum,row)=>sum+moneyCents(row.amount),0)/100,expenses=expenseRows.reduce((sum,row)=>sum+moneyCents(row.amount),0)/100,checks=moneyCents(checkDeposits.total)/100,targetExpenseTotal=targetExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),total=(moneyCents(credit)+moneyCents(expenses))/100,expectedChange=(moneyCents(checks)-moneyCents(total))/100,projected=balance===null?null:(moneyCents(balance)+moneyCents(expectedChange))/100;
-  const elapsedIncompleteCreditRows=reconciliation.elapsedIncompleteCreditRows,incompleteCreditRows=[...cycle.incompleteRows,...elapsedIncompleteCreditRows];
-  return {account:role,balance,credit,expenses,checks,total,expectedChange,creditRows,expenseRows,start,end:cycle.targetDate,targetDate:cycle.targetDate,targetMonth:cycle.targetMonth,nextCreditRows:cycle.rows,nextCreditCycles:cycle.cycles,nextCreditTotal:cycle.total,unassignedCreditRows:cycle.unassignedRows,elapsedIncompleteCreditRows,incompleteCreditRows,forecastIncomplete:incompleteCreditRows.length>0||recurring.incomplete,recurringExpenseRows:recurring.rows,recurringObligations:recurring.obligations,recurringExpenseWarnings:recurring.warnings,settlingCreditRows:settlingCredit.rows,settlingCredit:settlingCredit.total,expiredSettlementCreditRows:settlingCredit.expiredRows,expiredSettlementCredit:settlingCredit.expiredTotal,expiredSettlementWarnings:settlingCredit.warnings,elapsedCredit:elapsedCreditRows.reduce((sum,row)=>sum+row.amount,0),elapsedExpenses:elapsedExpenseRows.reduce((sum,row)=>sum+num(row.amount),0),targetExpenseRows,targetExpenseTotal,checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
+// A forecast uses one account-wide monthly window. A card already paid must
+// not pull another card's still-open current cycle into the following month.
+function monthlyCashflowBoundary(key){
+  const due=monthCutoffISO(key,15),date=new Date(`${due}T00:00:00Z`);
+  return date.getUTCDay()===6?addDaysISO(due,1):due;
+}
+function automaticCashflowHorizon(kupa,role,reconciliation,creditRows){
+  const {forecastStart,settlementRows}=reconciliation,key=monthKey(forecastStart);
+  const monthEnd=monthCutoffISO(key,31),recurring=bankRecurringExpensesData(kupa,role,forecastStart,monthEnd);
+  const groups=new Map();
+  for(const row of creditRows){const groupKey=settlementGroupKey(row,'card'),group=groups.get(groupKey)||{cents:0,incomplete:false};group.cents+=moneyCents(row.amount);group.incomplete ||= !row.includedInIlsTotal||row.coverageIncomplete;groups.set(groupKey,group)}
+  // A fully offset or zero cycle needs no bank debit and cannot hold a month open.
+  const obligations=creditRows.filter(row=>{const group=groups.get(settlementGroupKey(row,'card'));return group.cents!==0||group.incomplete});
+  const outstanding=obligations.filter(row=>row.date&&row.date<=monthEnd);
+  const manual=kupaExpenseRowsBetweenData(kupa,reconciliation.start,monthlyCashflowBoundary(key)).filter(row=>expenseBelongsTo(row,role)&&moneyCents(row.amount)!==0);
+  const pending=outstanding.length>0||recurring.rows.length>0||manual.length>0;
+  const settledThisMonth=settlementRows.some(row=>monthKey(row.date)===key&&row.bankSettlementState==='settled')||recurring.obligations.some(row=>monthKey(row.lastDebit?.date)===key);
+  const nextMonth=monthKey(addMonthsISO(`${key}-01`,1)),hasNextMonthCredit=obligations.some(row=>monthKey(row.date)===nextMonth);
+  const targetMonth=pending||(!settledThisMonth&&!hasNextMonthCredit&&forecastStart<=monthlyCashflowBoundary(key))?key:nextMonth;
+  const dates=[monthlyCashflowBoundary(targetMonth),...obligations.filter(row=>monthKey(row.date)===targetMonth).map(row=>row.date)];
+  return {targetMonth,targetDate:[forecastStart,...dates].sort().at(-1),awaitingSettlement:outstanding.some(row=>row.date<forecastStart)||recurring.rows.some(row=>row.dueDate<forecastStart)};
+}
+
+// reference is the date of calculation, targetDate is the requested future date.
+// Never advance reference to simulate the future: it would expire pending issuer
+// data and treat future bank debits as already reflected in today's balance.
+export function kupaAccountCashflowData(kupa,account='עסקי',reference=localTodayISO(),options={}){
+  const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role);
+  const reconciliation=reconciledCreditRowsForAccount(kupa,role,ref,{monthlySettlement:true});
+  const {start,forecastStart,unassignedRows}=reconciliation;
+  const hasFeed=!!isoDay(bankFeedForAccount(kupa,role)?.syncedAt);
+  const remaining=reconciliation.rows.filter(row=>row.date&&(row.date>=start||(hasFeed&&['awaiting','expired'].includes(row.bankSettlementState))||(!row.includedInIlsTotal||row.coverageIncomplete)));
+  const automatic=automaticCashflowHorizon(kupa,role,reconciliation,remaining);
+  const requested=options.targetDate?isoDay(options.targetDate):'';
+  if(options.targetDate&&(!requested||requested<forecastStart))throw new RangeError('תאריך התחזית חייב להיות תקין ולא מוקדם מתאריך החישוב או יתרת הבסיס');
+  const targetDate=requested||automatic.targetDate,targetMonth=monthKey(targetDate);
+  const selected=remaining.filter(row=>row.date<=targetDate),creditRows=selected.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
+  const recurring=bankRecurringExpensesData(kupa,role,forecastStart,targetDate);
+  const expenseRows=[...kupaExpenseRowsBetweenData(kupa,start,targetDate).filter(row=>expenseBelongsTo(row,role)),...recurring.rows];
+  const checkDeposits=kupaAccountCheckDepositsData(kupa,role,forecastStart,targetMonth,targetDate);
+  const sum=rows=>rows.reduce((total,row)=>total+moneyCents(row.amount),0)/100;
+  const credit=sum(creditRows),expenses=sum(expenseRows),checks=moneyCents(checkDeposits.total)/100,total=(moneyCents(credit)+moneyCents(expenses))/100;
+  const expectedChange=(moneyCents(checks)-moneyCents(total))/100,projected=balance===null?null:(moneyCents(balance)+moneyCents(expectedChange))/100;
+  const incompleteCreditRows=[...unassignedRows,...selected.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete)];
+  const elapsedIncompleteCreditRows=incompleteCreditRows.filter(row=>row.date&&row.date<forecastStart);
+  const nextCreditRows=creditRows.filter(row=>row.date>=forecastStart),targetExpenseRows=expenseRows.filter(row=>row.dueDate>=forecastStart);
+  const cycle=creditCyclesThroughHorizonRowsData(selected,role,forecastStart,unassignedRows,targetDate);
+  const settlingCreditRows=selected.filter(row=>row.date<forecastStart&&['awaiting','expired'].includes(row.bankSettlementState));
+  const result={account:role,balance,credit,expenses,checks,total,expectedChange,creditRows,expenseRows,start,reference:forecastStart,end:targetDate,targetDate,targetMonth,automaticTargetDate:automatic.targetDate,customTarget:!!requested,awaitingSettlement:automatic.awaitingSettlement,
+    nextCreditRows,nextCreditCycles:cycle.cycles,nextCreditTotal:sum(nextCreditRows),unassignedCreditRows:unassignedRows,elapsedIncompleteCreditRows,incompleteCreditRows,
+    forecastIncomplete:incompleteCreditRows.length>0||recurring.incomplete,recurringExpenseRows:recurring.rows,recurringObligations:recurring.obligations,recurringExpenseWarnings:recurring.warnings,
+    settlingCreditRows,settlingCredit:sum(settlingCreditRows),expiredSettlementCreditRows:reconciliation.settlingCredit.expiredRows,expiredSettlementCredit:reconciliation.settlingCredit.expiredTotal,expiredSettlementWarnings:reconciliation.settlingCredit.warnings,unmatchedCreditRetained:true,
+    elapsedCredit:sum(creditRows.filter(row=>row.date>=start&&row.date<forecastStart)),elapsedExpenses:sum(expenseRows.filter(row=>row.dueDate<forecastStart)),targetExpenseRows,targetExpenseTotal:sum(targetExpenseRows),
+    checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
+  result.breach=cashflowNotificationData(result,kupa?.cashflowSettings,forecastStart);
+  return result;
 }

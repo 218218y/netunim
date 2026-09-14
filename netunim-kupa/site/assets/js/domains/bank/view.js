@@ -1,6 +1,5 @@
-import {cashflowBreakdownMarkup} from '../../shared/cashflow-breakdown.js';
+import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
 import {kupaAccountCashflowData,kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
-import {cashflowAlertForAccount} from '../../shared/cashflow.js';
 import {esc} from '../../core/values.js';
 import {money, moneyWithCents, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
@@ -155,7 +154,7 @@ function bankTransactionsTableMarkup(feed,role){
   const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
   const available=feed?.availableBalance===null||feed?.availableBalance===undefined?null:Number(feed.availableBalance),limit=feed?.creditLimit===null||feed?.creditLimit===undefined?null:Number(feed.creditLimit);
   const cashflow=kupaAccountCashflowData(model.state,role==='home'?'ביתי':'עסקי');
-  const balanceFacts=[Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:'',Number.isFinite(available)?`<div class="bank-current-balance"><span>יתרה זמינה למשיכה</span><b>${money(available)}</b></div>`:'',Number.isFinite(limit)&&limit>0?`<div class="bank-current-balance"><span>מסגרת אשראי</span><b>${money(limit)}</b></div>`:'',cashflow.projected===null?'':`<div class="bank-current-balance"><span>עו״ש תזרימי (${esc(dateFmt(cashflow.targetDate))})${cashflow.forecastIncomplete?' · חלקי':''}</span><b>${moneyWithCents(cashflow.projected)}</b></div>`].filter(Boolean).join('');
+  const balanceFacts=[Number.isFinite(balance)?`<div class="bank-current-balance"><span>יתרת עו״ש ${roleLabel}</span><b>${money(balance)}</b></div>`:'',Number.isFinite(available)?`<div class="bank-current-balance"><span>יתרה זמינה למשיכה</span><b>${money(available)}</b></div>`:'',Number.isFinite(limit)&&limit>0?`<div class="bank-current-balance"><span>מסגרת אשראי</span><b>${money(limit)}</b></div>`:'',cashflow.projected===null?'':`<button type="button" data-action="cashflow-breakdown" data-click-arg0="${role}" aria-haspopup="dialog" class="bank-current-balance cashflow-breakdown-trigger"><span>עו״ש תזרימי (${esc(dateFmt(cashflow.targetDate))})${cashflow.forecastIncomplete?' · חלקי':''}</span><b>${moneyWithCents(cashflow.projected)}</b></button>`].filter(Boolean).join('');
   const accountTitle=feed?.accountNumber?`חשבון ${roleLabel} ${esc(feed.accountNumber)}`:`חשבון ${roleLabel}`;
   const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small>${bankDateFilterMarkup()}</div><div class="bank-caption-controls">${bankDataViewToggleMarkup()}<div class="bank-balance-facts">${balanceFacts}</div></div></div>`;
   const context=mode==='direct'?bankDirectSnapshotNote(directSnapshot):bankMissingSummary(historyRows);
@@ -216,12 +215,12 @@ function updateBridgePanel(){
   const region=document.querySelector('.bank-transactions-region');if(region)region.innerHTML=bankTransactionsMarkup(s);
 }
 
-function openCashflowBreakdown(role){const account=role==='home'?'ביתי':'עסקי';modal(`פירוט שינוי צפוי · ${account}`,cashflowBreakdownMarkup(kupaAccountCashflowData(model.state,account)),'סגור',()=>closeModal(true))}
+function openCashflowBreakdown(role,targetDate='',input=null){const account=role==='home'?'ביתי':'עסקי';if(input)return updateCashflowExplorer(input,date=>kupaAccountCashflowData(model.state,account,undefined,{targetDate:date}));modal(`פירוט שינוי צפוי · ${account}`,cashflowExplorerMarkup(kupaAccountCashflowData(model.state,account,undefined,{targetDate}),'cashflow-breakdown',role,dateEditorMarkup),'סגור',()=>closeModal(true))}
 
 function renderBank(){
   const bank=bankCurrentBalance(),cycle=bankNextCycleCommitments(),after=bankProjectedThisMonth(),cycleLabel=monthLabel(cycle.targetMonth),cycleDate=dateFmt(cycle.targetDate);
   const homeBank=bankHomeBalance(),homeCycle=bankHomeNextCycleCommitments(),homeAfter=bankHomeProjectedThisMonth(),homeCycleLabel=monthLabel(homeCycle.targetMonth),homeCycleDate=dateFmt(homeCycle.targetDate);
-  const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses,businessCashflowAlert=cashflowAlertForAccount(after,model.state.cashflowSettings,'עסקי'),homeCashflowAlert=cashflowAlertForAccount(homeAfter,model.state.cashflowSettings,'ביתי');
+  const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses,businessCashflowAlert={active:!!cycle.breach.breachDate},homeCashflowAlert={active:!!homeCycle.breach.breachDate};
   document.getElementById('content').innerHTML=`
   <div class="bank-balance-card">
     <div class="bank-account-summary-label business"><b>חשבון עסקי</b><span>התחייבויות עסקיות בלבד</span></div>
@@ -234,7 +233,7 @@ function renderBank(){
     <div class="bank-mini"><div class="bank-label">הוצאות עסקיות עד אופק התזרים</div><div class="bank-value">${money(cycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות העסקיות עד ${esc(cycleDate)}</div></div>
     <div class="bank-mini positive"><div class="bank-label">צ׳קים עסקיים לתזרים</div><div class="bank-value">+${money(cycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(cycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
     <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="business" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(cycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
-    <div class="bank-mini ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><div class="bank-label">עו״ש עסקי באופק ${esc(cycleDate)}${cycle.forecastIncomplete?' · תחזית חלקית':''}</div><div class="bank-value">${formatNullableMoney(after)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${cycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</div></div>
+    <button type="button" data-action="cashflow-breakdown" data-click-arg0="business" aria-haspopup="dialog" class="bank-mini cashflow-breakdown-trigger ${esc(businessCashflowAlert.active?'cashflow-alert':after!==null&&after>=0?'positive':'warning')}"><span class="bank-label">עו״ש עסקי באופק ${esc(cycleDate)}${cycle.forecastIncomplete?' · תחזית חלקית':''}</span><span class="bank-value">${formatNullableMoney(after)}</span><span class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${cycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</span></button>${cashflowBreachMarkup(cycle)}
     <div class="bank-account-summary-label home"><b>חשבון ביתי</b><span>התחייבויות ביתיות בלבד</span></div>
     <div class="bank-entry bank-home-entry">
       <label>עובר ושב ביתי בבנק — היתרה לחישובי הבית</label>
@@ -245,7 +244,7 @@ function renderBank(){
     <div class="bank-mini"><div class="bank-label">הוצאות ביתיות עד אופק התזרים</div><div class="bank-value">${money(homeCycle.targetExpenseTotal)}</div><div class="muted">כל ההוצאות הביתיות עד ${esc(homeCycleDate)}</div></div>
     <div class="bank-mini positive"><div class="bank-label">צ׳קים ביתיים לתזרים</div><div class="bank-value">+${money(homeCycle.checks)}</div><div class="muted">צ׳קים בקופה עד ${esc(dateFmt(homeCycle.checkCutoffDate))}, ולא מעבר לאופק</div></div>
     <button type="button" class="bank-mini cashflow-breakdown-trigger" data-action="cashflow-breakdown" data-click-arg0="home" aria-haspopup="dialog"><span class="bank-label">שינוי צפוי ⓘ</span><span class="bank-value">${moneyWithCents(homeCycle.expectedChange)}</span><span class="muted">לחץ לפירוט סכומים ומועדים</span></button>
-    <div class="bank-mini ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><div class="bank-label">עו״ש ביתי באופק ${esc(homeCycleDate)}${homeCycle.forecastIncomplete?' · תחזית חלקית':''}</div><div class="bank-value">${formatNullableMoney(homeAfter)}</div><div class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${homeCycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</div></div>
+    <button type="button" data-action="cashflow-breakdown" data-click-arg0="home" aria-haspopup="dialog" class="bank-mini cashflow-breakdown-trigger ${esc(homeCashflowAlert.active?'cashflow-alert':homeAfter!==null&&homeAfter>=0?'positive':'warning')}"><span class="bank-label">עו״ש ביתי באופק ${esc(homeCycleDate)}${homeCycle.forecastIncomplete?' · תחזית חלקית':''}</span><span class="bank-value">${formatNullableMoney(homeAfter)}</span><span class="muted">עו״ש פחות מחזורי אשראי והוצאות עד האופק, ובתוספת צ׳קים עד אותו אופק${homeCycle.forecastIncomplete?' · יש לבדוק את הנתונים החסרים בפירוט השינוי הצפוי':''}</span></button>${cashflowBreachMarkup(homeCycle)}
   </div>
   <section class="section bank-sync-section">
     <div class="bank-command-row">

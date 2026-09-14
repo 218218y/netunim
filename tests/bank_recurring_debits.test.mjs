@@ -61,7 +61,7 @@ test('bank balance plus remaining estimate counts each obligation once during st
   value.bank.homeFeed.transactions.push(tx('בנק מרכנתיל די',4920,'2026-09-15'));
   value.bank.homeFeed.balance-=4920;
   result=kupaAccountCashflowData(value,'ביתי','2026-09-15');
-  assert.equal(result.expenses,0);assert.equal(result.projected,13960);
+  assert.equal(result.targetDate,'2026-10-15');assert.equal(result.expenses,6040);assert.equal(result.projected,7920);
 });
 
 test('a later month never erases a missing earlier monthly debit',()=>{
@@ -76,10 +76,10 @@ test('Saturday moves only that monthly estimate to Sunday, without drifting the 
   assert.deepEqual(result.rows.map(row=>row.dueDate),['2027-05-16','2027-06-15']);
 });
 
-test('the exact cash-flow horizon still bounds estimates, and source remains visible beyond it',()=>{
+test('legacy cheque cutoff cannot exclude the mid-month bank obligations',()=>{
   const value=state();value.cashflowSettings.homeCheckCutoffDay=14;
   const result=kupaAccountCashflowData(value,'ביתי','2026-09-11');
-  assert.equal(result.expenses,0);assert.equal(result.targetDate,'2026-09-14');
+  assert.equal(result.expenses,6021.62);assert.equal(result.targetDate,'2026-09-15');
   assert.equal(result.recurringObligations[0].nextDueDate,'2026-09-15');
 });
 

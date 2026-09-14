@@ -26,6 +26,6 @@ export function kupaNextCreditCycle(kupa,reference=checkTodayISO()){return kupaN
 export function kupaExpenseRowsBetween(kupa,start,end){return kupaExpenseRowsBetweenData(kupa,start,end)}
 export function kupaAccountBankBalance(kupa,account='עסקי'){return kupaAccountBankBalanceData(kupa,account)}
 export function kupaAccountBankAsOfDate(kupa,account='עסקי',reference=checkTodayISO()){return kupaAccountBankAsOfDateData(kupa,account,reference)}
-export function kupaAccountCashflowData(kupa,account='עסקי',reference=checkTodayISO()){return sharedKupaAccountCashflowData(kupa,account,reference)}
+export function kupaAccountCashflowData(kupa,account='עסקי',reference=checkTodayISO(),options={}){return sharedKupaAccountCashflowData(kupa,account,reference,options)}
 
 export function computeKupaNetReadoutData(state,kupa){if(!kupa||typeof kupa!=='object')return null;const cash=(Array.isArray(kupa.cash)?kupa.cash:[]).reduce((sum,row)=>sum+kupaWholeMoney(row.amount),0),checks=normalizeSharedChecks(state.checks),cashflow=sharedKupaAccountCashflowData({...kupa,checks},'עסקי',checkTodayISO());if(cashflow.balance===null)return {net:null,cash,...cashflow};return {...cashflow,bank:cashflow.balance,cash,kupa:cashflow.checks,net:cashflow.projected}}

@@ -123,7 +123,8 @@ test('bank balance remains the authoritative snapshot regardless of check workfl
  state.bank.adjustments=[{type:'manual',amount:25},{type:'check_deposit',amount:500}];
  assert.equal(bankCurrentBalanceData(state),1025,'manual corrections remain supported while legacy check adjustments stay excluded');
 });
-test('Orders readout includes only business synchronized credit and business checks in Kupa net and never adds check events to bank',()=>{
+test('Orders readout includes only business synchronized credit and business checks in Kupa net and never adds check events to bank',t=>{
+ t.mock.timers.enable({apis:['Date'],now:new Date('2099-01-01T12:00:00Z')});
  const businessKey='P:1111',homeKey='P:2222',kupa={bank:{currentBalance:1000,asOfDate:'2020-01-01',adjustments:[]},credits:[],expenses:[],cash:[],creditSync:{version:3,profiles:[{profileId:'P',provider:'max',accounts:[
   {accountNumber:'1111',txns:[{id:'T',processedDate:'2099-01-10',chargedAmount:-75,chargedCurrency:'ILS',status:'completed'}]},
   {accountNumber:'2222',txns:[{id:'H',processedDate:'2099-01-10',chargedAmount:-125,chargedCurrency:'ILS',status:'completed'}]},
@@ -131,7 +132,7 @@ test('Orders readout includes only business synchronized credit and business che
  assert.equal(kupaAllInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),200,'credit reporting still sees both included cards');
  assert.equal(kupaBusinessInstallments(kupa).reduce((sum,row)=>sum+row.amount,0),75,'business readout excludes the included home card');
  const readout=computeKupaNetReadoutData({checks:[{id:'C',amount:40,dueDate:'2099-01-05',status:'בקופה'},{id:'H',account:'ביתי',amount:500,dueDate:'2099-01-05',status:'בקופה'}]},kupa);
- assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.checks,40);assert.equal(readout.net,965);assert.equal(readout.targetDate,'2099-01-10');
+ assert.equal(readout.bank,1000);assert.equal(readout.credit,75);assert.equal(readout.checks,40);assert.equal(readout.net,965);assert.equal(readout.targetDate,'2099-01-15');
 });
 test('merge preserves independent changes and detects deletion versus edit',()=>{
  const base=[{id:'A',value:1},{id:'B',value:2}],local=[{id:'A',value:3},{id:'B',value:2}],remote=[{id:'A',value:1},{id:'B',value:4}];
