@@ -3,6 +3,6 @@
   "schema_snapshot": "audit/morning-schema-live.json",
   "migration_snapshot": "canonical-migrations.json",
   "manifest_snapshot": "canonical-migration-manifest.json",
-  "status": "Canonical reviewed migration expectations plus authenticated Production evidence. Verification permits only an exact pending migration suffix; static uploads remain blocked until Production is migrated and a new live receipt is recorded.",
+  "status": "Canonical reviewed migrations plus an authenticated Production baseline. Static uploads verify live SQL and schema, deriving an exact pending upgrade locally when the saved receipt is older. A new committed receipt is optional after a matching live verification.",
   "deployment_receipt": "production-deployment-receipt.json"
 }

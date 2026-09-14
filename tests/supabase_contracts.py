@@ -15,6 +15,7 @@ from build_schema_baseline import render
 from supabase_postflight import (drift, manifest_pending_suffix, normalized_text_sha256,
                                 release_contract_errors)
 from supabase_migration_manifest import split_sql_statements, verify_server_manifest
+from supabase_deploy_gate_contracts import SupabaseDeployGateContracts
 
 
 def read(name):
@@ -188,20 +189,15 @@ class SupabaseContracts(unittest.TestCase):
         self.assertFalse(capability['security_definer'])
         self.assertFalse(capability['anon'])
 
-    def test_static_upload_requires_production_receipt_and_live_check_is_conditional(self):
+    def test_static_upload_checks_live_database_before_preflight_returns(self):
         deployment = (ROOT / 'tools/deploy_site_core.bat').read_text(encoding='utf8')
         wrangler = deployment.index('call npx --yes wrangler')
-        release = deployment.index('supabase_postflight.py" --release-gate')
+        release = deployment.index('supabase_deploy_gate.py"')
         preflight = deployment.index('if /I "%~6"=="--preflight-only" (')
-        live = deployment.index('if defined NETUNIM_RUN_LIVE_POSTFLIGHT')
-        self.assertLess(release, live)
         self.assertLess(release, preflight)
-        self.assertLess(preflight, live)
-        self.assertLess(live, wrangler)
-        self.assertIn('Supabase release gate failed. No site was uploaded.', deployment)
-        self.assertIn('NETUNIM_SUPABASE_CAPTURE', deployment)
-        self.assertIn('if defined PGHOST if defined PGDATABASE if defined PGUSER', deployment)
-        self.assertIn('Mandatory Production receipt gate passed', deployment)
+        self.assertLess(preflight, wrangler)
+        self.assertIn('Supabase deployment verification failed. No site was uploaded.', deployment)
+        self.assertNotIn('supabase_postflight.py" --release-gate', deployment)
 
     def test_release_receipt_text_hash_is_line_ending_independent(self):
         target = read('postflight-target.json')

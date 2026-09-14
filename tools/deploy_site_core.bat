@@ -208,37 +208,18 @@ for %%F in (_worker.js _routes.json wrangler.toml wrangler.json wrangler.jsonc) 
   exit /b 2
 )
 
-rem Static site uploads must never outrun an unapplied database release. This
-rem mandatory offline gate binds the current DB contract to the last authenticated
-rem Production postflight receipt and requires no local database credentials.
-python "%~dp0supabase_postflight.py" --release-gate
+rem Check live Production before deciding that an old saved receipt blocks upload.
+rem The shared gate derives pending upgrades from the reviewed migration chain;
+rem it never applies SQL or rewrites tracked evidence during a fast deployment.
+python "%~dp0supabase_deploy_gate.py"
 if errorlevel 1 (
-  echo ERROR: Supabase release gate failed. No site was uploaded.
+  echo ERROR: Supabase deployment verification failed. No site was uploaded.
   exit /b 2
 )
 
 if /I "%~6"=="--preflight-only" (
-  echo Deployment preflight and Production receipt gate passed. No deployment requested.
+  echo Deployment preflight and Supabase verification passed. No deployment requested.
   exit /b 0
-)
-
-rem A live drift check is stronger but requires privileged database access. Run it
-rem automatically when the operator/CI explicitly supplied a connector capture, a
-rem PostgreSQL service, or the normal PGHOST/PGDATABASE/PGUSER connection tuple.
-rem A workstation without those secrets still has the mandatory release-receipt gate.
-set "NETUNIM_RUN_LIVE_POSTFLIGHT="
-if defined NETUNIM_SUPABASE_CAPTURE set "NETUNIM_RUN_LIVE_POSTFLIGHT=1"
-if defined PGSERVICE set "NETUNIM_RUN_LIVE_POSTFLIGHT=1"
-if defined PGHOST if defined PGDATABASE if defined PGUSER set "NETUNIM_RUN_LIVE_POSTFLIGHT=1"
-if defined NETUNIM_RUN_LIVE_POSTFLIGHT (
-  python "%~dp0supabase_postflight.py"
-  if errorlevel 1 (
-    echo ERROR: Supabase live postflight failed. No site was uploaded.
-    exit /b 2
-  )
-) else (
-  echo INFO: Live Supabase drift check not configured on this workstation.
-  echo       Mandatory Production receipt gate passed; continuing static site deployment.
 )
 
 rem Use a fresh isolated working directory on every run. Cloudflare documents that a

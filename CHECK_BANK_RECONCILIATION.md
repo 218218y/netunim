@@ -105,8 +105,11 @@ differ from the configured check inclusion cutoff. Only checks still `בקופה
 the projection. Deposited (manual or automatic), cleared, missing-under-review and
 returned checks never add their amounts to the authoritative bank balance again.
 
-The live production receipt is deliberately unchanged: a local migration file is not
-evidence of deployment. The reviewed migration manifest includes this pending suffix.
+The saved Production receipt can predate this release. Static deployment now verifies
+the live migration SQL and derives the expected upgraded schema automatically through
+`tools/supabase_deploy_gate.py`; a stale receipt no longer requires manual adjustment
+after each already-applied migration. A local migration file alone is never deployment
+evidence. The deployed check migration and live schema were verified on 2026-09-14.
 
 `tests/check_bank_reconciliation.py` runs against real disposable PostgreSQL as part of
 the candidate-schema suite. It covers grouped deposits, overlap, ambiguous subsets,

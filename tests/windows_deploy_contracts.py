@@ -87,6 +87,23 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(calls, [])
 
+    def test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites(self):
+        shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')
+        shutil.copyfile(ROOT/'tools/wrangler-version.txt', self.root/'tools/wrangler-version.txt')
+        for app in ('orders', 'kupa'):
+            shutil.copytree(ROOT/f'netunim-{app}/site', self.root/f'netunim-{app}/site')
+        self.write('tools/supabase_deploy_gate.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('database\\n')\nraise SystemExit(int(os.environ['DATABASE_EXIT']))\n")
+        self.env['DATABASE_EXIT'] = '2'
+        result, calls = self.run_bat('deploy_all_fast.bat')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ['remote', 'public', 'database'])
+        self.assertIn('No site was uploaded', result.stdout)
+        self.env['DATABASE_EXIT'] = '0'
+        result, calls = self.run_bat('deploy_all_fast.bat')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ['remote', 'public', 'database', 'database'])
+        self.assertNotIn('Deploying the verified static site', result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

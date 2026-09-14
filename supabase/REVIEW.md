@@ -139,13 +139,29 @@ is an Auth configuration issue; this database refactor does not change Auth sett
 
 ## Postflight and review sequence
 
-`tools/supabase_postflight.py` reads live catalogs in a read-only transaction and compares
-them plus migration history to the reviewed Production artifacts. The actual site upload
-path always checks the last authenticated Production receipt before Wrangler.
-`--preflight-only` checks static files and that same receipt, then stops without a
-cloud connection. Pending database migrations therefore block preflight as well
-as upload. When live PostgreSQL access is configured, failed access or drift also
-blocks upload.
+All static entrypoints use `tools/supabase_deploy_gate.py` before both preflight
+success and Wrangler. It reads live catalogs and the migration ledger using the
+logged-in Supabase CLI (`db query --linked --project-ref`), an explicitly configured
+PostgreSQL connection, or a fresh connector capture. SQL runs inside `BEGIN READ ONLY`.
+The target is always the explicit project in `postflight-target.json`.
+
+A committed receipt older than the local migrations is an authenticated baseline,
+not a claim that the live database is still old. The gate first verifies the live
+migration names and exact SQL hashes. It then reconstructs that baseline in isolated
+local PostgreSQL, applies the reviewed suffix **only locally**, and compares the
+result with the live schema, permissions and operational settings. Already-applied
+migrations therefore need no manual receipt/schema promotion to publish the site.
+Missing/modified migrations, unexplained live drift and failed configured connections
+still block publication. `--preflight-only` performs this same read-only verification.
+
+Authenticate the CLI once with `supabase login`; it must support `db query --linked
+--project-ref --file --output json`. Pending-upgrade derivation needs the repository's
+PostgreSQL test dependencies. The gate does not run the full test suite, apply any
+Production DDL, or change tracked files, so the fast path remains bound to its exact
+CI-verified commit. Without any live connection capability, only a current authenticated
+receipt can authorize the existing offline fallback. An old receipt alone cannot.
+`tools/supabase_postflight.py --release-gate` remains the explicitly offline audit tool;
+`--capture ... --record-release` remains available to maintain committed historical evidence.
 Use PGHOST/PGPORT/PGDATABASE/PGUSER and a passfile or service; never place secrets in SQL
 artifacts or command arguments. A connector capture can also be compared with
 `--actual <inventory.json> --history <migration-list.json>` during review.

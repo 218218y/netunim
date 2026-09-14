@@ -30,6 +30,7 @@ def build_fingerprint():
     target = json.loads(paths[0].read_text(encoding='utf8'))
     paths += [ROOT / 'supabase' / target['schema_snapshot'], ROOT / 'supabase' / target['migration_snapshot']]
     paths.append(ROOT / 'supabase' / target['manifest_snapshot'])
+    paths += [path for path in (ROOT/'tools/supabase_deploy_gate.py', ROOT/'tools/supabase_candidate_schema.py') if path.is_file()]
     for app in ('orders', 'kupa'):
         paths += sorted(p for p in (ROOT / f'netunim-{app}/site').rglob('*') if p.is_file())
     digest = hashlib.sha256()
@@ -310,6 +311,32 @@ def record_release(target, capture_path, actual, history, manifest):
     print('PASS: authenticated source audit, schema snapshot and Production receipt recorded.')
 
 
+def verify_evidence(target, expected, actual, history, manifest):
+    differences = drift(expected, actual)
+    if differences:
+        print('\n'.join(differences))
+        raise SystemExit('FAIL: unexplained application schema drift; no deploy allowed.')
+    errors = operational_errors(actual)
+    if errors:
+        raise SystemExit('FAIL: operational infrastructure drift; no deploy allowed.\n' + '\n'.join(errors))
+    if history is not None:
+        expected_history = json.loads((ROOT / 'supabase' / target['migration_snapshot']).read_text(encoding='utf8'))['migrations']
+        if canonical(history) != canonical(expected_history):
+            raise SystemExit('FAIL: migration history differs from the reviewed ledger; no deploy allowed.')
+    if manifest is not None:
+        expected_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
+        try:
+            verify_server_manifest(manifest, expected_manifest)
+        except (ValueError, OSError) as exc:
+            raise SystemExit('FAIL: recorded migration SQL differs from reviewed file/CLI statement hashes; no deploy allowed. '+str(exc)) from exc
+    print('PASS: application tables/columns/constraints/indexes/functions/security/grants/policies/triggers match the reviewed schema.')
+    print('PASS: pg_cron and exactly two active retention jobs match names/schedules/commands/ownership/targets; scheduler enabled in GMT.')
+    if history is not None:
+        print('PASS: migration history matches the reviewed ledger.')
+    if manifest is not None:
+        print('PASS: server migration SQL hashes match canonical files or their exact CLI statement representation.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     target = json.loads((ROOT / 'supabase/postflight-target.json').read_text(encoding='utf8'))
@@ -363,29 +390,7 @@ def main():
         if result.returncode:
             raise SystemExit('FAIL: cannot read live database catalogs; configure PGHOST/PGDATABASE/PGUSER and a passfile/service. No deploy allowed.')
         actual, history, manifest = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-    differences = drift(expected, actual)
-    if differences:
-        print('\n'.join(differences))
-        raise SystemExit('FAIL: unexplained application schema drift; no deploy allowed.')
-    errors = operational_errors(actual)
-    if errors:
-        raise SystemExit('FAIL: operational infrastructure drift; no deploy allowed.\n' + '\n'.join(errors))
-    if history is not None:
-        expected_history = json.loads((ROOT / 'supabase' / target['migration_snapshot']).read_text(encoding='utf8'))['migrations']
-        if canonical(history) != canonical(expected_history):
-            raise SystemExit('FAIL: migration history differs from the reviewed ledger; no deploy allowed.')
-    if manifest is not None:
-        expected_manifest = json.loads((ROOT / 'supabase' / target['manifest_snapshot']).read_text(encoding='utf8'))
-        try:
-            verify_server_manifest(manifest, expected_manifest)
-        except (ValueError, OSError) as exc:
-            raise SystemExit('FAIL: recorded migration SQL differs from reviewed file/CLI statement hashes; no deploy allowed. '+str(exc)) from exc
-    print('PASS: application tables/columns/constraints/indexes/functions/security/grants/policies/triggers match the reviewed schema.')
-    print('PASS: pg_cron and exactly two active retention jobs match names/schedules/commands/ownership/targets; scheduler enabled in GMT.')
-    if history is not None:
-        print('PASS: migration history matches the reviewed ledger.')
-    if manifest is not None:
-        print('PASS: server migration SQL hashes match canonical files or their exact CLI statement representation.')
+    verify_evidence(target, expected, actual, history, manifest)
     if args.record_release:
         record_release(target, args.capture, actual, history, manifest)
 

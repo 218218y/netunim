@@ -140,13 +140,12 @@ dry_run = deploy_core.find('if /I "%~6"=="--preflight-only" (')
 mkdir_pos = deploy_core.find('mkdir "%DEPLOY_WORK_DIR%"')
 ok(0 <= dry_run < mkdir_pos < wrangler_pos, "deploy core: read-only preflight exits before deployment setup and Wrangler")
 ok('exit /b 0' in deploy_core[dry_run:mkdir_pos], "deploy core: preflight cannot fall through to upload")
-release_gate_pos = deploy_core.find('supabase_postflight.py" --release-gate')
-live_gate_pos = deploy_core.find('if defined NETUNIM_RUN_LIVE_POSTFLIGHT')
-ok(release_gate_pos < dry_run < live_gate_pos < wrangler_pos,
-   "deploy core: preflight checks the mandatory offline DB release gate before returning success; live drift check and upload remain later")
-ok('if defined NETUNIM_SUPABASE_CAPTURE' in deploy_core
-   and 'if defined PGHOST if defined PGDATABASE if defined PGUSER' in deploy_core,
-   "deploy core: live Supabase postflight is enabled only by explicit connector/PG connection configuration")
+database_gate_pos = deploy_core.find('supabase_deploy_gate.py"')
+ok(0 <= database_gate_pos < dry_run < wrangler_pos,
+   "deploy core: live database verification precedes both preflight success and upload")
+ok('if errorlevel 1 (' in deploy_core[database_gate_pos:dry_run]
+   and 'exit /b 2' in deploy_core[database_gate_pos:dry_run],
+   "deploy core: failed database verification stops every deployment path")
 wrangler_version_path = ROOT / "tools/wrangler-version.txt"
 wrangler_version = wrangler_version_path.read_text(encoding="utf-8").strip()
 ok(bool(re.fullmatch(r"\d+\.\d+\.\d+", wrangler_version)),
