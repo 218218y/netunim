@@ -163,19 +163,36 @@ function isTransactionReferenceKey(key){const token=detailKeyToken(key);return /
 function isBankNumberKey(key){return /^(bank|banknumber|bankno|bankcode|בנק|מספרבנק|מסבנק)$/.test(detailKeyToken(key))}
 function isBranchNumberKey(key){return /^(branch|branchnumber|branchno|branchcode|סניף|מספרסניף|מססניף)$/.test(detailKeyToken(key))}
 function isAccountNumberKey(key){return /^(account|accountnumber|accountno|accountid|חשבון|מספרחשבון|מסחשבון)$/.test(detailKeyToken(key))}
-function isChequeAmountKey(key){return /^(amount|sum|checkamount|chequeamount|checksum|chequesum|סכום|סכוםשיק|סכוםצק)$/.test(detailKeyToken(key))}
-function isSemanticLabelKey(key){return /^(label|title|name|caption|fieldname|displayname|description|תווית|כותרת|שם)$/.test(detailKeyToken(key))}
-function isSemanticValueKey(key){return /^(value|fieldvalue|displayvalue|text|data|ערך|תוכן)$/.test(detailKeyToken(key))}
+function isChequeAmountKey(key){
+  const token=detailKeyToken(key);
+  return /^(amount|sum|checkamount|chequeamount|checksum|chequesum|סכום)$/.test(token)
+    || /^(?:check|cheque|cheq|chk).*(?:amount|sum)/.test(token)
+    || /^(?:amount|sum).*(?:check|cheque|cheq|chk)/.test(token)
+    || /^סכום(?:ה)?(?:שיק|צק)/.test(token);
+}
+function isSemanticLabelKey(key){return /^(label|title|name|caption|header|columnname|field|fieldname|fieldlabel|fielddesc|fielddescription|displayname|displaylabel|description|תווית|כותרת|שם)$/.test(detailKeyToken(key))}
+function isSemanticValueKey(key){return /^(value|fieldvalue|formattedvalue|displayvalue|displaytext|displaycontent|text|data|content|ערך|תוכן)$/.test(detailKeyToken(key))}
+function explicitChequeNumberFromText(value){
+  const text=compactText(value,240);if(!text)return '';
+  const match=text.match(/(?:אסמכתא\s*\(\s*מס[׳']?\s*(?:שיק|צ[׳']?ק)\s*\)|מס(?:פר|[׳'])?\s*(?:שיק|צ[׳']?ק)|(?:שיק|צ[׳']?ק)\s*מס(?:פר|[׳'])?)\s*[:=\-–—]?\s*([0-9]{2,20})/u);
+  return match?compactText(match[1],80):'';
+}
 
 function depositDescriptionToken(value){return String(value??'').toLowerCase().replace(/[\u05f3\u05f4'’׳״]/g,"'").replace(/\s+/g,' ').trim()}
-export function isHapoalimChequeTransaction(txn){
+export function hapoalimChequeTransactionKind(txn){
   // Only the bank's activity description is authoritative here. Do not scan beneficiary names:
   // Hebrew names such as "זרצקי" contain the letters צק and previously caused false positives.
   const text=depositDescriptionToken(txn?.activityDescription);
-  if(!text)return false;
-  return /(?:^|[\s.,;:()\-/])(?:הפק(?:דה|דת)?\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים)|הפק\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים))(?:$|[\s.,;:()\-/])/.test(text)
-    || /\b(?:check|cheque)s?\s+deposit\b|\bdeposit(?:ed|ing)?\s+(?:check|cheque)s?\b/i.test(text);
+  if(!text)return '';
+  if(/(?:^|[\s.,;:()\-/])(?:הפק(?:דה|דת)?\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים)|הפק\.?\s*(?:שיק|שיקים|צ'?ק|צ'?קים))(?:$|[\s.,;:()\-/])/.test(text)
+    || /\b(?:check|cheque)s?\s+deposit\b|\bdeposit(?:ed|ing)?\s+(?:check|cheque)s?\b/i.test(text))return 'deposit';
+  if(/^החזרת\s+(?:שיק(?:ים)?|צ'?ק(?:ים)?|המחא(?:ה|ות))(?:$|[\s.:,;()\-–—־])/.test(text)
+    || /^(?:שיק|צ'?ק|המחאה)\s+(?:הוחזר|חזר)(?:$|[\s.:,;()\-–—־])/.test(text)
+    || /^(?:returned|return)\s+(?:check|cheque)s?(?:$|[\s.:,;()\-–—])/i.test(text))return 'returned';
+  if(/^הצ\.?\s*(?:שיק|צ'?ק)\s+חוזר(?:\s*[\-–—־]\s*|\s+)נט$/u.test(text))return 'returned_credit';
+  return '';
 }
+export function isHapoalimChequeTransaction(txn){return hapoalimChequeTransactionKind(txn)==='deposit'}
 
 function semanticPairsFromObject(value){
   if(!value||typeof value!=='object'||Array.isArray(value))return [];
@@ -204,6 +221,7 @@ function normalizeChequeItemPairs(pairs){
     if(isUnsafeTechnicalDetailKey(key))continue;
     if(isDocumentDetailKey(key)){if(meaningfulDetailValue(rawValue))hasDocumentReference=true;continue}
     const clean=meaningfulDetailValue(rawValue);if(!clean)continue;
+    const inlineChequeNumber=explicitChequeNumberFromText(clean);if(inlineChequeNumber&&!checkNumber)checkNumber=inlineChequeNumber;
     if(isBankNumberKey(key)){if(!bankNumber)bankNumber=compactText(clean,20);continue}
     if(isBranchNumberKey(key)){if(!branchNumber)branchNumber=compactText(clean,20);continue}
     if(isAccountNumberKey(key)){if(!accountNumber)accountNumber=compactText(clean,40);continue}
@@ -260,6 +278,7 @@ export function normalizeHapoalimAdditionalDetails(payload){
     if(isUnsafeTechnicalDetailKey(key))return;
     if(isDocumentDetailKey(key)){if(meaningfulDetailValue(value))hasDocumentReference=true;return}
     const clean=meaningfulDetailValue(value);if(!clean)return;
+    const inlineChequeNumber=explicitChequeNumberFromText(clean);if(inlineChequeNumber)checkNumbers.add(inlineChequeNumber);
     if(isTransactionReferenceKey(key)&&!referenceNumber){referenceNumber=clean;return}
     if(isChequeCountKey(key)){
       const n=Number(String(clean).replace(/[^0-9.-]/g,''));if(Number.isFinite(n)&&n>0)checkCount=Math.trunc(n);
@@ -356,16 +375,30 @@ export function normalizeHapoalimTransaction(txn){
   const memo=[details.partyHeadline,details.partyName,details.messageHeadline,details.messageDetail].map(x=>compactText(x,120)).filter(Boolean).join(' · ');
   const bankReference=compactText(txn?.referenceNumber,100),bankSerial=compactText(txn?.serialNumber,100);
   const identifier=bankReference||bankSerial||compactText(`${txn?.eventDate||''}-${txn?.eventAmount||''}`,100);
-  const cheque=isHapoalimChequeTransaction(txn);
+  const chequeKind=hapoalimChequeTransactionKind(txn),cheque=chequeKind==='deposit';
   const normalizedExtra=txn?.netunimAdditionalDetails&&typeof txn.netunimAdditionalDetails==='object'?txn.netunimAdditionalDetails:null;
-  const checkDetails=cheque?{
-    checkNumbers:Array.isArray(normalizedExtra?.checkNumbers)?normalizedExtra.checkNumbers.map(x=>compactText(x,80)).filter(x=>x&&x!=='0').slice(0,50):[],
-    checkCount:Number.isFinite(Number(normalizedExtra?.checkCount))&&Number(normalizedExtra.checkCount)>0?Math.trunc(Number(normalizedExtra.checkCount)):null,
-    checkItems:Array.isArray(normalizedExtra?.checkItems)?normalizedExtra.checkItems.map(item=>({
+  const structuredReturn=chequeKind==='returned'||chequeKind==='returned_credit'?{
+    referenceNumber:'',
+    checkNumbers:bankReference&&bankReference!=='0'?[bankReference]:[],
+    checkCount:bankReference&&bankReference!=='0'?1:null,
+    checkItems:(()=>{
+      const bankNumber=meaningfulDetailValue(txn?.contraBankNumber),branchNumber=meaningfulDetailValue(txn?.contraBranchNumber),accountNumber=meaningfulDetailValue(txn?.contraAccountNumber);
+      const fullAccountIdentity=!!(bankNumber&&branchNumber&&accountNumber),rowAmount=Math.abs(Number(txn?.eventAmount));
+      if(!(Number.isFinite(rowAmount)&&rowAmount>0&&(bankReference&&bankReference!=='0'||fullAccountIdentity)))return [];
+      return [{bankNumber:compactText(bankNumber,20),branchNumber:compactText(branchNumber,20),accountNumber:compactText(accountNumber,40),checkNumber:bankReference&&bankReference!=='0'?bankReference:'',amount:rowAmount,hasDocumentReference:false}];
+    })(),
+    hasDocumentReference:false,
+  }:null;
+  const combinedExtra=structuredReturn?mergeHapoalimAdditionalDetails(structuredReturn,normalizedExtra):normalizedExtra;
+  const checkDetails=chequeKind?{
+    kind:chequeKind,
+    checkNumbers:Array.isArray(combinedExtra?.checkNumbers)?combinedExtra.checkNumbers.map(x=>compactText(x,80)).filter(x=>x&&x!=='0').slice(0,50):[],
+    checkCount:Number.isFinite(Number(combinedExtra?.checkCount))&&Number(combinedExtra.checkCount)>0?Math.trunc(Number(combinedExtra.checkCount)):null,
+    checkItems:Array.isArray(combinedExtra?.checkItems)?combinedExtra.checkItems.map(item=>({
       bankNumber:compactText(item?.bankNumber,20),branchNumber:compactText(item?.branchNumber,20),accountNumber:compactText(item?.accountNumber,40),
       checkNumber:compactText(item?.checkNumber,80),amount:Number.isFinite(Number(item?.amount))&&Number(item.amount)>0?Number(item.amount):null,hasDocumentReference:!!item?.hasDocumentReference,
     })).filter(item=>item.amount&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber))).slice(0,50):[],
-    hasDocumentReference:!!normalizedExtra?.hasDocumentReference,
+    hasDocumentReference:!!combinedExtra?.hasDocumentReference,
     warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
   }:null;
   if(checkDetails){
@@ -379,7 +412,7 @@ export function normalizeHapoalimTransaction(txn){
     // same convention). Never apply this to multi-cheque deposits, where the reference
     // is an aggregate deposit identifier.
     const declaredCount=Number(checkDetails.checkCount);
-    if(checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber&&!checkDetails.checkNumbers.length&&bankReference&&bankReference!=='0'&&(!Number.isFinite(declaredCount)||declaredCount<=1)){
+    if(chequeKind==='deposit'&&checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber&&!checkDetails.checkNumbers.length&&bankReference&&bankReference!=='0'&&(!Number.isFinite(declaredCount)||declaredCount<=1)){
       checkDetails.checkItems[0].checkNumber=bankReference;
       checkDetails.checkNumbers.push(bankReference);
     }

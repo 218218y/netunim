@@ -110,22 +110,24 @@ function bankBridgeDiagnosticsMarkup(s){
 }
 
 function bankChequeDetailsMarkup(row){
-  if(!row?.cheque)return '';
-  const details=row.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:{};
+  const details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null;if(!details)return '';
+  const kind=['deposit','returned','returned_credit'].includes(details.kind)?details.kind:(row?.cheque?'deposit':'');if(!kind)return '';
   const items=(Array.isArray(details.checkItems)?details.checkItems:[]).filter(item=>item&&Number(item.amount)>0&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber)));
   const numbers=[...new Set((Array.isArray(details.checkNumbers)?details.checkNumbers:[]).filter(x=>x&&x!=='0'))];
   const count=Number(details.checkCount),facts=[];
-  if(items.length>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(items.length)}</span>`);
-  else if(Number.isFinite(count)&&count>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(Math.trunc(count))}</span>`);
+  if(kind==='deposit'){
+    if(items.length>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(items.length)}</span>`);
+    else if(Number.isFinite(count)&&count>1)facts.push(`<span><b>שיקים בהפקדה:</b> ${esc(Math.trunc(count))}</span>`);
+  }
   const rowNumbers=new Set(items.map(item=>String(item.checkNumber||'').trim()).filter(Boolean)),unassignedNumbers=numbers.filter(number=>!rowNumbers.has(String(number)));
-  if(!items.length&&numbers.length)facts.push(`<span><b>מספרי שיקים:</b> ${numbers.map(x=>esc(x)).join(', ')}</span>`);
+  if(!items.length&&numbers.length)facts.push(`<span><b>${numbers.length===1?'מספר שיק':'מספרי שיקים'}:</b> ${numbers.map(x=>esc(x)).join(', ')}</span>`);
   else if(unassignedNumbers.length)facts.push(`<span><b>מספרי שיקים שלא שויכו לשורה:</b> ${unassignedNumbers.map(x=>esc(x)).join(', ')}</span>`);
-  if(row.bankReference&&row.bankReference!=='0')facts.push(`<span><b>אסמכתת הפקדה:</b> ${esc(row.bankReference)}</span>`);
+  if(row.bankReference&&row.bankReference!=='0')facts.push(`<span><b>${kind==='deposit'?'אסמכתת הפקדה':'אסמכתא'}:</b> ${esc(row.bankReference)}</span>`);
   const table=items.length?`<div class="bank-cheque-items-wrap"><table class="bank-cheque-items"><thead><tr><th>בנק</th><th>סניף</th><th>חשבון</th><th>מס׳ שיק</th><th>סכום</th><th>מסמך</th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.bankNumber||'—')}</td><td>${esc(item.branchNumber||'—')}</td><td>${esc(item.accountNumber||'—')}</td><td class="bank-cheque-number">${esc(item.checkNumber||'—')}</td><td class="bank-cheque-amount">${money(Number(item.amount))}</td><td>${item.hasDocumentReference?'קיים בבנק':'—'}</td></tr>`).join('')}</tbody></table></div>`:'';
-  const documentNote=!items.length&&details.hasDocumentReference?'<div class="bank-cheque-document-note">הבנק מציין שקיים מסמך/צילום עבור ההפקדה, אך כתובת המסמך אינה נשמרת בקופה.</div>':'';
+  const documentNote=!items.length&&details.hasDocumentReference?'<div class="bank-cheque-document-note">הבנק מציין שקיים מסמך/צילום עבור השיק, אך כתובת המסמך אינה נשמרת בקופה.</div>':'';
   const warning=details.warning?`<div class="bank-cheque-detail-warning">${esc(details.warning)}</div>`:'';
   if(!facts.length&&!table&&!documentNote&&!warning)return '';
-  return `<div class="bank-cheque-info">${facts.length?`<div class="bank-cheque-facts">${facts.join('')}</div>`:''}${table}${documentNote}${warning}</div>`;
+  return `<div class="bank-cheque-info" data-cheque-kind="${esc(kind)}">${facts.length?`<div class="bank-cheque-facts">${facts.join('')}</div>`:''}${table}${documentNote}${warning}</div>`;
 }
 
 function bankTransactionsTableMarkup(feed,role){

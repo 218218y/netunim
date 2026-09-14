@@ -19,6 +19,7 @@ import {
   HAPOALIM_TRANSACTION_LIMIT,
   buildHapoalimAdditionalDetailsUrl,
   isHapoalimChequeTransaction,
+  hapoalimChequeTransactionKind,
   normalizeHapoalimAdditionalDetails,
   mergeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
@@ -185,6 +186,13 @@ const semanticChequeRow=normalizeHapoalimAdditionalDetails({rows:[[
   {label:'בנק',value:'12'},{label:'מספר סניף',value:'613'},{label:'מספר חשבון',value:'678542'},{label:"אסמכתא (מס' צ'ק)",value:'10168'},{label:'סכום',value:'550'},
 ]]});
 assert.deepEqual(semanticChequeRow.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['12','613','678542','10168',550]],'a row encoded as semantic table cells is reconstructed only within that row and preserves its cheque number');
+const alternateSemanticChequeRow=normalizeHapoalimAdditionalDetails({rows:[
+  {bankNumber:52,branchNumber:183,accountNumber:'105012322',chequeAmount:830,referenceCell:{fieldDesc:"אסמכתא (מס' צ'ק)",formattedValue:'4463454'}},
+  {bankNumber:17,branchNumber:732,accountNumber:'105323448',chequeAmount:1000,referenceCell:{displayLabel:'מספר שיק',displayText:'80000071'}},
+]});
+assert.deepEqual(alternateSemanticChequeRow.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'semantic wrapper aliases keep explicitly labelled cheque identifiers attached to their own rows');
+const explicitChequeText=normalizeHapoalimAdditionalDetails({rows:[{bank:'52',branch:'183',account:'105012322',amount:830,note:"אסמכתא (מס' צ'ק): 4463454"}]});
+assert.equal(explicitChequeText.checkItems[0]?.checkNumber,'4463454','an explicitly labelled cheque number embedded in display text is accepted without treating arbitrary numbers as cheque identifiers');
 assert.equal(chequeDetails.referenceNumber,'855252329256','PFM keeps the aggregate Hapoalim deposit reference while the dedicated cheque source is merged separately');
 assert.deepEqual(chequeDetails.checkNumbers,['4463454','80000071'],'explicit per-cheque identifiers are preserved exactly as returned by the bank');
 assert.equal(chequeDetails.checkCount,2,'explicit bank-provided cheque count is preserved');
@@ -197,6 +205,8 @@ assert.throws(()=>buildHapoalimAdditionalDetailsUrl('https://login.bankhapoalim.
 assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק.שיק בסלולר'}),true,'bank-provided mobile cheque deposit description is recognized for targeted detail enrichment');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'הפק שיק-ע.ישיר'}),true,'direct-channel cheque deposit remains eligible for targeted enrichment');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'החזרת שיק'}),false,'returned cheques are not misclassified as cheque deposits');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'החזרת שיק'}),'returned','returned cheque is classified for identity enrichment without becoming a deposit');
+assert.equal(hapoalimChequeTransactionKind({activityDescription:'הצ שיק חוזר-נט'}),'returned_credit','Hapoalim returned-cheque credit is classified separately from deposits');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'שיק'}),false,'ordinary cheque debits are not misclassified as cheque deposits');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'זיכוי מדיסקונט',beneficiaryDetailsData:{partyName:'זרצקי פרידה'}}),false,'beneficiary names containing the Hebrew letters צק cannot trigger cheque-deposit enrichment');
 assert.equal(isHapoalimChequeTransaction({activityDescription:'העברה נכנסת'}),false,'ordinary transfers do not trigger extra cheque-detail requests');
@@ -225,6 +235,14 @@ assert.equal(singleCheque.checkDetails.checkItems[0].checkNumber,'10168','a prov
 assert.deepEqual(singleCheque.checkDetails.checkNumbers,['10168'],'single-cheque fallback is preserved in the normalized identifier list for search/reconciliation');
 const multiChequeWithoutNumbers=normalizeHapoalimTransaction({referenceNumber:855252329256,eventDate:'20260820',valueDate:'20260820',eventAmount:1830,eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',serialNumber:79,currentBalance:101432.34,netunimAdditionalDetails:{referenceNumber:'855252329256',checkCount:2,checkNumbers:[],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'',amount:830},{bankNumber:'17',branchNumber:'732',accountNumber:'105323448',checkNumber:'',amount:1000}]}});
 assert.deepEqual(multiChequeWithoutNumbers.checkDetails.checkItems.map(x=>x.checkNumber),['',''],'aggregate multi-cheque deposit reference is never copied into individual cheque rows');
+const returnedCheque=normalizeHapoalimTransaction({referenceNumber:4463454,eventDate:'20260912',valueDate:'20260912',eventAmount:830,eventActivityTypeCode:2,activityDescription:'החזרת שיק',serialNumber:81,currentBalance:100602.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:105012322,beneficiaryDetailsData:{messageHeadline:'סיבת החזרה:',messageDetail:'אין כיסוי מספיק'}});
+const returnedChequeCredit=normalizeHapoalimTransaction({referenceNumber:4463454,eventDate:'20260913',valueDate:'20260913',eventAmount:830,eventActivityTypeCode:1,activityDescription:'הצ שיק חוזר-נט',serialNumber:82,currentBalance:101432.34,contraBankNumber:52,contraBranchNumber:183,contraAccountNumber:105012322});
+assert.equal(returnedCheque.cheque,false,'returned cheque identity never turns the debit into a cheque deposit');
+assert.equal(returnedCheque.checkDetails.kind,'returned','returned cheque keeps a typed non-deposit cheque context');
+assert.deepEqual(returnedCheque.checkDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830]],'returned cheque uses the bank structured reference and contra account identity shown by Hapoalim');
+assert.equal(returnedChequeCredit.cheque,false,'returned-cheque credit is not misclassified as a new cheque deposit');
+assert.equal(returnedChequeCredit.checkDetails.kind,'returned_credit','returned-cheque credit keeps its own typed context');
+assert.deepEqual(returnedChequeCredit.checkDetails.checkItems.map(x=>[x.bankNumber,x.branchNumber,x.accountNumber,x.checkNumber,x.amount]),[['52','183','105012322','4463454',830]],'returned-cheque credit preserves the same bank cheque identity for stable linking');
 const inbound=normalizeHapoalimTransaction(rawInbound),outbound=normalizeHapoalimTransaction(rawOutbound),cheque=normalizeHapoalimTransaction(rawCheque);
 assert.equal(inbound.amount,250,'incoming Hapoalim transaction is positive');
 assert.equal(outbound.amount,-80,'outgoing Hapoalim transaction is negative');
@@ -263,13 +281,14 @@ assert.equal(normalizeRecentTransactions(manyRaw,manyRaw.length).length,1505,'ba
 
 const feed=normalizeBankFeed({
   provider:'hapoalim',accountNumber:'12-345-678901',balance:4321.5,syncedAt:'2026-08-30T06:15:00.000Z',
-  transactions:[inbound,outbound,cheque],transactionWarning:'',
+  transactions:[inbound,outbound,cheque,returnedCheque,returnedChequeCredit],transactionWarning:'',
 });
 assert.equal(feed.balance,4321.5,'shared bank feed preserves the authoritative bank balance');
-assert.equal(feed.transactions.length,3,'shared bank feed carries the complete fetched rolling-window transaction set');
+assert.equal(feed.transactions.length,5,'shared bank feed carries the complete fetched rolling-window transaction set');
 assert.equal(feed.transactions.find(x=>x.bankReference==='101').balanceAfter,4321.5,'shared bank feed preserves the bank-provided per-transaction balance');
 assert.equal(feed.version,5,'shared feed schema is upgraded to v5 for bank-presence reconciliation and direct snapshots');
-assert.deepEqual(feed.transactions.find(x=>x.cheque).checkDetails.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'shared feed v4 preserves structured verified cheque rows across cloud/local normalization');
+assert.deepEqual(feed.transactions.find(x=>x.cheque).checkDetails.checkItems.map(x=>x.checkNumber),['4463454','80000071'],'shared feed v5 preserves structured verified cheque rows across cloud/local normalization');
+assert.equal(feed.transactions.find(x=>x.description==='החזרת שיק').checkDetails?.checkItems?.[0]?.checkNumber,'4463454','shared feed preserves returned-cheque identity even though cheque=false');
 assert.equal(feed.accountNumber,'12-345-678901','shared bank feed carries the selected account identity');
 assert.equal(feed.syncedAt,'2026-08-30T06:15:00.000Z','shared bank feed carries the successful bank-sync timestamp');
 assert.equal(normalizeBankFeed({balance:4,syncedAt:'bad'}),null,'invalid feed timestamps are rejected instead of becoming shared success markers');

@@ -9,8 +9,9 @@ export function bankTransactionIdentity(row={},role='business',index=0){
 function finiteNumber(value,fallback=0){const n=Number(value);return Number.isFinite(n)?n:fallback}
 function cleanText(value,max=260){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max)}
 function cleanIso(value){const s=String(value||'').trim();return s&&Number.isFinite(Date.parse(s))?new Date(s).toISOString():null}
-function normalizeCheckDetails(value){
+function normalizeCheckDetails(value,fallbackKind=''){
   if(!value||typeof value!=='object')return null;
+  const kind=['deposit','returned','returned_credit'].includes(value.kind)?value.kind:(fallbackKind==='deposit'?'deposit':'');
   const numbers=[...new Set((Array.isArray(value.checkNumbers)?value.checkNumbers:[]).map(x=>cleanText(x,80)).filter(x=>x&&x!=='0'))].slice(0,50);
   const count=value.checkCount===null||value.checkCount===undefined||value.checkCount===''?null:(Number.isFinite(Number(value.checkCount))&&Number(value.checkCount)>0?Math.trunc(Number(value.checkCount)):null);
   const items=(Array.isArray(value.checkItems)?value.checkItems:[]).map(item=>({
@@ -22,7 +23,9 @@ function normalizeCheckDetails(value){
     hasDocumentReference:!!item?.hasDocumentReference,
   })).filter(item=>item.amount&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber))).slice(0,50);
   for(const item of items){if(item.checkNumber&&!numbers.includes(item.checkNumber))numbers.push(item.checkNumber)}
-  return {checkNumbers:numbers,checkCount:count||items.length||null,checkItems:items,hasDocumentReference:!!value.hasDocumentReference,warning:cleanText(value.warning,220)};
+  const warning=cleanText(value.warning,220),checkCount=count||items.length||null,hasDocumentReference=!!value.hasDocumentReference;
+  if(!kind&&!numbers.length&&!checkCount&&!items.length&&!hasDocumentReference&&!warning)return null;
+  return {kind,checkNumbers:numbers,checkCount,checkItems:items,hasDocumentReference,warning};
 }
 
 export function normalizeBankFeedTransaction(value){
@@ -42,7 +45,7 @@ export function normalizeBankFeedTransaction(value){
     bankReference:cleanText(row.bankReference,100),
     bankSerial:cleanText(row.bankSerial,100),
     cheque:!!row.cheque,
-    checkDetails:row.cheque?normalizeCheckDetails(row.checkDetails):null,
+    checkDetails:normalizeCheckDetails(row.checkDetails,row.cheque?'deposit':''),
     archiveId:Number.isSafeInteger(Number(row.archiveId))&&Number(row.archiveId)>0?Number(row.archiveId):null,
     presenceState:['unknown','present','missing'].includes(row.presenceState)?row.presenceState:'unknown',
     firstSeenAt:cleanIso(row.firstSeenAt),

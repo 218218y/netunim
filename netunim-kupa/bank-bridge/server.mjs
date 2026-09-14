@@ -12,7 +12,7 @@ import {
   HAPOALIM_INITIAL_BACKFILL_DAYS,
   HAPOALIM_TRANSACTION_LIMIT,
   buildHapoalimAdditionalDetailsUrl,
-  isHapoalimChequeTransaction,
+  hapoalimChequeTransactionKind,
   normalizeHapoalimAdditionalDetails,
   mergeHapoalimAdditionalDetails,
   INTERACTIVE_AUTH_TIMEOUT_MS,
@@ -43,7 +43,7 @@ import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=46;
+const BRIDGE_VERSION=47;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -305,7 +305,8 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
   for(const transaction of source){
     const pfmDetails=String(transaction?.pfmDetails||'').trim();
     const transactionDetails=String(transaction?.details||'').trim();
-    if((!pfmDetails&&!transactionDetails)||Number(transaction?.serialNumber)===0||!isHapoalimChequeTransaction(transaction)){
+    const chequeKind=hapoalimChequeTransactionKind(transaction);
+    if((!pfmDetails&&!transactionDetails)||Number(transaction?.serialNumber)===0||!chequeKind){
       enriched.push(transaction);continue;
     }
     const detailSources=[],warnings=[];
@@ -329,7 +330,7 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
     const details=mergeHapoalimAdditionalDetails(...detailSources);
     enriched.push({
       ...transaction,
-      ...(pfmNormalized?.referenceNumber?{referenceNumber:pfmNormalized.referenceNumber}:{}),
+      ...(chequeKind==='deposit'&&pfmNormalized?.referenceNumber?{referenceNumber:pfmNormalized.referenceNumber}:{}),
       ...(detailSources.length?{netunimAdditionalDetails:details}:{}),
       ...(warnings.length?{netunimAdditionalDetailsWarning:`לא ניתן היה לטעון את כל פירוט השיק מהבנק: ${warnings.join(' | ')}`}:{})
     });

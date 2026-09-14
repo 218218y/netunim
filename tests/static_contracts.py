@@ -452,8 +452,8 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=46" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v46 contract")
+ok("const BANK_BRIDGE_VERSION=47" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v47 contract")
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
 ok("const CREDIT_BRIDGE_VERSION=44" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller,
