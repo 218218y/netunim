@@ -842,6 +842,7 @@ const uiActions=createUiActions({
   configureOrdersBank:(...args)=>domainsFinanceView.configureBank(...args),
   selectOrdersBankAccount:(...args)=>domainsFinanceView.selectBankAccount(...args),
   deleteOrdersBankCredentials:(...args)=>domainsFinanceView.deleteBankCredentials(...args),
+  exportOrdersBankChequeDiagnostics:(...args)=>domainsFinanceView.exportBankChequeDiagnostics(...args),
   refreshOrdersBank:(...args)=>domainsFinanceView.refreshBank(...args),
   setOrdersBankAuto:(...args)=>domainsFinanceView.setBankAuto(...args),
   saveOrdersCashflowMinimum:(...args)=>domainsFinanceController.saveCashflowMinimum(...args),

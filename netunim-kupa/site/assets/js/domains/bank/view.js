@@ -187,6 +187,7 @@ function updateBridgePanel(){
   for(const [id,value] of [['bankBusinessBranchNumberInput',s.businessBranchNumber||s.branchNumber],['bankBusinessAccountNumberInput',s.businessAccountNumber||s.accountNumber],['bankHomeBranchNumberInput',s.homeBranchNumber],['bankHomeAccountNumberInput',s.homeAccountNumber]]){const input=document.getElementById(id);if(input&&document.activeElement!==input&&!input.value)input.value=value||''}
   const refresh=document.querySelector('[data-action="refresh-bank-from-hapoalim"]');if(refresh)refresh.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
   const auth=document.querySelector('[data-action="open-bank-auth"]');if(auth)auth.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
+  const exportDiagnostics=document.querySelector('[data-action="export-bank-cheque-diagnostics"]');if(exportDiagnostics)exportDiagnostics.disabled=!!s.busy||!s.tokenConfigured||!!s.upgradeRequired;
   const remove=document.querySelector('[data-action="delete-bank-bridge-credentials"]');if(remove)remove.disabled=!!s.busy||!s.configured;
   const save=document.querySelector('[data-action="configure-bank-bridge"]');if(save)save.disabled=!!s.busy;
   const pair=document.querySelector('[data-action="save-bank-bridge-token"]');if(pair)pair.disabled=!!s.busy;
@@ -231,7 +232,7 @@ function renderBank(){
       <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></div>
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>
-      <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>
+      <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn" data-action="export-bank-cheque-diagnostics" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייצוא אבחון שיקים (TXT)</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>
       <div id="bankBridgeDiagnostics">${bankBridgeDiagnosticsMarkup(bridgeUi)}</div>
       <div id="bankBridgeStatus" class="bank-sync-status ${bridgeUi.available===false||bridgeUi.lastError?'error':bridgeUi.configured?'ok':''}">${esc(bridgeStatusText(bridgeUi))}</div>
       <div id="bankBridgeAccountChoices">${bankAccountChoicesMarkup(bridgeUi.availableAccounts,bridgeUi.accountSelectionRole)}</div>
@@ -254,7 +255,7 @@ function renderBank(){
         </form>
       </div>
       <div class="bank-sync-actions"><label class="bank-auto-toggle"><input type="checkbox" data-change="set-bank-auto-refresh" ${bridgeUi.autoEnabled?'checked':''}> <span>עדכון אוטומטי של שני החשבונות פעם ב־4 שעות</span></label></div>
-      <div class="soft-note">„רענן” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות נשמרים במאגר סינכרון פיננסי נפרד, ותנועות הבנק מתמזגות לארכיון ייעודי שאינו נכלל בגיבויי הקופה.</div>
+      <div class="soft-note">„רענן” מעדכן את העסקי והביתי באותו סשן בנק. אם החשבון הביתי לא הוגדר, מתעדכן רק העסקי. „פתח אימות בבנק” נדרש רק כשהפועלים מבקש הזדהות מחדש. „ייצוא אבחון שיקים” מוריד מהמחשב קובץ TXT של תנועות שיק ופירוטי הבנק מהסנכרון האחרון; סיסמאות, cookies, tokens, נתוני session, HTML וקבצים/תמונות בינאריים מושחרים, והקובץ אינו עולה לענן. הקובץ עדיין עשוי להכיל נתונים פיננסיים ולכן יש לשתף אותו רק במכוון. פרטי ההתחברות נשמרים מוצפנים ורק במחשב המקומי; נתוני החשבונות נשמרים במאגר סינכרון פיננסי נפרד, ותנועות הבנק מתמזגות לארכיון ייעודי שאינו נכלל בגיבויי הקופה.</div>
     </div>
     <div class="bank-transactions-region">${bankTransactionsMarkup(bridgeUi)}</div>
   </section>

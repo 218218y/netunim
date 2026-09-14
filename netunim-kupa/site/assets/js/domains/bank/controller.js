@@ -6,7 +6,7 @@ import {todayISO} from '../../core/dates.js';
 import {BANK_AUTO_INTERVAL_MS,bankAutoRefreshDue} from './bridge.js';
 import {normalizeBankFeed} from './feed.js';
 
-const BANK_BRIDGE_VERSION=48;
+const BANK_BRIDGE_VERSION=49;
 
 function canonicalJson(value){
   if(Array.isArray(value))return `[${value.map(canonicalJson).join(',')}]`;
@@ -176,6 +176,22 @@ async function deleteBankBridgeCredentials(){
   finally{bridgeState.busy=false;render()}
 }
 
+function downloadBankDiagnosticText(filename,text){
+  const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-bank-cheque-diagnostic.txt';
+  const blob=new Blob([String(text||'')],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
+}
+async function exportBankChequeDiagnostics(){
+  if(bridgeState.busy)return false;
+  if(!bridge.getBridgeToken()){toast('יש לצמד את הקופה ל-Bank Bridge לפני ייצוא אבחון');return false}
+  try{
+    const result=await bridge.bankDiagnostics();
+    if(!result?.available||!result?.text)throw new Error(result?.message||'עדיין אין אבחון שיקים מקומי. בצע רענון בנק ולאחריו נסה שוב.');
+    downloadBankDiagnosticText(result.filename,result.text);
+    toast(`קובץ אבחון שיקים נוצר מהסנכרון האחרון (${Number(result.eventCount)||0} תנועות שיק)`);return true;
+  }catch(error){toast(error?.message||'ייצוא אבחון השיקים נכשל');return false}
+}
+
 function setBankAutoRefresh(enabled){bridge.setAutoEnabled(!!enabled);toast(enabled?'עדכון אוטומטי כל 4 שעות הופעל':'עדכון אוטומטי כובה');maybeAutoRefreshBankBalance()}
 
 async function refreshBankBalance({interactive=false,auto=false}={}){
@@ -271,5 +287,5 @@ function maybeAutoRefreshBankBalance(){
   autoTimer=setTimeout(()=>{autoTimer=null;refreshBankBalance({interactive:false,auto:true}).catch(e=>console.error('bank auto refresh',e))},300);
 }
 
-return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
+return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
 }

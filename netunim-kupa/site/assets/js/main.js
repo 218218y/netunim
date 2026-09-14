@@ -792,6 +792,7 @@ const uiActions=createUiActions({
   toggleBankSyncOptions:(...args)=>domainsBankView.toggleBankSyncOptions(...args),
   refreshBankBalance:(...args)=>domainsBankController.refreshBankBalance(...args),
   deleteBankBridgeCredentials:(...args)=>domainsBankController.deleteBankBridgeCredentials(...args),
+  exportBankChequeDiagnostics:(...args)=>domainsBankController.exportBankChequeDiagnostics(...args),
   setBankAutoRefresh:(...args)=>domainsBankController.setBankAutoRefresh(...args),
   openCreditConnectionModal:(...args)=>domainsCreditController.openCreditConnectionModal(...args),
   deleteCreditConnection:(...args)=>domainsCreditController.deleteCreditConnection(...args),

@@ -249,7 +249,7 @@ const disclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
 const disclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:true,bankSearchValue:''},
-  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:48,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:49,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 disclosureView.renderKupa();
@@ -263,7 +263,7 @@ const closedDisclosureMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?closedDisclosureMain:null},configurable:true});
 const closedDisclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:false,bankSearchValue:''},
-  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:48,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
+  controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:49,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 closedDisclosureView.renderKupa();
@@ -293,7 +293,7 @@ let lastCreditSyncOptions=null;
 const bridge={
   getBridgeToken:()=> 'paired',bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',setBankAutoEnabled(){},setCreditAutoEnabled(){},setCreditAutoMode(){},setBridgeToken:v=>v,
   markBankAttempt(){},markCreditAttempt(){},bankAttemptReady:()=>true,creditAttemptReady:()=>true,
-  status:async()=>({bridgeVersion:48,configured:true}),creditStatus:async()=>({bridgeVersion:44,contractVersion:2,profiles:[{profileId:'p1'}]}),
+  status:async()=>({bridgeVersion:49,configured:true}),creditStatus:async()=>({bridgeVersion:44,contractVersion:2,profiles:[{profileId:'p1'}]}),
   fetchBalance:async()=>{bankFetchCalls++;return {fetchedAt:'2026-09-01T02:30:00Z',accounts:{business:{balance:1500,branchNumber:'1',accountNumber:'10',transactionCoverage:{complete:true,from:'2025-09-02',to:'2026-09-01',days:365},transactions:[{id:'b1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-10,description:'עסקי',status:'completed'}]},home:{balance:400,branchNumber:'1',accountNumber:'20',transactionCoverage:{complete:true,from:'2025-09-02',to:'2026-09-01',days:365},transactions:[{id:'h1',date:'2026-09-01T02:00:00Z',processedDate:'2026-09-01T02:00:00Z',amount:-5,description:'ביתי',status:'completed'}]}}}},
   syncCreditCards:async options=>{lastCreditSyncOptions=structuredClone(options);creditFetchCalls++;return {syncedAt:'2026-09-01T03:00:00Z',profiles:[{profileId:'p1',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'fresh',date:'2026-09-01T03:00:00Z',chargedAmount:-75}]}]}],errors:[]}},
 };

@@ -53,6 +53,7 @@ async function configureCredentials({token,userCode,password,businessBranchNumbe
 }
 async function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 async function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
+async function bankDiagnostics(){return request('/bank/diagnostics',{timeoutMs:10000})}
 async function fetchBalance({interactive=false,historyDays=30}={}){return request('/balance',{method:'POST',body:{interactive:!!interactive,historyDays:Math.max(30,Math.min(365,Number(historyDays)||30))},timeoutMs:interactive?INTERACTIVE_BRIDGE_TIMEOUT_MS:240000})}
 
 async function creditRequest(path,options){
@@ -68,5 +69,5 @@ async function resetCreditProfiles(){return creditRequest('/reset',{method:'POST
 async function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 async function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }
