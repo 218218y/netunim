@@ -43,19 +43,12 @@ function clockFromValue(value,{standalone=false}={}){
   const clock=`${String(hour).padStart(2,'0')}:${String(minute).padStart(2,'0')}`;
   return dateTimeMatch&&clock==='00:00'?'':clock;
 }
-function purchaseTimePath(path){
-  const leaf=String(path||'').split('.').at(-1)||'';
-  return /(?:purchase|transaction|txn|deal|operation).*(?:time|hour)/i.test(leaf)||/(?:time|hour).*(?:purchase|transaction|txn|deal|operation)/i.test(leaf)||/(?:purchase|transaction|txn|deal).*(?:date|datetime|timestamp)/i.test(leaf);
-}
+const MAX_PURCHASE_TIME_PATH='dealData.purchaseTime';
 export function maxRawTransactionTime(rawTransaction){
-  const fields=flatten(rawTransaction),candidates=[];
-  for(const field of fields){
-    if(!Object.prototype.hasOwnProperty.call(field,'value')||!purchaseTimePath(field.path))continue;
-    const standalone=/(?:time|hour)/i.test(field.path),time=clockFromValue(field.value,{standalone});
-    if(time)candidates.push({path:field.path,time,value:field.value});
-  }
-  const distinct=[...new Set(candidates.map(row=>row.time))];
-  return {time:distinct.length===1?distinct[0]:'',sourcePath:distinct.length===1?(candidates.find(row=>row.time===distinct[0])?.path||''):'',ambiguous:distinct.length>1,candidates};
+  const value=rawTransaction?.dealData?.purchaseTime,time=clockFromValue(value,{standalone:true});
+  if(!time)return {time:'',sourcePath:'',ambiguous:false,candidates:[]};
+  const candidate={path:MAX_PURCHASE_TIME_PATH,time,value};
+  return {time,sourcePath:MAX_PURCHASE_TIME_PATH,ambiguous:false,candidates:[candidate]};
 }
 export function rawTransactionFieldInventory(rawTransaction){return flatten(rawTransaction)}
 function normalizedTransactions(account){

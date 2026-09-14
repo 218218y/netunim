@@ -26,6 +26,7 @@ bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
+runtime_events=(SITE/'assets/js/runtime-events.js').read_text(encoding='utf-8')
 setup=DOCS.read_text(encoding='utf-8')
 owner_retention=OWNER_RETENTION.read_text(encoding='utf-8')
 preissue=PREISSUE.read_text(encoding='utf-8')
@@ -156,7 +157,7 @@ ok("const record={version:1,operationId:operation,debtId:debt,type:documentType,
    'Morning reload recovery storage stays minimal: no PDF, signed URL, customer payload or permanent document metadata is retained locally')
 ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,
    'Morning reload recovery verification: operation, document type and exact cent amount must match before a recovered debt can mutate')
-ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and main.count('recoverPendingMorningOperation({quiet:')>=3,
+ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and (main+runtime_events).count('recoverPendingMorningOperation({quiet:')>=3,
    'Morning reload recovery lifecycle: startup, online return and tab visibility all resume pending verification through the customer-domain API')
 reserve_edge=edge.split('async function reserve(ownerId:string,body:any)',1)[1].split('async function abandonReservation',1)[0]
 ok("action==='reserve'" in edge and 'reserveOperation(ownerId,input,fingerprint)' in reserve_edge and "morningRequest('/documents'" not in reserve_edge,

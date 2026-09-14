@@ -147,3 +147,16 @@ for(const app of ['orders','kupa']){
     await pull;assert.equal(await save,false);assert.equal(f.calls.filter(x=>x[0]==='save').length,0);assert.ok(f.pending());
   });
 }
+
+for(const app of ['orders','kupa'])test(`${app}: transient shared-check poll outage stays availability-only, while a real data error remains actionable`,async t=>{
+  t.mock.method(console,'warn',noop);t.mock.method(console,'error',noop);
+  const isOrders=app==='orders',errorKey=isOrders?'checksCloudLastError':'sharedChecksLastError',revisionKey=isOrders?'checksCloudRevision':'sharedChecksRevision';
+  const state={[errorKey]:'',[revisionKey]:7},session={backendReady:true,connectionMode:'supabase'},model={state:{checks:[]}};
+  let mode='transient';
+  const readMeta=async()=>{const error=new Error(mode==='transient'?'temporary transport outage':'invalid shared checks payload');if(mode==='transient')error.code='SUPABASE_NETWORK_UNAVAILABLE';throw error};
+  const deps={model,session,checksSession:state,tab:{primaryTab:true},loadSession:()=>({access_token:'x'}),checksHaveLocalWork:()=>false,sharedChecksHaveLocalWork:()=>false,
+    readSharedChecksCloudMeta:readMeta,readSharedChecksMeta:readMeta,checksPendingExists:()=>false,sharedChecksPendingExists:()=>false};
+  const api=(isOrders?ordersChecks:kupaChecks)(deps);
+  await api.pollSharedChecks();assert.equal(state[errorKey],'','temporary network/backoff failures must not masquerade as a check-data integrity warning');
+  mode='fatal';await api.pollSharedChecks();assert.match(state[errorKey],/invalid shared checks payload/,'non-transient read errors must remain actionable');
+});

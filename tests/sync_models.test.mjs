@@ -225,6 +225,13 @@ test('Orders polling asks Kupa refresh to invalidate a visible balance when a ne
  await api.cloudPoll();assert.deepEqual(refreshArgs,[{renderIfChanged:true}]);
 });
 
+test('Orders Data API recovery suppresses dependent background fan-out for the same failed poll cycle',async t=>{
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});t.mock.method(console,'warn',()=>{});
+ let checks=0,kupa=0;const unavailable=Object.assign(new Error('Supabase Data API recovery'),{code:'SUPABASE_DATA_API_BACKOFF'});
+ const api=orderDocumentSync({model:{state:{}},files:{},session:{cloudBusy:false,cloudRevision:7},ui:{},tab:{primaryTab:true},normalizeState:x=>x,localSnapshot:()=>{},markCloudPending:()=>{},getCloudPending:async()=>null,clearCloudPending:async()=>true,toast:()=>{},setCloud:()=>{},prepareCloudState:()=>({}),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>{},merge3:()=>({}),applyOrderCloudState:()=>{},cloudPendingExists:()=>false,setSave:()=>{},cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:()=>true,cloudHasLocalWork:()=>false,render:()=>{},readCloudMeta:async()=>{throw unavailable},refreshKupaReadout:async()=>{kupa++;return false},pollSharedChecks:async()=>{checks++},refreshCloudTimestamp:()=>{}});
+ await api.cloudPoll();assert.equal(checks,0);assert.equal(kupa,0,'one failed Data API read must not fan out into additional known-to-fail background reads');
+});
+
 
 
 test('Orders Kupa net uses business expenses only and excludes cash while keeping checks',()=>{

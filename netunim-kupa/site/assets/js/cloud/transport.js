@@ -189,13 +189,13 @@ async function readKupaCloudBackupPoint(source,id){
 }
 async function readSharedChecksDocument(){
   const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
-  const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
+  const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);
   if(!r.ok)throw new Error(j?.message||j?.hint||'קריאת מאגר הצקים המשותף נכשלה');
   const row=Array.isArray(j)&&j.length?j[0]:null;
   if(row){if(!row.state||!Array.isArray(row.state.checks)||!Array.isArray(row.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(row.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
   return row
 }
-async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
+async function readSharedChecksMeta(){const q=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,updated_at`;const r=await supaRest(q,{method:'GET',networkRetry:true}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הצקים המשותפים נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
 async function rpcSaveSharedChecks(checks,expectedRevision,operationId,deletedCheckIds=[],audit={}){const payload={version:1,checks:normalizeSharedChecks(checks)},expected=Number(expectedRevision||0),op=String(operationId||'').trim();const deletedIds=[...new Set((Array.isArray(deletedCheckIds)?deletedCheckIds:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הצקים המקומי אינו תקין');if(!op)throw new Error('מזהה פעולת הצקים חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${SHARED_CHECKS_RPC}_v5`:`${SHARED_CHECKS_RPC}_v5`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:SHARED_CHECKS_DOC,p_expected_revision:expected,p_state:payload,p_operation_id:op,p_deleted_check_ids:deletedIds,p_audit:audit})});const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j}}
 async function restoreRpc(name,body){const r=await supaRest(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||raw||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
 async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v5',restoreGroupRpcPayload(group))}

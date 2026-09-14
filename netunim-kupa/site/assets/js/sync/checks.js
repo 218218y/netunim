@@ -6,6 +6,8 @@ import {jsonEq, mergeRecordArray, mergeRecordArrayPreferLocal} from './merge-rec
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
+const TRANSIENT_CHECK_READ_KINDS=new Set(['network','timeout','service_unavailable','rate_limited']);
+function recordSharedChecksReadError(state,key,error){const normalized=normalizeCloudError(error);if(!TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))state[key]=error?.message||String(error);return normalized}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncChecks({checksSession={}, model, session, files, tab, persistImmediateBrowserSnapshot, persistSharedChecksBase, markSharedChecksPending, getSharedChecksPending, clearSharedChecksPending, readSharedChecksDocument, toast, render, rpcSaveSharedChecks, setSaveStatus, setCloudHeaderStatus, sharedChecksPendingExists, backupSnapshotToComputer, sharedChecksHaveLocalWork, readSharedChecksMeta, refreshCloudHeaderTimestamp}){
@@ -31,7 +33,7 @@ async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
       model.state.checks=clone(merged.checks);checksSession.sharedChecksBase=clone(remote);checksSession.sharedChecksBankEvents=normalizeSharedBankEvents(row.state.bankEvents);persistSharedChecksBase(remote,checksSession.sharedChecksBankEvents);checksSession.sharedChecksRevision=Number(row.revision||0);checksSession.sharedChecksUpdatedAt=row.updated_at||checksSession.sharedChecksUpdatedAt;checksSession.sharedChecksLastError='';
       if(!jsonEq(merged.checks,remote)){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(outbox?.generation||0))+1;markSharedChecksPending(merged.checks,'merged-local',undefined,{baseRevision:Number(row.revision),baseState:remote,deleteIds:outbox?.deleteIds||[]});checksSession.sharedChecksSaveRequested=true;setTimeout(()=>saveSharedChecksToCloud('שינויי הצקים המקומיים מוזגו לענן'),0)}else if(outbox){const cleared=await clearSharedChecksPending(outbox.generation);if(cleared)checksSession.sharedChecksSaveRequested=false;else{const latest=await getSharedChecksPending();checksSession.sharedChecksSaveRequested=Number(latest?.generation||0)>Number(outbox.generation||0);if(!checksSession.sharedChecksSaveRequested)checksSession.sharedChecksLastError='הצקים אושרו בענן; ניקוי האחסון המקומי ממתין להתאוששות'}}
       await mirror();if(!quiet)render();return true;
-    }catch(error){console.error('shared checks pull',error);checksSession.sharedChecksLastError=error.message||String(error);if(required)throw error;if(!quiet)toast(error.message);return false}
+    }catch(error){console.error('shared checks pull',error);recordSharedChecksReadError(checksSession,'sharedChecksLastError',error);if(required)throw error;if(!quiet)toast(error.message);return false}
   });
 }
 
@@ -89,7 +91,7 @@ async function pollSharedChecks(){
   if(!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine||checksSession.sharedChecksSavePromise||checksSession.sharedChecksPullPromise)return;
   if(sharedChecksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצקים סונכרנו');return}
   try{const meta=await readSharedChecksMeta();if(!meta||Number(meta.revision||0)<=checksSession.sharedChecksRevision)return;const before=checksSession.sharedChecksRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.sharedChecksRevision>before){render();refreshCloudHeaderTimestamp();toast('התקבל עדכון צקים ממקור אחר')}}
-  catch(error){console.error('shared checks poll',error);checksSession.sharedChecksLastError=error.message||String(error)}
+  catch(error){const normalized=recordSharedChecksReadError(checksSession,'sharedChecksLastError',error);if(TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))console.warn('shared checks poll deferred',error?.message||error);else console.error('shared checks poll',error)}
 }
 
 return { sharedChecksSyncStatus, mergeSharedChecks, syncSharedChecksFromCloud, ensureSharedChecksForNewCloud, saveSharedChecksToCloud, pollSharedChecks };

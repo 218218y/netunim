@@ -60,13 +60,14 @@ import {createDomainsCalendarController} from './domains/calendar/controller.js'
 import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
+import {bindActionEvents} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
 import {createOrdersBankChequeImageRuntime} from './domains/finance/bank-cheque-image-runtime.js';
-import {INITIAL_STATE, $} from "./state/constants.js";
+import {INITIAL_STATE} from "./state/constants.js";
+import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
 
 
@@ -1049,19 +1050,7 @@ model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||struct
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindBackdropDismissal($('#modalBackdrop'),()=>uiModal.dismissModal());
-document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>uiNavigation.switchView(b.dataset.view)));
-document.addEventListener('click',e=>{const menu=$('#supplierMenu');if(menu&&!menu.contains(e.target))domainsSuppliersNavigation.closeSupplierMenu()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')domainsSuppliersNavigation.closeSupplierMenu()});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,120);if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:true}),180);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
-window.addEventListener('online',()=>{if(cloudAuth.cloudEnabled()){uiStatus.setCloud('ענן: חזרה רשת…');setTimeout(()=>{const resume=stateSnapshots.cloudHasLocalWork()?syncDocument.requestCloudSave('שינויים ממתינים סונכרנו'):Promise.resolve(true);resume.then(()=>syncDocument.cloudPoll())},250)}else if(cloudAuth.loadSession()&&!uiStatus.startupDomainLocked('checks'))setTimeout(syncChecks.pollSharedChecks,300);if(tab.primaryTab&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:true}),450);if(!uiStatus.startupDomainLocked('finance'))domainsFinanceController.startAutoSync()});
-window.addEventListener('offline',()=>{if(cloudAuth.cloudEnabled())uiStatus.setCloud('ענן: אופליין','offline')});
-window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;storageBrowser.localSnapshot();if(cloudAuth.cloudEnabled()&&stateSnapshots.cloudHasLocalWork())storageBrowser.markCloudPending();if(cloudAuth.loadSession()&&stateSnapshots.checksHaveLocalWork())storageChecks.markChecksPending()});
-if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
-document.getElementById('saveNowButton').addEventListener('click',()=>{if(uiStatus.guardStartupMutation('all'))storagePersistence.manualSaveNow()});
-document.getElementById('folderAccessButton').addEventListener('click',uiFolders.handleTopFolderAccess);
-document.getElementById('alertCenterButton').addEventListener('click',()=>uiAlertCenter.openAlertCenter());
-document.getElementById('retryPrimaryTab').addEventListener('click',uiTabGuard.retryPrimaryTabLock);
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,storagePersistence,uiFolders,uiAlertCenter,uiTabGuard});
 const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,action])=>{
   const domain=action.startupMutationDomain;
   if(!domain)return [name,action];

@@ -6,6 +6,8 @@ import {clone} from '../core/values.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,contentionDelay,createOutboxRetryScheduler,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../shared/cloud-sync.js';
 
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
+const TRANSIENT_CHECK_READ_KINDS=new Set(['network','timeout','service_unavailable','rate_limited']);
+function recordSharedChecksReadError(state,key,error){const normalized=normalizeCloudError(error);if(!TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))state[key]=error?.message||String(error);return normalized}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createSyncChecks({model, files, checksSession={}, tab, localSnapshot, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp}){
@@ -37,7 +39,7 @@ async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
       if(!eq(merged.checks,remote)){checksSession.checksGeneration=Math.max(checksSession.checksGeneration,Number(outbox?.generation||0))+1;markChecksPending(merged.checks,'merged-local',undefined,{baseRevision:Number(row.revision),baseState:remote,deleteIds:outbox?.deleteIds||[]});checksSession.checksSaveRequested=true;queueSharedChecksSave('שינויי הצ\'קים המקומיים מוזגו לענן')}else if(outbox){const cleared=await clearChecksPending(outbox.generation);if(cleared)checksSession.checksSaveRequested=false;else{const latest=await getChecksPending();checksSession.checksSaveRequested=Number(latest?.generation||0)>Number(outbox.generation||0);if(!checksSession.checksSaveRequested)checksSession.checksCloudLastError='הצקים אושרו בענן; ניקוי האחסון המקומי ממתין להתאוששות'}}
       await mirrorChecksLocally();
       refreshCloudTimestamp();if(!quiet)renderKupaDependentView();return true;
-    }catch(error){console.error('shared checks pull',error);checksSession.checksCloudLastError=error.message||String(error);if(required)throw error;if(!quiet){toast(error.message);renderKupaDependentView()}return false}
+    }catch(error){console.error('shared checks pull',error);recordSharedChecksReadError(checksSession,'checksCloudLastError',error);if(required)throw error;if(!quiet){toast(error.message);renderKupaDependentView()}return false}
   });
 }
 
@@ -95,7 +97,7 @@ async function pollSharedChecks(){
   if(!tab.primaryTab||!loadSession()||!navigator.onLine||checksSession.checksSavePromise||checksSession.checksPullPromise)return;
   if(checksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצ\'קים סונכרנו');return}
   try{const meta=await readSharedChecksCloudMeta();if(!meta||Number(meta.revision||0)<=checksSession.checksCloudRevision)return;const before=checksSession.checksCloudRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.checksCloudRevision>before)renderKupaDependentView()}
-  catch(error){console.error('shared checks poll',error);checksSession.checksCloudLastError=error.message||String(error)}
+  catch(error){const normalized=recordSharedChecksReadError(checksSession,'checksCloudLastError',error);if(TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))console.warn('shared checks poll deferred',error?.message||error);else console.error('shared checks poll',error)}
 }
 
 return { sharedChecksSyncStatus, mergeSharedChecks, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, mergeSharedChecksPreferLocal };
