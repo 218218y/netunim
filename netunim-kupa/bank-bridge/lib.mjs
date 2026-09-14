@@ -203,13 +203,41 @@ function semanticPairsFromObject(value){
   for(const [key,child] of entries){if(child===null||child===undefined||typeof child==='object')continue;pairs.push([key,child])}
   return pairs;
 }
+function semanticCellPairsFromArray(value){
+  if(!Array.isArray(value)||!value.length)return [];
+  const pairs=[];let objectCells=0;
+  for(const child of value.slice(0,30)){
+    if(!child||typeof child!=='object'||Array.isArray(child))return [];
+    objectCells++;
+    const entries=Object.entries(child);
+    // A direct bank/branch/account/amount key means this is probably an array of rows,
+    // not an array of cells belonging to one row. Never collapse rows together.
+    if(entries.some(([key])=>isBankNumberKey(key)||isBranchNumberKey(key)||isAccountNumberKey(key)||isChequeAmountKey(key)||isChequeNumberKey(key)||isTransactionReferenceKey(key)))return [];
+    const labelEntry=entries.find(([key,field])=>isSemanticLabelKey(key)&&meaningfulDetailValue(field));
+    const valueEntry=entries.find(([key,field])=>isSemanticValueKey(key)&&meaningfulDetailValue(field));
+    if(!labelEntry||!valueEntry||labelEntry[0]===valueEntry[0])return [];
+    pairs.push([meaningfulDetailValue(labelEntry[1]),valueEntry[1]]);
+  }
+  return pairs.length===objectCells?pairs:[];
+}
 function nestedSemanticPairsFromObject(value,depth=0){
   if(!value||typeof value!=='object'||Array.isArray(value)||depth>3)return [];
   const pairs=semanticPairsFromObject(value);
   for(const [rawKey,child] of Object.entries(value)){
-    if(!child||typeof child!=='object'||Array.isArray(child))continue;
+    if(!child||typeof child!=='object')continue;
     const key=String(rawKey||'');
     if(isUnsafeTechnicalDetailKey(key)||isDocumentDetailKey(key))continue;
+    if(Array.isArray(child)){
+      // Some Hapoalim detail payloads keep a row's display cells in a nested array.
+      // Fold them into this row only when EVERY element is an explicit label/value cell.
+      // This preserves row identity and never relies on array order alone.
+      pairs.push(...semanticCellPairsFromArray(child));
+      for(const primitive of child.slice(0,30)){
+        if(typeof primitive!=='string')continue;
+        const explicit=explicitChequeNumberFromText(primitive);if(explicit)pairs.push(['מספר שיק',explicit]);
+      }
+      continue;
+    }
     pairs.push(...nestedSemanticPairsFromObject(child,depth+1));
   }
   return pairs;
@@ -268,6 +296,45 @@ function normalizeChequeItemSemanticArray(value){
   if(semanticCells<4||semanticCells!==objectCells)return null;
   return normalizeChequeItemPairs(pairs);
 }
+function semanticColumnLabel(value){
+  if(typeof value==='string'||typeof value==='number')return meaningfulDetailValue(value);
+  if(!value||typeof value!=='object'||Array.isArray(value))return '';
+  for(const [key,child] of Object.entries(value)){if(isSemanticLabelKey(key)){const clean=meaningfulDetailValue(child);if(clean)return clean}}
+  return '';
+}
+function semanticCellValue(value){
+  if(value===null||value===undefined)return '';
+  if(typeof value!=='object')return value;
+  if(Array.isArray(value))return '';
+  for(const [key,child] of Object.entries(value)){if(isSemanticValueKey(key)&&meaningfulDetailValue(child))return child}
+  return '';
+}
+function normalizeChequeTableObject(value){
+  if(!value||typeof value!=='object'||Array.isArray(value))return [];
+  const arrays=Object.values(value).filter(Array.isArray),headerCandidates=[];
+  for(const candidate of arrays){
+    if(candidate.length<4||candidate.length>20)continue;
+    const labels=candidate.map(semanticColumnLabel);
+    if(labels.some(x=>!x))continue;
+    // Position-based mapping is accepted only when the bank itself supplied a complete,
+    // explicit cheque table header. This is not a guessed column order.
+    if(!labels.some(isBankNumberKey)||!labels.some(isBranchNumberKey)||!labels.some(isAccountNumberKey)||!labels.some(isChequeAmountKey)||!labels.some(isChequeNumberKey))continue;
+    headerCandidates.push(labels);
+  }
+  if(headerCandidates.length!==1)return [];
+  const labels=headerCandidates[0],items=[];
+  const addRow=row=>{
+    const cells=Array.isArray(row)?row:(row&&typeof row==='object'?Object.values(row).find(Array.isArray):null);
+    if(!Array.isArray(cells)||cells.length<labels.length)return;
+    const pairs=labels.map((label,index)=>[label,semanticCellValue(cells[index])]);
+    const item=normalizeChequeItemPairs(pairs);if(item)items.push(item);
+  };
+  for(const candidate of arrays){
+    if(candidate.length===labels.length&&candidate.map(semanticColumnLabel).every(Boolean))continue;
+    if(candidate.every(row=>Array.isArray(row)||(row&&typeof row==='object')))for(const row of candidate.slice(0,50))addRow(row);
+  }
+  return items;
+}
 function chequeItemKey(item){return [item.bankNumber,item.branchNumber,item.accountNumber,item.checkNumber,item.amount].join('|')}
 
 export function normalizeHapoalimAdditionalDetails(payload){
@@ -295,6 +362,7 @@ export function normalizeHapoalimAdditionalDetails(payload){
       return;
     }
     if(typeof value!=='object'){if(path)consumeSemanticField(path,value);return}
+    for(const tableItem of normalizeChequeTableObject(value))addItem(tableItem);
     addItem(normalizeChequeItemObject(value));
     const entries=Object.entries(value);
     const labelEntry=entries.find(([key,child])=>isSemanticLabelKey(key)&&meaningfulDetailValue(child));
@@ -377,19 +445,12 @@ export function normalizeHapoalimTransaction(txn){
   const identifier=bankReference||bankSerial||compactText(`${txn?.eventDate||''}-${txn?.eventAmount||''}`,100);
   const chequeKind=hapoalimChequeTransactionKind(txn),cheque=chequeKind==='deposit';
   const normalizedExtra=txn?.netunimAdditionalDetails&&typeof txn.netunimAdditionalDetails==='object'?txn.netunimAdditionalDetails:null;
-  const structuredReturn=chequeKind==='returned'||chequeKind==='returned_credit'?{
-    referenceNumber:'',
-    checkNumbers:bankReference&&bankReference!=='0'?[bankReference]:[],
-    checkCount:bankReference&&bankReference!=='0'?1:null,
-    checkItems:(()=>{
-      const bankNumber=meaningfulDetailValue(txn?.contraBankNumber),branchNumber=meaningfulDetailValue(txn?.contraBranchNumber),accountNumber=meaningfulDetailValue(txn?.contraAccountNumber);
-      const fullAccountIdentity=!!(bankNumber&&branchNumber&&accountNumber),rowAmount=Math.abs(Number(txn?.eventAmount));
-      if(!(Number.isFinite(rowAmount)&&rowAmount>0&&(bankReference&&bankReference!=='0'||fullAccountIdentity)))return [];
-      return [{bankNumber:compactText(bankNumber,20),branchNumber:compactText(branchNumber,20),accountNumber:compactText(accountNumber,40),checkNumber:bankReference&&bankReference!=='0'?bankReference:'',amount:rowAmount,hasDocumentReference:false}];
-    })(),
-    hasDocumentReference:false,
-  }:null;
-  const combinedExtra=structuredReturn?mergeHapoalimAdditionalDetails(structuredReturn,normalizedExtra):normalizedExtra;
+  // For returned-cheque rows, the expanded Hapoalim `details` response is the
+  // authoritative cheque identity source. The top-level contra* fields describe the
+  // transaction counterparty and are not guaranteed to be the cheque's printed account.
+  // v47 synthesized a second row from contra* and caused exactly that corruption.
+  const combinedExtra=normalizedExtra;
+  const chequeDetailsReference=compactText(txn?.netunimChequeDetailsReference,80);
   const checkDetails=chequeKind?{
     kind:chequeKind,
     checkNumbers:Array.isArray(combinedExtra?.checkNumbers)?combinedExtra.checkNumbers.map(x=>compactText(x,80)).filter(x=>x&&x!=='0').slice(0,50):[],
@@ -402,6 +463,15 @@ export function normalizeHapoalimTransaction(txn){
     warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
   }:null;
   if(checkDetails){
+    // A reference read from the dedicated `details` endpoint is cheque-detail context,
+    // unlike the top-level transaction reference. Use it only for a single returned-
+    // cheque detail row. For plain "החזרת שיק", the bank's own top-level reference is
+    // also the cheque reference when the detail endpoint omitted it; this fallback is
+    // deliberately NOT valid for "הצ שיק חוזר-נט".
+    if(checkDetails.checkItems.length===1&&!checkDetails.checkItems[0].checkNumber){
+      const returnReference=chequeDetailsReference&&chequeDetailsReference!=='0'?chequeDetailsReference:(chequeKind==='returned'&&bankReference&&bankReference!=='0'?bankReference:'');
+      if(returnReference){checkDetails.checkItems[0].checkNumber=returnReference;if(!checkDetails.checkNumbers.includes(returnReference))checkDetails.checkNumbers.push(returnReference)}
+    }
     const used=new Set(checkDetails.checkItems.map(item=>item.checkNumber).filter(Boolean));
     const remaining=checkDetails.checkNumbers.filter(number=>!used.has(number));
     const missing=checkDetails.checkItems.filter(item=>!item.checkNumber);
