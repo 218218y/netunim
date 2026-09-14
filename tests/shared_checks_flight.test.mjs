@@ -79,7 +79,7 @@ for(const app of ['orders','kupa']){
   for(const blocked of [false,true])test(`${app}: real bank refresh revalidates mutations made during bridge fetch (conflict=${blocked})`,async t=>{
     const f=fixture(app,t),fetched=gate(),release=gate(),published=[];
     const bankState={bank:{archiveInitialized:true,archiveVersion:2},checks:[]};f.cs.kupaCloudReadState=bankState;
-    const bridge={getBridgeToken:()=> 'paired',status:async()=>({bridgeVersion:50,configured:true}),
+    const bridge={getBridgeToken:()=> 'paired',status:async()=>({bridgeVersion:51,configured:true}),
       bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',autoEnabled:()=>false,
       fetchBalance:async()=>{fetched.resolve();await release.promise;return {fetchedAt:'2026-09-06T12:00:00Z',balance:1000,accountNumber:'123',branchNumber:'1',transactions:[]}}};
     const common={model:f.model,session:f.session,checksSession:f.cs,tab:{primaryTab:true},bridge,loadSession:()=>true,

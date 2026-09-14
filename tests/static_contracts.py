@@ -454,8 +454,8 @@ ok("tr.pending td{background:var(--marker-yellow)}" in orders_css
    "credit pending visual parity: each app reuses its bank pending row and badge styling instead of a separate credit-only yellow")
 ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and "kupaSubView:'bank'" in orders_contexts,
    "orders Kupa UI: composition root and state own the new financial surface")
-ok("const BANK_BRIDGE_VERSION=50" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v50 contract")
+ok("const BANK_BRIDGE_VERSION=51" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v51 contract")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,

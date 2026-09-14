@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {bankAutoRefreshDue,BANK_AUTO_INTERVAL_MS} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
-import {createBankChequeDiagnosticRun,finishBankChequeDiagnosticRun,formatBankChequeDiagnosticText,recordBankChequeDiagnostic,sanitizeBankDiagnosticValue} from '../netunim-kupa/bank-bridge/bank-diagnostics.mjs';
+import {bankDiagnosticExportPayload,createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic,sanitizeBankDiagnosticValue} from '../netunim-kupa/bank-bridge/bank-diagnostics.mjs';
 import {createDomainsBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {normalizeBankFeed,BANK_FEED_TRANSACTION_LIMIT} from '../netunim-kupa/site/assets/js/domains/bank/feed.js';
 import {
@@ -46,19 +46,28 @@ import {
   CREDIT_AUTOMATION_BLOCK_COOLDOWN_MS,
 } from '../netunim-kupa/bank-bridge/lib.mjs';
 
-const chequeDiagnostic=createBankChequeDiagnosticRun({bridgeVersion:50});
-recordBankChequeDiagnostic(chequeDiagnostic,{role:'business',chequeKind:'deposit',transaction:{activityDescription:'הפק.שיק בסלולר',referenceNumber:855252329256,password:'do-not-export',details:'/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550'},detailSources:[{source:'פירוט שיקים',request:'https://login.bankhapoalim.co.il/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550&XSRF-TOKEN=secret',response:{rows:[{label:"מס' צ'ק",value:'4463454',accountNumber:'105012322'}],cookie:'session-secret',html:'<!doctype html><html>secret challenge</html>',checkImage:'A'.repeat(1200)},normalized:{checkNumbers:['4463454']}}],mergedAdditionalDetails:{checkNumbers:['4463454']}});
-finishBankChequeDiagnosticRun(chequeDiagnostic);
-const chequeDiagnosticText=formatBankChequeDiagnosticText(chequeDiagnostic);
-assert.match(chequeDiagnosticText,/4463454/,'bank cheque diagnostics preserve bank-provided cheque identifiers needed for schema diagnosis');
-assert.match(chequeDiagnosticText,/105012322/,'bank cheque diagnostics preserve cheque row values needed to map the correct account field');
-assert.match(chequeDiagnosticText,/current-account\/cheques\/10168/,'bank cheque diagnostics preserve the safe Hapoalim detail endpoint path');
-assert.equal(chequeDiagnosticText.includes('12-613-678542'),false,'bank cheque diagnostics redact source accountId query values');
-assert.equal(chequeDiagnosticText.includes('do-not-export'),false,'bank cheque diagnostics redact credential-shaped keys');
-assert.equal(chequeDiagnosticText.includes('session-secret'),false,'bank cheque diagnostics redact cookie/session-shaped keys');
-assert.equal(chequeDiagnosticText.includes('secret challenge'),false,'bank cheque diagnostics never retain issuer HTML');
-assert.equal(chequeDiagnosticText.includes('A'.repeat(300)),false,'bank cheque diagnostics never retain cheque images or binary payloads');
-assert.equal(sanitizeBankDiagnosticValue({Authorization:'Bearer abc',referenceNumber:4463454}).referenceNumber,4463454,'diagnostic sanitizer redacts secrets without erasing cheque business fields');
+const bankDiagnostic=createBankDiagnosticRun({bridgeVersion:51});
+recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'',transaction:{eventActivityTypeCode:1,activityTypeCode:999,textCode:77,activityDescription:'העברה נכנסת',englishActionDesc:'INCOMING TRANSFER',referenceNumber:123456789,referenceCatenatedNumber:4321,contraBankNumber:10,contraBranchNumber:123,contraAccountNumber:456789,beneficiaryDetailsData:{partyName:'לקוח בדיקה',messageDetail:'זיכוי'},pfmDetails:'/ServerServices/pfm/transactions?referenceNumber=123456789&accountId=12-613-678542',password:'do-not-export'},normalizedTransaction:{description:'העברה נכנסת',amount:2500,bankReference:'123456789',memo:'לקוח בדיקה · זיכוי'},detailSources:[],mergedAdditionalDetails:null});
+recordBankTransactionDiagnostic(bankDiagnostic,{role:'business',chequeKind:'deposit',transaction:{eventActivityTypeCode:1,activityDescription:'הפק.שיק בסלולר',referenceNumber:855252329256,details:'/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550'},normalizedTransaction:{description:'הפק.שיק בסלולר',amount:550,bankReference:'855252329256',cheque:true,checkDetails:{kind:'deposit',checkNumbers:['4463454'],checkItems:[{bankNumber:'52',branchNumber:'183',accountNumber:'105012322',checkNumber:'4463454',amount:550,hasDocumentReference:true}]}},detailSources:[{source:'פירוט שיקים',request:'https://login.bankhapoalim.co.il/ServerServices/current-account/cheques/10168?accountId=12-613-678542&chequeAmount=550&XSRF-TOKEN=secret',response:{list:[{bank:52,branch:183,account:105012322,number:4463454,imageId:'document-1',imageFrontLink:'/ServerServices/current-account/cheques/image/front?id=abc&session=secret',imageBackLink:'/ServerServices/current-account/cheques/image/back?id=def&token=secret'}],cookie:'session-secret',html:'<!doctype html><html>secret challenge</html>',checkImage:'A'.repeat(1200)},normalized:{checkNumbers:['4463454']}}],mergedAdditionalDetails:{checkNumbers:['4463454']}});
+recordBankAccountDiagnostic(bankDiagnostic,{role:'business',branchNumber:'613',accountNumber:'634063',balance:10000,availableBalance:9000,transactionCoverage:{complete:true,from:'2026-08-16',to:'2026-09-14',days:30},normalizedTransactionCount:2});
+finishBankDiagnosticRun(bankDiagnostic);
+const bankDiagnosticPayload=bankDiagnosticExportPayload(bankDiagnostic),bankDiagnosticText=JSON.stringify(bankDiagnosticPayload,null,2);
+assert.equal(bankDiagnosticPayload.schemaVersion,2,'bank diagnostics use the structured all-transaction JSON schema');
+assert.equal(bankDiagnosticPayload.accounts.business.captured,2,'bank diagnostics retain non-cheque and cheque transactions from the same sync');
+assert.equal(bankDiagnosticPayload.accounts.business.activitySummary.some(row=>row.activityDescription==='העברה נכנסת'&&row.sampleReferences.includes('123456789')),true,'bank diagnostics summarize incoming credits with their bank reference');
+assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.rawTransactionFields.includes('referenceCatenatedNumber'),true,'bank diagnostics inventory raw fields that are intentionally not part of the normal feed');
+assert.equal(bankDiagnosticPayload.accounts.business.fieldInventory.beneficiaryDetailsFields.includes('messageDetail'),true,'bank diagnostics inventory nested beneficiary fields for transfer diagnosis');
+assert.match(bankDiagnosticText,/4463454/,'bank diagnostics preserve bank-provided cheque identifiers needed for schema diagnosis');
+assert.match(bankDiagnosticText,/105012322/,'bank diagnostics preserve cheque row values needed to map the correct account field');
+assert.match(bankDiagnosticText,/current-account\/cheques\/image\/front/,'bank diagnostics preserve sanitized cheque-document endpoint paths for image feasibility analysis');
+assert.equal(bankDiagnosticText.includes('12-613-678542'),false,'bank diagnostics redact source accountId query values');
+assert.equal(bankDiagnosticText.includes('do-not-export'),false,'bank diagnostics redact credential-shaped keys');
+assert.equal(bankDiagnosticText.includes('session-secret'),false,'bank diagnostics redact cookie/session-shaped keys');
+assert.equal(bankDiagnosticText.includes('secret challenge'),false,'bank diagnostics never retain issuer HTML');
+assert.equal(bankDiagnosticText.includes('A'.repeat(300)),false,'bank diagnostics never retain cheque images or binary payloads');
+assert.equal(bankDiagnosticText.includes('session=secret'),false,'bank diagnostics strip session query values from document links');
+assert.equal(bankDiagnosticText.includes('token=secret'),false,'bank diagnostics strip token query values from document links');
+assert.equal(sanitizeBankDiagnosticValue({Authorization:'Bearer abc',referenceNumber:4463454}).referenceNumber,4463454,'diagnostic sanitizer redacts secrets without erasing bank business fields');
 
 const amexInstallment=normalizeIsracardFamilyTransaction({dealSumType:'0',voucherNumberRatz:'123456',voucherNumberRatzOutbound:'777777',dealSumOutbound:'0',fullPurchaseDate:'12/06/2026',fullPaymentDate:'02/07/2026',dealSum:'100.50',paymentSum:'100.50',currencyId:'ש"ח',fullSupplierNameHeb:'  חנות בדיקה  ',moreInfo:'תשלום 2 מתוך 3'},null);
 assert.equal(parseIsracardDate('31/08/2026'),'2026-08-31T00:00:00.000Z','Camoufox adapter parses issuer DD/MM/YYYY dates deterministically');

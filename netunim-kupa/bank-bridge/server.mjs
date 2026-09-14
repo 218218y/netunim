@@ -19,6 +19,7 @@ import {
   SILENT_AUTH_TIMEOUT_MS,
   isTransientNavigationError,
   normalizeRecentTransactions,
+  normalizeHapoalimTransaction,
   parseAccountSelector,
   retryTransientNavigation,
   scraperFailureMessage,
@@ -40,11 +41,11 @@ import {doctorCamoufox} from './isracard-camoufox.mjs';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
 import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
-import {bankChequeDiagnosticFilename,createBankChequeDiagnosticRun,finishBankChequeDiagnosticRun,formatBankChequeDiagnosticText,recordBankChequeDiagnostic} from './bank-diagnostics.mjs';
+import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=50;
+const BRIDGE_VERSION=51;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -56,7 +57,8 @@ const BROWSER_PROFILE_DIR=path.join(APP_DIR,'browser-profile');
 const CAMOUFOX_INSTALL_DIR=path.join(APP_DIR,'camoufox');
 const CREDIT_IDENTITIES_DIR=path.join(APP_DIR,'credit-identities');
 const BANK_DIAGNOSTICS_DIR=path.join(APP_DIR,'diagnostics');
-const BANK_CHEQUE_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-cheque-latest.json');
+const BANK_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-latest.json');
+const LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-cheque-latest.json');
 const creditDiagnostics=createCreditDiagnosticLog({directory:path.join(APP_DIR,'diagnostics'),bridgeVersion:BRIDGE_VERSION,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION});
 process.env.CAMOUFOX_INSTALL_DIR=process.env.CAMOUFOX_INSTALL_DIR||CAMOUFOX_INSTALL_DIR;
 let scrapeBusy=false;
@@ -76,15 +78,20 @@ async function readMeta(){
   catch{return {lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:'',browserPath:'',sessionUrl:''}}
 }
 async function writeMeta(patch){const current=await readMeta();await ensureAppDir();await fs.writeFile(META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
-async function writeBankChequeDiagnostic(run){
+async function writeBankDiagnostic(run){
   if(!run)return;
   await fs.mkdir(BANK_DIAGNOSTICS_DIR,{recursive:true,mode:0o700});
-  const temp=`${BANK_CHEQUE_DIAGNOSTIC_FILE}.${process.pid}.${Date.now()}.tmp`;
+  const temp=`${BANK_DIAGNOSTIC_FILE}.${process.pid}.${Date.now()}.tmp`;
   await fs.writeFile(temp,JSON.stringify(run,null,2),{encoding:'utf8',mode:0o600});
-  await fs.rename(temp,BANK_CHEQUE_DIAGNOSTIC_FILE);
+  await fs.rename(temp,BANK_DIAGNOSTIC_FILE);
 }
-async function readBankChequeDiagnostic(){try{return JSON.parse(await fs.readFile(BANK_CHEQUE_DIAGNOSTIC_FILE,'utf8'))}catch(error){if(error?.code==='ENOENT')return null;throw error}}
-async function deleteBankChequeDiagnostic(){await fs.rm(BANK_CHEQUE_DIAGNOSTIC_FILE,{force:true})}
+async function readBankDiagnostic(){
+  for(const file of [BANK_DIAGNOSTIC_FILE,LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE]){
+    try{return JSON.parse(await fs.readFile(file,'utf8'))}catch(error){if(error?.code!=='ENOENT')throw error}
+  }
+  return null;
+}
+async function deleteBankDiagnostic(){await Promise.all([fs.rm(BANK_DIAGNOSTIC_FILE,{force:true}),fs.rm(LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE,{force:true})])}
 
 function runProcess(command,args,{input=''}={}){
   return new Promise((resolve,reject)=>{
@@ -310,7 +317,7 @@ async function pageFetchJson(page,requestFactory,{initialReady=null}={}){
   },{attempts:HAPOALIM_DATA_RETRY_LIMIT});
 }
 
-async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{initialReady=null,role='business',diagnosticRun=null}={}){
+async function enrichHapoalimTransactions(page,rawTransactions,accountId,{initialReady=null,role='business',diagnosticRun=null}={}){
   const source=Array.isArray(rawTransactions)?rawTransactions:[];
   const enriched=[];
   let reusableReady=initialReady;
@@ -318,10 +325,13 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
     const pfmDetails=String(transaction?.pfmDetails||'').trim();
     const transactionDetails=String(transaction?.details||'').trim();
     const chequeKind=hapoalimChequeTransactionKind(transaction);
-    if(!chequeKind){enriched.push(transaction);continue}
+    if(!chequeKind){
+      recordBankTransactionDiagnostic(diagnosticRun,{role,chequeKind:'',transaction,normalizedTransaction:normalizeHapoalimTransaction(transaction),detailSources:[],mergedAdditionalDetails:null});
+      enriched.push(transaction);continue;
+    }
     const detailSources=[],warnings=[],diagnosticSources=[];
     if((!pfmDetails&&!transactionDetails)||Number(transaction?.serialNumber)===0){
-      recordBankChequeDiagnostic(diagnosticRun,{role,chequeKind,transaction,detailSources:[],mergedAdditionalDetails:null});
+      recordBankTransactionDiagnostic(diagnosticRun,{role,chequeKind,transaction,normalizedTransaction:normalizeHapoalimTransaction(transaction),detailSources:[],mergedAdditionalDetails:null});
       enriched.push(transaction);continue;
     }
     let pfmNormalized=null;
@@ -344,13 +354,14 @@ async function enrichHapoalimChequeTransactions(page,rawTransactions,accountId,{
     // Keep it separate from PFM so a cheque-row reference can never replace the deposit reference.
     if(transactionDetails&&transactionDetails!==pfmDetails)await fetchDetailSource(transactionDetails,'פירוט שיקים',false);
     const details=mergeHapoalimAdditionalDetails(...detailSources);
-    recordBankChequeDiagnostic(diagnosticRun,{role,chequeKind,transaction,detailSources:diagnosticSources,mergedAdditionalDetails:details});
-    enriched.push({
+    const enrichedTransaction={
       ...transaction,
       ...(chequeKind==='deposit'&&pfmNormalized?.referenceNumber?{referenceNumber:pfmNormalized.referenceNumber}:{}),
       ...(detailSources.length?{netunimAdditionalDetails:details}:{}),
       ...(warnings.length?{netunimAdditionalDetailsWarning:`לא ניתן היה לטעון את כל פירוט השיק מהבנק: ${warnings.join(' | ')}`}:{})
-    });
+    };
+    recordBankTransactionDiagnostic(diagnosticRun,{role,chequeKind,transaction,normalizedTransaction:normalizeHapoalimTransaction(enrichedTransaction),detailSources:diagnosticSources,mergedAdditionalDetails:details});
+    enriched.push(enrichedTransaction);
   }
   return {transactions:enriched,ready:reusableReady};
 }
@@ -393,7 +404,7 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
         const next=new Date(mid);next.setDate(next.getDate()+1);
         await fetchWindow(windowStart,mid);await fetchWindow(next,windowEnd);return;
       }
-      const enriched=await enrichHapoalimChequeTransactions(page,raw,accountId,{initialReady:reusableReady,role,diagnosticRun});reusableReady=enriched.ready||reusableReady;all.push(...enriched.transactions);
+      const enriched=await enrichHapoalimTransactions(page,raw,accountId,{initialReady:reusableReady,role,diagnosticRun});reusableReady=enriched.ready||reusableReady;all.push(...enriched.transactions);
     }
     const chunkDays=days>HAPOALIM_TRANSACTION_LOOKBACK_DAYS?60:days;
     for(let offset=0;offset<days;offset+=chunkDays){
@@ -405,7 +416,7 @@ async function fetchHapoalimAccountSnapshot(page,selected,ready,historyDays=HAPO
     transactionCoverage={...transactionCoverage,complete:true};
   }catch(e){transactionWarning=`היתרה התקבלה, אבל לא ניתן היה לטעון כרגע תנועות אחרונות: ${e?.message||e}`}
 
-
+  recordBankAccountDiagnostic(diagnosticRun,{role,bankNumber:selected.bankNumber||'12',branchNumber:selected.branchNumber,accountNumber:selected.accountNumber,balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,transactionCoverage,transactionWarning,normalizedTransactionCount:transactions.length});
   return {snapshot:{balance,availableBalance,creditLimit,creditLimitUsed,creditLimitUsedPercent,accountNumber:selected.accountNumber,branchNumber:selected.branchNumber,accountId,transactions,transactionWarning,transactionCoverage},ready:reusableReady};
 }
 
@@ -450,7 +461,7 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון מול הבנק'),{code:'SCRAPE_BUSY'});
   scrapeBusy=true;
   let scraper=null,success=false,failure=null;
-  const diagnosticRun=createBankChequeDiagnosticRun({bridgeVersion:BRIDGE_VERSION});
+  const diagnosticRun=createBankDiagnosticRun({bridgeVersion:BRIDGE_VERSION});
   try{
     const browserPath=await runStage('browser',()=>findInstalledBrowser(),'BROWSER_NOT_FOUND');
     await fs.mkdir(BROWSER_PROFILE_DIR,{recursive:true});
@@ -482,7 +493,7 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
     const {sessionHref:_,...publicSnapshot}=snapshot;return {...publicSnapshot,fetchedAt:new Date().toISOString()};
   }catch(error){failure=error;throw error}
   finally{
-    try{finishBankChequeDiagnosticRun(diagnosticRun,{failure});if(success||diagnosticRun.events.length)await writeBankChequeDiagnostic(diagnosticRun)}catch(error){console.error('Bank Bridge cheque diagnostic write failed:',error?.message||error)}
+    try{finishBankDiagnosticRun(diagnosticRun,{failure});const captured=['business','home'].some(role=>Number(diagnosticRun.accounts?.[role]?.captured)>0);if(success||captured)await writeBankDiagnostic(diagnosticRun)}catch(error){console.error('Bank Bridge diagnostic write failed:',error?.message||error)}
     if(scraper){try{await scraper.terminate(success)}catch(e){console.error('Bank Bridge browser cleanup failed:',e?.message||e)}}
     scrapeBusy=false;
   }
@@ -550,9 +561,11 @@ async function handler(req,res,token){
       sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,events:await creditDiagnostics.summary({limit:500})});return;
     }
     if(req.method==='GET'&&pathname==='/bank/diagnostics'){
-      const diagnostic=await readBankChequeDiagnostic();
-      if(!diagnostic){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון שיקים מקומי. בצע רענון בנק ולאחריו ייצא את הקובץ.'});return}
-      sendJson(req,res,200,{ok:true,available:true,generatedAt:diagnostic.finishedAt||diagnostic.startedAt||null,filename:bankChequeDiagnosticFilename(diagnostic),text:formatBankChequeDiagnosticText(diagnostic),eventCount:Array.isArray(diagnostic.events)?diagnostic.events.length:0});return;
+      const diagnostic=await readBankDiagnostic();
+      if(!diagnostic){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו ייצא את הקובץ.'});return}
+      const payload=bankDiagnosticExportPayload(diagnostic),accounts=payload?.accounts||{};
+      const transactionCount=['business','home'].reduce((sum,role)=>sum+Number(accounts?.[role]?.captured||0),0);
+      sendJson(req,res,200,{ok:true,available:true,generatedAt:payload.finishedAt||payload.startedAt||null,filename:bankDiagnosticFilename(payload),data:payload,transactionCount,schemaVersion:Number(payload.schemaVersion)||1});return;
     }
     if(req.method==='POST'&&route==='/credit/profiles'){
       const body=await readJson(req),profiles=await readCreditProfiles(),requestedId=String(body.profileId||'').trim();
@@ -603,7 +616,7 @@ async function handler(req,res,token){
       sendJson(req,res,200,{ok:true,configured:true,role,branchNumber,accountNumber,businessBranchNumber:next.businessBranchNumber,businessAccountNumber:next.businessAccountNumber,homeBranchNumber:next.homeBranchNumber,homeAccountNumber:next.homeAccountNumber});return;
     }
     if(req.method==='DELETE'&&pathname==='/credentials'){
-      await Promise.all([deleteCredentials(),deleteBankChequeDiagnostic()]);await writeMeta({lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});sendJson(req,res,200,{ok:true,configured:false});return;
+      await Promise.all([deleteCredentials(),deleteBankDiagnostic()]);await writeMeta({lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''});sendJson(req,res,200,{ok:true,configured:false});return;
     }
     if(req.method==='POST'&&pathname==='/balance'){
       const body=await readJson(req),credentials=await readCredentials();if(!credentials)throw Object.assign(new Error('לא נשמרו פרטי בנק הפועלים ב-Bank Bridge'),{code:'NOT_CONFIGURED'});

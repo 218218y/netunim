@@ -341,3 +341,9 @@ returned cheques, and returned-cheque credits. Transaction/deposit referenceNumb
 kept only as transaction metadata and is never used as a fallback cheque number.
 The document/image fields remain local/session-scoped evidence only; the shared feed
 continues to persist only hasDocumentReference rather than sensitive document URLs.
+
+Bridge v51 — structured all-transaction bank diagnostics
+--------------------------------------------------------
+The local bank diagnostic is now a versioned JSON document rather than a cheque-only text wrapper. The latest successful/partial bank sync records up to the 500 newest transactions per account role (business/home), regardless of transaction type. Each captured row keeps a sanitized `rawTransaction` beside the exact `normalizedTransaction` that Netunim would use, so missing fields can be proven from the bank payload instead of guessed. The document also contains account/coverage metadata, an `activitySummary` grouped by the bank's activity/text codes and descriptions, and a `fieldInventory` of raw, beneficiary and normalized field names observed in that sync. Cheque rows still include their fetched PFM/cheque-detail responses and merged detail result.
+
+The export remains local-only and authenticated through the loopback Bridge. Password/user-code, cookies, authorization/session/XSRF/token values, HTML and binary payloads are redacted. `accountId` and other sensitive URL query values are removed. Cheque image/document identifiers remain redacted, but front/back document links are exported only as sanitized paths/query structure so a future image implementation can be designed against the real Hapoalim endpoint without copying session secrets into diagnostics. The diagnostic is not written to browser state, finance sync state, bank archive, Kupa/Orders documents, backups or Supabase.

@@ -10,7 +10,7 @@ import {BANK_AUTO_INTERVAL_MS,CREDIT_AUTO_INTERVAL_MS,bankRefreshDue,creditRefre
 import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
-const BANK_BRIDGE_VERSION=50;
+const BANK_BRIDGE_VERSION=51;
 const CREDIT_BRIDGE_VERSION=44;
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 
@@ -175,8 +175,8 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
 
   async function deleteBankBridgeCredentials(){if(local.bankBusy)return false;local.bankBusy=true;try{await bridge.deleteCredentials();local.bankStatus={...(local.bankStatus||{}),configured:false,businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[]};local.bankError='';local.bankErrorAt=null;toast('פרטי בנק הפועלים נמחקו מה-Bank Bridge המקומי');return true}catch(error){local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();toast(local.bankError);return false}finally{local.bankBusy=false}}
 
-  function downloadBankDiagnosticText(filename,text){const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-bank-cheque-diagnostic.txt',blob=new Blob([String(text||'')],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000)}
-  async function exportBankChequeDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!bridge.getBridgeToken()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון');return false}try{const result=await bridge.bankDiagnostics();if(!result?.available||!result?.text)throw new Error(result?.message||'עדיין אין אבחון שיקים מקומי. בצע רענון בנק ולאחריו נסה שוב.');downloadBankDiagnosticText(result.filename,result.text);toast(`קובץ אבחון שיקים נוצר מהסנכרון האחרון (${Number(result.eventCount)||0} תנועות שיק)`);return true}catch(error){toast(error?.message||'ייצוא אבחון השיקים נכשל');return false}}
+  function downloadBankDiagnosticJson(filename,data){const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-bank-diagnostic.json',blob=new Blob([JSON.stringify(data??{},null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000)}
+  async function exportBankChequeDiagnostics(){if(local.bankBusy||local.creditBusy)return false;if(!bridge.getBridgeToken()){toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge לפני ייצוא אבחון');return false}try{const result=await bridge.bankDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו נסה שוב.');downloadBankDiagnosticJson(result.filename,result.data);toast(`קובץ אבחון בנק JSON נוצר מהסנכרון האחרון (${Number(result.transactionCount)||0} תנועות)`);return true}catch(error){toast(error?.message||'ייצוא אבחון הבנק נכשל');return false}}
 
   async function prepareBankSnapshot(){
     if(checksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצ׳קים סונכרנו לפני צילום יתרת הבנק');if(!saved||checksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצ׳קים לפני צילום יתרת עו״ש חדש')}

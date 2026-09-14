@@ -122,3 +122,11 @@ The bank's authenticated cheque-details response supplies the printed cheque num
 `details.list[].number`. v50 reads that field directly for all completed cheque detail
 rows, including multi-cheque deposits and returned-cheque credits. Aggregate transaction
 references are not copied into cheque-number fields.
+
+Bank Bridge v51 bank diagnostics
+--------------------------------
+- „ייצוא אבחון בנק (JSON)” מייצא את הסנכרון האחרון כ-JSON מקומי ומובנה ולא כ-TXT של שיקים בלבד.
+- לכל חשבון נשמרות עד 500 התנועות החדשות ביותר מכל הסוגים, כולל זיכויים/העברות, חיובים, שיקים ושאר הפעילויות שהבנק החזיר. אם היו יותר תנועות, השדה `truncated` מציג כמה לא נכנסו לקובץ.
+- בכל תנועה מופיעים זה לצד זה `rawTransaction` של הפועלים ו-`normalizedTransaction` של Netunim. בנוסף קיימים `activitySummary` ו-`fieldInventory`, כדי לזהות אסמכתאות ושדות חשובים שהבנק שולח אך הממשק עדיין אינו מציג.
+- בתנועות שיק נשאר גם פירוט `pfmDetails/details` לפני ואחרי הנרמול. מזהי/תוכן תמונה עצמם אינם מיוצאים; נתיבי front/back נשמרים רק בצורה מסוננת בלי accountId/session/token לצורך בדיקת אפשרות להצגת תמונות בעתיד.
+- הקובץ נשאר במחשב בלבד ואינו עולה ל-Supabase, לארכיון הבנק או לגיבויים. הוא עדיין מכיל מידע פיננסי ולכן משתפים אותו רק במכוון.
