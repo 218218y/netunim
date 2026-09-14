@@ -63,5 +63,10 @@
     "version": "20260914120000",
     "name": "check_bank_item_reconciliation",
     "sha256": "f56a250a559c0c6455de4169d773c3b0596318c64a2ba4e6c46113f0df78e6d1"
+  },
+  {
+    "version": "20260914150000",
+    "name": "check_manual_deposit_tracking",
+    "sha256": "1174c8109551cfbbfea43d1c190347e9212bd5fb92832bd7405d0b4e6e729c2c"
   }
 ]

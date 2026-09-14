@@ -45,14 +45,14 @@ function saveCheck(id){
   const oldRec=clone(model.state.checks.find(x=>x.id===id));if(!oldRec)return toast('הצק לא נמצא');
   const rec={...oldRec,id,name:document.getElementById('fName').value.trim(),account:document.getElementById('fCheckHome')?.checked?'ביתי':'עסקי',amount:wholeMoney(document.getElementById('fAmount').value),dueDate:document.getElementById('fDue').value,bankAutomationDisabled:document.getElementById('fCheckAuto')?.checked===false,status:document.getElementById('fStatus').value,depositDate:null,depositedAt:oldRec.depositedAt||null,depositSeq:oldRec.depositSeq||null,clearedDate:oldRec.clearedDate||null,checkNumber:document.getElementById('fNum').value.trim(),note:document.getElementById('fNote').value.trim(),createdAt:oldRec.createdAt||todayISO()};
   if(!rec.name||!rec.amount||!rec.dueDate)return toast('יש למלא שם, סכום ותאריך');
-  const wasDeposited=['הופקד - במעקב','נפרע'].includes(oldRec.status),isDeposited=['הופקד - במעקב','נפרע'].includes(rec.status);rec.depositDate=isDeposited?rec.dueDate:(rec.status==='חזר'&&oldRec.depositDate?rec.dueDate:null);if(oldRec.bankMatch&&rec.dueDate===oldRec.dueDate&&rec.status===oldRec.status)rec.depositDate=oldRec.depositDate||null;if(isDeposited&&!wasDeposited){rec.depositedAt=new Date().toISOString();rec.depositSeq=null}if(rec.status==='נפרע'&&!rec.clearedDate)rec.clearedDate=todayISO();if(rec.status!=='נפרע')rec.clearedDate=null;
+  const wasDeposited=['הופקד - במעקב','נפרע'].includes(oldRec.status),isDeposited=['הופקד - במעקב','נפרע'].includes(rec.status);rec.depositDate=isDeposited?rec.dueDate:(rec.status==='חזר'&&oldRec.depositDate?rec.dueDate:null);if(oldRec.depositDate&&(wasDeposited||rec.status===oldRec.status)&&rec.dueDate===oldRec.dueDate&&['הופקד - במעקב','נפרע','חזר'].includes(rec.status))rec.depositDate=oldRec.depositDate;if(isDeposited&&!wasDeposited){rec.depositedAt=new Date().toISOString();rec.depositSeq=null}if(rec.status==='נפרע'&&!rec.clearedDate)rec.clearedDate=todayISO();if(rec.status!=='נפרע')rec.clearedDate=null;
   model.state.checks[model.state.checks.findIndex(x=>x.id===id)]=rec;
   closeModal(true);saveChecksState('הצק עודכן');
 }
 
 function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד');return true}
 
-function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע')}
+function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע')}
 
 function reviewCheckBank(id,eventId,action){if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;saveChecksState('בדיקת התאמת הצ׳ק נשמרה');return true}
 

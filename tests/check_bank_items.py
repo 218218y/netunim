@@ -22,17 +22,68 @@ def run(db):
     def tx(key, amount, items=None, day='2026-08-02', description='הפק.שיק בסלולר', status='completed', reference=''):
         details={} if items is None else dict(checkItems=items,checkNumbers=[x['checkNumber'] for x in items if x['checkNumber']],checkCount=len(items))
         return db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,amount,description,transaction_date,processed_date,status,presence_state,check_details,bank_reference) values("+quote(OWNER)+",'item-tests','business',"+quote(key)+","+str(amount)+","+quote(description)+","+quote(day)+","+quote(day)+","+quote(status)+",'present',"+quote(json.dumps(details))+","+quote(reference)+") returning id").strip()
-    def snapshot(day='2026-08-02', fresh=True, coverage_from='2026-07-01'):
+    def snapshot(day='2026-08-02', fresh=True, coverage_from='2026-07-01', role='business'):
         nonlocal serial
         serial+=1
         at=day+f' 12:{serial//60:02}:{serial%60:02}Z'
         if fresh:db.sql("update public.bank_transactions set last_seen_at="+quote(at)+" where presence_state='present'")
-        auth("insert into public.bank_transaction_snapshots(owner_id,account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions) values("+quote(OWNER)+",'item-tests','business',"+quote(at)+","+quote(coverage_from)+","+quote(day)+",0,'[]') on conflict(owner_id,account_key,account_role) do update set snapshot_at=excluded.snapshot_at,coverage_from=excluded.coverage_from,coverage_to=excluded.coverage_to")
+        auth("insert into public.bank_transaction_snapshots(owner_id,account_key,account_role,snapshot_at,coverage_from,coverage_to,transaction_count,transactions) values("+quote(OWNER)+",'item-tests',"+quote(role)+","+quote(at)+","+quote(coverage_from)+","+quote(day)+",0,'[]') on conflict(owner_id,account_key,account_role) do update set snapshot_at=excluded.snapshot_at,coverage_from=excluded.coverage_from,coverage_to=excluded.coverage_to")
     def reset(rows):
         nonlocal serial
         serial=0
         db.sql('delete from netunim_internal.check_bank_claims;delete from public.bank_transaction_snapshots;delete from public.bank_transactions;delete from public.shared_checks_documents')
         save(rows)
+
+    # Manual deposit is an entry point into the same server-owned monitoring
+    # lifecycle, including pending/final confirmation, settlement and disappearance.
+    for role,account in [('business','עסקי'),('home','ביתי')]:
+        reset([check('Manual first',550,'111')])
+        rows=checks();rows[0].update(status='הופקד - במעקב',depositDate='2026-08-02',account=account);save(rows)
+        deposit=tx('manual-first-'+role,550,[item('111',550)],status='pending')
+        # The shared trigger is account-role scoped; exercise both roles directly.
+        if role=='home':
+            db.sql("update public.bank_transactions set account_role='home' where id="+deposit)
+        snapshot(role=role);assert checks()[0]['bankMatch']['phase']=='deposited'
+        rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows)
+        db.sql("update public.bank_transactions set status='completed' where id="+deposit);snapshot('2026-08-03',role=role)
+        assert checks()[0]['bankMatch']['eventId']!=checks()[0]['bankReview']
+        rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows);snapshot('2026-08-10',role=role)
+        assert checks()[0]['status']=='נפרע','A manually deposited check can mature automatically after a verified bank association'
+        db.sql("update public.bank_transactions set presence_state='missing' where id="+deposit);snapshot('2026-08-11',role=role)
+        assert checks()[0]['bankMatch']['phase']=='missing' and checks()[0]['status']!='נפרע'
+
+    reset([check('Manual after ambiguity',550)])
+    first=tx('ambiguous-before-manual',550);second=tx('ambiguous-other',550);snapshot()
+    assert checks()[0]['bankMatch']['phase']=='ambiguous'
+    rows=checks();rows[0].update(status='הופקד - במעקב',depositDate='2026-08-02');save(rows)
+    assert not checks()[0].get('bankAutomationDisabled'),'An unclaimed ambiguous proposal must not make a manual deposit disable automatic tracking'
+    db.sql("update public.bank_transactions set presence_state='missing' where id="+second)
+    snapshot('2026-08-03');assert checks()[0]['bankMatch']['phase']=='deposited' and checks()[0]['bankMatch']['transactionId']==int(first)
+
+    # A number edit must discard an old absence advisory, never restore a stale
+    # acknowledgement through an OR-precedence error in metadata protection.
+    reset([check('Advisory edit',550,'111')]);snapshot()
+    rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];rows[0]['checkNumber']='222';save(rows)
+    assert 'bankMatch' not in checks()[0] and not checks()[0].get('bankAutomationDisabled')
+    tx('corrected-number',550,[item('222',550)]);snapshot('2026-08-03')
+    assert checks()[0]['bankMatch']['phase']=='deposited'
+
+    # Explicit opt-out always wins. Resuming without a real claim starts a
+    # search, while resuming a real claim requires a new review event.
+    reset([check('Disabled',550,'111')]);snapshot()
+    rows=checks();rows[0].update(status='הופקד - במעקב',bankAutomationDisabled=True);save(rows)
+    tx('optout-bank',550,[item('111',550)]);snapshot('2026-08-03')
+    assert checks()[0].get('bankMatch',{}).get('phase')!='deposited'
+    rows=checks();rows[0]['bankAutomationDisabled']=False;save(rows)
+    assert 'bankMatch' not in checks()[0],'Resume cannot create an unbacked bank association'
+    snapshot('2026-08-04');assert checks()[0]['bankMatch']['phase']=='deposited'
+    event=checks()[0]['bankMatch']['eventId']
+    rows=checks();rows[0]['amount']=600;save(rows)
+    assert checks()[0]['bankAutomationDisabled'] and checks()[0]['bankMatch']['phase']=='manual'
+    rows=checks();rows[0]['amount']=550;save(rows)
+    rows=checks();rows[0]['bankAutomationDisabled']=False;save(rows)
+    assert checks()[0]['bankMatch']['phase']=='deposited' and checks()[0]['bankMatch']['eventId']!=event
+    snapshot('2026-08-10');assert checks()[0]['status']!='נפרע','Resuming does not reuse an earlier approval'
 
     # The old whole-deposit matcher accepts swapped individual amounts merely
     # because the set of numbers and the combined sum happen to match.

@@ -111,6 +111,18 @@ check can use a new deposit; a rejected old deposit remains reserved.
 Filling a previously blank check number preserves tracking when it agrees with captured
 bank identity. Contradictory enrichment switches to manual control.
 
+Manual `הופקד - במעקב` is eligible for initial association even if no automatic
+deposit detection preceded it. Only an actual owner/document/check claim makes a
+material edit stop tracking. Editing an unclaimed ambiguous proposal or absence
+advisory discards that outdated proposal without opting out. Unchanged warnings keep
+their acknowledgements; explicit opt-out is always preserved. Re-enabling an unclaimed
+check starts a fresh search, whereas re-enabling a claimed deposit requires a new
+confirmation event. This correction is installed by
+`20260914150000_check_manual_deposit_tracking.sql`; previously applied SQL is unchanged.
+Manual clearance and status edits preserve an existing actual deposit date within
+the same deposit cycle. No migration automatically re-enables historical opt-outs,
+whose original user intent cannot be reconstructed reliably.
+
 ## Settlement calendar
 
 The policy waits until the midnight after **three additional banking days**, starting no earlier than the first complete
@@ -140,6 +152,8 @@ does not rewrite historical checks on installation. The next complete bank refre
 starts detection; existing bank credentials and refresh schedules are unchanged.
 No browser/open application timer is a substitute for fresh bank evidence. When bank
 refresh stops, automatic status progression stops too.
+Then apply `20260914150000_check_manual_deposit_tracking.sql` for the manual-deposit
+metadata correction. The Hebrew deployment guide lists the latest pending file.
 
 The transaction headers in both apps show `targetDate` in parentheses beside the
 projected balance. This is the actual account-specific forecast horizon, which may

@@ -59,6 +59,12 @@ for(const create of [ordersEditor,kupaEditor]){
   assert.equal(editor.reviewCheckBank(c.id,c.bankMatch.eventId,'accept'),true);
   assert.equal(messages.length,1);
   assert.equal(editor.reviewCheckBank(c.id,c.bankMatch.eventId,'accept'),false,'duplicate click does not write twice');
+  const originalDepositDate=c.depositDate;
+  (editor.markCheckCleared||editor.markCleared)(c.id);
+  assert.equal(c.depositDate,originalDepositDate,'Manual clearance preserves the actual bank deposit date');
+  const manual={...sample(),id:'manual',status:'בקופה',bankMatch:undefined,depositDate:null};model.state.checks.push(manual);
+  assert.equal((editor.markCheckDeposited||editor.markDeposited)(manual.id),true);
+  assert.equal(manual.status,'הופקד - במעקב');assert.notEqual(manual.bankAutomationDisabled,true,'The actual manual-deposit action leaves automatic tracking enabled');
 }
 {
   const center=createUiAlertCenter({model:{state:{checks:[sample()]}},financeSnapshot:()=>({})});

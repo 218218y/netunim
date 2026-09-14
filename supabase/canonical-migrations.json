@@ -51,6 +51,10 @@
     {
       "version": "20260914120000",
       "name": "check_bank_item_reconciliation"
+    },
+    {
+      "version": "20260914150000",
+      "name": "check_manual_deposit_tracking"
     }
   ]
 }
