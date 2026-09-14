@@ -128,5 +128,16 @@ Bank Bridge v51 bank diagnostics
 - „ייצוא אבחון בנק (JSON)” מייצא את הסנכרון האחרון כ-JSON מקומי ומובנה ולא כ-TXT של שיקים בלבד.
 - לכל חשבון נשמרות עד 500 התנועות החדשות ביותר מכל הסוגים, כולל זיכויים/העברות, חיובים, שיקים ושאר הפעילויות שהבנק החזיר. אם היו יותר תנועות, השדה `truncated` מציג כמה לא נכנסו לקובץ.
 - בכל תנועה מופיעים זה לצד זה `rawTransaction` של הפועלים ו-`normalizedTransaction` של Netunim. בנוסף קיימים `activitySummary` ו-`fieldInventory`, כדי לזהות אסמכתאות ושדות חשובים שהבנק שולח אך הממשק עדיין אינו מציג.
-- בתנועות שיק נשאר גם פירוט `pfmDetails/details` לפני ואחרי הנרמול. מזהי/תוכן תמונה עצמם אינם מיוצאים; נתיבי front/back נשמרים רק בצורה מסוננת בלי accountId/session/token לצורך בדיקת אפשרות להצגת תמונות בעתיד.
+- בתנועות שיק נשאר גם פירוט `pfmDetails/details` לפני ואחרי הנרמול. מזהי/תוכן תמונה עצמם אינם מיוצאים; נתיבי front/back נשמרים רק בצורה מסוננת בלי accountId/session/token לצורך אבחון מבנה מסמכי הבנק.
 - הקובץ נשאר במחשב בלבד ואינו עולה ל-Supabase, לארכיון הבנק או לגיבויים. הוא עדיין מכיל מידע פיננסי ולכן משתפים אותו רק במכוון.
+
+
+Bank Bridge v52 cheque images
+-----------------------------
+- Hapoalim cheque detail rows expose session-scoped `imageFrontLink` / `imageBackLink`. v52 downloads those bytes only while the authenticated bank session is alive; the original bank URL, accountId, cookies and session values are never written to cloud state.
+- The Bridge keeps a bounded local 60-day cache and exposes an image only through the authenticated loopback endpoint by an opaque SHA-256 key. A failed image fetch is non-fatal and never invalidates the bank balance or transaction sync.
+- Supabase stores the binary objects in the private `bank-cheque-images` bucket. Bank rows keep only small `imageFrontKey` / `imageBackKey` values; image bytes are not embedded in Postgres JSON, Kupa/Orders documents or their application backups.
+- Cloud retention is 60 calendar days. Because the ordinary bank sync fetches a 30-day transaction window, the first run can populate only the images that Hapoalim still exposes; continued daily/periodic sync gradually builds the rolling 60-day window.
+- Expired image objects are deleted through the Storage API during later bank syncs. The historical bank transaction remains; only its image becomes unavailable after retention.
+- The bucket is private and RLS-scoped to the authenticated user's top-level folder. Objects are immutable (`x-upsert:false`), so no UPDATE policy is granted.
+- The UI downloads the original image lazily only when the user presses חזית/גב. v52 does not call Supabase Image Transformations and does not require that project option to be enabled.

@@ -65,6 +65,7 @@ import {createUiActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
+import {createOrdersBankChequeImageRuntime} from './domains/finance/bank-cheque-image-runtime.js';
 import {INITIAL_STATE, $} from "./state/constants.js";
 
 
@@ -269,6 +270,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   normalizeCheckModalDates:(...args)=>uiDateEditor.normalizeCheckModalDates(...args),
   scheduleCheckSave:(...args)=>syncChecksPersistence.scheduleCheckSave(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
+  downloadBankChequeImage:bankChequeImages.download,
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
@@ -574,6 +576,8 @@ const cloudTransport=createCloudTransport({
   supaFetch:(...args)=>cloudAuth.supaFetch(...args),
 });
 
+const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
+
 const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
@@ -627,6 +631,7 @@ const domainsFinanceController=createDomainsFinanceController({
   readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
   acknowledgeBankTransactionAlert:(...args)=>cloudTransport.acknowledgeBankTransactionAlert(...args),
+  syncBankChequeImages:bankChequeImages.sync,
 });
 
 const domainsFinanceView=createDomainsFinanceView({
@@ -833,6 +838,7 @@ const uiActions=createUiActions({
   openOrdersCashflowBreakdown:(...args)=>domainsFinanceView.openCashflowBreakdown(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
+  openOrdersBankChequeImage:(...args)=>domainsFinanceView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error))),
   acknowledgeOrdersBankMissing:(...args)=>domainsFinanceView.acknowledgeBankMissing(...args),
   setOrdersBankSearch:(...args)=>domainsFinanceView.setBankSearch(...args),
   setOrdersBankDateMode:(...args)=>domainsFinanceView.setBankDateMode(...args),

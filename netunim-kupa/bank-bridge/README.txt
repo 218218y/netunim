@@ -95,7 +95,7 @@ The Hapoalim transaction row exposes two independent detail links: pfmDetails an
 
 Bridge v48 cheque-number linking: Hapoalim detail payloads may nest a displayed field such as the cheque reference/number inside a row cell object while bank, branch, account and amount remain on the parent row. The bridge now folds nested semantic label/value objects into that SAME row, without crossing array boundaries between different cheques. If the bank exposes exactly one unmatched cheque number for exactly one missing row, that one-to-one association is completed deterministically. For an explicit single-cheque deposit only, when no separate cheque number is returned, the Hapoalim transaction reference is used as the cheque number; this fallback is never used for multi-cheque deposits. If multiple bank-supplied numbers cannot be safely associated with particular rows, the UI shows them separately instead of guessing their order.
 
-Potential image/scan/document URLs, session values, cookies and tokens are never persisted. At most a boolean document-presence marker survives. A failure to enrich one deposit never invalidates balance or the main transaction feed.
+Raw Hapoalim image/document URLs, session values, cookies and tokens are never persisted. Bridge v52 may preserve only opaque SHA-256 image keys after downloading recent cheque images into its protected local cache; the original bank URL never enters the browser feed or cloud. A failure to enrich one deposit or fetch one image never invalidates balance or the main transaction feed.
 
 Transaction storage and retention (Bridge v10)
 ---------------------------------------------
@@ -339,11 +339,21 @@ Diagnostic captures from the live Hapoalim cheque endpoint proved that
 `number` field directly to checkNumber for single deposits, multi-cheque deposits,
 returned cheques, and returned-cheque credits. Transaction/deposit referenceNumber is
 kept only as transaction metadata and is never used as a fallback cheque number.
-The document/image fields remain local/session-scoped evidence only; the shared feed
-continues to persist only hasDocumentReference rather than sensitive document URLs.
+The original document/image URLs remain local/session-scoped only. Starting in v52 the shared feed may additionally persist opaque `imageFrontKey` / `imageBackKey` hashes for recent cheque images; sensitive Hapoalim document URLs are still never persisted.
 
 Bridge v51 — structured all-transaction bank diagnostics
 --------------------------------------------------------
 The local bank diagnostic is now a versioned JSON document rather than a cheque-only text wrapper. The latest successful/partial bank sync records up to the 500 newest transactions per account role (business/home), regardless of transaction type. Each captured row keeps a sanitized `rawTransaction` beside the exact `normalizedTransaction` that Netunim would use, so missing fields can be proven from the bank payload instead of guessed. The document also contains account/coverage metadata, an `activitySummary` grouped by the bank's activity/text codes and descriptions, and a `fieldInventory` of raw, beneficiary and normalized field names observed in that sync. Cheque rows still include their fetched PFM/cheque-detail responses and merged detail result.
 
 The export remains local-only and authenticated through the loopback Bridge. Password/user-code, cookies, authorization/session/XSRF/token values, HTML and binary payloads are redacted. `accountId` and other sensitive URL query values are removed. Cheque image/document identifiers remain redacted, but front/back document links are exported only as sanitized paths/query structure so a future image implementation can be designed against the real Hapoalim endpoint without copying session secrets into diagnostics. The diagnostic is not written to browser state, finance sync state, bank archive, Kupa/Orders documents, backups or Supabase.
+
+
+Bridge v52 — private rolling cheque image storage
+--------------------------------------------------
+The v51 diagnostic proved that Hapoalim returns cheque scans through authenticated relative paths of the form `/ServerServices/current-account/cheques/<document>?isFront=true|false`. Those paths are session-scoped and are therefore never treated as durable URLs. While the Hapoalim browser session is still authenticated, v52 fetches each recent front/back image, validates a bounded supported image payload, and writes it to a protected local cache keyed only by SHA-256 of the bank-relative document path.
+
+The browser feed receives only the opaque image key. When Supabase mode is active, Kupa/Orders uploads a missing recent image to the private `bank-cheque-images` Storage bucket under the authenticated user's folder. The Postgres bank row stores no binary image, base64, Hapoalim URL or Storage signed URL. Storage objects are immutable and RLS permits SELECT/INSERT/DELETE only inside the current user's folder. A failure to read/upload/delete an image is downgraded to an image-sync warning and does not fail the financial bank snapshot.
+
+Both the local Bridge cache and cloud Storage use a 60-calendar-day rolling retention. The normal Hapoalim transaction refresh still covers 30 days, so a new installation can only seed images from the bank's currently returned window and accumulates older retained images over time. Cloud cleanup uses the Storage API (never direct SQL deletion from `storage.objects`), while archived bank rows remain intact after the image expires.
+
+The UI loads the original private Storage object only when the user opens חזית/גב. No resize/optimization URL is requested, so Supabase Image Transformations are not required for v52.

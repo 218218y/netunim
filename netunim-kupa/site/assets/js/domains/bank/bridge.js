@@ -46,6 +46,13 @@ async function request(path,{method='GET',body=null,timeoutMs=5000}={}){
   }finally{clearTimeout(timer)}
 }
 
+
+async function fetchChequeImage(imageKey){
+  const key=String(imageKey||'').trim().toLowerCase();if(!/^[a-f0-9]{64}$/.test(key))return null;
+  const token=getBridgeToken();if(!token)throw bridgeError('חסר מפתח Bank Bridge.','BRIDGE_NOT_PAIRED');const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000);
+  try{const response=await fetch(`${BRIDGE_URL}/bank/cheque-image/${key}`,{headers:{Authorization:`Bearer ${token}`,Accept:'image/*'},signal:controller.signal,cache:'no-store'});if(response.status===404)return null;if(!response.ok){let data={};try{data=await response.json()}catch{}throw bridgeError(data.message||`טעינת תמונת שיק מה-Bridge נכשלה (${response.status})`,data.code||`HTTP_${response.status}`)}const blob=await response.blob();if(!blob.size||blob.size>5*1024*1024||!/^image\/(?:jpeg|png|webp|gif|bmp)$/i.test(blob.type))throw bridgeError('Bank Bridge החזיר קובץ תמונת שיק לא תקין','CHEQUE_IMAGE_INVALID');return blob}catch(error){if(error?.name==='AbortError')throw bridgeError('טעינת תמונת השיק מה-Bank Bridge לא הגיבה בזמן','BRIDGE_TIMEOUT');if(error?.code)throw error;throw bridgeError('לא ניתן לטעון את תמונת השיק מה-Bank Bridge המקומי','BRIDGE_UNAVAILABLE')}finally{clearTimeout(timer)}
+}
+
 async function status(){return request('/status',{timeoutMs:3500})}
 async function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){
   if(token)setBridgeToken(token);
@@ -69,5 +76,5 @@ async function resetCreditProfiles(){return creditRequest('/reset',{method:'POST
 async function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 async function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
 }

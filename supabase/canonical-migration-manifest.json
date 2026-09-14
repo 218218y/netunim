@@ -68,5 +68,10 @@
     "version": "20260914150000",
     "name": "check_manual_deposit_tracking",
     "sha256": "1174c8109551cfbbfea43d1c190347e9212bd5fb92832bd7405d0b4e6e729c2c"
+  },
+  {
+    "version": "20260914160000",
+    "name": "bank_cheque_image_storage_v1",
+    "sha256": "32ddc0c614033aa8bc6a87219da38db936017e4f28ae54ced7cde9cff204d201"
   }
 ]

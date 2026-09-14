@@ -54,6 +54,7 @@ import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-re
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
+import {createBankChequeImageStorage} from './shared/bank-cheque-images.js';
 
 
 
@@ -483,6 +484,8 @@ const domainsNotesController=createDomainsNotesController({
 
 const domainsBankBridge=createDomainsBankBridge();
 
+const bankChequeImageStorage=createBankChequeImageStorage({supaFetch:(...args)=>cloudAuth.supaRest(...args),ensureSession:(...args)=>cloudAuth.supaEnsureSession(...args),fetchBridgeImage:(...args)=>domainsBankBridge.fetchChequeImage(...args)});
+
 async function refreshFinanceCloudSnapshot(){
   if(session.connectionMode!=='supabase'||!session.backendReady)return {verified:true,state:model.state,revision:Number(session.dbRevision||0),financeRevision:Number(session.financeRevision||0)};
   if(!navigator.onLine)return {verified:false,state:null};
@@ -547,6 +550,7 @@ const domainsBankController=createDomainsBankController({
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
   readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
+  syncBankChequeImages:(...args)=>bankChequeImageStorage.sync(...args),
 });
 
 const domainsBankView=createDomainsBankView({
@@ -565,6 +569,7 @@ const domainsBankView=createDomainsBankView({
   bankBridgeUiState:(...args)=>domainsBankController.bankBridgeUiState(...args),
   refreshBankBridgeStatus:(...args)=>domainsBankController.refreshBankBridgeStatus(...args),
   ensureBankDisplayArchive:(...args)=>domainsBankController.ensureBankDisplayArchive(...args),
+  downloadBankChequeImage:(...args)=>bankChequeImageStorage.download(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
 });
 
@@ -785,6 +790,7 @@ const uiActions=createUiActions({
   openCashflowBreakdown:(...args)=>domainsBankView.openCashflowBreakdown(...args),
   setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),
   setBankDataView:(...args)=>domainsBankView.setBankDataView(...args),
+  openBankChequeImage:(...args)=>domainsBankView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error))),
   acknowledgeMissingBankTransaction:(...args)=>domainsBankController.acknowledgeMissingBankTransaction(...args),
   setBankSearch:(...args)=>domainsBankView.setBankSearch(...args),
   setBankDateMode:(...args)=>domainsBankView.setBankDateMode(...args),

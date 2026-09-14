@@ -9,8 +9,9 @@ import {dateInRange,searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
+import {bankChequeImageWithinRetention} from '../../shared/bank-cheque-images.js';
 
-export function createDomainsBankView({modal,closeModal,model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,dateEditorMarkup}){
+export function createDomainsBankView({modal,closeModal,model,ui,bankAsOfDate,bankHomeAsOfDate,bankCurrentBalance,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankProjectedThisMonth,bankHomeProjectedThisMonth,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם הוזנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'הזנה ידנית';
@@ -109,6 +110,10 @@ function bankBridgeDiagnosticsMarkup(s){
   return error+availability+warning;
 }
 
+
+function bankChequeImageButtons(row,item){if(!bankChequeImageWithinRetention(row?.date||row?.processedDate))return item.hasDocumentReference?'קיים בבנק':'—';const buttons=[];if(item.imageFrontKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageFrontKey)}" data-click-arg2="חזית">חזית</button>`);if(item.imageBackKey)buttons.push(`<button type="button" class="btn bank-cheque-image-btn" data-action="view-bank-cheque-image" data-click-arg0="${esc(row?.date||row?.processedDate||'')}" data-click-arg1="${esc(item.imageBackKey)}" data-click-arg2="גב">גב</button>`);return buttons.length?`<span class="bank-cheque-image-actions">${buttons.join('')}</span>`:item.hasDocumentReference?'קיים בבנק':'—'}
+async function openBankChequeImage(eventDate,imageKey,label='תמונת שיק'){const blob=await downloadBankChequeImage(eventDate,imageKey);if(!blob)throw new Error('תמונת השיק אינה זמינה בענן (ייתכן שחלפו 60 יום או שהאחסון טרם הוכן).');const url=URL.createObjectURL(blob);modal(`שיק · ${label}`,`<div class="bank-cheque-image-preview"><img src="${esc(url)}" alt="${esc(label)}"></div>`,'סגור',()=>closeModal(true));const img=document.querySelector('.bank-cheque-image-preview img');img?.addEventListener('load',()=>setTimeout(()=>URL.revokeObjectURL(url),1000),{once:true});img?.addEventListener('error',()=>URL.revokeObjectURL(url),{once:true});return true}
+
 function bankChequeDetailsMarkup(row){
   const details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null;if(!details)return '';
   const kind=['deposit','returned','returned_credit'].includes(details.kind)?details.kind:(row?.cheque?'deposit':'');if(!kind)return '';
@@ -123,7 +128,7 @@ function bankChequeDetailsMarkup(row){
   if(!items.length&&numbers.length)facts.push(`<span><b>${numbers.length===1?'מספר שיק':'מספרי שיקים'}:</b> ${numbers.map(x=>esc(x)).join(', ')}</span>`);
   else if(unassignedNumbers.length)facts.push(`<span><b>מספרי שיקים שלא שויכו לשורה:</b> ${unassignedNumbers.map(x=>esc(x)).join(', ')}</span>`);
   if(row.bankReference&&row.bankReference!=='0')facts.push(`<span><b>${kind==='deposit'?'אסמכתת הפקדה':'אסמכתא'}:</b> ${esc(row.bankReference)}</span>`);
-  const table=items.length?`<div class="bank-cheque-items-wrap"><table class="bank-cheque-items"><thead><tr><th>בנק</th><th>סניף</th><th>חשבון</th><th>מס׳ שיק</th><th>סכום</th><th>מסמך</th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.bankNumber||'—')}</td><td>${esc(item.branchNumber||'—')}</td><td>${esc(item.accountNumber||'—')}</td><td class="bank-cheque-number">${esc(item.checkNumber||'—')}</td><td class="bank-cheque-amount">${money(Number(item.amount))}</td><td>${item.hasDocumentReference?'קיים בבנק':'—'}</td></tr>`).join('')}</tbody></table></div>`:'';
+  const table=items.length?`<div class="bank-cheque-items-wrap"><table class="bank-cheque-items"><thead><tr><th>בנק</th><th>סניף</th><th>חשבון</th><th>מס׳ שיק</th><th>סכום</th><th>מסמך</th></tr></thead><tbody>${items.map(item=>`<tr><td>${esc(item.bankNumber||'—')}</td><td>${esc(item.branchNumber||'—')}</td><td>${esc(item.accountNumber||'—')}</td><td class="bank-cheque-number">${esc(item.checkNumber||'—')}</td><td class="bank-cheque-amount">${money(Number(item.amount))}</td><td>${bankChequeImageButtons(row,item)}</td></tr>`).join('')}</tbody></table></div>`:'';
   const documentNote=!items.length&&details.hasDocumentReference?'<div class="bank-cheque-document-note">הבנק מציין שקיים מסמך/צילום עבור השיק, אך כתובת המסמך אינה נשמרת בקופה.</div>':'';
   const warning=details.warning?`<div class="bank-cheque-detail-warning">${esc(details.warning)}</div>`:'';
   if(!facts.length&&!table&&!documentNote&&!warning)return '';
@@ -268,5 +273,5 @@ function renderBank(){
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 
-return {renderBank,openCashflowBreakdown,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
+return {renderBank,openCashflowBreakdown,openBankChequeImage,setBankAccountView,setBankDataView,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions};
 }

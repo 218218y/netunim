@@ -418,6 +418,7 @@ export function mergeHapoalimAdditionalDetails(...sources){
       const item={
         bankNumber:compactText(raw?.bankNumber,20),branchNumber:compactText(raw?.branchNumber,20),accountNumber:compactText(raw?.accountNumber,40),
         checkNumber:compactText(raw?.checkNumber,80),amount:Number.isFinite(Number(raw?.amount))&&Number(raw.amount)>0?Number(raw.amount):null,hasDocumentReference:!!raw?.hasDocumentReference,
+        imageFrontKey:/^[a-f0-9]{64}$/.test(String(raw?.imageFrontKey||''))?String(raw.imageFrontKey):'',imageBackKey:/^[a-f0-9]{64}$/.test(String(raw?.imageBackKey||''))?String(raw.imageBackKey):'',
       };
       if(!item.amount||!(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber)))continue;
       const key=chequeItemKey(item);if(itemKeys.has(key))continue;itemKeys.add(key);checkItems.push(item);
@@ -473,6 +474,7 @@ export function normalizeHapoalimTransaction(txn){
     checkItems:Array.isArray(combinedExtra?.checkItems)?combinedExtra.checkItems.map(item=>({
       bankNumber:compactText(item?.bankNumber,20),branchNumber:compactText(item?.branchNumber,20),accountNumber:compactText(item?.accountNumber,40),
       checkNumber:compactText(item?.checkNumber,80),amount:Number.isFinite(Number(item?.amount))&&Number(item.amount)>0?Number(item.amount):null,hasDocumentReference:!!item?.hasDocumentReference,
+      imageFrontKey:/^[a-f0-9]{64}$/.test(String(item?.imageFrontKey||''))?String(item.imageFrontKey):'',imageBackKey:/^[a-f0-9]{64}$/.test(String(item?.imageBackKey||''))?String(item.imageBackKey):'',
     })).filter(item=>item.amount&&(item.checkNumber||(item.bankNumber&&item.branchNumber&&item.accountNumber))).slice(0,50):[],
     hasDocumentReference:!!combinedExtra?.hasDocumentReference,
     warning:compactText(txn?.netunimAdditionalDetailsWarning,220),
