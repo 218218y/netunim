@@ -53,6 +53,7 @@ function saveCreditProfile(profile){return creditRequest('/profiles',{method:'PO
 function deleteCreditProfile(profileId){return creditRequest('/profiles',{method:'DELETE',body:{profileId},timeoutMs:15000})}
 function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
 function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
+function creditDataDiagnostics(){return creditRequest('/data-diagnostics',{timeoutMs:10000})}
 function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
-return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
 }

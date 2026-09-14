@@ -16,6 +16,7 @@ import {
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
+import {buildCreditDataDiagnosticPayload,maxRawTransactionTime} from '../netunim-kupa/bank-bridge/credit-data-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 
@@ -54,6 +55,7 @@ const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dail
 assert.equal(dailyRequests.length,8,'daily Cal sync performs exactly Frames + Pending + current/next month for each of two cards');
 assert.deepEqual([...new Set(dailyRequests.filter(row=>row.url.includes('transactionsDetails')).map(row=>`${row.body.year}-${String(row.body.month).padStart(2,'0')}`))],['2026-09','2026-10'],'daily Cal sync requests exactly the current and next month');
 assert.equal(dailyResult.accounts.every(account=>account.months.map(row=>row.month).join(',')==='2026-09,2026-10'),true,'daily account coverage contains only the two fresh core months');
+assert.equal(dailyResult._dataDiagnostics.length,2,'Cal keeps one transient raw transaction sample per discovered card for the local credit-data diagnostic');
 
 const billedInSeptember=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{...transaction('card-a','2026-08'),trnPurchaseDate:'2026-08-28T00:00:00.000Z',debCrdDate:'2026-09-10T00:00:00.000Z',amtBeforeConvAndIndex:19305.96}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date('2026-09-01T00:00:00.000Z')});
 assert.equal(billedInSeptember.length,1,'fast Cal sync keeps a prior-month purchase when its issuer debit date belongs to the current billing month');
@@ -63,15 +65,31 @@ const billedBeforeCutoff=parseVisaCalMonthData({statusCode:1,result:{bankAccount
 assert.equal(billedBeforeCutoff.length,0,'the historical cutoff still applies to the billing date and does not leak older debit cycles');
 
 let genericOptions=null;
-const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T14:27:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-08-28T14:27:00'}},{identifier:'max-pending-1',status:'pending',date:'2026-09-03T05:00:00.000Z',processedDate:'2026-09-03T05:00:00.000Z',chargedAmount:-120,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-09-03T05:00:00'}}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
+const genericAdapter=new MaxAdapter({profile:{profileId:'max-billing',provider:'max',label:'MAX billing',credentials:{username:'u',password:'p'}},companyId:'max',createScraper:options=>{genericOptions=options;return {scrape:async()=>({success:true,accounts:[{accountNumber:'4444',txns:[{identifier:'prior-purchase-current-bill',status:'completed',date:'2026-08-28T00:00:00.000Z',processedDate:'2026-09-10T00:00:00.000Z',chargedAmount:-321,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-08-28T00:00:00',transactionTime:'14:27',merchantName:'fixture max merchant',shortCardNumber:'4444'}},{identifier:'max-pending-1',status:'pending',date:'2026-09-03T00:00:00.000Z',processedDate:'2026-09-03T00:00:00.000Z',chargedAmount:-120,chargedCurrency:'ILS',rawTransaction:{purchaseDate:'2026-09-03T00:00:00',dealData:{purchaseHour:'0510'},shortCardNumber:'4444'}}]}]})}},now:()=>new Date(fixedNow),syncMode:'daily'});
 const genericResult=await genericAdapter.scrape();
 assert.equal(genericOptions.outputData?.enableTransactionsFilterByDate,false,'native MAX/Isracard purchase-date filtering is disabled so Netunim can apply the canonical billing-date boundary');
 assert.equal(genericOptions.includeRawTransaction,true,'MAX requests raw transaction data only in-memory so an explicit provider purchase clock can be extracted before the raw payload is discarded');
-assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].transactionTime,'14:27','MAX preserves an explicit clock embedded in the provider purchaseDate without inventing one when the provider supplies date-only midnight');
+assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].transactionTime,'14:27','MAX recovers a provider transaction clock from a semantically named raw time field even when purchaseDate itself is date-only midnight');
 assert.equal(genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0].id,'prior-purchase-current-bill','generic fast sync groups a previous-month purchase into the current issuer billing month instead of dropping it');
 assert.equal(genericResult.accounts[0].pendingTransactions.length,1,'MAX pending status remains authoritative even when upstream fills processedDate with the purchase date');
 assert.equal(genericResult.accounts[0].pendingTransactions[0].id,'max-pending-1');
 assert.equal(genericResult.accounts[0].months.flatMap(row=>row.transactions).some(tx=>tx.id==='max-pending-1'),false,'a pending approval can never be promoted into finalized monthly billing by its placeholder processedDate');
+assert.equal(genericResult.accounts[0].pendingTransactions[0].transactionTime,'05:10','MAX also accepts an explicitly named nested purchase-hour field without tying the fix to one guessed property name');
+assert.equal(genericResult._dataDiagnostics.length,1,'MAX keeps one local raw evidence sample per card for the separate data-diagnostic export');
+assert.equal('rawTransaction' in genericResult.accounts[0].months.find(row=>row.month==='2026-09').transactions[0],false,'raw MAX provider payload never survives into normalized/cloud transaction rows');
+assert.deepEqual(maxRawTransactionTime({purchaseDate:'2026-09-14T00:00:00',transactionTime:'14:27'}),{time:'14:27',sourcePath:'transactionTime',ambiguous:false,candidates:[{path:'transactionTime',time:'14:27',value:'14:27'}]});
+assert.equal(maxRawTransactionTime({purchaseDateTime:'2026-09-14T09:42:00+03:00'}).time,'09:42','MAX accepts a semantically explicit full purchase datetime without mistaking date-only midnight for a real clock');
+assert.equal(maxRawTransactionTime({dealData:{purchaseHour:930}}).time,'09:30','MAX accepts a validated compact HMM purchase-hour value from a semantically explicit field');
+const ambiguousMaxTime=maxRawTransactionTime({purchaseDate:'2026-09-14',purchaseTime:'14:27',transactionTime:'14:28'});
+assert.equal(ambiguousMaxTime.time,'');assert.equal(ambiguousMaxTime.ambiguous,true,'conflicting explicit MAX clocks fail closed instead of choosing a field arbitrarily');
+const creditDataDiagnostic=buildCreditDataDiagnosticPayload({correlationId:'corr-test',profiles:[genericResult],rawSamples:genericResult._dataDiagnostics});
+assert.equal(creditDataDiagnostic.profiles[0].accounts[0].accountSuffix,'4444');
+assert.equal(creditDataDiagnostic.profiles[0].accounts[0].rawSample.timeEvidence.time,'14:27');
+assert.equal(creditDataDiagnostic.profiles[0].accounts[0].balance,null,'missing diagnostic numeric values stay null instead of being invented as zero');
+assert.equal(JSON.stringify(creditDataDiagnostic).includes('fixture max merchant'),true,'credit data diagnostics retain bounded provider sample values needed to discover useful fields');
+assert.equal(JSON.stringify(creditDataDiagnostic).includes('password'),false,'credit data diagnostics never include login credentials');
+const redactedDiagnostic=buildCreditDataDiagnosticPayload({profiles:[{profileId:'safe',provider:'max',accounts:[{accountNumber:'1234567812345678',txns:[]}]}],rawSamples:[{profileId:'safe',accountNumber:'1234567812345678',rawTransaction:{password:'never-export',authorization:'Bearer secret',cardNumber:'1234567812345678',transactionId:'sensitive-id',transactionTime:'10:11'}}]});
+const redactedText=JSON.stringify(redactedDiagnostic);assert.equal(redactedText.includes('never-export'),false);assert.equal(redactedText.includes('Bearer secret'),false);assert.equal(redactedText.includes('1234567812345678'),false,'full card/account values are masked in local data diagnostics');assert.equal(redactedText.includes('sensitive-id'),false,'provider transaction identifiers are suffix-masked in local data diagnostics');
 
 const isracardProfile={profileId:'isracard-digital',provider:'isracard',label:'ישראכרט',credentials:{id:'123456789',card6Digits:'123456',password:'fixed-password'}};
 let isracardDigitalOptions=null;

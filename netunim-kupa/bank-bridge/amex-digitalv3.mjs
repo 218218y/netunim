@@ -181,14 +181,15 @@ async function effectiveBillingDate(page,card,month,onDiagnostic){
   if(!response?.isSuccess||!response?.data||typeof response.data.cards!=='object')throw safeError(providerFailureMessage(response,'American Express לא החזירה תאריך חיוב תקין.'),'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:`Billing ${key}`});
   const billing=response.data.cards?.[card.cardSuffix];return billing?.billingDate?parseIsraeliDate(billing.billingDate):null;
 }
-async function monthTransactions(page,card,month,isNextBillingDate,processedDateIso,onDiagnostic){
+async function monthTransactions(page,card,month,isNextBillingDate,processedDateIso,onDiagnostic,onRawSample=()=>{}){
   await randomDelay();const key=monthKey(month);
   const response=await pagePost(page,`${AMEX_WEB_BASE_URL}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,{card4Number:card.cardSuffix,isNextBillingDate,cardStatus:0,billingMonth:monthRequestDate(month),companyCode:Number(card.companyCode||AMEX_TRANSACTIONS_COMPANY_CODE),isPartner:false},{headers:JSON_HEADERS,stage:`Transactions ${key}`,onDiagnostic});
   if(!response?.isSuccess||!response?.data)throw safeError(providerFailureMessage(response,'American Express לא החזירה עסקאות חודש תקינות.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:`Transactions ${key}`});
+  const approvedRows=response.data.approvals?.approvedTransactions??[],voucherRows=response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[],immediateGroups=response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[],firstRaw=approvedRows.find(row=>row&&typeof row==='object')||voucherRows.find(row=>row&&typeof row==='object')||immediateGroups.flatMap(group=>group?.immediateVouchersCurrencyDate??[]).find(row=>row&&typeof row==='object')||null;if(firstRaw)onRawSample(firstRaw);
   const txns=[];
-  for(const txn of response.data.approvals?.approvedTransactions??[])txns.push(normalizeAmexDigitalV3ApprovedTransaction(txn));
-  for(const voucher of response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[])txns.push(normalizeAmexDigitalV3Voucher(voucher,processedDateIso));
-  for(const group of response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[]){const groupDate=group?.totalVouchersCurrencyDate?.dateImmediateVouchers,groupIso=groupDate?parseIsraeliDate(groupDate):processedDateIso;for(const voucher of group?.immediateVouchersCurrencyDate??[])txns.push(normalizeAmexDigitalV3Voucher(voucher,groupIso))}
+  for(const txn of approvedRows)txns.push(normalizeAmexDigitalV3ApprovedTransaction(txn));
+  for(const voucher of voucherRows)txns.push(normalizeAmexDigitalV3Voucher(voucher,processedDateIso));
+  for(const group of immediateGroups){const groupDate=group?.totalVouchersCurrencyDate?.dateImmediateVouchers,groupIso=groupDate?parseIsraeliDate(groupDate):processedDateIso;for(const voucher of group?.immediateVouchersCurrencyDate??[])txns.push(normalizeAmexDigitalV3Voucher(voucher,groupIso))}
   return txns;
 }
 
@@ -203,11 +204,11 @@ export async function scrapeAmexDigitalV3({credentials,browserPath,interactive=f
     diagnostic(onDiagnostic,{stage:'BrowserLaunch'});
     const identity=await prepareAmexDigitalV3Page(page);diagnostic(onDiagnostic,{stage:'BrowserIdentity',identityState:`webdriver-${identity.webdriver}`});
     await login(page,credentials,onDiagnostic);diagnostic(onDiagnostic,{stage:'Login'});
-    const cards=await fetchCards(page,onDiagnostic),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]]));
+    const cards=await fetchCards(page,onDiagnostic),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]])),rawSampleByCard=new Map();
     // Current DigitalV3 traffic keeps isNextBillingDate=true for every billingMonth; billingMonth itself selects the cycle.
-    for(const month of months){for(const card of cards){const processed=await effectiveBillingDate(page,card,month,onDiagnostic),txns=await monthTransactions(page,card,month,true,processed,onDiagnostic);txnsByCard.get(card.cardSuffix).push(...txns)}}
+    for(const month of months){for(const card of cards){const processed=await effectiveBillingDate(page,card,month,onDiagnostic),txns=await monthTransactions(page,card,month,true,processed,onDiagnostic,raw=>{if(!rawSampleByCard.has(card.cardSuffix))rawSampleByCard.set(card.cardSuffix,raw)});txnsByCard.get(card.cardSuffix).push(...txns)}}
     const accounts=cards.map(card=>({accountNumber:card.cardSuffix,balance:cardBalance(card),balanceDate:cardBalanceDate(card),cardFrame:cardFrame(card),txns:fixInstallments(txnsByCard.get(card.cardSuffix)||[])}));
-    success=true;diagnostic(onDiagnostic,{stage:'Complete'});return {success:true,accounts};
+    const _dataDiagnostics=cards.flatMap(card=>rawSampleByCard.has(card.cardSuffix)?[{accountNumber:card.cardSuffix,rawTransaction:rawSampleByCard.get(card.cardSuffix)}]:[]);success=true;diagnostic(onDiagnostic,{stage:'Complete'});return {success:true,accounts,_dataDiagnostics};
   }catch(error){if(String(error?.code||'').startsWith('CREDIT_'))throw error;throw safeError('מסלול American Express DigitalV3 נכשל לפני השלמת הסנכרון.','CREDIT_PROVIDER_DATA_ERROR',{stage:String(error?.stage||'DigitalV3').slice(0,80)})}
   finally{try{if(page&&!page.isClosed?.())await page.close()}catch{}try{if(browser)await browser.close()}catch{}if(!success)diagnostic(onDiagnostic,{stage:'SessionClosed'})}
 }

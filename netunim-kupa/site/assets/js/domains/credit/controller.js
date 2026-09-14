@@ -4,7 +4,7 @@ import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,nor
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
 const CREDIT_AUTO_MODE_KEY='netunim_kupa_credit_auto_mode_v1';
-const CREDIT_BRIDGE_VERSION=44;
+const CREDIT_BRIDGE_VERSION=53;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
@@ -23,6 +23,17 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   function creditSyncUiState(){return {...local,autoEnabled:autoEnabled(),autoMode:autoMode(),sync:normalizeCreditSync(model.state.creditSync)}}
   async function copySafeCreditDiagnostics(){
     try{const result=await bridge.creditDiagnostics(),events=Array.isArray(result?.events)?result.events:[],content=JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events},null,2);if(!navigator?.clipboard?.writeText)throw new Error('הדפדפן אינו מאפשר העתקה מאובטחת ללוח');await navigator.clipboard.writeText(content);toast(`הועתק אבחון טכני בטוח (${events.length} אירועים מסוננים)`);return true}catch(error){toast(error?.message||'העתקת האבחון נכשלה');return false}
+  }
+  function downloadCreditDataDiagnosticJson(filename,data){
+    const safeName=/^[A-Za-z0-9._-]+$/.test(String(filename||''))?String(filename):'netunim-credit-data-diagnostics.json';
+    const blob=new Blob([JSON.stringify(data??{},null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download=safeName;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1000);
+  }
+  async function exportCreditDataDiagnostics(){
+    if(local.busy)return false;
+    if(!bridge.getBridgeToken()){toast('יש לצמד את הקופה ל-Bank Bridge לפני ייצוא אבחון אשראי');return false}
+    if(local.status&&!supportedCreditBridge(local.status)){toast('יש להריץ מחדש install_bank_bridge.bat לפני ייצוא אבחון נתוני אשראי');return false}
+    try{const result=await bridge.creditDataDiagnostics();if(!result?.available||!result?.data)throw new Error(result?.message||'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו נסה שוב.');downloadCreditDataDiagnosticJson(result.filename,result.data);toast(`קובץ אבחון אשראי JSON נוצר מהסנכרון האחרון (${Number(result.cardCount)||0} כרטיסים)`);return true}catch(error){toast(error?.message||'ייצוא אבחון האשראי נכשל');return false}
   }
 
   async function refreshCreditBridgeStatus({quiet=true}={}){
@@ -157,5 +168,5 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     refreshCreditSync({interactive:false,auto:true}).catch(()=>{});
   }
 
-  return {creditSyncUiState,refreshCreditBridgeStatus,copySafeCreditDiagnostics,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditCardMapping,setCreditAutoRefresh,setCreditAutoMode,maybeAutoRefreshCreditSync};
+  return {creditSyncUiState,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditCardMapping,setCreditAutoRefresh,setCreditAutoMode,maybeAutoRefreshCreditSync};
 }

@@ -805,6 +805,7 @@ const uiActions=createUiActions({
   resetCreditSync:(...args)=>domainsCreditController.resetCreditSync(...args),
   refreshCreditSync:(...args)=>domainsCreditController.refreshCreditSync(...args),
   copySafeCreditDiagnostics:(...args)=>domainsCreditController.copySafeCreditDiagnostics(...args),
+  exportCreditDataDiagnostics:(...args)=>domainsCreditController.exportCreditDataDiagnostics(...args),
   setCreditCardMapping:(...args)=>domainsCreditController.setCreditCardMapping(...args),
   setCreditAutoRefresh:(...args)=>domainsCreditController.setCreditAutoRefresh(...args),
   setCreditAutoMode:(...args)=>domainsCreditController.setCreditAutoMode(...args),

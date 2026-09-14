@@ -856,6 +856,7 @@ const uiActions=createUiActions({
   saveOrdersCashflowCheckCutoff:(...args)=>domainsFinanceController.saveCashflowCheckCutoff(...args),
   refreshOrdersCredit:(...args)=>domainsFinanceView.refreshCredit(...args),
   copyOrdersSafeCreditDiagnostics:(...args)=>domainsFinanceView.copySafeCreditDiagnostics(...args),
+  exportOrdersCreditDataDiagnostics:(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args),
   acknowledgeOrdersCreditSettlementWarning:(...args)=>domainsFinanceView.acknowledgeCreditSettlementWarning(...args),
   setOrdersCreditAuto:(...args)=>domainsFinanceView.setCreditAuto(...args),
   setOrdersCreditAutoMode:(...args)=>domainsFinanceView.setCreditAutoMode(...args),

@@ -40,12 +40,13 @@ import {
 import {doctorCamoufox} from './isracard-camoufox.mjs';
 import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
 import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
+import {buildCreditDataDiagnosticPayload,creditDataDiagnosticFilename} from './credit-data-diagnostics.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
 import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticRun,finishBankDiagnosticRun,recordBankAccountDiagnostic,recordBankTransactionDiagnostic} from './bank-diagnostics.mjs';
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=52;
+const BRIDGE_VERSION=53;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -58,6 +59,7 @@ const CAMOUFOX_INSTALL_DIR=path.join(APP_DIR,'camoufox');
 const CREDIT_IDENTITIES_DIR=path.join(APP_DIR,'credit-identities');
 const BANK_DIAGNOSTICS_DIR=path.join(APP_DIR,'diagnostics');
 const BANK_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'bank-latest.json');
+const CREDIT_DATA_DIAGNOSTIC_FILE=path.join(BANK_DIAGNOSTICS_DIR,'credit-data-latest.json');
 const CHEQUE_IMAGE_CACHE_DIR=path.join(APP_DIR,'cheque-image-cache');
 const CHEQUE_IMAGE_RETENTION_DAYS=60;
 const CHEQUE_IMAGE_MAX_BYTES=5*1024*1024;
@@ -95,6 +97,15 @@ async function readBankDiagnostic(){
   return null;
 }
 async function deleteBankDiagnostic(){await Promise.all([fs.rm(BANK_DIAGNOSTIC_FILE,{force:true}),fs.rm(LEGACY_BANK_CHEQUE_DIAGNOSTIC_FILE,{force:true})])}
+async function writeCreditDataDiagnostic(payload){
+  if(!payload)return;
+  await fs.mkdir(BANK_DIAGNOSTICS_DIR,{recursive:true,mode:0o700});
+  const temp=`${CREDIT_DATA_DIAGNOSTIC_FILE}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(temp,JSON.stringify(payload,null,2),{encoding:'utf8',mode:0o600});
+  await fs.rename(temp,CREDIT_DATA_DIAGNOSTIC_FILE);
+}
+async function readCreditDataDiagnostic(){try{return JSON.parse(await fs.readFile(CREDIT_DATA_DIAGNOSTIC_FILE,'utf8'))}catch(error){if(error?.code==='ENOENT')return null;throw error}}
+async function deleteCreditDataDiagnostic(){await fs.rm(CREDIT_DATA_DIAGNOSTIC_FILE,{force:true})}
 
 function bankCalendarDay(value){
   const digits=String(value??'').replace(/\D/g,'').slice(0,8);if(!/^\d{8}$/.test(digits))return null;
@@ -196,7 +207,7 @@ async function readCreditProfiles(){
   }catch(e){if(e?.code==='ENOENT')return [];throw e}
 }
 async function writeCreditProfiles(profiles){await ensureAppDir();const encrypted=await protectText(JSON.stringify(Array.isArray(profiles)?profiles:[]));await fs.writeFile(CREDIT_PROFILES_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
-async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true}),resetCreditIdentities(CREDIT_IDENTITIES_DIR)])}
+async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true}),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)])}
 async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
 async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
 function publicCreditProfiles(profiles){return (Array.isArray(profiles)?profiles:[]).map(creditProfilePublic).filter(x=>x.profileId&&creditProviderSupported(x.provider))}
@@ -572,7 +583,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
   try{
     const enabled=(Array.isArray(profiles)?profiles:[]).filter(p=>p?.active!==false&&creditProviderSupported(p?.provider));
     if(!enabled.length)throw Object.assign(new Error('לא הוגדרו חיבורי חברות אשראי פעילים'),{code:'CREDIT_NOT_CONFIGURED'});
-    const correlationId=randomUUID(),success=[],errors=[];let attemptedCount=0,deferredCount=0,coreSuccessCount=0;
+    const correlationId=randomUUID(),success=[],errors=[],dataDiagnostics=[];let attemptedCount=0,deferredCount=0,coreSuccessCount=0;
     // Deliberately sequential: two identities can use the same issuer, and isolated sequential sessions avoid cross-login cookie races.
     for(const profile of enabled){
       const deferred=deferredCreditProfileError(previousErrors,profile);
@@ -585,7 +596,9 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
           await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,profile);
           await creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine:'camoufox',stage:'IdentityRecovery'});
         }
-        const result=await scrapeCreditProfile(profile,{interactive,correlationId,syncMode,excludedAccountNumbers:excludedAccountsForProfile(selection,profile.profileId),allowCamoufoxFallback:!camoufoxDeferred});success.push(result);if(result.coreComplete!==false)coreSuccessCount++;if(Array.isArray(result.errors))for(const raw of result.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
+        const result=await scrapeCreditProfile(profile,{interactive,correlationId,syncMode,excludedAccountNumbers:excludedAccountsForProfile(selection,profile.profileId),allowCamoufoxFallback:!camoufoxDeferred});
+        if(Array.isArray(result?._dataDiagnostics))dataDiagnostics.push(...result._dataDiagnostics);
+        const {_dataDiagnostics:ignoredDataDiagnostics,...publicResult}=result||{};success.push(publicResult);if(publicResult.coreComplete!==false)coreSuccessCount++;if(Array.isArray(publicResult.errors))for(const raw of publicResult.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
       }
       catch(error){
         const at=new Date().toISOString(),browserEngine=['chromium','camoufox'].includes(String(error?.browserEngine||''))?String(error.browserEngine):'chromium',base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId,browserEngine},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
@@ -598,7 +611,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;
-    return {contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,correlationId,profiles:success,errors,syncedAt,attemptedCount,deferredCount,coreSuccessCount};
+    return {contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,correlationId,profiles:success,errors,syncedAt,attemptedCount,deferredCount,coreSuccessCount,_dataDiagnostics:dataDiagnostics};
   }finally{scrapeBusy=false}
 }
 
@@ -619,6 +632,12 @@ async function handler(req,res,token){
     if(req.method==='GET'&&route==='/credit/diagnostics'){
       sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,events:await creditDiagnostics.summary({limit:500})});return;
     }
+    if(req.method==='GET'&&route==='/credit/data-diagnostics'){
+      const payload=await readCreditDataDiagnostic();
+      if(!payload){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון נתוני אשראי מקומי. בצע רענון אשראי ולאחריו ייצא את הקובץ.'});return}
+      const cardCount=(Array.isArray(payload.profiles)?payload.profiles:[]).reduce((sum,profile)=>sum+(Array.isArray(profile?.accounts)?profile.accounts.length:0),0);
+      sendJson(req,res,200,{ok:true,available:true,generatedAt:payload.generatedAt||null,filename:creditDataDiagnosticFilename(payload),data:payload,cardCount,schemaVersion:Number(payload.schemaVersion)||1});return;
+    }
     if(req.method==='GET'&&pathname==='/bank/diagnostics'){
       const diagnostic=await readBankDiagnostic();
       if(!diagnostic){sendJson(req,res,200,{ok:true,available:false,message:'עדיין אין אבחון בנק מקומי. בצע רענון בנק ולאחריו ייצא את הקובץ.'});return}
@@ -635,7 +654,7 @@ async function handler(req,res,token){
       const duplicate=profiles.find(p=>p.profileId!==normalized.profileId&&creditProfilesShareLoginIdentity(p,normalized));
       if(duplicate)throw Object.assign(new Error(`כבר קיים חיבור ${creditProfilePublic(duplicate).label} לאותה זהות בחברה. חיבור אחד מחזיר את כל הכרטיסים של אותה זהות; אין ליצור חיבור נפרד לכל כרטיס.`),{code:'CREDIT_DUPLICATE_LOGIN'});
       const next=existing?profiles.map(p=>p.profileId===existing.profileId?normalized:p):[...profiles,normalized];
-      await writeCreditProfiles(next);if(existing&&creditIdentityDirectory(CREDIT_IDENTITIES_DIR,existing)!==creditIdentityDirectory(CREDIT_IDENTITIES_DIR,normalized))await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,existing);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
+      await writeCreditProfiles(next);await deleteCreditDataDiagnostic();if(existing&&creditIdentityDirectory(CREDIT_IDENTITIES_DIR,existing)!==creditIdentityDirectory(CREDIT_IDENTITIES_DIR,normalized))await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,existing);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profile:creditProfilePublic(normalized),profiles:publicCreditProfiles(next)});return;
     }
     if(req.method==='POST'&&route==='/credit/reset'){
       if(scrapeBusy)throw Object.assign(new Error('לא ניתן לאפס חיבורי אשראי בזמן שמתבצע סנכרון'),{code:'SCRAPE_BUSY'});
@@ -644,14 +663,15 @@ async function handler(req,res,token){
     if(req.method==='DELETE'&&route==='/credit/profiles'){
       const body=await readJson(req),profileId=String(body.profileId||'').trim(),profiles=await readCreditProfiles();
       if(!profileId)throw Object.assign(new Error('חסר מזהה חיבור אשראי למחיקה'),{code:'MISSING_PROFILE_ID'});
-      const removed=profiles.find(p=>p.profileId===profileId),next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);if(removed)await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,removed);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(next)});return;
+      const removed=profiles.find(p=>p.profileId===profileId),next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);await deleteCreditDataDiagnostic();if(removed)await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,removed);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(next)});return;
     }
     if(req.method==='POST'&&route==='/credit/sync'){
       const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta(),syncMode=body.syncMode==='full'?'full':'daily',selection=normalizeCreditSyncSelection(body.selection);
-      const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors,syncMode,selection});
-      await writeCreditMeta({...(result.syncedAt?{lastSyncAt:result.syncedAt}:{}),lastErrors:result.errors,lastCorrelationId:result.correlationId,lastAttemptedCount:result.attemptedCount,lastDeferredCount:result.deferredCount});
-      if(!result.profiles.length&&result.errors.length&&result.attemptedCount>0){const e=new Error(result.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=result.errors;throw e}
-      sendJson(req,res,200,{ok:true,...result});return;
+      const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors,syncMode,selection}),rawSamples=Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[],publicResult={...result};delete publicResult._dataDiagnostics;
+      if(publicResult.profiles.length)await writeCreditDataDiagnostic(buildCreditDataDiagnosticPayload({correlationId:publicResult.correlationId,profiles:publicResult.profiles,rawSamples}));
+      await writeCreditMeta({...(publicResult.syncedAt?{lastSyncAt:publicResult.syncedAt}:{}),lastErrors:publicResult.errors,lastCorrelationId:publicResult.correlationId,lastAttemptedCount:publicResult.attemptedCount,lastDeferredCount:publicResult.deferredCount});
+      if(!publicResult.profiles.length&&publicResult.errors.length&&publicResult.attemptedCount>0){const e=new Error(publicResult.errors.map(x=>x.message).join(' | '));e.code='CREDIT_SYNC_FAILED';e.creditErrors=publicResult.errors;throw e}
+      sendJson(req,res,200,{ok:true,...publicResult});return;
     }
     if(req.method==='POST'&&pathname==='/credentials'){
       const body=await readJson(req),userCode=String(body.userCode||'').trim(),password=String(body.password||'');

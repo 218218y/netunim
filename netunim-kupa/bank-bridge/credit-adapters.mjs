@@ -14,6 +14,7 @@ import {
   scrapeIsracardFamilyWithCamoufox,
 } from './isracard-camoufox.mjs';
 import {safeCreditResponseShape} from './credit-diagnostics.mjs';
+import {maxRawTransactionTime} from './credit-data-diagnostics.mjs';
 import {AMEX_DIGITAL_V3_SCHEMA_VERSION,scrapeAmexDigitalV3} from './amex-digitalv3.mjs';
 import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isracard-digitalv3.mjs';
 
@@ -175,6 +176,15 @@ export function parseVisaCalMonthData(data,{startDate=null}={}){
   return rows;
 }
 
+function firstVisaCalRawTransaction(data){
+  for(const account of Array.isArray(data?.result?.bankAccounts)?data.result.bankAccounts:[]){
+    for(const debitDay of [...(Array.isArray(account?.debitDates)?account.debitDates:[]),...(Array.isArray(account?.immidiateDebits?.debitDays)?account.immidiateDebits.debitDays:[])]){
+      const row=Array.isArray(debitDay?.transactions)?debitDay.transactions.find(item=>item&&typeof item==='object'):null;if(row)return row;
+    }
+  }
+  return null;
+}
+
 function parseVisaCalPending(data){
   if(data?.statusCode===96)return [];
   if(data?.statusCode!==1)throw safeError(visaCalProviderMessage(data,'כאל לא אישרה את קריאת העסקאות הממתינות.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:'Pending'});
@@ -240,7 +250,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
       let authorization;try{authorization=await scraper.getAuthorizationHeader()}catch{throw safeError('אסימון ההרשאה של כאל לא נמצא לאחר הכניסה.','CREDIT_AUTH_TOKEN_MISSING',{stage:'AuthToken'})}
       if(!String(authorization||'').trim())throw safeError('אסימון ההרשאה של כאל ריק.','CREDIT_AUTH_TOKEN_MISSING',{stage:'AuthToken'});
       const xSiteId=await scraper.getXSiteId();this.headers={Authorization:authorization,'X-Site-Id':xSiteId,...CAL_HEADERS};
-      const accounts=[],errors=[];
+      const accounts=[],errors=[],dataDiagnostics=[];
       for(const card of cards){
         const accountNumber=text(card?.last4Digits,80);
         if(this.excludedAccountNumbers.has(accountNumber)){this.event({stage:'CardExcluded',accountSuffix:safeSuffix(accountNumber)});continue}
@@ -250,7 +260,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
         try{account.pendingTransactions=parseVisaCalPending(await this.request(CAL_ENDPOINTS.pending,{cardUniqueIDArray:[card.cardUniqueId]},'Pending'));account.pendingStatus='success';account.pendingFetchedAt=at}catch(error){account.pendingStatus=errorFetchStatus(error);account.pendingErrorCode=error.code;account.pendingErrorAt=at;errors.push(coverageError(profile,error,{accountNumber,at,component:'pending',severity:'warning'}))}
         for(const entry of plan){
           if(!this.blockingError&&this.requestDelayMs>0)await sleep(this.requestDelayMs);
-          try{const data=await this.request(CAL_ENDPOINTS.transactions,{cardUniqueId:card.cardUniqueId,month:String(Number(entry.month.slice(5,7))),year:entry.month.slice(0,4)},`Transactions ${entry.month}`),transactions=parseVisaCalMonthData(data,{startDate:entry.month===plan[0].month?startDate:null});account.months.push(monthlyCoverageSuccess(entry,transactions,this.now().toISOString()))}
+          try{const data=await this.request(CAL_ENDPOINTS.transactions,{cardUniqueId:card.cardUniqueId,month:String(Number(entry.month.slice(5,7))),year:entry.month.slice(0,4)},`Transactions ${entry.month}`),rawSample=dataDiagnostics.some(row=>row.accountNumber===accountNumber)?null:firstVisaCalRawTransaction(data),transactions=parseVisaCalMonthData(data,{startDate:entry.month===plan[0].month?startDate:null});if(rawSample)dataDiagnostics.push({profileId:profile.profileId,accountNumber,rawTransaction:rawSample});account.months.push(monthlyCoverageSuccess(entry,transactions,this.now().toISOString()))}
           catch(error){const failedAt=this.now().toISOString();account.months.push(monthlyCoverageFailure(entry,error,failedAt));errors.push(coverageError(profile,error,{month:entry.month,tier:entry.tier,accountNumber,at:failedAt,component:entry.tier==='core'?'core_transactions':'forecast_transactions',severity:entry.tier==='core'?'error':'warning'}))}
         }
         accounts.push(normalizeCreditScrapeAccount(account,profile.provider));
@@ -259,15 +269,29 @@ export class VisaCalAdapter extends CreditProviderAdapter {
       const blocked=!!this.blockingError;
       if(forecastFailures)errors.unshift({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:'CREDIT_PARTIAL_FORECAST',stage:'Forecast',component:'forecast_transactions',severity:blocked?'deferred':'warning',httpStatus:0,message:blocked?`קריאות התחזית הושהו לאחר 403/429; ${forecastFailures} מקטעים לא נשלחו ו־Last Known Good נשמר.`:`לכאל חסרים ${forecastFailures} מקטעי תחזית; נתונים קודמים נשמרים כ־Last Known Good.`,at:this.blockingError?.originalFailureAt||this.now().toISOString(),originalFailureAt:this.blockingError?.originalFailureAt||null,retryAfterAt:this.blockingError?.retryAfterAt||null});
       if(coreFailures)errors.unshift({profileId:profile.profileId,provider:profile.provider,label:profile.label,code:'CREDIT_CORE_COVERAGE_INCOMPLETE',stage:'CoreCoverage',component:'core_transactions',severity:blocked?'deferred':'error',httpStatus:0,message:blocked?`קריאות Core הושהו לאחר 403/429; ${coreFailures} מקטעים לא נשלחו, שעון ההצלחה לא התקדם ו־Last Known Good נשמר.`:`לכאל חסרים ${coreFailures} מקטעי ליבה; זמן ההצלחה המלאה לא התקדם ונתוני Last Known Good נשמרו.`,at:this.blockingError?.originalFailureAt||this.now().toISOString(),originalFailureAt:this.blockingError?.originalFailureAt||null,retryAfterAt:this.blockingError?.retryAfterAt||null});
-      success=coreComplete;return {...creditProfilePublic(profile),syncedAt,attemptedAt:this.now().toISOString(),coreComplete,accounts,errors};
+      success=coreComplete;return {...creditProfilePublic(profile),syncedAt,attemptedAt:this.now().toISOString(),coreComplete,accounts,errors,_dataDiagnostics:dataDiagnostics};
     }finally{if(initialized)try{await scraper.terminate(success)}catch{} }
   }
 }
 
 function transactionBillingDate(tx){return tx?.processedDate||''}
 function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
+function enrichMaxTransaction(tx={}){
+  const raw=tx?.rawTransaction&&typeof tx.rawTransaction==='object'?tx.rawTransaction:null,timeEvidence=raw?maxRawTransactionTime(raw):null;
+  return {...tx,...(hasOwn(raw,'actualPaymentAmount')?{chargedAmount:creditDebitAmount(raw.actualPaymentAmount)}:{}),...(hasOwn(raw,'originalAmount')?{originalAmount:creditDebitAmount(raw.originalAmount)}:{}),transactionTime:tx?.transactionTime||timeEvidence?.time||''};
+}
+function maxRawDiagnosticSamples(accounts,profileId){
+  const samples=[];
+  for(const account of Array.isArray(accounts)?accounts:[]){
+    const rows=(Array.isArray(account?.txns)?account.txns:[]).filter(tx=>tx?.rawTransaction&&typeof tx.rawTransaction==='object');
+    if(!rows.length)continue;
+    const chosen=rows.find(tx=>maxRawTransactionTime(tx.rawTransaction).candidates.length)||rows[0];
+    samples.push({profileId,accountNumber:account?.accountNumber||'',rawTransaction:chosen.rawTransaction});
+  }
+  return samples;
+}
 function genericMonthlyAccount(account,provider,{startDate,futureMonths,now},schemaVersion=CREDIT_PROVIDER_SCHEMA_VERSION){
-  const source=provider==='max'&&Array.isArray(account?.txns)?{...account,txns:account.txns.map(tx=>({...tx,...(hasOwn(tx?.rawTransaction,'actualPaymentAmount')?{chargedAmount:creditDebitAmount(tx.rawTransaction.actualPaymentAmount)}:{}),...(hasOwn(tx?.rawTransaction,'originalAmount')?{originalAmount:creditDebitAmount(tx.rawTransaction.originalAmount)}:{}),transactionTime:tx?.transactionTime||explicitTransactionTime(tx?.rawTransaction?.purchaseDate)}))}:account;
+  const source=provider==='max'&&Array.isArray(account?.txns)?{...account,txns:account.txns.map(enrichMaxTransaction)}:account;
   const normalized=normalizeCreditScrapeAccount(source,provider),plan=buildCreditMonthPlan({startDate,futureMonths,now}),byMonth=new Map(plan.map(entry=>[entry.month,[]])),pending=[],pendingSeen=new Set(),unassigned=[],cutoff=Date.parse(startDate);
   for(const tx of normalized.txns){
     // Provider status is authoritative. MAX and Isracard-group DigitalV3 intentionally set
@@ -287,7 +311,7 @@ function genericMonthlyAccount(account,provider,{startDate,futureMonths,now},sch
 
 export class GenericScraperAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive,preparePage:options.preparePage})}
-  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:this.profile?.provider==='max',outputData:{enableTransactionsFilterByDate:false},...(this.preparePage?{preparePage:this.preparePage}:{})}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString();this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[]}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});throw failure}}
+  async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:this.profile?.provider==='max',outputData:{enableTransactionsFilterByDate:false},...(this.preparePage?{preparePage:this.preparePage}:{})}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString(),rawAccounts=Array.isArray(result.accounts)?result.accounts:[],dataDiagnostics=profile.provider==='max'?maxRawDiagnosticSamples(rawAccounts,profile.profileId):[];this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:rawAccounts.map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[],_dataDiagnostics:dataDiagnostics}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});throw failure}}
 }
 export class MaxAdapter extends GenericScraperAdapter {}
 
@@ -302,7 +326,7 @@ class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
       if(!result?.success)throw safeError(`${profile.label||profile.provider} DigitalV3 לא השלים את הסנכרון.`,'CREDIT_PROVIDER_DATA_ERROR',{stage:'DigitalV3'});
       const syncedAt=this.now().toISOString();
       this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});
-      return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate:scope.startDate,futureMonths:scope.futureMonths,now:this.now()},this.connectorVersion)),errors:[]};
+      const dataDiagnostics=(Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[]).map(row=>({...row,profileId:profile.profileId}));return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>genericMonthlyAccount(account,profile.provider,{startDate:scope.startDate,futureMonths:scope.futureMonths,now:this.now()},this.connectorVersion)),errors:[],_dataDiagnostics:dataDiagnostics};
     }catch(error){
       const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';
       this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus});
@@ -322,7 +346,7 @@ export class AmexAdapter extends IsracardGroupDigitalV3Adapter {
 }
 
 async function camoufoxProfileResult(adapter,options){
-  try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString();return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label,browserEngine:'camoufox'}))}}catch(error){const failure=creditThrownScrapeFailure(error,adapter.profile);if(!failure.browserEngine)failure.browserEngine='camoufox';throw failure}
+  try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString(),dataDiagnostics=(Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[]).map(row=>({...row,profileId:profile.profileId}));return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label,browserEngine:'camoufox'})),_dataDiagnostics:dataDiagnostics}}catch(error){const failure=creditThrownScrapeFailure(error,adapter.profile);if(!failure.browserEngine)failure.browserEngine='camoufox';throw failure}
 }
 
 export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[],allowCamoufoxFallback=true,isracardScrapeImpl=null,amexScrapeImpl=null}={}){

@@ -231,11 +231,11 @@ async function fetchDigitalTransactions(page,cfg,provider,card,month,processedDa
   await randomDelay();const stage=`Transactions ${monthKey(month)}`,companyCode=Number(card?.companyCode||cfg.transactionCompanyCode);
   const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,method:'POST',stage,headers:DIGITAL_JSON_HEADERS,data:{card4Number:String(card.cardSuffix),isNextBillingDate:true,cardStatus:0,billingMonth:digitalMonthRequestDate(month),companyCode,isPartner:false}});
   if(!response?.isSuccess||!response?.data)throw safeError('חברת האשראי לא החזירה עסקאות חודש תקינות ב-DigitalV3.','CREDIT_PROVIDER_DATA_ERROR',{stage});
-  const normalize=digitalNormalizers(provider),pending=[],completed=[];
-  for(const raw of response.data.approvals?.approvedTransactions??[]){const tx=normalize.approved(raw);if(tx?.date)pending.push(tx)}
-  for(const raw of response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[]){const tx=normalize.voucher(raw,processedDate);if(tx?.date)completed.push(tx)}
-  for(const group of response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[]){const groupDate=parseIsracardDate(group?.totalVouchersCurrencyDate?.dateImmediateVouchers)||processedDate;for(const raw of group?.immediateVouchersCurrencyDate??[]){const tx=normalize.voucher(raw,groupDate);if(tx?.date)completed.push(tx)}}
-  return {completed:completed.map(tx=>tx?.installments&&Number(tx.installments.number)>1?{...tx,date:shiftInstallmentDate(tx.date,tx.installments)}:tx),pending};
+  const normalize=digitalNormalizers(provider),pending=[],completed=[],approvedRows=response.data.approvals?.approvedTransactions??[],voucherRows=response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[],immediateGroups=response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[],rawSample=approvedRows.find(row=>row&&typeof row==='object')||voucherRows.find(row=>row&&typeof row==='object')||immediateGroups.flatMap(group=>group?.immediateVouchersCurrencyDate??[]).find(row=>row&&typeof row==='object')||null;
+  for(const raw of approvedRows){const tx=normalize.approved(raw);if(tx?.date)pending.push(tx)}
+  for(const raw of voucherRows){const tx=normalize.voucher(raw,processedDate);if(tx?.date)completed.push(tx)}
+  for(const group of immediateGroups){const groupDate=parseIsracardDate(group?.totalVouchersCurrencyDate?.dateImmediateVouchers)||processedDate;for(const raw of group?.immediateVouchersCurrencyDate??[]){const tx=normalize.voucher(raw,groupDate);if(tx?.date)completed.push(tx)}}
+  return {completed:completed.map(tx=>tx?.installments&&Number(tx.installments.number)>1?{...tx,date:shiftInstallmentDate(tx.date,tx.installments)}:tx),pending,rawSample};
 }
 function pendingDigitalKey(tx){return `${String(tx?.identifier||tx?.id||'')}|${String(tx?.transactionDate||tx?.date||'')}|${String(tx?.chargedAmount??tx?.originalAmount??'')}`}
 
@@ -424,11 +424,12 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
   try{
     ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir,onDiagnostic,correlationId,provider}));
     await login(page,provider,credentials,servicesUrl);await primeDigitalSession(page,cfg);
-    const cards=await fetchDigitalCards(page,cfg),months=buildCreditMonths(startDate,futureMonthsToScrape,now()),states=new Map(cards.map(card=>[String(card.cardSuffix),{card,months:[],pending:new Map()}])),errors=[];
+    const cards=await fetchDigitalCards(page,cfg),months=buildCreditMonths(startDate,futureMonthsToScrape,now()),states=new Map(cards.map(card=>[String(card.cardSuffix),{card,months:[],pending:new Map(),rawSample:null}])),errors=[];
     const currentMonth=new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),coreEnd=addUtcMonths(currentMonth,1);
     for(const month of months){const key=monthKey(month),tier=month<=coreEnd?'core':'forecast';for(const state of states.values()){
       const started=Date.now(),at=now().toISOString();try{
         const processedDate=await fetchDigitalBillingDate(page,cfg,state.card,month),result=await fetchDigitalTransactions(page,cfg,provider,state.card,month,processedDate),transactions=result.completed.filter(tx=>transactionInBillingWindow(tx,startDate));
+        if(!state.rawSample&&result.rawSample)state.rawSample=result.rawSample;
         state.months.push(coverageSuccess(key,tier,transactions,at));for(const tx of result.pending){const pkey=pendingDigitalKey(tx);if(!state.pending.has(pkey))state.pending.set(pkey,tx)}
         onDiagnostic({correlationId,provider,stage:'Transactions',month:key,accountSuffix:cardSuffix(state.card.cardSuffix),durationMs:Date.now()-started});
       }catch(error){state.months.push(coverageFailure(key,tier,error,at));errors.push({...publicMonthError(error,key,tier,at),accountSuffix:cardSuffix(state.card.cardSuffix)});onDiagnostic({correlationId,provider,stage:error?.stage||'Transactions',month:key,accountSuffix:cardSuffix(state.card.cardSuffix),durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt})}
@@ -439,7 +440,8 @@ export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,sta
     const allSlices=accounts.flatMap(account=>account.months),coreComplete=!allSlices.some(slice=>slice.tier==='core'&&slice.fetchStatus!=='success'),forecastFailures=allSlices.filter(slice=>slice.tier==='forecast'&&slice.fetchStatus!=='success').length,coreFailures=allSlices.filter(slice=>slice.tier==='core'&&slice.fetchStatus!=='success').length;
     if(forecastFailures)errors.unshift({code:'CREDIT_PARTIAL_FORECAST',stage:'Forecast',httpStatus:0,message:`חסרים ${forecastFailures} מקטעי תחזית; Last Known Good נשמר.`,at:now().toISOString()});
     if(coreFailures)errors.unshift({code:'CREDIT_CORE_COVERAGE_INCOMPLETE',stage:'CoreCoverage',httpStatus:0,message:`חסרים ${coreFailures} מקטעי ליבה; זמן ההצלחה המלאה לא התקדם.`,at:now().toISOString()});
-    return {success:true,coreComplete,accounts,errors};
+    const _dataDiagnostics=[...states.entries()].flatMap(([accountNumber,state])=>state.rawSample?[{accountNumber,rawTransaction:state.rawSample}]:[]);
+    return {success:true,coreComplete,accounts,errors,_dataDiagnostics};
   }catch(e){if(String(e?.code||'').startsWith('CREDIT_'))throw e;throw safeError(`סנכרון Camoufox נכשל: ${cleanText(e?.message||e,180)}`,'CREDIT_CAMOUFOX_FAILED')}
   finally{try{await page?.close()}catch{}try{await browser?.close()}catch{}}
 }
