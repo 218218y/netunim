@@ -73,7 +73,7 @@ return {
   warehouseUi:{
     warehouseTab:'stock',
     inventoryLocation:'',
-    inventoryGrouping:'',
+    inventoryGrouping:'category',
     inventoryFilter:'',
     inventoryHistoryItem:'',
     warehouseSearch:'',

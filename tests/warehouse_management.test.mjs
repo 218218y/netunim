@@ -5,6 +5,7 @@ import {createStateNormalization} from '../netunim-orders/site/assets/js/state/n
 import {createDomainsWarehouseView} from '../netunim-orders/site/assets/js/domains/warehouse/view.js';
 import {createDomainsInventoryView} from '../netunim-orders/site/assets/js/domains/inventory/view.js';
 import {createUiActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createContexts} from '../netunim-orders/site/assets/js/state/contexts.js';
 import {readFileSync} from 'node:fs';
 import {
   WAREHOUSE_LOCATIONS,
@@ -19,6 +20,42 @@ import {
   inventorySuggestedLocation,
   knownWarehouseLocation,
 } from '../netunim-orders/site/assets/js/domains/inventory/model.js';
+
+
+test('warehouse defaults to category grouping and exposes grouping options in requested order',()=>{
+  const {warehouseUi}=createContexts();
+  assert.equal(warehouseUi.inventoryGrouping,'category');
+
+  const originalDocument=globalThis.document,main={innerHTML:''};
+  globalThis.document={querySelector:selector=>selector==='#main'?main:null};
+  try{
+    const state={inventoryItems:[],inventoryEvents:[],warehouseOrders:[]};
+    const view=createDomainsWarehouseView({
+      warehouseUi,
+      model:{state},
+      mountViewLayout:()=>{},
+      inventoryTotals:()=>({onHand:0,reserved:0,available:0,incoming:0}),
+      inventoryStockViewData:()=>({location:'',filter:'',grouping:warehouseUi.inventoryGrouping,items:[]}),
+      renderStockGrid:()=>'',
+      renderWarehouseLocations:()=>'',
+      warehouseBulkControls:()=>'',
+      syncWarehouseBulkUi:()=>{},
+      inventoryEventView:event=>event,
+    });
+    view.renderWarehouse();
+    const selectStart=main.innerHTML.indexOf('<select aria-label="קיבוץ מלאי"');
+    const selectEnd=main.innerHTML.indexOf('</select>',selectStart);
+    const select=main.innerHTML.slice(selectStart,selectEnd);
+    const categoryAt=select.indexOf('>לפי קטגוריה</option>');
+    const locationAt=select.indexOf('>לפי מחסן</option>');
+    const allAt=select.indexOf('>כל הפריטים</option>');
+    assert.ok(selectStart>=0&&selectEnd>selectStart);
+    assert.ok(categoryAt>=0&&locationAt>categoryAt&&allAt>locationAt);
+    assert.match(select,/value="category" selected>לפי קטגוריה<\/option>/);
+  }finally{
+    if(originalDocument===undefined)delete globalThis.document;else globalThis.document=originalDocument;
+  }
+});
 
 test('warehouse fixed locations include unknown in the requested order',()=>{
   assert.deepEqual(WAREHOUSE_LOCATIONS,['מחסן קטן','מחסן גדול','מקלט','לא ידוע']);
