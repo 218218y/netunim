@@ -9,7 +9,7 @@ import {createDomainsBankAlerts} from '../netunim-kupa/site/assets/js/domains/ba
 
 function fixture(reference='2026-09-01',account='עסקי'){
   return {bank:{source:'hapoalim',currentBalance:1000,asOfDate:reference,feed:{balance:1000,syncedAt:reference,transactions:[]},homeFeed:{balance:1000,syncedAt:reference,transactions:[]}},
-    cashflowSettings:{businessMinimum:100,homeMinimum:100,businessAlertLeadDays:0,homeAlertLeadDays:0},checks:[],
+    cashflowSettings:{businessMinimum:100,homeMinimum:100},checks:[],
     credits:[{id:'card',card:'card',active:true,account,firstChargeDate:'2026-09-15',totalAmount:100,installments:1}],
     expenses:[{id:'late',account,active:true,recurring:false,date:'2026-09-28',amount:950}]};
 }
@@ -49,7 +49,7 @@ test('window follows real month endings, including leap years and year rollover'
     const flow=calculate(state,'עסקי',reference);assert.equal(flow.warningProjection.targetDate,end);assert.equal(flow.breach.breachDate,end);
   }
 });
-test('both popup coordinators use the same full warning window regardless of legacy lead days',()=>{
+test('both popup coordinators use the same full warning window',()=>{
   mock.timers.enable({apis:['Date'],now:new Date('2026-09-01T12:00:00Z')});
   try{
     const state=fixture();let popup='';

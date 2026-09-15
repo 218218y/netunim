@@ -44,9 +44,9 @@ bound both windows to the selected date.
 `breach` uses these warning contributions to find the first daily threshold
 crossing, netting same-day movements without assuming an intraday order. Bank
 summaries show its date even when the final balance recovers. Every crossing in
-the automatic warning window is eligible for a popup; legacy lead-day fields
-remain readable but no longer restrict automatic forecasts or appear in settings.
-The helper retains lead-day behavior for older callers without `warningProjection`.
+the automatic warning window is eligible for a popup. Warning eligibility is
+defined only by the explicit warning window; there is no separate lead-day
+setting or hidden compatibility path that can shorten it.
 Warnings occupy a separate full-width row below bank captions so their text cannot
 compress the balances or filters. The explorer distinguishes the warning end date
 from the date used by its ordinary amount and breakdown.

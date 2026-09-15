@@ -1,22 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {cashflowNotificationData} from '../shared/cashflow-notification.js';
-import {normalizeCashflowSettings} from '../shared/cashflow.js';
 import {kupaAccountCashflowData} from '../shared/kupa-cashflow.js';
 import {createDomainsBankAlerts} from '../netunim-kupa/site/assets/js/domains/bank/alerts.js';
 import {cashflowWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
 
 const flow=(date='2026-10-11')=>({account:'עסקי',balance:1000,projected:-100,creditRows:[{date,amount:1100}],expenseRows:[],checkRows:[]});
 
-test('notification lead time gates warnings, never modifies cash-flow values',()=>{
+test('notification activates for the first breach inside the supplied warning window without modifying cash-flow values',()=>{
   const cashflow=flow(),before=structuredClone(cashflow);
-  assert.equal(cashflowNotificationData(cashflow,{},'2026-09-11').active,false);
-  assert.equal(cashflowNotificationData(cashflow,{},'2026-09-26').active,false);
-  const boundary=cashflowNotificationData(cashflow,{},'2026-09-27');
-  assert.equal(boundary.active,true);assert.equal(boundary.daysUntilBreach,14);assert.equal(boundary.breachDate,'2026-10-11');
-  assert.equal(cashflowNotificationData(cashflow,{businessAlertLeadDays:30},'2026-09-11').active,true);
-  assert.equal(cashflowNotificationData(cashflow,{businessAlertLeadDays:0},'2026-10-10').active,false);
-  assert.equal(cashflowNotificationData(cashflow,{businessAlertLeadDays:0},'2026-10-11').active,true);
+  const alert=cashflowNotificationData(cashflow,{},'2026-09-11');
+  assert.equal(alert.active,true);assert.equal(alert.daysUntilBreach,30);assert.equal(alert.breachDate,'2026-10-11');
+  assert.equal(Object.hasOwn(alert,'leadDays'),false);
   assert.deepEqual(cashflow,before);
 });
 
@@ -31,16 +26,10 @@ test('warning date comes from first daily threshold breach, not final horizon',(
 test('minimum, home account, current/elapsed breach and missing balance are explicit',()=>{
   const cashflow=flow('2026-09-20');cashflow.creditRows[0].amount=600;
   assert.equal(cashflowNotificationData(cashflow,{businessMinimum:400},'2026-09-11').reason,'minimum');
-  cashflow.account='ביתי';assert.equal(cashflowNotificationData(cashflow,{homeMinimum:400,homeAlertLeadDays:8},'2026-09-11').active,false);
-  assert.equal(cashflowNotificationData(cashflow,{homeMinimum:400,homeAlertLeadDays:9},'2026-09-11').active,true);
-  cashflow.balance=-1;assert.equal(cashflowNotificationData(cashflow,{homeAlertLeadDays:0},'2026-09-11').active,true);
+  cashflow.account='ביתי';assert.equal(cashflowNotificationData(cashflow,{homeMinimum:400},'2026-09-11').active,true);
+  cashflow.balance=-1;assert.equal(cashflowNotificationData(cashflow,{},'2026-09-11').active,true);
   cashflow.balance=null;assert.equal(cashflowNotificationData(cashflow,{},'2026-09-11').active,false);
   const elapsed=flow('2026-09-10');assert.equal(cashflowNotificationData(elapsed,{},'2026-09-11').breachDate,'2026-09-11');
-});
-
-test('legacy settings default to 14 days and invalid lead times cannot suppress alerts',()=>{
-  for(const value of [undefined,null,'',-1,366,1.5,'bad'])assert.equal(normalizeCashflowSettings({businessAlertLeadDays:value}).businessAlertLeadDays,14);
-  assert.equal(normalizeCashflowSettings({businessAlertLeadDays:0,homeAlertLeadDays:365}).businessAlertLeadDays,0);
 });
 
 test('automatic startup warning searches the full monthly window without changing the displayed projection',t=>{
@@ -51,7 +40,7 @@ test('automatic startup warning searches the full monthly window without changin
   assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,1);
   assert.equal(cashflowWarningItems(state)[0].breachDate,future);
   const before=kupaAccountCashflowData(state,'עסקי',today).projected;assert.equal(before,1000);
-  state.cashflowSettings={businessAlertLeadDays:0};assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,2);
+  state.cashflowSettings={businessMinimum:0};assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,2);
   assert.equal(cashflowWarningItems(state).length,1);
   assert.equal(kupaAccountCashflowData(state,'עסקי',today).projected,before);
 });

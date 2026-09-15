@@ -20,7 +20,7 @@ function bankFeedFromSnapshot(snapshot,fetchedAt){if(!snapshot||!Number.isFinite
 function contentionBackoff(attempt){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 function cleanDigits(value){return String(value||'').replace(/\D/g,'')}
 function financeBankPayload(bank){const out={...bank};delete out.adjustments;delete out.snapshotToken;delete out.snapshotSeq;return out}
-function prepareKupaWriteState(kupa){const out=clone(kupa||{});delete out.creditSync;const bank=out.bank&&typeof out.bank==='object'?out.bank:{};out.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:Array.isArray(bank.adjustments)?bank.adjustments.filter(x=>x?.type!=='check_deposit'):[],source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return out}
+function prepareKupaWriteState(kupa){const out=clone(kupa||{});delete out.creditSync;out.cashflowSettings=normalizeCashflowSettings(out.cashflowSettings);const bank=out.bank&&typeof out.bank==='object'?out.bank:{};out.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:Array.isArray(bank.adjustments)?bank.adjustments.filter(x=>x?.type!=='check_deposit'):[],source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return out}
 
 function bankLastSyncAt(kupa){const feed=normalizeBankFeed(kupa?.bank?.feed);return feed?.syncedAt||kupa?.bank?.bankSyncAt||(kupa?.bank?.source==='hapoalim'?kupa?.bank?.updatedAt:null)||null}
 function creditLastSyncAt(kupa){return normalizeCreditSync(kupa?.creditSync).syncedAt}
@@ -112,12 +112,6 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   }
 
 
-  async function saveCashflowAlertLead(account,value){
-    const parsed=Number(value);
-    if(String(value).trim()===''||!Number.isInteger(parsed)||parsed<0||parsed>365){toast('טווח ההתרעה חייב להיות מספר שלם בין 0 ל־365');return false}
-    if(!loadSession()){toast('יש להתחבר לענן כדי לשמור את ההגדרה המשותפת');return false}
-    try{await mutateKupaCloud(kupa=>{const settings=normalizeCashflowSettings(kupa.cashflowSettings);settings[account==='home'?'homeAlertLeadDays':'businessAlertLeadDays']=parsed;kupa.cashflowSettings=settings;return kupa});toast('טווח ההתרעה נשמר ומשותף לשתי המערכות');return true}catch(error){toast(error?.message||String(error));return false}
-  }
 
   async function saveCashflowCheckCutoff(account,value){
     const parsed=Number(value);
@@ -316,5 +310,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
   function setCreditAutoMode(value){bridge.setCreditAutoMode(value);scheduleCreditAuto()}
 
-  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowAlertLead,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
+  return {snapshot,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
 }

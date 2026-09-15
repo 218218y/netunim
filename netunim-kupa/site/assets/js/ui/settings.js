@@ -47,7 +47,6 @@ function updateCard(i,k,v){const old=model.state.cards[i][k];model.state.cards[i
 function updateCashflowMinimum(account,value){const raw=String(value??'').trim(),parsed=raw===''?null:Number(raw);if(parsed!==null&&!Number.isFinite(parsed))return;const settings=normalizeCashflowSettings(model.state.cashflowSettings);if(account==='home')settings.homeMinimum=parsed;else settings.businessMinimum=parsed;model.state.cashflowSettings=normalizeCashflowSettings(settings);saveState('סף ההתראה התזרימי נשמר')}
 function updateCashflowCheckCutoff(account,value){const parsed=Number(value);if(!Number.isInteger(parsed)||parsed<1||parsed>31){renderSettings();return}const settings=normalizeCashflowSettings(model.state.cashflowSettings);if(account==='home')settings.homeCheckCutoffDay=parsed;else settings.businessCheckCutoffDay=parsed;model.state.cashflowSettings=normalizeCashflowSettings(settings);saveState('יום חישוב הצ׳קים בתזרים נשמר')}
 
-function updateCashflowAlertLead(account,value){const parsed=Number(value);if(String(value).trim()===''||!Number.isInteger(parsed)||parsed<0||parsed>365){renderSettings();return}const settings=normalizeCashflowSettings(model.state.cashflowSettings);settings[account==='home'?'homeAlertLeadDays':'businessAlertLeadDays']=parsed;model.state.cashflowSettings=settings;saveState('טווח ההתרעה נשמר')}
 
-return { updateCashflowAlertLead, renderSettings, updateCard, updateCashflowMinimum, updateCashflowCheckCutoff };
+return { renderSettings, updateCard, updateCashflowMinimum, updateCashflowCheckCutoff };
 }

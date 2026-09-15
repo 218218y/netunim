@@ -363,15 +363,14 @@ assert.equal(await controller.saveCashflowCheckCutoff('business','16'),true,'Ord
 assert.equal(saveCalls,savesBeforeCutoff+1);assert.equal(cloudRow.state.cashflowSettings.businessCheckCutoffDay,16);assert.equal(checksSession.kupaCloudReadState.cashflowSettings.businessCheckCutoffDay,16);assert.equal(refreshKupaCalls,refreshesBeforeCutoff+1);
 assert.equal(await controller.saveCashflowCheckCutoff('home','0'),false,'invalid cutoff days are rejected instead of silently normalized');
 assert.equal(saveCalls,savesBeforeCutoff+1,'invalid cutoff never writes the cloud document');
-const savesBeforeLead=saveCalls;
-assert.equal(await controller.saveCashflowAlertLead('business','30'),true);
-assert.equal(await controller.saveCashflowAlertLead('home','0'),true);
-assert.equal(cloudRow.state.cashflowSettings.businessAlertLeadDays,30);
-assert.equal(checksSession.kupaCloudReadState.cashflowSettings.homeAlertLeadDays,0);
-assert.equal(saveCalls,savesBeforeLead+2);
-for(const value of ['',-1,366,1.5,'oops'])assert.equal(await controller.saveCashflowAlertLead('business',value),false);
-assert.equal(saveCalls,savesBeforeLead+2,'invalid notification settings do not write the shared document');
-assert.deepEqual(financeRow.state,financeBeforeThreshold,'notification settings never rewrite bank or credit transactions');
+cloudRow.state.cashflowSettings.businessAlertLeadDays=30;cloudRow.state.cashflowSettings.homeAlertLeadDays=0;
+const savesBeforeLegacyCleanup=saveCalls;
+assert.equal(await controller.saveCashflowMinimum('home','3000'),true,'a current settings write canonicalizes an older cashflow settings document');
+assert.equal(saveCalls,savesBeforeLegacyCleanup+1);
+assert.equal(Object.hasOwn(cloudRow.state.cashflowSettings,'businessAlertLeadDays'),false);
+assert.equal(Object.hasOwn(cloudRow.state.cashflowSettings,'homeAlertLeadDays'),false);
+assert.equal(cloudRow.state.cashflowSettings.version,3);
+assert.deepEqual(financeRow.state,financeBeforeThreshold,'cashflow settings cleanup never rewrites bank or credit transactions');
 
 Date.now=realDateNow;
 mock.timers.reset();

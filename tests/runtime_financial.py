@@ -157,12 +157,11 @@ def run_breakdown(app):
           if(!originalText.includes('19.25')||!chargedText.includes('9.62'))throw new Error('Discounted card fee must keep the issuer original amount for audit while emphasizing the actual billed amount: '+originalText+' / '+chargedText);
           return true;
         }})()""")
-        action = 'orders-cashflow-alert-lead' if app == 'orders' else 'update-cashflow-alert-lead'
         browser.evaluate(f"""(()=>{{
           uiSettings.renderSettings();
-          const fields=[...document.querySelectorAll('[data-change="{action}"]')];
-          if(fields.length)throw new Error('Legacy lead-day controls must not suppress the automatic monthly warning window');
-          if(!document.querySelector('{'#content' if app == 'kupa' else '#main'}').textContent.includes('סוף החודש הנוכחי'))throw new Error('Monthly warning policy missing from settings');
+          const root=document.querySelector('{'#content' if app == 'kupa' else '#main'}'),text=root?.textContent||'';
+          if(text.includes('ימים מראש')||text.includes('טווח התרעה'))throw new Error('Removed notification lead-time policy resurfaced in settings');
+          if(!text.includes('סוף החודש הנוכחי'))throw new Error('Monthly warning policy missing from settings');
           return true;
         }})()""")
         errors = browser.drain_serious_errors()

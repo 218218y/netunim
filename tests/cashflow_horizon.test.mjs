@@ -45,7 +45,7 @@ test('missing mortgage posting holds the current cycle even after its estimated 
   assert.ok(flow.expenseRows.every(row=>row.dueDate==='2026-09-15'));
 });
 test('first daily breach is active throughout the automatic window even before later recovery',()=>{
-  const state=fixture('2026-09-16');state.bank.currentBalance=1000;state.cashflowSettings.businessAlertLeadDays=0;
+  const state=fixture('2026-09-16');state.bank.currentBalance=1000;
   state.credits=[credit('card','2026-10-15',100)];state.expenses=[{id:'rent',active:true,recurring:false,account:'עסקי',date:'2026-09-28',amount:1200}];
   state.checks=[{id:'recovery',status:'בקופה',account:'עסקי',dueDate:'2026-10-01',amount:2000}];
   let flow=calculate(state,'עסקי','2026-09-16');assert.equal(flow.targetDate,'2026-10-15');assert.equal(flow.projected,1700);assert.equal(flow.breach.projected,-200);assert.equal(flow.breach.breachDate,'2026-09-28');assert.equal(flow.breach.active,true);

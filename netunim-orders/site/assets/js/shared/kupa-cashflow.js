@@ -514,7 +514,7 @@ export function kupaAccountCashflowData(kupa,account='עסקי',reference=localT
   const monthEnd=monthCutoffISO(monthKey(forecastStart),31),warningEnd=requested?targetDate:targetDate>monthEnd?targetDate:monthEnd;
   const warning=warningEnd===targetDate?contributions:cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,warningEnd);
   result.warningProjection={targetDate:warningEnd,creditRows:warning.creditRows,expenseRows:warning.expenseRows,checkRows:warning.checkDeposits.rows,
-    forecastIncomplete:warning.incompleteCreditRows.length>0||warning.recurring.incomplete,notifyThroughHorizon:!requested};
+    forecastIncomplete:warning.incompleteCreditRows.length>0||warning.recurring.incomplete};
   result.breach=cashflowNotificationData(result,kupa?.cashflowSettings,forecastStart);
   return result;
 }

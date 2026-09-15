@@ -143,7 +143,7 @@ test('Kupa cashflow minimum thresholds merge independently without cross-account
  const rebased=km.rebaseLocalProgress(base,local,remote);
  assert.equal(rebased.cashflowSettings.businessMinimum,5000);assert.equal(rebased.cashflowSettings.homeMinimum,3000);assert.equal(rebased.cashflowSettings.businessCheckCutoffDay,16);assert.equal(rebased.cashflowSettings.homeCheckCutoffDay,8);
  const cloud=k.prepareKupaCloudState(merged.state);assert.equal(cloud.cashflowSettings.businessMinimum,5000);assert.equal(cloud.cashflowSettings.homeMinimum,3000);assert.equal(cloud.cashflowSettings.businessCheckCutoffDay,16);assert.equal(cloud.cashflowSettings.homeCheckCutoffDay,8);
- for(const state of [merged.state,rebased,cloud]){assert.equal(state.cashflowSettings.businessAlertLeadDays,30);assert.equal(state.cashflowSettings.homeAlertLeadDays,0)}
+ for(const state of [merged.state,rebased,cloud]){assert.equal(state.cashflowSettings.version,3);assert.equal(Object.hasOwn(state.cashflowSettings,'businessAlertLeadDays'),false);assert.equal(Object.hasOwn(state.cashflowSettings,'homeAlertLeadDays'),false)}
 });
 
 test('Kupa cash and rights are independent ledgers across normalization and cloud merge',()=>{
