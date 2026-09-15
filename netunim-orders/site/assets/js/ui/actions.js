@@ -75,7 +75,7 @@ const actions={
   'check-tab':(element,event)=>{ui.checkTab='open';renderChecks()},
   'check-tab-2':(element,event)=>{ui.checkTab='deposited';renderChecks()},
   'check-tab-3':(element,event)=>{ui.checkTab='closed';renderChecks()},
-  'check-account':(element,event)=>{ui.checkBankHistoryPage=0;ui.checkAccount=element.dataset.clickArg0==='ביתי'?'ביתי':'עסקי';ui.checksBulkSelected.clear();renderChecks()},
+  'check-account':(element,event)=>{ui.checkBankHistoryPage=0;const account=element.dataset.clickArg0;ui.checkAccount=account==='ביתי'?'ביתי':account==='עסקי'?'עסקי':'all';ui.checksBulkSelected.clear();renderChecks()},
   'check-bank-history-page':(element,event)=>{ui.checkBankHistoryPage=Number(element.dataset.clickArg0)||0;renderChecks();document.querySelectorAll('.check-bank-activity').forEach(panel=>{panel.open=true})},
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'toggle-checks-forecast':(element,event)=>{ui.checksForecastOpen=!ui.checksForecastOpen;const body=document.getElementById('checksForecastBody'),button=document.querySelector('[data-action="toggle-checks-forecast"]');if(body)body.hidden=!ui.checksForecastOpen;if(button){button.classList.toggle('open',ui.checksForecastOpen);button.setAttribute('aria-expanded',String(ui.checksForecastOpen))}},

@@ -62,6 +62,9 @@ test('future check forecast starts at the current month, fills internal gaps, tr
   assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'2026',account:'ביתי'}),[
    {key:'2026-09',total:700}
   ]);
+  assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'all',account:'all'}),[
+   {key:'2026-09',total:800},{key:'2026-10',total:0},{key:'2026-11',total:250},{key:'2026-12',total:0},{key:'2027-01',total:0},{key:'2027-02',total:300}
+  ],'all account forecast combines business and home checks for display only');
   assert.deepEqual(futureCheckMonthsData(state,{fromMonth:'2026-09',year:'all'}),[
    {key:'2026-09',total:100},{key:'2026-10',total:0},{key:'2026-11',total:250},{key:'2026-12',total:0},{key:'2027-01',total:0},{key:'2027-02',total:300}
   ]);

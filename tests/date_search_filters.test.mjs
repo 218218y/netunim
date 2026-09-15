@@ -51,4 +51,21 @@ for(const [label,createView,uiFactory,args] of [
   assert.deepEqual(view.visibleChecks().map(row=>row.id),['CLEARED','RETURNED','CANCELLED'],`${label}: closed filter contains only closed statuses`);
 }
 
+
+const accountRows=[
+  {...check,id:'BIZ',account:'עסקי',name:'עסקי'},
+  {...check,id:'HOME',account:'ביתי',name:'ביתי'},
+];
+for(const [label,createView,uiFactory,args] of [
+  ['Kupa',createKupaChecksView,()=>({checkTab:'open',checkFocus:'all',checkYear:'all',checkSearchValue:'',checkAccount:'all',bulkSelected:new Set()}),ui=>({ui,model:{state:{checks:accountRows}},syncBulkUi:()=>{},bulkControls:()=>'',bulkHeader:()=>'',bulkCell:()=>'',futureCheckMonths:()=>[]})],
+  ['Orders',createOrdersChecksView,()=>({checkTab:'open',checkYear:'all',checkSearchValue:'',checkAccount:'all',checksBulkMode:false,checksBulkSelected:new Set()}),ui=>({model:{state:{checks:accountRows}},ui,checksSession:{},loadSession:()=>false,mountViewLayout:()=>{}})],
+]){
+  const ui=uiFactory(),view=createView(args(ui));
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['BIZ','HOME'],`${label}: default all-account check display combines business and home`);
+  ui.checkAccount='עסקי';
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['BIZ'],`${label}: business-only check display remains scoped`);
+  ui.checkAccount='ביתי';
+  assert.deepEqual(view.visibleChecks().map(row=>row.id),['HOME'],`${label}: home-only check display remains scoped`);
+}
+
 console.log('PASS date search filters: flexible date forms are canonical across bank/credit/check search helpers');

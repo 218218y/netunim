@@ -247,6 +247,21 @@ assert.equal(drilldownUi.creditDetailChargeDay,'10');
 drilldownView.setCreditDetailMonth('2026-09');
 assert.equal(drilldownUi.creditDetailChargeDay,'all','clicking the month main button restores the full month');
 
+const rangeUiMain={innerHTML:''};
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?rangeUiMain:null,querySelector:()=>null},configurable:true});
+const rangeUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'2026',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailMode:'upcoming',creditDetailChargeDay:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false,creditForecastOpen:false};
+const rangeSnapshot=()=>({kupa:{bank:{},...forecastState},bank:{},creditSync:forecastState.creditSync,cards:[],credits:forecastState.credits,bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''});
+const rangeView=createDomainsFinanceView({ui:rangeUi,controller:{snapshot:rangeSnapshot},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
+rangeView.renderKupa();
+assert.ok(rangeUiMain.innerHTML.indexOf('data-click-arg0="2026-08"')<rangeUiMain.innerHTML.indexOf('data-action="orders-credit-detail-upcoming"'),'past transaction months stay in the transactions heading before nearest charge');
+assert.match(rangeUiMain.innerHTML,/data-change="orders-credit-view"[\s\S]*value="2026" selected/,'credit horizon selector is rendered in the main credit filter toolbar');
+assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2026-09"/,'selected 2026 horizon keeps current/future 2026 transaction month frames');
+assert.doesNotMatch(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2027-03"/,'selected 2026 horizon excludes 2027 transaction month frames');
+rangeView.setCreditView('2027');
+assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2026-08"/,'past transaction month stays accessible when a different future year is selected');
+assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2027-03"/,'selected 2027 horizon exposes the 2027 transaction month frame');
+assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-upcoming"/,'nearest-charge selector remains available independently of the selected forecast horizon');
+
 const frameUiMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?frameUiMain:null,querySelector:()=>null},configurable:true});
 const frameUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};

@@ -363,6 +363,21 @@ ok("checkForecastMarkup()" in orders_checks_view
    and '@media(max-width:620px){.checks-forecast-columns{grid-template-columns:1fr}' in orders_css
    and (ROOT / "shared/check-forecast.js").read_text(encoding="utf-8") == (K / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8") == (O / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8"),
    "shared checks forecast: Orders Kupa and Kupa use the same month-range model behind a compact disclosure collapsed by default, preserving responsive two-column presentation when opened")
+ok("checkAccount:'all'" in (ROOT/'netunim-kupa/site/assets/js/state/contexts.js').read_text(encoding='utf-8')
+   and "checkAccount:'all'" in (ROOT/'netunim-orders/site/assets/js/state/contexts.js').read_text(encoding='utf-8')
+   and 'data-click-arg0="all">הכל</button>' in kupa_checks_view
+   and 'data-click-arg0="all">הכל</button>' in orders_checks_view
+   and "ui.checkAccount==='all'||checkBelongsToAccountData" in kupa_checks_view
+   and "ui.checkAccount==='all'||checkBelongsToAccountData" in orders_checks_view
+   and "account==='all'?'all'" in (ROOT/'shared/check-forecast.js').read_text(encoding='utf-8'),
+   "checks account display: all is the default in both apps and combines business/home rows only at the display/forecast filter boundary")
+ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'data-change="orders-credit-view"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8').split('function creditFiltersMarkup',1)[1].split('function creditForecastMarkup',1)[0]
+   and 'credit-detail-history-selectors' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'credit-detail-history-selectors' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+   and 'creditViewAllowsMonth' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'creditViewAllowsMonth' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
+   "credit horizon: selector is restored to the main toolbar, future transaction month frames share its range, and prior months have a dedicated heading rail")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css

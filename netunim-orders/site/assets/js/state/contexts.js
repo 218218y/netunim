@@ -25,7 +25,7 @@ return {
     creditDetailChargeDay:'all',
     creditDetailFocus:null,
     checkTab:'open',
-    checkAccount:'עסקי',
+    checkAccount:'all',
     checkYear:'all',
     checkSearchValue:'',
     summarySupplierYearView:'current',
