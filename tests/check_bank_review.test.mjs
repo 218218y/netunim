@@ -1,10 +1,29 @@
 import assert from 'node:assert/strict';
-import {applyCheckBankReview,checkBankReviewItems,checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup,checkBankFrontImageMarkup} from '../shared/check-bank-review.js';
+import {applyCheckBankReview,checkBankReviewItems,checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup,checkBankFrontImageMarkup,removableCheckBankEvents} from '../shared/check-bank-review.js';
+import {checkFutureTotalData,checkMonthSummaryMarkup} from '../shared/check-summary.js';
 import {createDomainsChecksEditor as ordersEditor} from '../netunim-orders/site/assets/js/domains/checks/editor.js';
 import {createDomainsChecksEditor as kupaEditor} from '../netunim-kupa/site/assets/js/domains/checks/editor.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 
 const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amount:300,status:'הופקד - במעקב',dueDate:'2026-08-01',depositDate:'2026-08-03',bankMatch:{phase:'deposited',eventId:'17:deposited',transactionId:17,description:'הפק.שיק בסלולר',date:'2026-08-03',amount:1000,checkIds:['c1','c2'],previousStatus:'בקופה',previousDepositDate:null}});
+{
+  const c=sample();c.bankMatch.autoConfirmed=true;c.bankHistory=[{...c.bankMatch}];
+  assert.match(checkBankActivityMarkup([c]),/אישור והסרת ההודעה/);
+  c.bankHistory.unshift({...c.bankMatch,eventId:'old-proposal',autoConfirmed:false});
+  assert.equal(removableCheckBankEvents(c,{bulk:true}).length,2,'A fully confirmed deposit can remove its old proposal in the same bulk action');
+  c.bankHistory.shift();
+  const match=structuredClone(c.bankMatch);
+  assert.equal(applyCheckBankReview([c],c.id,JSON.stringify([match.eventId]),'remove'),true);
+  assert.deepEqual(c.bankMatch,match);assert.equal(c.status,'הופקד - במעקב');assert.equal(c.bankHistory.length,0);
+  assert.match(checkBankActivityMarkup([c]),/בבנק \(0\)/);assert.deepEqual(c.bankHistoryDismiss,[match.eventId]);
+  c.bankMatch={...match,phase:'missing',eventId:'new'};c.bankHistory=[c.bankMatch];
+  assert.equal(applyCheckBankReview([c],c.id,'["new"]','remove'),false);
+  assert.equal(removableCheckBankEvents(c,{bulk:true}).length,0);assert.equal(checkBankReviewItems([c]).length,1);
+  applyCheckBankReview([c],c.id,'new','accept');assert.equal(applyCheckBankReview([c],c.id,'["new"]','remove'),true);
+  const rows=[{amount:4000,status:'הופקד - במעקב'},{amount:4230,status:'בקופה'}];
+  assert.equal(checkFutureTotalData(rows),4230);
+  const html=checkMonthSummaryMarkup(rows,String);assert.match(html,/שהופקד · 4000/);assert.match(html,/עתידי · 4230/);assert.doesNotMatch(html,/8230/);
+}
 {
   const c=sample();c.bankHistory=[{...c.bankMatch}];c.bankMatch={...c.bankMatch,eventId:'17:auto',autoConfirmed:true};
   const html=checkBankActivityMarkup([c]);assert.match(html,/בבנק \(1\)/);assert.match(html,/התבקש אישור התאמה בעבר/);

@@ -6,6 +6,7 @@ from supabase_authorization import run as authorization
 from morning_schema_contract import assert_morning_schema_contract
 from check_bank_reconciliation import run as check_bank_reconciliation
 from check_bank_items import run as check_bank_items
+from check_notification_retention import run as check_notification_retention
 
 sys.path.insert(0, str(ROOT / 'tools'))
 from supabase_candidate_schema import (
@@ -150,5 +151,6 @@ with IsolatedPostgres(schema_files=all_files) as db:
 
 with IsolatedPostgres(schema_files=all_files) as db:
     check_bank_items(db)
+    check_notification_retention(db)
 
 print('PASS candidate migration chain: authenticated prefix replay, generic pending suffix, clean install, authorization and fence regressions pass')

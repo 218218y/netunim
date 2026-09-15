@@ -6,7 +6,7 @@ const actions={
   'orders-cashflow-breakdown':element=>openOrdersCashflowBreakdown(element.dataset.clickArg0),
   'orders-cashflow-breakdown-date':element=>{openOrdersCashflowBreakdown(element.dataset.changeArg0,element.value,element)},
   'open-alert-target':(element,event)=>{openAlertTarget(element.dataset.clickArg0)},
-  'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
+  'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg2==='remove-selected'?[...ui.checksBulkSelected]:element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
   'mark-alert-check-deposited':(element,event)=>{event?.preventDefault();event?.stopPropagation();markAlertCheckDeposited(element.dataset.clickArg0)},
   'dismiss-bank-alert':(element,event)=>{event?.preventDefault();event?.stopPropagation();dismissBankAlert(element.dataset.clickArg0)},
   'dismiss-note-reminder':(element,event)=>{event?.preventDefault();event?.stopPropagation();dismissNoteAlert(element.dataset.clickArg0)},

@@ -67,6 +67,10 @@
     {
       "version": "20260915090000",
       "name": "check_confirmed_automation"
+    },
+    {
+      "version": "20260916090000",
+      "name": "check_notification_retention"
     }
   ]
 }

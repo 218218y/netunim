@@ -706,3 +706,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .credit-forecast-month:hover,.credit-forecast-month:focus-within{border-color:#c5b09f;box-shadow:0 0 0 2px rgba(143,109,85,.05)}
 .credit-forecast-month>summary:hover{background:#fbf8f5}
 @media(max-width:480px){.forecast-disclosure-toggle{padding-inline:9px;font-size:10.5px}.credit-detail-title-row{gap:6px}.credit-cycle-menu-trigger{width:108px}.credit-cycle-selector-header{width:108px;min-width:108px;flex-basis:108px}.credit-cycle-menu-list .credit-cycle-selector-header{width:100%;min-width:0}}
+
+.check-summary-part{display:inline-block;margin-inline-start:12px;white-space:nowrap}.month-check-total,.checks-month-total{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}

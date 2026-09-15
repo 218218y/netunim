@@ -283,7 +283,42 @@ def run(db):
         assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests'").strip()=='1','Pending and final rows must collapse without counting the deposit twice'
         assert all(c['bankMatch']['phase']=='deposited' and not c['bankMatch']['provisional'] and c['bankMatch']['eventId']!=c['bankReview'] for c in checks())
         assert all(c['bankMatch']['transactionId']==oldid for c in checks())
+        rows=checks()
+        for c in rows:c['bankHistoryDismiss']=[h['eventId'] for h in c['bankHistory']]
+        save(rows)
+        assert all(c['bankHistory']==[] and c['status']=='הופקד - במעקב' and not c.get('bankAutomationDisabled') for c in checks())
         rpc(False,4,[]);assert all(c['bankMatch']['phase']=='deposited' for c in checks()),'An incomplete empty response is not absence evidence'
         rpc(True,5,[]);assert all(c['bankMatch']['phase']=='missing' and c['status']!='נפרע' for c in checks()),'A vanished full deposit retains every original check identity'
+        assert all(c['bankHistory'][-1]['phase']=='missing' and c['bankMatch']['eventId']!=c.get('bankReview') and c['bankMatch']['eventId']!=c.get('bankHistoryHiddenEvent') for c in checks()),'Removing deposit notices must not hide a fresh disappearance alert before settlement'
         rpc(True,6);assert all(c['bankMatch']['phase']=='deposited' and c['bankMatch']['eventId']!=c.get('bankReview') for c in checks()),'Reappearance needs a new acknowledgement'
-    print('PASS structured check identity: per-item amounts, partial known batches, number priority, fallback, equal-value loss and redeposit cycles')
+    # The normal disappearance window is BEFORE clearing. A dismissed deposit
+    # notice must leave both a single check and its future clearing guard intact.
+    for adverse in ('missing','returned'):
+        reset([check('Removed notice before settlement',550,'111')])
+        deposit=tx('unsettled-after-removal',550,[item('111',550)]);snapshot()
+        rows=checks();initial=rows[0]['bankMatch'];rows[0]['bankHistoryDismiss']=[initial['eventId']];save(rows)
+        assert checks()[0]['bankHistory']==[] and checks()[0]['status']=='הופקד - במעקב'
+        if adverse=='missing':db.sql("update public.bank_transactions set presence_state='missing' where id="+deposit)
+        else:tx('return-before-settlement-after-removal',-550,[item('111',550)],day='2026-08-03',description='החזרת שיק')
+        snapshot('2026-08-03');incident=checks()[0]
+        assert incident['bankMatch']['phase']==adverse and incident['bankHistory'][-1]['phase']==adverse
+        assert incident.get('bankReview')!=incident['bankMatch']['eventId'] and incident['bankHistoryHiddenEvent']!=incident['bankMatch']['eventId']
+        snapshot('2026-08-10')
+        assert checks()[0]['status']!='נפרע' and checks()[0]['bankMatch']['phase']==adverse,'Elapsed clearing time must not clear a missing or returned deposit'
+    for adverse in ('missing','returned'):
+        reset([check('Removed notification, live tracking',550,'111')])
+        deposit=tx('tracked-after-removal',550,[item('111',550)]);snapshot()
+        rows=checks();initial=rows[0]['bankMatch'];rows[0]['bankHistoryDismiss']=[initial['eventId']];save(rows)
+        assert checks()[0]['bankHistory']==[] and checks()[0]['bankMatch']==initial
+        assert not checks()[0].get('bankAutomationDisabled')
+        snapshot('2026-08-03');assert checks()[0]['bankHistory']==[],'Unchanged bank evidence must not resurrect a removed notification'
+        snapshot('2026-08-10');settled=checks()[0]
+        assert settled['status']=='נפרע' and settled['bankHistory'][-1]['phase']=='cleared','Notification deletion must not prevent automatic settlement'
+        rows=checks();rows[0]['bankHistoryDismiss']=[settled['bankMatch']['eventId']];save(rows)
+        if adverse=='missing':db.sql("update public.bank_transactions set presence_state='missing' where id="+deposit)
+        else:tx('return-after-cleared-notice-removed',-550,[item('111',550)],day='2026-08-11',description='החזרת שיק')
+        snapshot('2026-08-11');incident=checks()[0]
+        assert incident['bankMatch']['phase']==adverse and incident['status']!='נפרע'
+        assert incident['bankHistory'][-1]['phase']==adverse and incident['bankHistoryHiddenEvent']!=incident['bankMatch']['eventId']
+        assert incident.get('bankReview')!=incident['bankMatch']['eventId'],'New return/disappearance still requires user review'
+    print('PASS structured check identity: per-item amounts, partial known batches, number priority, fallback, equal-value loss, redeposit cycles and full monitoring after notification deletion')

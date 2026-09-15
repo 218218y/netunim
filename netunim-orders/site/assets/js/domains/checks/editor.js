@@ -4,7 +4,7 @@ import {generatedCheckSeriesRow, nextSeriesCheckNumber} from './model.js';
 import {checkAddMonthsISO, checkTodayISO} from '../../core/dates.js';
 import {$} from '../../state/constants.js';
 
-import {applyCheckBankReview} from '../../shared/check-bank-review.js';
+import {applyCheckBankReview,removableCheckBankEvents,removeCheckBankEvents} from '../../shared/check-bank-review.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsChecksEditor({model, ui, toast, checkDateEditorMarkup, modal, setCheckDateValue, normalizeCheckModalDates, scheduleCheckSave, closeModal, confirmDialog}){
@@ -32,7 +32,7 @@ async function deleteCheck(id){const c=model.state.checks.find(x=>x.id===id);if(
 
 async function deleteChecksBulkSelected(){const ids=[...ui.checksBulkSelected].filter(id=>model.state.checks.some(x=>x.id===id));if(!ids.length)return toast('לא נבחרו צ\'קים למחיקה');if(!await confirmDialog('מחיקת צ׳קים',`למחוק ${ids.length} צ'קים שנבחרו?\n\nהמחיקה תסונכרן למאגר הצ'קים המשותף כאשר הענן פעיל.`,{confirmText:'מחק צ׳קים'}))return;const set=new Set(ids);model.state.checks=model.state.checks.filter(x=>!set.has(x.id));ui.checksBulkSelected.clear();scheduleCheckSave(`${ids.length} צ'קים נמחקו`,{deletedIds:ids,mutationType:'bulk-delete',surface:'orders.bulk.checks'})}
 
-function reviewCheckBank(id,eventId,action){if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;scheduleCheckSave('בדיקת התאמת הצ׳ק נשמרה');return true}
+function reviewCheckBank(id,eventId,action){if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]);let changed=false;for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changed=true}if(changed)scheduleCheckSave('הודעות שטופלו הוסרו');return changed;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;scheduleCheckSave('בדיקת התאמת הצ׳ק נשמרה');return true}
 
 return { reviewCheckBank, openCheckModal, checkSeriesDrafts, renderCheckSeriesRows, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markCheckDeposited, markCheckCleared, deleteCheck, deleteChecksBulkSelected };
 }

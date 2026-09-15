@@ -83,5 +83,10 @@
     "version": "20260915090000",
     "name": "check_confirmed_automation",
     "sha256": "0113174fce5676996907bca415bcd529e9823c76ba6406c9321f73e9601c88ca"
+  },
+  {
+    "version": "20260916090000",
+    "name": "check_notification_retention",
+    "sha256": "d4ae8a18485707e7dece685612415163052b6b4bc28eb75ff746d271dbeefa9d"
   }
 ]

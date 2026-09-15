@@ -3,7 +3,7 @@ import {num, wholeMoney} from '../../core/money.js';
 import {generatedCheckSeriesRow, nextSeriesCheckNumber} from './model.js';
 import {addMonthsISO, todayISO} from '../../core/dates.js';
 
-import {applyCheckBankReview} from '../../shared/check-bank-review.js';
+import {applyCheckBankReview,removableCheckBankEvents,removeCheckBankEvents} from '../../shared/check-bank-review.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsChecksEditor({model, checkDateEditorMarkup, toast, armModalDraftGuard, modal, deleteRecord, setCheckDateValue, saveChecksState, normalizeCheckModalDates, closeModal}){
@@ -54,7 +54,7 @@ function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||
 
 function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע')}
 
-function reviewCheckBank(id,eventId,action){if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;saveChecksState('בדיקת התאמת הצ׳ק נשמרה');return true}
+function reviewCheckBank(id,eventId,action){if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]);let changed=false;for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changed=true}if(changed)saveChecksState('הודעות שטופלו הוסרו');return changed;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;saveChecksState('בדיקת התאמת הצ׳ק נשמרה');return true}
 
 return { reviewCheckBank, openCheckModal, checkSeriesDrafts, renderCheckSeriesRows, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markDeposited, markCleared };
 }

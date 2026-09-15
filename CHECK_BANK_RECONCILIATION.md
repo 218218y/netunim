@@ -25,9 +25,18 @@ come exclusively from the bank. Check workflow changes do not credit an account 
   be rejected from this area even after acknowledgement; historical events are read-only.
   Consecutive routine updates of the same claimed deposit are grouped under its latest
   headline, with the previous evidence expandable inside. Missing/returned/cleared events
-  break the group. No persisted history is removed. A front-image button resolves the
+  break the group. A front-image button resolves the
   exact transaction, account and unique number/amount/drawer item from the existing bank
   display feed, using the existing private image viewer and retention window.
+  Notification-only dismissal is installed by `20260916090000_check_notification_retention.sql`.
+  The CAS writer consumes explicit event-ID removal requests, validates current incidents
+  against approval, and preserves current bank evidence and claims. One server-owned hidden
+  current-event pointer prevents re-creation after pruning; newer events remain visible.
+  On complete bank snapshots or check saves, quiet confirmed/cleared history at least 60 days
+  old is pruned. Uncertain, missing and returned events never expire automatically. Historical
+  incidents can be explicitly acknowledged and removed; active ones need their existing review
+  action first. Bulk removal only includes quiet or reviewed events and prior routine proposals
+  belonging to a now-confirmed deposit. Older clients cannot restore removed notification payloads.
 * The user confirms or rejects an uncertain proposed association. Confirmation is durable and
   does not itself clear the check. Rejection restores the pre-match status/date and
   switches the check to manual control. Its transaction remains reserved, even if the
