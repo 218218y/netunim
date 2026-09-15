@@ -657,3 +657,7 @@ button.bank-cashflow-metric:focus-visible,.cashflow-breakdown-trigger:focus-visi
 button.bank-cashflow-projected,button.bank-current-balance{font:inherit;color:inherit;cursor:pointer;text-align:inherit}
 button.bank-current-balance{background:transparent;border:0}
 button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-visible,.cashflow-breakdown-trigger:focus-visible{outline:2px solid #2563eb;outline-offset:3px}
+
+.bank-cashflow-warning-row{min-width:0;padding:0 16px 8px;overflow-wrap:anywhere}
+.bank-cashflow-warning-row>.cashflow-breach{margin:0}
+.bank-balance-card>.cashflow-breach{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}

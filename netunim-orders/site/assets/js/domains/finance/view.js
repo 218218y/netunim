@@ -1,4 +1,4 @@
-import {bankBalanceFactsMarkup} from './bank-cashflow-view.js';
+import {bankBalanceCaptionMarkup} from './bank-cashflow-view.js';
 import {kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
 import {updateCashflowExplorer,cashflowExplorerMarkup} from '../../shared/cashflow-breakdown.js';
 import {esc} from '../../core/values.js';
@@ -40,9 +40,9 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
   function bankTransactionsMarkup(feed,role){
     const mode=bankDataMode(ui),directSnapshot=feed?.directSnapshot||null,historyRows=bankSmartRows(feed?.transactions||[],directSnapshot?.transactions||[]),allRows=mode==='direct'?(directSnapshot?.transactions||[]):historyRows,periodRows=allRows.filter(bankRowMatchesDateRange),query=ui.bankSearchValue||'',rows=query.trim()?periodRows.filter(row=>bankRowMatchesSearch(row,query)):periodRows;
     const scoped=bankDateFilterActive()||query.trim(),countLabel=scoped?`${rows.length} מתוך ${allRows.length} תנועות`:`${rows.length} תנועות`;
-    const state=snapshot(),roleName=role==='home'?'\u05d1\u05d9\u05ea\u05d9':'\u05e2\u05e1\u05e7\u05d9',balanceFacts=bankBalanceFactsMarkup(feed,role,state.kupa);
+    const state=snapshot(),roleName=role==='home'?'\u05d1\u05d9\u05ea\u05d9':'\u05e2\u05e1\u05e7\u05d9',{balanceFacts,warning}=bankBalanceCaptionMarkup(feed,role,state.kupa);
     const accountTitle=feed?.accountNumber?`חשבון ${roleName} ${esc(feed.accountNumber)}`:`חשבון ${roleName}`;
-    const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small>${bankDateFilterMarkup()}${bankDataViewToggleMarkup(mode)}</div><div class="bank-caption-controls">${balanceFacts}</div></div>`;
+    const caption=`<div class="bank-transactions-caption"><div class="bank-caption-account"><b>${accountTitle}</b><small>${countLabel}</small>${bankDateFilterMarkup()}${bankDataViewToggleMarkup(mode)}</div><div class="bank-caption-controls">${balanceFacts}</div></div>${warning?`<div class="bank-cashflow-warning-row">${warning}</div>`:''}`;
     const context=mode==='direct'?bankDirectSnapshotNote(directSnapshot):bankMissingSummary(historyRows);
     if(!feed)return `${caption}${context}<div class="empty bank-feed-empty">${role==='home'?'החשבון הביתי עדיין לא סונכרן.':'לא בוצע עדיין סנכרון בנק שמכיל תנועות.'}</div>`;
     if(mode==='direct'&&!directSnapshot)return `${caption}${context}`;

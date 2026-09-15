@@ -7,7 +7,7 @@ const signed=value=>`${value>0?'+':''}${money(value)}`;
 export function cashflowBreachMarkup(cashflow){
   const breach=cashflow.breach;
   if(!breach?.breachDate)return '';
-  return `<aside class="cashflow-breach soft-note" role="status">אזהרת תזרים · ${esc(date(breach.breachDate))}: עו״ש תזרימי צפוי ${esc(money(breach.projected))}${breach.reason==='minimum'?` · הגיע לסף המינימום ${esc(money(breach.minimum))}`:' · כניסה למינוס'}${cashflow.forecastIncomplete?' · לפי הנתונים הידועים; התחזית חלקית':''}</aside>`;
+  return `<aside class="cashflow-breach soft-note" role="status">אזהרת תזרים · ${esc(date(breach.breachDate))}: עו״ש תזרימי צפוי ${esc(money(breach.projected))}${breach.reason==='minimum'?` · הגיע לסף המינימום ${esc(money(breach.minimum))}`:' · כניסה למינוס'}${breach.forecastIncomplete?' · לפי הנתונים הידועים; התחזית חלקית':''}</aside>`;
 }
 
 export function cashflowExplorerMarkup(cashflow,action,role,dateEditorMarkup){
@@ -15,7 +15,8 @@ export function cashflowExplorerMarkup(cashflow,action,role,dateEditorMarkup){
   return `<div data-cashflow-explorer><div class="cashflow-date-controls" data-no-draft-guard dir="rtl"><div><span>תאריך התחזית</span>${editor}</div><button type="button" class="btn" data-action="${esc(action)}" data-click-arg0="${esc(role)}">חזרה לחישוב האוטומטי</button><p class="muted">אשראי ידוע, צ׳קים והוצאות קבועות בכל חודש עד התאריך, כולל. רכישות אשראי עתידיות שטרם התקבלו אינן כלולות בתחזית.</p><p data-cashflow-date-error class="cashflow-breach" role="status" hidden></p></div><div data-cashflow-result>${cashflowExplorerResultMarkup(cashflow)}</div></div>`;
 }
 function cashflowExplorerResultMarkup(cashflow){
-  return `<p class="muted">${cashflow.customTarget?'תחזית לתאריך שנבחר':'תחזית אוטומטית עד השלמת החיובים החודשיים הקרובים'}${cashflow.awaitingSettlement?' · חיובים שמועדם חלף ממתינים להתאמה בבנק ונכללים ביתרה הצפויה מהיום.':''}</p>${cashflowBreachMarkup(cashflow)}${cashflowBreakdownMarkup(cashflow)}`;
+  const warningEnd=cashflow.warningProjection?.targetDate,warningNote=!cashflow.customTarget&&warningEnd&&warningEnd>cashflow.targetDate?`<p class="muted">בדיקת האזהרות נמשכת עד ${esc(date(warningEnd))}; הפירוט והסכום הרגיל שלהלן מחושבים עד ${esc(date(cashflow.targetDate))}.</p>`:'';
+  return `<p class="muted">${cashflow.customTarget?'תחזית לתאריך שנבחר':'תחזית אוטומטית עד השלמת החיובים החודשיים הקרובים'}${cashflow.awaitingSettlement?' · חיובים שמועדם חלף ממתינים להתאמה בבנק ונכללים ביתרה הצפויה מהיום.':''}</p>${warningNote}${cashflowBreachMarkup(cashflow)}${cashflowBreakdownMarkup(cashflow)}`;
 }
 // Only replace results: the shared date editor must retain focus during typing.
 export function updateCashflowExplorer(input,calculate){

@@ -155,8 +155,8 @@ def run_breakdown(app):
         browser.evaluate(f"""(()=>{{
           uiSettings.renderSettings();
           const fields=[...document.querySelectorAll('[data-change="{action}"]')];
-          if(fields.length!==2||fields.some(field=>field.value!=='14'))throw new Error('Both account settings must display the 14-day default');
-          if(fields.some(field=>field.min!=='0'||field.max!=='365'))throw new Error('Invalid notification-day limits');
+          if(fields.length)throw new Error('Legacy lead-day controls must not suppress the automatic monthly warning window');
+          if(!document.querySelector('{'#content' if app == 'kupa' else '#main'}').textContent.includes('סוף החודש הנוכחי'))throw new Error('Monthly warning policy missing from settings');
           return true;
         }})()""")
         errors = browser.drain_serious_errors()
@@ -257,6 +257,36 @@ def run_cashflow_date_picker(app):
         print(f'{app}: projected balance opens date exploration for both accounts on desktop/mobile')
 
 
+def run_cashflow_warning_layout(app):
+    with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-warning-layout") as browser:
+        for width in (1440, 1280, 900, 390):
+            browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
+            for role in ('business', 'home'):
+                setup = "state=normalizeState(fixture);ui.bankAccountView=role;domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
+                browser.evaluate("(async()=>{"+f"const role='{role}';"+r"""
+                  const today=new Date().toLocaleDateString('en-CA');
+                  const feed={accountNumber:'123456789',balance:272.27,availableBalance:8272.27,creditLimit:8000,syncedAt:today,transactions:[]};
+                  const fixture={bank:{source:'hapoalim',currentBalance:272.27,asOfDate:today,feed,homeFeed:feed},checks:[],credits:[],expenses:[],cash:[],cards:[],cashflowSettings:{businessMinimum:5000,homeMinimum:5000}};
+                """+setup+r"""
+                  const caption=document.querySelector('.bank-transactions-caption');
+                  const warning=caption.nextElementSibling;
+                  if(!warning?.matches('.bank-cashflow-warning-row')||!warning.textContent.includes('5,000'))throw new Error('Warning must occupy its own row below the bank caption');
+                  if(caption.querySelector('.cashflow-breach'))throw new Error('Warning is still inside the metrics/filter row');
+                  const rect=el=>el.getBoundingClientRect(),a=rect(caption),w=rect(warning);
+                  if(w.top<a.bottom-1||w.left<a.left-1||w.right>a.right+1)throw new Error('Warning is outside the caption width or overlaps its row');
+                  if(warning.scrollWidth>warning.clientWidth+2)throw new Error('Warning text overflows');
+                  const account=rect(caption.querySelector('.bank-caption-account')),controls=rect(caption.querySelector('.bank-caption-controls'));
+                  if(Math.min(account.right,controls.right)>Math.max(account.left,controls.left)+2&&Math.min(account.bottom,controls.bottom)>Math.max(account.top,controls.top)+2)throw new Error('Account filters overlap balance metrics');
+                  for(const element of caption.querySelectorAll('.bank-cashflow-metric,.bank-primary-balance,.bank-available-balance,.bank-current-balance')){
+                    const r=rect(element);
+                    if(r.left<a.left-1||r.right>a.right+1||element.scrollWidth>element.clientWidth+2)throw new Error('Bank metric overflows caption: '+element.textContent);
+                  }
+                  return true;
+                })()""")
+        assert not browser.drain_serious_errors()
+        print(f'{app}: warnings stay below bank captions without overlaps at desktop/tablet/mobile widths')
+
+
 ok = run("kupa-financial", ROOT / "netunim-kupa/site", kexpr, kexpected)
 ok = run("orders-financial", ROOT / "netunim-orders/site", oexpr, oexpected) and ok
 run_breakdown('kupa')
@@ -267,4 +297,6 @@ run_forecast_header('kupa')
 run_forecast_header('orders')
 run_cashflow_date_picker('kupa')
 run_cashflow_date_picker('orders')
+run_cashflow_warning_layout('kupa')
+run_cashflow_warning_layout('orders')
 raise SystemExit(0 if ok else 1)

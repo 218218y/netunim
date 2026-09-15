@@ -33,13 +33,27 @@ Bank-derived recurring expenses use `bankRecurringExpensesData`; they are remove
 only with its account-specific bank evidence, and future months use the latest
 known posted amount. Unknown future card spending is not extrapolated.
 
-`breach` uses the exact selected rows to find the first daily threshold crossing,
-netting same-day movements without assuming an intraday order. Bank summaries
-show its date even when the final balance recovers. The existing notification
-lead-time setting controls popups/notifications, not the visible forecast warning.
+Automatic forecasts also expose `warningProjection`: contributions through the
+later of the regular forecast date and the current calendar month's final day.
+Both windows use the same bank baseline, reconciliation and contribution selector;
+extending warning coverage never advances the calculation date. Before mid-month,
+this includes later current-month expenses; after the regular window advances to
+next mid-month, it stops there until the next month begins. Explicit date enquiries
+bound both windows to the selected date.
+
+`breach` uses these warning contributions to find the first daily threshold
+crossing, netting same-day movements without assuming an intraday order. Bank
+summaries show its date even when the final balance recovers. Every crossing in
+the automatic warning window is eligible for a popup; legacy lead-day fields
+remain readable but no longer restrict automatic forecasts or appear in settings.
+The helper retains lead-day behavior for older callers without `warningProjection`.
+Warnings occupy a separate full-width row below bank captions so their text cannot
+compress the balances or filters. The explorer distinguishes the warning end date
+from the date used by its ordinary amount and breakdown.
 
 The date explorer uses each app's central date editor and updates only its result
 region. It changes no financial data and allows no date earlier than the current
 calculation/balance baseline. Regression coverage is in
-`tests/cashflow_horizon.test.mjs`, the existing credit/recurring models, and
+`tests/cashflow_horizon.test.mjs`, `tests/cashflow_warning_window.test.mjs`,
+the existing credit/recurring models, and
 `tests/runtime_financial.py` (both accounts, both apps, desktop and mobile).

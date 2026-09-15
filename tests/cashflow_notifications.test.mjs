@@ -43,14 +43,15 @@ test('legacy settings default to 14 days and invalid lead times cannot suppress 
   assert.equal(normalizeCashflowSettings({businessAlertLeadDays:0,homeAlertLeadDays:365}).businessAlertLeadDays,0);
 });
 
-test('startup warning uses the notification window while projected balance stays unchanged',()=>{
-  const now=new Date(),iso=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`,today=iso(now),future=iso(new Date(now.getFullYear(),now.getMonth(),now.getDate()+30));
-  const state={bank:{currentBalance:1000,asOfDate:today,homeFeed:{balance:1000,syncedAt:today}},credits:[{id:'a',card:'manual',account:'עסקי',active:true,firstChargeDate:future,installments:1,totalAmount:1100}],expenses:[],checks:[]};
-  let calls=0;const make=()=>createDomainsBankAlerts({model:{state},bankProjectedThisMonth:()=>-100,bankHomeProjectedThisMonth:()=>1000,modal:()=>calls++,closeModal:()=>{}});
-  assert.equal(make().maybeShowStartupCashflowAlert(),false);assert.equal(calls,0);
-  assert.equal(cashflowWarningItems(state).length,0,'Orders header/startup share the same 14-day gate');
-  const before=kupaAccountCashflowData(state,'עסקי',today).projected;
-  state.cashflowSettings={businessAlertLeadDays:30};assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,1);
-  assert.equal(cashflowWarningItems(state).length,1);assert.equal(cashflowWarningItems(state)[0].breachDate,future);
+test('automatic startup warning searches the full monthly window without changing the displayed projection',t=>{
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-01T12:00:00Z')});
+  const today='2026-09-01',future='2026-09-28';
+  const state={bank:{currentBalance:1000,asOfDate:today,homeFeed:{balance:1000,syncedAt:today}},credits:[],expenses:[{id:'late',account:'עסקי',active:true,recurring:false,date:future,amount:1100}],checks:[]};
+  let calls=0;const make=()=>createDomainsBankAlerts({model:{state},bankProjectedThisMonth:()=>1000,bankHomeProjectedThisMonth:()=>1000,modal:()=>calls++,closeModal:()=>{}});
+  assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,1);
+  assert.equal(cashflowWarningItems(state)[0].breachDate,future);
+  const before=kupaAccountCashflowData(state,'עסקי',today).projected;assert.equal(before,1000);
+  state.cashflowSettings={businessAlertLeadDays:0};assert.equal(make().maybeShowStartupCashflowAlert(),true);assert.equal(calls,2);
+  assert.equal(cashflowWarningItems(state).length,1);
   assert.equal(kupaAccountCashflowData(state,'עסקי',today).projected,before);
 });

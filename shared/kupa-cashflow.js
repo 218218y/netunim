@@ -471,6 +471,16 @@ function automaticCashflowHorizon(kupa,role,reconciliation,creditRows){
   return {targetMonth,targetDate:[forecastStart,...dates].sort().at(-1),awaitingSettlement:outstanding.some(row=>row.date<forecastStart)||recurring.rows.some(row=>row.dueDate<forecastStart)};
 }
 
+function cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,targetDate){
+  const {start,forecastStart,unassignedRows}=reconciliation;
+  const selected=remaining.filter(row=>row.date<=targetDate),creditRows=selected.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
+  const recurring=bankRecurringExpensesData(kupa,role,forecastStart,targetDate);
+  const expenseRows=[...kupaExpenseRowsBetweenData(kupa,start,targetDate).filter(row=>expenseBelongsTo(row,role)),...recurring.rows];
+  const checkDeposits=kupaAccountCheckDepositsData(kupa,role,forecastStart,monthKey(targetDate),targetDate);
+  const incompleteCreditRows=[...unassignedRows,...selected.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete)];
+  return {selected,creditRows,recurring,expenseRows,checkDeposits,incompleteCreditRows};
+}
+
 // reference is the date of calculation, targetDate is the requested future date.
 // Never advance reference to simulate the future: it would expire pending issuer
 // data and treat future bank debits as already reflected in today's balance.
@@ -484,14 +494,11 @@ export function kupaAccountCashflowData(kupa,account='עסקי',reference=localT
   const requested=options.targetDate?isoDay(options.targetDate):'';
   if(options.targetDate&&(!requested||requested<forecastStart))throw new RangeError('תאריך התחזית חייב להיות תקין ולא מוקדם מתאריך החישוב או יתרת הבסיס');
   const targetDate=requested||automatic.targetDate,targetMonth=monthKey(targetDate);
-  const selected=remaining.filter(row=>row.date<=targetDate),creditRows=selected.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
-  const recurring=bankRecurringExpensesData(kupa,role,forecastStart,targetDate);
-  const expenseRows=[...kupaExpenseRowsBetweenData(kupa,start,targetDate).filter(row=>expenseBelongsTo(row,role)),...recurring.rows];
-  const checkDeposits=kupaAccountCheckDepositsData(kupa,role,forecastStart,targetMonth,targetDate);
+  const contributions=cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,targetDate);
+  const {selected,creditRows,recurring,expenseRows,checkDeposits,incompleteCreditRows}=contributions;
   const sum=rows=>rows.reduce((total,row)=>total+moneyCents(row.amount),0)/100;
   const credit=sum(creditRows),expenses=sum(expenseRows),checks=moneyCents(checkDeposits.total)/100,total=(moneyCents(credit)+moneyCents(expenses))/100;
   const expectedChange=(moneyCents(checks)-moneyCents(total))/100,projected=balance===null?null:(moneyCents(balance)+moneyCents(expectedChange))/100;
-  const incompleteCreditRows=[...unassignedRows,...selected.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete)];
   const elapsedIncompleteCreditRows=incompleteCreditRows.filter(row=>row.date&&row.date<forecastStart);
   const nextCreditRows=creditRows.filter(row=>row.date>=forecastStart),targetExpenseRows=expenseRows.filter(row=>row.dueDate>=forecastStart);
   const cycle=creditCyclesThroughHorizonRowsData(selected,role,forecastStart,unassignedRows,targetDate);
@@ -502,6 +509,12 @@ export function kupaAccountCashflowData(kupa,account='עסקי',reference=localT
     settlingCreditRows,settlingCredit:sum(settlingCreditRows),expiredSettlementCreditRows:reconciliation.settlingCredit.expiredRows,expiredSettlementCredit:reconciliation.settlingCredit.expiredTotal,expiredSettlementWarnings:reconciliation.settlingCredit.warnings,unmatchedCreditRetained:true,
     elapsedCredit:sum(creditRows.filter(row=>row.date>=start&&row.date<forecastStart)),elapsedExpenses:sum(expenseRows.filter(row=>row.dueDate<forecastStart)),targetExpenseRows,targetExpenseTotal:sum(targetExpenseRows),
     checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
+  // Keep the displayed forecast unchanged while searching at least the whole
+  // current month. A custom date remains an exact, explicitly bounded enquiry.
+  const monthEnd=monthCutoffISO(monthKey(forecastStart),31),warningEnd=requested?targetDate:targetDate>monthEnd?targetDate:monthEnd;
+  const warning=warningEnd===targetDate?contributions:cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,warningEnd);
+  result.warningProjection={targetDate:warningEnd,creditRows:warning.creditRows,expenseRows:warning.expenseRows,checkRows:warning.checkDeposits.rows,
+    forecastIncomplete:warning.incompleteCreditRows.length>0||warning.recurring.incomplete,notifyThroughHorizon:!requested};
   result.breach=cashflowNotificationData(result,kupa?.cashflowSettings,forecastStart);
   return result;
 }
