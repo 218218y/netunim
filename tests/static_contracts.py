@@ -376,15 +376,24 @@ ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K
    and 'data-change="orders-credit-view"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8').split('function creditFiltersMarkup',1)[1].split('function creditForecastMarkup',1)[0]
    and 'creditHistoryMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
    and 'creditHistoryMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+   and 'creditFutureMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'creditFutureMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
    and 'credit-history-menu' in credit_detail_controls
+   and 'credit-future-menu' in credit_detail_controls
+   and 'credit-detail-month-tabs' not in credit_detail_controls
    and 'creditViewAllowsMonth' in credit_detail_controls
    and credit_detail_controls == (K/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8') == (O/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8'),
-   "credit horizon and detail controls: future month frames share the toolbar range while prior months use one shared compact history menu")
-ok('.credit-history-menu{position:relative' in orders_css
-   and '.credit-history-menu{position:relative' in (K/'site/assets/app.css').read_text(encoding='utf-8')
-   and 'overflow-x:auto' not in orders_css.split('.credit-history-menu{position:relative',1)[1].split('.credit-cycle-selector{',1)[0]
-   and 'creditDetailChargeHeadingMarkup' in credit_detail_controls,
-   "credit detail heading: prior charges no longer require a horizontal heading rail and the visible list exposes its charge total")
+   "credit horizon and detail controls: future months share the toolbar range while prior and next months use compact menus with no horizontal month rail")
+ok('.credit-cycle-menu{position:relative' in orders_css
+   and '.credit-cycle-menu{position:relative' in (K/'site/assets/app.css').read_text(encoding='utf-8')
+   and '.credit-detail-title-row{flex-wrap:wrap;min-width:0;max-width:100%}' in orders_css
+   and '.credit-detail-title-row{flex-wrap:wrap;min-width:0;max-width:100%}' in (K/'site/assets/app.css').read_text(encoding='utf-8')
+   and '.credit-detail-month-tabs{' not in orders_css
+   and '.credit-detail-month-tabs{' not in (K/'site/assets/app.css').read_text(encoding='utf-8')
+   and 'creditDetailChargeHeadingMarkup' in credit_detail_controls
+   and 'data-column-label="חיוב בחודש"' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'data-column-label="חיוב בחודש"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
+   "credit detail heading: previous and next charges use compact menus, the heading wraps inside the viewport, and the visible list exposes a semantically stable charge label with its total")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css

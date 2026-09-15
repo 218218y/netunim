@@ -145,7 +145,7 @@ def run_breakdown(app):
             if(!row||!row.textContent.includes('לא נכלל בחיוב לפי כאל'))throw new Error('Informational CAL row is missing or appears as a charge: '+name);
           }}
           if(!rows.some(row=>row.textContent.includes('1,369.78')))throw new Error('Confirmed CAL debit is missing');
-          const table=document.querySelector('.credit-detail-table'),headers=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim()),amountColumn=headers.indexOf('סכום מקורי'),chargeColumn=headers.indexOf('חיוב בחודש'),paymentColumn=headers.indexOf('תשלום');
+          const table=document.querySelector('.credit-detail-table'),headers=[...table.querySelectorAll('thead th')].map(th=>th.dataset.columnLabel||th.textContent.trim()),amountColumn=headers.indexOf('סכום מקורי'),chargeColumn=headers.indexOf('חיוב בחודש'),paymentColumn=headers.indexOf('תשלום');
           if(amountColumn<0||chargeColumn<0||paymentColumn<0||!(amountColumn<paymentColumn&&paymentColumn<chargeColumn))throw new Error('Credit detail columns must present original amount before installment and actual monthly charge after it: '+headers.join('|'));
           for(const [name,amount] of [['זיכוי מאומת','-4.50'],['החזר CashCal','-15.01']]){{
             const row=rows.find(row=>row.textContent.includes(name)),text=row?.children[amountColumn]?.textContent||'';

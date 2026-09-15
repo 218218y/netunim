@@ -46,16 +46,15 @@ export function creditUpcomingSelectorMarkup({active,selectedDay,total,formatMon
   return `<span class="credit-cycle-selector credit-cycle-selector-header ${active?'active':''}"><button type="button" class="credit-cycle-main credit-upcoming-toggle ${active?'active':''}" data-action="${safe(upcomingAction,escapeHtml)}" aria-pressed="${active?'true':'false'}"><span>החיוב הקרוב</span><b>${safe(formatMoney(Number(total)||0),escapeHtml)}</b></button>${chargeDayButtonsMarkup({action:upcomingDayAction,selectedDay:active?selectedDay:'all',escapeHtml})}</span>`;
 }
 
-export function creditHistoryMenuMarkup({months=[],selectedKey='',selectedDay='all',formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction}){
+function creditCycleMenuMarkup({months=[],selectedKey='',selectedDay='all',formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,label,ariaLabel,reverse=false,className=''}){
   if(!months.length)return '';
-  const selected=months.find(month=>month.key===selectedKey),selectedLabel=selected?formatMonth(selected.key):'',selectedMeta=selected?`${selectedLabel}${selectedDay==='10'||selectedDay==='15'?` · ${selectedDay}`:''}`:'';
-  return `<details class="credit-history-menu ${selected?'active':''}"><summary class="credit-history-trigger" aria-label="בחירת חיובים קודמים"><span><b>חיובים קודמים</b>${selectedMeta?`<small>${safe(selectedMeta,escapeHtml)}</small>`:''}</span><span class="credit-history-chevron" aria-hidden="true">⌄</span></summary><div class="credit-history-popover"><div class="credit-history-popover-title"><b>חיובים קודמים</b><small>בחר חודש או מועד חיוב</small></div><div class="credit-history-list">${months.slice().reverse().map(month=>cycleSelectorMarkup({month,active:month.key===selectedKey,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:true})).join('')}</div></div></details>`;
+  const selected=months.find(month=>month.key===selectedKey),selectedLabel=selected?(selected.key==='unassigned'?'מחזור לא ודאי':formatMonth(selected.key)):'',selectedMeta=selected?`${selectedLabel}${selectedDay==='10'||selectedDay==='15'?` · ${selectedDay}`:''}`:'';
+  const ordered=reverse?months.slice().reverse():months.slice();
+  return `<details class="credit-cycle-menu ${className} ${selected?'active':''}"><summary class="credit-cycle-menu-trigger" aria-label="${safe(ariaLabel,escapeHtml)}"><span><b>${safe(label,escapeHtml)}</b>${selectedMeta?`<small>${safe(selectedMeta,escapeHtml)}</small>`:''}</span><span class="credit-cycle-menu-chevron" aria-hidden="true">⌄</span></summary><div class="credit-cycle-menu-popover"><div class="credit-cycle-menu-popover-title"><b>${safe(label,escapeHtml)}</b><small>בחר חודש או מועד חיוב</small></div><div class="credit-cycle-menu-list">${ordered.map(month=>cycleSelectorMarkup({month,active:month.key===selectedKey,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:true})).join('')}</div></div></details>`;
 }
 
-export function creditDetailMonthTabsMarkup({months=[],selectedKey='',selectedDay='all',formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,currentMonth='',emptyMarkup='<div class="credit-detail-month-empty">אין חיובים להצגה</div>'}){
-  if(!months.length)return emptyMarkup;
-  return `<div class="credit-detail-month-tabs" role="tablist" aria-label="בחירת חודש לעסקאות ותשלומים">${months.map(month=>{const key=String(month?.key||''),uncertain=key==='unassigned',timing=uncertain?'future':currentMonth?(key<currentMonth?'past':key===currentMonth?'current':'future'):'future',active=key===selectedKey;return cycleSelectorMarkup({month:{...month,key},active,selectedDay,formatMoney,formatMonth,escapeHtml,monthAction,monthDayAction,header:false,timing})}).join('')}</div>`;
-}
+export function creditHistoryMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'חיובים קודמים',ariaLabel:'בחירת חיובים קודמים',reverse:true,className:'credit-history-menu'})}
+export function creditFutureMenuMarkup(options){return creditCycleMenuMarkup({...options,label:'חיובים הבאים',ariaLabel:'בחירת חיובים הבאים',reverse:false,className:'credit-future-menu'})}
 
 export function creditDetailChargeHeadingMarkup(items,formatMoney,escapeHtml){
   const {total,partial}=creditDetailSelectionTotal(items);

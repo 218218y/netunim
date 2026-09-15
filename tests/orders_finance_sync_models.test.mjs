@@ -219,7 +219,7 @@ const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapsho
 drilldownView.renderKupa();
 assert.match(drilldownMain.innerHTML,/credit-cycle-selector-header active[\s\S]*data-action="orders-credit-detail-upcoming"/,'nearest-charge mode is the default transaction detail view');
 assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-upcoming"[\s\S]*<b>[^<]*120/,'nearest-charge selector shows its total alongside the label');
-assert.match(drilldownMain.innerHTML,/credit-detail-charge-heading[\s\S]*חיוב בחודש[\s\S]*סה״כ[^<]*120/,'the visible transaction list exposes its selected charge total in the charge column heading');
+assert.match(drilldownMain.innerHTML,/data-column-label="חיוב בחודש"[\s\S]*credit-detail-charge-heading[\s\S]*חיוב בחודש[\s\S]*סה״כ[^<]*120/,'the visible transaction list exposes a stable semantic charge-column label plus its selected charge total');
 assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-upcoming-day" data-click-arg0="10"[\s\S]*data-action="orders-credit-detail-upcoming-day" data-click-arg0="15"/,'nearest-charge selector exposes compact 10/15 filters');
 drilldownView.setCreditDetailUpcoming('15');
 assert.equal(drilldownUi.creditDetailMode,'upcoming');assert.equal(drilldownUi.creditDetailChargeDay,'15');assert.equal(drilldownUi.creditDetailFocus,null);assert.match(drilldownMain.innerHTML,/credit-charge-day active[^>]*data-action="orders-credit-detail-upcoming-day"[^>]*data-click-arg0="15"/,'nearest-charge 15 filter exposes its active state');
@@ -255,8 +255,9 @@ const rangeSnapshot=()=>({kupa:{bank:{},...forecastState},bank:{},creditSync:for
 const rangeView=createDomainsFinanceView({ui:rangeUi,controller:{snapshot:rangeSnapshot},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
 rangeView.renderKupa();
 assert.ok(rangeUiMain.innerHTML.indexOf('data-click-arg0="2026-08"')<rangeUiMain.innerHTML.indexOf('data-action="orders-credit-detail-upcoming"'),'past transaction months stay in the transactions heading before nearest charge');
-assert.match(rangeUiMain.innerHTML,/<details class="credit-history-menu[\s\S]*<b>חיובים קודמים<\/b>[\s\S]*data-click-arg0="2026-08"/,'past months are grouped behind one compact previous-charges menu instead of a horizontal heading rail');
-assert.doesNotMatch(rangeUiMain.innerHTML,/credit-detail-history-selectors/,'the transactions heading no longer renders the old horizontal history scroller');
+assert.match(rangeUiMain.innerHTML,/<details class="credit-cycle-menu credit-history-menu[\s\S]*<b>חיובים קודמים<\/b>[\s\S]*data-click-arg0="2026-08"/,'past months are grouped behind one compact previous-charges menu instead of a horizontal heading rail');
+assert.match(rangeUiMain.innerHTML,/<details class="credit-cycle-menu credit-future-menu[\s\S]*<b>חיובים הבאים<\/b>[\s\S]*data-click-arg0="2026-09"/,'current and future months are grouped behind one compact next-charges menu');
+assert.doesNotMatch(rangeUiMain.innerHTML,/credit-detail-month-tabs|credit-detail-history-selectors/,'transaction month choices do not render a horizontal rail that can widen the credit page');
 assert.match(rangeUiMain.innerHTML,/data-change="orders-credit-view"[\s\S]*value="2026" selected/,'credit horizon selector is rendered in the main credit filter toolbar');
 assert.match(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2026-09"/,'selected 2026 horizon keeps current/future 2026 transaction month frames');
 assert.doesNotMatch(rangeUiMain.innerHTML,/data-action="orders-credit-detail-month" data-click-arg0="2027-03"/,'selected 2026 horizon excludes 2027 transaction month frames');
