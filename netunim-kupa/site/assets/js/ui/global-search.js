@@ -23,7 +23,7 @@ export function createUiGlobalSearch({model,ui,setPage}){
   function navigateItem(item){
     if(!item)return false;
     if(item.group==='checks'){const check=model.state.checks?.find(row=>String(row.id)===String(item.id));ui.checkTab=checkIsClosedStatus(check?.status)?'closed':'open';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkFocus='all';ui.checkSearchValue='';setPage('checks');reveal('data-bulk-id',item.id);return true}
-    if(item.group==='credit'){ui.expensesTab='credit';ui.creditAccountFilter='all';ui.creditProviderFilter='all';ui.creditCardFilter='all';ui.creditSearchValue='';ui.creditDetailMode='month';ui.creditDetailFocus={monthKey:item.monthKey||'',cardKey:item.cardKey||''};setPage('credit');reveal('data-credit-search-id',item.id);return true}
+    if(item.group==='credit'){ui.expensesTab='credit';ui.creditAccountFilter='all';ui.creditProviderFilter='all';ui.creditCardFilter='all';ui.creditSearchValue='';ui.creditDetailMode='month';ui.creditDetailChargeDay='all';ui.creditDetailFocus={monthKey:item.monthKey||'',cardKey:item.cardKey||''};setPage('credit');reveal('data-credit-search-id',item.id);return true}
     if(item.group==='expenses'){ui.expensesTab='expenses';ui.expenseSearchValue='';setPage('credit');reveal('data-expense-id',item.id);return true}
     if(item.group==='cash'){ui.cashSearchValue='';setPage('cash');reveal('data-bulk-id',item.id);return true}
     if(item.group==='bank'){ui.bankAccountView=item.role==='home'?'home':'business';ui.bankDateMode='all';ui.bankDateFrom='';ui.bankDateTo='';ui.bankSearchValue='';setPage('bank');reveal('data-bank-search-id',item.id);return true}
