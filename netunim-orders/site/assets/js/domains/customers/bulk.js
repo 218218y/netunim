@@ -1,24 +1,25 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
+import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsCustomersBulk({customerUi, model, renderCustomers, toast, scheduleSave, confirmDialog, onTabChange=()=>{},rejectDebtRecoveryMutation=()=>false}){
-function setCustomerTab(tab){if(!['debts','orders'].includes(tab)||tab===customerUi.customerTab)return;customerUi.customerTab=tab;customerUi.customerBulkSelected.clear();onTabChange(tab);renderCustomers({resetScroll:true})}
+function setCustomerTab(tab){if(!['debts','orders'].includes(tab)||tab===customerUi.customerTab)return;customerUi.customerTab=tab;customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;onTabChange(tab);renderCustomers({resetScroll:true})}
 
 function customerBulkSource(){return customerUi.customerTab==='debts'?(model.state.customerDebts||[]):(model.state.customerOrders||[])}
 
 function customerVisibleBulkIds(){return [...document.querySelectorAll('[data-customer-bulk-id]')].map(el=>el.dataset.customerBulkId).filter(Boolean)}
 
-function toggleCustomerBulkMode(){customerUi.customerBulkMode=!customerUi.customerBulkMode;customerUi.customerBulkSelected.clear();renderCustomers()}
+function toggleCustomerBulkMode(){customerUi.customerBulkMode=!customerUi.customerBulkMode;customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;renderCustomers()}
 
-function toggleCustomerBulkRow(id,checked){if(!customerUi.customerBulkMode)return;if(!customerBulkSource().some(x=>x.id===id))return;if(checked)customerUi.customerBulkSelected.add(id);else customerUi.customerBulkSelected.delete(id);syncCustomerBulkUi()}
+function toggleCustomerBulkRow(id,checked,shiftKey=false){if(!customerUi.customerBulkMode)return;if(!customerBulkSource().some(x=>x.id===id))return;customerUi.customerBulkAnchorId=applyBulkRangeSelection({selected:customerUi.customerBulkSelected,orderedIds:customerVisibleBulkIds(),id,checked,shiftKey,anchorId:customerUi.customerBulkAnchorId});syncCustomerBulkUi()}
 
 function toggleCustomerBulkVisible(checked){if(!customerUi.customerBulkMode)return;customerVisibleBulkIds().forEach(id=>checked?customerUi.customerBulkSelected.add(id):customerUi.customerBulkSelected.delete(id));document.querySelectorAll('[data-customer-bulk-check]').forEach(cb=>cb.checked=checked);syncCustomerBulkUi()}
 
 function customerBulkHeader(){return customerUi.customerBulkMode?'<th class="bulk-check-col"><input id="customerBulkAll" class="bulk-check" type="checkbox" title="בחר את כל השורות המוצגות" data-change="toggle-customer-bulk-visible"></th>':''}
 
-function customerBulkCell(id){return customerUi.customerBulkMode?`<td class="bulk-check-col"><input class="bulk-check" data-customer-bulk-check type="checkbox" ${customerUi.customerBulkSelected.has(id)?'checked':''} aria-label="בחר שורה" data-change="toggle-customer-bulk-row" data-change-arg0="${esc(id)}"></td>`:''}
+function customerBulkCell(id){return customerUi.customerBulkMode?`<td class="bulk-check-col"><input class="bulk-check" data-customer-bulk-check type="checkbox" ${customerUi.customerBulkSelected.has(id)?'checked':''} aria-label="בחר שורה" data-action="toggle-customer-bulk-row" data-click-arg0="${esc(id)}"></td>`:''}
 
 function customerBulkControls(){return `<div class="module-bulk-controls"><button class="btn small bulk-select-toggle ${esc(customerUi.customerBulkMode?'active':'')}" data-action="toggle-customer-bulk-mode">${customerUi.customerBulkMode?'סיום בחירה':'בחירה'}</button>${customerUi.customerBulkMode?`<button id="customerBulkDelete" class="btn danger small bulk-delete-btn" data-action="delete-selected-customer-rows" disabled>מחק נבחרים</button>`:''}</div>`}
 
@@ -30,7 +31,7 @@ async function deleteSelectedCustomerRows(){
   const blocked=()=>collection==='customerDebts'&&ids.some(id=>rejectDebtRecoveryMutation(id));if(blocked())return;
   if(!await confirmDialog('מחיקת רשומות',`למחוק ${ids.length} ${label} שנבחרו?\n\nהמחיקה תישמר בגיבוי ובסנכרון כמו כל שינוי אחר.`,{confirmText:'מחק נבחרים'}))return;
   if(blocked())return;
-  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();scheduleSave(`${ids.length} ${label} נמחקו`,{deleteIntents:{[collection]:ids},mutationType:'bulk-delete',surface:`orders.bulk.${collection}`});renderCustomers();
+  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;scheduleSave(`${ids.length} ${label} נמחקו`,{deleteIntents:{[collection]:ids},mutationType:'bulk-delete',surface:`orders.bulk.${collection}`});renderCustomers();
 }
 
 function customerBottomSummary(st){

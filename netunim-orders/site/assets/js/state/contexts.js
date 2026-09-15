@@ -32,6 +32,7 @@ return {
     scrollViewportMemory:new Map(),
     checksBulkMode:false,
     checksBulkSelected:new Set(),
+    checksBulkAnchorId:null,
     pendingJsonRestore:null,
     cloudBackupCatalog:null,
     cloudBackupRaw:null,
@@ -51,6 +52,7 @@ return {
     supplierViewportMemory:new Map(),
     supplierBulkMode:false,
     supplierBulkSelected:new Set(),
+    supplierBulkAnchorId:null,
     supplierMoveTargetId:null
   },
   customerUi:{
@@ -58,13 +60,15 @@ return {
     customerFilter:'all',
     customerSearch:'',
     customerBulkMode:false,
-    customerBulkSelected:new Set()
+    customerBulkSelected:new Set(),
+    customerBulkAnchorId:null
   },
   serviceUi:{
     serviceFilter:'all',
     serviceSearch:'',
     serviceBulkMode:false,
-    serviceBulkSelected:new Set()
+    serviceBulkSelected:new Set(),
+    serviceBulkAnchorId:null
   },
   warehouseUi:{
     warehouseTab:'stock',
@@ -72,12 +76,15 @@ return {
     inventoryCategoryOrderDraft:[],
     warehouseBulkMode:false,
     warehouseBulkSelected:new Set(),
+    warehouseBulkAnchorId:null,
+    warehouseOrdersPickedOpen:false,
     inventoryCategoryOpen:new Set(),
     inventoryLocationOpen:new Set()
   },
   notesUi:{
     notesBulkMode:false,
-    notesBulkSelected:new Set()
+    notesBulkSelected:new Set(),
+    notesBulkAnchorId:null
   },
   calendarUi:{
     viewMode:'week',

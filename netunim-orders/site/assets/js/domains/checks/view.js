@@ -1,6 +1,7 @@
 import {checkFutureTotalData,checkMonthSummaryMarkup} from '../../shared/check-summary.js';
 import {money} from '../../core/money.js';
 import {esc} from '../../core/values.js';
+import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
 import {checkUrgency, checkBelongsToAccountData, checkIsClosedStatus, futureCheckMonthsData} from './model.js';
 import {checkMonthKey, checkMonthLabel, checkDateFmt, checkTodayISO} from '../../core/dates.js';
 import {searchMatch} from '../../core/search.js';
@@ -22,9 +23,9 @@ function checkDueBadge(c){const u=checkUrgency(c);if(u==='overdue')return '<span
 
 function checksCloudLabel(){if(checksSession.checksCloudLastError)return `<span class="checks-cloud-note warn" title="${esc(checksSession.checksCloudLastError)}">צ'קים בענן: נדרשת בדיקה</span>`;if(checksSession.checksCloudRevision>0)return `<span class="checks-cloud-note synced">צ'קים משותפים · מקור עצמאי</span>`;if(loadSession())return '<span class="checks-cloud-note warn">צ\'קים בענן: טרם נטענו מהמאגר המשותף</span>';return '<span class="checks-cloud-note">צ\'קים מקומיים · יסתנכרנו לאחר חיבור לענן</span>'}
 
-function toggleChecksBulkMode(){ui.checksBulkMode=!ui.checksBulkMode;ui.checksBulkSelected.clear()}
+function toggleChecksBulkMode(){ui.checksBulkMode=!ui.checksBulkMode;ui.checksBulkSelected.clear();ui.checksBulkAnchorId=null}
 
-function toggleChecksBulkRow(id,checked){if(!ui.checksBulkMode)return;if(checked)ui.checksBulkSelected.add(id);else ui.checksBulkSelected.delete(id);syncChecksBulkUi()}
+function toggleChecksBulkRow(id,checked,shiftKey=false){if(!ui.checksBulkMode||!model.state.checks.some(x=>x.id===id))return;ui.checksBulkAnchorId=applyBulkRangeSelection({selected:ui.checksBulkSelected,orderedIds:checksVisibleIds(),id,checked,shiftKey,anchorId:ui.checksBulkAnchorId});syncChecksBulkUi()}
 
 function checksVisibleIds(){return [...document.querySelectorAll('[data-check-id]')].map(x=>x.dataset.checkId).filter(Boolean)}
 
@@ -36,7 +37,7 @@ function checksBulkControls(){return `<div class="checks-bulk-actions"><button c
 
 function checksBulkHeader(){return ui.checksBulkMode?'<th class="checks-bulk-col"><input class="checks-bulk-check" type="checkbox" data-check-all title="בחר את כל השורות המוצגות" data-change="toggle-checks-bulk-visible"></th>':''}
 
-function checksBulkCell(id){return ui.checksBulkMode?`<td class="checks-bulk-col"><input class="checks-bulk-check" data-check-row type="checkbox" ${ui.checksBulkSelected.has(id)?'checked':''} aria-label="בחר צ'ק" data-change="toggle-checks-bulk-row" data-change-arg0="${esc(id)}"></td>`:''}
+function checksBulkCell(id){return ui.checksBulkMode?`<td class="checks-bulk-col"><input class="checks-bulk-check" data-check-row type="checkbox" ${ui.checksBulkSelected.has(id)?'checked':''} aria-label="בחר צ'ק" data-action="toggle-checks-bulk-row" data-click-arg0="${esc(id)}"></td>`:''}
 
 function checksMarkup({embedded=false,showEmbeddedStatus=true}={}){const bankAccountFilter=ui.checkAccount==='all'?null:ui.checkAccount,years=[...new Set(model.state.checks.filter(checkAccountFilterMatch).map(x=>x.dueDate?.slice(0,4)).filter(Boolean))].sort();if(ui.checkYear!=='all'&&!years.includes(ui.checkYear))ui.checkYear='all';const rows=visibleChecks();const groups={};rows.forEach(r=>(groups[checkMonthKey(r.dueDate)]??=[]).push(r));return `<div class="checks-page ${embedded?'checks-page-embedded':''}">${embedded?(showEmbeddedStatus?`<div class="checks-embedded-status">${checksCloudLabel()}</div>`:''):`<section class="hero checks-hero"><div><h1>צ'קים</h1></div><div class="actions">${checksCloudLabel()}</div></section>`}<div class="checks-toolbar"><div class="checks-segmented"><button class="${esc(ui.checkTab==='open'?'active':'')}" data-action="check-tab">הכל</button><button class="${esc(ui.checkTab==='deposited'?'active':'')}" data-action="check-tab-2">הופקדו</button><button class="${esc(ui.checkTab==='closed'?'active':'')}" data-action="check-tab-3">נסגרו</button></div><select data-change="check-year"><option value="all">כל השנים</option>${years.map(y=>`<option value="${esc(y)}" ${ui.checkYear===y?'selected':''}>${esc(y)}</option>`).join('')}</select><input class="checks-search" value="${esc(ui.checkSearchValue)}" placeholder="חיפוש שם / מספר / הערה" data-input="render-checks-search"><span class="checks-grand-total" id="checksGrandTotal">${checkTotalLabel()} <b>${money(visibleChecksTotal(rows))}</b></span><div class="check-account-toggle" role="group" aria-label="סיווג צ׳קים"><button class="${esc(ui.checkAccount==='all'?'active':'')}" data-action="check-account" data-click-arg0="all">הכל</button><button class="${esc(ui.checkAccount==='עסקי'?'active':'')}" data-action="check-account" data-click-arg0="עסקי">עסקי</button><button class="${esc(ui.checkAccount==='ביתי'?'active':'')}" data-action="check-account" data-click-arg0="ביתי">ביתי</button></div><span class="checks-spacer"></span>${checksBulkControls()}${ui.checksBulkMode?'<button type="button" class="btn" data-action="review-check-bank" data-click-arg2="remove-selected">הסר הודעות שטופלו לצ׳קים שנבחרו</button>':''}<button class="btn primary" data-action="open-check-modal">+ צ'ק חדש</button></div>${checkBankReviewMarkup(model.state.checks,bankAccountFilter)}${checkBankActivityMarkup(model.state.checks,bankAccountFilter,ui.checkBankHistoryPage,getBankImageContext())}${checkForecastMarkup()}<div id="checkGroups">${renderCheckGroups(groups)}</div></div>`}
 
