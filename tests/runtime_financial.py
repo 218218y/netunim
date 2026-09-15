@@ -133,6 +133,7 @@ def run_breakdown(app):
           fixture.creditSync.profiles=[{{profileId:'test',provider:'visaCal',accounts:[{{accountNumber:'2222',txns:[
             {{id:'billed',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-1369.78,chargedCurrency:'ILS',originalAmount:-1369.78,originalCurrency:'ILS',chargeAmountStatus:'reported',description:'חיוב מאומת'}},
             {{id:'refund',status:'completed',processedDate:due,transactionDate:today,chargedAmount:4.50,chargedCurrency:'ILS',originalAmount:4.50,originalCurrency:'ILS',description:'זיכוי מאומת'}},
+            {{id:'discounted-fee',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-9.62,chargedCurrency:'ILS',originalAmount:-19.25,originalCurrency:'ILS',description:'פועלים- דמי כרטיס',memo:'הנחה 9.63 ש״ח'}},
             {{id:'reward',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:15.01,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'החזר CashCal'}},
             {{id:'fee',status:'completed',processedDate:due,transactionDate:today,chargedAmount:null,chargedCurrency:'ILS',originalAmount:-17.90,originalCurrency:'ILS',chargeAmountStatus:'not_billed',description:'דמי כרטיס'}}
           ]}}]}}];
@@ -144,11 +145,16 @@ def run_breakdown(app):
             if(!row||!row.textContent.includes('לא נכלל בחיוב לפי כאל'))throw new Error('Informational CAL row is missing or appears as a charge: '+name);
           }}
           if(!rows.some(row=>row.textContent.includes('1,369.78')))throw new Error('Confirmed CAL debit is missing');
-          const table=document.querySelector('.credit-detail-table'),amountColumn=[...table.querySelectorAll('thead th')].findIndex(th=>th.textContent.trim()==='סכום עסקה');
+          const table=document.querySelector('.credit-detail-table'),headers=[...table.querySelectorAll('thead th')].map(th=>th.textContent.trim()),amountColumn=headers.indexOf('סכום מקורי'),chargeColumn=headers.indexOf('חיוב בחודש'),paymentColumn=headers.indexOf('תשלום');
+          if(amountColumn<0||chargeColumn<0||paymentColumn<0||!(amountColumn<paymentColumn&&paymentColumn<chargeColumn))throw new Error('Credit detail columns must present original amount before installment and actual monthly charge after it: '+headers.join('|'));
           for(const [name,amount] of [['זיכוי מאומת','-4.50'],['החזר CashCal','-15.01']]){{
             const row=rows.find(row=>row.textContent.includes(name)),text=row?.children[amountColumn]?.textContent||'';
             if(!text.includes(amount))throw new Error('Refund transaction amount lost its minus sign: '+name+' '+text);
           }}
+          const discounted=rows.find(row=>row.textContent.includes('פועלים- דמי כרטיס'));
+          if(!discounted)throw new Error('Discounted card fee row is missing');
+          const originalText=discounted.children[amountColumn]?.textContent||'',chargedText=discounted.children[chargeColumn]?.textContent||'';
+          if(!originalText.includes('19.25')||!chargedText.includes('9.62'))throw new Error('Discounted card fee must keep the issuer original amount for audit while emphasizing the actual billed amount: '+originalText+' / '+chargedText);
           return true;
         }})()""")
         action = 'orders-cashflow-alert-lead' if app == 'orders' else 'update-cashflow-alert-lead'

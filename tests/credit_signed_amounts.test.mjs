@@ -24,8 +24,8 @@ test('all issuers retain refund signs in original amounts, series totals and ren
     ]),rows=creditBillingRowsData(state,{asOf:due}),refund=rows.find(row=>row.creditId.includes('|refund|')),installment=rows.find(row=>row.creditId.includes('|installment-refund|'));
     assert.equal(refund.amount,-4.50);assert.equal(refund.displayAmount,-4.50);assert.equal(refund.originalAmount,-4.50);assert.equal(refund.totalAmount,-4.50);assert.equal(refund.series.totalAmount,-4.50);
     assert.equal(installment.amount,-50);assert.equal(installment.totalAmount,-100);assert.equal(installment.series.totalAmount,-100,'negative full installment total must not be replaced by its single installment');
-    assert.match(clean(creditDetailRowMarkup(refund)),/<td class="amount">[^<]*-4\.50/);
-    assert.match(clean(creditDetailRowMarkup(installment)),/<td class="amount">[^<]*-100/);
+    assert.match(clean(creditDetailRowMarkup(refund)),/<td class="amount credit-detail-total">[^<]*-4\.50/);
+    assert.match(clean(creditDetailRowMarkup(installment)),/<td class="amount credit-detail-total">[^<]*-100/);
     assert.equal(creditMonthlyDetailData(state,due).months[0].items.find(row=>row.creditId===refund.creditId).series.totalAmount,-4.50);
     assert.equal(kupaAccountCashflowData(state,'עסקי',due).credit,-4.50,'presentation must not change the charged cashflow sum');
     assert.deepEqual(ordersNormalize(state.creditSync),state.creditSync);
@@ -50,6 +50,8 @@ test('DigitalV3 issuers and Camoufox preserve signed refunds and reject null-to-
     assert.equal(tx.originalAmount,10);assert.equal(tx.chargedAmount,typeof amount==='number'?(amount===0?0:-amount):null);
     assert.equal(creditTransactionAmountData(tx).amount,typeof amount==='number'?amount:0);
   }
+  const discountedFee=normalizeIsracardDigitalV3Voucher({seqVoucherNumber:'fee',purchaseDate:'23/08/2026',originalAmount:19.25,billingAmount:9.62,originalCurrencyIso:'ILS',businessName:'פועלים- דמי כרטיס',discountAmount:9.63,moreInfo:'הנחה 9.63 ש"ח'},'2026-09-15');
+  assert.equal(discountedFee.originalAmount,-19.25);assert.equal(discountedFee.chargedAmount,-9.62);assert.equal(discountedFee.memo,'הנחה 9.63 ש"ח');
   for(const normalize of [normalizeAmexDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3ApprovedTransaction]){
     const tx=normalize({purchaseDate:'09/09/2026',originalAmount:20,ilsBillingAmount:null,currencyIso:'ILS'});assert.equal(tx.chargedAmount,null);assert.equal(creditTransactionAmountData(tx).amount,20);
   }
