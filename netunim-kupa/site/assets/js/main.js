@@ -392,6 +392,7 @@ const domainsBankSelectors=createDomainsBankSelectors({
 });
 
 const domainsChecksView=createDomainsChecksView({
+  getBankImageContext:()=>({bank:domainsBankController.bankBridgeUiState(),imageAction:'view-bank-cheque-image'}),
   ui,
   model,
   syncBulkUi:(...args)=>uiBulk.syncBulkUi(...args),

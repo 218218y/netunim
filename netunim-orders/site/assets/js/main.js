@@ -231,6 +231,7 @@ const uiNavigation=createUiNavigation({
 });
 
 const domainsChecksView=createDomainsChecksView({
+  getBankImageContext:()=>({bank:domainsFinanceController.snapshot().bank,imageAction:'view-orders-bank-cheque-image'}),
   model,
   ui,
   checksSession,

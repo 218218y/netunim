@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bankRecurringExpensesData,bankRecurringDebitHistoryData} from '../shared/bank-recurring-debits.js';
+import {bankRecurringExpensesData,bankRecurringIncomeData,bankRecurringDebitHistoryData} from '../shared/bank-recurring-debits.js';
 import {kupaAccountCashflowData} from '../shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as kupaFlow} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as ordersFlow} from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
@@ -18,6 +18,61 @@ function state(reference='2026-09-11'){
   return {expenses:[],cash:[],credits:[],checks:[],cashflowSettings:{homeCheckCutoffDay:20,businessCheckCutoffDay:20},bank:{source:'hapoalim',currentBalance:20000,asOfDate:reference,feed:{accountNumber:'business',balance:20000,syncedAt:reference,transactions:[pension()]},homeFeed:{accountNumber:'home',balance:20000,syncedAt:reference,transactions:homeRows()}}};
 }
 const automatic=(value,account='ביתי',reference='2026-09-11',horizon='2026-09-20')=>bankRecurringExpensesData(value,account,reference,horizon);
+
+const allowance=(date='2026-08-20',amount=1522)=>({...tx('קצבת ילדים',-amount,date),id:'allowance:'+date});
+test('child allowance is a separate home income from the latest bank amount, with an inclusive monthly 20th',()=>{
+  const value=state();value.bank.homeFeed.transactions.push(allowance());
+  const before=structuredClone(value);
+  for(const calculate of [kupaAccountCashflowData,kupaFlow,ordersFlow]){
+    const result=calculate(value,'ביתי','2026-09-11');
+    assert.equal(result.targetDate,'2026-09-20');assert.equal(result.incomes,1522);assert.equal(result.expenses,6021.62);assert.equal(result.projected,15500.38);
+    assert.equal(result.incomeRows[0].dueDate,'2026-09-20');assert.equal(result.incomeRows[0].sourceDate,'2026-08-20');
+    assert.equal(calculate(value,'ביתי','2026-09-11',{targetDate:'2026-09-19'}).incomes,0);
+    assert.equal(calculate(value,'ביתי','2026-09-11',{targetDate:'2026-10-20'}).incomes,3044);
+    assert.equal(calculate(value,'עסקי','2026-09-11').incomes,0);
+    assert.match(cashflowBreakdownMarkup(result),/הכנסות צפויות/);
+  }
+  assert.deepEqual(value,before);
+});
+test('an early, on-time or late actual child allowance replaces its monthly estimate and seeds the next month',()=>{
+  for(const date of ['2026-09-17','2026-09-20','2026-09-21','2026-09-25']){
+    const value=state(date);value.bank.homeFeed.transactions.push(allowance(),allowance(date,1600));value.bank.homeFeed.balance+=1600;
+    const result=kupaAccountCashflowData(value,'ביתי',date,{targetDate:'2026-09-30'});
+    assert.equal(result.incomes,0,date);assert.equal(result.projected,Math.round((21600-result.expenses)*100)/100);
+    const next=bankRecurringIncomeData(value,'ביתי',date,'2026-10-20');
+    assert.deepEqual(next.rows.map(r=>[r.dueDate,r.amount]),[['2026-10-20',1600]]);
+  }
+  const value=state('2027-02-01');value.bank.homeFeed.transactions=[allowance('2027-01-17')];
+  assert.equal(bankRecurringIncomeData(value,'ביתי','2027-02-01','2027-02-20').rows[0].dueDate,'2027-02-20','The requested estimate remains the 20th even on Saturday');
+});
+test('allowance identity, bank freshness and ambiguous monthly credits fail safely',()=>{
+  for(const patch of [{status:'pending'},{presenceState:'missing'},{currency:'USD'},{amount:-1522},{processedDate:'2026-09-22'},{description:'העברה',memo:'קצבת ילדים'}]){
+    const value=state('2026-09-21');value.bank.homeFeed.transactions.push(allowance(),{...allowance('2026-09-20'),...patch});
+    assert.equal(bankRecurringIncomeData(value,'ביתי','2026-09-21','2026-09-30').rows[0].amount,1522);
+  }
+  const value=state('2026-09-21');value.bank.homeFeed.transactions.push(allowance(),allowance('2026-09-20'),allowance('2026-09-21',100));
+  const result=bankRecurringIncomeData(value,'ביתי','2026-09-21','2026-09-30');
+  assert.equal(result.rows.length,0,'Two credits already affect the base balance; do not add another estimated credit');assert.equal(result.incomplete,true);
+  const noSource=state();assert.equal(bankRecurringIncomeData(noSource,'ביתי','2026-09-11','2026-09-30').rows.length,0);
+});
+test('allowance history survives partial reads and complete disappearance reopens its month',()=>{
+  const previous={accountNumber:'home',syncedAt:'2026-09-21',transactions:[allowance(),allowance('2026-09-20')]};
+  const next={accountNumber:'home',syncedAt:'2026-09-22',balance:20000,transactions:[]};
+  next.recurringDebitHistory=bankRecurringDebitHistoryData(previous,next,'home');assert.equal(next.recurringDebitHistory.length,2);
+  for(const normalize of [kupaFeed,ordersFeed])assert.equal(normalize(next).recurringDebitHistory.length,2);
+  next.recurringDebitHistory=bankRecurringDebitHistoryData(previous,{...next,recurringDebitHistory:[]},'home',{complete:true,from:'2026-09-01',to:'2026-09-22'});
+  const value=state('2026-09-22');value.bank.homeFeed=next;
+  assert.equal(bankRecurringIncomeData(value,'ביתי','2026-09-22','2026-09-30').rows[0].amount,1522);
+  assert.equal(bankRecurringDebitHistoryData(previous,{...next,accountNumber:'different',recurringDebitHistory:[]},'home').length,0);
+});
+test('allowance offsets same-day forecast expenses in warning calculation without changing earlier breaches',()=>{
+  const value=state();value.bank.homeFeed.balance=1000;value.bank.homeFeed.transactions=[allowance()];
+  value.expenses=[{id:'expense',account:'ביתי',amount:2000,date:'2026-09-20',active:true}];
+  let result=kupaAccountCashflowData(value,'ביתי','2026-09-11',{targetDate:'2026-09-20'});
+  assert.equal(result.projected,522);assert.equal(result.breach.active,false);
+  value.expenses[0].date='2026-09-19';result=kupaAccountCashflowData(value,'ביתי','2026-09-11',{targetDate:'2026-09-20'});
+  assert.equal(result.breach.breachDate,'2026-09-19');
+});
 
 test('the three requested obligations use bank cents independently of manual entries and agree across apps',()=>{
   const value=state(),before=structuredClone(value);

@@ -23,6 +23,11 @@ come exclusively from the bank. Check workflow changes do not credit an account 
   and is paginated without truncating stored events. Recording begins at the next complete
   snapshot; earlier unrecorded transitions are not reconstructed. Current associations can
   be rejected from this area even after acknowledgement; historical events are read-only.
+  Consecutive routine updates of the same claimed deposit are grouped under its latest
+  headline, with the previous evidence expandable inside. Missing/returned/cleared events
+  break the group. No persisted history is removed. A front-image button resolves the
+  exact transaction, account and unique number/amount/drawer item from the existing bank
+  display feed, using the existing private image viewer and retention window.
 * The user confirms or rejects an uncertain proposed association. Confirmation is durable and
   does not itself clear the check. Rejection restores the pre-match status/date and
   switches the check to manual control. Its transaction remains reserved, even if the

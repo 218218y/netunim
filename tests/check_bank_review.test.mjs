@@ -1,10 +1,29 @@
 import assert from 'node:assert/strict';
-import {applyCheckBankReview,checkBankReviewItems,checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup} from '../shared/check-bank-review.js';
+import {applyCheckBankReview,checkBankReviewItems,checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup,checkBankFrontImageMarkup} from '../shared/check-bank-review.js';
 import {createDomainsChecksEditor as ordersEditor} from '../netunim-orders/site/assets/js/domains/checks/editor.js';
 import {createDomainsChecksEditor as kupaEditor} from '../netunim-kupa/site/assets/js/domains/checks/editor.js';
 import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-center.js';
 
 const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amount:300,status:'הופקד - במעקב',dueDate:'2026-08-01',depositDate:'2026-08-03',bankMatch:{phase:'deposited',eventId:'17:deposited',transactionId:17,description:'הפק.שיק בסלולר',date:'2026-08-03',amount:1000,checkIds:['c1','c2'],previousStatus:'בקופה',previousDepositDate:null}});
+{
+  const c=sample();c.bankHistory=[{...c.bankMatch}];c.bankMatch={...c.bankMatch,eventId:'17:auto',autoConfirmed:true};
+  const html=checkBankActivityMarkup([c]);assert.match(html,/בבנק \(1\)/);assert.match(html,/התבקש אישור התאמה בעבר/);
+  assert.equal(checkBankReviewItems([c]).length,0,'Historical review request does not remain an active alert');
+  c.bankHistory=[{...c.bankMatch}];assert.match(checkBankActivityMarkup([c]),/בבנק \(1\)/,'New certainty and its history are one event');
+  c.bankHistory=[{...c.bankMatch,eventId:'17:pending',provisional:true},{...c.bankMatch},{...c.bankMatch,phase:'missing',eventId:'17:missing'}];
+  c.bankMatch={...c.bankMatch,eventId:'17:reappeared'};
+  assert.match(checkBankActivityMarkup([c]),/בבנק \(3\)/,'Disappearance breaks deposit grouping and remains independently visible');
+  const b={checkNumber:'00111',amount:300,bankNumber:'12'},m={...c.bankMatch,bankItem:b,accountRole:'home',accountKey:'home'};
+  const row={id:'17',date:'2026-09-15',checkDetails:{checkItems:[{checkNumber:'222',amount:700,imageFrontKey:'b'.repeat(64)},{...b,imageFrontKey:'a'.repeat(64)}]}};
+  const context={bank:{homeFeed:{accountNumber:'home',transactions:[row]}},now:()=>Date.parse('2026-09-16T12:00:00Z')};
+  assert.match(checkBankFrontImageMarkup(m,context),new RegExp('a'.repeat(64)));assert.doesNotMatch(checkBankFrontImageMarkup(m,context),new RegExp('b'.repeat(64)));
+  assert.match(checkBankFrontImageMarkup(m,{...context,imageAction:'view-orders-bank-cheque-image'}),/view-orders-bank-cheque-image/);
+  assert.equal(checkBankFrontImageMarkup({...m,accountKey:'other'},context),'');
+  assert.equal(checkBankFrontImageMarkup({...m,transactionId:18},context),'');
+  assert.equal(checkBankFrontImageMarkup({...m,bankItem:{...b,amount:700}},context),'');
+  assert.equal(checkBankFrontImageMarkup(m,{...context,now:()=>Date.parse('2027-01-01')}),'');
+  row.checkDetails.checkItems.push({...b,imageFrontKey:'c'.repeat(64)});assert.equal(checkBankFrontImageMarkup(m,context),'','Conflicting individual items never pick an image');
+}
 {
   const c=sample();c.bankMatch={...c.bankMatch,autoConfirmed:true,matchMethod:'number',bankItem:{checkNumber:'111',amount:300}};
   assert.equal(checkBankReviewItems([c]).length,0,'Server-confirmed exact evidence is not an alert');

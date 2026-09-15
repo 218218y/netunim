@@ -13,7 +13,7 @@ export function cashflowNotificationData(cashflow,settings={},reference=today())
   if(cashflow.balance===null||cashflow.balance===undefined||!Number.isFinite(Number(cashflow.balance)))return result;
   const movements=new Map();
   const add=(rows,sign,dateKey)=>{for(const row of rows||[]){const due=creditBillingISODate(row[dateKey]);if(!due)continue;const date=due<asOf?asOf:due;movements.set(date,(movements.get(date)||0)+sign*Math.round(Number(row.amount||0)*100))}};
-  add(window.creditRows,-1,'date');add(window.expenseRows,-1,'dueDate');add(window.checkRows,1,'dueDate');
+  add(window.creditRows,-1,'date');add(window.expenseRows,-1,'dueDate');add(window.checkRows,1,'dueDate');add(window.incomeRows,1,'dueDate');
   let cents=Math.round(Number(cashflow.balance)*100);
   const breach=(date)=>{const alert=cashflowAlertForAccount(cents/100,settings,role),daysUntilBreach=Math.round((Date.parse(date)-Date.parse(asOf))/86400000);return alert.active?{...result,...alert,active:true,breachDate:date,daysUntilBreach}:null};
   // A bank balance already below the threshold warrants an immediate notification.

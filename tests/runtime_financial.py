@@ -187,6 +187,12 @@ def run_recurring_debits(app):
           const posted=kupaAccountCashflowData(fixture,'ביתי','2026-09-16');
           if(posted.expenses!==4908.33||posted.projected!==3971.67)throw new Error('Posted debit counted twice');
           if(posted.recurringObligations[0].nextAmount!==1120||posted.recurringObligations[0].nextDueDate!=='2026-10-15')throw new Error('Next estimate did not roll forward');
+          fixture.bank.homeFeed.transactions.push({id:'allowance',date:'2026-08-20',description:'\u05e7\u05e6\u05d1\u05ea \u05d9\u05dc\u05d3\u05d9\u05dd',amount:1522,status:'completed'});
+          const withIncome=kupaAccountCashflowData(fixture,'\u05d1\u05d9\u05ea\u05d9','2026-09-16');
+          if(withIncome.targetDate!=='2026-09-20'||withIncome.incomes!==1522||withIncome.projected!==5493.67)throw new Error('Allowance missing from home forecast');
+          panel.innerHTML=cashflowBreakdownMarkup(withIncome);
+          if(!panel.textContent.includes('\u05d4\u05db\u05e0\u05e1\u05d5\u05ea \u05e6\u05e4\u05d5\u05d9\u05d5\u05ea')||!panel.textContent.includes('20/08/2026'))throw new Error('Allowance source missing from income section');
+
           return true;
         })()""")
         assert result is True

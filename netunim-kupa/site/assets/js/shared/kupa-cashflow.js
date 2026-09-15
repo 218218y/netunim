@@ -1,6 +1,6 @@
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
 import {cashflowNotificationData} from './cashflow-notification.js';
-import {bankRecurringExpensesData} from './bank-recurring-debits.js';
+import {bankRecurringExpensesData,bankRecurringIncomeData} from './bank-recurring-debits.js';
 import {creditAccountNextDisplayBillingDateData,creditBillingISODate,creditBillingRowsData,creditCyclesThroughHorizonData,creditCyclesThroughHorizonRowsData} from './credit-billing-cycles.js';
 
 function finite(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)?n:null}
@@ -502,22 +502,24 @@ function automaticCashflowHorizon(kupa,role,reconciliation,creditRows){
   const obligations=creditRows.filter(row=>{const group=groups.get(settlementGroupKey(row,'card'));return group.cents!==0||group.incomplete});
   const outstanding=obligations.filter(row=>row.date&&row.date<=monthEnd);
   const manual=kupaExpenseRowsBetweenData(kupa,reconciliation.start,monthlyCashflowBoundary(key)).filter(row=>expenseBelongsTo(row,role)&&moneyCents(row.amount)!==0);
-  const pending=outstanding.length>0||recurring.rows.length>0||manual.length>0;
-  const settledThisMonth=settlementRows.some(row=>monthKey(row.date)===key&&row.bankSettlementState==='settled')||recurring.obligations.some(row=>monthKey(row.lastDebit?.date)===key);
+  const income=bankRecurringIncomeData(kupa,role,forecastStart,monthEnd);
+  const pending=outstanding.length>0||recurring.rows.length>0||income.rows.length>0||manual.length>0;
+  const settledThisMonth=settlementRows.some(row=>monthKey(row.date)===key&&row.bankSettlementState==='settled')||[...recurring.obligations,...income.obligations].some(row=>monthKey(row.lastDebit?.date||row.lastCredit?.date)===key);
   const nextMonth=monthKey(addMonthsISO(`${key}-01`,1)),hasNextMonthCredit=obligations.some(row=>monthKey(row.date)===nextMonth);
   const targetMonth=pending||(!settledThisMonth&&!hasNextMonthCredit&&forecastStart<=monthlyCashflowBoundary(key))?key:nextMonth;
-  const dates=[monthlyCashflowBoundary(targetMonth),...obligations.filter(row=>monthKey(row.date)===targetMonth).map(row=>row.date)];
+  const targetIncome=bankRecurringIncomeData(kupa,role,forecastStart,monthCutoffISO(targetMonth,31));
+  const dates=[...targetIncome.rows.filter(row=>monthKey(row.dueDate)===targetMonth).map(row=>row.dueDate),monthlyCashflowBoundary(targetMonth),...obligations.filter(row=>monthKey(row.date)===targetMonth).map(row=>row.date)];
   return {targetMonth,targetDate:[forecastStart,...dates].sort().at(-1),awaitingSettlement:outstanding.some(row=>row.date<forecastStart)||recurring.rows.some(row=>row.dueDate<forecastStart)};
 }
 
 function cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,targetDate){
   const {start,forecastStart,unassignedRows}=reconciliation;
   const selected=remaining.filter(row=>row.date<=targetDate),creditRows=selected.filter(row=>row.includedInIlsTotal&&Math.abs(row.amount)>0.004);
-  const recurring=bankRecurringExpensesData(kupa,role,forecastStart,targetDate);
+  const recurring=bankRecurringExpensesData(kupa,role,forecastStart,targetDate),income=bankRecurringIncomeData(kupa,role,forecastStart,targetDate),incomeRows=income.rows;
   const expenseRows=[...kupaExpenseRowsBetweenData(kupa,start,targetDate).filter(row=>expenseBelongsTo(row,role)),...recurring.rows];
   const checkDeposits=kupaAccountCheckDepositsData(kupa,role,forecastStart,monthKey(targetDate),targetDate);
   const incompleteCreditRows=[...unassignedRows,...selected.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete)];
-  return {selected,creditRows,recurring,expenseRows,checkDeposits,incompleteCreditRows};
+  return {selected,creditRows,recurring,income,incomeRows,expenseRows,checkDeposits,incompleteCreditRows};
 }
 
 // reference is the date of calculation, targetDate is the requested future date.
@@ -534,17 +536,18 @@ export function kupaAccountCashflowData(kupa,account='עסקי',reference=localT
   if(options.targetDate&&(!requested||requested<forecastStart))throw new RangeError('תאריך התחזית חייב להיות תקין ולא מוקדם מתאריך החישוב או יתרת הבסיס');
   const targetDate=requested||automatic.targetDate,targetMonth=monthKey(targetDate);
   const contributions=cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,targetDate);
-  const {selected,creditRows,recurring,expenseRows,checkDeposits,incompleteCreditRows}=contributions;
+  const {selected,creditRows,recurring,income,incomeRows,expenseRows,checkDeposits,incompleteCreditRows}=contributions;
   const sum=rows=>rows.reduce((total,row)=>total+moneyCents(row.amount),0)/100;
   const credit=sum(creditRows),expenses=sum(expenseRows),checks=moneyCents(checkDeposits.total)/100,total=(moneyCents(credit)+moneyCents(expenses))/100;
-  const expectedChange=(moneyCents(checks)-moneyCents(total))/100,projected=balance===null?null:(moneyCents(balance)+moneyCents(expectedChange))/100;
+  const incomes=sum(incomeRows);
+  const expectedChange=(moneyCents(checks)+moneyCents(incomes)-moneyCents(total))/100,projected=balance===null?null:(moneyCents(balance)+moneyCents(expectedChange))/100;
   const elapsedIncompleteCreditRows=incompleteCreditRows.filter(row=>row.date&&row.date<forecastStart);
   const nextCreditRows=creditRows.filter(row=>row.date>=forecastStart),targetExpenseRows=expenseRows.filter(row=>row.dueDate>=forecastStart);
   const cycle=creditCyclesThroughHorizonRowsData(selected,role,forecastStart,unassignedRows,targetDate);
   const settlingCreditRows=selected.filter(row=>row.date<forecastStart&&['awaiting','expired'].includes(row.bankSettlementState));
-  const result={account:role,balance,credit,expenses,checks,total,expectedChange,creditRows,expenseRows,start,reference:forecastStart,end:targetDate,targetDate,targetMonth,automaticTargetDate:automatic.targetDate,customTarget:!!requested,awaitingSettlement:automatic.awaitingSettlement,
+  const result={account:role,balance,credit,expenses,incomes,incomeRows,recurringIncomeObligations:income.obligations,recurringIncomeWarnings:income.warnings,checks,total,expectedChange,creditRows,expenseRows,start,reference:forecastStart,end:targetDate,targetDate,targetMonth,automaticTargetDate:automatic.targetDate,customTarget:!!requested,awaitingSettlement:automatic.awaitingSettlement,
     nextCreditRows,nextCreditCycles:cycle.cycles,nextCreditTotal:sum(nextCreditRows),unassignedCreditRows:unassignedRows,elapsedIncompleteCreditRows,incompleteCreditRows,
-    forecastIncomplete:incompleteCreditRows.length>0||recurring.incomplete,recurringExpenseRows:recurring.rows,recurringObligations:recurring.obligations,recurringExpenseWarnings:recurring.warnings,
+    forecastIncomplete:incompleteCreditRows.length>0||recurring.incomplete||income.incomplete,recurringExpenseRows:recurring.rows,recurringObligations:recurring.obligations,recurringExpenseWarnings:recurring.warnings,
     settlingCreditRows,settlingCredit:sum(settlingCreditRows),expiredSettlementCreditRows:reconciliation.settlingCredit.expiredRows,expiredSettlementCredit:reconciliation.settlingCredit.expiredTotal,expiredSettlementWarnings:reconciliation.settlingCredit.warnings,unmatchedCreditRetained:true,
     elapsedCredit:sum(creditRows.filter(row=>row.date>=start&&row.date<forecastStart)),elapsedExpenses:sum(expenseRows.filter(row=>row.dueDate<forecastStart)),targetExpenseRows,targetExpenseTotal:sum(targetExpenseRows),
     checkRows:checkDeposits.rows,checkCutoffDay:checkDeposits.cutoffDay,checkCutoffDate:checkDeposits.cutoffDate,projected,alert:cashflowAlertForAccount(projected,kupa?.cashflowSettings,role)};
@@ -552,8 +555,8 @@ export function kupaAccountCashflowData(kupa,account='עסקי',reference=localT
   // current month. A custom date remains an exact, explicitly bounded enquiry.
   const monthEnd=monthCutoffISO(monthKey(forecastStart),31),warningEnd=requested?targetDate:targetDate>monthEnd?targetDate:monthEnd;
   const warning=warningEnd===targetDate?contributions:cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,warningEnd);
-  result.warningProjection={targetDate:warningEnd,creditRows:warning.creditRows,expenseRows:warning.expenseRows,checkRows:warning.checkDeposits.rows,
-    forecastIncomplete:warning.incompleteCreditRows.length>0||warning.recurring.incomplete};
+  result.warningProjection={targetDate:warningEnd,creditRows:warning.creditRows,expenseRows:warning.expenseRows,incomeRows:warning.incomeRows,checkRows:warning.checkDeposits.rows,
+    forecastIncomplete:warning.incompleteCreditRows.length>0||warning.recurring.incomplete||warning.income.incomplete};
   result.breach=cashflowNotificationData(result,kupa?.cashflowSettings,forecastStart);
   return result;
 }
