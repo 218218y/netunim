@@ -400,9 +400,17 @@ ok(all('grid-template-columns:minmax(0,1fr) 68px' in css
        and 'inset-inline-start:0;inset-inline-end:auto' in css
        and '.credit-future-menu .credit-cycle-menu-popover' not in css
        and 'background:#fff6d8' in css
+       and 'width:fit-content;max-width:100%' in css
+       and 'min-width:0;flex:1 1 auto' in css
+       and 'flex:0 0 auto;white-space:nowrap' in css
+       and 'height:44px' in css
+       and 'min-height:0;height:100%' in css
+       and 'padding-inline-start:9px;padding-inline-end:0' in css
+       and 'padding-inline-end:6px;overflow-y:auto' in css
+       and 'scrollbar-width:thin' in css
        and '.credit-detail-cycle-divider td b{font-size:13px;font-weight:900}' in css
        for css in (orders_css,kupa_css)),
-   "credit cycle controls: both apps keep the 10/15 choices side by side, anchor every RTL menu at its right edge, highlight pending bank settlement in yellow, and emphasize billing-time dividers")
+   "credit cycle controls: both apps keep the 10/15 choices side by side, anchor every RTL menu at its right edge, keep forecast amounts in bounds, center selector content, place the scrollbar at the menu edge, highlight pending bank settlement in yellow, and emphasize billing-time dividers")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
