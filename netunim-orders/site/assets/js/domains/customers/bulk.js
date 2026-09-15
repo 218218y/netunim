@@ -19,7 +19,7 @@ function toggleCustomerBulkVisible(checked){if(!customerUi.customerBulkMode)retu
 
 function customerBulkHeader(){return customerUi.customerBulkMode?'<th class="bulk-check-col"><input id="customerBulkAll" class="bulk-check" type="checkbox" title="בחר את כל השורות המוצגות" data-change="toggle-customer-bulk-visible"></th>':''}
 
-function customerBulkCell(id){return customerUi.customerBulkMode?`<td class="bulk-check-col"><input class="bulk-check" data-customer-bulk-check type="checkbox" ${customerUi.customerBulkSelected.has(id)?'checked':''} aria-label="בחר שורה" data-action="toggle-customer-bulk-row" data-click-arg0="${esc(id)}"></td>`:''}
+function customerBulkCell(id){return customerUi.customerBulkMode?`<td class="bulk-check-col"><input class="bulk-check" data-customer-bulk-check type="checkbox" ${customerUi.customerBulkSelected.has(id)?'checked':''} aria-label="בחר שורה" data-action="toggle-customer-bulk-row" data-change="toggle-customer-bulk-row" data-click-arg0="${esc(id)}"></td>`:''}
 
 function customerBulkControls(){return `<div class="module-bulk-controls"><button class="btn small bulk-select-toggle ${esc(customerUi.customerBulkMode?'active':'')}" data-action="toggle-customer-bulk-mode">${customerUi.customerBulkMode?'סיום בחירה':'בחירה'}</button>${customerUi.customerBulkMode?`<button id="customerBulkDelete" class="btn danger small bulk-delete-btn" data-action="delete-selected-customer-rows" disabled>מחק נבחרים</button>`:''}</div>`}
 

@@ -32,6 +32,22 @@ test('shift bulk selection selects the visible inclusive range and keeps the anc
   assert.deepEqual([...selected],['e']);
 });
 
+
+test('bulk row selection is idempotent across click and change for the same gesture',()=>{
+  const selected=new Set();
+  let anchor=applyBulkRangeSelection({selected,orderedIds:['a','b','c'],id:'a',checked:true});
+  assert.equal(anchor,'a');
+  anchor=applyBulkRangeSelection({selected,orderedIds:['a','b','c'],id:'a',checked:true,anchorId:anchor});
+  assert.equal(anchor,'a');
+  assert.deepEqual([...selected],['a']);
+  anchor=applyBulkRangeSelection({selected,orderedIds:['a','b','c'],id:'c',checked:true,shiftKey:true,anchorId:anchor});
+  assert.equal(anchor,'a');
+  assert.deepEqual([...selected],['a','b','c']);
+  anchor=applyBulkRangeSelection({selected,orderedIds:['a','b','c'],id:'c',checked:true,anchorId:anchor});
+  assert.equal(anchor,'a');
+  assert.deepEqual([...selected],['a','b','c']);
+});
+
 test('history cleanup blocks active operational rows',()=>{
   const state={inventoryEvents:[
     {id:'incoming',itemId:'i1',type:'order',quantity:4,receivedQuantity:1},
