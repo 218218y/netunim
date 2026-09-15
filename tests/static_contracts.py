@@ -354,13 +354,20 @@ ok('data-action="check-tab">הכל</button>' in orders_checks_view
    "checks workflow: the first tab is the non-closed all view, and due-check direct deposit has its own collision-free responsive action rail")
 ok("checkForecastMarkup()" in orders_checks_view
    and "futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear,account:ui.checkAccount})" in orders_checks_view
-   and "צ׳קים בקופה לפי חודשים קדימה" not in orders_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in orders_checks_view
-   and "צ׳קים בקופה לפי חודשים קדימה" not in kupa_checks_view and "חודשים עד החודש האחרון שבו קיים צ׳ק" not in kupa_checks_view
-   and "checks-forecast-head" not in orders_checks_view and 'class="section-head"' not in kupa_checks_view.split("function checkForecastMarkup(){",1)[1].split("function checkForecastBarRow",1)[0]
+   and "תצוגת צ׳קים לפי חודש" in orders_checks_view and "תצוגת צ׳קים לפי חודש" in kupa_checks_view
+   and 'data-action="toggle-checks-forecast"' in orders_checks_view and 'data-action="toggle-checks-forecast"' in kupa_checks_view
+   and 'id="checksForecastBody"' in orders_checks_view and 'id="checksForecastBody"' in kupa_checks_view
+   and "checksForecastOpen:false" in (ROOT/'netunim-orders/site/assets/js/state/contexts.js').read_text(encoding='utf-8') and "checksForecastOpen:false" in (ROOT/'netunim-kupa/site/assets/js/state/contexts.js').read_text(encoding='utf-8')
+   and '.forecast-disclosure-head{display:flex;align-items:center;min-height:38px' in orders_css and '.forecast-disclosure-toggle.open .forecast-disclosure-chevron{transform:rotate(180deg)}' in orders_css
    and '.checks-forecast-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px}' in orders_css
    and '@media(max-width:620px){.checks-forecast-columns{grid-template-columns:1fr}' in orders_css
    and (ROOT / "shared/check-forecast.js").read_text(encoding="utf-8") == (K / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8") == (O / "site/assets/js/shared/check-forecast.js").read_text(encoding="utf-8"),
-   "shared checks forecast: Orders Kupa and Kupa use the same headerless month-range model and responsive two-column presentation")
+   "shared checks forecast: Orders Kupa and Kupa use the same month-range model behind a compact disclosure collapsed by default, preserving responsive two-column presentation when opened")
+ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
+   and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
+   and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
+   and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8'),
+   "credit month affordance: transaction month frames and future forecast month frames expose whole-frame hover/focus feedback in both apps")
 ok("6 חודשים קדימה — אשראי עסקי והוצאות" not in kupa_dashboard_view
    and "monthSumBusinessInstallments" not in kupa_dashboard_view
    and "monthSumExpenses" not in kupa_dashboard_view,

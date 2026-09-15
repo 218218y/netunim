@@ -58,6 +58,8 @@ return {
     notesSearchValue:'',notesSheetSearchValue:'',
     bankSyncOpen:false,
     creditSyncOpen:false,
+    creditForecastOpen:false,
+    checksForecastOpen:false,
     bulkCollection:null,
     bulkSelected:new Set(),
     modalDraftGuard:null,

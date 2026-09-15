@@ -319,3 +319,23 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .credit-cycle-selector-header .credit-cycle-main>b{font-size:10px}
 .credit-cycle-selector-header .credit-charge-day{font-size:8.5px}
 
+
+/* Compact disclosure rows for future credit/check month summaries. */
+.forecast-disclosure-section{overflow:hidden}
+.forecast-disclosure-head{display:flex;align-items:center;min-height:38px;background:#fbfcfb}
+.forecast-disclosure-toggle{appearance:none;min-width:0;flex:1 1 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;border:0;background:transparent;color:var(--text);padding:8px 12px;font:inherit;font-size:11px;font-weight:850;text-align:right;cursor:pointer}
+.forecast-disclosure-toggle:hover,.forecast-disclosure-toggle:focus-visible{background:#f5f8f6;outline:none}
+.forecast-disclosure-toggle>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.forecast-disclosure-chevron{display:inline-grid;place-items:center;flex:0 0 auto;font-size:15px;color:var(--muted);transition:transform .16s ease}
+.forecast-disclosure-toggle.open .forecast-disclosure-chevron{transform:rotate(180deg)}
+.forecast-disclosure-controls{display:flex;align-items:center;flex:0 0 auto;padding:4px 9px 4px 4px;border-inline-start:1px solid var(--line)}
+.forecast-disclosure-controls select{height:29px;min-width:142px;max-width:180px;padding-block:3px;font-size:10.5px}
+.forecast-disclosure-body{border-top:1px solid var(--line);background:#fff}
+.forecast-disclosure-body[hidden]{display:none!important}
+.credit-forecast-meta{display:grid;gap:2px;padding:8px 14px 0;color:var(--muted);font-size:10px}
+.credit-forecast-meta>b{color:var(--text);font-size:11px}
+.credit-cycle-selector{transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.credit-cycle-selector:hover,.credit-cycle-selector:focus-within{border-color:#b7c6c0;box-shadow:0 0 0 2px rgba(95,124,119,.07)}
+.credit-forecast-month{transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.credit-forecast-month:hover,.credit-forecast-month:focus-within{border-color:#b7c6c0;box-shadow:0 0 0 2px rgba(95,124,119,.06)}
+@media(max-width:480px){.forecast-disclosure-toggle{padding-inline:9px;font-size:10.5px}.forecast-disclosure-controls{padding-inline:5px}.forecast-disclosure-controls select{min-width:118px;max-width:128px;font-size:9.5px}}

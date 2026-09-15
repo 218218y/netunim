@@ -30,9 +30,8 @@ document.getElementById('content').innerHTML=`<div class="toolbar checks-toolbar
 
 function checkForecastMarkup(){
   const months=futureCheckMonths({fromMonth:monthKey(todayISO()),year:ui.checkYear,account:ui.checkAccount});
-  if(!months.length)return `<section class="section checks-forecast"><div class="section-body"><div class="empty compact">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div></section>`;
-  const max=Math.max(1,...months.map(x=>Math.abs(x.total))),split=Math.ceil(months.length/2),columns=[months.slice(0,split),months.slice(split)];
-  return `<section class="section checks-forecast"><div class="section-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="bar-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div></section>`;
+  const max=Math.max(1,...months.map(x=>Math.abs(x.total))),split=Math.ceil(months.length/2),columns=[months.slice(0,split),months.slice(split)],body=months.length?`<div class="section-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="bar-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div>`:`<div class="section-body"><div class="empty compact">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div>`;
+  return `<section class="section checks-forecast forecast-disclosure-section"><div class="forecast-disclosure-head"><button type="button" class="forecast-disclosure-toggle ${ui.checksForecastOpen?'open':''}" data-action="toggle-checks-forecast" aria-expanded="${ui.checksForecastOpen===true}" aria-controls="checksForecastBody"><span>תצוגת צ׳קים לפי חודש</span><span class="forecast-disclosure-chevron" aria-hidden="true">⌄</span></button></div><div id="checksForecastBody" class="forecast-disclosure-body" ${ui.checksForecastOpen?'':'hidden'}>${body}</div></section>`;
 }
 
 function checkForecastBarRow(month,max){const width=month.total===0?0:Math.max(2,Math.abs(month.total)/max*100);return `<div class="bar-row"><b>${esc(monthLabel(month.key))}</b><div class="bar"><i style="--bar:#76929a;width:${esc(width)}%"></i></div><div class="num">${money(month.total)}</div></div>`}

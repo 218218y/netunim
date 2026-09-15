@@ -15,6 +15,8 @@ return {
     creditSearchValue:'',
     bankSyncOpen:false,
     creditSyncOpen:false,
+    creditForecastOpen:false,
+    checksForecastOpen:false,
     creditView:'rolling12',
     creditAccountFilter:'all',
     creditProviderFilter:'all',

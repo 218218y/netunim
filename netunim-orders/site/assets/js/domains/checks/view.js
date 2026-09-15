@@ -39,9 +39,8 @@ function checksMarkup({embedded=false,showEmbeddedStatus=true}={}){const years=[
 
 function checkForecastMarkup(){
   const months=futureCheckMonthsData(model.state,{fromMonth:checkMonthKey(checkTodayISO()),year:ui.checkYear,account:ui.checkAccount});
-  if(!months.length)return `<section class="checks-forecast"><div class="checks-forecast-body"><div class="checks-forecast-empty">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div></section>`;
-  const max=Math.max(1,...months.map(x=>Math.abs(x.total))),split=Math.ceil(months.length/2),columns=[months.slice(0,split),months.slice(split)];
-  return `<section class="checks-forecast"><div class="checks-forecast-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="checks-forecast-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div></section>`;
+  const max=Math.max(1,...months.map(x=>Math.abs(x.total))),split=Math.ceil(months.length/2),columns=[months.slice(0,split),months.slice(split)],body=months.length?`<div class="checks-forecast-body"><div class="checks-forecast-columns">${columns.filter(column=>column.length).map(column=>`<div class="checks-forecast-list">${column.map(x=>checkForecastBarRow(x,max)).join('')}</div>`).join('')}</div></div>`:`<div class="checks-forecast-body"><div class="checks-forecast-empty">אין צ׳קים עתידיים בקופה בטווח שנבחר.</div></div>`;
+  return `<section class="checks-forecast forecast-disclosure-section"><div class="forecast-disclosure-head"><button type="button" class="forecast-disclosure-toggle ${ui.checksForecastOpen?'open':''}" data-action="toggle-checks-forecast" aria-expanded="${ui.checksForecastOpen===true}" aria-controls="checksForecastBody"><span>תצוגת צ׳קים לפי חודש</span><span class="forecast-disclosure-chevron" aria-hidden="true">⌄</span></button></div><div id="checksForecastBody" class="forecast-disclosure-body" ${ui.checksForecastOpen?'':'hidden'}>${body}</div></section>`;
 }
 
 function checkForecastBarRow(month,max){const width=month.total===0?0:Math.max(2,Math.abs(month.total)/max*100);return `<div class="checks-forecast-row"><b>${esc(checkMonthLabel(month.key))}</b><div class="checks-forecast-bar"><i style="width:${esc(width)}%"></i></div><div class="checks-forecast-num">${money(month.total)}</div></div>`}
