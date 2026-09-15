@@ -149,6 +149,9 @@ loopback ports, and disposable database. Running suites never share a test datab
 Cleanup handles Windows read-only attributes inherited by copytree, including read-only directories: the
 attribute is cleared only on the failing temporary copy, never on the repository's original site files.
 Reports contain diagnostics only and are never accepted as deployment approval or reused as passing results.
+Morning's document matrix uses a distinct debt for each independent case. Replacing a debt's progress while
+reusing its ID would conflict with the real append-only outbox merge. A controlled old acknowledgement is
+held across a case boundary to test that isolation deterministically, without disabling cloud synchronization.
 
 After changing a public asset or canonical shared source:
   python tools/sync-assets.py

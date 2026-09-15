@@ -26,9 +26,10 @@ cloudAuth.supaFetch=async(path,options)=>{
  if(req.action==='document_pdf')return new Response(new TextEncoder().encode('%PDF-1.4\nfixture'),{headers:{'Content-Type':'application/pdf'}});
  return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}});
 };
-window.auditDebt=()=>state.customerDebts.find(d=>d.id==='AUDIT');
+window.auditDebtId='AUDIT';
+window.auditDebt=()=>state.customerDebts.find(d=>d.id===window.auditDebtId);
 window.auditProgress=async()=>{const m=await import('./assets/js/shared/customer-debt-progress.js');return m.customerDebtProgressData(window.auditDebt())};
-window.auditOpen=async()=>{switchView('customers');openMorningDocument('AUDIT');await window.auditWait(()=>document.querySelector('[data-action="morning-create"]')&&!document.querySelector('[data-action="morning-create"]').disabled)};
+window.auditOpen=async()=>{switchView('customers');openMorningDocument(window.auditDebtId);await window.auditWait(()=>document.querySelector('[data-action="morning-create"]')&&!document.querySelector('[data-action="morning-create"]').disabled)};
 window.auditIssue=async(type,amount,policy={})=>{
  scheduleSave('fixture debt before issuance');window.auditSetServer({operation:null});await window.auditOpen();
  document.querySelector('input[name="morningDocumentType"][value="'+type+'"]').click();
@@ -63,25 +64,47 @@ def document_matrix():
         seed(browser)
         result=js(browser, r"""
         const passed=[];
+        // Independent cases must not erase progress from a reused debt ID: the
+        // real outbox can still ACK an earlier snapshot and correctly merge its
+        // append-only payment/invoice events back into that same debt.
+        const startCase=(name,debtProgress=[])=>{
+          window.auditDebtId='MATRIX-'+name;
+          state.customerDebts.push({id:window.auditDebtId,customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false,debtProgress});
+        };
         for(const type of [320,400,305]){
-          state.customerDebts[0]={id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false};
+          startCase('type-'+type);
           await window.auditIssue(type,100);const p=await window.auditProgress();
           window.auditAssert(p.paymentApplied===(type===305?0:100)&&p.invoiceApplied===(type===400?0:100),'document type '+type);
           passed.push('type-'+type);
         }
-        state.customerDebts[0]={id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false};
+        startCase('partial-sequence');
         for(const [type,amount,payment,invoice] of [[320,20,20,20],[400,30,50,20],[305,40,50,60],[320,150,100,100]]){
           await window.auditIssue(type,amount);const p=await window.auditProgress();
           window.auditAssert(p.paymentApplied===payment&&p.invoiceApplied===invoice,'partial/over balance');
           window.auditAssert(p.remainingPayment>=0&&p.remainingInvoice>=0,'negative remainder');
         }
         passed.push('partial-sequence','above-balance');
+        // Hold one real outbox acknowledgement across the next case boundary.
+        // This makes the former reused-ID race reproducible without CPU sleeps.
+        const originalRpcSave=cloudTransport.rpcSave;
+        let releaseAck,ackStarted;
+        const ackGate=new Promise(resolve=>{releaseAck=resolve}),started=new Promise(resolve=>{ackStarted=resolve});
+        cloudTransport.rpcSave=async(...args)=>{
+          const result=await originalRpcSave(...args);
+          cloudTransport.rpcSave=originalRpcSave;ackStarted();await ackGate;return result;
+        };
+        window.auditDebt().note='ack across independent cases';scheduleSave('matrix prior case');
+        const oldWrite=requestCloudSave('matrix prior case');await started;
         for(const kind of ['payment','invoice']){
-          state.customerDebts[0]={id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false,debtProgress:[{id:'manual-'+kind,kind,action:'add',amount:30,source:'manual',createdAt:new Date().toISOString()}]};
+          startCase('manual-'+kind,[{id:'manual-'+kind,kind,action:'add',amount:30,source:'manual',createdAt:new Date().toISOString()}]);
+          if(kind==='payment'){
+            scheduleSave('matrix next case');await getCloudPending();releaseAck();await oldWrite;
+          }
           await window.auditIssue(320,30,{[kind==='payment'?'morningApplyPayment':'morningApplyInvoice']:false});
-          const p=await window.auditProgress();window.auditAssert(p.paymentApplied===30&&p.invoiceApplied===30,'manual opt-out '+kind);
+          const p=await window.auditProgress();window.auditAssert(p.paymentApplied===30&&p.invoiceApplied===30,'manual opt-out '+kind+' '+JSON.stringify({progress:p,debt:window.auditDebt(),operation:window.auditServer.operation,recovery:localStorage.getItem('orders.morning.pending-issuance.v1'),calls:window.auditCalls.slice(-3)}));
           passed.push('manual-'+kind+'-opt-out');
         }
+        passed.push('prior-ack-isolated-case');
         const before=JSON.stringify(window.auditDebt());let saves=0,renders=0;
         const originalSave=storagePersistence.scheduleSave,originalRender=domainsCustomers.view.renderCustomers;
         storagePersistence.scheduleSave=(...args)=>{saves++;return originalSave(...args)};
@@ -89,10 +112,10 @@ def document_matrix():
         await reconcileMorningDocument();await reconcileMorningDocument();
         window.auditAssert(JSON.stringify(window.auditDebt())===before&&saves===0&&renders===0,'create/reconciliation duplicate saved or rendered');
         const op=window.auditServer.operation;
-        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:'AUDIT',operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
+        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
         window.auditAssert(saves===0&&renders===0,'durable direct duplicate saved or rendered');
-        setCustomerFlag('AUDIT','paid',false);const resetBefore=JSON.stringify(window.auditDebt().debtProgress);
-        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:'AUDIT',operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
+        setCustomerFlag(window.auditDebtId,'paid',false);const resetBefore=JSON.stringify(window.auditDebt().debtProgress);
+        domainsCustomers.editor.applyVerifiedMorningDocument({debtId:window.auditDebtId,operationId:op.operation_id,type:320,amount:30,applyInvoice:false});
         window.auditAssert((await window.auditProgress()).paymentApplied===0&&JSON.stringify(window.auditDebt().debtProgress)===resetBefore,'reset event resurrected');
         passed.push('idempotent-save-render','reset-replay');return passed;
         """)
