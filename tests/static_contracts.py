@@ -371,13 +371,20 @@ ok("checkAccount:'all'" in (ROOT/'netunim-kupa/site/assets/js/state/contexts.js'
    and "ui.checkAccount==='all'||checkBelongsToAccountData" in orders_checks_view
    and "account==='all'?'all'" in (ROOT/'shared/check-forecast.js').read_text(encoding='utf-8'),
    "checks account display: all is the default in both apps and combines business/home rows only at the display/forecast filter boundary")
+credit_detail_controls=(ROOT/'shared/credit-detail-controls.js').read_text(encoding='utf-8')
 ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
    and 'data-change="orders-credit-view"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8').split('function creditFiltersMarkup',1)[1].split('function creditForecastMarkup',1)[0]
-   and 'credit-detail-history-selectors' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
-   and 'credit-detail-history-selectors' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
-   and 'creditViewAllowsMonth' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
-   and 'creditViewAllowsMonth' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
-   "credit horizon: selector is restored to the main toolbar, future transaction month frames share its range, and prior months have a dedicated heading rail")
+   and 'creditHistoryMenuMarkup' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+   and 'creditHistoryMenuMarkup' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
+   and 'credit-history-menu' in credit_detail_controls
+   and 'creditViewAllowsMonth' in credit_detail_controls
+   and credit_detail_controls == (K/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8') == (O/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8'),
+   "credit horizon and detail controls: future month frames share the toolbar range while prior months use one shared compact history menu")
+ok('.credit-history-menu{position:relative' in orders_css
+   and '.credit-history-menu{position:relative' in (K/'site/assets/app.css').read_text(encoding='utf-8')
+   and 'overflow-x:auto' not in orders_css.split('.credit-history-menu{position:relative',1)[1].split('.credit-cycle-selector{',1)[0]
+   and 'creditDetailChargeHeadingMarkup' in credit_detail_controls,
+   "credit detail heading: prior charges no longer require a horizontal heading rail and the visible list exposes its charge total")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
