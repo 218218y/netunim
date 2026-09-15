@@ -1,23 +1,49 @@
 import {esc} from '../../core/values.js';
-import {WAREHOUSE_LOCATIONS, inventoryCategoryName, inventorySearchMatch, normalizedWarehouseLocation} from './model.js';
+import {WAREHOUSE_LOCATIONS, inventoryCategoryName, inventorySearchMatch, normalizedWarehouseLocation, inventoryLocationStatsData, inventoryStockStatus} from './model.js';
 import {num} from '../../core/money.js';
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsInventoryView({warehouseUi, model, orderedInventoryCategoryNames, inventoryStats, inventoryGroupStats, inventoryCategoryGroups, inventoryLocationText, inventoryItemLocations}){
+export function createDomainsInventoryView({warehouseUi, model, orderedInventoryCategoryNames, inventoryStats, inventoryCategoryGroups}){
 function inventoryLocationOptions(value=''){const current=normalizedWarehouseLocation(value);return WAREHOUSE_LOCATIONS.map(x=>`<option value="${esc(x)}" ${x===current?'selected':''}>${esc(x)}</option>`).join('')}
+function inventoryCategoryDatalist(){return `<datalist id="inventoryCategoryList">${orderedInventoryCategoryNames().filter(x=>x!=='ללא קטגוריה').map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist>`}
 
-function inventoryCategoryDatalist(){const names=orderedInventoryCategoryNames().filter(x=>x!=='ללא קטגוריה');return `<datalist id="inventoryCategoryList">${names.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist>`}
+function stockCard(i,location=''){
+  const balances=inventoryLocationStatsData(model.state,i.id),s=location?balances[location]:inventoryStats(i.id),status=inventoryStockStatus(i,inventoryStats(i.id));
+  const selected=warehouseUi.warehouseBulkSelected.has(i.id),short=(location?[s]:Object.values(balances)).some(x=>x.available<0);
+  const places=Object.values(balances).filter(x=>x.onHand||x.reserved||x.incoming);
+  const button=(action,label)=>`<button class="btn small" data-action="${action}" data-click-arg0="${esc(i.id)}" data-click-arg1="${esc(location)}">${label}</button>`;
+  return `<tr data-stock-bulk-id="${esc(i.id)}" data-warehouse-bulk-id="${esc(i.id)}" class="${short?'stock-short':''} ${selected?'bulk-selected-card':''}">
+    <td class="stock-name-cell">${warehouseUi.warehouseBulkMode?`<input aria-label="בחר ${esc(i.name)}" class="bulk-check" data-stock-bulk-check data-warehouse-bulk-check type="checkbox" ${selected?'checked':''} data-action="toggle-warehouse-bulk-row" data-change="toggle-warehouse-bulk-row" data-click-arg0="${esc(i.id)}">`:''}<button class="stock-name-link" data-action="open-inventory-details" data-click-arg0="${esc(i.id)}">${esc(i.name)}</button><div class="source">${esc(inventoryCategoryName(i))}${i.sku?` · ${esc(i.sku)}`:''}</div></td>
+    <td class="stock-location-cell">${location?esc(location):places.length?places.map(x=>`<span class="stock-location-chip">${esc(x.location)} <b>${num(x.onHand)}</b></span>`).join(' '):`<span class="source">${esc(i.defaultLocation||'לא ידוע')} · אין מלאי</span>`}</td>
+    <td data-label="במחסן">${num(s.onHand)}</td><td data-label="שמור">${num(s.reserved)}</td><td data-label="פנוי" class="stock-available ${s.available<0?'badtext':'goodtext'}">${num(s.available)}</td><td data-label="בדרך" title="פנוי צפוי: ${num(s.projected)}">${num(s.incoming)}</td>
+    <td><span class="badge ${short?'red':status.cls}">${short?'חוסר במחסן':status.label}</span></td>
+    <td><div class="stock-actions">${s.incoming?button('open-stock-receive','קליטה'):status.needsOrder?button('open-inventory-event-modal','הזמן'):''}<details class="warehouse-menu"><summary aria-label="פעולות עבור ${esc(i.name)}" title="פעולות">⋯</summary><div class="warehouse-menu-content">${button('open-inventory-event-modal','הזמן מלאי')}${button('open-stock-receive','קליטה למחסן')}${button('open-inventory-event-modal-2','שמור ללקוח')}${button('open-stock-transfer','העברה בין מחסנים')}${button('open-stock-adjustment-modal','ספירת מלאי')}${button('open-inventory-item-modal','עריכת פריט')}${button('open-inventory-details','פרטים ותנועות')}</div></details></div></td></tr>`;
+}
 
-function stockCard(i){const s=inventoryStats(i.id),selected=warehouseUi.warehouseBulkSelected.has(i.id);return `<article data-stock-bulk-id="${esc(i.id)}" data-warehouse-bulk-id="${esc(i.id)}" class="stock-row ${esc(s.available<0?'stock-short':'')} ${esc(selected?'bulk-selected-card':'')}">${warehouseUi.warehouseBulkMode?`<label class="card-bulk-select" title="בחר פריט מלאי"><input class="bulk-check" data-stock-bulk-check data-warehouse-bulk-check type="checkbox" ${selected?'checked':''} data-action="toggle-warehouse-bulk-row" data-change="toggle-warehouse-bulk-row" data-click-arg0="${esc(i.id)}"></label>`:''}<div class="stock-row-main"><div class="stock-title">${esc(i.name)}</div><div class="stock-sub">${esc(inventoryCategoryName(i))}${i.defaultLocation?` · ${esc(i.defaultLocation)}`:''}</div></div><div class="stock-row-stats"><div class="stock-numbers"><div><span>במחסן</span><b>${num(s.onHand)}</b></div><div><span>שמור</span><b>${num(s.reserved)}</b></div><div><span>פנוי</span><b class="${esc(s.available<0?'badtext':'goodtext')}">${num(s.available)}</b></div><div><span>בדרך</span><b>${num(s.incoming)}</b></div></div>${s.incoming?`<div class="projected">פנוי צפוי אחרי הגעה: <b>${num(s.projected)}</b></div>`:''}</div><div class="stock-row-actions"><button class="btn small" data-action="open-inventory-event-modal" data-click-arg0="${esc(i.id)}">הזמן מלאי</button><button class="btn small" data-action="open-stock-receive" data-click-arg0="${esc(i.id)}">קליטה למחסן</button><button class="btn small primary" data-action="open-inventory-event-modal-2" data-click-arg0="${esc(i.id)}">שמור ללקוח</button><button class="btn small" data-action="open-stock-adjustment-modal" data-click-arg0="${esc(i.id)}">התאם ספירה</button><button class="btn small" data-action="open-inventory-item-modal" data-click-arg0="${esc(i.id)}">עריכה</button></div></article>`}
-function inventoryItemActions(i){return `<div class="location-item-actions"><button class="btn small" data-action="open-inventory-event-modal" data-click-arg0="${esc(i.id)}">הזמן מלאי</button><button class="btn small" data-action="open-stock-receive" data-click-arg0="${esc(i.id)}">קליטה למחסן</button><button class="btn small primary" data-action="open-inventory-event-modal-2" data-click-arg0="${esc(i.id)}">שמור ללקוח</button><button class="btn small" data-action="open-stock-adjustment-modal" data-click-arg0="${esc(i.id)}">התאם ספירה</button><button class="btn small" data-action="open-inventory-item-modal" data-click-arg0="${esc(i.id)}">עריכה</button></div>`}
+function stockTable(items,location=''){
+  return `<div class="stock-table-wrap"><table class="inventory-table"><thead><tr><th scope="col">פריט</th><th scope="col">חלוקה למחסנים</th><th scope="col">במחסן</th><th scope="col">שמור</th><th scope="col">פנוי</th><th scope="col">בדרך</th><th scope="col">מצב הפריט</th><th scope="col">פעולות</th></tr></thead><tbody>${items.map(i=>stockCard(i,location)).join('')}</tbody></table></div>`;
+}
 
-function renderInventoryGroup(name,items,kind='category'){const q=(warehouseUi.warehouseSearch||'').trim(),filtered=items.filter(i=>inventorySearchMatch(i,q)||(kind==='location'&&q&&name.includes(q)));if(!filtered.length&&q)return'';const open=q||((kind==='location'?warehouseUi.inventoryLocationOpen:warehouseUi.inventoryCategoryOpen).has(name)),summary=inventoryGroupStats(filtered),encoded=encodeURIComponent(name),summaryHtml=kind==='location'?`<span>${esc(filtered.length)} פריטים</span>`:`<span>במחסן ${num(summary.onHand)}</span><span>פנוי ${num(summary.available)}</span>${summary.incoming?`<span>בדרך ${num(summary.incoming)}</span>`:''}`;return `<section class="inventory-group ${esc(open?'open':'')}"><button type="button" class="inventory-group-toggle" aria-expanded="${esc(open?'true':'false')}" data-action="toggle-inventory-group" data-click-arg0="${esc(kind)}" data-click-arg1="${esc(encoded)}"><div class="inventory-group-title"><span class="inventory-group-arrow">›</span><div><div class="inventory-group-name">${esc(name)}</div><div class="inventory-group-count">${esc(filtered.length)} פריטים${kind==='category'&&filtered.length!==items.length?` מתוך ${items.length}`:''}</div></div></div><div class="inventory-group-summary">${summaryHtml}</div></button>${open?`<div class="inventory-group-body">${kind==='location'?renderLocationItems(filtered,name):`<div class="stock-list">${filtered.map(stockCard).join('')}</div>`}</div>`:''}</section>`}
+function renderStockGrid(){
+  const location=warehouseUi.inventoryLocation||'',filter=warehouseUi.inventoryFilter||'',grouping=warehouseUi.inventoryGrouping||'';
+  const items=inventoryCategoryGroups().flatMap(g=>g.items).filter(i=>{
+    if(!inventorySearchMatch(i,warehouseUi.warehouseSearch,model.state))return false;
+    const balances=inventoryLocationStatsData(model.state,i.id),s=location?balances[location]:inventoryStats(i.id),status=inventoryStockStatus(i,inventoryStats(i.id));
+    if(location&&!s.onHand&&!s.reserved&&!s.incoming&&!(Object.values(balances).every(x=>!x.onHand&&!x.reserved&&!x.incoming)&&normalizedWarehouseLocation(i.defaultLocation)===location))return false;
+    if(filter==='short')return (location?[s]:Object.values(balances)).some(x=>x.available<0);
+    if(filter==='low')return status.needsOrder;
+    if(filter==='unknown')return !!(balances['לא ידוע'].onHand||balances['לא ידוע'].reserved||balances['לא ידוע'].incoming);
+    return true;
+  });
+  const summary=`<div class="inventory-result-count">${items.length} פריטים${location?` · ${esc(location)}`:' · כל המחסנים'}${filter?' · סינון פעיל':''}</div>`;
+  if(!items.length)return summary+'<div class="empty module-empty">לא נמצאו פריטים בתצוגה הזאת. אפשר לשנות את החיפוש או הסינון.</div>';
+  if(grouping==='location'&&!location)return summary+WAREHOUSE_LOCATIONS.map(name=>{
+    const rows=items.filter(i=>{const balances=inventoryLocationStatsData(model.state,i.id),s=balances[name];return s.onHand||s.reserved||s.incoming||(Object.values(balances).every(x=>!x.onHand&&!x.reserved&&!x.incoming)&&normalizedWarehouseLocation(i.defaultLocation)===name)});
+    return rows.length?`<section class="stock-section"><h3>${esc(name)} <span class="source">${rows.length} פריטים</span></h3>${stockTable(rows,name)}</section>`:'';
+  }).join('');
+  if(grouping==='category')return summary+inventoryCategoryGroups().map(g=>{const rows=items.filter(i=>inventoryCategoryName(i)===g.name);return rows.length?`<section class="stock-section"><h3>${esc(g.name)}</h3>${stockTable(rows,location)}</section>`:''}).join('');
+  return summary+stockTable(items,location);
+}
 
-function renderStockGrid(){const groups=inventoryCategoryGroups();const html=groups.map(g=>renderInventoryGroup(g.name,g.items,'category')).join('');return `<div class="inventory-groups ${esc(warehouseUi.warehouseBulkMode?'bulk-card-mode':'')}">${html||'<div class="empty module-empty">אין פריטי מלאי.</div>'}</div>`}
-
-function renderLocationItems(items,location){return `<div class="location-item-grid">${items.map(i=>{const s=inventoryStats(i.id),raw=inventoryLocationText(i);return `<div class="location-item"><div class="location-item-summary"><div class="location-item-main"><b>${esc(i.name)}</b><div class="source">${esc(inventoryCategoryName(i))}${raw?` · מיקום רשום: ${esc(raw)}`:''}</div></div><div class="location-item-total"><span>סה״כ לפריט</span><b>${num(s.onHand)}</b></div></div>${inventoryItemActions(i)}</div>`}).join('')||`<div class="empty">אין כרגע פריטים ב${esc(location)}.</div>`}</div>`}
-
-function renderWarehouseLocations(){const physical=model.state.inventoryItems.filter(i=>i.active!==false),groups=WAREHOUSE_LOCATIONS.map(name=>({name,items:physical.filter(i=>inventoryItemLocations(i).includes(name))}));return `<div class="notice inventory-location-intro">אותם פריטי מלאי מוצגים כאן לפי מיקום קבוע. שינוי דרך <b>עריכה</b> מתעדכן מיד גם בתצוגת „מלאי”. פריטים שמיקומם לא הוגדר או שאינו אחד מהמיקומים הקבועים מופיעים תחת <b>לא ידוע</b>.</div><div class="inventory-groups">${groups.map(g=>renderInventoryGroup(g.name,g.items,'location')).join('')}</div>`}
-
-return { inventoryLocationOptions, inventoryCategoryDatalist, stockCard, renderInventoryGroup, renderStockGrid, renderLocationItems, renderWarehouseLocations };
+function renderWarehouseLocations(){return renderStockGrid()}
+return {inventoryLocationOptions,inventoryCategoryDatalist,stockCard,renderStockGrid,renderWarehouseLocations};
 }

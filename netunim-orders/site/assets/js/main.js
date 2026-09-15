@@ -470,6 +470,7 @@ const domainsWarehouseView=createDomainsWarehouseView({
 });
 
 const domainsInventoryEditor=createDomainsInventoryEditor({
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   model,
   modal:(...args)=>uiModal.modal(...args),
   inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
@@ -991,6 +992,11 @@ const uiActions=createUiActions({
   saveInventoryItem:(...args)=>domainsInventoryEditor.saveInventoryItem(...args),
   archiveInventoryItem:(...args)=>domainsInventoryEditor.archiveInventoryItem(...args),
   openStockAdjustmentModal:(...args)=>domainsInventoryEditor.openStockAdjustmentModal(...args),
+  previewStockAdjustment:(...args)=>domainsInventoryEditor.previewStockAdjustment(...args),
+  openStockTransfer:(...args)=>domainsInventoryEditor.openStockTransfer(...args),
+  saveStockTransfer:(...args)=>domainsInventoryEditor.saveStockTransfer(...args),
+  previewStockTransfer:(...args)=>domainsInventoryEditor.previewStockTransfer(...args),
+  openInventoryDetails:(...args)=>domainsInventoryEditor.openInventoryDetails(...args),
   saveStockAdjustment:(...args)=>domainsInventoryEditor.saveStockAdjustment(...args),
   openInventoryEventModal:(...args)=>domainsInventoryEditor.openInventoryEventModal(...args),
   saveInventoryEvent:(...args)=>domainsInventoryEditor.saveInventoryEvent(...args),

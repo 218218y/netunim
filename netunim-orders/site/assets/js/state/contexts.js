@@ -72,6 +72,10 @@ return {
   },
   warehouseUi:{
     warehouseTab:'stock',
+    inventoryLocation:'',
+    inventoryGrouping:'',
+    inventoryFilter:'',
+    inventoryHistoryItem:'',
     warehouseSearch:'',
     inventoryCategoryOrderDraft:[],
     warehouseBulkMode:false,

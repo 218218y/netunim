@@ -86,6 +86,8 @@ def check_orders(browser: BrowserSession) -> list[dict]:
           state.customerDebts=[{id:'RESP-DEBT',customerName:'לקוח בדיקה',amount:1250,orderNumber:'42',phone:'0500000000',paid:false,supplied:false,invoiceIssued:false,note:'הערה'}];
           state.customerOrders=[{id:'RESP-ORDER',orderNumber:'42',customerName:'לקוח בדיקה',mark1:'א',mark2:'ב',mark3:'ג',mattresses:'מזרן',note:'הערה'}];
           state.checks=[{id:'RESP-CHECK',name:'לקוח בדיקה',amount:900,dueDate:'2026-09-15',status:'בקופה',checkNumber:'123',note:'הערה'}];
+          state.inventoryItems=[{id:'RESP-INV',name:'מזרן בדיקה',category:'מזרונים',defaultLocation:'מחסן גדול'}];
+          state.inventoryEvents=[{id:'RESP-OPEN',itemId:'RESP-INV',type:'opening',quantity:8,location:'מחסן גדול'},{id:'RESP-TRANSFER',itemId:'RESP-INV',type:'transfer',quantity:3,fromLocation:'מחסן גדול',toLocation:'מקלט'}];
           return true;
         })()"""
     )
@@ -98,6 +100,10 @@ def check_orders(browser: BrowserSession) -> list[dict]:
               const routeResults=[];
               for(const route of routes){
                 document.querySelector(`[data-view="${route}"]`)?.click();await frame();
+                if(route==='warehouse'){
+                  const table=document.querySelector('.inventory-table'),scroll=document.querySelector('.warehouse-view-shell .view-scroll');
+                  if(table&&table.getBoundingClientRect().width>scroll.clientWidth+2)throw new Error('Inventory table overflows the warehouse viewport');
+                }
                 routeResults.push({route,...layoutSnapshot()});
               }
               const folder=document.getElementById('folderAccessButton');
