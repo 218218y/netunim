@@ -28,7 +28,7 @@ function stockTable(items,location=''){
   return `<div class="stock-table-wrap"><table class="inventory-table"><thead><tr><th scope="col">פריט</th><th scope="col">חלוקה למחסנים</th><th scope="col">במחסן</th><th scope="col">שמור</th><th scope="col">פנוי</th><th scope="col">בדרך</th><th scope="col">מצב הפריט</th><th scope="col">פעולות</th></tr></thead><tbody>${items.map(i=>stockCard(i,location)).join('')}</tbody></table></div>`;
 }
 
-function renderStockGrid(){
+function inventoryStockViewData(){
   const location=warehouseUi.inventoryLocation||'',filter=warehouseUi.inventoryFilter||'',grouping=warehouseUi.inventoryGrouping||'';
   const items=inventoryCategoryGroups().flatMap(g=>g.items).filter(i=>{
     if(!inventorySearchMatch(i,warehouseUi.warehouseSearch,model.state))return false;
@@ -39,16 +39,20 @@ function renderStockGrid(){
     if(filter==='unknown')return !!(balances['לא ידוע'].onHand||balances['לא ידוע'].reserved||balances['לא ידוע'].incoming);
     return true;
   });
-  const summary=`<div class="inventory-result-count">${items.length} פריטים${location?` · ${esc(location)}`:' · כל המחסנים'}${filter?' · סינון פעיל':''}</div>`;
-  if(!items.length)return summary+'<div class="empty module-empty">לא נמצאו פריטים בתצוגה הזאת. אפשר לשנות את החיפוש או הסינון.</div>';
-  if(grouping==='location'&&!location)return summary+WAREHOUSE_LOCATIONS.map(name=>{
+  return {location,filter,grouping,items};
+}
+
+function renderStockGrid(viewData=inventoryStockViewData()){
+  const {location,grouping,items}=viewData;
+  if(!items.length)return '<div class="empty module-empty">לא נמצאו פריטים בתצוגה הזאת. אפשר לשנות את החיפוש או הסינון.</div>';
+  if(grouping==='location'&&!location)return WAREHOUSE_LOCATIONS.map(name=>{
     const rows=items.filter(i=>{const balances=inventoryLocationStatsData(model.state,i.id),s=balances[name];return s.onHand||s.reserved||s.incoming||(Object.values(balances).every(x=>!x.onHand&&!x.reserved&&!x.incoming)&&normalizedWarehouseLocation(i.defaultLocation)===name)});
     return rows.length?`<section class="stock-section"><h3>${esc(name)} <span class="source">${rows.length} פריטים</span></h3>${stockTable(rows,name)}</section>`:'';
   }).join('');
-  if(grouping==='category')return summary+inventoryCategoryGroups().map(g=>{const rows=items.filter(i=>inventoryCategoryName(i)===g.name);return rows.length?`<section class="stock-section"><h3>${esc(g.name)}</h3>${stockTable(rows,location)}</section>`:''}).join('');
-  return summary+stockTable(items,location);
+  if(grouping==='category')return inventoryCategoryGroups().map(g=>{const rows=items.filter(i=>inventoryCategoryName(i)===g.name);return rows.length?`<section class="stock-section"><h3>${esc(g.name)}</h3>${stockTable(rows,location)}</section>`:''}).join('');
+  return stockTable(items,location);
 }
 
 function renderWarehouseLocations(){return renderStockGrid()}
-return {inventoryLocationOptions,inventoryCategoryDatalist,stockCard,renderStockGrid,renderWarehouseLocations};
+return {inventoryLocationOptions,inventoryCategoryDatalist,stockCard,inventoryStockViewData,renderStockGrid,renderWarehouseLocations};
 }

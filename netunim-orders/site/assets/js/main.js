@@ -462,6 +462,7 @@ const domainsWarehouseView=createDomainsWarehouseView({
   model,
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   inventoryTotals:(...args)=>domainsInventorySelectors.inventoryTotals(...args),
+  inventoryStockViewData:(...args)=>domainsInventoryView.inventoryStockViewData(...args),
   renderStockGrid:(...args)=>domainsInventoryView.renderStockGrid(...args),
   renderWarehouseLocations:(...args)=>domainsInventoryView.renderWarehouseLocations(...args),
   warehouseBulkControls:(...args)=>domainsWarehouseBulk.warehouseBulkControls(...args),

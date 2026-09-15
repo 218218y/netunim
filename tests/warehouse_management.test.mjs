@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {applyBulkRangeSelection} from '../netunim-orders/site/assets/js/ui/bulk-selection.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createDomainsWarehouseView} from '../netunim-orders/site/assets/js/domains/warehouse/view.js';
+import {createDomainsInventoryView} from '../netunim-orders/site/assets/js/domains/inventory/view.js';
 import {
   WAREHOUSE_LOCATIONS,
   inventoryItemLocationsData,
@@ -28,6 +29,63 @@ test('warehouse fixed locations include unknown in the requested order',()=>{
   // Physical event locations take precedence over catalog defaults.
   assert.deepEqual(inventoryItemLocationsData(state,{id:'explicit',defaultLocation:'לא ידוע'}),['מקלט']);
   assert.deepEqual(inventoryItemLocationsData(state,{id:'none',defaultLocation:''}),['לא ידוע']);
+});
+
+test('warehouse stock grid keeps result scope out of the table body',()=>{
+  const state={inventoryItems:[{id:'i1',name:'כיסא',category:'כיסאות',defaultLocation:'מחסן קטן',active:true}],inventoryEvents:[{id:'e1',itemId:'i1',type:'opening',quantity:3,location:'מחסן קטן'}]};
+  const warehouseUi={inventoryLocation:'',inventoryFilter:'',inventoryGrouping:'',warehouseSearch:'',warehouseBulkSelected:new Set(),warehouseBulkMode:false};
+  const view=createDomainsInventoryView({
+    warehouseUi,
+    model:{state},
+    orderedInventoryCategoryNames:()=>['כיסאות'],
+    inventoryStats:id=>inventoryStatsData(state,id),
+    inventoryCategoryGroups:()=>[{name:'כיסאות',items:state.inventoryItems}],
+  });
+  const data=view.inventoryStockViewData(),html=view.renderStockGrid(data);
+  assert.equal(data.items.length,1);
+  assert.equal(data.location,'');
+  assert.ok(html.includes('inventory-table'));
+  assert.ok(!html.includes('inventory-result-count'));
+  assert.ok(!html.includes('1 פריטים · כל המחסנים'));
+});
+
+test('warehouse toolbar keeps tabs, compact metrics and unlabeled selects on one control row',()=>{
+  const originalDocument=globalThis.document,main={innerHTML:''},results={innerHTML:''},footer={innerHTML:''};
+  globalThis.document={querySelector:selector=>selector==='#main'?main:selector==='#warehouseSearchResults'?results:selector==='#warehouseTotalLine'?footer:null};
+  try{
+    const warehouseUi={warehouseTab:'stock',warehouseSearch:'',inventoryLocation:'',inventoryFilter:'',inventoryGrouping:'',warehouseBulkMode:false,warehouseBulkSelected:new Set()};
+    const state={inventoryItems:[],inventoryEvents:[],warehouseOrders:[]};
+    let visibleCount=2;
+    const view=createDomainsWarehouseView({
+      warehouseUi,
+      model:{state},
+      mountViewLayout:()=>{},
+      inventoryTotals:()=>({onHand:0,reserved:0,available:0,incoming:0}),
+      inventoryStockViewData:()=>({location:'',filter:'',grouping:'',items:Array.from({length:visibleCount},(_,i)=>({id:String(i)}))}),
+      renderStockGrid:data=>`<div class="stock-table-wrap" data-count="${data.items.length}"></div>`,
+      renderWarehouseLocations:()=>'',
+      warehouseBulkControls:()=>'',
+      syncWarehouseBulkUi:()=>{},
+      inventoryEventView:event=>event,
+    });
+    view.renderWarehouse();
+    const html=main.innerHTML,toolbarStart=html.indexOf('warehouse-toolbar-bottom'),resultsStart=html.indexOf('warehouseSearchResults');
+    const controls=html.slice(toolbarStart,resultsStart);
+    assert.ok(toolbarStart>=0&&resultsStart>toolbarStart);
+    assert.ok(controls.indexOf('module-tabs')<controls.indexOf('warehouse-metrics'));
+    assert.ok(controls.includes('פריטים בחוסר')&&controls.includes('דורשים הזמנה')&&controls.includes('הזמנות בדרך')&&controls.includes('שמירות ללקוחות'));
+    assert.ok(controls.includes('<select aria-label="סינון לפי מחסן"'));
+    assert.ok(controls.includes('<select aria-label="קיבוץ מלאי"'));
+    assert.ok(!controls.includes('<label>מחסן'));
+    assert.ok(!controls.includes('<label>תצוגה'));
+    assert.ok(html.includes('warehouse-total-line">2 פריטים · כל המחסנים · סך כל המחסנים'));
+    visibleCount=1;
+    view.renderWarehouse({resultsOnly:true});
+    assert.ok(results.innerHTML.includes('data-count="1"'));
+    assert.ok(footer.innerHTML.startsWith('1 פריטים · כל המחסנים · סך כל המחסנים'));
+  }finally{
+    if(originalDocument===undefined)delete globalThis.document;else globalThis.document=originalDocument;
+  }
 });
 
 test('shift bulk selection selects the visible inclusive range and keeps the anchor',()=>{
