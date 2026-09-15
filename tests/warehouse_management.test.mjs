@@ -4,6 +4,8 @@ import {applyBulkRangeSelection} from '../netunim-orders/site/assets/js/ui/bulk-
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createDomainsWarehouseView} from '../netunim-orders/site/assets/js/domains/warehouse/view.js';
 import {createDomainsInventoryView} from '../netunim-orders/site/assets/js/domains/inventory/view.js';
+import {createUiActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {readFileSync} from 'node:fs';
 import {
   WAREHOUSE_LOCATIONS,
   inventoryItemLocationsData,
@@ -86,6 +88,49 @@ test('warehouse toolbar keeps tabs, compact metrics and unlabeled selects on one
   }finally{
     if(originalDocument===undefined)delete globalThis.document;else globalThis.document=originalDocument;
   }
+});
+
+test('warehouse metrics stay with the left-side filters instead of the primary tabs',()=>{
+  const css=readFileSync(new URL('../netunim-orders/site/assets/app.css',import.meta.url),'utf8');
+  assert.match(css,/\.warehouse-metrics\{[^}]*margin-inline-start:auto/);
+  assert.match(css,/\.warehouse-filters\{[^}]*margin-inline-start:0/);
+  assert.match(css,/@media\(max-width:760px\)[\s\S]*?\.warehouse-metrics\{[^}]*margin-inline-start:0/);
+});
+
+test('clicking Stock again clears a stock status quick-filter without clearing warehouse scope',()=>{
+  const warehouseUi={warehouseTab:'stock',inventoryFilter:'short',inventoryLocation:'מחסן גדול',inventoryGrouping:'location',warehouseSearch:''};
+  const tabCalls=[];
+  let renders=0;
+  const actions=createUiActions({
+    warehouseUi,
+    ui:{checksBulkSelected:new Set()},
+    setWarehouseTab:tab=>tabCalls.push(tab),
+    renderWarehouse:()=>{renders++},
+  });
+  actions['set-warehouse-tab']();
+  assert.equal(warehouseUi.inventoryFilter,'');
+  assert.equal(warehouseUi.inventoryLocation,'מחסן גדול');
+  assert.equal(warehouseUi.inventoryGrouping,'location');
+  assert.deepEqual(tabCalls,[],'same-tab reset renders directly instead of being swallowed by setWarehouseTab early return');
+  assert.equal(renders,1);
+});
+
+test('stock quick-filter still applies after Stock-tab reset semantics were added',()=>{
+  const warehouseUi={warehouseTab:'stock',inventoryFilter:'',inventoryLocation:'מחסן קטן',inventoryGrouping:'',warehouseSearch:'abc'};
+  const tabCalls=[];
+  let renders=0;
+  const actions=createUiActions({
+    warehouseUi,
+    ui:{checksBulkSelected:new Set()},
+    setWarehouseTab:tab=>tabCalls.push(tab),
+    renderWarehouse:()=>{renders++},
+  });
+  actions['warehouse-quick-filter']({dataset:{clickArg0:'low',clickArg1:'stock'}});
+  assert.equal(warehouseUi.inventoryFilter,'low');
+  assert.equal(warehouseUi.inventoryLocation,'');
+  assert.equal(warehouseUi.warehouseSearch,'');
+  assert.deepEqual(tabCalls,['stock']);
+  assert.equal(renders,1);
 });
 
 test('shift bulk selection selects the visible inclusive range and keeps the anchor',()=>{

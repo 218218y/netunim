@@ -213,7 +213,7 @@ const actions={
   'open-inventory-item-modal-2':(element,event)=>{openInventoryItemModal()},
   'open-warehouse-order-modal':(element,event)=>{openWarehouseOrderModal()},
   'warehouse-search':(element,event)=>{warehouseUi.warehouseSearch=element.value;renderWarehouse({resultsOnly:true})},
-  'set-warehouse-tab':(element,event)=>{setWarehouseTab('stock')},
+  'set-warehouse-tab':()=>{const hadStatusFilter=!!warehouseUi.inventoryFilter;warehouseUi.inventoryFilter='';if(warehouseUi.warehouseTab==='stock'){if(hadStatusFilter)renderWarehouse();return}setWarehouseTab('stock')},
   'set-warehouse-tab-2':(element,event)=>{setWarehouseTab('incoming')},
   'set-warehouse-tab-3':(element,event)=>{setWarehouseTab('reservations')},
   'set-warehouse-tab-4':(element,event)=>{setWarehouseTab('orders')},
