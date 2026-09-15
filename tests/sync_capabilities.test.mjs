@@ -13,7 +13,16 @@ for(const app of ['orders','kupa'])test(`${app} real transport blocks write befo
  await assert.rejects((app==='orders'?api.supaFetch:api.supaRest)('/rest/v1/rpc/save_kupa_document_v5',{method:'POST',body:'{}'}),/DB/);
  assert.equal(reads,1);assert.equal(writes,0);
 });
-import {bindActionEvents} from '../shared/events.js';
+import {bindActionEvents,bindDismissibleDetails} from '../shared/events.js';
 test('capability UI gate prevents action callbacks before mutation',()=>{
  const callbacks={},root={addEventListener:(type,fn)=>callbacks[type]=fn};globalThis.Element=class{};const element=new Element();element.getAttribute=()=> 'save';element.matches=()=>false;let writes=0;bindActionEvents(root,{save:()=>writes++},{canRun:()=>false});callbacks.click({composedPath:()=>[element,root],preventDefault(){},stopPropagation(){}});assert.equal(writes,0);
 });
+test('dismissible details behave like one real menu group and close on outside click',()=>{
+ const callbacks={},openA={open:true},openB={open:true},root={addEventListener:(type,fn)=>callbacks[type]=fn,querySelectorAll:()=>[openA,openB]};
+ globalThis.Element=class{closest(){return this.menu||null}};
+ bindDismissibleDetails(root);
+ const outside=new Element();callbacks.click({target:outside});assert.equal(openA.open,false);assert.equal(openB.open,false,'outside click closes every open dismissible menu');
+ openA.open=true;openB.open=true;const inside=new Element();inside.menu=openB;callbacks.click({target:inside});assert.equal(openA.open,false);assert.equal(openB.open,true,'clicking a second menu closes the previous menu but keeps the clicked menu');
+ callbacks.keydown({key:'Escape'});assert.equal(openB.open,false,'Escape closes the open menu');
+});
+

@@ -39,3 +39,36 @@ export function bindBackdropDismissal(backdrop,onDismiss){
     if(backdropPointerId===event.pointerId)backdropPointerId=null;
   });
 }
+
+// Popover-like <details> controls need menu semantics that native <details>
+// intentionally does not provide: only one open menu, outside-click dismissal,
+// Escape dismissal, and viewport-aware placement for an internally scrollable panel.
+export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-outside]'}={}){
+  const openSelector=`${selector}[open]`;
+  const closeOpen=keep=>{
+    for(const details of root.querySelectorAll(openSelector))if(details!==keep)details.open=false;
+  };
+  const positionPopover=details=>{
+    if(!details?.open)return;
+    const summary=details.querySelector(':scope > summary'),popover=details.querySelector(':scope > .credit-cycle-menu-popover');
+    if(!summary||!popover)return;
+    const rect=summary.getBoundingClientRect(),viewportHeight=globalThis.visualViewport?.height||globalThis.innerHeight||document.documentElement.clientHeight||0,edgeGap=12;
+    const below=Math.max(0,viewportHeight-rect.bottom-edgeGap),above=Math.max(0,rect.top-edgeGap),ideal=Math.min(Math.max(popover.scrollHeight||0,180),460),openUp=below<ideal&&above>below,available=Math.max(96,(openUp?above:below)-6);
+    details.classList.toggle('credit-cycle-menu-up',openUp);
+    details.style.setProperty('--credit-cycle-menu-max-height',`${Math.floor(available)}px`);
+  };
+  root.addEventListener('click',event=>{
+    const target=event.target instanceof Element?event.target:null;
+    closeOpen(target?.closest(selector)||null);
+  });
+  root.addEventListener('toggle',event=>{
+    const details=event.target instanceof Element&&event.target.matches(selector)?event.target:null;
+    if(!details?.open)return;
+    closeOpen(details);
+    positionPopover(details);
+  },true);
+  root.addEventListener('keydown',event=>{
+    if(event.key==='Escape')closeOpen(null);
+  });
+}
+

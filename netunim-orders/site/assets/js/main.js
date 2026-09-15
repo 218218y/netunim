@@ -60,7 +60,7 @@ import {createDomainsCalendarController} from './domains/calendar/controller.js'
 import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents} from './shared/events.js';
+import {bindActionEvents,bindDismissibleDetails} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
@@ -1057,6 +1057,7 @@ const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,a
   return [name,(element,event)=>{if(uiStatus.guardStartupMutation(domain))return action(element,event)}];
 }));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
+bindDismissibleDetails(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});

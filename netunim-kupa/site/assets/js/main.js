@@ -49,7 +49,7 @@ import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents,bindBackdropDismissal} from './shared/events.js';
+import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
@@ -871,6 +871,7 @@ window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;storageBrowser
 window.addEventListener('beforeunload',e=>{if(!tab.primaryTab)return;const unsavedKupa=session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()),unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync())return;storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision);if(session.connectionMode==='supabase'&&unsavedKupa&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(unsavedChecks)syncChecksState.markSharedChecksPending();e.preventDefault();e.returnValue=''});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
+bindDismissibleDetails(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
 export const appReady=lifecycle.boot();
