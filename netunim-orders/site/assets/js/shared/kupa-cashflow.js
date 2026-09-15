@@ -363,7 +363,7 @@ export function kupaReconciledCreditDetailRowsData(kupa,account='all',reference=
   return reconciledCreditRowsForAccount(kupa,account,reference,options).rows;
 }
 
-function creditDetailRowSort(a,b){return String(b.transactionDate||b.date||'').localeCompare(String(a.transactionDate||a.date||''))||String(b.date||'').localeCompare(String(a.date||''))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he')}
+function creditDetailRowSort(a,b){return (b.status==='pending')-(a.status==='pending')||String(b.transactionDate||b.date||'').localeCompare(String(a.transactionDate||a.date||''))||String(b.date||'').localeCompare(String(a.date||''))||String(a.card||'').localeCompare(String(b.card||''),'he')||String(a.description||'').localeCompare(String(b.description||''),'he')}
 function creditAccountDisplayContext(kupa,rows){
   const datesByCard=new Map(),accountsByCard=new Map();
   for(const row of rows){if(!row?.date)continue;const key=creditCardKey(row);if(!datesByCard.has(key))datesByCard.set(key,[]);datesByCard.get(key).push({date:row.date,source:row.chargeDateSource||'reconciled_cycle',confidence:row.billingDateConfidence||'known_cycle'})}

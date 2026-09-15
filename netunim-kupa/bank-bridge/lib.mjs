@@ -208,6 +208,7 @@ export function hapoalimCreditSettlementProvider(txn){
   if(/^כרטיסי אשראי ל(?:$|[\s.,:;])/u.test(description))return 'visaCal';
   return '';
 }
+export function isHapoalimCompletedCreditSettlement(txn){return !!hapoalimCreditSettlementProvider(txn)&&Number(txn?.serialNumber)!==0}
 export function isHapoalimCreditPermissionDetails(txn){
   if(!hapoalimCreditSettlementProvider(txn))return false;
   const value=String(txn?.details||'').trim();

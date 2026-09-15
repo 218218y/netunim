@@ -55,6 +55,20 @@ test('pending billing-date hierarchy never falls back to today',()=>{
   assert.equal(ordersDetailMonths(unknownState,{asOf:'2026-09-11'}).at(-1).key,'unassigned','Orders exposes the same uncertain-cycle bucket');
 });
 
+test('pending credit detail rows stay ahead of finalized rows even when the finalized purchase date is later',()=>{
+  const state=stateFor([{accountNumber:'6326',pendingFetchedAt:'2026-09-15T01:00:00Z',pendingStatus:'success',balanceDate:'2026-10-10',txns:[
+    {id:'final-installment',status:'completed',transactionDate:'2026-10-05T00:33:00Z',date:'2026-10-05T00:33:00Z',processedDate:'2026-10-10',chargedAmount:-40,chargedCurrency:'ILS',description:'עסקה סופית בתשלומים',installments:{number:2,total:2}},
+    {id:'pending-a',status:'pending',transactionDate:'2026-09-14T08:35:00Z',date:'2026-09-14T08:35:00Z',processedDate:'2026-09-14T08:35:00Z',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-50,originalCurrency:'ILS',description:'עסקה ממתינה א'},
+    {id:'pending-b',status:'pending',transactionDate:'2026-09-14T10:06:00Z',date:'2026-09-14T10:06:00Z',processedDate:'2026-09-14T10:06:00Z',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-370,originalCurrency:'ILS',description:'עסקה ממתינה ב'},
+  ]}],{accountRole:'ביתי'});
+  const kupaOctober=creditMonthlyDetailData(state,'2026-09-15').months.find(month=>month.key==='2026-10');
+  const ordersOctober=ordersDetailMonths(state,{asOf:'2026-09-15'}).find(month=>month.key==='2026-10');
+  for(const [name,month] of [['Kupa',kupaOctober],['Orders',ordersOctober]]){
+    assert.ok(month,`${name} exposes the projected October billing cycle`);
+    assert.deepEqual(month.items.map(row=>row.status),['pending','pending','completed'],`${name} keeps live pending authorizations before a finalized installment even when its purchase date is newer`);
+  }
+});
+
 test('pending ILS estimates, FX exclusions, freshness and transition deduplication are explicit',()=>{
   const state=stateFor([{accountNumber:'4545',pendingFetchedAt:'2026-09-03T08:00:00Z',balanceDate:'2026-09-10',pendingStatus:'success',txns:[
     {id:'zero-ils',status:'pending',transactionDate:'2026-09-03',chargedAmount:0,chargedCurrency:'ILS',originalAmount:-237.4,originalCurrency:'ILS'},

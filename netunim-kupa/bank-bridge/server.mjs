@@ -14,6 +14,7 @@ import {
   buildHapoalimAdditionalDetailsUrl,
   hapoalimChequeTransactionKind,
   hapoalimCreditSettlementProvider,
+  isHapoalimCompletedCreditSettlement,
   isHapoalimCreditPermissionDetails,
   normalizeHapoalimCreditPermissionDetails,
   mergeHapoalimCreditPermissionDetails,
@@ -50,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=54;
+const BRIDGE_VERSION=55;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -399,6 +400,10 @@ async function enrichHapoalimTransactions(page,rawTransactions,accountId,{initia
     const chequeKind=hapoalimChequeTransactionKind(transaction);
     const creditProvider=hapoalimCreditSettlementProvider(transaction);
     if(!chequeKind&&creditProvider){
+      if(!isHapoalimCompletedCreditSettlement(transaction)){
+        recordBankTransactionDiagnostic(diagnosticRun,{role,chequeKind:'',transaction,normalizedTransaction:normalizeHapoalimTransaction(transaction),detailSources:[],mergedAdditionalDetails:null});
+        enriched.push(transaction);continue;
+      }
       const creditSources=[],warnings=[],diagnosticSources=[];
       const fetchCreditSource=async(relativeUrl,label)=>{
         try{

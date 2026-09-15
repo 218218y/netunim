@@ -20,6 +20,7 @@ import {
   HAPOALIM_TRANSACTION_LIMIT,
   buildHapoalimAdditionalDetailsUrl,
   hapoalimCreditSettlementProvider,
+  isHapoalimCompletedCreditSettlement,
   isHapoalimCreditPermissionDetails,
   normalizeHapoalimCreditPermissionDetails,
   mergeHapoalimCreditPermissionDetails,
@@ -259,6 +260,12 @@ assert.equal(hapoalimCreditSettlementProvider(calPermissionTxn),'visaCal','the H
 assert.equal(hapoalimCreditSettlementProvider({...calPermissionTxn,activityDescription:'חיוב כרטיס',englishActionDesc:'VISA'}),'','a generic VISA label never guesses that a debit belongs to Cal');
 assert.equal(isHapoalimCreditPermissionDetails(calPermissionTxn),true,'credit settlement enrichment is restricted to the bank-provided current-account permission endpoint');
 assert.equal(isHapoalimCreditPermissionDetails({...calPermissionTxn,details:'/ServerServices/pfm/transactions?id=1'}),false,'PFM detail alone is not mistaken for a permission/card identity endpoint');
+assert.equal(isHapoalimCompletedCreditSettlement(calPermissionTxn),true,'a posted credit settlement with a real bank serial is eligible for supplemental bank detail enrichment');
+const pendingAmexTodayTxn={eventActivityTypeCode:2,activityTypeCode:491,textCode:40,activityDescription:'אמריקן אקספרס',referenceNumber:6774,referenceCatenatedNumber:352,eventDate:20260915,valueDate:20260915,eventAmount:2122,serialNumber:0,transactionType:'TODAY',currentBalance:83615.92,pfmDetails:'/ServerServices/pfm/transactions?originalEventCreateDate=0&eventSerialNumber=0&dataOrigenCode=1&referenceNumber=6774&referenceCatenatedNumber=352&eventAmount=2122.0'};
+assert.equal(isHapoalimCompletedCreditSettlement(pendingAmexTodayTxn),false,'a TODAY/serial-zero credit debit is pending and must not probe a supplemental detail endpoint that is not available yet');
+const normalizedPendingAmexToday=normalizeHapoalimTransaction(pendingAmexTodayTxn);
+assert.equal(normalizedPendingAmexToday.status,'pending');assert.equal(normalizedPendingAmexToday.amount,-2122,'the primary bank row already carries the authoritative debit amount without supplemental detail');
+assert.equal(normalizedPendingAmexToday.creditSettlementDetails.issuerReference,'6774');assert.equal(normalizedPendingAmexToday.creditSettlementDetails.warning,'','skipping unavailable pending detail must not manufacture an operator warning');
 const explicitCreditCards=normalizeHapoalimCreditPermissionDetails({cards:[
   {cardNumber:'4580-1234-1234-1234'},
   {cells:[{label:'4 ספרות אחרונות של הכרטיס',value:'5678'}]},

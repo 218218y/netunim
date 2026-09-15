@@ -464,8 +464,8 @@ ok(bank_image_runtime_pos>=0 and bank_image_runtime_pos<checks_editor_pos<financ
    and 'downloadBankChequeImage:bankChequeImages.download' in orders_main[finance_view_pos:finance_view_end]
    and orders_main.count('const bankChequeImages=createOrdersBankChequeImageRuntime')==1,
    'orders cheque-image composition: runtime is initialized before use, Checks Editor stays uninvolved, and Finance View owns image download wiring')
-ok("const BANK_BRIDGE_VERSION=54" in orders_finance_controller,
-   "orders Kupa UI: bank controls require the current Bridge v54 contract")
+ok("const BANK_BRIDGE_VERSION=55" in orders_finance_controller,
+   "orders Kupa UI: bank controls require the current Bridge v55 contract")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
