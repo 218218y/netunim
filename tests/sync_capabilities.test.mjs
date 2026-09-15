@@ -13,16 +13,16 @@ for(const app of ['orders','kupa'])test(`${app} real transport blocks write befo
  await assert.rejects((app==='orders'?api.supaFetch:api.supaRest)('/rest/v1/rpc/save_kupa_document_v5',{method:'POST',body:'{}'}),/DB/);
  assert.equal(reads,1);assert.equal(writes,0);
 });
-import {bindActionEvents,bindDismissibleDetails} from '../shared/events.js';
+import {bindActionEvents,floatingMenuPosition} from '../shared/events.js';
 test('capability UI gate prevents action callbacks before mutation',()=>{
  const callbacks={},root={addEventListener:(type,fn)=>callbacks[type]=fn};globalThis.Element=class{};const element=new Element();element.getAttribute=()=> 'save';element.matches=()=>false;let writes=0;bindActionEvents(root,{save:()=>writes++},{canRun:()=>false});callbacks.click({composedPath:()=>[element,root],preventDefault(){},stopPropagation(){}});assert.equal(writes,0);
 });
-test('dismissible details behave like one real menu group and close on outside click',()=>{
- const callbacks={},openA={open:true},openB={open:true},root={addEventListener:(type,fn)=>callbacks[type]=fn,querySelectorAll:()=>[openA,openB]};
- globalThis.Element=class{closest(){return this.menu||null}};
- bindDismissibleDetails(root);
- const outside=new Element();callbacks.click({target:outside});assert.equal(openA.open,false);assert.equal(openB.open,false,'outside click closes every open dismissible menu');
- openA.open=true;openB.open=true;const inside=new Element();inside.menu=openB;callbacks.click({target:inside});assert.equal(openA.open,false);assert.equal(openB.open,true,'clicking a second menu closes the previous menu but keeps the clicked menu');
- callbacks.keydown({key:'Escape'});assert.equal(openB.open,false,'Escape closes the open menu');
+test('floating menus flip and clamp to the visible viewport in both directions',()=>{
+ const anchor={left:360,right:392,top:680,bottom:712},size={width:190,height:300},viewport={left:0,top:0,width:400,height:740};
+ const p=floatingMenuPosition(anchor,size,viewport,{rtl:true});
+ assert.equal(p.up,true);assert.equal(p.top,374);assert.equal(p.left,202);assert.equal(p.width,190);
+ const small=floatingMenuPosition({left:5,right:37,top:30,bottom:62},{width:600,height:1000},{left:0,top:0,width:320,height:260});
+ assert.equal(small.left,8);assert.equal(small.width,304);assert.equal(small.maxHeight,184);
+ const offset=floatingMenuPosition(anchor,size,{left:10,top:100,width:380,height:300},{rtl:true});
+ assert.ok(offset.left>=18);assert.ok(offset.top>=108);
 });
-

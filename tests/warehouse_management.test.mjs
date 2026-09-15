@@ -13,6 +13,8 @@ import {
   inventoryStockStatus,
   inventorySearchMatch,
   inventoryCanArchiveData,
+  inventorySuggestedLocation,
+  knownWarehouseLocation,
 } from '../netunim-orders/site/assets/js/domains/inventory/model.js';
 
 test('warehouse fixed locations include unknown in the requested order',()=>{
@@ -187,4 +189,17 @@ test('reservation search does not include other customers reserving the same ite
   warehouseUi.warehouseSearch='sku-9';
   assert.ok(view.renderReservationList().includes('ישראל'));
   assert.ok(view.renderReservationList().includes('משה'));
+});
+
+test('new form suggestions distinguish catalog preferences from recorded event locations',()=>{
+  const item={id:'i',defaultLocation:'לא ידוע'},state={inventoryEvents:[{itemId:'i',type:'opening',quantity:5,location:'מקלט'}]};
+  assert.equal(inventorySuggestedLocation(state,item,{type:'reserve'}),'מקלט');
+  assert.equal(inventorySuggestedLocation(state,item,{location:'מחסן קטן'}),'מחסן קטן');
+  assert.equal(inventorySuggestedLocation(state,item,{event:{location:''}}),'','editing an old event must not silently reassign it');
+  item.defaultLocation='מחסן גדול';
+  assert.equal(inventorySuggestedLocation(state,item,{type:'order'}),'מחסן גדול');
+  assert.equal(inventorySuggestedLocation(state,item,{type:'reserve'}),'מקלט','one available warehouse beats an empty preferred warehouse');
+  assert.equal(knownWarehouseLocation('מחסן גדול / מקלט'),'');
+  assert.equal(knownWarehouseLocation('לא ידוע'),'');
+  assert.equal(knownWarehouseLocation('מחסן   גדול'),'מחסן גדול');
 });

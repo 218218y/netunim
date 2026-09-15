@@ -112,4 +112,16 @@ for label, expression in expressions.items():
         errors = browser.drain_serious_errors()
         print(label, json.dumps(result), errors)
         assert result and all(result.values()) and not errors
+        from popup_menu_cases import POPUP_CASES, WAREHOUSE_CASES, BANK_CASES
+        for width, height in [(1280, 900), (390, 740)]:
+            browser.call('Emulation.setDeviceMetricsOverride', {'width':width,'height':height,'deviceScaleFactor':1,'mobile':width<600})
+            result=browser.evaluate('(async()=>{'+POPUP_CASES+'})()')
+            assert result and all(result.values()), result
+            if label=='orders':
+                result=browser.evaluate('(async()=>{'+WAREHOUSE_CASES+'})()')
+                assert result and all(result.values()), result
+            route="switchView('kupa');setKupaSection('bank');" if label=='orders' else "setPage('bank');"
+            assert browser.evaluate('(async()=>{'+route+BANK_CASES+'})()')
+            assert not browser.drain_serious_errors()
+        print(label, 'shared popup placement, dismissal and keyboard passed on desktop/mobile')
 print('ALL EVENT CHARACTERIZATION TESTS PASSED')

@@ -1,9 +1,14 @@
 import {esc} from '../../core/values.js';
-import {WAREHOUSE_LOCATIONS, inventoryCategoryName, inventorySearchMatch, normalizedWarehouseLocation, inventoryLocationStatsData, inventoryStockStatus} from './model.js';
+import {WAREHOUSE_LOCATIONS, inventoryCategoryName, inventorySearchMatch, normalizedWarehouseLocation, inventoryLocationStatsData, inventoryStockStatus, knownWarehouseLocation} from './model.js';
 import {num} from '../../core/money.js';
 
 export function createDomainsInventoryView({warehouseUi, model, orderedInventoryCategoryNames, inventoryStats, inventoryCategoryGroups}){
-function inventoryLocationOptions(value=''){const current=normalizedWarehouseLocation(value);return WAREHOUSE_LOCATIONS.map(x=>`<option value="${esc(x)}" ${x===current?'selected':''}>${esc(x)}</option>`).join('')}
+function inventoryLocationOptions(value='',{knownOnly=false,optional=false}={}){
+  const current=knownOnly?knownWarehouseLocation(value):normalizedWarehouseLocation(value);
+  const prompt=knownOnly?`<option value="" ${!current?'selected':''}>${optional?'ללא מחסן מועדף':'בחר מחסן'}</option>`:'';
+  return prompt+WAREHOUSE_LOCATIONS.filter(x=>!knownOnly||x!=='לא ידוע').map(x=>`<option value="${esc(x)}" ${x===current?'selected':''}>${esc(x)}</option>`).join('');
+}
+
 function inventoryCategoryDatalist(){return `<datalist id="inventoryCategoryList">${orderedInventoryCategoryNames().filter(x=>x!=='ללא קטגוריה').map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist>`}
 
 function stockCard(i,location=''){
@@ -16,7 +21,7 @@ function stockCard(i,location=''){
     <td class="stock-location-cell">${location?esc(location):places.length?places.map(x=>`<span class="stock-location-chip">${esc(x.location)} <b>${num(x.onHand)}</b></span>`).join(' '):`<span class="source">${esc(i.defaultLocation||'לא ידוע')} · אין מלאי</span>`}</td>
     <td data-label="במחסן">${num(s.onHand)}</td><td data-label="שמור">${num(s.reserved)}</td><td data-label="פנוי" class="stock-available ${s.available<0?'badtext':'goodtext'}">${num(s.available)}</td><td data-label="בדרך" title="פנוי צפוי: ${num(s.projected)}">${num(s.incoming)}</td>
     <td><span class="badge ${short?'red':status.cls}">${short?'חוסר במחסן':status.label}</span></td>
-    <td><div class="stock-actions">${s.incoming?button('open-stock-receive','קליטה'):status.needsOrder?button('open-inventory-event-modal','הזמן'):''}<details class="warehouse-menu"><summary aria-label="פעולות עבור ${esc(i.name)}" title="פעולות">⋯</summary><div class="warehouse-menu-content">${button('open-inventory-event-modal','הזמן מלאי')}${button('open-stock-receive','קליטה למחסן')}${button('open-inventory-event-modal-2','שמור ללקוח')}${button('open-stock-transfer','העברה בין מחסנים')}${button('open-stock-adjustment-modal','ספירת מלאי')}${button('open-inventory-item-modal','עריכת פריט')}${button('open-inventory-details','פרטים ותנועות')}</div></details></div></td></tr>`;
+    <td><div class="stock-actions">${s.incoming?button('open-stock-receive','קליטה'):status.needsOrder?button('open-inventory-event-modal','הזמן'):''}<details class="warehouse-menu" data-dismiss-on-outside><summary aria-label="פעולות עבור ${esc(i.name)}" title="פעולות">⋯</summary><div class="warehouse-menu-content" data-menu-panel>${button('open-inventory-event-modal','הזמן מלאי')}${button('open-stock-receive','קליטה למחסן')}${button('open-inventory-event-modal-2','שמור ללקוח')}${button('open-stock-transfer','העברה בין מחסנים')}${button('open-stock-adjustment-modal','ספירת מלאי')}${button('open-inventory-item-modal','עריכת פריט')}${button('open-inventory-details','פרטים ותנועות')}</div></details></div></td></tr>`;
 }
 
 function stockTable(items,location=''){

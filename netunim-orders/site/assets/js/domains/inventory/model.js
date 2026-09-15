@@ -26,6 +26,18 @@ export function inventoryTextMatch(values,q){return values.filter(Boolean).join(
 // mutable item default: editing catalog metadata must not move physical stock.
 export function inventoryEventLocation(e){const locations=recognizedWarehouseLocations(e?.location);return locations.length===1?locations[0]:'לא ידוע'}
 
+export function knownWarehouseLocation(raw){const locations=recognizedWarehouseLocations(raw);return locations.length===1&&locations[0]!=='לא ידוע'?locations[0]:''}
+
+// Catalog preferences only seed new forms. They never reassign existing events.
+export function inventorySuggestedLocation(state,item,{location='',type='',event=null}={}){
+  if(event)return knownWarehouseLocation(event.location);
+  if(knownWarehouseLocation(location))return knownWarehouseLocation(location);
+  const balances=Object.values(inventoryLocationStatsData(state,item.id)).filter(s=>s.location!=='לא ידוע'&&(type==='reserve'?s.projected>0:s.onHand>0));
+  const preferred=knownWarehouseLocation(item.defaultLocation);
+  if(type==='reserve'&&balances.length===1)return balances[0].location;
+  return preferred||(balances.length===1?balances[0].location:'');
+}
+
 export function inventoryEventLocationEffects(e){
   if(e.type==='transfer')return [[normalizedWarehouseLocation(e.fromLocation),-Number(e.quantity||0)],[normalizedWarehouseLocation(e.toLocation),Number(e.quantity||0)]];
   return [[inventoryEventLocation(e),inventoryEventOnHandEffect(e)]];
@@ -54,6 +66,7 @@ export function inventoryStockStatus(i,s){
 export function inventoryTransferProblem(state,itemId,from,to,quantity){
   if(!state.inventoryItems.some(i=>i.id===itemId&&i.active!==false))return 'הפריט אינו פעיל';
   if(!WAREHOUSE_LOCATIONS.includes(from)||!WAREHOUSE_LOCATIONS.includes(to)||from===to)return 'יש לבחור מחסן מקור ומחסן יעד שונים';
+  if(to==='לא ידוע')return 'יש לבחור מחסן יעד מוגדר';
   if(!Number.isSafeInteger(quantity)||quantity<=0)return 'יש להזין כמות שלמה וחיובית';
   const s=inventoryLocationStatsData(state,itemId)[from];
   if(quantity>Math.max(0,Math.min(s.onHand,s.available)))return 'אין מספיק מלאי פנוי במחסן המקור. יש לבטל או לשנות שמירות לפני ההעברה';

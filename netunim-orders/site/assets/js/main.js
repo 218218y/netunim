@@ -992,6 +992,7 @@ const uiActions=createUiActions({
   saveInventoryItem:(...args)=>domainsInventoryEditor.saveInventoryItem(...args),
   archiveInventoryItem:(...args)=>domainsInventoryEditor.archiveInventoryItem(...args),
   openStockAdjustmentModal:(...args)=>domainsInventoryEditor.openStockAdjustmentModal(...args),
+  previewInventoryLocation:(...args)=>domainsInventoryEditor.previewInventoryLocation(...args),
   previewStockAdjustment:(...args)=>domainsInventoryEditor.previewStockAdjustment(...args),
   openStockTransfer:(...args)=>domainsInventoryEditor.openStockTransfer(...args),
   saveStockTransfer:(...args)=>domainsInventoryEditor.saveStockTransfer(...args),
