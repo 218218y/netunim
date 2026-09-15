@@ -176,6 +176,21 @@ function settlementGroupKey(row,level){
 // Build all admissible claims before consuming any bank evidence. A claim can
 // cover one card, an exact aggregate, or an exact split debit. Only cycles present
 // in EVERY optimal disjoint explanation are settled. Ties never pick a card.
+function pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,account,reference){
+  const keys=new Set(),role=accountRole(account),ref=isoDay(reference)||localTodayISO();
+  for(const row of Array.isArray(bankRows)?bankRows:[]){
+    const day=bankTransactionDay(row),value=moneyCents(row?.amount);
+    if(row?.status!=='pending'||row?.presenceState==='missing'||!day||day>ref||value>=0||(row.currency&&row.currency!=='ILS'))continue;
+    const explicit=explicitBankCardSuffixes(row),validated=explicit.length?{last4s:explicit}:validatedBankCardSuffixIdentity(kupa,row,role);
+    const suffixes=[...new Set(validated?.last4s||[])];if(!suffixes.length)continue;
+    const candidates=bankSettlementAccountCandidates(kupa,row,role,billingRows),matches=[];let safe=true;
+    for(const suffix of suffixes){const found=candidates.filter(group=>group.suffix===suffix);if(found.length!==1){safe=false;break}matches.push(found[0])}
+    if(!safe||!matches.length||matches.some(group=>!group.known)||new Set(matches.map(group=>group.due)).size!==1||matches.reduce((sum,group)=>sum+group.expected,0)!==value)continue;
+    for(const group of matches)keys.add(settlementGroupKey(group.rows[0],'card'));
+  }
+  return keys;
+}
+
 function unresolvedSettlementIndexes(bankRows,candidates,reference,{monthlySettlement=false}={}){
   const unresolved=new Set(candidates.map((_,index)=>index)),groupMap=new Map();
   for(const [index,row] of candidates.entries()){
@@ -357,13 +372,13 @@ function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCom
     const currentCards=new Set(candidates.filter(row=>row.date===forecastStart).map(creditCardKey));
     for(let i=candidates.length-1;i>=0;i--)if(candidates[i].date<start&&candidates[i].date<forecastStart&&currentCards.has(creditCardKey(candidates[i]))&&candidates[i].includedInIlsTotal&&!candidates[i].coverageIncomplete)candidates.splice(i,1);
   }
-  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],unresolved=unresolvedSettlementIndexes(bankRows,candidates,synced&&synced<forecastStart?synced:forecastStart,{monthlySettlement});
+  const feed=bankFeedForAccount(kupa,role),synced=isoDay(feed?.syncedAt),bankRows=synced&&Array.isArray(feed.transactions)?feed.transactions:[],settlementReference=synced&&synced<forecastStart?synced:forecastStart,unresolved=unresolvedSettlementIndexes(bankRows,candidates,settlementReference,{monthlySettlement}),pendingBankGroups=pendingBankSettlementGroupKeys(kupa,bankRows,billingRows,role,settlementReference);
   const settlementRows=candidates.map((row,index)=>({...row,bankSettlementState:unresolved.has(index)?'awaiting':'settled'}));
   const settlingCredit=pendingCreditSettlementData(kupa,role,settlementRows.filter(row=>!row.settlementShell),start,forecastStart),expiredKeys=new Set(settlingCredit.expiredRows.map(creditRowKey));
   const states=new Map(settlementRows.map(row=>[creditRowKey(row),expiredKeys.has(creditRowKey(row))?'expired':row.bankSettlementState]));
   const current=settlementRows.filter(row=>row.date===forecastStart),currentSettlement={rows:current.filter(row=>row.bankSettlementState!=='settled'),settledCardKeys:new Set(current.filter(row=>row.bankSettlementState==='settled').map(creditCardKey))};
   const annotated=billingRows.map(row=>states.has(creditRowKey(row))?{...row,bankSettlementState:states.get(creditRowKey(row))}:row);
-  const reconciledRows=rollForwardSettledCycleRows(annotated,currentSettlement,forecastStart,{retainSettledCompleted}).filter(row=>(includeHidden||!row.hidden)&&(retainSettledCompleted||(row.bankSettlementState!=='settled'&&row.amountSource!=='issuer_not_billed')));
+  const reconciledRows=rollForwardSettledCycleRows(annotated,currentSettlement,forecastStart,{retainSettledCompleted}).filter(row=>(includeHidden||!row.hidden)&&(retainSettledCompleted||(row.bankSettlementState!=='settled'&&row.amountSource!=='issuer_not_billed'))).map(row=>pendingBankGroups.has(settlementGroupKey(row,'card'))&&row.bankSettlementState!=='settled'?{...row,bankPendingSettlementDetected:true}:row);
   const elapsedIncompleteCreditRows=settlingCredit.rows.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete);
   return {role,ref,start,forecastStart,currentSettlement,settlingCredit,settlementRows,elapsedIncompleteCreditRows,rows:reconciledRows,installments:reconciledRows.filter(row=>row.date&&row.includedInIlsTotal&&Math.abs(row.amount)>0.004),unassignedRows:reconciledRows.filter(row=>!row.date)};
 }
@@ -399,6 +414,14 @@ export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayIS
   for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort((a,b)=>(b.detailCycleUncertain===true)-(a.detailCycleUncertain===true)||creditDetailRowSort(a,b));month.uncertainCount=month.items.filter(row=>row.detailCycleUncertain===true).length;month.missingAmountCount=month.items.filter(row=>row.amountStatus!=='known_ils').length;month.coverageGapCount=month.items.filter(row=>row.coverageIncomplete).length;month.incompleteCount=month.items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;month.partial=month.incompleteCount>0}
   const months=[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key));if(unplacedUnassigned.length){unplacedUnassigned.sort(creditDetailRowSort);months.push({key:'unassigned',total:0,items:unplacedUnassigned,uncertain:true,uncertainCount:unplacedUnassigned.length,partial:true,incompleteCount:unplacedUnassigned.length,missingAmountCount:unplacedUnassigned.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:unplacedUnassigned.filter(row=>row.coverageIncomplete).length})}
   return {months,cutoffMonth,historyMonths:safeHistory,currentMonth,unassigned,unplacedUnassigned};
+}
+
+export function kupaReconciledCreditUpcomingDetailData(kupa,reference=localTodayISO(),historyMonths=3){
+  const ref=isoDay(reference)||localTodayISO(),detail=kupaReconciledCreditDetailMonthsData(kupa,ref,historyMonths),rows=detail.months.flatMap(month=>month.items),nextByCard=new Map();
+  const displayDate=row=>isoDay(row?.date)||isoDay(row?.detailDisplayBillingDate);
+  for(const row of rows){const date=displayDate(row);if(!date||date<ref)continue;const key=creditCardKey(row),current=nextByCard.get(key);if(!current||date<current)nextByCard.set(key,date)}
+  const items=rows.filter(row=>{const date=displayDate(row);return date&&nextByCard.get(creditCardKey(row))===date}).sort((a,b)=>displayDate(a).localeCompare(displayDate(b))||String(a.card||'').localeCompare(String(b.card||''),'he')||creditDetailRowSort(a,b));
+  return {items,nextByCard,reference:ref};
 }
 
 export function kupaReconciledCardUpcomingChargeData(kupa,creditAccountKey,reference=localTodayISO()){

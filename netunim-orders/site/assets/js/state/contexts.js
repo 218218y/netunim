@@ -19,6 +19,7 @@ return {
     creditAccountFilter:'all',
     creditProviderFilter:'all',
     creditCardFilter:'all',
+    creditDetailMode:'month',
     creditDetailFocus:null,
     checkTab:'open',
     checkAccount:'עסקי',

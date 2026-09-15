@@ -1,7 +1,7 @@
 import {num} from '../../core/money.js';
 import {addMonthsISO,todayISO,dObj,monthKey,localISO} from '../../core/dates.js';
 import {creditBillingRowsData,creditCyclesThroughHorizonData} from '../../shared/credit-billing-cycles.js';
-import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
+import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditRowsData,kupaReconciledCreditUpcomingDetailData} from '../../shared/kupa-cashflow.js';
 
 export const CREDIT_DETAIL_HISTORY_MONTHS=3;
 
@@ -42,3 +42,4 @@ export function nextBusinessCreditCycleData(state,reference=todayISO()){return n
 export function nextHomeCreditCycleData(state,reference=todayISO()){return nextAccountCreditCycleData(state,'ביתי',reference)}
 
 export function creditMonthlyDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){return kupaReconciledCreditDetailMonthsData(state,asOf,historyMonths)}
+export function creditUpcomingDetailData(state,asOf=todayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){return kupaReconciledCreditUpcomingDetailData(state,asOf,historyMonths)}

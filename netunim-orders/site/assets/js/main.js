@@ -864,6 +864,7 @@ const uiActions=createUiActions({
   setOrdersCreditAccountFilter:(...args)=>domainsFinanceView.setCreditAccountFilter(...args),
   setOrdersCreditProviderFilter:(...args)=>domainsFinanceView.setCreditProviderFilter(...args),
   setOrdersCreditCardFilter:(...args)=>domainsFinanceView.setCreditCardFilter(...args),
+  setOrdersCreditDetailUpcoming:(...args)=>domainsFinanceView.setCreditDetailUpcoming(...args),
   setOrdersCreditDetailMonth:(...args)=>domainsFinanceView.setCreditDetailMonth(...args),
   setOrdersCreditDetailFocus:(...args)=>domainsFinanceView.setCreditDetailFocus(...args),
   clearOrdersCreditDetailFocus:(...args)=>domainsFinanceView.clearCreditDetailFocus(...args),

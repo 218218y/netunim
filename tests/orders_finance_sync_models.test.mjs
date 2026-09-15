@@ -217,9 +217,13 @@ const drilldownCreditSync=normalizeCreditSync({version:3,mode:'synced',profiles:
 const drilldownUi={currentView:'kupa',kupaSubView:'credit',bankAccountView:'business',creditView:'rolling12',creditAccountFilter:'all',creditProviderFilter:'all',creditCardFilter:'all',creditDetailFocus:null,creditSearchValue:'',creditSyncOpen:false};
 const drilldownView=createDomainsFinanceView({ui:drilldownUi,controller:{snapshot:()=>({kupa:{bank:{},creditSync:drilldownCreditSync,cards:[],credits:[]},bank:{},creditSync:drilldownCreditSync,cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:'2026-09-01T00:00:00Z',bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:false,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup});
 drilldownView.renderKupa();
+assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-upcoming"/,'Orders exposes the nearest-charge mode beside the transactions heading');
+drilldownView.setCreditDetailUpcoming();
+assert.equal(drilldownUi.creditDetailMode,'upcoming');assert.equal(drilldownUi.creditDetailFocus,null);assert.match(drilldownMain.innerHTML,/credit-upcoming-toggle active/,'nearest-charge button exposes its active state');
 assert.match(drilldownMain.innerHTML,/data-action="orders-credit-detail-focus"[^>]*data-click-arg0="2026-09"[^>]*data-click-arg1="sync:p1:1234"/,'Orders forecast rows expose the same month/card drilldown identity as Kupa');
 assert.match(drilldownMain.innerHTML,/תאריך החיוב[^<]*15\.09\.2026/,'Orders future monthly card shows the card billing date next to the card metadata');
 drilldownView.setCreditDetailFocus('2026-09','sync:p1:1234');
+assert.equal(drilldownUi.creditDetailMode,'month','forecast drilldown exits nearest-charge mode and restores month semantics');
 assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:'sync:p1:1234'});
 assert.equal(drilldownScrolled,1,'Orders forecast drilldown scrolls to the transactions region after rendering');
 assert.match(drilldownMain.innerHTML,/מיקוד בכרטיס מתוך התחזית/);

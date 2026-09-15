@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as kupaEngine from '../netunim-kupa/site/assets/js/shared/credit-billing-cycles.js';
 import * as ordersEngine from '../netunim-orders/site/assets/js/shared/credit-billing-cycles.js';
-import {kupaAccountCashflowData as kupaCashflow,kupaBankCreditSettlementIdentitiesData,kupaBankCreditSettlementIdentityData,kupaReconciledCreditRowsData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
+import {kupaAccountCashflowData as kupaCashflow,kupaBankCreditSettlementIdentitiesData,kupaBankCreditSettlementIdentityData,kupaReconciledCreditRowsData,kupaReconciledCreditUpcomingDetailData} from '../netunim-kupa/site/assets/js/shared/kupa-cashflow.js';
 import {kupaAccountCashflowData as ordersCashflow} from '../netunim-orders/site/assets/js/shared/kupa-cashflow.js';
 import {allInstallmentsData,creditForecastInstallmentsData,creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {createDomainsCreditView} from '../netunim-kupa/site/assets/js/domains/credit/view.js';
 import {creditFrameStatus as kupaFrameStatus} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
-import {creditAccountModels as ordersCreditAccountModels,creditRows as ordersCreditRows,creditDetailMonths as ordersDetailMonths,creditMonthBuckets as ordersCreditMonthBuckets} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
+import {creditAccountModels as ordersCreditAccountModels,creditRows as ordersCreditRows,creditDetailMonths as ordersDetailMonths,creditMonthBuckets as ordersCreditMonthBuckets,creditUpcomingDetailRows as ordersUpcomingDetailRows} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {creditFrameStatus as ordersFrameStatus} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {computeKupaNetReadoutData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {bankLongTermPositionData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
@@ -35,6 +36,67 @@ test('cash-flow horizon includes every card cycle through one exact date',()=>{
 
   const after=kupaEngine.creditCyclesThroughHorizonData(twoCards,'עסקי','2026-09-16');
   assert.equal(after.targetDate,'2026-10-15');assert.equal(after.total,3200);
+});
+
+test('Kupa future forecast labels a strongly matched pending bank debit without claiming settlement',()=>{
+  const view=createDomainsCreditView({model:{state:{}},ui:{bulkSelected:new Set()}}),base={k:'2026-09',total:2122,partial:false,inst:[{card:'American Express ••6774',account:'עסקי',ownerLabel:'רחלי',creditAccountKey:'sync:amex:6774',date:'2026-09-15',amount:2122,status:'completed',amountStatus:'known_ils',coverageIncomplete:false,includedInIlsTotal:true,bankPendingSettlementDetected:true}]};
+  assert.match(view.creditMonthCard(base),/החיוב זוהה בבנק · ממתין לרישום סופי/);
+  assert.doesNotMatch(view.creditMonthCard({...base,inst:[{...base.inst[0],bankPendingSettlementDetected:false}]}),/החיוב זוהה בבנק/);
+});
+
+test('nearest-charge detail selects each card next unelapsed cycle even across different months',()=>{
+  const asOf='2026-09-13',kupaRows=kupaReconciledCreditUpcomingDetailData(twoCards,asOf).items,ordersRows=ordersUpcomingDetailRows(twoCards,{asOf});
+  const summary=rows=>rows.map(row=>[row.accountNumber,row.date,row.amount]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  assert.deepEqual(summary(kupaRows),[['1010','2026-10-10',1100],['1515','2026-09-15',2000]]);
+  assert.deepEqual(summary(ordersRows),summary(kupaRows),'Orders and Kupa use the same reconciled nearest-charge selection');
+});
+
+test('pending bank card debit is annotated for display but cannot settle or advance the cycle',()=>{
+  const state=stateFor([{accountNumber:'7248',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-9.62,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-19.62,chargedCurrency:'ILS'},
+  ]}],{provider:'isracard'});
+  state.bank.asOfDate='2026-09-15';state.bank.feed.syncedAt='2026-09-15T07:00:00Z';state.bank.feed.transactions=[{date:'2026-09-15',amount:-9.62,currency:'ILS',status:'pending',description:'ישראכרט',creditSettlementDetails:{provider:'isracard',cardLast4s:['7248']}}];
+  let rows=kupaReconciledCreditRowsData(state,'עסקי','2026-09-15'),september=rows.find(row=>row.accountNumber==='7248'&&row.date==='2026-09-15');
+  assert.ok(september);assert.equal(september.bankSettlementState,'awaiting');assert.equal(september.bankPendingSettlementDetected,true,'strong pending bank identity is display evidence only');
+  state.bank.feed.transactions[0].status='completed';rows=kupaReconciledCreditRowsData(state,'עסקי','2026-09-15');
+  assert.equal(rows.some(row=>row.accountNumber==='7248'&&row.date==='2026-09-15'),false,'posted debit settles the September cycle');
+  const october=rows.find(row=>row.accountNumber==='7248'&&row.date==='2026-10-15');assert.ok(october);assert.notEqual(october.bankPendingSettlementDetected,true,'pending-bank annotation never leaks into the next cycle');
+});
+
+test('the exact September 15 Isracard 7248 and Amex 6774 pending debits stay due but get the pending-bank label',()=>{
+  const isracard=stateFor([{accountNumber:'7248',txns:[
+    {id:'isra-sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-9.62,chargedCurrency:'ILS'},
+    {id:'isra-oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-19.62,chargedCurrency:'ILS'},
+  ]}],{provider:'isracard',profileId:'isracard-profile'});
+  const amex=stateFor([{accountNumber:'6774',txns:[
+    {id:'amex-sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-2122,chargedCurrency:'ILS'},
+    {id:'amex-oct',status:'completed',processedDate:'2026-10-15',chargedAmount:-2200,chargedCurrency:'ILS'},
+  ]}],{provider:'amex',profileId:'amex-profile'});
+  isracard.creditSync.profiles.push(...amex.creditSync.profiles);
+  Object.assign(isracard.creditSync.cardMappings,amex.creditSync.cardMappings);
+  isracard.bank.asOfDate='2026-09-15';isracard.bank.feed.syncedAt='2026-09-15T07:00:00Z';
+  isracard.bank.feed.transactions=[
+    {date:'2026-09-15',amount:-9.62,currency:'ILS',status:'pending',description:'ישראכרט',creditSettlementDetails:{provider:'isracard',cardLast4s:['7248']}},
+    {date:'2026-09-15',amount:-2122,currency:'ILS',status:'pending',description:'אמריקן אקספרס',creditSettlementDetails:{provider:'amex',cardLast4s:['6774']}},
+  ];
+  let rows=kupaReconciledCreditRowsData(isracard,'עסקי','2026-09-15');
+  const september=rows.filter(row=>row.date==='2026-09-15');
+  assert.equal(Math.round(september.reduce((sum,row)=>sum+row.amount,0)*100),213162);
+  assert.deepEqual(september.map(row=>[row.accountNumber,row.bankPendingSettlementDetected]).sort(),[['6774',true],['7248',true]]);
+  isracard.bank.feed.transactions.forEach(tx=>{tx.status='completed'});
+  rows=kupaReconciledCreditRowsData(isracard,'עסקי','2026-09-15');
+  assert.equal(rows.some(row=>row.date==='2026-09-15'&&(row.accountNumber==='7248'||row.accountNumber==='6774')),false,'once both bank rows post, both September cycles advance');
+  assert.deepEqual(rows.filter(row=>row.date==='2026-10-15').map(row=>row.accountNumber).sort(),['6774','7248']);
+});
+
+test('pending bank annotation requires exact strong identity and cents, never a fuzzy pending debit',()=>{
+  const make=()=>{const state=stateFor([{accountNumber:'6774',txns:[{id:'sep',status:'completed',processedDate:'2026-09-15',chargedAmount:-2122,chargedCurrency:'ILS'}]}],{provider:'amex'});state.bank.asOfDate='2026-09-15';state.bank.feed.syncedAt='2026-09-15T07:00:00Z';return state};
+  for(const tx of [
+    {date:'2026-09-15',amount:-2121.99,currency:'ILS',status:'pending',creditSettlementDetails:{provider:'amex',cardLast4s:['6774']}},
+    {date:'2026-09-15',amount:-2122,currency:'ILS',status:'pending',creditSettlementDetails:{provider:'amex',cardLast4s:['0000']}},
+    {date:'2026-09-15',amount:-2122,currency:'ILS',status:'pending',description:'אמריקן אקספרס'},
+  ]){const state=make();state.bank.feed.transactions=[tx];const row=kupaReconciledCreditRowsData(state,'עסקי','2026-09-15').find(item=>item.date==='2026-09-15');assert.ok(row);assert.notEqual(row.bankPendingSettlementDetected,true,JSON.stringify(tx))}
 });
 
 test('pending billing-date hierarchy never falls back to today',()=>{

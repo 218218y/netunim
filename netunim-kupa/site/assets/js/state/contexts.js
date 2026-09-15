@@ -43,6 +43,7 @@ return {
     creditAccountFilter:'all',
     creditProviderFilter:'all',
     creditCardFilter:'all',
+    creditDetailMode:'month',
     creditDetailFocus:null,
     bankAccountView:'business',
     bankDataView:'history',
