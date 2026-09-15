@@ -12,9 +12,18 @@ come exclusively from the bank. Check workflow changes do not credit an account 
 * A uniquely matched positive ILS cheque deposit marks its checks `הופקד - במעקב`.
   Pending bank transactions qualify as evidence of a deposit, never of settlement.
 * Each check displays the source description, date, deposit total and batch size.
-  Orders includes these incidents in its warning center; Kupa has a header warning
-  button. Both check pages show the same review cards, including closed-check incidents.
-* The user confirms or rejects the proposed association. Confirmation is durable and
+  A unique structured bank item matching the manual check number and individual amount
+  is automatically confirmed by the server. Known drawer bank/branch/account fields must
+  agree, the claim must be unconflicted, and competing check/deposit identities block proof.
+  References alone and date/amount fallback still require manual confirmation.
+* Routine confirmed deposits and successful automatic clearing appear in the check page's
+  expandable activity history, without warnings. Ambiguity, changed evidence, returns and
+  disappearance remain in both apps' warning interfaces, including closed-check incidents.
+  History is server-owned, append-once per event, survives older clients and acknowledgements,
+  and is paginated without truncating stored events. Recording begins at the next complete
+  snapshot; earlier unrecorded transitions are not reconstructed. Current associations can
+  be rejected from this area even after acknowledgement; historical events are read-only.
+* The user confirms or rejects an uncertain proposed association. Confirmation is durable and
   does not itself clear the check. Rejection restores the pre-match status/date and
   switches the check to manual control. Its transaction remains reserved, even if the
   check is subsequently deleted, so the deposit cannot be assigned again.
@@ -23,13 +32,13 @@ come exclusively from the bank. Check workflow changes do not credit an account 
   no matching return or changed evidence, and the waiting period below. The date comes
   from that verification snapshot, not from a browser timer or the check's due date.
 * Missing/changed deposits revoke an automatic cleared state to `הופקד - במעקב` and
-  generate an incident. Absence alone never asserts `חזר`. Reappearance requires a new
-  confirmation. A new incident has a new acknowledgement identity.
+  generate an incident. Absence alone never asserts `חזר`. Reappearance requires fresh
+  proof or manual confirmation. A new incident has a new acknowledgement identity.
 * For a reduced aggregate deposit, immutable original members (IDs, names, amounts,
   numbers and role) are compared exhaustively with the remaining bank amount. A unique
   remainder names the missing members and shows original/remaining/missing totals.
-  Successive reductions continue to use the original group. Surviving members request
-  fresh approval and restart their observation period; missing members cannot clear.
+  Successive reductions continue to use the original group. Surviving members require
+  fresh proof or manual approval and restart their observation period; missing members cannot clear.
   Separate explicit bank return debits can also establish the reduced net deposit,
   provided each debit is attributable to this group and no other original group fits.
   Multiple debits must each identify a distinct subset; repeated or ambiguous debits
@@ -88,7 +97,8 @@ cannot clear a check. A unique complete set of check identities, including a pre
 claimed numbered manual group, can connect pending and completed rows even when the
 aggregate reference changes. Existing same-reference reconciliation remains available,
 with contradictory item sets blocked. A pending row still present in the current bank
-payload is never deleted. Final/enriched evidence receives a new confirmation identity.
+payload is never deleted. Final/enriched evidence receives a new event identity and is
+automatically confirmed only when its current structured numbered evidence proves the match.
 
 `הצ שיק חוזר-נט` is classified as redeposit. Number/amount/drawer identity must match
 and a returned check's new deposit must be later than the previous return date; uncertain
@@ -153,7 +163,9 @@ starts detection; existing bank credentials and refresh schedules are unchanged.
 No browser/open application timer is a substitute for fresh bank evidence. When bank
 refresh stops, automatic status progression stops too.
 Then apply `20260914150000_check_manual_deposit_tracking.sql` for the manual-deposit
-metadata correction. The Hebrew deployment guide lists the latest pending file.
+metadata correction and `20260915090000_check_confirmed_automation.sql` for automatic
+numbered confirmation and protected activity history. Preserve all intervening canonical
+migrations. The Hebrew deployment guide lists the latest pending file.
 
 The transaction headers in both apps show `targetDate` in parentheses beside the
 projected balance. This is the actual account-specific forecast horizon, which may

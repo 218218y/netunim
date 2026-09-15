@@ -661,3 +661,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .bank-cashflow-warning-row{min-width:0;padding:0 16px 8px;overflow-wrap:anywhere}
 .bank-cashflow-warning-row>.cashflow-breach{margin:0}
 .bank-balance-card>.cashflow-breach{grid-column:1/-1;min-width:0;overflow-wrap:anywhere}
+
+.check-bank-activity{margin:14px 0;border:1px solid #d9e2e8;border-radius:12px;background:#fff;color:#243440}.check-bank-activity summary{cursor:pointer;padding:12px;font-weight:600;overflow-wrap:anywhere}.check-bank-activity summary:focus-visible{outline:2px solid #356a94;outline-offset:-2px}.check-bank-activity-item{border-top:1px solid #e5eaee}.check-bank-activity .check-bank-review{background:#f7fafc;border-color:#d9e2e8;color:#243440}

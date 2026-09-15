@@ -29,9 +29,8 @@ function bankTransactionDay(row){return isoDay(row?.date)||isoDay(row?.processed
 function bankTransactionSearchText(row){return [row?.description,row?.memo,row?.partyName,row?.partyHeadline,row?.messageHeadline,row?.messageDetail].map(value=>String(value||'').normalize('NFKC').toLowerCase().replace(/[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g,'').replace(/\s+/g,' ').trim()).join(' ')}
 const CREDIT_SETTLEMENT_MAX_HOLD_DAYS=2;
 const CREDIT_SETTLEMENT_MARKERS={
-  // Bank feeds usually identify the clearing institution, not the individual card.
-  // Last-4 is bonus evidence only; provider/legal-name aliases are the strong signal
-  // when the posted amount differs from the issuer-derived cycle estimate.
+  // Explicit bank card identity takes precedence. Issuer aliases are fallback
+  // evidence only when the bank provides no usable card identity.
   visaCal:['כאל','כרטיסי אשראי לישראל','כרטיסי אשראי ל'],
   max:['מקס איט פיננסי','מקס איט פיננסים','מקס','max'],
   isracard:['ישראכרט בע״מ','ישראכרט בע"מ','ישראכרט בעמ','ישראכרט','isracard'],
@@ -71,7 +70,8 @@ function bankRowExplicitlyMatchesProvider(row,provider){
 }
 function moneyCents(value){return Math.round(num(value)*100)}
 function cardSuffixForRows(rows){const suffixes=new Set(rows.map(row=>String(row?.accountNumber||'').replace(/\D/g,'').slice(-4)).filter(value=>value.length===4));return suffixes.size===1?[...suffixes][0]:''}
-function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;const explicit=Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[];if(explicit.includes(String(suffix)))return true;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
+function bankTextHasCardSuffix(row,suffix){if(!suffix)return false;return new RegExp(`(?:^|\\D)${suffix}(?:\\D|$)`).test(bankTransactionSearchText(row))}
+function explicitBankCardSuffixes(row){return [...new Set((Array.isArray(row?.creditSettlementDetails?.cardLast4s)?row.creditSettlementDetails.cardLast4s:[]).map(value=>String(value??'').trim()).filter(value=>/^\d{4}$/.test(value)))]}
 function synchronizedProviderCardSuffixes(kupa,provider,account){
   const role=accountRole(account),sync=kupa?.creditSync&&typeof kupa.creditSync==='object'&&!Array.isArray(kupa.creditSync)?kupa.creditSync:{},mappings=sync.cardMappings&&typeof sync.cardMappings==='object'&&!Array.isArray(sync.cardMappings)?sync.cardMappings:{},suffixes=new Set();
   for(const profile of Array.isArray(sync.profiles)?sync.profiles:[]){
@@ -112,16 +112,15 @@ function bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows=nu
   })).filter(group=>group.suffix&&group.expected<0);
 }
 
-// The bank's modern direct-debit detail endpoint identifies the issuer/permission,
-// but in the observed Hapoalim schema it does not expose a card number. For UI
-// attribution, cross-check the bank debit against the already synchronized issuer
-// billing cycles. Return an identity only when the evidence has one exact solution;
-// equal/ambiguous explanations deliberately remain unidentified.
+// Display bank-native identities first. Only the display fallback may derive
+// attribution from exact issuer-cycle amounts; those inferred suffixes must never
+// be fed back into settlement as independent bank identity evidence.
 function bankCreditSettlementIdentityFromRows(kupa,row,account,preparedBillingRows=null){
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return {last4s:[],source:'',cards:[]};
-  const explicit=[...new Set((Array.isArray(details.cardLast4s)?details.cardLast4s:[]).map(value=>String(value||'').replace(/\D/g,'')).filter(value=>/^\d{4}$/.test(value)))];
+  const explicit=explicitBankCardSuffixes(row);
   if(explicit.length)return {last4s:explicit,source:'bank_detail_explicit',cards:explicit.map(last4=>({last4,card:''}))};
   const bankHint=validatedBankCardSuffixIdentity(kupa,row,account);if(bankHint)return bankHint;
+  if(bankCardSuffixHint(row).suffix)return {last4s:[],source:'',cards:[]};
   const candidates=bankSettlementAccountCandidates(kupa,row,account,preparedBillingRows);if(!candidates.length)return {last4s:[],source:'',cards:[]};
   const value=moneyCents(row?.amount),legacyReference=/^\d{4}$/.test(String(details.issuerReference||''))?String(details.issuerReference):'';
   if(legacyReference){
@@ -196,11 +195,23 @@ function unresolvedSettlementIndexes(bankRows,candidates,reference,{monthlySettl
   const banks=[];
   for(const row of bankRows){
     const day=bankTransactionDay(row),value=moneyCents(row.amount);
-    if(!day||day>reference||!value)continue;
+    if(!day||day>reference||!value||(row.currency&&row.currency!=='ILS'))continue;
     let eligible=groups.flatMap((group,index)=>day>=group.due&&day<(monthlySettlement?addMonthsISO(group.due,1):addDaysISO(group.due,CREDIT_SETTLEMENT_MAX_HOLD_DAYS))&&(!group.next||day<group.next)&&bankRowLooksLikeCreditSettlement(row,group.providers)?[index]:[]);
-    const suffixMatches=eligible.filter(index=>bankTextHasCardSuffix(row,groups[index].suffix));
-    if(suffixMatches.length)eligible=suffixMatches;
-    if(eligible.length)banks.push({row,value,eligible,suffixMatches});
+    const explicit=explicitBankCardSuffixes(row),hint=bankCardSuffixHint(row);
+    const nativeSuffixes=explicit.length?explicit:hint.suffix?[hint.suffix]:[];
+    let suffixMatches=[];
+    if(nativeSuffixes.length){
+      // Every bank-named card must identify exactly one eligible cycle. Unknown
+      // cards, last-four collisions and partial groups cannot fall back to totals.
+      const matches=nativeSuffixes.map(suffix=>eligible.filter(index=>groups[index].suffix===suffix));
+      if(matches.some(indexes=>indexes.length!==1))continue;
+      eligible=matches.flat();suffixMatches=eligible;
+      if(eligible.some(index=>groups[index].due!==groups[eligible[0]].due))continue;
+    }else{
+      suffixMatches=eligible.filter(index=>bankTextHasCardSuffix(row,groups[index].suffix));
+      if(suffixMatches.length)eligible=suffixMatches;
+    }
+    if(eligible.length)banks.push({row,value,eligible,suffixMatches,nativeIdentity:nativeSuffixes.length>0});
   }
   // Disjoint evidence components can be proved independently. The guard applies
   // only to a complex connected ambiguity, not to the user's total card count.
@@ -231,8 +242,13 @@ function provenSettlementGroupIndexes(groups,banks){
   }
   for(const [bankIndex,bank] of banks.entries()){
     const strong=bank.eligible.filter(index=>groups[index].proven&&bank.value<0);
-    // Last-4 is optional bonus evidence only; an explicit provider with exactly
-    // one eligible cycle is also proof even if the issuer amount is unknown.
+    // Native identity outranks amount/provider inference. A bank-specified group
+    // is indivisible, so one debit cannot settle only a convenient subset.
+    if(bank.nativeIdentity){
+      const exactRefund=bank.value>0&&bank.eligible.every(index=>groups[index].known)&&bank.eligible.reduce((sum,index)=>sum+groups[index].expected,0)===bank.value;
+      if(strong.length===bank.eligible.length||exactRefund)add([bankIndex],bank.eligible,0);
+      continue;
+    }
     if(bank.suffixMatches.length===1&&strong.includes(bank.suffixMatches[0])){add([bankIndex],bank.suffixMatches,0);continue}
     if(bank.eligible.length===1&&strong.length===1&&groups[strong[0]].providers.some(provider=>bankRowExplicitlyMatchesProvider(bank.row,provider))){add([bankIndex],strong,1);continue}
     // Unknown amounts can equal any debit. They prevent uniqueness by amount.
@@ -245,14 +261,14 @@ function provenSettlementGroupIndexes(groups,banks){
   }
   for(const [cardIndex,group] of groups.entries()){
     if(!group.known||!group.expected)continue;
-    const bankIndexes=banks.flatMap((bank,index)=>bank.eligible.includes(cardIndex)&&bank.eligible.every(i=>groups[i].known)&&Math.sign(bank.value)===Math.sign(group.expected)?[index]:[]);
+    const bankIndexes=banks.flatMap((bank,index)=>!bank.nativeIdentity&&bank.eligible.includes(cardIndex)&&bank.eligible.every(i=>groups[i].known)&&Math.sign(bank.value)===Math.sign(group.expected)?[index]:[]);
     subsets(bankIndexes,indexes=>{if(indexes.length>1&&indexes.reduce((sum,index)=>sum+banks[index].value,0)===group.expected)add(indexes,[cardIndex],2)});
   }
   const byBank=banks.map((_,index)=>claims.filter(claim=>claim.banks&(1<<index)));
   function settledByElimination(cards,usedBanks,anchors){
     let settled=cards;
     for(const [bankIndex,bank] of banks.entries()){
-      if(usedBanks&(1<<bankIndex)||bank.value>=0)continue;
+      if(usedBanks&(1<<bankIndex)||bank.value>=0||bank.nativeIdentity)continue;
       const remaining=bank.eligible.filter(index=>!(cards&(1<<index)));
       if(remaining.length!==1)continue;
       const index=remaining[0],group=groups[index],provider=String(group.rows[0]?.provider||'');

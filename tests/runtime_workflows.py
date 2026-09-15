@@ -45,6 +45,16 @@ flows={
  openCheckModal(auto.id);fill({fStatus:'נפרע'});saveModal();await saved();assert(state.checks[0].depositDate==='2026-09-11','Kupa status edit preserves the actual bank deposit date');
  state.checks[0].status='הופקד - במעקב';
  state.checks[0].bankMatch={...auto.bankMatch,eventId:'bank:again'};setPage('checks');element('[data-action="review-check-bank"][data-click-arg2="reject"]').click();await saved();assert(state.checks[0].status==='בקופה'&&state.checks[0].bankAutomationDisabled,'Kupa rejection restores pending manual check');
+ const quiet=state.checks[0];quiet.status='הופקד - במעקב';quiet.bankAutomationDisabled=false;quiet.bankMatch={...auto.bankMatch,eventId:'bank:certain',autoConfirmed:true,matchMethod:'number',bankItem:{checkNumber:'0007',amount:200}};quiet.bankHistory=[{...quiet.bankMatch,recordedAt:'2026-09-11T12:00:00Z'}];
+ setPage('checks');assert(element('#checkBankAlerts').hidden,'Kupa certain match does not raise the global warning');
+ const activity=element('.check-bank-activity');activity.querySelector('summary').click();assert(activity.open&&activity.textContent.includes('אושרה אוטומטית'),'Kupa quiet history opens on demand');
+ assert(!document.querySelector('[data-action="review-check-bank"][data-click-arg2="accept"]'),'Kupa does not request confirmation for exact evidence');
+ activity.querySelector('.check-bank-activity-item summary').click();activity.querySelector('[data-click-arg2="reject"]').click();await saved();assert(state.checks[0].bankAutomationDisabled,'Kupa quiet match remains manually rejectable');
+ quiet.bankHistory.push(...Array.from({length:30},(_,i)=>({...quiet.bankHistory[0],eventId:'older:'+i,recordedAt:'2026-08-01T12:00:00Z'})));renderChecks();
+ element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===25,'History page is bounded');
+ element('[data-action="check-bank-history-page"][data-click-arg0="1"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length<25,'History next-page action works');
+ element('[data-action="check-bank-history-page"][data-click-arg0="0"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length===25,'History previous-page action works');
+
 
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
  const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
@@ -80,6 +90,14 @@ flows={
  renderChecks();element('[data-action="review-check-bank"][data-click-arg2="accept"]').click();await saved();assert(auto.bankReview==='orders:deposited'&&auto.status==='הופקד - במעקב','Orders confirmation persists without clearing');
  openCheckModal(auto.id);fill({fNote:'preserve bank evidence'});saveModal();await saved();assert(state.checks[0].bankMatch.transactionId===92&&state.checks[0].depositDate==='2026-09-11','Editing a note preserves actual bank deposit date and link');
  openCheckModal(auto.id);fill({fStatus:'נפרע'});saveModal();await saved();assert(state.checks[0].depositDate==='2026-09-11','Orders status edit preserves the actual bank deposit date');
+ const quiet=state.checks[0];quiet.bankMatch={...quiet.bankMatch,phase:'cleared',eventId:'orders:cleared',autoConfirmed:true};quiet.bankHistory=[{...auto.bankMatch,autoConfirmed:true,recordedAt:'2026-09-11T12:00:00Z'},{...quiet.bankMatch,recordedAt:'2026-09-16T12:00:00Z'}];
+ renderChecks();const activity=element('.check-bank-activity');activity.querySelector('summary').click();assert(activity.open&&activity.querySelectorAll('.check-bank-activity-item').length===2,'Orders retains deposit and settlement history');
+ assert(!document.querySelector('.check-bank-review[role="status"]'),'Orders routine settlement is not an alert');
+ quiet.bankHistory.push(...Array.from({length:30},(_,i)=>({...quiet.bankHistory[0],eventId:'older:'+i,recordedAt:'2026-08-01T12:00:00Z'})));renderChecks();
+ element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===25,'History page is bounded');
+ element('[data-action="check-bank-history-page"][data-click-arg0="1"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length<25,'History next-page action works');
+ element('[data-action="check-bank-history-page"][data-click-arg0="0"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length===25,'History previous-page action works');
+
 
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
  const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await saved();click('apply-json-restore');await acceptStyledConfirm();await saved();assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');

@@ -78,5 +78,10 @@
     "version": "20260914183000",
     "name": "bank_credit_settlement_identity",
     "sha256": "3de2afb155dbcae58488bcc9bd4dbaa61910d1a3eaf7cf78c1888f5fb8d45912"
+  },
+  {
+    "version": "20260915090000",
+    "name": "check_confirmed_automation",
+    "sha256": "0113174fce5676996907bca415bcd529e9823c76ba6406c9321f73e9601c88ca"
   }
 ]

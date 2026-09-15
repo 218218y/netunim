@@ -671,3 +671,59 @@ test('settlement elimination needs an anchor and one unambiguous remaining debit
   const late=make([1363.17,1372.67],[1363.17,1369.78]);late.bank.homeFeed.transactions[1].date='2026-09-11';
   assert.equal(kupaCashflow(late,'ביתי','2026-09-11').expiredSettlementWarnings.length,0,'late posting is accepted within the monthly cycle');
 });
+
+
+test('bank-native identity is primary settlement evidence and contradictions never fall back to amounts',()=>{
+  const variants=[
+    ['max',{provider:'max',bankActivityTypeCode:515,permissionReference:'65521'},{}],
+    ['isracard',{provider:'isracard',bankActivityTypeCode:515},{messageDetail:'\u05de\u05d6\u05d4\u05d4 319095521'}],
+    ['amex',{provider:'amex',bankActivityTypeCode:491,issuerReference:'5521'},{}],
+  ];
+  for(const cashflow of [kupaCashflow,ordersCashflow])for(const [provider,details,extra] of variants){
+    const state=stateFor(['5521','6326'].map(accountNumber=>({accountNumber,txns:[{id:accountNumber,status:'completed',processedDate:'2026-09-10',chargedAmount:-1000,chargedCurrency:'ILS'}]})),{provider});
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';
+    const bank={date:'2026-09-10',amount:-17,description:'credit card',creditSettlementDetails:details,...extra};state.bank.feed.transactions=[bank];
+    const open=()=>cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').creditRows.filter(row=>row.date==='2026-09-10').map(row=>row.accountNumber).sort();
+    assert.deepEqual(open(),['6326'],provider+' native suffix settles the identified cycle even when its issuer estimate differs');
+    const unknownNative={...bank,amount:-1000,creditSettlementDetails:{...details,permissionReference:'69999',issuerReference:'9999'},messageDetail:'מזהה 319099999'};
+    assert.deepEqual(kupaBankCreditSettlementIdentityData(state,unknownNative,'עסקי').last4s,[],'the bank display cannot replace an unknown native identity with an amount-derived card');
+    bank.creditSettlementDetails={...details,cardLast4s:['9999']};bank.amount=-1000;bank.memo='5521';
+    assert.deepEqual(open(),['5521','6326'],'an explicit different card blocks amount/provider and memo fallback');
+    bank.creditSettlementDetails={...details,cardLast4s:['5521']};bank.memo='6326';
+    assert.deepEqual(open(),['6326'],'explicit bank identity outranks unrelated free-text digits');
+    bank.creditSettlementDetails={...details,cardLast4s:['5521','9999']};
+    assert.deepEqual(open(),['5521','6326'],'a partially unknown explicit group must not be attributed wholly to its one known card');
+    bank.creditSettlementDetails={...details,cardLast4s:['5521','6326']};bank.amount=-2000;
+    assert.deepEqual(open(),[],'both uniquely identified members of an explicit aggregate settle');
+    bank.status='pending';assert.deepEqual(open(),['5521','6326'],'pending identity does not prove a debit posted');
+    bank.status='completed';bank.presenceState='missing';assert.deepEqual(open(),['5521','6326'],'missing debit cannot settle a card');
+  }
+});
+
+
+test('native card evidence is scoped to the account and issuer and never resolves last-four collisions by amount',()=>{
+  for(const cashflow of [kupaCashflow,ordersCashflow]){
+    const state=stateFor(['00005521','11115521'].map((accountNumber,index)=>({accountNumber,txns:[{id:accountNumber,status:'completed',processedDate:'2026-09-10',chargedAmount:index?-700:-1000,chargedCurrency:'ILS'}]})));
+    const bank={date:'2026-09-10',amount:-1000,description:'MAX',creditSettlementDetails:{provider:'max',cardLast4s:['5521']}};
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[bank];
+    assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,1700,'two different cards sharing four digits remain unresolved');
+    state.creditSync.cardMappings['cards:11115521'].account='\u05d1\u05d9\u05ea\u05d9';
+    assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,0,'only the business card matches the business debit');
+    state.bank.homeFeed={syncedAt:'2026-09-10',balance:5000,transactions:[]};
+    assert.equal(cashflow(state,'\u05d1\u05d9\u05ea\u05d9','2026-09-10').credit,700,'a business debit cannot settle the home card');
+    state.bank.homeFeed.transactions=[{...bank,amount:-17}];
+    assert.equal(cashflow(state,'\u05d1\u05d9\u05ea\u05d9','2026-09-10').credit,0,'home native identity settles without requiring equal estimated amount');
+    bank.creditSettlementDetails.provider='amex';assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,1000,'equal suffix from a different issuer is contradictory');
+    bank.creditSettlementDetails.provider='max';bank.currency='USD';assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,1000,'foreign-currency bank evidence cannot settle an ILS debit');
+  }
+});
+
+
+test('an identified positive bank refund settles only an exact known refund cycle',()=>{
+  for(const cashflow of [kupaCashflow,ordersCashflow]){
+    const state=stateFor([{accountNumber:'2222',txns:[{id:'refund',status:'completed',processedDate:'2026-09-10',chargedAmount:100,chargedCurrency:'ILS'}]}]);
+    state.bank.asOfDate='2026-09-10';state.bank.feed.syncedAt='2026-09-10';state.bank.feed.transactions=[{date:'2026-09-10',amount:100,description:'MAX',creditSettlementDetails:{provider:'max',cardLast4s:['2222']}}];
+    assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,0,'an already credited refund must not be counted twice');
+    state.bank.feed.transactions[0].amount=50;assert.equal(cashflow(state,'\u05e2\u05e1\u05e7\u05d9','2026-09-10').credit,-100,'a positive credit of a different amount is not proof that the whole refund cycle settled');
+  }
+});

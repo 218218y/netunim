@@ -34,6 +34,68 @@ def run(db):
         db.sql('delete from netunim_internal.check_bank_claims;delete from public.bank_transaction_snapshots;delete from public.bank_transactions;delete from public.shared_checks_documents')
         save(rows)
 
+    # A proven numbered match needs no manual review. Pending age still cannot
+    # shorten settlement, and every change remains in server-owned history.
+    reset([check('Certain',550,'00111')])
+    deposit=tx('certain',550,[item('111',550)],status='pending');snapshot()
+    assert checks()[0]['bankMatch'].get('autoConfirmed') is True,'Number AND individual amount should auto-confirm a unique match'
+    assert len(checks()[0]['bankHistory'])==1
+    snapshot('2026-08-10');assert checks()[0]['status']!='נפרע' and len(checks()[0]['bankHistory'])==1
+    db.sql("update public.bank_transactions set status='completed' where id="+deposit);snapshot('2026-08-10')
+    assert checks()[0]['status']!='נפרע' and len(checks()[0]['bankHistory'])==2
+    snapshot('2026-08-13');assert checks()[0]['status']!='נפרע','Wait through all three additional banking days'
+    snapshot('2026-08-14');assert checks()[0]['status']=='נפרע' and not checks()[0].get('bankReview')
+    assert [h['phase'] for h in checks()[0]['bankHistory']]==['deposited','deposited','cleared']
+    rows=checks();history=rows[0].pop('bankHistory');rows[0]['bankMatch']['autoConfirmed']=False;save(rows)
+    assert checks()[0]['bankHistory']==history and checks()[0]['bankMatch']['autoConfirmed'],'Older clients cannot erase history or override server confirmation'
+    rows=checks();rows[0]['bankHistory']=[{'eventId':'forged'}];save(rows);assert checks()[0]['bankHistory']==history
+    db.sql("update public.bank_transactions set presence_state='missing' where id="+deposit);snapshot('2026-08-15')
+    assert checks()[0]['bankMatch']['phase']=='missing' and not checks()[0]['bankMatch'].get('autoConfirmed')
+    assert checks()[0]['bankHistory'][-1]['phase']=='missing'
+
+    reset([check('Fallback still reviewed',550)])
+    tx('fallback-review',550,[item('111',550)]);snapshot();snapshot('2026-08-10')
+    assert not checks()[0]['bankMatch']['autoConfirmed'] and checks()[0]['status']=='הופקד - במעקב','Amount-only association cannot auto-confirm itself'
+    rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows);snapshot('2026-08-11')
+    assert checks()[0]['status']=='נפרע','An explicitly reviewed fallback can still mature normally'
+
+    reset([check('Existing reviewed fallback',550)])
+    tx('legacy-reviewed',550,[item('111',550)]);snapshot()
+    rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows)
+    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state=state#-'{checks,0,bankMatch,autoConfirmed}';commit")
+    snapshot('2026-08-03')
+    assert checks()[0]['bankReview']==checks()[0]['bankMatch']['eventId'],'Installing certainty metadata must not reset an unchanged manual approval'
+    snapshot('2026-08-10');assert checks()[0]['status']=='נפרע'
+
+    reset([check('Reference only',550,'111')])
+    tx('reference-not-number',550,reference='111',status='pending');snapshot()
+    assert not checks()[0]['bankMatch']['autoConfirmed'],'A coincident deposit reference is not a bank-supplied cheque number'
+
+    reset([check('Group A',830,'111'),check('Group B',1000,'222')])
+    tx('certain-group',1830,[item('111',830),item('222',1000)]);snapshot();snapshot('2026-08-10')
+    assert all(c['bankMatch']['autoConfirmed'] and c['status']=='נפרע' and not c.get('bankReview') for c in checks())
+    tx('certain-group-return',-830,[item('111',830)],day='2026-08-11',description='החזרת שיק');snapshot('2026-08-11')
+    assert checks()[0]['bankMatch']['phase']=='returned' and not checks()[0]['bankMatch']['autoConfirmed']
+    assert checks()[0]['bankHistory'][-1]['phase']=='returned'
+
+    reset([check('Contested after initial match',550,'111')])
+    tx('one-numbered-deposit',550,[item('111',550)]);snapshot()
+    assert checks()[0]['bankMatch']['autoConfirmed']
+    rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows)
+    tx('another-numbered-deposit',550,[item('111',550)]);snapshot('2026-08-10')
+    assert not checks()[0]['bankMatch']['autoConfirmed'] and checks()[0]['status']!='נפרע','New competing bank evidence revokes certainty'
+    assert checks()[0]['bankMatch']['warning']=='number_ambiguous','Prior approval cannot bypass a new identity conflict'
+
+    reset([check('Contested after clearing',550,'111')])
+    tx('cleared-numbered-deposit',550,[item('111',550)]);snapshot();snapshot('2026-08-10')
+    assert checks()[0]['status']=='נפרע'
+    duplicate=tx('late-competing-deposit',550,[item('111',550)]);snapshot('2026-08-11')
+    assert checks()[0]['status']=='הופקד - במעקב' and checks()[0]['bankMatch']['warning']=='number_ambiguous'
+    snapshot('2026-08-12');assert checks()[0]['status']!='נפרע','Repeated uncertain evidence remains blocked'
+    db.sql('update public.bank_transactions set presence_state=\'missing\' where id='+duplicate);snapshot('2026-08-13')
+    assert checks()[0]['status']!='נפרע' and 'warning' not in checks()[0]['bankMatch']
+    snapshot('2026-08-14');assert checks()[0]['status']=='נפרע','Resolved conflict permits clearance after another fresh verification'
+
     # Manual deposit is an entry point into the same server-owned monitoring
     # lifecycle, including pending/final confirmation, settlement and disappearance.
     for role,account in [('business','עסקי'),('home','ביתי')]:
@@ -83,7 +145,7 @@ def run(db):
     rows=checks();rows[0]['amount']=550;save(rows)
     rows=checks();rows[0]['bankAutomationDisabled']=False;save(rows)
     assert checks()[0]['bankMatch']['phase']=='deposited' and checks()[0]['bankMatch']['eventId']!=event
-    snapshot('2026-08-10');assert checks()[0]['status']!='נפרע','Resuming does not reuse an earlier approval'
+    snapshot('2026-08-10');assert checks()[0]['status']=='נפרע' and checks()[0]['bankMatch']['autoConfirmed'],'Explicit resume can use newly verified numbered evidence without a manual approval'
 
     # The old whole-deposit matcher accepts swapped individual amounts merely
     # because the set of numbers and the combined sum happen to match.
