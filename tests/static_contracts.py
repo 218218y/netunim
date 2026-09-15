@@ -394,6 +394,15 @@ ok('.credit-cycle-menu{position:relative' in orders_css
    and 'data-column-label="חיוב בחודש"' in (K/'site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
    and 'data-column-label="חיוב בחודש"' in (O/'site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    "credit detail heading: previous and next charges use compact menus, the heading wraps inside the viewport, and the visible list exposes a semantically stable charge label with its total")
+kupa_css=(K/'site/assets/app.css').read_text(encoding='utf-8')
+ok(all('grid-template-columns:minmax(0,1fr) 68px' in css
+       and 'grid-template-columns:repeat(2,minmax(0,1fr))' in css
+       and 'inset-inline-start:0;inset-inline-end:auto' in css
+       and '.credit-future-menu .credit-cycle-menu-popover' not in css
+       and 'background:#fff6d8' in css
+       and '.credit-detail-cycle-divider td b{font-size:13px;font-weight:900}' in css
+       for css in (orders_css,kupa_css)),
+   "credit cycle controls: both apps keep the 10/15 choices side by side, anchor every RTL menu at its right edge, highlight pending bank settlement in yellow, and emphasize billing-time dividers")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
