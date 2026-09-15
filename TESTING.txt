@@ -102,6 +102,8 @@ Commands
   verify.bat
   verify.bat --no-pause
   python tests/run_all.py
+  python tests/run_all.py --jobs 1
+  python tests/run_all.py --jobs 4 --keep-going
   npm run lint
   npm run updates:check
   npm run deps:update
@@ -117,6 +119,36 @@ Commands
   npm run wrangler:check
   npm run wrangler:update
   node --test tests/business_models.test.mjs tests/shared_contracts.test.mjs tests/sync_models.test.mjs tests/storage_models.test.mjs
+
+Local parallel verification
+---------------------------
+verify.bat, npm test, and the normal deployment BAT files use the same complete suite inventory.
+The local runner now overlaps independent suites by default: half the available logical CPUs, capped at 4
+concurrent suites (minimum 1). At most 2 browser suites and 1 database suite run together. The performance
+suite runs alone so other verification suites do not distort its render measurements. Long independent
+Morning, browser/database, and module suites start early. No suite, assertion, or test result is cached or skipped.
+
+Use --jobs 1 for the original serial order, --jobs N for an explicit limit, and --browser-jobs 1 to reduce
+browser load. To configure the existing BAT files in PowerShell without changing them:
+  $env:NETUNIM_VERIFY_JOBS = '2'
+  .\verify.bat --no-pause
+  Remove-Item Env:NETUNIM_VERIFY_JOBS
+The limit counts suite processes; an individual suite can itself start several browser/Node processes.
+GitHub --group runs still default to 1 suite at a time within each separate matrix machine, even when
+NETUNIM_VERIFY_JOBS is set. Explicit --jobs overrides either default. --group and --core-only remain partial gates.
+
+Local runs save per-suite logs, results.json, junit.xml and summary.md in a unique .work/verification/ directory.
+--report-dir chooses a different report location; --verbose prints successful logs as well as saving them.
+The console shows starts, results, and progress every 15 seconds. JSON records wall time and each suite's
+start/end offset; summed suite seconds can exceed elapsed time during parallel execution.
+On failure, already running suites finish and queued suites remain explicitly not-run. --keep-going runs
+the rest and still returns failure. Ctrl+C and suite timeouts stop owned processes and retain failure reports.
+Windows Job Objects contain the suite's descendants (including Chromium's nested jobs) and wait for their
+termination; POSIX uses separate process groups. Each suite has its own temporary directory, browser profiles,
+loopback ports, and disposable database. Running suites never share a test database or browser profile.
+Cleanup handles Windows read-only attributes inherited by copytree, including read-only directories: the
+attribute is cleared only on the failing temporary copy, never on the repository's original site files.
+Reports contain diagnostics only and are never accepted as deployment approval or reused as passing results.
 
 After changing a public asset or canonical shared source:
   python tools/sync-assets.py

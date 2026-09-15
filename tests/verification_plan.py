@@ -9,6 +9,7 @@ TESTS = Path(__file__).resolve().parent
 GROUPS = {
     "contracts": [
         "ci_contracts.py",
+        "runner_contracts.py",
         "windows_deploy_contracts.py",
         "supabase_contracts.py",
         "static_contracts.py",

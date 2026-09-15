@@ -99,6 +99,8 @@ jobs:
           python-version: '3.14'
       - name: Exercise actual cmd.exe entrypoints with isolated upload stubs
         run: python tests/windows_deploy_contracts.py
+      - name: Exercise Windows parallel scheduling and process cleanup
+        run: python tests/runner_contracts.py
 
   complete:
     name: Verification complete
