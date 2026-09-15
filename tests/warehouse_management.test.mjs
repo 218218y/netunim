@@ -90,6 +90,46 @@ test('warehouse toolbar keeps tabs, compact metrics and unlabeled selects on one
   }
 });
 
+test('active stock-status clear control sits inside the metric group before shortage metrics',()=>{
+  const originalDocument=globalThis.document,main={innerHTML:''};
+  globalThis.document={querySelector:selector=>selector==='#main'?main:null};
+  try{
+    const warehouseUi={warehouseTab:'stock',warehouseSearch:'',inventoryLocation:'',inventoryFilter:'short',inventoryGrouping:'',warehouseBulkMode:false,warehouseBulkSelected:new Set()};
+    const state={inventoryItems:[],inventoryEvents:[],warehouseOrders:[]};
+    const view=createDomainsWarehouseView({
+      warehouseUi,model:{state},mountViewLayout:()=>{},inventoryTotals:()=>({onHand:0,reserved:0,available:0,incoming:0}),
+      inventoryStockViewData:()=>({location:'',filter:'short',grouping:'',items:[]}),renderStockGrid:()=>'',renderWarehouseLocations:()=>'',warehouseBulkControls:()=>'',syncWarehouseBulkUi:()=>{},inventoryEventView:event=>event,
+    });
+    view.renderWarehouse();
+    const html=main.innerHTML,metricsStart=html.indexOf('<div class=\"warehouse-metrics\"'),filtersStart=html.indexOf('<div class=\"warehouse-filters\"'),metrics=html.slice(metricsStart,filtersStart);
+    assert.ok(metricsStart>=0&&filtersStart>metricsStart);
+    assert.ok(metrics.includes('נקה סינון מצב ×'));
+    assert.ok(metrics.indexOf('נקה סינון מצב ×')<metrics.indexOf('פריטים בחוסר'),'RTL first child keeps the clear control immediately to the right of the shortage metric');
+    const filtersEnd=html.indexOf('</div>',filtersStart);
+    assert.ok(!html.slice(filtersStart,filtersEnd).includes('נקה סינון מצב ×'),'clear control must not widen the filter group');
+  }finally{
+    if(originalDocument===undefined)delete globalThis.document;else globalThis.document=originalDocument;
+  }
+});
+
+test('every stock row exposes order receive reserve and keeps only four secondary actions in the menu',()=>{
+  const state={inventoryItems:[{id:'i1',name:'כיסא',category:'כיסאות',defaultLocation:'מחסן קטן',active:true}],inventoryEvents:[]};
+  const warehouseUi={warehouseSearch:'',inventoryLocation:'',inventoryFilter:'',inventoryGrouping:'',warehouseBulkSelected:new Set(),warehouseBulkMode:false};
+  const view=createDomainsInventoryView({warehouseUi,model:{state},orderedInventoryCategoryNames:()=>['כיסאות'],inventoryStats:id=>inventoryStatsData(state,id),inventoryCategoryGroups:()=>[{name:'כיסאות',items:state.inventoryItems}]});
+  for(const withIncoming of [false,true]){
+    state.inventoryEvents=withIncoming?[{id:'ord',itemId:'i1',type:'order',quantity:2,location:'מחסן קטן'}]:[];
+    const html=view.stockCard(state.inventoryItems[0]),detailsAt=html.indexOf('<details class=\"warehouse-menu\"'),visible=html.slice(html.indexOf('<div class=\"stock-actions\">'),detailsAt),menu=html.slice(detailsAt);
+    const orderAt=visible.indexOf('data-action=\"open-inventory-event-modal\"'),receiveAt=visible.indexOf('data-action=\"open-stock-receive\"'),reserveAt=visible.indexOf('data-action=\"open-inventory-event-modal-2\"');
+    assert.ok(orderAt>=0&&receiveAt>orderAt&&reserveAt>receiveAt,'visible RTL action order is order, receive, reserve');
+    assert.ok(visible.includes('>הזמן</button>')&&visible.includes('>קליטה</button>')&&visible.includes('>שמור</button>'));
+    assert.ok(!menu.includes('data-action=\"open-inventory-event-modal\"'));
+    assert.ok(!menu.includes('data-action=\"open-stock-receive\"'));
+    assert.ok(!menu.includes('data-action=\"open-inventory-event-modal-2\"'));
+    for(const label of ['העברה בין מחסנים','ספירת מלאי','עריכת פריט','פרטים ותנועות'])assert.ok(menu.includes(label),label);
+    assert.equal((menu.match(/<button class=\"btn small\"/g)||[]).length,4);
+  }
+});
+
 test('warehouse metrics stay with the left-side filters instead of the primary tabs',()=>{
   const css=readFileSync(new URL('../netunim-orders/site/assets/app.css',import.meta.url),'utf8');
   assert.match(css,/\.warehouse-metrics\{[^}]*margin-inline-start:auto/);
