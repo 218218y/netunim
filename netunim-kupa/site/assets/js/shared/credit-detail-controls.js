@@ -14,15 +14,20 @@ export function creditDetailRangeMatch(row,from='',to=''){
   return !!date&&(!from||date>=from)&&(!to||date<=to);
 }
 
-export function creditDateRangeMarkup({active=false,from='',to='',action,escapeHtml}){
-  return `<details class="bank-date-filter credit-date-filter ${active?'active':''}" data-dismiss-on-outside><summary class="bank-date-filter-trigger" aria-label="טווח תאריכי חיוב"><span>טווח תאריכים${active?' ✓':''}</span><span class="bank-date-filter-chevron" aria-hidden="true">⌄</span></summary><div class="bank-date-menu" data-menu-panel><div class="bank-date-range-card"><div class="bank-date-range-title">לפי תאריך החיוב</div><div class="bank-date-range-fields" data-menu-keep-open><label class="bank-date-range-field">מ־<input type="date" data-credit-date="from" aria-label="מתאריך חיוב" value="${safe(from,escapeHtml)}"></label><label class="bank-date-range-field">עד<input type="date" data-credit-date="to" aria-label="עד תאריך חיוב" value="${safe(to,escapeHtml)}"></label></div><button type="button" class="btn primary bank-date-apply" data-action="${safe(action,escapeHtml)}">החל</button></div></div></details>`;
+export function creditDateRangeMarkup({active=false,from='',to='',action,escapeHtml,dateEditorMarkup}){
+  const input=(value,side,label)=>dateEditorMarkup('',value,{data:{'credit-date':side},compact:true,label});
+  return `<details class="bank-date-filter credit-cycle-menu credit-date-filter ${active?'active':''}" data-dismiss-on-outside><summary class="credit-cycle-menu-trigger" aria-label="טווח תאריכי חיוב"><span><b>טווח תאריכים${active?' ✓':''}</b></span><span class="credit-cycle-menu-chevron" aria-hidden="true">⌄</span></summary><div class="bank-date-menu" data-menu-panel><div class="bank-date-range-card"><div class="bank-date-range-title">לפי תאריך החיוב</div><div class="bank-date-range-fields" data-menu-keep-open><div class="bank-date-range-field"><span>מ־</span>${input(from,'from','מתאריך חיוב')}</div><div class="bank-date-range-field"><span>עד</span>${input(to,'to','עד תאריך חיוב')}</div></div><div data-credit-date-error role="alert"></div><button type="button" class="btn primary bank-date-apply" data-action="${safe(action,escapeHtml)}" data-menu-keep-open>החל</button></div></div></details>`;
 }
 
 export function creditDateRangeFromControl(element){
   const panel=element.closest('[data-menu-panel]'),from=panel?.querySelector('[data-credit-date="from"]'),to=panel?.querySelector('[data-credit-date="to"]');
   if(!from||!to)return null;
-  to.setCustomValidity(from.value&&to.value&&from.value>to.value?'תאריך הסיום צריך להיות אחרי תאריך ההתחלה':'');
-  if(!from.reportValidity()||!to.reportValidity())return null;
+  const error=panel.querySelector('[data-credit-date-error]');if(error)error.textContent='';
+  for(const input of [from,to]){
+    const editor=input.closest?.('[data-date-editor]'),parts=[...(editor?.querySelectorAll('[data-date-part]')||[])];
+    if(parts.some(part=>part.value)&&!input.value){if(error)error.textContent='יש להשלים יום, חודש ושתי ספרות שנה תקינים';editor.classList.add('invalid');parts.find(part=>!part.value)?.focus();return null}
+  }
+  if(from.value&&to.value&&from.value>to.value){if(error)error.textContent='תאריך הסיום צריך להיות אחרי תאריך ההתחלה';return null}
   return {from:from.value,to:to.value};
 }
 

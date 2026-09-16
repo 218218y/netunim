@@ -1,3 +1,4 @@
+import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
 import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
@@ -143,15 +144,27 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('credit sync lease release',error)}local.busy=false;render();scheduleAuto()}
   }
 
+  async function persistCreditSettings(mutator,message){
+    let candidate;
+    const result=await saveFinancePatch(state=>{candidate=mutator(normalizeCreditSync(state.creditSync));return {...state,creditSync:candidate}});
+    if(!result?.saved)throw new Error('השינוי לא נשמר בענן. יש להתחבר ולנסות שוב.');
+    model.state.creditSync=normalizeCreditSync(result.row?.state?.creditSync||candidate);
+    await saveState(message);return true;
+  }
+  async function saveCreditCardOrder(keys){return persistCreditSettings(sync=>applyCreditCardOrderData(sync,keys),'סדר הכרטיסים נשמר')}
   async function setCreditCardMapping(profileId,accountNumber,field,value){
-    const sync=normalizeCreditSync(model.state.creditSync),profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};
+    try{
+      await persistCreditSettings(normalizedSync=>{
+    const sync=normalizedSync,profile=sync.profiles.find(p=>p.profileId===profileId),key=creditCardMappingKey(profileId,accountNumber),current=sync.cardMappings[key]||{included:false,hidden:false,account:profile?.defaultAccount==='ביתי'?'ביתי':'עסקי',cardName:'',manualFrame:null};
     if(field==='included')current.included=!!value;
     if(field==='hidden')current.hidden=!!value;
     if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';
     if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);
-    if(field==='sortOrder'){const raw=String(value??'').trim(),order=raw===''?null:Number(raw);if(order!==null&&(!Number.isSafeInteger(order)||order<1)){toast('סדר הכרטיס חייב להיות מספר שלם חיובי');return false}current.sortOrder=order}
-    if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0)){toast('מסגרת ידנית חייבת להיות מספר חיובי או אפס');return false}current.manualFrame=amount===null?null:Math.round(amount*100)/100}
-    sync.cardMappings[key]=current;model.state.creditSync=sync;await saveFinancePatch(state=>({...state,creditSync:sync}));await saveState('שיוך כרטיס האשראי עודכן');render();
+    if(field==='sortOrder'){const raw=String(value??'').trim(),order=raw===''?null:Number(raw);if(order!==null&&(!Number.isSafeInteger(order)||order<1))throw new Error('סדר הכרטיס חייב להיות מספר שלם חיובי');current.sortOrder=order}
+    if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0))throw new Error('מסגרת ידנית חייבת להיות מספר חיובי או אפס');current.manualFrame=amount===null?null:Math.round(amount*100)/100}
+        sync.cardMappings[key]=current;return sync;
+      },'שיוך כרטיס האשראי עודכן');render();return true;
+    }catch(error){toast(error?.message||'שמירת הגדרת הכרטיס נכשלה');render();return false}
   }
 
   function setCreditAutoRefresh(enabled){localStorage.setItem(CREDIT_AUTO_KEY,enabled?'1':'0');scheduleAuto();render()}
@@ -169,5 +182,5 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     refreshCreditSync({interactive:false,auto:true}).catch(()=>{});
   }
 
-  return {creditSyncUiState,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,setCreditCardMapping,setCreditAutoRefresh,setCreditAutoMode,maybeAutoRefreshCreditSync};
+  return {creditSyncUiState,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,openCreditConnectionModal,deleteCreditConnection,resetCreditSync,refreshCreditSync,saveCreditCardOrder,setCreditCardMapping,setCreditAutoRefresh,setCreditAutoMode,maybeAutoRefreshCreditSync};
 }

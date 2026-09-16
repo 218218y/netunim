@@ -1,3 +1,5 @@
+import {esc} from './core/values.js';
+import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createUiStatus} from './ui/status.js';
@@ -446,6 +448,7 @@ const domainsExpensesView=createDomainsExpensesView({
 });
 
 const domainsCreditView=createDomainsCreditView({
+  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   model,
   ui,
   syncBulkUi:(...args)=>uiBulk.syncBulkUi(...args),
@@ -755,7 +758,10 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 
 document.getElementById('checkBankAlerts').addEventListener('click',()=>uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true)));
 
+const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
+
 const uiActions=createUiActions({
+  creditOrderActions:creditCardOrderView.actions,
   reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args))uiModal.closeModal(true)},
   ui,
   chooseBackupFolder:(...args)=>uiFolders.chooseBackupFolder(...args),

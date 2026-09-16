@@ -1,4 +1,4 @@
-import {financeFencePayload} from '../shared/finance-fence.js';
+import {financeFencePayload,createFinanceManualQueue} from '../shared/finance-fence.js';
 import {assertReadableCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {SHARED_CHECKS_DOC, SHARED_CHECKS_TABLE, SHARED_CHECKS_RPC} from '../state/constants.js';
@@ -24,6 +24,7 @@ function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(res
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createCloudTransport({session, supaRest}){
+const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
 async function readOrdersReadOnlyMeta(){
   const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
   const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
@@ -95,7 +96,7 @@ async function releaseFinanceSyncLease(leaseName,leaseToken){
   const value=Array.isArray(j)?j[0]:j;return value===true||value?.released===true;
 }
 async function saveFinancePatch(mutator,lease=null){
-  if(!lease){const token=createOperationId('finance-manual'),held=await claimFinanceSyncLease('credit',token);if(!held.acquired)throw new Error('finance_sync_lease_busy');try{return await saveFinancePatch(mutator,held)}finally{await releaseFinanceSyncLease('credit',token)}}
+  if(!lease)return manualFinanceQueue(held=>saveFinancePatch(mutator,held));
   const operationId=createOperationId('finance');
   let row=await readFinanceSyncDocument();
   for(let conflictAttempt=0;conflictAttempt<CLOUD_WRITE_POLICY.conflictAttempts;conflictAttempt++){

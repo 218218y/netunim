@@ -1,3 +1,5 @@
+import {esc} from './core/values.js';
+import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
 import {createStorageChecks} from './storage/checks.js';
@@ -827,7 +829,10 @@ const lifecycle=createLifecycle({
 
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
 
+const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
+
 const uiActions=createUiActions({
+  creditOrderActions:creditCardOrderView.actions,
   reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();domainsBankCache.renderKupaDependentView()}},
   supplierUi,
   customerUi,
