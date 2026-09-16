@@ -28,6 +28,21 @@ export function buildAmexDigitalV3LogonRequest(validateBean={},credentials={}){
 }
 
 function text(value,max=220){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
+function providerCode(value){return text(value,24)}
+export function classifyAmexDigitalV3LogonResult(logonResult){
+  const providerStatus=providerCode(logonResult?.status),providerReturnCode=providerCode(logonResult?.returnCode),meta={providerStatus,providerReturnCode};
+  // The live performLogonI endpoint returns HTTP 200 for both accepted and rejected
+  // logins. A status=2 / returnCode=E response means the login was rejected, but the
+  // issuer's response does not prove that the password itself is the bad field: the
+  // ID/card suffix can be wrong and an account can also be locked. Never turn that
+  // ambiguous provider response into a "bad password" assertion or retry credentials.
+  if(providerStatus==='3')return {ok:false,code:'CREDIT_CHANGE_PASSWORD',message:'American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.',...meta};
+  if(providerStatus==='2'||providerReturnCode==='E'||(providerStatus==='1'&&providerReturnCode&&providerReturnCode!=='1'))return {ok:false,code:'CREDIT_LOGIN_REJECTED',message:'American Express דחתה את הכניסה הקבועה. התשובה אינה מוכיחה שהסיסמה עצמה שגויה; ייתכן שנדחו פרטי הזיהוי, שהחשבון מוגבל או שנדרש טיפול באתר החברה.',...meta};
+  // PR #1159 only relied on status=1 and some live responses omit returnCode. Preserve
+  // that proven success contract, while accepting returnCode=1 when the issuer sends it.
+  if(providerStatus==='1'&&(!providerReturnCode||providerReturnCode==='1'))return {ok:true,code:'',message:'',...meta};
+  return {ok:false,code:'CREDIT_PROVIDER_SCHEMA_ERROR',message:'American Express החזירה תוצאת כניסה שלא זוהתה. לא ניתן להסיק מכך שהסיסמה שגויה.',...meta};
+}
 function safeError(message,code,extra={}){const error=new Error(message);error.code=code;Object.assign(error,extra);return error}
 function diagnostic(onDiagnostic,event){try{onDiagnostic?.(event)}catch{}}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
@@ -137,14 +152,14 @@ async function login(page,credentials,onDiagnostic){
   const validateRequest={id:credentials.id,cardSuffix:credentials.card6Digits,countryCode:COUNTRY_CODE,idType:ID_TYPE,checkLevel:'1',companyCode:AMEX_LOGIN_COMPANY_CODE};
   const validateResult=await pagePost(page,`${servicesUrl}?reqName=ValidateIdData`,validateRequest,{headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},stage:'LoginApi',login:true,onDiagnostic});
   if(!validateResult?.Header||validateResult.Header.Status!=='1'||!validateResult.ValidateIdDataBean)throw safeError('American Express החזירה מבנה ValidateIdData שאינו תואם לחוזה המחבר.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'LoginApi'});
-  const returnCode=String(validateResult.ValidateIdDataBean.returnCode||'');
-  if(returnCode==='4')throw safeError('American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.','CREDIT_CHANGE_PASSWORD',{stage:'LoginApi'});
-  if(returnCode!=='1')throw safeError('פרטי ההתחברות של American Express נדחו.','CREDIT_INVALID_PASSWORD',{stage:'LoginApi'});
+  const returnCode=providerCode(validateResult.ValidateIdDataBean.returnCode);
+  if(returnCode==='4')throw safeError('American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.','CREDIT_CHANGE_PASSWORD',{stage:'LoginApi',providerReturnCode:returnCode});
+  if(returnCode!=='1')throw safeError('American Express דחתה את פרטי הזיהוי הקבועים לפני שלב הסיסמה.','CREDIT_LOGIN_REJECTED',{stage:'LoginApi',providerReturnCode:returnCode});
   const logonRequest=buildAmexDigitalV3LogonRequest(validateResult.ValidateIdDataBean,credentials);
   const logonResult=await pagePost(page,`${servicesUrl}?reqName=performLogonI`,logonRequest,{headers:{'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8'},stage:'LoginPassword',login:true,onDiagnostic});
-  const status=String(logonResult?.status||'');
-  if(status==='3')throw safeError('American Express דורשת שינוי סיסמה לפני שניתן להמשיך בסנכרון.','CREDIT_CHANGE_PASSWORD',{stage:'LoginPassword'});
-  if(status!=='1')throw safeError('הסיסמה של American Express נדחתה.','CREDIT_INVALID_PASSWORD',{stage:'LoginPassword'});
+  const outcome=classifyAmexDigitalV3LogonResult(logonResult);
+  diagnostic(onDiagnostic,{stage:'LoginDecision',providerStatus:outcome.providerStatus,providerReturnCode:outcome.providerReturnCode,errorClass:outcome.ok?'':outcome.code});
+  if(!outcome.ok)throw safeError(outcome.message,outcome.code,{stage:'LoginPassword',providerStatus:outcome.providerStatus,providerReturnCode:outcome.providerReturnCode});
   await navigate(page,`${AMEX_WEB_BASE_URL}/transactions`,{stage:'TransactionsPage',onDiagnostic});
 }
 

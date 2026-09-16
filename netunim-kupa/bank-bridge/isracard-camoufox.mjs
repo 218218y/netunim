@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import {normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from './amex-digitalv3.mjs';
+import {classifyAmexDigitalV3LogonResult,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from './amex-digitalv3.mjs';
 import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from './isracard-digitalv3.mjs';
 
 const PROVIDERS={
@@ -255,14 +255,22 @@ async function login(page,provider,credentials,servicesUrl){
   const cfg=PROVIDERS[provider];
   const validate=await pageFetchJson(page,{url:`${servicesUrl}?reqName=ValidateIdData`,method:'POST',stage:'ValidateIdData',data:{id:String(credentials?.id||''),cardSuffix:String(credentials?.card6Digits||''),countryCode:COUNTRY_CODE,idType:ID_TYPE,checkLevel:'1',companyCode:cfg.companyCode}});
   if(validate?.Header?.Status!=='1'||!validate?.ValidateIdDataBean)throw safeError('חברת האשראי לא החזירה תשובת ValidateIdData תקינה.','CREDIT_CAMOUFOX_LOGIN_PROTOCOL',{stage:'ValidateIdData'});
-  const returnCode=String(validate.ValidateIdDataBean.returnCode||'');
-  if(returnCode==='4')throw safeError('חברת האשראי דורשת החלפת סיסמה לפני שניתן לסנכרן.','CREDIT_CHANGE_PASSWORD',{stage:'ValidateIdData'});
-  if(returnCode!=='1')throw safeError('פרטי ההתחברות הקבועים נדחו על ידי חברת האשראי.','CREDIT_INVALID_PASSWORD',{stage:'ValidateIdData'});
+  const returnCode=String(validate.ValidateIdDataBean.returnCode||'').slice(0,24);
+  if(returnCode==='4')throw safeError('חברת האשראי דורשת החלפת סיסמה לפני שניתן לסנכרן.','CREDIT_CHANGE_PASSWORD',{stage:'ValidateIdData',providerReturnCode:returnCode});
+  if(returnCode!=='1'){
+    if(provider==='amex')throw safeError('American Express דחתה את פרטי הזיהוי הקבועים לפני שלב הסיסמה.','CREDIT_LOGIN_REJECTED',{stage:'ValidateIdData',providerReturnCode:returnCode});
+    throw safeError('פרטי ההתחברות הקבועים נדחו על ידי חברת האשראי.','CREDIT_INVALID_PASSWORD',{stage:'ValidateIdData',providerReturnCode:returnCode});
+  }
   const loginResult=await pageFetchJson(page,{url:`${servicesUrl}?reqName=performLogonI`,method:'POST',stage:'performLogonI',data:{KodMishtamesh:validate.ValidateIdDataBean.userName,MisparZihuy:String(credentials?.id||''),Sisma:String(credentials?.password||''),cardSuffix:String(credentials?.card6Digits||''),countryCode:COUNTRY_CODE,idType:ID_TYPE}});
+  if(provider==='amex'){
+    const outcome=classifyAmexDigitalV3LogonResult(loginResult);
+    if(outcome.ok)return;
+    throw safeError(outcome.message,outcome.code,{stage:'performLogonI',providerStatus:outcome.providerStatus,providerReturnCode:outcome.providerReturnCode});
+  }
   const status=String(loginResult?.status||'');
   if(status==='1')return;
-  if(status==='3')throw safeError('חברת האשראי דורשת החלפת סיסמה לפני שניתן לסנכרן.','CREDIT_CHANGE_PASSWORD',{stage:'performLogonI'});
-  throw safeError('פרטי ההתחברות הקבועים נדחו על ידי חברת האשראי.','CREDIT_INVALID_PASSWORD',{stage:'performLogonI'});
+  if(status==='3')throw safeError('חברת האשראי דורשת החלפת סיסמה לפני שניתן לסנכרן.','CREDIT_CHANGE_PASSWORD',{stage:'performLogonI',providerStatus:status});
+  throw safeError('פרטי ההתחברות הקבועים נדחו על ידי חברת האשראי.','CREDIT_INVALID_PASSWORD',{stage:'performLogonI',providerStatus:status});
 }
 
 

@@ -51,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=55;
+const BRIDGE_VERSION=56;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -631,13 +631,13 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
         const {_dataDiagnostics:ignoredDataDiagnostics,...publicResult}=result||{};success.push(publicResult);if(publicResult.coreComplete!==false)coreSuccessCount++;if(Array.isArray(publicResult.errors))for(const raw of publicResult.errors){const base={...raw,profileId:raw.profileId||profile.profileId,provider:raw.provider||profile.provider,label:raw.label||profile.label,correlationId},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(base.originalFailureAt||base.at||new Date().toISOString())),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});errors.push({...base,severity,component,originalFailureAt:base.originalFailureAt||base.at||null,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint})}
       }
       catch(error){
-        const at=new Date().toISOString(),browserEngine=['chromium','camoufox'].includes(String(error?.browserEngine||''))?String(error.browserEngine):'chromium',base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId,browserEngine},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
+        const at=new Date().toISOString(),browserEngine=['chromium','camoufox'].includes(String(error?.browserEngine||''))?String(error.browserEngine):'chromium',base={profileId:profile.profileId,provider:profile.provider,label:profile.label,code:error?.code||'CREDIT_SCRAPE_FAILED',stage:String(error?.stage||'').slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||String(error),at,originalFailureAt:at,retryAfterAt:error?.retryAfterAt||null,correlationId,browserEngine,providerStatus:String(error?.providerStatus||'').slice(0,24),providerReturnCode:String(error?.providerReturnCode||'').slice(0,24)},retryAfterAt=creditAutomaticRetryAfterAt(base,Date.parse(at)),severity=creditErrorSeverity(base),component=creditErrorComponent(base),fingerprint=diagnosticFingerprint({...base,errorClass:base.code});
         errors.push({...base,severity,component,...(retryAfterAt?{retryAfterAt}:{}),diagnosticFingerprint:fingerprint});
         // If Chromium was attempted while a prior Camoufox 403 was still cooling down,
         // retain that engine-scoped not-before record when Chromium also fails. This
         // prevents a second manual refresh from immediately re-entering Camoufox.
         if(camoufoxDeferred&&browserEngine!=='camoufox')errors.push(camoufoxDeferred);
-        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason});
+        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode});
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;

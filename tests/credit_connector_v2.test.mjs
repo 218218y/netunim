@@ -17,7 +17,7 @@ import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCa
 import {creditIdentityDirectory,deleteCreditIdentity} from '../netunim-kupa/bank-bridge/credit-identity.mjs';
 import {createCreditDiagnosticLog,responseShapeFingerprint,safeCreditResponseShape,sanitizeCreditDiagnosticEvent} from '../netunim-kupa/bank-bridge/credit-diagnostics.mjs';
 import {buildCreditDataDiagnosticPayload,maxRawTransactionTime} from '../netunim-kupa/bank-bridge/credit-data-diagnostics.mjs';
-import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
+import {AMEX_DIGITAL_V3_SCHEMA_VERSION,buildAmexDigitalV3LogonRequest,classifyAmexDigitalV3LogonResult,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher,parseAmexDigitalV3Cards,prepareAmexDigitalV3Page} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher,parseIsracardDigitalV3Cards} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 
 assert.equal(CREDIT_CONNECTOR_CONTRACT_VERSION,2);
@@ -138,6 +138,15 @@ assert.equal(logonWithoutUserName.KodMishtamesh,undefined,'PR #1159 models Valid
 assert.equal(Object.hasOwn(logonWithoutUserNameWire,'KodMishtamesh'),false,'when Amex omits optional userName, the wire request omits KodMishtamesh exactly as upstream JSON serialization does');
 assert.deepEqual(logonWithoutUserNameWire,{MisparZihuy:'123456789',Sisma:'fixed-password',cardSuffix:'123456',countryCode:'212',idType:'1'},'missing userName never falls back to an invented ID/username value');
 assert.equal(buildAmexDigitalV3LogonRequest({returnCode:'1',userName:'issuer-user'},amexCredentials).KodMishtamesh,'issuer-user','when Amex supplies userName, performLogonI preserves it unchanged');
+const amexLoginAccepted=classifyAmexDigitalV3LogonResult({status:'1'});
+assert.equal(amexLoginAccepted.ok,true,'PR #1159 status=1 remains a valid Amex login even when that response omits returnCode');
+const amexLoginAcceptedWithReturnCode=classifyAmexDigitalV3LogonResult({status:'1',returnCode:'1'});
+assert.equal(amexLoginAcceptedWithReturnCode.ok,true,'the newer live Amex 1/1 success pair is accepted');
+const amexLoginRejected=classifyAmexDigitalV3LogonResult({status:'2',returnCode:'E',message:'provider text must not be persisted'});
+assert.deepEqual({ok:amexLoginRejected.ok,code:amexLoginRejected.code,providerStatus:amexLoginRejected.providerStatus,providerReturnCode:amexLoginRejected.providerReturnCode},{ok:false,code:'CREDIT_LOGIN_REJECTED',providerStatus:'2',providerReturnCode:'E'},'Amex 2/E is a login rejection, not proof that the password field itself is wrong');
+assert.match(amexLoginRejected.message,/אינה מוכיחה שהסיסמה עצמה שגויה/,'the user-facing Amex rejection does not make an unsupported bad-password claim');
+assert.equal(classifyAmexDigitalV3LogonResult({status:'3'}).code,'CREDIT_CHANGE_PASSWORD','the established change-password status stays terminal');
+assert.equal(classifyAmexDigitalV3LogonResult({status:'9',returnCode:'Z'}).code,'CREDIT_PROVIDER_SCHEMA_ERROR','unknown Amex login statuses fail closed as an unrecognized provider response');
 const approved=normalizeAmexDigitalV3ApprovedTransaction({purchaseDate:'07/09/2026',israelTransactionTime:'12:34',businessName:'עסק',originalAmount:75,currencyIso:'ILS',ilsBillingAmount:75,seqConfirmationNumber:'abc',extraDetails:'memo'});
 assert.equal(approved.status,'pending');assert.equal(approved.originalAmount,-75);assert.equal(approved.chargedAmount,-75);assert.equal(approved.date,approved.transactionDate,'DigitalV3 pending rows preserve the exact purchase date separately for ordering/audit');
 assert.equal(approved.transactionTime,'12:34','Amex pending approvals preserve the explicit issuer transaction clock');
@@ -147,6 +156,8 @@ assert.equal(normalizeAmexDigitalV3Voucher({purchaseDate:'06/09/2026',billingAmo
 assert.equal(voucher.transactionTime,'08:15','Amex completed vouchers preserve purchaseTime for the transactions table');
 const amexBadPassword=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('invalid');error.code='CREDIT_INVALID_PASSWORD';error.stage='LoginPassword';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
 await assert.rejects(()=>amexBadPassword.scrape(),error=>error.code==='CREDIT_INVALID_PASSWORD'&&error.browserEngine==='chromium','invalid Amex credentials never trigger a second browser engine login attempt');
+const amexRejectedLogin=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('issuer rejected login');error.code='CREDIT_LOGIN_REJECTED';error.stage='LoginPassword';error.providerStatus='2';error.providerReturnCode='E';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:true,now:()=>new Date(fixedNow)});
+await assert.rejects(()=>amexRejectedLogin.scrape(),error=>error.code==='CREDIT_LOGIN_REJECTED'&&error.browserEngine==='chromium'&&error.providerStatus==='2'&&error.providerReturnCode==='E','an Amex provider rejection is terminal for that run and never causes a duplicate credential attempt in Camoufox');
 const amexCamoufoxPaused=createCreditProviderAdapter({profile:amexProfile,CompanyTypes:{amex:'amex'},amexScrapeImpl:async()=>{const error=new Error('html');error.code='CREDIT_LOGIN_HTML_RESPONSE';error.stage='LoginApi';throw error},browserPath:'chrome.exe',allowCamoufoxFallback:false,now:()=>new Date(fixedNow)});
 await assert.rejects(()=>amexCamoufoxPaused.scrape(),error=>error.code==='CREDIT_LOGIN_HTML_RESPONSE'&&error.browserEngine==='chromium','a Camoufox cooldown disables only the fallback; DigitalV3 Chromium is still attempted and its current failure remains explicit');
 
@@ -226,9 +237,9 @@ const retryBase=Date.parse('2026-09-03T06:00:00.000Z');
 assert.equal(parseRetryAfter('7200',retryBase),'2026-09-03T08:00:00.000Z');
 assert.equal(classifyCreditHttpResponse({status:429,text:'',stage:'Pending',retryAfter:'7200',now:retryBase}).retryAfterAt,'2026-09-03T08:00:00.000Z','Retry-After controls the next eligible attempt');
 
-const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',stage:'LoginPage',httpStatus:403,responseShape:shape,startupFailureReason:'timeout',identityState:'legacy_unverified',profileRecovery:'fresh_profile',launchAttempt:2,username:'secret-user',password:'secret-password',rawHtml:'<html>secret</html>',authorization:'Bearer secret'}),serializedDiagnostic=JSON.stringify(diagnostic);
+const diagnostic=sanitizeCreditDiagnosticEvent({provider:'amex',profileId:'p',stage:'LoginPage',httpStatus:403,responseShape:shape,startupFailureReason:'timeout',identityState:'legacy_unverified',profileRecovery:'fresh_profile',launchAttempt:2,providerStatus:'2',providerReturnCode:'E',username:'secret-user',password:'secret-password',rawHtml:'<html>secret</html>',authorization:'Bearer secret'}),serializedDiagnostic=JSON.stringify(diagnostic);
 assert.equal(serializedDiagnostic.includes('secret'),false,'diagnostics use an allowlist and cannot retain credentials, tokens or raw HTML');
-assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);
+assert.equal(diagnostic.httpStatus,403);assert.equal(diagnostic.fingerprint.length,16);assert.equal(diagnostic.startupFailureReason,'timeout');assert.equal(diagnostic.identityState,'legacy_unverified');assert.equal(diagnostic.profileRecovery,'fresh_profile');assert.equal(diagnostic.launchAttempt,2);assert.equal(diagnostic.providerStatus,'2');assert.equal(diagnostic.providerReturnCode,'E');
 assert.equal(diagnostic.responseShapeFingerprint,shapeHash);assert.equal(diagnostic.responseShape.statusCode,1);assert.equal(serializedDiagnostic.includes('full-sensitive-card-id'),false);
 const diagnosticOverrideRoot=await fs.mkdtemp(path.join(os.tmpdir(),'netunim-credit-diagnostic-version-'));try{const log=createCreditDiagnosticLog({directory:diagnosticOverrideRoot,bridgeVersion:42,connectorVersion:'israeli-bank-scrapers-6.10.0'});await log.record({provider:'amex',stage:'LoginApi',connectorVersion:AMEX_DIGITAL_V3_SCHEMA_VERSION});assert.equal((await log.summary({limit:1}))[0].connectorVersion,AMEX_DIGITAL_V3_SCHEMA_VERSION,'Amex v41 diagnostics identify the local DigitalV3 connector instead of the unrelated published 6.10 Amex implementation')}finally{await fs.rm(diagnosticOverrideRoot,{recursive:true,force:true})}
 
