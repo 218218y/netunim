@@ -3,7 +3,8 @@ import {addMonthsISO,todayISO,dObj,monthKey,localISO} from '../../core/dates.js'
 import {creditBillingRowsData,creditCyclesThroughHorizonData} from '../../shared/credit-billing-cycles.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditRowsData,kupaReconciledCreditUpcomingDetailData} from '../../shared/kupa-cashflow.js';
 
-export const CREDIT_DETAIL_HISTORY_MONTHS=3;
+import {CREDIT_DETAIL_HISTORY_MONTHS} from '../../shared/credit-history.js';
+export {CREDIT_DETAIL_HISTORY_MONTHS};
 
 export function creditDetailItemIdentity(item={}){
   if(item.source==='manual')return `manual:${String(item.record?.id||item.creditId||'')}:${String(item.date||'')}:${Number(item.part||1)}`;

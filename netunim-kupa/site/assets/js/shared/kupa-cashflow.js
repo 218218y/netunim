@@ -1,3 +1,4 @@
+import {CREDIT_DETAIL_HISTORY_MONTHS,creditCardCompare} from './credit-history.js';
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
 import {cashflowNotificationData} from './cashflow-notification.js';
 import {bankRecurringExpensesData,bankRecurringIncomeData} from './bank-recurring-debits.js';
@@ -407,20 +408,20 @@ function creditUnassignedDisplayTarget(row,context,reference){
   const afterSettled=row?.chargeDateSource==='unassigned_after_bank_settlement',floor=afterSettled?addDaysISO(reference,1):reference,key=creditCardKey(row),known=(context.datesByCard.get(key)||[]).find(item=>item.date>=floor);
   if(known)return known;const account=context.accountsByCard.get(key);if(!account)return null;const next=creditAccountNextDisplayBillingDateData(account,floor);return next.date&&next.date>=floor?next:null;
 }
-export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayISO(),historyMonths=3){
+export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
   const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=new Map(),unassigned=[],unplacedUnassigned=[];
   const add=(key,row)=>{if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=num(row.amount);month.items.push(row)};
   for(const row of rows){const key=monthKey(row.date);if(key){if(key>=cutoffMonth)add(key,row);continue}unassigned.push(row);const target=creditUnassignedDisplayTarget(row,displayContext,ref);if(target?.date){const targetMonth=monthKey(target.date);if(targetMonth){add(targetMonth,{...row,detailCycleUncertain:true,detailDisplayBillingDate:target.date,detailDisplayBillingDateSource:target.source,detailDisplayBillingDateConfidence:target.confidence});continue}}unplacedUnassigned.push({...row,detailCycleUncertain:true})}
-  for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort((a,b)=>(b.detailCycleUncertain===true)-(a.detailCycleUncertain===true)||creditDetailRowSort(a,b));month.uncertainCount=month.items.filter(row=>row.detailCycleUncertain===true).length;month.missingAmountCount=month.items.filter(row=>row.amountStatus!=='known_ils').length;month.coverageGapCount=month.items.filter(row=>row.coverageIncomplete).length;month.incompleteCount=month.items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;month.partial=month.incompleteCount>0}
-  const months=[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key));if(unplacedUnassigned.length){unplacedUnassigned.sort(creditDetailRowSort);months.push({key:'unassigned',total:0,items:unplacedUnassigned,uncertain:true,uncertainCount:unplacedUnassigned.length,partial:true,incompleteCount:unplacedUnassigned.length,missingAmountCount:unplacedUnassigned.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:unplacedUnassigned.filter(row=>row.coverageIncomplete).length})}
+  for(const month of byMonth.values()){month.total=Math.round(month.total*100)/100;month.items.sort((a,b)=>(b.detailCycleUncertain===true)-(a.detailCycleUncertain===true)||String(a.date||a.detailDisplayBillingDate||'').localeCompare(String(b.date||b.detailDisplayBillingDate||''))||creditCardCompare(a,b,kupa?.creditSync?.cardMappings)||creditDetailRowSort(a,b));month.uncertainCount=month.items.filter(row=>row.detailCycleUncertain===true).length;month.missingAmountCount=month.items.filter(row=>row.amountStatus!=='known_ils').length;month.coverageGapCount=month.items.filter(row=>row.coverageIncomplete).length;month.incompleteCount=month.items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;month.partial=month.incompleteCount>0}
+  const months=[...byMonth.values()].sort((a,b)=>a.key.localeCompare(b.key));if(unplacedUnassigned.length){unplacedUnassigned.sort((a,b)=>creditCardCompare(a,b,kupa?.creditSync?.cardMappings)||creditDetailRowSort(a,b));months.push({key:'unassigned',total:0,items:unplacedUnassigned,uncertain:true,uncertainCount:unplacedUnassigned.length,partial:true,incompleteCount:unplacedUnassigned.length,missingAmountCount:unplacedUnassigned.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount:unplacedUnassigned.filter(row=>row.coverageIncomplete).length})}
   return {months,cutoffMonth,historyMonths:safeHistory,currentMonth,unassigned,unplacedUnassigned};
 }
 
-export function kupaReconciledCreditUpcomingDetailData(kupa,reference=localTodayISO(),historyMonths=3){
+export function kupaReconciledCreditUpcomingDetailData(kupa,reference=localTodayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
   const ref=isoDay(reference)||localTodayISO(),detail=kupaReconciledCreditDetailMonthsData(kupa,ref,historyMonths),rows=detail.months.flatMap(month=>month.items),nextByCard=new Map();
   const displayDate=row=>isoDay(row?.date)||isoDay(row?.detailDisplayBillingDate);
-  for(const row of rows){const date=displayDate(row);if(!date||date<ref)continue;const key=creditCardKey(row),current=nextByCard.get(key);if(!current||date<current)nextByCard.set(key,date)}
-  const items=rows.filter(row=>{const date=displayDate(row);return date&&nextByCard.get(creditCardKey(row))===date}).sort((a,b)=>displayDate(a).localeCompare(displayDate(b))||String(a.card||'').localeCompare(String(b.card||''),'he')||creditDetailRowSort(a,b));
+  for(const row of rows){const date=displayDate(row);if(!date||date<ref||row.bankSettlementState==='settled')continue;const key=creditCardKey(row),current=nextByCard.get(key);if(!current||date<current)nextByCard.set(key,date)}
+  const items=rows.filter(row=>{const date=displayDate(row);return row.bankSettlementState!=='settled'&&date&&nextByCard.get(creditCardKey(row))===date}).sort((a,b)=>displayDate(a).localeCompare(displayDate(b))||creditCardCompare(a,b,kupa?.creditSync?.cardMappings)||creditDetailRowSort(a,b));
   return {items,nextByCard,reference:ref};
 }
 

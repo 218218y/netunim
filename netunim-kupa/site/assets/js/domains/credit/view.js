@@ -7,7 +7,7 @@ import {filterCurrentSyncEvents,syncEventCurrent} from '../../shared/sync-status
 import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCardUpcomingChargeData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
 import {searchMatch} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
-import {creditViewAllowsMonth,creditDetailDayMatch,creditUpcomingSelectorMarkup,creditHistoryMenuMarkup,creditFutureMenuMarkup,creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeMarkup,replaceCreditDetailMarkup,creditViewAllowsMonth,creditDetailDayMatch,creditUpcomingSelectorMarkup,creditHistoryMenuMarkup,creditFutureMenuMarkup,creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
 
 function syncDate(value){if(!value)return 'עדיין לא סונכרן';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(value))}catch{return String(value)}}
 function synchronizedCardKey(profileId,accountNumber){return `sync:${profileId}:${accountNumber}`}
@@ -99,12 +99,16 @@ function creditChargeHeading(items){return creditDetailChargeHeadingMarkup(items
 
 export function createDomainsCreditView({model, ui, syncBulkUi, bulkControls, bulkHeader, bulkCell,creditSyncUiState,refreshCreditBridgeStatus,expensesMarkup}){
 function creditDetailState(){
-  const mode=ui.creditDetailMode==='month'?'month':'upcoming',chargeDay=ui.creditDetailChargeDay==='10'||ui.creditDetailChargeDay==='15'?ui.creditDetailChargeDay:'all',detailData=creditMonthlyDetailData(model.state),upcomingData=creditUpcomingDetailData(model.state),currentMonth=monthKey(todayISO());
+  const mode=['month','range'].includes(ui.creditDetailMode)?ui.creditDetailMode:'upcoming',chargeDay=ui.creditDetailChargeDay==='10'||ui.creditDetailChargeDay==='15'?ui.creditDetailChargeDay:'all',detailData=creditMonthlyDetailData(model.state),upcomingData=creditUpcomingDetailData(model.state),currentMonth=monthKey(todayISO());
   const allDetailMonths=detailData.months.map(month=>{
     const items=month.items.filter(item=>filterMatch(ui,item)),missingAmountCount=items.filter(row=>row.amountStatus!=='known_ils').length,coverageGapCount=items.filter(row=>row.coverageIncomplete).length,incompleteCount=items.filter(row=>!row.includedInIlsTotal||row.coverageIncomplete).length;
     return {...month,items,total:items.reduce((sum,item)=>sum+item.amount,0),missingAmountCount,coverageGapCount,incompleteCount,partial:incompleteCount>0};
   }).filter(month=>month.items.length);
-  const historyMonths=allDetailMonths.filter(month=>month.key!=='unassigned'&&month.key<currentMonth),detailMonths=allDetailMonths.filter(month=>month.key==='unassigned'||creditViewAllowsMonth(month.key,ui.creditView,currentMonth)),selectableMonths=[...historyMonths,...detailMonths];
+  const historyMonths=allDetailMonths.filter(month=>creditDetailMonthIsPast(month,todayISO())),detailMonths=allDetailMonths.filter(month=>!creditDetailMonthIsPast(month,todayISO())&&(month.key==='unassigned'||creditViewAllowsMonth(month.key,ui.creditView,currentMonth))),selectableMonths=[...historyMonths,...detailMonths];
+  if(mode==='range'){
+    const focusedItems=allDetailMonths.flatMap(month=>month.items).filter(item=>creditDetailRangeMatch(item,ui.creditDateFrom,ui.creditDateTo)),detailItems=focusedItems.filter(item=>creditSearchMatch(ui.creditSearchValue,item));
+    return {mode,chargeDay:'all',detailMonths,historyMonths,detailFocus:null,detailItems,focusedCount:focusedItems.length,detailFocusLabel:'',upcomingTotal:0};
+  }
   if(mode==='upcoming'){
     const allUpcomingItems=upcomingData.items.filter(item=>filterMatch(ui,item)),focusedItems=allUpcomingItems.filter(item=>creditDetailDayMatch(item,chargeDay)),detailItems=focusedItems.filter(item=>creditSearchMatch(ui.creditSearchValue,item));
     return {mode,chargeDay,detailMonths,historyMonths,detailFocus:null,detailItems,focusedCount:focusedItems.length,detailFocusLabel:'',upcomingTotal:allUpcomingItems.reduce((sum,item)=>sum+item.amount,0)};
@@ -132,20 +136,18 @@ function upcomingDetailRowsMarkup(items,colspan,rowMarkup){
 function creditDetailSectionMarkup(){
   const {mode,chargeDay,detailMonths,historyMonths,detailFocus,detailItems,focusedCount,detailFocusLabel,upcomingTotal}=creditDetailState();
   const upcoming=mode==='upcoming',searching=String(ui.creditSearchValue||'').trim().length>0,uncertainItems=detailItems.filter(item=>item.detailCycleUncertain===true),certainItems=detailItems.filter(item=>item.detailCycleUncertain!==true),colspan=ui.bulkCollection==='credits'?9:8;
-  const emptyText=searching&&focusedCount?'אין עסקאות או תשלומים המתאימים לחיפוש.':upcoming?'אין חיוב קרוב להצגה במסנן הנוכחי.':detailMonths.length||historyMonths.length?'אין עסקאות להצגה בחודש שנבחר.':`אין עסקאות ידועות בשלושת החודשים הקודמים או בחודשים העתידיים במסנן הנוכחי.`;
-  const focusMonthLabel=detailFocus?.monthKey==='unassigned'?'מחזור לא ודאי':monthLabel(detailFocus?.monthKey||''),rowsMarkup=detailItems.length?(upcoming?upcomingDetailRowsMarkup(detailItems,colspan,creditMonthlyDetailRow):`${uncertainItems.length?`<tr class="credit-detail-cycle-divider uncertain"><td colspan="${colspan}"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>${uncertainItems.map(creditMonthlyDetailRow).join('')}`:''}${certainItems.length?`${uncertainItems.length?`<tr class="credit-detail-cycle-divider certain"><td colspan="${colspan}"><b>חיוב ${esc(focusMonthLabel)}</b></td></tr>`:''}${certainItems.map(creditMonthlyDetailRow).join('')}`:''}`):`<tr><td colspan="${colspan}"><div class="empty compact">${emptyText}</div></td></tr>`;
+  const emptyText=mode==='range'&&!searching?'אין עסקאות בטווח תאריכי החיוב שנבחר.':searching&&focusedCount?'אין עסקאות או תשלומים המתאימים לחיפוש.':upcoming?'אין חיוב קרוב להצגה במסנן הנוכחי.':detailMonths.length||historyMonths.length?'אין עסקאות להצגה בחודש שנבחר.':`אין עסקאות ידועות בששת החודשים הקודמים או בחודשים העתידיים במסנן הנוכחי.`;
+  const focusMonthLabel=detailFocus?.monthKey==='unassigned'?'מחזור לא ודאי':monthLabel(detailFocus?.monthKey||''),rowsMarkup=detailItems.length?(upcoming||mode==='range'?upcomingDetailRowsMarkup(detailItems,colspan,creditMonthlyDetailRow):`${uncertainItems.length?`<tr class="credit-detail-cycle-divider uncertain"><td colspan="${colspan}"><b>מחזור לא ודאי</b><small>עסקאות ממתינות שמועד החיוב הסופי שלהן טרם נקבע; מוצגות כאן ליד החיוב הסמוך של אותו כרטיס.</small></td></tr>${uncertainItems.map(creditMonthlyDetailRow).join('')}`:''}${certainItems.length?`${uncertainItems.length?`<tr class="credit-detail-cycle-divider certain"><td colspan="${colspan}"><b>חיוב ${esc(focusMonthLabel)}</b></td></tr>`:''}${certainItems.map(creditMonthlyDetailRow).join('')}`:''}`):`<tr><td colspan="${colspan}"><div class="empty compact">${emptyText}</div></td></tr>`;
   const selectedMonthKey=upcoming?'':detailFocus?.monthKey||'';
-  return `<section id="credit-active-transactions" class="section credit-detail-section" style="margin-top:16px"><div class="section-head credit-detail-section-head"><div><div class="credit-detail-title-row"><h3 title="מוצגים עד ${esc(CREDIT_DETAIL_HISTORY_MONTHS)} חודשים קודמים וכל החיובים העתידיים שהתקבלו מהחברות">עסקאות ותשלומים</h3>${creditHistoryControl(historyMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditUpcomingControl(upcoming,chargeDay,upcomingTotal)}${creditFutureControl(detailMonths,selectedMonthKey,upcoming?'all':chargeDay)}</div>${searching?`<small class="credit-search-count">${esc(detailItems.length)} מתוך ${esc(focusedCount)} תוצאות</small>`:''}</div></div>${detailFocus?.cardKey?`<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(focusMonthLabel)} · מיקוד בכרטיס מתוך התחזית</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus" data-click-arg0="${esc(detailFocus.monthKey)}">כל הכרטיסים ×</button></div>`:''}<div class="credit-detail-table-wrap"><table class="credit-detail-table"><thead><tr>${bulkHeader('credits')}<th class="credit-detail-col-card">כרטיס</th><th class="credit-detail-col-description">תיאור</th><th class="credit-detail-col-transaction-date">תאריך עסקה</th><th class="credit-detail-col-total">סכום מקורי</th><th class="credit-detail-col-installment">תשלום</th><th class="credit-detail-col-charge" data-column-label="חיוב בחודש">${creditChargeHeading(detailItems)}</th><th class="credit-detail-col-status">מצב</th><th class="credit-detail-col-actions"></th></tr></thead><tbody>${rowsMarkup}</tbody></table></div></section>`;
+  return `<section id="credit-active-transactions" class="section credit-detail-section" style="margin-top:16px"><div class="section-head credit-detail-section-head"><div><div class="credit-detail-title-row"><h3 title="מוצגים עד ${esc(CREDIT_DETAIL_HISTORY_MONTHS)} חודשים קודמים וכל החיובים העתידיים שהתקבלו מהחברות">עסקאות ותשלומים</h3>${creditHistoryControl(historyMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditUpcomingControl(upcoming,chargeDay,upcomingTotal)}${creditFutureControl(detailMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditDateRangeMarkup({active:mode==='range',from:ui.creditDateFrom,to:ui.creditDateTo,action:'credit-date-apply',escapeHtml:esc})}</div>${searching?`<small class="credit-search-count">${esc(detailItems.length)} מתוך ${esc(focusedCount)} תוצאות</small>`:''}</div></div>${detailFocus?.cardKey?`<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(focusMonthLabel)} · מיקוד בכרטיס מתוך התחזית</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus" data-click-arg0="${esc(detailFocus.monthKey)}">כל הכרטיסים ×</button></div>`:''}<div class="credit-detail-table-wrap"><table class="credit-detail-table"><thead><tr>${bulkHeader('credits')}<th class="credit-detail-col-card">כרטיס</th><th class="credit-detail-col-description">תיאור</th><th class="credit-detail-col-transaction-date">תאריך עסקה</th><th class="credit-detail-col-total">סכום מקורי</th><th class="credit-detail-col-installment">תשלום</th><th class="credit-detail-col-charge" data-column-label="חיוב בחודש">${creditChargeHeading(detailItems)}</th><th class="credit-detail-col-status">מצב</th><th class="credit-detail-col-actions"></th></tr></thead><tbody>${rowsMarkup}</tbody></table></div></section>`;
+}
+function renderCreditDetails(){
+  replaceCreditDetailMarkup(document.getElementById('credit-transaction-sections'),creditTransactionSectionsMarkup());
+  syncBulkUi('credits');
 }
 function setCreditSearch(value){
   ui.creditSearchValue=String(value||'');
-  const current=document.getElementById('credit-transaction-sections');
-  if(!current)return;
-  const holder=document.createElement('div');
-  holder.innerHTML=creditTransactionSectionsMarkup();
-  const next=holder.firstElementChild;
-  if(next)current.replaceWith(next);
-  syncBulkUi('credits');
+  renderCreditDetails();
 }
 function toggleCreditSyncOptions(){
   ui.creditSyncOpen=!ui.creditSyncOpen;
@@ -245,7 +247,7 @@ function creditMappingRow(profile,account,mappings){
     <span><b>${esc(CREDIT_PROVIDER_LABELS[profile.provider]||profile.provider)} • ${esc(account.accountNumber||'כרטיס')}</b><small>${esc(profile.label)}${profile.ownerLabel?` · ${esc(profile.ownerLabel)}`:''} · ${esc(calculationText)}${hidden?' · מוסתר מהפירוט':''}</small></span>
     <select aria-label="שיוך חשבון" data-change="set-credit-card-account" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}"><option ${accountClass==='עסקי'?'selected':''}>עסקי</option><option ${accountClass==='ביתי'?'selected':''}>ביתי</option></select>
     <input aria-label="שם הכרטיס" data-change="set-credit-card-name" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(cardName)}" placeholder="שם תצוגה (רשות)">
-    <input class="credit-manual-frame" type="number" inputmode="decimal" min="0" step="1" aria-label="מסגרת ידנית" title="${issuerFrameAvailable?'לא בשימוש: התקבל נתון מסגרת מהחברה':'משמשת רק כאשר חברת האשראי אינה מספקת מסגרת'}" data-change="set-credit-card-manual-frame" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(manualFrame)}" placeholder="${issuerFrameAvailable?'מסגרת מהחברה':'מסגרת ידנית'}" ${issuerFrameAvailable?'disabled':''}>
+    <input class="credit-manual-frame" type="number" inputmode="decimal" min="0" step="1" aria-label="מסגרת ידנית" title="${issuerFrameAvailable?'לא בשימוש: התקבל נתון מסגרת מהחברה':'משמשת רק כאשר חברת האשראי אינה מספקת מסגרת'}" data-change="set-credit-card-manual-frame" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(manualFrame)}" placeholder="${issuerFrameAvailable?'מסגרת מהחברה':'מסגרת ידנית'}" ${issuerFrameAvailable?'disabled':''}><label class="credit-card-order"><span>סדר הכרטיס</span><input type="number" min="1" step="1" inputmode="numeric" aria-label="סדר הכרטיס" title="מספר קטן מופיע קודם באותו תאריך חיוב; ריק משאיר סדר לפי שם" data-change="set-credit-card-sort-order" data-change-arg0="${esc(profile.profileId)}" data-change-arg1="${esc(account.accountNumber)}" value="${esc(mapping.sortOrder??'')}" placeholder="א״ב"></label>
   </div>`
 }
 function creditAvailableTotalMarkup(summary){
@@ -334,5 +336,5 @@ function creditMonthRow(m,max){
   return `<details class="credit-forecast-month ${cur?'current':''}"><summary><span class="credit-forecast-row"><b>${esc(monthLabel(m.k))}${cur?' <em>החודש</em>':past?' <em class="past">עבר</em>':''}${m.partial?' <em>חלקי</em>':''}</b><span class="bar"><i style="width:${esc(pct)}%"></i></span><span class="num">${money(m.total)}${m.partial?' · חלקי':''}</span><span class="credit-toggle-chevron" aria-hidden="true">⌄</span></span></summary><div class="credit-forecast-breakdown">${detail||`<div class="muted">${past?'אין חיובים עתידיים':'אין חיובים'}</div>`}</div></details>`;
 }
 function creditMonthCard(m){return creditMonthRow(m,Math.max(1,Math.abs(m.total)))}
-return {renderCredit,setCreditSearch,toggleCreditSyncOptions,creditMonthCard};
+return {renderCredit,renderCreditDetails,setCreditSearch,toggleCreditSyncOptions,creditMonthCard};
 }

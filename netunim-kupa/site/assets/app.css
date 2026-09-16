@@ -337,3 +337,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 @media(max-width:480px){.forecast-disclosure-toggle{padding-inline:9px;font-size:10.5px}.credit-detail-title-row{gap:6px}.credit-cycle-menu-trigger{width:160px}.credit-cycle-selector-header{width:160px;min-width:160px;flex-basis:160px}.credit-cycle-menu-list .credit-cycle-selector-header{width:100%;min-width:0}}
 
 .check-summary-part{display:inline-block;margin-inline-start:12px;white-space:nowrap}.month-check-total,.checks-month-total{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+
+.credit-mapping-row>.credit-card-order{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:11px}.credit-card-order input{width:110px}.credit-date-filter.active>summary{background:#edf5f1;border-color:#789b8d}.credit-date-filter input[type="date"]{min-width:0;width:100%;box-sizing:border-box;border:1px solid #d4ddd8;border-radius:8px;padding:8px;font:inherit}.credit-detail-section{overflow-anchor:none}

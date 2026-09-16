@@ -1,6 +1,7 @@
 import json
 
 from browser_harness import BrowserSession, ROOT
+from credit_detail_cases import run_credit_detail
 
 
 def run(label, site, expression, expected):
@@ -310,4 +311,6 @@ run_cashflow_date_picker('kupa')
 run_cashflow_date_picker('orders')
 run_cashflow_warning_layout('kupa')
 run_cashflow_warning_layout('orders')
+run_credit_detail('kupa')
+run_credit_detail('orders')
 raise SystemExit(0 if ok else 1)

@@ -1,6 +1,8 @@
 import {checkTodayISO} from '../../core/dates.js';
 import {creditAccountKnownFutureCommitmentData,creditAccountUpcomingChargeData,creditPendingAuthorizationTotalData} from '../../shared/credit-billing-cycles.js';
 
+import {creditHistoryCutoffMonth,creditCardSortOrder} from '../../shared/credit-history.js';
+
 export const CREDIT_SYNC_VERSION=4;
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_LABELS={visaCal:'כאל',max:'MAX',isracard:'ישראכרט',amex:'American Express'};
@@ -37,7 +39,7 @@ export function normalizeCreditProfile(profile={}){
   return {profileId:text(profile.profileId||'',80),provider,label:text(profile.label||CREDIT_PROVIDER_LABELS[provider]||'חיבור אשראי',100),ownerLabel:text(profile.ownerLabel||'',100),defaultAccount:profile.defaultAccount==='ביתי'?'ביתי':'עסקי',syncedAt:iso(profile.syncedAt),attemptedAt:iso(profile.attemptedAt),coreComplete:profile.coreComplete===false?false:profile.coreComplete===true?true:null,accounts:(Array.isArray(profile.accounts)?profile.accounts:[]).map(account=>normalizeCreditAccount(account,profile.syncedAt)).filter(x=>x.accountNumber||x.txns.length)};
 }
 
-function normalizedMapping(raw={},legacyInclude=false){return {included:typeof raw.included==='boolean'?raw.included:legacyInclude,hidden:raw.hidden===true,account:raw.account==='ביתי'?'ביתי':'עסקי',cardName:text(raw.cardName||'',100),manualFrame:nonNegativeMoney(raw.manualFrame)}}
+function normalizedMapping(raw={},legacyInclude=false){return {included:typeof raw.included==='boolean'?raw.included:legacyInclude,hidden:raw.hidden===true,account:raw.account==='ביתי'?'ביתי':'עסקי',cardName:text(raw.cardName||'',100),manualFrame:nonNegativeMoney(raw.manualFrame),sortOrder:creditCardSortOrder(raw.sortOrder)}}
 function normalizeSettlementWarningAcks(value={}){const source=value&&typeof value==='object'&&!Array.isArray(value)?value:{},rows=[];for(const [rawKey,rawAt] of Object.entries(source)){const key=text(rawKey,240),at=iso(rawAt);if(key&&at)rows.push([key,at])}rows.sort((a,b)=>b[1].localeCompare(a[1]));return Object.fromEntries(rows.slice(0,120))}
 
 export function normalizeCreditSync(value={}){
@@ -58,6 +60,8 @@ export function mergeCreditSyncResult(current,payload={}){
   const mappings={...base.cardMappings};
   for(const profile of successes)for(const account of profile.accounts){const key=creditCardMappingKey(profile.profileId,account.accountNumber);if(!mappings[key])mappings[key]={included:false,hidden:false,account:profile.defaultAccount,cardName:'',manualFrame:null}}
   const errors=(Array.isArray(payload.errors)?payload.errors:[]).map(e=>({profileId:text(e?.profileId||'',80),provider:text(e?.provider||'',30),browserEngine:['chromium','camoufox'].includes(String(e?.browserEngine||''))?String(e.browserEngine):'',label:text(e?.label||'',100),code:text(e?.code||'CREDIT_SCRAPE_FAILED',80),stage:text(e?.stage||'',80),component:creditErrorComponent(e),severity:creditErrorSeverity(e),httpStatus:Math.max(0,Math.trunc(Number(e?.httpStatus)||0)),message:safeCreditErrorMessage(e?.message),at:iso(e?.at)||new Date().toISOString(),originalFailureAt:iso(e?.originalFailureAt||e?.at),retryAfterAt:iso(e?.retryAfterAt),deferred:e?.deferred===true,month:/^\d{4}-\d{2}$/.test(String(e?.month||''))?String(e.month):'',tier:e?.tier==='forecast'?'forecast':e?.tier==='core'?'core':'',accountSuffix:text(e?.accountSuffix||'',4),correlationId:text(e?.correlationId||payload.correlationId||'',80),diagnosticFingerprint:text(e?.diagnosticFingerprint||'',32)}));
+  const cutoff=creditHistoryCutoffMonth(iso(payload.syncedAt));
+  if(cutoff)for(const [id,profile] of byId)byId.set(id,normalizeCreditProfile({...profile,accounts:profile.accounts.map(account=>normalizeCreditAccount({...account,months:account.months.filter(slice=>slice.month>=cutoff),txns:[]}))}));
   return normalizeCreditSync({...base,contractVersion:payload.contractVersion||base.contractVersion,correlationId:payload.correlationId||base.correlationId,syncedAt:payload.syncedAt?iso(payload.syncedAt):base.syncedAt,profiles:[...byId.values()],errors,cardMappings:mappings});
 }
 

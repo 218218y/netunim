@@ -774,3 +774,5 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .warehouse-view-shell .source,#modal .field.full.source{white-space:normal;overflow-wrap:anywhere}
 .warehouse-filters select{border:1px solid var(--line);border-radius:8px;color:var(--text)}
 .warehouse-menu>summary:focus-visible,.stock-name-link:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+
+.credit-mapping-row>.credit-card-order{grid-column:1/-1;display:flex;align-items:center;gap:8px;font-size:11px}.credit-card-order input{width:110px}.credit-date-filter.active>summary{background:#edf5f1;border-color:#789b8d}.credit-date-filter input[type="date"]{min-width:0;width:100%;box-sizing:border-box;border:1px solid #d4ddd8;border-radius:8px;padding:8px;font:inherit}.credit-detail-section{overflow-anchor:none}

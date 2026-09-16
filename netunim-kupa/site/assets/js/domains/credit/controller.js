@@ -149,6 +149,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     if(field==='hidden')current.hidden=!!value;
     if(field==='account')current.account=value==='ביתי'?'ביתי':'עסקי';
     if(field==='cardName')current.cardName=String(value||'').trim().slice(0,100);
+    if(field==='sortOrder'){const raw=String(value??'').trim(),order=raw===''?null:Number(raw);if(order!==null&&(!Number.isSafeInteger(order)||order<1)){toast('סדר הכרטיס חייב להיות מספר שלם חיובי');return false}current.sortOrder=order}
     if(field==='manualFrame'){const raw=String(value??'').trim(),amount=raw===''?null:Number(raw);if(amount!==null&&(!Number.isFinite(amount)||amount<0)){toast('מסגרת ידנית חייבת להיות מספר חיובי או אפס');return false}current.manualFrame=amount===null?null:Math.round(amount*100)/100}
     sync.cardMappings[key]=current;model.state.creditSync=sync;await saveFinancePatch(state=>({...state,creditSync:sync}));await saveState('שיוך כרטיס האשראי עודכן');render();
   }

@@ -449,12 +449,12 @@ const historyKey=creditCardMappingKey('history','1000');
 const historyState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[{profileId:'history',provider:'max',accounts:[{accountNumber:'1000',txns:[
   {id:'future',processedDate:'2026-10-01',chargedAmount:-30,chargedCurrency:'ILS',description:'עתידית'},
   {id:'recent',processedDate:'2026-08-15',chargedAmount:-40,chargedCurrency:'ILS',description:'אוגוסט'},
-  {id:'edge',processedDate:'2026-06-15',chargedAmount:-20,chargedCurrency:'ILS',description:'יוני'},
-  {id:'old',processedDate:'2026-05-01',chargedAmount:-50,chargedCurrency:'ILS',description:'ישן מדי'},
+  {id:'edge',processedDate:'2026-03-15',chargedAmount:-20,chargedCurrency:'ILS',description:'יוני'},
+  {id:'old',processedDate:'2026-02-01',chargedAmount:-50,chargedCurrency:'ILS',description:'ישן מדי'},
 ]}]}],cardMappings:{[historyKey]:{included:true,hidden:false,account:'עסקי'}}})};
 const monthlyHistory=creditMonthlyDetailData(historyState,'2026-09-01');
-assert.equal(CREDIT_DETAIL_HISTORY_MONTHS,3);
-assert.deepEqual(monthlyHistory.months.map(x=>x.key),['2026-06','2026-08','2026-10'],'monthly detail keeps three prior calendar months plus every actually known future billing month');
+assert.equal(CREDIT_DETAIL_HISTORY_MONTHS,6);
+assert.deepEqual(monthlyHistory.months.map(x=>x.key),['2026-03','2026-08','2026-10'],'monthly detail keeps six prior calendar months plus every actually known future billing month');
 assert.deepEqual(monthlyHistory.months.map(x=>x.total),[20,40,30]);
 assert.equal(monthlyHistory.months.some(x=>x.items.some(item=>item.description==='ישן מדי')),false,'older history remains outside the compact monthly transaction browser');
 
@@ -474,7 +474,7 @@ const detailSortState={credits:[],creditSync:normalizeCreditSync({version:3,prof
   {id:'newer-purchase',date:'2026-08-28',transactionDate:'2026-08-28',processedDate:'2026-09-05',chargedAmount:-40,chargedCurrency:'ILS',description:'עסקה חדשה'},
 ]}]}],cardMappings:{[detailSortKey]:{included:true,hidden:false,account:'עסקי'}}})};
 const detailSortMonth=creditMonthlyDetailData(detailSortState,'2026-09-01').months.find(month=>month.key==='2026-09');
-assert.deepEqual(detailSortMonth.items.map(item=>item.description),['עסקה חדשה','עסקה ישנה'],'Kupa transaction/payment detail is sorted by purchase date newest-first, independent of card or billing-date order');
+assert.deepEqual(detailSortMonth.items.map(item=>item.description),['עסקה חדשה','עסקה ישנה'],'Kupa detail respects billing-date order before card preference and purchase date');
 
 const collisionState={credits:[],creditSync:normalizeCreditSync({version:3,profiles:[
   {profileId:'owner-a',provider:'max',accounts:[{accountNumber:'1111',txns:[{id:'a',processedDate:'2026-09-10',chargedAmount:-10,chargedCurrency:'ILS'}]}]},

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-5915112dbaf4';
+const CACHE='orders-app-shell-esm-358139772123';
 const SHELL=[
   './',
   './index.html',
@@ -96,6 +96,7 @@ const SHELL=[
   './assets/js/shared/cloud-sync.js',
   './assets/js/shared/credit-billing-cycles.js',
   './assets/js/shared/credit-detail-controls.js',
+  './assets/js/shared/credit-history.js',
   './assets/js/shared/customer-debt-progress.js',
   './assets/js/shared/data-invariants.js',
   './assets/js/shared/events.js',

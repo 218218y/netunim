@@ -1,5 +1,41 @@
 function safe(value,escapeHtml){return escapeHtml?escapeHtml(String(value??'')):String(value??'')}
 
+export function creditDetailDisplayDate(row){return String(row?.date||row?.detailDisplayBillingDate||'').slice(0,10)}
+
+export function creditDetailMonthIsPast(month,reference){
+  return month.key!=='unassigned'&&month.items.length>0&&month.items.every(row=>{
+    const date=creditDetailDisplayDate(row);
+    return !!date&&(date<reference||row.bankSettlementState==='settled');
+  });
+}
+
+export function creditDetailRangeMatch(row,from='',to=''){
+  const date=creditDetailDisplayDate(row);
+  return !!date&&(!from||date>=from)&&(!to||date<=to);
+}
+
+export function creditDateRangeMarkup({active=false,from='',to='',action,escapeHtml}){
+  return `<details class="bank-date-filter credit-date-filter ${active?'active':''}" data-dismiss-on-outside><summary class="bank-date-filter-trigger" aria-label="טווח תאריכי חיוב"><span>טווח תאריכים${active?' ✓':''}</span><span class="bank-date-filter-chevron" aria-hidden="true">⌄</span></summary><div class="bank-date-menu" data-menu-panel><div class="bank-date-range-card"><div class="bank-date-range-title">לפי תאריך החיוב</div><div class="bank-date-range-fields" data-menu-keep-open><label class="bank-date-range-field">מ־<input type="date" data-credit-date="from" aria-label="מתאריך חיוב" value="${safe(from,escapeHtml)}"></label><label class="bank-date-range-field">עד<input type="date" data-credit-date="to" aria-label="עד תאריך חיוב" value="${safe(to,escapeHtml)}"></label></div><button type="button" class="btn primary bank-date-apply" data-action="${safe(action,escapeHtml)}">החל</button></div></div></details>`;
+}
+
+export function creditDateRangeFromControl(element){
+  const panel=element.closest('[data-menu-panel]'),from=panel?.querySelector('[data-credit-date="from"]'),to=panel?.querySelector('[data-credit-date="to"]');
+  if(!from||!to)return null;
+  to.setCustomValidity(from.value&&to.value&&from.value>to.value?'תאריך הסיום צריך להיות אחרי תאריך ההתחלה':'');
+  if(!from.reportValidity()||!to.reportValidity())return null;
+  return {from:from.value,to:to.value};
+}
+
+// Only replace the detail region. Preserve numeric offsets, never "stick to
+// bottom", when a filter changes the number of rows beneath the controls.
+export function replaceCreditDetailMarkup(host,markup){
+  if(!host)return;
+  const positions=[];
+  for(let node=host.parentElement;node;node=node.parentElement)positions.push({node,top:node.scrollTop,left:node.scrollLeft});
+  host.outerHTML=markup;
+  for(const {node,top,left} of positions){node.scrollTop=top;node.scrollLeft=left}
+}
+
 
 export function creditViewAllowsMonth(monthValue,view,currentMonth){
   const key=String(monthValue||''),current=String(currentMonth||'');

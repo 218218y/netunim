@@ -779,6 +779,7 @@ const uiActions=createUiActions({
   renderChecks:(...args)=>domainsChecksView.renderChecks(...args),
   renderChecksSearch:(...args)=>domainsChecksView.renderChecksSearch(...args),
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
+  renderCreditDetails:(...args)=>domainsCreditView.renderCreditDetails(...args),
   setCreditSearch:(...args)=>domainsCreditView.setCreditSearch(...args),
   setExpenseSearch:(...args)=>domainsExpensesView.setExpenseSearch(...args),
   setCashSearch:(...args)=>domainsCashView.setCashSearch(...args),
