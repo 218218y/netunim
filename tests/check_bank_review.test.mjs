@@ -40,7 +40,8 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.equal(checkBankFrontImageMarkup({...m,accountKey:'other'},context),'');
   assert.equal(checkBankFrontImageMarkup({...m,transactionId:18},context),'');
   assert.equal(checkBankFrontImageMarkup({...m,bankItem:{...b,amount:700}},context),'');
-  assert.equal(checkBankFrontImageMarkup(m,{...context,now:()=>Date.parse('2027-01-01')}),'');
+  assert.match(checkBankFrontImageMarkup(m,{...context,now:()=>Date.parse('2027-01-01')}),new RegExp('a'.repeat(64)),'The extended 183-day window keeps this September cheque image available in January');
+  assert.equal(checkBankFrontImageMarkup(m,{...context,now:()=>Date.parse('2027-03-17')}),'','The image disappears exactly when the 183-day retention window expires');
   row.checkDetails.checkItems.push({...b,imageFrontKey:'c'.repeat(64)});assert.equal(checkBankFrontImageMarkup(m,context),'','Conflicting individual items never pick an image');
 }
 {
