@@ -1,6 +1,6 @@
 // Retention is independent of the connector's fetch window: accumulate existing
 // months through ordinary syncs without asking the issuer for older history.
-export const CREDIT_DETAIL_HISTORY_MONTHS=6;
+export const CREDIT_DETAIL_HISTORY_MONTHS=12;
 
 export function creditHistoryCutoffMonth(reference){
   const match=/^(\d{4})-(0[1-9]|1[0-2])-/.exec(String(reference||''));

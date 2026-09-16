@@ -6,12 +6,13 @@ import {normalizeBankFeedTransaction as normalizeOrdersBankFeedTransaction} from
 
 const NOW=()=>Date.parse('2026-09-14T09:00:00Z');
 const A='a'.repeat(64),B='b'.repeat(64),C='c'.repeat(64),UID='11111111-1111-4111-8111-111111111111';
-assert.equal(BANK_CHEQUE_IMAGE_RETENTION_DAYS,60,'cheque image cloud retention is a fixed sixty-day rolling window');
+assert.equal(BANK_CHEQUE_IMAGE_RETENTION_DAYS,183,'cheque image cloud retention is an approximately six-month rolling window');
 assert.equal(bankChequeImageWithinRetention('2026-09-10',{now:NOW}),true);
-assert.equal(bankChequeImageWithinRetention('2026-07-16',{now:NOW}),false,'sixty calendar days are bounded; older rows are not offered');
+assert.equal(bankChequeImageWithinRetention('2026-03-16',{now:NOW}),true,'recent cheque images remain available across the extended retention window');
+assert.equal(bankChequeImageWithinRetention('2026-03-15',{now:NOW}),false,'the 183-day rolling window stays bounded; older rows are not offered');
 assert.equal(bankChequeImageObjectPath(UID,'2026-09-10T09:00:00.000Z',A),`${UID}/20260910_${A}.img`,'cloud object paths contain only the authenticated uid, event date and opaque key');
 
-const refs=bankChequeImageReferences([{date:'2026-09-10T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:A,imageBackKey:B}]}},{date:'2026-06-01T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:C}]}}],{now:NOW});
+const refs=bankChequeImageReferences([{date:'2026-09-10T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:A,imageBackKey:B}]}},{date:'2026-02-01T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:C}]}}],{now:NOW});
 assert.deepEqual(refs.map(x=>x.key).sort(),[A,B],'only recent opaque image keys are considered for cloud upload');
 const reusedAcrossDates=bankChequeImageReferences([{date:'2026-08-20T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:A}]}},{date:'2026-08-30T09:00:00.000Z',checkDetails:{checkItems:[{imageFrontKey:A}]}}],{now:NOW});
 assert.deepEqual(reusedAcrossDates.map(x=>bankChequeImageObjectPath(UID,x.eventDate,x.key)),[`${UID}/20260830_${A}.img`,`${UID}/20260820_${A}.img`],'one Hapoalim scan reused by deposit and returned-credit transactions gets a dated cloud reference for each transaction instead of becoming unreachable from the older row');
@@ -25,7 +26,7 @@ assert.equal(normalizeOrdersBankFeedTransaction(bankTx).checkDetails.checkItems[
 
 const uploads=[],deletes=[],bridgeReads=[];
 const supaFetch=async(path,opt={})=>{
-  if(path.includes('/object/list/'))return new Response(JSON.stringify([{name:`20260701_${C}.img`}]),{status:200,headers:{'Content-Type':'application/json'}});
+  if(path.includes('/object/list/'))return new Response(JSON.stringify([{name:`20260201_${C}.img`}]),{status:200,headers:{'Content-Type':'application/json'}});
   if(opt.method==='POST'&&path.includes('/storage/v1/object/bank-cheque-images/')){uploads.push({path,opt});return new Response('{}',{status:200,headers:{'Content-Type':'application/json'}})}
   if(opt.method==='DELETE'){deletes.push(JSON.parse(opt.body));return new Response('{}',{status:200,headers:{'Content-Type':'application/json'}})}
   if(opt.method==='GET'&&path.includes(A))return new Response(new Blob([new Uint8Array([0xff,0xd8,0xff,0xd9])],{type:'image/jpeg'}),{status:200,headers:{'Content-Type':'image/jpeg'}});
@@ -37,10 +38,10 @@ assert.equal(syncResult.uploaded,2,'missing recent cheque sides are uploaded exa
 assert.deepEqual(bridgeReads.sort(),[A,B],'cloud upload reads only the missing image bytes from the local Bridge');
 assert.equal(uploads.every(x=>x.opt.headers['x-upsert']==='false'),true,'cheque image objects are immutable: no UPDATE permission or overwrite is required');
 assert.equal(uploads.every(x=>x.opt.body instanceof ArrayBuffer),true,'Storage upload uses a bounded binary body compatible with the official Storage upload path, not JSON/base64');
-assert.deepEqual(deletes,[{prefixes:[`${UID}/20260701_${C}.img`]}],'expired owned objects are removed through Storage API, not SQL metadata deletion');
+assert.deepEqual(deletes,[{prefixes:[`${UID}/20260201_${C}.img`]}],'expired owned objects are removed through Storage API, not SQL metadata deletion');
 const downloaded=await storage.download('2026-09-10T09:00:00.000Z',A);
 assert.equal(downloaded?.type,'image/jpeg','private Storage downloads return the image blob for the UI');
-assert.equal(await storage.download('2026-06-01T09:00:00.000Z',A),null,'UI never requests images outside retention even if an old key remains in archived JSON');
+assert.equal(await storage.download('2026-02-01T09:00:00.000Z',A),null,'UI never requests images outside retention even if an old key remains in archived JSON');
 
 assert.equal(bankChequeImageDownloadName('2026-09-10T09:00:00.000Z','חזית','image/jpeg'),'bank-cheque_20260910_front.jpg','download names preserve date, side and the actual image extension');
 assert.equal(bankChequeImageDownloadName('2026-09-10','גב','image/png'),'bank-cheque_20260910_back.png');

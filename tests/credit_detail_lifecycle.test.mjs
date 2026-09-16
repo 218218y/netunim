@@ -43,19 +43,19 @@ test('date range uses inclusive billing dates, not purchase dates, with open bou
   to.value='2026-10-15';assert.deepEqual(creditDateRangeFromControl(element),{from:'2026-10-15',to:'2026-10-15'});
 });
 
-for(const [app,feed] of [['kupa',kupaFeed],['orders',ordersFeed]])test(`${app}: ordinary merges accumulate six historical months, prune older months, keep future and preferences`,()=>{
+for(const [app,feed] of [['kupa',kupaFeed],['orders',ordersFeed]])test(`${app}: ordinary merges accumulate twelve historical months, prune older months, keep future and preferences`,()=>{
   const slice=month=>({month,status:'fresh',fetchStatus:'success',fetchedAt:'2026-09-01T00:00:00Z',transactions:[{id:month,processedDate:`${month}-10`,chargedAmount:-10}]}),state=fixture().creditSync;
-  state.profiles[0].accounts=[{accountNumber:'a',months:['2026-02','2026-03','2026-06','2026-07','2026-08','2026-09','2027-01'].map(slice)}];
+  state.profiles[0].accounts=[{accountNumber:'a',months:['2025-08','2025-09','2026-03','2026-06','2026-07','2026-08','2026-09','2027-01'].map(slice)}];
   const source=structuredClone(state),payload={syncedAt:'2026-09-16T00:00:00Z',profiles:[{profileId:'cards',provider:'max',accounts:[{accountNumber:'a',months:[slice('2026-09'),slice('2026-10')]}]}]};
   const merged=feed.mergeCreditSyncResult(state,payload),account=merged.profiles[0].accounts[0];
-  assert.deepEqual(account.months.map(row=>row.month).sort(),['2026-03','2026-06','2026-07','2026-08','2026-09','2026-10','2027-01']);
-  assert.equal(account.txns.some(row=>row.id==='2026-02'),false);
+  assert.deepEqual(account.months.map(row=>row.month).sort(),['2025-09','2026-03','2026-06','2026-07','2026-08','2026-09','2026-10','2027-01']);
+  assert.equal(account.txns.some(row=>row.id==='2025-08'),false);
   assert.equal(merged.cardMappings['cards:a'].sortOrder,2);
   const stored=JSON.parse(JSON.stringify(merged));assert.equal('txns' in stored.profiles[0].accounts[0],false,'cloud payload has no duplicate legacy transactions');
   assert.equal(feed.normalizeCreditSync(stored).cardMappings['cards:a'].sortOrder,2);
   const next=feed.mergeCreditSyncResult(stored,{syncedAt:'2026-10-01T00:00:00Z',profiles:[]});
-  assert.equal(next.profiles[0].accounts[0].months.some(row=>row.month==='2026-03'),false);
+  assert.equal(next.profiles[0].accounts[0].months.some(row=>row.month==='2025-09'),false);
   assert.deepEqual(state,source,'read/merge never mutates the input');
-  assert.equal(creditHistoryCutoffMonth('2027-01-01'),'2026-07');
+  assert.equal(creditHistoryCutoffMonth('2027-01-01'),'2026-01');
   assert.equal(creditHistoryCutoffMonth('invalid'),'');
 });

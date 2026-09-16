@@ -1,5 +1,6 @@
 export const BANK_CHEQUE_IMAGE_BUCKET='bank-cheque-images';
-export const BANK_CHEQUE_IMAGE_RETENTION_DAYS=60;
+// Keep cheque scans for roughly six months. The bank transaction archive itself is independent.
+export const BANK_CHEQUE_IMAGE_RETENTION_DAYS=183;
 export const BANK_CHEQUE_IMAGE_MAX_BYTES=5*1024*1024;
 
 const IMAGE_KEY_RE=/^[a-f0-9]{64}$/;

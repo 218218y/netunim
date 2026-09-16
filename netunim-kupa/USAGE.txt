@@ -96,7 +96,7 @@ Bank Bridge v10 — יציבות ניווט בבנק הפועלים
 - כל חיבור יכול להחזיר כמה כרטיסים. לכל כרטיס ניתן לקבוע בנפרד כלול/לא כלול, גלוי/מוסתר, עסקי/ביתי ושם תצוגה. כרטיס מוסתר שכלול בחישוב ממשיך להיכנס לסכומים אך אינו מוצג כפירוט מזוהה.
 - ניתן לסנן את הסיכומים והפירוט לפי עסקי/ביתי ובמקביל לפי בעל הכרטיס, כך שאפשר להציג לדוגמה רק עסקי של בעל מסוים או את כל הכרטיסים שלו.
 - סנכרון מלא מבקש 130 יום אחורה ועד 12 חודשים קדימה, ללא איחוד תשלומים, כדי להשתמש בתאריכי החיוב והתשלומים שהחברה עצמה מחזירה. עסקאות ממתינות מוצגות מיד באזור נפרד "עסקאות ממתינות", אך אינן נכנסות לתחזית/קופה עד שהחברה מחזירה חיוב סופי עם מועד אמין.
-- בטבלת העסקאות הרגילה מוצגות רק עסקאות שיש להן יתרה עתידית. עסקאות שהסתיימו מוצגות, כשהן בנות עד 60 יום, באזור היסטוריה נפרד וסגור; המידע הגולמי הישן נשאר ב-feed עד שחלון 120 הימים של החברה מחליף אותו.
+- היסטוריית האשראי שנשמרת באפליקציה כוללת עד 12 חודשי חיוב קודמים. השמירה הזו נצברת בהדרגה מסנכרונים רגילים ואינה גורמת למשיכה יזומה של 12 חודשים אחורה; רענון מלא ממשיך לבקש 130 יום אחורה בלבד, וכאשר נצברים יותר מ-12 חודשים החודש הישן ביותר נחתך.
 - MAX מחזירה CreditLimit ו-OpenToBuy, וישראכרט/Amex v42 מקבלים creditLimitAmount + limitUsed מ-DigitalV3; במסלולים אלה נתון המסגרת הפנויה של החברה הוא הסמכותי וכבר כולל את הניצול/האישורים שהחברה מכירה, ולכן לא מפחיתים pending פעם נוספת. כאל מחזירה מסגרת כוללת אך לא OpenToBuy אמין בחוזה הנוכחי; כאשר אין availableCredit ישיר, החישוב המקומי מפחית גם חיובים עתידיים סופיים וגם אישורים ממתינים שקליים.
 - נתוני החברות הם מקור האשראי הראשי. אין מתג בין מצב ידני למסונכרן; הוספת סליקה ידנית נשארת כתוספת נקודתית בלבד. במעבר הראשון ל-credit feed v3 הנתונים הידניים ההיסטוריים נמחקים פעם אחת כדי שלא ייספרו פעמיים, ותוספות ידניות חדשות נשמרות לאחר מכן.
 - נתוני העסקאות המסונכרנים והשיוכים נשמרים במצב הקופה ומסתנכרנים לענן כמו יתר נתוני הקופה. סיסמאות, תעודות זהות ושמות משתמש אינם חלק ממצב הקופה ואינם נשלחים ל-Supabase; פרטי הכניסה נשמרים מוצפנים ב-Windows DPAPI בכל מחשב בנפרד.
@@ -135,9 +135,9 @@ Bank Bridge v51 bank diagnostics
 Bank Bridge v52 cheque images
 -----------------------------
 - Hapoalim cheque detail rows expose session-scoped `imageFrontLink` / `imageBackLink`. v52 downloads those bytes only while the authenticated bank session is alive; the original bank URL, accountId, cookies and session values are never written to cloud state.
-- The Bridge keeps a bounded local 60-day cache and exposes an image only through the authenticated loopback endpoint by an opaque SHA-256 key. A failed image fetch is non-fatal and never invalidates the bank balance or transaction sync.
+- The Bridge keeps a bounded local 183-day (about six-month) cache and exposes an image only through the authenticated loopback endpoint by an opaque SHA-256 key. A failed image fetch is non-fatal and never invalidates the bank balance or transaction sync.
 - Supabase stores the binary objects in the private `bank-cheque-images` bucket. Bank rows keep only small `imageFrontKey` / `imageBackKey` values; image bytes are not embedded in Postgres JSON, Kupa/Orders documents or their application backups.
-- Cloud retention is 60 calendar days. Because the ordinary bank sync fetches a 30-day transaction window, the first run can populate only the images that Hapoalim still exposes; continued daily/periodic sync gradually builds the rolling 60-day window.
+- Cloud retention is 183 calendar days (about six months). Because the ordinary bank sync fetches a 30-day transaction window, the first run can populate only the images that Hapoalim still exposes; continued daily/periodic sync gradually builds the rolling 183-day window.
 - Expired image objects are deleted through the Storage API during later bank syncs. The historical bank transaction remains; only its image becomes unavailable after retention.
 - The bucket is private and RLS-scoped to the authenticated user's top-level folder. Objects are immutable (`x-upsert:false`), so no UPDATE policy is granted.
 - The UI downloads the original image lazily only when the user presses חזית/גב. v52 does not call Supabase Image Transformations and does not require that project option to be enabled.
