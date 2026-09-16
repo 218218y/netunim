@@ -4,7 +4,7 @@ import {dateFmt, todayISO, localISO, dObj, daysFromToday, monthKey, monthLabel, 
 import {assertValidCloudState} from './state/validation.js';
 import {normalizeSharedBankEvents, normalizeSharedChecks, checkUrgency} from './domains/checks/model.js';
 import {rawCreditSchedule, creditSchedule, inactiveCreditExpired, creditProgress} from './domains/credit/model.js';
-import {INITIAL_STATE} from './state/constants.js';
+import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createLifecycle({openBrowserStateFallback=async()=>false,ensureSyncCapabilities=async()=>true,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
@@ -24,20 +24,35 @@ async function boot(){
   if(!runtimeSelfCheck())return;
   await acquirePrimaryTabLock();
   if(!tab.primaryTab){showSecondaryTabGuard();return}
-  await requestPersistentBrowserStorage();
   document.getElementById('chooseFolder').addEventListener('click',chooseFolder);
   document.getElementById('chooseDataFile').addEventListener('click',chooseDataFile);
   document.getElementById('openLastFolder').addEventListener('click',openLastFolder);
   document.getElementById('openCloud').addEventListener('click',handleCloudConnectButton);
-  if(supaConfigured())setCloudHeaderStatus('syncing','ענן: בודק…');else setCloudHeaderStatus('off','ענן: לא מוגדר');
+
+  const cloudPreferred=localStorage.getItem(STORAGE_PREF_KEY)==='supabase';
+  let startupLocalShown=false;
+  if(cloudPreferred){
+    session.startupCloudHydrating=!!navigator.onLine;
+    try{startupLocalShown=await openBrowserStateFallback({startup:true})}catch(error){console.error('startup browser state recovery',error)}
+  }
+
+  if(supaConfigured())setCloudHeaderStatus('syncing',startupLocalShown&&navigator.onLine?'ענן: מסנכרן…':'ענן: בודק…');else setCloudHeaderStatus('off','ענן: לא מוגדר');
+  const persistentStoragePromise=requestPersistentBrowserStorage().catch(error=>console.error('persistent browser storage',error));
+  const restoredAuthPromise=restoreSupaSession();
   await restoreRememberedBackupTarget();
-  const restoredAuth=await restoreSupaSession();
+  const restoredAuth=await restoredAuthPromise;
+  await persistentStoragePromise;
+
+  if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;return}
   if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
-  if(session.syncCapabilitiesError){await openBrowserStateFallback();setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
+  if(session.syncCapabilitiesError){if(!startupLocalShown)await openBrowserStateFallback();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
   checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();const checksOutbox=await getSharedChecksPending();if(checksOutbox?.snapshot)model.state.checks=normalizeSharedChecks(checksOutbox.snapshot);if(checksOutbox||sharedChecksPendingExists()){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(checksOutbox?.generation||1));checksSession.sharedChecksSaveRequested=true}
-  if(await tryAutoOpenSupabase())return;
+  let autoOpened=false;
+  try{autoOpened=await tryAutoOpenSupabase()}finally{session.startupCloudHydrating=false}
+  if(autoOpened)return;
   if(session.cloudAuthNoDocument){await showCloudNoDocument();return}
+  if(startupLocalShown){if(!restoredAuth)setCloudHeaderStatus('off','ענן: נדרשת התחברות');return}
   if(!window.isSecureContext){
     configureCloudConnectButton('פתח קופה מהענן','open');
     setConnectUI({title:'נדרשת פתיחה ב־Chrome או Edge',text:'הדפדפן לא פתח את הקובץ כהקשר מקומי מאובטח.',note:'אפשר עדיין לפתוח קופה בענן Supabase, או לפתוח את <b>site/index.html</b> דרך HTTPS או שרת פיתוח מקומי (localhost) ב־Chrome/Edge עדכני.',showChoose:!!window.showDirectoryPicker,showFile:!window.showDirectoryPicker,showCloud:supaConfigured()});

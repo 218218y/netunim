@@ -754,9 +754,14 @@ const lifecycle=createLifecycle({
   tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
 });
 
-const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
+function canRunInteractiveAction(){
+  if(session.syncCapabilitiesError){uiStatus.toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
+  if(session.syncCapabilitiesChecking||session.startupCloudHydrating){uiStatus.toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
+  return true
+}
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:canRunInteractiveAction})};
 
-document.getElementById('checkBankAlerts').addEventListener('click',()=>uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true)));
+document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(canRunInteractiveAction())uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
 
@@ -871,7 +876,7 @@ document.getElementById('nav').addEventListener('click',e=>{const b=e.target.clo
 mobileMenu.addEventListener('click',()=>setSidebarOpen(!sidebar.classList.contains('open'),{restoreFocus:sidebar.classList.contains('open')}));
 sidebarBackdrop.addEventListener('click',()=>setSidebarOpen(false,{restoreFocus:true}));
 sidebarMedia.addEventListener('change',syncSidebarMode);syncSidebarMode();
-document.getElementById('quickAddCheck').addEventListener('click',()=>domainsChecksEditor.openCheckModal());
+document.getElementById('quickAddCheck').addEventListener('click',()=>{if(canRunInteractiveAction())domainsChecksEditor.openCheckModal()});
 document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(sidebar.classList.contains('open'))setSidebarOpen(false,{restoreFocus:true});else uiModal.closeModal()}});

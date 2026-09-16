@@ -29,6 +29,7 @@ return {
     cloudRecoveryAttempt:0,
     cloudConflictPending:false,
     cloudAuthNoDocument:false,
+    startupCloudHydrating:false,
     localFileConflictPending:false,
     cloudConnectAction:'open'
   },

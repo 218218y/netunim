@@ -22,6 +22,7 @@ async function handleCloudConnectButton(){
 function showSecondaryTabGuard(){if(tab.primaryTab)return;document.getElementById('connectScreen').style.display='flex';setConnectUI({title:'ניהול הקופה פתוח בלשונית אחרת',text:'כדי למנוע שתי כתיבות מקבילות לאותה קופה, רק לשונית אחת יכולה לערוך ולשמור.',note:'סגור את הלשונית האחרת או רענן את העמוד אחרי שסגרת אותה. הלשונית הזו לא תבצע שמירות כל עוד הנעילה תפוסה.'})}
 
 function setConnectUI({title,text,note,showLast=false,showChoose=false,showFile=false,showCloud=false}){
+  document.getElementById('connectScreen').style.display='flex';
   document.getElementById('connectTitle').textContent=title;
   document.getElementById('connectText').innerHTML=text;
   document.getElementById('connectNote').innerHTML=note||'';
