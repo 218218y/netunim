@@ -66,11 +66,12 @@ test('rights amounts preserve agorot through normalization while cash keeps its 
   assert.doesNotMatch(moneyWithCents(75),/75\.00/);
 });
 
-test('cash ledger CSS fits desktop columns without horizontal table scrolling and stretches the short side',()=>{
+test('cash ledger CSS keeps desktop columns aligned to the page without artificial viewport stretching',()=>{
   const css=readFileSync(new URL('../netunim-kupa/site/assets/app.css',import.meta.url),'utf8');
-  assert.match(css,/\.cash-ledgers\{[^}]*align-items:stretch[^}]*min-height:calc\(100dvh - 140px\)/);
-  assert.match(css,/\.cash-ledger-column\{[^}]*grid-template-rows:auto minmax\(0,1fr\)/);
-  assert.match(css,/\.cash-ledger-section\{[^}]*height:100%/);
+  assert.match(css,/\.cash-ledgers\{[^}]*align-items:start[^}]*width:100%[^}]*margin-inline:0[^}]*min-height:0/);
+  assert.doesNotMatch(css,/\.cash-ledgers\{[^}]*(?:calc\(100% \+ 20px\)|margin-inline:-10px|min-height:calc\(100dvh - 140px\))/);
+  assert.match(css,/\.cash-ledger-column\{[^}]*grid-template-rows:auto auto[^}]*align-content:start/);
+  assert.match(css,/\.cash-ledger-section\{[^}]*height:auto/);
   assert.match(css,/\.cash-ledger-section \.table-scroll\{[^}]*overflow-x:hidden/);
   assert.match(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:0[^}]*table-layout:fixed/);
   assert.doesNotMatch(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:540px/);

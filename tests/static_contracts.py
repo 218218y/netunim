@@ -439,6 +439,14 @@ ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source an
 ok('.bank-date-menu{position:absolute' in orders_css and '.bank-transactions-region{overflow:visible}' in orders_css and 'flex-wrap:wrap;overflow:visible' in orders_css
    and '.bank-date-menu{position:absolute' in (K / 'site/assets/app.css').read_text(encoding='utf-8') and '.bank-transactions-caption{position:relative;overflow:visible}' in (K / 'site/assets/app.css').read_text(encoding='utf-8'),
    "bank date scope layout: the date picker is an anchored floating panel that cannot consume caption-row width or be clipped behind balance/cashflow content")
+kupa_compact_css=(K / 'site/assets/app.css').read_text(encoding='utf-8')
+ok(bank_view.count('class="bank-account-overview ')==2 and bank_view.count('class="bank-account-metrics"')==2
+   and '.bank-account-overview-body{display:grid;grid-template-columns:minmax(270px,1.25fr) minmax(0,3.75fr)' in kupa_compact_css
+   and '.bank-account-metrics{min-width:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))' in kupa_compact_css
+   and '.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 14px' in kupa_compact_css
+   and '.net-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))' in kupa_compact_css
+   and 'grid-template-columns:minmax(260px,1.15fr) repeat(3,minmax(150px,.75fr))' not in kupa_compact_css,
+   "kupa compact UI: each bank account is one cohesive overview with a five-metric strip, dashboard KPIs stay compact, and the old multi-row amount-card grid cannot return")
 ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
    and "cycleAccountRows('עסקי',businessCycle)" in expense_view and "cycleAccountRows('ביתי',homeCycle)" in expense_view
    and 'הגדרת הוצאות קבועות ונוספות' not in bank_view and '<div class="net-summary">' not in bank_view,
