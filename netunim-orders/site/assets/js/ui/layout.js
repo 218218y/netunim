@@ -77,7 +77,7 @@ function supplierTransactionsEndTop(wrap){
   const maxTop=Math.max(0,wrap.scrollHeight-wrap.clientHeight),summary=wrap.querySelector(':scope > .supplier-bottom-summary');
   if(!summary)return maxTop;
   const style=getComputedStyle(summary),marginTop=Number.parseFloat(style.marginTop)||0,marginBottom=Number.parseFloat(style.marginBottom)||0;
-  const summaryTail=Math.max(0,summary.offsetHeight+marginTop+marginBottom),afterLastRow=24;
+  const summaryTail=Math.max(0,summary.offsetHeight+marginTop+marginBottom),afterLastRow=6;
   return Math.max(0,maxTop-Math.max(0,summaryTail-afterLastRow));
 }
 

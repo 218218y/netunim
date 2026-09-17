@@ -38,6 +38,12 @@ test('supplier end intent survives an immediate rerender before the first animat
   assert.equal(second.scrollTop,layout.supplierTransactionsEndTop(second),'the replacement render commits the original end-of-transactions intent');
 }));
 
+test('supplier end target keeps only a very small tail after the last transaction',()=>withScrollHarness(()=>{
+  const supplierUi={supplierViewportMemory:new Map()},ui={scrollViewportMemory:new Map()},layout=createUiLayout({ui,supplierUi});
+  const wrap=viewport({height:2000,client:500,summary:200});
+  assert.equal(layout.supplierTransactionsEndTop(wrap),1306,'a 200px summary tail leaves only 6px beyond the last transaction');
+}));
+
 test('generic reset-to-start intent survives a rerender and stale frames cannot overwrite it',()=>withScrollHarness(({flush})=>{
   const ui={scrollViewportMemory:new Map([['kupa:credit',{top:600,left:0,atEnd:true}]])},supplierUi={supplierViewportMemory:new Map()},layout=createUiLayout({ui,supplierUi});
   const first=viewport({top:600,height:1000,client:400}),second=viewport({top:600,height:1400,client:400});

@@ -241,6 +241,11 @@ ok('.view-shell>.view-head>:last-child{margin-bottom:0}' in orders_css
    and '.settings-view-shell{padding-top:10px}' in orders_css
    and '.settings-view-shell{padding-top:8px}' in orders_css,
    "orders view stack: tab command/header rows meet the top navigation and their scroll content without duplicate blank gutters, while the non-tab settings screen keeps its intentional breathing room")
+ok('.customers-view{display:flex;flex-direction:column;gap:0}' in orders_css
+   and '.customers-view{gap:0}.customer-command' in orders_css
+   and '.customers-view{display:flex;flex-direction:column;gap:10px}' not in orders_css
+   and '.customers-view{gap:8px}.customer-command' not in orders_css,
+   "orders customers: debts and order tracking meet their table panel directly below the fixed command row without a leftover shell gap")
 ok('הגדרות, ענן וגיבוי' not in orders_settings
    and 'נתוני ההזמנות נשמרים במסמך נפרד' not in orders_settings
    and "mountViewLayout({headCount:0,className:'settings-view-shell',scrollKey:'settings'})" in orders_settings,
@@ -283,6 +288,9 @@ ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
    "orders supplier/warehouse width: RTL view shells do not reserve an unused left scrollbar gutter, and the warehouse scrollbar uses the compact 8px track instead of consuming extra content width")
+orders_layout = (O / "site/assets/js/ui/layout.js").read_text(encoding="utf-8")
+ok('afterLastRow=6' in orders_layout and 'afterLastRow=24' not in orders_layout,
+   "orders supplier opening position: the default end-of-transactions target leaves only a 6px tail after the final transaction before the financial summary")
 ok('.notes-view{width:100%;max-width:none;margin:0}' in orders_css
    and '.warehouse-attention{width:100%;max-width:none;margin:0}' in orders_css,
    "orders wide views: notes and warehouse attention no longer recenter into capped columns on wide screens")
@@ -358,6 +366,12 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finance_view
+   and '.kupa-subcontent-credit{gap:6px}' in orders_css
+   and '.checks-page-embedded{gap:6px}' in orders_css
+   and '.checks-page-embedded>.check-bank-review,.checks-page-embedded>.check-bank-activity{margin-block:0}' in orders_css
+   and '.checks-page-embedded #checkGroups>.checks-month:first-child{margin-top:0}' in orders_css,
+   "orders Kupa compact rhythm: credit filter/forecast/details and embedded checks activity/forecast/month groups use a small deliberate gap without changing Bank or Balance spacing")
 orders_alert_center = (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8")
 ok('data-action="check-tab">הכל</button>' in orders_checks_view
    and 'data-action="check-tab">הכל</button>' in kupa_checks_view
