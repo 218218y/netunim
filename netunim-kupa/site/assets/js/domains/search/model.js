@@ -10,7 +10,7 @@ const GROUPS=[
   {key:'expenses',label:'הוצאות'},
   {key:'cash',label:'מזומן ומעשר'},
   {key:'bank',label:'בנק'},
-  {key:'notes',label:'הערות וגיליון'}
+  {key:'notes',label:'הערות וגליון'}
 ];
 
 export const normalizeKupaSearchText=normalizeSearchText;
@@ -44,8 +44,8 @@ function bankEntries(state){
 
 function noteEntries(state){
   const notes=(Array.isArray(state.notes)?state.notes:[]).map(n=>({group:'notes',kind:'note',id:String(n.id),context:'הערות',badge:'פתק',title:String(n.content||'').trim().slice(0,76)||'פתק ללא תוכן',subtitle:String(n.content||'').trim().slice(76,190),meta:[],searchText:searchText([n.content],[n.createdAt,n.updatedAt])}));
-  const sheet=state.notesSheet&&typeof state.notesSheet==='object'?state.notesSheet:{sheets:[],columns:[],rows:[]},columns=Array.isArray(sheet.columns)?sheet.columns:[],sheetNames=new Map((Array.isArray(sheet.sheets)?sheet.sheets:[]).map(tab=>[String(tab.id||''),String(tab.name||'גיליון')]));
-  const rowCounters=new Map(),rows=(Array.isArray(sheet.rows)?sheet.rows:[]).map(row=>{const sheetId=String(row.sheetId||sheet.sheets?.[0]?.id||''),sheetColumns=columns.filter(c=>String(c.sheetId||sheetId)===sheetId),index=(rowCounters.get(sheetId)||0)+1;rowCounters.set(sheetId,index);const values=sheetColumns.map(c=>row.cells?.[c.id]??''),filled=values.filter(v=>String(v).trim()),preview=filled.slice(0,3).join(' · '),sheetName=sheetNames.get(sheetId)||'גיליון';return {group:'notes',kind:'sheet-row',id:String(row.id),sheetId,context:`גיליון · ${sheetName}`,badge:`${sheetName} · שורה ${index}`,title:preview||`שורה ${index}`,subtitle:filled.slice(3,7).join(' · '),meta:[],searchText:searchText([sheetName,...values],[row.createdAt,row.updatedAt])}});
+  const sheet=state.notesSheet&&typeof state.notesSheet==='object'?state.notesSheet:{sheets:[],columns:[],rows:[]},columns=Array.isArray(sheet.columns)?sheet.columns:[],sheetNames=new Map((Array.isArray(sheet.sheets)?sheet.sheets:[]).map(tab=>[String(tab.id||''),String(tab.name||'גליון')]));
+  const rowCounters=new Map(),rows=(Array.isArray(sheet.rows)?sheet.rows:[]).map(row=>{const sheetId=String(row.sheetId||sheet.sheets?.[0]?.id||''),sheetColumns=columns.filter(c=>String(c.sheetId||sheetId)===sheetId),index=(rowCounters.get(sheetId)||0)+1;rowCounters.set(sheetId,index);const values=sheetColumns.map(c=>row.cells?.[c.id]??''),filled=values.filter(v=>String(v).trim()),preview=filled.slice(0,3).join(' · '),sheetName=sheetNames.get(sheetId)||'גליון';return {group:'notes',kind:'sheet-row',id:String(row.id),sheetId,context:`גליון · ${sheetName}`,badge:`${sheetName} · שורה ${index}`,title:preview||`שורה ${index}`,subtitle:filled.slice(3,7).join(' · '),meta:[],searchText:searchText([sheetName,...values],[row.createdAt,row.updatedAt])}});
   return [...notes,...rows];
 }
 

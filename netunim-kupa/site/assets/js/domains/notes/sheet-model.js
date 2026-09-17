@@ -3,19 +3,25 @@ export const NOTES_SHEET_MAX_WIDTH=520;
 export const NOTES_SHEET_DEFAULT_WIDTH=90;
 export const NOTES_SHEET_DEFAULT_ID='sheet-main';
 const DEFAULT_COLUMN_COUNT=5;
+const LEGACY_AUTO_SHEET_PREFIX='\u05d2\u05d9\u05dc\u05d9\u05d5\u05df';
 
 export function defaultNotesSheetColumns(sheetId=NOTES_SHEET_DEFAULT_ID){
   return Array.from({length:DEFAULT_COLUMN_COUNT},(_,i)=>({id:`${sheetId}-col-${i+1}`,sheetId,title:`עמודה ${i+1}`,type:'text',width:NOTES_SHEET_DEFAULT_WIDTH}));
 }
 
-export function createDefaultNotesSheet(){return {version:2,sheets:[{id:NOTES_SHEET_DEFAULT_ID,name:'גיליון 1'}],columns:defaultNotesSheetColumns(),rows:[]}}
+export function createDefaultNotesSheet(){return {version:2,sheets:[{id:NOTES_SHEET_DEFAULT_ID,name:'גליון 1'}],columns:defaultNotesSheetColumns(),rows:[]}}
 
 export function clampNotesSheetWidth(value){
   const n=Math.round(Number(value)||NOTES_SHEET_DEFAULT_WIDTH);
   return Math.min(NOTES_SHEET_MAX_WIDTH,Math.max(NOTES_SHEET_MIN_WIDTH,n));
 }
 
-function normalizedSheetName(value,index){return String(value||'').trim()||`גיליון ${index+1}`}
+function normalizedSheetName(value,index){
+  const name=String(value||'').trim();
+  if(!name)return `גליון ${index+1}`;
+  const legacy=name.match(new RegExp(`^${LEGACY_AUTO_SHEET_PREFIX}\\s+(\\d+)$`));
+  return legacy?`גליון ${legacy[1]}`:name;
+}
 function uniqueId(value,fallback,used){let id=String(value||'').trim()||fallback,n=2;while(used.has(id))id=`${fallback}-${n++}`;used.add(id);return id}
 
 export function normalizeNotesSheet(source){
@@ -26,7 +32,7 @@ export function normalizeNotesSheet(source){
       const item=raw.sheets[i]&&typeof raw.sheets[i]==='object'?raw.sheets[i]:{};
       const id=uniqueId(item.id,`sheet-${i+1}`,sheetIds);sheets.push({id,name:normalizedSheetName(item.name,i)});
     }
-  }else{sheets.push({id:NOTES_SHEET_DEFAULT_ID,name:'גיליון 1'});sheetIds.add(NOTES_SHEET_DEFAULT_ID)}
+  }else{sheets.push({id:NOTES_SHEET_DEFAULT_ID,name:'גליון 1'});sheetIds.add(NOTES_SHEET_DEFAULT_ID)}
   const primarySheetId=sheets[0].id,columnIds=new Set(),columns=[];
   const incoming=Array.isArray(raw.columns)&&raw.columns.length?raw.columns:(isWorkbook?[]:defaultNotesSheetColumns(primarySheetId));
   for(let i=0;i<incoming.length;i++){
