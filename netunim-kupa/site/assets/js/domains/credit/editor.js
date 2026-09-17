@@ -1,4 +1,4 @@
-import {esc, uid} from '../../core/values.js';
+import {esc} from '../../core/values.js';
 import {todayISO} from '../../core/dates.js';
 import {wholeMoney} from '../../core/money.js';
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,normalizeCreditSync} from './sync-feed.js';
@@ -18,9 +18,10 @@ function suggestions(){
   return {cards:uniqueSorted(cards),owners:uniqueSorted(owners)};
 }
 function openCreditModal(id){
-  const opts=suggestions(),cr=id?model.state.credits.find(x=>x.id===id):{account:'עסקי',ownerLabel:'',card:opts.cards[0]||'',description:'',transactionDate:todayISO(),totalAmount:'',installments:1,firstChargeDate:'',active:true,note:''};
+  if(!id)return toast('הוספה ידנית לאשראי הוסרה; הנתונים מתווספים דרך סנכרון האשראי.');
+  const opts=suggestions(),cr=model.state.credits.find(x=>x.id===id);if(!cr)return toast('רשומת האשראי הידנית לא נמצאה.');
   const defaultFirst=cr.firstChargeDate||nextChargeDate(cr.card,cr.transactionDate);
-  modal(id?'עריכת תוספת אשראי ידנית':'תוספת אשראי ידנית',`<div class="form-grid">
+  modal('עריכת רשומת אשראי ידנית קיימת',`<div class="form-grid">
     <div class="form-group"><label>חשבון</label><select id="cAccount"><option ${cr.account==='עסקי'?'selected':''}>עסקי</option><option ${cr.account==='ביתי'?'selected':''}>ביתי</option></select></div>
     <div class="form-group"><label>בעל הכרטיס</label><input id="cOwner" list="creditOwnerSuggestions" value="${esc(cr.ownerLabel||'')}" placeholder="רשות"><datalist id="creditOwnerSuggestions">${opts.owners.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
     <div class="form-group"><label>כרטיס</label><input id="cCard" list="creditCardSuggestions" data-change="prefill-charge-date" value="${esc(cr.card||'')}" placeholder="שם הכרטיס"><datalist id="creditCardSuggestions">${opts.cards.map(x=>`<option value="${esc(x)}"></option>`).join('')}</datalist></div>
@@ -31,13 +32,13 @@ function openCreditModal(id){
     <div class="form-group"><label>מספר תשלומים</label><input id="cParts" type="number" min="1" max="60" step="1" inputmode="numeric" value="${esc(cr.installments||1)}"></div>
     <div class="form-group"><label>פעיל</label><select id="cActive"><option ${cr.active?'selected':''}>כן</option><option ${!cr.active?'selected':''}>לא</option></select></div>
     <div class="form-group full"><label>הערה</label><textarea id="cNote">${esc(cr.note)}</textarea></div>
-    <div class="form-group full"><div class="notice">הנתונים מחברות האשראי הם תמיד בסיס החישוב. הרשומה הזאת היא תוספת ידנית נקודתית בלבד ותתווסף לסנכרון — היא לא מחליפה אותו.</div></div>
-  </div>`,id?'שמור שינויים':'הוסף תוספת',()=>saveCredit(id||''),id?()=>deleteRecord('credits',id):null);armModalDraftGuard()
+    <div class="form-group full"><div class="notice">זו רשומה ידנית קיימת מהעבר. אפשר לערוך או למחוק אותה; רשומות חדשות מתווספות רק דרך סנכרון האשראי.</div></div>
+  </div>`,'שמור שינויים',()=>saveCredit(id),()=>deleteRecord('credits',id));armModalDraftGuard()
 }
 
 function prefillChargeDate(){const tx=document.getElementById('cTx').value,card=document.getElementById('cCard').value;setDateValue(document.getElementById('cFirst'),nextChargeDate(card,tx))}
 
-function saveCredit(id){const rec={id:id||uid('CR'),account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:id?model.state.credits.find(x=>x.id===id)?.createdAt:todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');if(id)model.state.credits[model.state.credits.findIndex(x=>x.id===id)]=rec;else model.state.credits.push(rec);closeModal(true);saveState(id?'התוספת הידנית עודכנה':'התוספת הידנית נוספה')}
+function saveCredit(id){if(!id)return toast('הוספה ידנית לאשראי אינה זמינה.');const index=model.state.credits.findIndex(x=>x.id===id);if(index<0)return toast('רשומת האשראי הידנית לא נמצאה.');const rec={id,account:document.getElementById('cAccount').value,ownerLabel:document.getElementById('cOwner').value.trim(),card:document.getElementById('cCard').value.trim(),description:document.getElementById('cDesc').value.trim(),transactionDate:document.getElementById('cTx').value,totalAmount:wholeMoney(document.getElementById('cTotal').value),installments:Number(document.getElementById('cParts').value),firstChargeDate:document.getElementById('cFirst').value,active:document.getElementById('cActive').value==='כן',note:document.getElementById('cNote').value.trim(),createdAt:model.state.credits[index]?.createdAt||todayISO()};if(!rec.card||!rec.totalAmount||!rec.installments||!rec.firstChargeDate)return toast('יש למלא כרטיס, סכום, תשלומים וחיוב ראשון');model.state.credits[index]=rec;closeModal(true);saveState('התוספת הידנית עודכנה')}
 
 return { openCreditModal, prefillChargeDate, saveCredit };
 }

@@ -10,7 +10,7 @@ const KUPA_BACKUP_COLLECTIONS=[
   {path:'checks',label:'צ׳קים'},{path:'credits',label:'עסקאות אשראי'},{path:'cash',label:'מזומן'},{path:'rights',label:'מעשר'},{path:'expenses',label:'הוצאות'},{path:'cards',label:'כרטיסים'},{path:'notes',label:'פתקים'},{path:'notesSheet.rows',label:'שורות גיליון'}
 ];
 const KUPA_BACKUP_CONFIG=[
-  {path:'businessName',label:'שם העסק'},{path:'rightsLastCalculatedDate',label:'תאריך חישוב מעשר'},{path:'cashflowSettings',label:'הגדרות תזרים'},{path:'notesSheet.columns',label:'מבנה גיליון'},{path:'bank.adjustments',label:'התאמות עו״ש ידניות'},{path:'bank.currentBalance',label:'יתרת עו״ש ידנית'}
+  {path:'businessName',label:'שם העסק'},{path:'rightsLastCalculatedDate',label:'תאריך חישוב מעשר'},{path:'cashflowSettings',label:'הגדרות תזרים'},{path:'notesSheet.sheets',label:'שמות גיליונות'},{path:'notesSheet.columns',label:'מבנה גיליון'},{path:'bank.adjustments',label:'התאמות עו״ש ידניות'},{path:'bank.currentBalance',label:'יתרת עו״ש ידנית'}
 ];
 
 function restoreDeleteIntents(before,after){

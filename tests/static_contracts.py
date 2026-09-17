@@ -817,7 +817,13 @@ orders_finance_view=(ROOT/'netunim-orders/site/assets/js/domains/finance/view.js
 orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
 orders_actions=(ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
 kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
+kupa_credit_editor=(ROOT/'netunim-kupa/site/assets/js/domains/credit/editor.js').read_text(encoding='utf-8')
 kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
+kupa_index=(ROOT/'netunim-kupa/site/index.html').read_text(encoding='utf-8')
+kupa_contexts=(ROOT/'netunim-kupa/site/assets/js/state/contexts.js').read_text(encoding='utf-8')
+kupa_checks_view=(ROOT/'netunim-kupa/site/assets/js/domains/checks/view.js').read_text(encoding='utf-8')
+kupa_notes_model=(ROOT/'netunim-kupa/site/assets/js/domains/notes/sheet-model.js').read_text(encoding='utf-8')
+kupa_notes_controller=(ROOT/'netunim-kupa/site/assets/js/domains/notes/controller.js').read_text(encoding='utf-8')
 ok('data-view="customers">לקוחות וחובות</button>' in orders_index and 'data-view="customer-orders">מעקב הזמנות</button>' in orders_index and orders_index.index('data-view="customers"') < orders_index.index('data-view="customer-orders"') < orders_index.index('data-view="warehouse"') and "ui.currentView==='customers'||ui.currentView==='customer-orders'" in orders_navigation and "customerUi.customerTab='orders'" in orders_navigation and 'onTabChange(tab)' in orders_customer_bulk, 'orders navigation: order tracking has a direct main tab and stays synchronized with the existing inner customer tabs')
 ok('<h1>קריאות שירות</h1>' not in orders_service_view and 'module-toolbar service-toolbar' in orders_service_view and 'module-toolbar-actions' in orders_service_view and "headCount:1,className:'service-view-shell'" in orders_service_view, 'orders service: search, filters, selection and open-call action share one fixed toolbar without the redundant title row')
 ok('<h1>מחסן ומלאי</h1>' not in orders_warehouse_view and 'module-toolbar warehouse-toolbar' in orders_warehouse_view and 'open-inventory-item-modal-2' in orders_warehouse_view and 'open-warehouse-order-modal' in orders_warehouse_view and "headCount:1,className:'warehouse-view-shell'" in orders_warehouse_view, 'orders warehouse: search, tabs and item/customer actions share one fixed toolbar without the redundant title row')
@@ -825,6 +831,14 @@ ok(all('credit-account-filter-chips' in source and 'data-click-arg0="all">הכל
 
 ok('data-action="copy-orders-safe-credit-diagnostics"' in orders_finance_view and 'copySafeCreditDiagnostics' in orders_finance_controller and "JSON.stringify({contractVersion:result?.contractVersion||CREDIT_CONNECTOR_CONTRACT_VERSION,events}" in orders_finance_controller and "'copy-orders-safe-credit-diagnostics'" in orders_actions, 'Orders credit diagnostics: the UI copies only sanitized loopback events and their contract version')
 ok('data-action="refresh-orders-credit-daily"' in orders_finance_view and "refreshOrdersCredit(false,'full')" in orders_actions and "refreshOrdersCredit(false,'daily')" in orders_actions and "syncMode:auto?bridge.creditAutoMode():syncMode==='full'?'full':'daily'" in orders_finance_controller and "selection:creditSyncScrapeSelection(checksSession.kupaCloudReadState?.creditSync)" in orders_finance_controller and "body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]}" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'), 'Orders credit workload controls: main manual full and advanced daily modes are explicit from UI action through the local bridge request')
+ok('data-action="open-credit-modal"' not in kupa_credit_view and "'open-credit-modal':" not in kupa_actions and "if(!id)return toast('הוספה ידנית לאשראי הוסרה" in kupa_credit_editor and 'data-action="open-credit-modal-2"' in kupa_credit_view,
+   'kupa credit: new manual credit creation is removed end-to-end while legacy manual records remain editable/deletable')
+ok('id="quickAddCheck"' not in kupa_index and 'data-action="open-check-modal"' in kupa_checks_view and 'data-action="open-check-modal"' not in (ROOT/'netunim-kupa/site/assets/js/domains/dashboard/view.js').read_text(encoding='utf-8'),
+   'kupa checks: the new-check control exists only inside the Checks page, not in the fixed header or dashboard quick actions')
+ok("currentPage:'cash'" in kupa_contexts and 'data-page="cash" class="active"' in kupa_index and 'data-page="checks" class="active"' not in kupa_index,
+   'kupa startup: Cash is the single default/active page instead of Checks')
+ok('NOTES_SHEET_DEFAULT_WIDTH=90' in kupa_notes_model and 'const width=isWorkbook?clampNotesSheetWidth(item.width):NOTES_SHEET_DEFAULT_WIDTH' in kupa_notes_model and 'data-action="add-notes-sheet"' in kupa_notes_controller and 'data-action="set-active-notes-sheet"' in kupa_notes_controller and 'data-blur="rename-notes-sheet"' in kupa_notes_controller,
+   'kupa notes workbook: legacy widths reset to the compact 90px default and named multi-sheet tabs are first-class UI controls')
 
 print("\nERRORS", len(errors))
 if errors:

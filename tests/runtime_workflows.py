@@ -29,8 +29,7 @@ flows={
  assert(state.cash.length===1&&state.cash[0].amount===120,'cash create');
  click('open-cash-modal-2');fill({mAmount:'125'});saveModal();await saved();assert(cashBalance()===125,'cash edit');
  setPage('credit');element('[data-action="expenses-hub-tab"][data-click-arg0="expenses"]').click();await waitFor(()=>!!document.querySelector('[data-action="open-expense-modal"]'),'Expenses tab did not render');click('open-expense-modal');fill({eDesc:'Rent',eAmount:'50',eDate:'2026-09-10'});saveModal();await saved();assert(state.expenses.length===1,'expense create');
- element('[data-action="expenses-hub-tab"][data-click-arg0="credit"]').click();await waitFor(()=>!!document.querySelector('[data-action="open-credit-modal"]'),'Credit tab did not render');click('open-credit-modal');fill({cDesc:'Purchase',cTotal:'300',cParts:'3',cTx:'2026-08-27',cFirst:'2026-09-10'});saveModal();await saved();
- assert(state.credits.length===1&&rawCreditSchedule(state.credits[0]).length===3,'credit schedule');
+ element('[data-action="expenses-hub-tab"][data-click-arg0="credit"]').click();await waitFor(()=>!!document.querySelector('.credit-filter-toolbar'),'Credit tab did not render');assert(!document.querySelector('[data-action="open-credit-modal"]'),'manual credit add control must be absent');const creditCount=state.credits.length;domainsCreditEditor.openCreditModal();await saved();assert(state.credits.length===creditCount,'manual credit creation path must stay disabled');
  setPage('checks');click('open-check-modal');fill({fName:'Customer'});
  const row=element('#checkSeriesRows .check-series-row');
  row.querySelector('[data-series-field="amount"]').value='200';row.querySelector('[data-series-field="number"]').value='0007';
@@ -75,8 +74,8 @@ flows={
  const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
  const mainPending=await getCloudPending(),checksPending=await getSharedChecksPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');assert(checksPending&&await clearSharedChecksPending(checksPending.generation),'checks pending exact ACK');
  Object.defineProperty(navigator,'onLine',{value:true,configurable:true});cloudTransport.readSupabaseDocument=async()=>({state:remoteMain,revision:1});cloudTransport.readSharedChecksDocument=async()=>({state:remoteChecks,revision:1});cloudTransport.stageRestoreGroup=async()=>({staged:true});cloudTransport.applyRestoreGroup=async()=>({main_revision:2,checks_revision:2});
- setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await waitFor(()=>state.expenses.length===1&&state.credits.length===1,'Restore group did not apply locally after ACK');
- assert(state.expenses.length===1&&state.credits.length===1,'file restore');
+ setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await waitFor(()=>state.expenses.length===1&&state.credits.length===0,'Restore group did not apply locally after ACK');
+ assert(state.expenses.length===1&&state.credits.length===0,'file restore');
  assert(!!loadBrowserStateSync(),'actual offline browser snapshot');
  assert(hadOfflinePending,'actual pending marker');
  return {cash:true,expense:true,credit:true,checks:true,depositClear:true,delete:true,backupRestore:true,offlinePersistence:true};

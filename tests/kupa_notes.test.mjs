@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
+import {NOTES_SHEET_DEFAULT_WIDTH,normalizeNotesSheet} from '../netunim-kupa/site/assets/js/domains/notes/sheet-model.js';
 
 function makeDocument(){
   const content={innerHTML:''};
@@ -49,6 +50,30 @@ test('Kupa notes sheet keeps configurable columns, row cells and numeric totals 
   notes.addSheetColumn();assert.equal(model.state.notesSheet.columns.length,6);
   await notes.deleteSheetRow(row.id);assert.equal(model.state.notesSheet.rows.length,0);
   assert.ok(saved.includes('שורה חדשה נוספה לגיליון'));assert.ok(saved.includes('סוג עמודה עודכן'));
+});
+
+
+test('Kupa notes workbook migrates the legacy single sheet to compact width without losing cells',()=>{
+  const legacy={version:1,columns:[{id:'C1',title:'לקוח',type:'text',width:180},{id:'C2',title:'סכום',type:'number',width:240}],rows:[{id:'R1',cells:{C1:'אברהם',C2:'125'},createdAt:'2026-09-17T00:00:00Z',updatedAt:'2026-09-17T00:00:00Z'}]};
+  const book=normalizeNotesSheet(legacy);
+  assert.equal(book.version,2);assert.equal(book.sheets.length,1);assert.equal(book.sheets[0].name,'גיליון 1');
+  assert.deepEqual(book.columns.map(column=>column.width),[NOTES_SHEET_DEFAULT_WIDTH,NOTES_SHEET_DEFAULT_WIDTH]);
+  assert.equal(book.rows[0].sheetId,book.sheets[0].id);assert.deepEqual(book.rows[0].cells,{C1:'אברהם',C2:'125'});
+});
+
+test('Kupa notes workbook creates separately named sheets and scopes new rows to the active sheet',()=>{
+  Object.defineProperty(globalThis,'document',{value:makeDocument(),configurable:true});
+  Object.defineProperty(globalThis,'requestAnimationFrame',{value:fn=>fn(),configurable:true});
+  const saved=[],ui={notesTab:'sheet',notesSheetId:''},model={state:{notes:[],notesSheet:undefined}};
+  const notes=createDomainsNotesController({model,ui,saveState:msg=>saved.push(msg),confirmDialog:async()=>true});
+  notes.renderNotes();const firstId=model.state.notesSheet.sheets[0].id;notes.addSheetRow();
+  assert.equal(model.state.notesSheet.rows.at(-1).sheetId,firstId);
+  notes.addNotesSheet();const secondId=ui.notesSheetId;
+  assert.notEqual(secondId,firstId);assert.equal(model.state.notesSheet.sheets.length,2);
+  assert.ok(model.state.notesSheet.columns.filter(column=>column.sheetId===secondId).every(column=>column.width===NOTES_SHEET_DEFAULT_WIDTH));
+  const nameInput={value:'מעקב מיוחד'};notes.renameNotesSheet(nameInput);assert.equal(model.state.notesSheet.sheets.find(sheet=>sheet.id===secondId).name,'מעקב מיוחד');
+  notes.addSheetRow();assert.equal(model.state.notesSheet.rows.filter(row=>row.sheetId===firstId).length,1);assert.equal(model.state.notesSheet.rows.filter(row=>row.sheetId===secondId).length,1);
+  notes.setActiveNotesSheet(firstId);assert.equal(ui.notesSheetId,firstId);assert.ok(saved.includes('גיליון חדש נוסף'));assert.ok(saved.includes('שם הגיליון עודכן'));
 });
 
 test('Kupa notes sheet arrow navigation follows the visual RTL grid',()=>{

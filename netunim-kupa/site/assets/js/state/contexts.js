@@ -1,7 +1,7 @@
 export function createContexts(){
 return {
   model:{
-    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:4,contractVersion:2,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],rights:[],rightsLastCalculatedDate:null,notes:[],notesSheet:{version:1,columns:[{id:'sheet-col-1',title:'עמודה 1',type:'text',width:180},{id:'sheet-col-2',title:'עמודה 2',type:'text',width:180},{id:'sheet-col-3',title:'עמודה 3',type:'text',width:180},{id:'sheet-col-4',title:'עמודה 4',type:'text',width:180},{id:'sheet-col-5',title:'עמודה 5',type:'text',width:180}],rows:[]},expenses:[],cards:[],cashflowSettings:{version:3,businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9},bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[],homeFeed:null}},
+    state:{version:4,businessName:'ניהול קופה',checks:[],credits:[],creditSync:{version:4,contractVersion:2,mode:'synced',syncedAt:null,profiles:[],errors:[],cardMappings:{}},cash:[],rights:[],rightsLastCalculatedDate:null,notes:[],notesSheet:{version:2,sheets:[{id:'sheet-main',name:'גיליון 1'}],columns:[{id:'sheet-main-col-1',sheetId:'sheet-main',title:'עמודה 1',type:'text',width:90},{id:'sheet-main-col-2',sheetId:'sheet-main',title:'עמודה 2',type:'text',width:90},{id:'sheet-main-col-3',sheetId:'sheet-main',title:'עמודה 3',type:'text',width:90},{id:'sheet-main-col-4',sheetId:'sheet-main',title:'עמודה 4',type:'text',width:90},{id:'sheet-main-col-5',sheetId:'sheet-main',title:'עמודה 5',type:'text',width:90}],rows:[]},expenses:[],cards:[],cashflowSettings:{version:3,businessMinimum:null,homeMinimum:null,businessCheckCutoffDay:14,homeCheckCutoffDay:9},bank:{currentBalance:null,updatedAt:null,asOfDate:null,adjustments:[],homeFeed:null}},
     lastNormalizeRemovedCredits:0
   },
   session:{
@@ -34,7 +34,7 @@ return {
     cloudConnectAction:'open'
   },
   ui:{
-    currentPage:'checks',
+    currentPage:'cash',
     checkTab:'open',
     checkAccount:'all',
     checkYear:'all',
@@ -56,7 +56,7 @@ return {
     creditSearchValue:'',
     expenseSearchValue:'',
     cashSearchValue:'',
-    notesSearchValue:'',notesSheetSearchValue:'',
+    notesSearchValue:'',notesSheetSearchValue:'',notesSheetId:'',
     bankSyncOpen:false,
     creditSyncOpen:false,
     creditForecastOpen:false,

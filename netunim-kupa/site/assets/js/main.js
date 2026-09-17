@@ -841,6 +841,9 @@ const uiActions=createUiActions({
   blurStickyNote:(...args)=>domainsNotesController.blurStickyNote(...args),
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
   setNotesWorkspaceTab:(...args)=>domainsNotesController.setNotesWorkspaceTab(...args),
+  setActiveNotesSheet:(...args)=>domainsNotesController.setActiveNotesSheet(...args),
+  addNotesSheet:(...args)=>domainsNotesController.addNotesSheet(...args),
+  renameNotesSheet:(...args)=>domainsNotesController.renameNotesSheet(...args),
   addSheetRow:(...args)=>domainsNotesController.addSheetRow(...args),
   updateSheetCell:(...args)=>domainsNotesController.updateSheetCell(...args),
   saveSheetCell:(...args)=>domainsNotesController.saveSheetCell(...args),
@@ -878,7 +881,6 @@ document.getElementById('nav').addEventListener('click',e=>{const b=e.target.clo
 mobileMenu.addEventListener('click',()=>setSidebarOpen(!sidebar.classList.contains('open'),{restoreFocus:sidebar.classList.contains('open')}));
 sidebarBackdrop.addEventListener('click',()=>setSidebarOpen(false,{restoreFocus:true}));
 sidebarMedia.addEventListener('change',syncSidebarMode);syncSidebarMode();
-document.getElementById('quickAddCheck').addEventListener('click',()=>{if(canRunInteractiveAction())domainsChecksEditor.openCheckModal()});
 document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(sidebar.classList.contains('open'))setSidebarOpen(false,{restoreFocus:true});else uiModal.closeModal()}});

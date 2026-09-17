@@ -80,7 +80,7 @@ def run_breakdown(app):
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             for role, card, other, expected in [('business', '2222', '3333', '90.21'), ('home', '3333', '2222', '1,980.22')]:
-                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else ''
+                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else f"domainsBankView.setBankAccountView('{role}');"
                 action = 'orders-cashflow-breakdown' if app == 'orders' else 'cashflow-breakdown'
                 result = browser.evaluate(f"""(()=>{{
                   {select}
@@ -234,7 +234,7 @@ def run_cashflow_date_picker(app):
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             for role in ('business', 'home'):
-                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else ''
+                select = f"ui.bankAccountView='{role}';domainsFinanceView.renderKupa();" if app == 'orders' else f"domainsBankView.setBankAccountView('{role}');"
                 browser.evaluate("(async()=>{"+breakdown_fixture+setup+select+f"""
                   const {{kupaAccountCashflowData}}=await import('./assets/js/shared/kupa-cashflow.js');
                   const account='{role}'==='home'?'ביתי':'עסקי';

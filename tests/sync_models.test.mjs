@@ -253,11 +253,13 @@ test('Kupa notes sheet merges rows and column configuration independently',()=>{
  const k=kupaNormalizer({model:{lastNormalizeRemovedCredits:0}}),m=kupaMerge({normalizeState:k.normalizeState,prepareKupaCloudState:k.prepareKupaCloudState});
  const base=k.normalizeState({version:4,checks:[],credits:[],cash:[],rights:[],notes:[],expenses:[],cards:[],bank:{adjustments:[]}});
  const local=structuredClone(base),remote=structuredClone(base);
- local.notesSheet.rows.push({id:'ROW-1',cells:{'sheet-col-1':'100'},createdAt:'2026-09-03T08:00:00Z',updatedAt:'2026-09-03T08:00:00Z'});
+ const sheetId=base.notesSheet.sheets[0].id,columnId=base.notesSheet.columns[0].id;
+ local.notesSheet.rows.push({id:'ROW-1',sheetId,cells:{[columnId]:'100'},createdAt:'2026-09-03T08:00:00Z',updatedAt:'2026-09-03T08:00:00Z'});
  remote.notesSheet.columns[0].title='סכום';remote.notesSheet.columns[0].type='number';
+ local.notesSheet.sheets.push({id:'SHEET-2',name:'תכנון'});local.notesSheet.columns.push({id:'SHEET-2-C1',sheetId:'SHEET-2',title:'פריט',type:'text',width:90});
  const merged=m.mergeState3Way(base,local,remote);
- assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.notesSheet.rows.length,1);assert.equal(merged.state.notesSheet.columns[0].title,'סכום');assert.equal(merged.state.notesSheet.columns[0].type,'number');
- const cloud=k.prepareKupaCloudState(merged.state);assert.equal(validKupaCloudState(cloud),true);assert.equal(cloud.notesSheet.rows[0].cells['sheet-col-1'],'100');
+ assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.notesSheet.rows.length,1);assert.equal(merged.state.notesSheet.columns[0].title,'סכום');assert.equal(merged.state.notesSheet.columns[0].type,'number');assert.equal(merged.state.notesSheet.sheets.length,2);
+ const cloud=k.prepareKupaCloudState(merged.state);assert.equal(validKupaCloudState(cloud),true);assert.equal(cloud.notesSheet.rows[0].cells[columnId],'100');assert.equal(cloud.notesSheet.sheets.find(x=>x.id==='SHEET-2')?.name,'תכנון');
 });
 
 test('Orders main merge never treats a stale partial snapshot as deletion without explicit intent',()=>{

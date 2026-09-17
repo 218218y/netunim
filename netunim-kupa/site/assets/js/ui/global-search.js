@@ -27,7 +27,7 @@ export function createUiGlobalSearch({model,ui,setPage}){
     if(item.group==='expenses'){ui.expensesTab='expenses';ui.expenseSearchValue='';setPage('credit');reveal('data-expense-id',item.id);return true}
     if(item.group==='cash'){ui.cashSearchValue='';setPage('cash');reveal('data-bulk-id',item.id);return true}
     if(item.group==='bank'){ui.bankAccountView=item.role==='home'?'home':'business';ui.bankDateMode='all';ui.bankDateFrom='';ui.bankDateTo='';ui.bankSearchValue='';setPage('bank');reveal('data-bank-search-id',item.id);return true}
-    if(item.group==='notes'){ui.notesTab=item.kind==='sheet-row'?'sheet':'notes';if(item.kind==='sheet-row')ui.notesSheetSearchValue='';else ui.notesSearchValue='';setPage('notes');reveal(item.kind==='sheet-row'?'data-sheet-row-id':'data-note-id',item.id);return true}
+    if(item.group==='notes'){ui.notesTab=item.kind==='sheet-row'?'sheet':'notes';if(item.kind==='sheet-row'){ui.notesSheetSearchValue='';ui.notesSheetId=item.sheetId||ui.notesSheetId}else ui.notesSearchValue='';setPage('notes');reveal(item.kind==='sheet-row'?'data-sheet-row-id':'data-note-id',item.id);return true}
     return false;
   }
   function openResult(key){const item=resultByKey.get(key);if(!item)return;close({restoreFocus:false});navigateItem(item)}

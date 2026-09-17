@@ -187,7 +187,7 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
                 drawer.closed=!sidebar.classList.contains('open')&&menu.getAttribute('aria-expanded')==='false';
               }else drawer={desktopVisible:withinViewport(sidebar),expanded:menu.getAttribute('aria-expanded')};
               document.querySelector('[data-page="checks"]')?.click();await frame();
-              document.getElementById('quickAddCheck')?.click();await frame();
+              document.querySelector('[data-action="open-check-modal"]')?.click();await frame();
               const modal=document.querySelector('.modal-backdrop.open .modal');
               const modalVisible=withinViewport(modal);
               document.getElementById('modalBackdrop')?.classList.remove('open');
