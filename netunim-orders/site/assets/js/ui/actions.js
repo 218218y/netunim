@@ -126,7 +126,6 @@ const actions={
   'filter-mode':(element,event)=>{supplierUi.filterMode='all';renderSupplier({scrollMode:'end'})},
   'filter-mode-2':(element,event)=>{supplierUi.filterMode='pending';renderSupplier({scrollMode:'end'})},
   'filter-mode-3':(element,event)=>{supplierUi.filterMode='invoice';renderSupplier({scrollMode:'end'})},
-  'filter-mode-4':(element,event)=>{supplierUi.filterMode='hm';renderSupplier({scrollMode:'end'})},
   'toggle-supplier-bulk-mode':(element,event)=>{toggleSupplierBulkMode()},
   'open-selected-supplier-year-boundary':(element,event)=>{openSelectedSupplierYearBoundary()},
   'delete-selected-transactions':(element,event)=>{deleteSelectedTransactions()},

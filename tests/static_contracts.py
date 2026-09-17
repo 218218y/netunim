@@ -301,6 +301,17 @@ ok('--scroll-track:#eee7e1;--scroll-thumb:#b8a69a;--scroll-thumb-hover:#9f8b7d' 
    and '*::-webkit-scrollbar-track{background:var(--scroll-track);border-radius:999px}' in orders_css
    and '*::-webkit-scrollbar-thumb:hover{background:var(--scroll-thumb-hover);background-clip:content-box}' in orders_css,
    "orders scrollbars: table and view scroll tracks/thumbs use opaque shared colors in Firefox and WebKit")
+orders_supplier_view = (O / "site/assets/js/domains/suppliers/view.js").read_text(encoding="utf-8")
+orders_supplier_model = (O / "site/assets/js/domains/suppliers/model.js").read_text(encoding="utf-8")
+orders_actions = (O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+ok('data-action="filter-mode-4"' not in orders_supplier_view
+   and "filterMode==='hm'" not in orders_supplier_view
+   and "'filter-mode-4':" not in orders_actions
+   and "filterMode==='hm'" not in orders_supplier_model,
+   "orders suppliers: obsolete H.M. workflow filter is removed from UI, action routing, and row filtering while the H.M. transaction field remains available")
+ok('@media(min-width:621px){.customer-orders-table .customer-order-actions .row-actions{justify-content:flex-end;padding-inline-end:6px}}' in orders_css,
+   "orders tracking: desktop urgent/delete row controls align near the visual left table edge without shrinking the action header column")
+
 ok('.col-row-actions{width:78px}' in orders_css
    and '.col-row-actions{width:78px;position:sticky' not in orders_css
    and 'th.col-row-actions{background:#f8f5f2!important;z-index:3}' in orders_css

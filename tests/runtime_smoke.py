@@ -71,8 +71,6 @@ for label, site in apps:
                       const pendingStats=statsFor(state.transactions.filter(t=>t.supplied===false)),supplierPendingSummary=summaryValues(),supplierPendingHeader=supplierHeaderBalance();
                       filterMode='invoice';renderSupplier({scrollMode:'end'});await frame();
                       const invoiceStats=statsFor(state.transactions.filter(t=>t.invoiceReceived===false)),supplierInvoiceHeader=supplierHeaderBalance();
-                      filterMode='hm';renderSupplier({scrollMode:'end'});await frame();
-                      const hmStats=statsFor(state.transactions.filter(t=>t.hmIssued)),supplierHmHeader=supplierHeaderBalance();
                       filterMode='all';renderSupplier({scrollMode:'end'});await frame();
                       supplierWrap=document.querySelector('.supplier-table-panel .table-wrap');
 
@@ -145,7 +143,7 @@ for label, site in apps:
                         ok:near(supplierInitial.top,supplierInitial.target)&&supplierInitial.max>supplierInitial.target+20&&supplierInitial.summaryInScroller&&
                            matchesStats(supplierInitialSummary,initialStats)&&supplierInitialHeader===money(initialStats.net)&&matchesStats(supplierSearchSummary,statsFor(searchRows))&&
                            near(supplierCleared.top,supplierCleared.target)&&supplierCleared.max>supplierCleared.target+20&&matchesStats(supplierClearedSummary,initialStats)&&
-                           matchesStats(supplierPendingSummary,pendingStats)&&supplierPendingHeader===money(pendingStats.net)&&supplierInvoiceHeader===money(invoiceStats.net)&&supplierHmHeader===money(hmStats.net)&&
+                           matchesStats(supplierPendingSummary,pendingStats)&&supplierPendingHeader===money(pendingStats.net)&&supplierInvoiceHeader===money(invoiceStats.net)&&
                            near(supplierReturned,supplierManual)&&
                            customerAllHasPaidMissingInvoice&&customerAllTotal===customerAllExpected&&customerOpenTotal===customerOpenExpected&&
                            customerInvoiceTotal===customerInvoiceExpected&&customerClosedTotal===customerClosedExpected&&customerSearchTotal===customerSearchExpected&&customerClearedSearchTotal===customerAllExpected&&
@@ -156,7 +154,7 @@ for label, site in apps:
                            serviceBefore>0&&near(serviceAfter,serviceBefore)&&
                            warehouseBefore>0&&near(warehouseAfter,warehouseBefore)&&
                            summaryWasActive&&supplierNavActive&&summaryNavInactive,
-                        supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierHmHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerAllHasPaidMissingInvoice,customerLayout,
+                        supplierInitial,supplierCleared,supplierInitialSummary,supplierInitialHeader,supplierSearchSummary,supplierClearedSummary,supplierPendingSummary,supplierPendingHeader,supplierInvoiceHeader,supplierManual,supplierReturned,customerAllTotal,customerOpenTotal,customerInvoiceTotal,customerClosedTotal,customerSearchTotal,customerClearedSearchTotal,customerAllHasPaidMissingInvoice,customerLayout,
                         bottomScroll,summaryShift:raisedTop-bottomTop,customerBefore,customerAfter,customerPadding,
                         serviceBefore,serviceAfter,warehouseBefore,warehouseAfter,
                         summaryWasActive,supplierNavActive,summaryNavInactive

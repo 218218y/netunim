@@ -226,7 +226,7 @@ test('supplier header balance follows the active workflow filter while all keeps
  try{
   const view=createDomainsSuppliersView({model:{state},supplierUi,balanceRows:id=>balanceRowsData(state,id),supplierYearContext:id=>supplierYearContextData(state,id),supplierViewRows:(ids,year,filter)=>supplierViewRowsData(state,ids,year,filter),orderedSuppliers:()=>orderedSuppliersData(state),mountViewLayout:()=>{},captureSupplierViewport:()=>null,restoreSupplierViewport:()=>{},syncSupplierBulkUi:()=>{},supplierMoveTargetRow:()=>'',storeSupplierViewport:()=>{},scrollSupplierTransactionsEnd:()=>{},scheduleSave:()=>{}});
   const header=()=>main.innerHTML.match(/data-supplier-header-balance[^>]*>([^<]*)<\/b>/)?.[1]||'';
-  const expected={all:-55,pending:25,invoice:30,hm:15};
+  const expected={all:-55,pending:25,invoice:30};
   for(const mode of Object.keys(expected)){supplierUi.filterMode=mode;view.renderSupplier();assert.equal(header(),money(expected[mode]),mode)}
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });
