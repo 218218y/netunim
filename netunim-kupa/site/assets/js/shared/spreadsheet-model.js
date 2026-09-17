@@ -30,6 +30,7 @@ export function assertSpreadsheet(book){
 export function migrateLegacySpreadsheet(source){
   if(source===undefined||source===null)return createDefaultNotesSheet();
   if(!object(source)||!Array.isArray(source.columns)||!Array.isArray(source.rows))throw new Error('invalid_legacy_workbook');
+  if(source.version!==undefined&&source.version!==1&&source.version!==2)throw new Error('invalid_legacy_version');
   for(const part of ['sheets','columns','rows']){
     const rows=source[part]||[],ids=new Set();
     if(!Array.isArray(rows))throw new Error('invalid_legacy_workbook');
@@ -38,12 +39,13 @@ export function migrateLegacySpreadsheet(source){
   const columns=new Map(source.columns.map(column=>[column.id,column]));
   for(const row of source.rows){
     if(!object(row.cells))throw new Error('invalid_legacy_cells');
-    for(const key of Object.keys(row.cells))if(!columns.has(key)||Number(source.version)>=2&&columns.get(key).sheetId!==row.sheetId)throw new Error('orphan_legacy_cell');
+    for(const [key,value] of Object.entries(row.cells)){if(typeof value!=='string')throw new Error('invalid_legacy_cell_value');if(!columns.has(key)||Number(source.version)>=2&&columns.get(key).sheetId!==row.sheetId)throw new Error('orphan_legacy_cell')}
   }
   if(Number(source.version)>=2){
     const sheets=new Set((source.sheets||[]).map(sheet=>sheet.id));
     if(!sheets.size||[...source.rows,...source.columns].some(row=>!sheets.has(row.sheetId)))throw new Error('orphan_legacy_sheet');
   }
+  if(source.version===2&&source.columns.every(column=>column.type!==undefined&&column.width!==undefined))return assertSpreadsheet(structuredClone(source));
   for(const column of source.columns)if(column.type!==undefined&&!['text','number'].includes(column.type)||Number(source.version)>=2&&column.width!==undefined&&(!Number.isInteger(column.width)||column.width<70||column.width>520))throw new Error('invalid_legacy_column');
   return assertSpreadsheet(normalizeNotesSheet(source));
 }

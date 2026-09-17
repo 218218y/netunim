@@ -70,3 +70,21 @@ test('delete versus remote update and parent deletion versus new children confli
 test('storage failure prevents RPC and reports recovery state',async()=>{
   const f=fixture(),s=f.create();await s.open();f.edit(s,'local');f.store.commit=async()=>{throw new Error('disk full')};assert.equal(await s.flush(),false);assert.equal(f.calls.length,0);assert.equal(s.status,'error');
 });
+test('offline legacy cutover survives structural edits and a second browser open',async()=>{
+  const f=fixture(),s=f.create();await s.captureLegacy(book());f.online=false;await s.open();f.edit(s,'offline legacy draft');
+  s.model.state.notesSheet.rows.push({id:'added-offline',sheetId:'sheet-main',cells:{},createdAt:'',updatedAt:''});s.changed(null);await s.flush({send:false});
+  const reopened=f.create();await reopened.open();assert.equal(reopened.model.state.notesSheet.rows.length,2);assert.equal(reopened.model.state.notesSheet.rows[0].cells['sheet-main-col-1'],'offline legacy draft');
+  f.online=true;await reopened.flush();assert.equal(f.remote.state.rows.length,2);assert.equal(f.remote.state.rows[0].cells['sheet-main-col-1'],'offline legacy draft');
+});
+test('account switch saves the previous draft only in its original namespace',async()=>{
+  const f=fixture(),s=f.create();await s.open();f.edit(s,'private A');f.owner='owner-B';await s.open();assert.equal(s.model.state.notesSheet.rows[0].cells['sheet-main-col-1'],'initial');
+  assert.equal(f.db.get('owner:orders:main').working.rows[0].cells['sheet-main-col-1'],'private A');assert.equal(f.calls.length,0);
+});
+test('missing delete intent blocks storage-to-cloud deletion; confirmed deletion survives restart',async()=>{
+  const f=fixture(),s=f.create();await s.open();s.model.state.notesSheet.rows=[];s.changed(null);assert.equal(await s.flush(),false);assert.equal(f.calls.length,0);assert.equal(s.status,'error');
+  const other=f.create();await other.open();other.model.state.notesSheet.rows=[];other.changed(null,{deleteIntents:{'notesSheet.rows':['R']}});f.online=false;await other.flush({send:false});
+  const reopened=f.create();await reopened.open();f.online=true;await reopened.flush();assert.equal(f.remote.state.rows.length,0);assert.deepEqual(f.calls[0].body.p_delete_intents,{'notesSheet.rows':['R']});
+});
+test('confirmed JSON import uses its own snapshot and explicit deletes',async()=>{
+  const f=fixture(),s=f.create();await s.open();const imported=book();imported.rows=[];await s.importWorkbook(imported);assert.equal(f.remote.state.rows.length,0);assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.p_kind,'delete');
+});

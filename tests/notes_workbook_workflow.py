@@ -4,14 +4,15 @@ from browser_harness import BrowserSession, ROOT
 
 def run():
     with BrowserSession(ROOT/'netunim-kupa/site', 'notes-workbook') as browser:
-        browser.evaluate(r"""(()=>{
+        browser.evaluate(r"""(async()=>{
           document.getElementById('connectScreen').style.display='none';
           Object.defineProperty(navigator,'onLine',{value:false,configurable:true});
-          state=normalizeState({notesSheet:{version:2,sheets:[{id:'S1',name:'Keep'},{id:'S2',name:'Delete'}],
+          const legacyState={notesSheet:{version:2,sheets:[{id:'S1',name:'Keep'},{id:'S2',name:'Delete'}],
             columns:[{id:'C1',sheetId:'S1',title:'Value'},{id:'C2',sheetId:'S2',title:'Value'}],
-            rows:[{id:'R1',sheetId:'S1',cells:{C1:'kept'}},{id:'R2',sheetId:'S2',cells:{C2:'removed'}}]}});
+            rows:[{id:'R1',sheetId:'S1',cells:{C1:'kept'}},{id:'R2',sheetId:'S2',cells:{C2:'removed'}}]}};
+          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});await spreadsheetWorkspace.sync.captureLegacy(legacyState.notesSheet);state=normalizeState(legacyState);
           backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));
-          setPage('notes');document.querySelector('[data-action="notes-workspace-sheet"]').click();return true;
+          cloudAuth.loadSupaSession=()=>({user:{id:'workbook-test'}});setPage('notes');document.querySelector('[data-action="notes-workspace-sheet"]').click();await spreadsheetWorkspace.sync.open();return true;
         })()""")
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
@@ -33,23 +34,23 @@ def run():
           document.querySelector('[data-action="delete-notes-sheet"]').click();
           await waitFor(()=>document.getElementById('confirmBackdrop').classList.contains('open'));
           document.getElementById('confirmAccept').click();
-          await waitFor(()=>state.notesSheet.sheets.length===1);
-          if(state.notesSheet.rows.length!==1||state.notesSheet.rows[0].cells.C1!=='kept')throw new Error('Wrong sheet content removed');
-          // Another offline edit changes the outbox metadata to autosave. The
-          // pending parent deletion must still select the dedicated bulk RPC.
+          await waitFor(()=>spreadsheetWorkspace.model.state.notesSheet.sheets.length===1);
+          if(spreadsheetWorkspace.model.state.notesSheet.rows.length!==1||spreadsheetWorkspace.model.state.notesSheet.rows[0].cells.C1!=='kept')throw new Error('Wrong sheet content removed');
           document.querySelector('.notes-actions [data-action="add-notes-sheet-row"]').click();
-          await new Promise(r=>setTimeout(r,150));
-          const pending=await getCloudPending();
-          if(pending.deleteIntents['notesSheet.sheets'][0]!=='S2'||pending.snapshot.notesSheet.sheets.length!==1)throw new Error('Deletion was not durably staged');
+          await spreadsheetWorkspace.sync.flush({send:false});
+          const store=createSpreadsheetStore(),saved=await store.load('workbook-test:kupa:main');
+          if(saved.record.working.sheets.length!==1||saved.record.base.sheets.length!==2)throw new Error('Deletion was not durably staged');
           const requests=[];cloudAuth.supaRest=async(path,options)=>{
-            requests.push({path,body:JSON.parse(options.body)});
-            return {ok:true,text:async()=>JSON.stringify([{revision:2,state:pending.snapshot}])};
+            if(!options.method)return new Response(JSON.stringify([{revision:1,state:saved.record.base}]));
+            const body=JSON.parse(options.body);requests.push({path,body});
+            return new Response(JSON.stringify([{revision:2,state:body.p_state}]));
           };
           Object.defineProperty(navigator,'onLine',{value:true,configurable:true});
-          if(!await syncDocument.reconcileCloudPending({revision:1,state:pending.baseState}))throw new Error('Workbook deletion did not synchronize');
-          const request=requests.find(row=>row.path.includes('bulk_delete_save_kupa_document_v5'));
-          if(!request||request.body.p_delete_intents['notesSheet.sheets'][0]!=='S2')throw new Error('Sheet deletion lost its exact intent or bulk RPC after autosave');
-          if(await getCloudPending())throw new Error('Acknowledged deletion remains pending');
+          await spreadsheetWorkspace.sync.flush();await spreadsheetWorkspace.sync.flush();
+          const request=requests.find(row=>row.path.includes('save_spreadsheet_document_v1'));
+          if(!request||request.body.p_delete_intents['notesSheet.sheets'][0]!=='S2'||request.body.p_kind!=='delete')throw new Error('Sheet deletion lost its exact intent');
+          if(spreadsheetWorkspace.sync.status!=='saved')throw new Error('Acknowledged deletion remains pending');
+          if(await getCloudPending())throw new Error('Workbook must not create main-document outbox');
           return true;
         })()""", timeout=30)
         assert not browser.drain_serious_errors()

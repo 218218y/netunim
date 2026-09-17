@@ -18,33 +18,37 @@ def run():
               const assert=(v,m)=>{if(!v)throw new Error(m)};
               const click=name=>document.querySelector('[data-action="'+name+'"]').click();
               const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-              click('notes-workspace-sheet');click('add-notes-sheet-row');await frame();
-              const originalId=state.notesSheet.sheets[0].id;
+              click('notes-workspace-sheet');await spreadsheetWorkspace.sync.open();await frame();click('add-notes-sheet-row');await frame();
+              const originalId=spreadsheetWorkspace.model.state.notesSheet.sheets[0].id;
               let cell=document.querySelector('[data-sheet-cell]');cell.focus();
               const clipboard=new DataTransfer();clipboard.setData('text/plain','שם\t1,250.5\r\nשני\t25\r\n');
               cell.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:clipboard}));await frame();
-              assert(state.notesSheet.rows.length===2,'Paste must grow the row range');
-              const columns=state.notesSheet.columns;
-              assert(state.notesSheet.rows[1].cells[columns[1].id]==='25','Paste maps columns in RTL order');
+              assert(spreadsheetWorkspace.model.state.notesSheet.rows.length===2,'Paste must grow the row range');
+              const columns=spreadsheetWorkspace.model.state.notesSheet.columns;
+              assert(spreadsheetWorkspace.model.state.notesSheet.rows[1].cells[columns[1].id]==='25','Paste maps columns in RTL order');
               const toggle=document.querySelectorAll('[data-change="set-notes-sheet-column-numeric"]')[1];toggle.click();
               assert(document.querySelector('[data-sheet-total-column] b').textContent==='1,275.5','Numeric total');
               cell=document.querySelector('[data-sheet-cell]');cell.focus();cell.select();
               cell.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));
               assert(document.activeElement.dataset.sheetColumnId===columns[1].id,'Tab should skip toolbar buttons');
               document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
-              assert(document.activeElement.dataset.sheetRowId===state.notesSheet.rows[1].id,'Enter moves down');
+              assert(document.activeElement.dataset.sheetRowId===spreadsheetWorkspace.model.state.notesSheet.rows[1].id,'Enter moves down');
               document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await frame();
-              assert(state.notesSheet.rows.length===3,'Enter grows workbook at last row');
+              assert(spreadsheetWorkspace.model.state.notesSheet.rows.length===3,'Enter grows workbook at last row');
               assert(document.activeElement.dataset.sheetColumnId===columns[1].id,'Enter keeps selected column');
               cell=document.activeElement;cell.value='edited';cell.dispatchEvent(new Event('input',{bubbles:true}));cell.blur();
               click('add-notes-sheet');await frame();
               const name=document.querySelector('.notes-sheet-name-input');name.value='הזמנות מיוחדות';name.dispatchEvent(new FocusEvent('blur'));
-              assert(state.notesSheet.sheets[1].name==='הזמנות מיוחדות','Sheet rename');
+              assert(spreadsheetWorkspace.model.state.notesSheet.sheets[1].name==='הזמנות מיוחדות','Sheet rename');
               click('add-notes-sheet-row');await frame();
-              assert(state.notesSheet.rows.filter(row=>row.sheetId===originalId).length===3,'Sibling rows remain independent');
+              assert(spreadsheetWorkspace.model.state.notesSheet.rows.filter(row=>row.sheetId===originalId).length===3,'Sibling rows remain independent');
               click('notes-workspace-notes');assert(document.querySelector('.sticky-note textarea').value==='Keep this note','Notes preserved');
               click('notes-workspace-sheet');
               document.querySelector('[data-action="set-active-notes-sheet"][data-click-arg0="'+originalId+'"]').click();
+              click('spreadsheet-backups');await frame();
+              assert(document.getElementById('modalBackdrop').classList.contains('open'),'Workbook backups dialog opens');
+              assert(!document.querySelector('#modal .modal-foot').textContent.includes('<button'),'Modal footer uses the host app API');
+              document.querySelector('#modal [data-action="close-modal"]').click();
               return true;
             })()""")
             for width in (1280, 390):
@@ -60,7 +64,7 @@ def run():
             folder=ROOT/'.work/workbook-preview';folder.mkdir(parents=True,exist_ok=True)
             (folder/f'{app}.png').write_bytes(base64.b64decode(shot['result']['data']))
             if app == 'orders':
-                assert browser.evaluate("JSON.stringify(loadLocal().notesSheet)===JSON.stringify(state.notesSheet)")
+                assert browser.evaluate("!Object.hasOwn(loadLocal()||{},'notesSheet')")
             assert not browser.drain_serious_errors()
     print('PASS shared workbook: independent sheets, notes default, TSV paste, totals, keyboard, persistence, desktop/mobile layout')
 

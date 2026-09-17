@@ -495,7 +495,7 @@ const domainsCashController=createDomainsCashController({
 const spreadsheetWorkspace=createSpreadsheetWorkspace({
   domain:'kupa',request:(...args)=>cloudAuth.supaRest(...args),account:()=>cloudAuth.loadSupaSession()?.user?.id,enabled:()=>session.connectionMode==='supabase'&&!!cloudAuth.loadSupaSession(),primary:()=>tab.primaryTab,
   active:()=>ui.currentPage==='notes'&&ui.notesTab==='sheet',render:()=>domainsNotesController.renderNotes(),legacy:()=>model.legacyNotesSheet,
-  esc,confirmDialog:(...args)=>uiModal.confirmDialog(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),
+  esc,confirmDialog:(...args)=>uiModal.confirmDialog(...args),modal:(title,body)=>uiModal.modal(title,body,'סגור',()=>uiModal.closeModal()),closeModal:()=>uiModal.closeModal(),
 });
 
 const domainsNotesController=createDomainsNotesController({

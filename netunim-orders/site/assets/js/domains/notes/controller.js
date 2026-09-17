@@ -9,7 +9,7 @@ import {applyBulkRangeSelection} from '../../ui/bulk-selection.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsNotesController({workspace=null,model, notesUi, scheduleSave, toast=()=>{}, mountViewLayout, confirmDialog, modal=()=>{}, closeModal=()=>{}, refreshAlertCenter=()=>{}, currentView=()=>'', dateEditorMarkup=()=>'', setDateValue=()=>{}}){
-const workbook=createNotesWorkbook({model:workspace?.model||model,ui:notesUi,saveState:workspace?.saveState||scheduleSave,cellChanged:workspace?.cellChanged,canEdit:()=>!workspace||workspace.ready&&!workspace.readOnly,confirmDialog,renderNotes,uid,esc,searchMatch:(q,values)=>values.some(value=>String(value).toLocaleLowerCase().includes(q.toLocaleLowerCase())),site:'orders'});
+const workbook=createNotesWorkbook({model:workspace?.model||model,ui:notesUi,saveState:workspace?.saveWorkbook||scheduleSave,cellChanged:workspace?.cellChanged,editScope:()=>workspace?.sync.ownerKey,canEdit:()=>!workspace||workspace.ready&&!workspace.readOnly,confirmDialog,renderNotes,uid,esc,searchMatch:(q,values)=>values.some(value=>String(value).toLocaleLowerCase().includes(q.toLocaleLowerCase())),site:'orders'});
 let reminderPickerMonth='',reminderPickerFocusDate='',notesGridObserver=null,notesLayoutFrame=0;
 function noteDisplayDate(note){const raw=note?.updatedAt||note?.createdAt;if(!raw)return 'נשמר';const d=new Date(raw);if(Number.isNaN(d.getTime()))return 'נשמר';return 'עודכן '+new Intl.DateTimeFormat('he-IL',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)}
 

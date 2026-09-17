@@ -7,7 +7,7 @@ import {localSearchMarkup} from '../../ui/search.js';
 export function createDomainsNotesController({workspace=null,model, ui={}, saveState, confirmDialog}){
 let saveTimer=null;
 let pendingMessage='הפתק עודכן';
-const workbook=createNotesWorkbook({model:workspace?.model||model,ui,saveState:workspace?.saveState||saveState,cellChanged:workspace?.cellChanged,canEdit:()=>!workspace||workspace.ready&&!workspace.readOnly,confirmDialog,renderNotes,uid,esc,searchMatch,site:'kupa'});
+const workbook=createNotesWorkbook({model:workspace?.model||model,ui,saveState:workspace?.saveWorkbook||saveState,cellChanged:workspace?.cellChanged,editScope:()=>workspace?.sync.ownerKey,canEdit:()=>!workspace||workspace.ready&&!workspace.readOnly,confirmDialog,renderNotes,uid,esc,searchMatch,site:'kupa'});
 const {activeSheetData,sheetTabs,sheetMarkup,captureSheetInteraction,restoreSheetInteraction,bindSheetColumnResizeHandles}=workbook;
 
 function noteDisplayDate(note){

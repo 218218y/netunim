@@ -59,7 +59,7 @@ create function netunim_internal.assert_spreadsheet(p_state jsonb) returns void
 language plpgsql immutable set search_path to 'pg_catalog' as $function$
 declare v_part text;v_row jsonb;v_cell record;
 begin
-  if jsonb_typeof(p_state) is distinct from 'object' or p_state->>'version' is distinct from '2' then raise exception 'invalid_spreadsheet_version' using errcode='22023';end if;
+  if jsonb_typeof(p_state) is distinct from 'object' or p_state->'version' is distinct from '2'::jsonb then raise exception 'invalid_spreadsheet_version' using errcode='22023';end if;
   foreach v_part in array array['sheets','columns','rows'] loop
     perform netunim_internal.assert_entity_array_ids(p_state,array[v_part],true);
   end loop;
@@ -70,14 +70,14 @@ begin
     if not exists(select 1 from jsonb_array_elements(p_state->'columns') c where c->>'sheetId'=v_row->>'id') then raise exception 'empty_spreadsheet_columns' using errcode='22023';end if;
   end loop;
   for v_row in select value from jsonb_array_elements(p_state->'columns') loop
-    if jsonb_typeof(v_row->'title') is distinct from 'string' or v_row->>'type' not in ('text','number') or v_row->>'type' is null
+    if jsonb_typeof(v_row->'title') is distinct from 'string' or jsonb_typeof(v_row->'sheetId') is distinct from 'string' or v_row->>'type' not in ('text','number') or v_row->>'type' is null
       or jsonb_typeof(v_row->'width') is distinct from 'number' or (v_row->>'width')::numeric not between 70 and 520
       or trunc((v_row->>'width')::numeric)<>(v_row->>'width')::numeric
       or not exists(select 1 from jsonb_array_elements(p_state->'sheets') s where s->>'id'=v_row->>'sheetId')
     then raise exception 'invalid_spreadsheet_column' using errcode='22023';end if;
   end loop;
   for v_row in select value from jsonb_array_elements(p_state->'rows') loop
-    if jsonb_typeof(v_row->'cells') is distinct from 'object' or not exists(select 1 from jsonb_array_elements(p_state->'sheets') s where s->>'id'=v_row->>'sheetId') then raise exception 'invalid_spreadsheet_row' using errcode='22023';end if;
+    if jsonb_typeof(v_row->'cells') is distinct from 'object' or jsonb_typeof(v_row->'sheetId') is distinct from 'string' or not exists(select 1 from jsonb_array_elements(p_state->'sheets') s where s->>'id'=v_row->>'sheetId') then raise exception 'invalid_spreadsheet_row' using errcode='22023';end if;
     for v_cell in select * from jsonb_each(v_row->'cells') loop
       if jsonb_typeof(v_cell.value) is distinct from 'string' or not exists(select 1 from jsonb_array_elements(p_state->'columns') c where c->>'id'=v_cell.key and c->>'sheetId'=v_row->>'sheetId') then raise exception 'orphan_spreadsheet_cell' using errcode='22023';end if;
     end loop;
@@ -161,11 +161,23 @@ grant execute on function public.save_spreadsheet_document_v1(text,text,bigint,j
 revoke all on function netunim_internal.assert_spreadsheet(jsonb) from public,anon,authenticated;
 
 -- Remaining migration/cutover functions are appended below in the same transaction.
+create function netunim_internal.empty_spreadsheet() returns jsonb
+language sql immutable set search_path to 'pg_catalog' as $function$
+  select jsonb_build_object('version',2,'sheets','[{"id":"sheet-main","name":"גליון 1"}]'::jsonb,'rows','[]'::jsonb,'columns',
+    (select jsonb_agg(jsonb_build_object('id','sheet-main-col-'||n,'sheetId','sheet-main','title','עמודה '||n,'type','text','width',90) order by n) from generate_series(1,5) n));
+$function$;
+revoke all on function netunim_internal.empty_spreadsheet() from public,anon,authenticated;
+
 create function netunim_internal.upgrade_legacy_spreadsheet(p_source jsonb) returns jsonb
 language plpgsql immutable set search_path to 'pg_catalog' as $function$
 declare v_book jsonb;v_sheets jsonb;v_columns jsonb;v_rows jsonb;v_v2 boolean:=coalesce((p_source->>'version')::int,1)>=2;
 begin
   if jsonb_typeof(p_source->'columns') is distinct from 'array' or jsonb_typeof(p_source->'rows') is distinct from 'array' then raise exception 'invalid_legacy_spreadsheet' using errcode='22023';end if;
+  if p_source?'version' and p_source->'version' not in ('1'::jsonb,'2'::jsonb) then raise exception 'invalid_legacy_spreadsheet_version' using errcode='22023';end if;
+  perform netunim_internal.assert_entity_array_ids(p_source,array['columns'],true);
+  perform netunim_internal.assert_entity_array_ids(p_source,array['rows'],true);
+  if v_v2 then perform netunim_internal.assert_entity_array_ids(p_source,array['sheets'],true);end if;
+  if not v_v2 and p_source->'columns'='[]'::jsonb and p_source->'rows'='[]'::jsonb then return netunim_internal.empty_spreadsheet();end if;
   v_sheets:=case when v_v2 then p_source->'sheets' else '[{"id":"sheet-main","name":"גליון 1"}]'::jsonb end;
   select coalesce(jsonb_agg(jsonb_build_object('id',c->>'id','sheetId',case when v_v2 then c->>'sheetId' else 'sheet-main' end,'title',coalesce(c->>'title','עמודה '||n),'type',coalesce(c->>'type','text'),'width',case when v_v2 then coalesce(c->'width','90'::jsonb) else '90'::jsonb end) order by n),'[]'::jsonb) into v_columns from jsonb_array_elements(p_source->'columns') with ordinality x(c,n);
   select coalesce(jsonb_agg(jsonb_build_object('id',r->>'id','sheetId',case when v_v2 then r->>'sheetId' else 'sheet-main' end,'cells',r->'cells','createdAt',coalesce(r->>'createdAt',''),'updatedAt',coalesce(r->>'updatedAt',r->>'createdAt','')) order by n),'[]'::jsonb) into v_rows from jsonb_array_elements(p_source->'rows') with ordinality x(r,n);
@@ -253,10 +265,9 @@ begin
   for doc in select 'kupa' domain,owner_id,document_name,revision,state from public.kupa_documents where document_name='main'
     union all select 'orders',owner_id,document_name,revision,state from public.order_management_documents where document_name='suppliers'
   loop
-    if doc.state?'notesSheet' then
-      v_book:=netunim_internal.upgrade_legacy_spreadsheet(doc.state->'notesSheet');
+      v_book:=case when doc.state?'notesSheet' then netunim_internal.upgrade_legacy_spreadsheet(doc.state->'notesSheet') else netunim_internal.empty_spreadsheet() end;
       insert into netunim_internal.spreadsheet_legacy_sources(owner_id,domain,document_name,source_revision,source_state,migrated_state)
-        values(doc.owner_id,doc.domain,doc.document_name,doc.revision,doc.state->'notesSheet',v_book);
+        values(doc.owner_id,doc.domain,doc.document_name,doc.revision,coalesce(doc.state->'notesSheet',v_book),v_book);
       insert into public.spreadsheet_documents(owner_id,domain,document_name,revision,state) values(doc.owner_id,doc.domain,'main',1,v_book);
       insert into public.spreadsheet_backups(owner_id,domain,document_name,revision,state,kind,bucket) values(doc.owner_id,doc.domain,'main',1,v_book,'migration',now());
       v_intents:='{}';
@@ -270,7 +281,6 @@ begin
       perform set_config('app.destructive_operation_kind','destructive-migration',true);
       if doc.domain='kupa' then update public.kupa_documents set revision=revision+1,updated_at=now(),state=(doc.state-'notesSheet')||'{"notesWorkbookExternal":1}'::jsonb where owner_id=doc.owner_id and document_name=doc.document_name;
       else update public.order_management_documents set revision=revision+1,updated_at=now(),state=(doc.state-'notesSheet')||'{"notesWorkbookExternal":1}'::jsonb where owner_id=doc.owner_id and document_name=doc.document_name;end if;
-    end if;
   end loop;
   perform set_config('app.kupa_delete_intents','{}',true);perform set_config('app.order_management_delete_intents','{}',true);perform set_config('app.destructive_operation_kind','',true);
 end
@@ -288,7 +298,7 @@ begin
   if new.state?'notesSheet' then
     select * into source from netunim_internal.spreadsheet_legacy_sources s where s.owner_id=old.owner_id and s.domain=v_domain and s.document_name=old.document_name;
     v_book:=new.state->'notesSheet';
-    v_safe:=v_book=source.source_state or v_book=source.migrated_state;
+    v_safe:=v_book=source.source_state or v_book=source.migrated_state or v_book=netunim_internal.empty_spreadsheet();
     if not found or source.migrated_at<now()-interval '90 days' or not coalesce(v_safe,false)
     then raise exception 'spreadsheet_upgrade_required' using errcode='PT409',hint='Refresh the app. The independent workbook is safe; this old client cannot edit it.';end if;
     new.state:=new.state-'notesSheet';

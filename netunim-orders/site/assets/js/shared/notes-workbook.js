@@ -3,7 +3,7 @@ import {NOTES_SHEET_DEFAULT_WIDTH,clampNotesSheetWidth,formatSheetNumber,normali
 export const SHEET_RENDER_THRESHOLD=200;
 export const SHEET_PAGE_SIZE=100;
 
-export function createNotesWorkbook({model,ui,saveState,confirmDialog,renderNotes,uid,esc,searchMatch,site,cellChanged=()=>{},canEdit=()=>true}){
+export function createNotesWorkbook({model,ui,saveState,confirmDialog,renderNotes,uid,esc,searchMatch,site,cellChanged=()=>{},canEdit=()=>true,editScope=()=>'',renderThreshold=SHEET_RENDER_THRESHOLD}){
 const dirtySheetCells=new Set();
 const sheetTitleDrafts=new Map();
 let normalizedBook=null;
@@ -20,7 +20,7 @@ function activeSheetData(){
   totals.clear();return cachedSheet;
 }
 function columnTotal(sheet,id){if(!totals.has(id))totals.set(id,sheet.rows.reduce((sum,row)=>sum+(sheetNumericValue(row.cells?.[id])??0),0));return totals.get(id)}
-function showSheetRow(rowId){const rows=visibleSheetRows(activeSheetData()),index=rows.findIndex(row=>row.id===rowId);ui.notesSheetPage=rows.length>SHEET_RENDER_THRESHOLD?Math.floor(Math.max(0,index)/SHEET_PAGE_SIZE):0}
+function showSheetRow(rowId){const rows=visibleSheetRows(activeSheetData()),index=rows.findIndex(row=>row.id===rowId);ui.notesSheetPage=rows.length>renderThreshold?Math.floor(Math.max(0,index)/SHEET_PAGE_SIZE):0}
 function setSheetPage(page){ui.notesSheetPage=Math.max(0,Number(page)||0);renderNotes();document.querySelector('.notes-sheet-scroll')?.scrollTo?.({top:0})}
 function setNotesWorkspaceTab(tab){ui.notesTab=tab==='notes'?'notes':'sheet';renderNotes()}
 function setActiveNotesSheet(id){const book=ensureWorkbook(),target=book.sheets.find(sheet=>sheet.id===id);if(!target)return;ui.notesSheetId=target.id;ui.notesSheetSearchValue='';ui.notesSheetPage=0;renderNotes()}
@@ -37,9 +37,10 @@ function renameNotesSheet(el){if(!canEdit())return;
   for(const tab of document.querySelectorAll('[data-action="set-active-notes-sheet"]'))if(tab.dataset.clickArg0===meta.id)tab.textContent=name;
 }
 
-async function deleteNotesSheet(id){if(!canEdit())return;
+async function deleteNotesSheet(id){if(!canEdit())return;const scope=editScope();
   const initial=ensureWorkbook(),meta=initial.sheets.find(sheet=>sheet.id===id);if(!meta)return;
   if(!await confirmDialog('מחיקת גליון',`למחוק את הגליון „${meta.name}” עם כל השורות והעמודות שלו?`,{confirmText:'מחק גליון'}))return;
+  if(!canEdit()||scope!==editScope())return;
   // Re-read after the dialog: synchronization may have replaced the state meanwhile.
   const book=ensureWorkbook(),index=book.sheets.findIndex(sheet=>sheet.id===id);if(index<0)return;
   const rows=book.rows.filter(row=>row.sheetId===id).map(row=>row.id),columns=book.columns.filter(column=>column.sheetId===id).map(column=>column.id);
@@ -133,9 +134,10 @@ function handleSheetCellKeydown(rowId,columnId,el,event){
   target?.focus?.();target?.select?.();
 }
 
-async function deleteSheetRow(id){if(!canEdit())return;
+async function deleteSheetRow(id){if(!canEdit())return;const scope=editScope();
   let sheet=activeSheetData();if(!sheet.rows.some(x=>x.id===id))return;
   if(!await confirmDialog('מחיקת שורה','למחוק את השורה הזו מהגליון?',{confirmText:'מחק שורה'}))return;
+  if(!canEdit()||scope!==editScope())return;
   sheet=activeSheetData();if(!sheet.rows.some(x=>x.id===id))return;
   sheet.book.rows=sheet.book.rows.filter(x=>x.id!==id);for(const key of dirtySheetCells)if(key.startsWith(`${id}\u0000`))dirtySheetCells.delete(key);saveState('שורה נמחקה מהגליון',{deleteIntents:{'notesSheet.rows':[id]},mutationType:'delete',surface:site+'.delete.notesSheet.rows'});renderNotes();
 }
@@ -153,9 +155,10 @@ function renameSheetColumn(id,el){if(!canEdit())return;
 
 function setSheetColumnNumeric(id,checked){if(!canEdit())return;const sheet=activeSheetData(),column=sheet.book.columns.find(x=>x.id===id&&x.sheetId===sheet.sheetId);if(!column)return;const type=checked?'number':'text';if(column.type===type)return;column.type=type;saveState('סוג עמודה עודכן');renderNotes()}
 
-async function deleteSheetColumn(id){if(!canEdit())return;
+async function deleteSheetColumn(id){if(!canEdit())return;const scope=editScope();
   let sheet=activeSheetData();const column=sheet.columns.find(x=>x.id===id);if(!column||sheet.columns.length<=1)return;
   if(!await confirmDialog('מחיקת עמודה',`למחוק את העמודה „${column.title}” ואת התוכן שבה?`,{confirmText:'מחק עמודה'}))return;
+  if(!canEdit()||scope!==editScope())return;
   sheet=activeSheetData();if(!sheet.columns.some(x=>x.id===id)||sheet.columns.length<=1)return;
   sheet.book.columns=sheet.book.columns.filter(x=>x.id!==id);for(const row of sheet.book.rows.filter(x=>x.sheetId===sheet.sheetId))if(row.cells)delete row.cells[id];for(const key of dirtySheetCells)if(key.endsWith(`\u0000${id}`))dirtySheetCells.delete(key);sheetTitleDrafts.delete(id);saveState('עמודה נמחקה מהגליון',{deleteIntents:{'notesSheet.columns':[id]},mutationType:'delete',surface:site+'.delete.notesSheet.columns'});renderNotes();
 }
@@ -178,10 +181,10 @@ function bindSheetColumnResizeHandles(){
   document.querySelectorAll('[data-sheet-resize-column]').forEach(handle=>handle.addEventListener('pointerdown',event=>{
     if(event.button!==undefined&&event.button!==0)return;
     const sheet=activeSheetData(),id=handle.dataset.sheetResizeColumn,column=sheet.book.columns.find(x=>x.id===id&&x.sheetId===sheet.sheetId);if(!column)return;
-    event.preventDefault();const startX=event.clientX,startWidth=column.width,col=[...document.querySelectorAll('col[data-sheet-col]')].find(x=>x.dataset.sheetCol===id);let finalWidth=startWidth;
+    event.preventDefault();const scope=editScope(),startX=event.clientX,startWidth=column.width,col=[...document.querySelectorAll('col[data-sheet-col]')].find(x=>x.dataset.sheetCol===id);let finalWidth=startWidth;
     handle.classList.add('dragging');handle.setPointerCapture?.(event.pointerId);
     const move=e=>{finalWidth=clampNotesSheetWidth(startWidth+(startX-e.clientX));if(col)col.style.width=finalWidth+'px'};
-    const finish=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',finish);document.removeEventListener('pointercancel',finish);handle.classList.remove('dragging');const current=ensureWorkbook().columns.find(c=>c.id===id);if(!current||finalWidth===current.width)return;current.width=finalWidth;saveState('רוחב עמודה עודכן')};
+    const finish=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',finish);document.removeEventListener('pointercancel',finish);handle.classList.remove('dragging');if(!canEdit()||scope!==editScope())return;const current=ensureWorkbook().columns.find(c=>c.id===id);if(!current||finalWidth===current.width)return;current.width=finalWidth;saveState('רוחב עמודה עודכן')};
     document.addEventListener('pointermove',move);document.addEventListener('pointerup',finish,{once:true});document.addEventListener('pointercancel',finish,{once:true});
   }));
 }
@@ -194,7 +197,7 @@ function workbookTabsMarkup(sheet){
 }
 
 function sheetMarkup(){
-  const sheet=activeSheetData(),cols=sheet.columns,allRows=visibleSheetRows(sheet),paged=allRows.length>SHEET_RENDER_THRESHOLD;
+  const sheet=activeSheetData(),cols=sheet.columns,allRows=visibleSheetRows(sheet),paged=allRows.length>renderThreshold;
   const pages=paged?Math.ceil(allRows.length/SHEET_PAGE_SIZE):1,page=Math.min(pages-1,Math.max(0,Number(ui.notesSheetPage)||0));ui.notesSheetPage=page;
   const rows=paged?allRows.slice(page*SHEET_PAGE_SIZE,(page+1)*SHEET_PAGE_SIZE):allRows;
   const colgroup='<col class="notes-sheet-index-col">'+cols.map(c=>`<col data-sheet-col="${esc(c.id)}" style="width:${esc(c.width)}px">`).join('')+'<col class="notes-sheet-actions-col">';

@@ -135,7 +135,7 @@ def run(db,app,checks,same,index):
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser();parser.add_argument('--case',type=int);args=parser.parse_args()
-    with IsolatedPostgres() as db:
+    with IsolatedPostgres(schema_files=sorted((ROOT/'supabase/migrations').glob('*.sql'))) as db:
         db.sql((ROOT/'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
         for index,(app,checks,same) in enumerate((a,c,s) for a in ('orders','kupa') for c in (False,True) for s in (True,False)):
             if args.case is None or args.case==index:run(db,app,checks,same,index)

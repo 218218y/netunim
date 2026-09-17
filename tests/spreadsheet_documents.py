@@ -70,6 +70,16 @@ def run():
         count=db.sql("begin;set local role authenticated;set local request.jwt.claim.sub="+quote(other)+";select count(*) from public.spreadsheet_documents;rollback;")
         assert count.strip()=='0'
         rejects(lambda:db.sql("begin;set local role anon;select public.save_spreadsheet_document_v1('kupa','main',0,'{}','anonymous');rollback;"),'permission denied')
+        many=copy.deepcopy(book);many['rows']=[{'id':'mass-'+str(i),'sheetId':'S','cells':{'C':str(i)}} for i in range(50)]
+        save(many,34,'grow',{'notesSheet.rows':['R']},'delete')
+        intents={'notesSheet.rows':[row['id'] for row in many['rows']]}
+        rejects(lambda:save(empty,35,'mass-unsafe',intents,'delete'),'spreadsheet_mass_delete_requires_explicit_kind')
+        assert save(empty,35,'mass-confirmed',intents,'bulk-delete')['revision']==36
+        # Expired ordinary backups are pruned; migration recovery stays available.
+        db.sql("update public.spreadsheet_backups set created_at=now()-interval '31 days' where domain='kupa' and kind<>'migration'")
+        save(empty,36,'retention-noop')
+        assert db.auth_sql("select count(*) from public.spreadsheet_backups where domain='kupa' and kind<>'migration'").strip()=='0'
+        assert db.auth_sql("select count(*) from public.spreadsheet_backups where domain='kupa' and kind='migration'").strip()=='1'
     print('PASS independent workbooks: migration, RLS, validation, fencing, retry, bounded backups, restore and main-revision isolation')
 
 
