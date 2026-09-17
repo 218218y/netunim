@@ -229,6 +229,11 @@ ok(-1 not in (nav_open, nav_close, alert_slot_pos, alert_button_pos)
    "orders warning indicator: alerts live in a dedicated non-scrolling slot beside the tabs and disappear as a unit when empty")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
+ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:13px env(safe-area-inset-right,0px) max(22px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px);overflow:hidden}' in orders_css
+   and 'max-width:1900px' not in orders_css
+   and '.main{padding:10px env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}' in orders_css
+   and orders_css.count('.main{padding:8px env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}') == 2,
+   "orders content width: the shared page shell reaches both viewport edges at every breakpoint while preserving safe-area insets")
 ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
@@ -237,7 +242,7 @@ ok('.customer-command{position:sticky;top:69px;z-index:10;margin-bottom:0;paddin
    and '.customer-command .filters{overflow:auto}' not in orders_css,
    "orders customers: the command bar wraps naturally when zoom reduces available width, while the desktop filter group remains atomic instead of becoming its own horizontal scroller")
 ok('.customer-work-panel{border-radius:14px}' in orders_css
-   and '.customer-table{width:100%!important;max-width:1500px;min-width:0!important;table-layout:fixed;margin-inline-start:0;margin-inline-end:auto}' in orders_css
+   and '.customer-table{width:100%!important;max-width:none;min-width:0!important;table-layout:fixed;margin:0}' in orders_css
    and 'width:min(100%,1000px)' not in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
    and '.customer-table .customer-col-name{width:146px;min-width:0}' in orders_css
@@ -262,11 +267,14 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css
    and 'customer-work-panel{border-radius:14px;margin' not in orders_css
    and '.customer-table .status-toggle button{min-width:26px' not in orders_css,
-   "orders customers: debt table keeps a continuous full available width up to the 1500px cap, reserves the real action-button width at every desktop breakpoint, preserves normal yes/no controls, and avoids intrinsic-content horizontal overflow")
+   "orders customers: debt table keeps a continuous full available width with no desktop cap, reserves the real action-button width at every desktop breakpoint, preserves normal yes/no controls, and avoids intrinsic-content horizontal overflow")
 ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
    "orders supplier/warehouse width: RTL view shells do not reserve an unused left scrollbar gutter, and the warehouse scrollbar uses the compact 8px track instead of consuming extra content width")
+ok('.notes-view{width:100%;max-width:none;margin:0}' in orders_css
+   and '.warehouse-attention{width:100%;max-width:none;margin:0}' in orders_css,
+   "orders wide views: notes and warehouse attention no longer recenter into capped columns on wide screens")
 ok('@media(min-width:701px){.customers-view .customer-work-table,.supplier-view-shell .supplier-table-panel .table-wrap{background:linear-gradient(to bottom,#f8f5f2 0 35px,#e3ddd7 35px 36px,#fff 36px) top/100% 100% no-repeat}}' in orders_css,
    "orders customer/supplier table headers: the sticky header paint spans the full scroll viewport without widening either table or changing horizontal overflow")
 ok('--scroll-track:#eee7e1;--scroll-thumb:#b8a69a;--scroll-thumb-hover:#9f8b7d' in orders_css
