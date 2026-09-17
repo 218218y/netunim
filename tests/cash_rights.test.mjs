@@ -8,6 +8,7 @@ import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
 import {createUiDateEditor} from '../netunim-kupa/site/assets/js/ui/date-editor.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {moneyWithCents} from '../netunim-kupa/site/assets/js/core/money.js';
+import {applyLedgerTypeSign,ledgerEditorAmount,ledgerTypeLabel} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
 
 function fakeKpi(label,value,_accent,_dot,_hint,formatValue=v=>String(v)){return `<article class="test-kpi" data-label="${label}" data-value="${formatValue(value)}"></article>`}
 const {dateEditorMarkup}=createUiDateEditor({markCheckSeriesManual:()=>{},syncCheckSeriesFromFirst:()=>{},toast:()=>{}});
@@ -22,7 +23,7 @@ test('cash page renders only the two requested independent ledger columns',()=>{
   assert.match(content.innerHTML,/cash-ledgers/);
   assert.ok(content.innerHTML.indexOf('cash-ledger-cash')<content.innerHTML.indexOf('cash-ledger-rights'),'cash is the first RTL grid item (right column)');
   assert.match(content.innerHTML,/יתרת מזומן/);assert.match(content.innerHTML,/תנועות מזומן/);
-  assert.match(content.innerHTML,/יתרת מעשר/);assert.match(content.innerHTML,/תנועות מעשר/);assert.match(content.innerHTML,/40\.50/);
+  assert.match(content.innerHTML,/יתרת מעשר/);assert.match(content.innerHTML,/תנועות מעשר/);assert.match(content.innerHTML,/data-bulk-collection="rights"[\s\S]*?data-label="סוג">זכות למעשר<\/td>/);assert.match(content.innerHTML,/40\.50/);
   assert.match(content.innerHTML,/חושב לאחרונה בתאריך/);assert.match(content.innerHTML,/value="2026-08-30"/);assert.match(content.innerHTML,/data-change="set-rights-last-calculated-date"/);
   assert.doesNotMatch(content.innerHTML,/יציאות \/ התאמות/);assert.doesNotMatch(content.innerHTML,/>כניסות</);
   assert.match(content.innerHTML,/data-action="open-right-modal"/);assert.match(content.innerHTML,/data-action="open-right-modal-2"/);
@@ -40,7 +41,7 @@ test('manual rights calculation date is stateful and saved independently of ledg
   controller.setRightsLastCalculatedDate('');assert.equal(model.state.rightsLastCalculatedDate,null);assert.equal(saved,'תאריך חישוב המעשר נוקה');
 });
 
-test('rights editor writes only to rights and routes add/edit actions independently',()=>{
+test('rights editor keeps canonical types, shows requested labels and applies the sign automatically',()=>{
   const fields={
     mDate:{value:'2026-09-01'},mType:{value:'הכנסה'},mDesc:{value:'בדיקה'},mAmount:{value:'75.48'},mNote:{value:'הערה'}
   };
@@ -48,11 +49,26 @@ test('rights editor writes only to rights and routes add/edit actions independen
   let modalSave=null,modalBody='',saved='',cashOpened=0,rightOpened=0;
   const model={state:{cash:[],rights:[]}};
   const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,body,_s,onSave)=>{modalBody=body;modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup});
-  editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);modalSave();
-  assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].amount,75.48);assert.equal(saved,'תנועת הזכות נשמרה');
+  editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);assert.match(modalBody,/value="הכנסה" selected>זכות למעשר/);assert.match(modalBody,/value="הוצאה" >חובה למעשר/);assert.match(modalBody,/אין צורך להוסיף מינוס/);modalSave();
+  assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].type,'הכנסה');assert.equal(model.state.rights[0].amount,75.48);assert.equal(saved,'תנועת המעשר נשמרה');
+  fields.mType.value='הוצאה';fields.mAmount.value='12.34';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-12.34);
+  fields.mAmount.value='-9.99';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-9.99,'a typed minus must not invert a debit into a credit');
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
   actions['open-cash-modal']({dataset:{}},{});actions['open-right-modal']({dataset:{}},{});
   assert.equal(cashOpened,1);assert.equal(rightOpened,1);
+});
+
+test('cash income and expense derive their sign from the selected operation while neutral types preserve manual sign',()=>{
+  assert.equal(applyLedgerTypeSign('הכנסה',-500),500);
+  assert.equal(applyLedgerTypeSign('הוצאה',500),-500);
+  assert.equal(applyLedgerTypeSign('הוצאה',-500),-500);
+  assert.equal(applyLedgerTypeSign('התאמה',-500),-500);
+  assert.equal(ledgerEditorAmount('הוצאה',-500),500);
+  assert.equal(ledgerEditorAmount('הכנסה',500),500);
+  assert.equal(ledgerEditorAmount('התאמה',-500),-500);
+  assert.equal(ledgerTypeLabel('cash','הכנסה'),'הכנסה');
+  assert.equal(ledgerTypeLabel('rights','הכנסה'),'זכות למעשר');
+  assert.equal(ledgerTypeLabel('rights','הוצאה'),'חובה למעשר');
 });
 
 

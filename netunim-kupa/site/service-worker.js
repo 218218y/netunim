@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-38f93ade2fc6';
+const CACHE='kupa-app-shell-esm-ade39d901078';
 const SHELL=[
   './',
   './index.html',

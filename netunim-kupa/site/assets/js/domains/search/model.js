@@ -2,6 +2,7 @@ import {dateSearchAliases,normalizeSearchText} from '../../core/search.js';
 import {creditMonthlyDetailData,creditDetailItemIdentity} from '../credit/model.js';
 import {CREDIT_PROVIDER_LABELS} from '../credit/sync-feed.js';
 import {bankTransactionIdentity} from '../bank/feed.js';
+import {ledgerTypeLabel} from '../cash/model.js';
 
 const GROUPS=[
   {key:'checks',label:"צ׳קים"},
@@ -32,8 +33,8 @@ function creditEntries(state){
 function expenseEntries(state){return (Array.isArray(state.expenses)?state.expenses:[]).map(x=>({group:'expenses',kind:'expense',id:String(x.id),context:x.account==='ביתי'?'חשבון ביתי':'חשבון עסקי',badge:'הוצאה',title:x.description||'הוצאה',subtitle:[x.type,x.recurring!==false?'חוזרת':'חד־פעמית',x.active===false?'לא פעילה':'פעילה'].filter(Boolean).join(' · '),amount:Number(x.amount||0),meta:[x.account].filter(Boolean),searchText:searchText([x.description,x.type,x.amount,x.account,boolLabel(x.recurring!==false,'חוזרת','חד פעמית'),boolLabel(x.active!==false,'פעילה','לא פעילה')],[x.date])}))}
 
 function cashEntries(state){
-  const build=(rows,kind,label)=>rows.map(x=>({group:'cash',kind,id:String(x.id),context:label,badge:label,title:x.description||x.type||label,subtitle:[x.type,x.note].filter(Boolean).join(' · '),amount:Number(x.amount||0),meta:[],searchText:searchText([x.description,x.type,x.note,x.amount,label],[x.date])}));
-  return [...build(Array.isArray(state.cash)?state.cash:[],'cash-row','מזומן'),...build(Array.isArray(state.rights)?state.rights:[],'rights-row','מעשר')];
+  const build=(rows,kind,label,collection)=>rows.map(x=>{const typeLabel=ledgerTypeLabel(collection,x.type);return {group:'cash',kind,id:String(x.id),context:label,badge:label,title:x.description||typeLabel||label,subtitle:[typeLabel,x.note].filter(Boolean).join(' · '),amount:Number(x.amount||0),meta:[],searchText:searchText([x.description,typeLabel,x.type,x.note,x.amount,label],[x.date])}});
+  return [...build(Array.isArray(state.cash)?state.cash:[],'cash-row','מזומן','cash'),...build(Array.isArray(state.rights)?state.rights:[],'rights-row','מעשר','rights')];
 }
 
 function bankEntries(state){
