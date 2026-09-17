@@ -124,7 +124,7 @@ test('Kupa notes sheet rerender preserves exact scroll offset and active cell af
   const doc={activeElement:oldCell,querySelector:selector=>selector==='.notes-sheet-scroll'?scroll:null,querySelectorAll:selector=>selector==='[data-sheet-cell]'?[doc.currentCell].filter(Boolean):[],getElementById:id=>id==='content'?content:null,currentCell:oldCell};
   const content={};Object.defineProperty(content,'innerHTML',{get:()=>html,set:value=>{
     html=value;scroll={scrollLeft:0,scrollTop:0};
-    doc.currentCell={dataset:{sheetRowId:'R1',sheetColumnId:'C1'},value:'abc',selectionStart:0,selectionEnd:0,matches:selector=>selector==='[data-sheet-cell]',focus:opts=>{focusOptions=opts;doc.activeElement=doc.currentCell},setSelectionRange:(start,end,direction)=>{selection=[start,end,direction]}};
+    doc.currentCell={addEventListener(){},dataset:{sheetRowId:'R1',sheetColumnId:'C1'},value:'abc',selectionStart:0,selectionEnd:0,matches:selector=>selector==='[data-sheet-cell]',focus:opts=>{focusOptions=opts;doc.activeElement=doc.currentCell},setSelectionRange:(start,end,direction)=>{selection=[start,end,direction]}};
     doc.activeElement=null;
   }});
   Object.defineProperty(globalThis,'document',{value:doc,configurable:true});Object.defineProperty(globalThis,'requestAnimationFrame',{value:fn=>{frames.push(fn);return frames.length},configurable:true});
@@ -136,10 +136,10 @@ test('Kupa notes sheet rerender preserves exact scroll offset and active cell af
   assert.equal(scroll.scrollLeft,-347);assert.equal(scroll.scrollTop,19);
 });
 
-test('Kupa notes sheet uses a horizontal-only scroller without a reserved RTL scrollbar gutter',()=>{
-  const css=readFileSync(new URL('../netunim-kupa/site/assets/app.css',import.meta.url),'utf8');
+test('Shared workbook bounds scrolling and freezes headers without a reserved RTL scrollbar gutter',()=>{
+  const css=readFileSync(new URL('../shared/notes-workbook.css',import.meta.url),'utf8');
   const rule=css.match(/\.notes-sheet-scroll\{([^}]*)\}/)?.[1]||'';
-  assert.match(rule,/overflow-x:auto/);assert.match(rule,/overflow-y:hidden/);assert.match(rule,/scrollbar-gutter:auto/);assert.doesNotMatch(rule,/scrollbar-gutter:stable/);
+  assert.match(rule,/overflow-x:auto/);assert.match(rule,/overflow-y:auto/);assert.match(rule,/max-height:65vh/);assert.match(rule,/scrollbar-gutter:auto/);assert.doesNotMatch(rule,/scrollbar-gutter:stable/);
 });
 
 

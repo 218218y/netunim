@@ -147,6 +147,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     authorization(db)
     notes_workbook_delete(db)
+    notes_workbook_delete(db, "orders")
 
 with IsolatedPostgres(schema_files=all_files) as db:
     check_bank_reconciliation(db)

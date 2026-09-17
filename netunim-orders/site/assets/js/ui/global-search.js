@@ -7,7 +7,7 @@ import {createSearchScheduler} from '../shared/search-scheduler.js';
 
 // Global search is a UI coordinator: data matching stays in domains/search/model.js,
 // while navigation reuses the existing view renderers and their native state.
-export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
+export function createUiGlobalSearch({model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
   let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null,searchEntries=null;
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose')});
@@ -47,7 +47,7 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
 
   function navigateWarehouse(item){prepareView('warehouse');warehouseUi.warehouseSearch='';if(item.kind==='inventory-item'){const inventoryItem=model.state.inventoryItems.find(x=>x.id===item.id);if(inventoryItem?.active===false){warehouseUi.warehouseTab='history';render();openInventoryItemModal(item.id);return}warehouseUi.warehouseTab='stock';render();reveal('data-stock-bulk-id',item.id);return}if(item.kind==='warehouse-order'){warehouseUi.warehouseTab='orders';render();reveal('data-warehouse-order-id',item.id);return}warehouseUi.warehouseTab='history';render();reveal('data-inventory-event-id',item.id)}
 
-  function navigateNote(item){prepareView('notes');render();reveal('data-note-id',item.id)}
+  function navigateNote(item){notesUi.notesTab=item.kind==='sheet-row'?'sheet':'notes';if(item.kind==='sheet-row'){notesUi.notesSheetId=item.sheetId;notesUi.notesSheetSearchValue=''}prepareView('notes');render();reveal(item.kind==='sheet-row'?'data-sheet-row-id':'data-note-id',item.id)}
 
   function navigateItem(item){if(!item)return false;if(item.group==='suppliers')navigateSupplier(item);else if(item.group==='customers')navigateCustomer(item);else if(item.group==='service')navigateService(item);else if(item.group==='checks')navigateCheck(item);else if(item.group==='warehouse')navigateWarehouse(item);else if(item.group==='notes')navigateNote(item);else return false;return true}
   function openResult(key){const item=resultByKey.get(key);if(!item)return;close({restoreFocus:false});navigateItem(item)}

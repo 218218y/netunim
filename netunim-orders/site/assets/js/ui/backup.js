@@ -16,15 +16,18 @@ const ORDERS_BACKUP_COLLECTIONS=[
   {path:'inventoryEvents',label:'אירועי מלאי'},
   {path:'warehouseOrders',label:'הזמנות מחסן'},
   {path:'notes',label:'פתקים'},
+  {path:'notesSheet.sheets',label:'גליונות'},
+  {path:'notesSheet.columns',label:'עמודות בגליונות'},
+  {path:'notesSheet.rows',label:'שורות בגליונות'},
   {path:'checks',label:'צ׳קים'},
 ];
 const ORDERS_BACKUP_CONFIG=[{path:'inventoryCategoryOrder',label:'סדר קטגוריות מלאי'}];
 
 function restoreDeleteIntents(before,after){
   const out={};
-  for(const key of ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders']){
-    const kept=new Set((after?.[key]||[]).map(row=>String(row?.id||'')));
-    const ids=(before?.[key]||[]).map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));
+  for(const key of ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryEvents','warehouseOrders','notesSheet.sheets','notesSheet.columns','notesSheet.rows']){
+    const kept=new Set((key.split('.').reduce((obj,part)=>obj?.[part],after)||[]).map(row=>String(row?.id||'')));
+    const ids=(key.split('.').reduce((obj,part)=>obj?.[part],before)||[]).map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));
     if(ids.length)out[key]=ids;
   }
   return out;
@@ -56,7 +59,7 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
         if(file.size>50*1024*1024)throw new Error('קובץ הגיבוי גדול מדי');
         const payload=validateRestoreJson(JSON.parse(await file.text())),counts=restoreJsonCounts(payload),savedAt=payload?._meta?.savedAt||'לא ידוע';
         ui.pendingJsonRestore={payload,fileName:file.name};
-        modal('שחזור מגיבוי JSON',`<div class="notice"><b>קובץ:</b> ${esc(file.name)}<br><b>נשמר:</b> ${esc(savedAt)}</div><div class="notice">ספקים: <b>${esc(counts.suppliers)}</b> · תנועות: <b>${esc(counts.transactions)}</b> · חובות: <b>${esc(counts.customerDebts)}</b> · הזמנות לקוח: <b>${esc(counts.customerOrders)}</b><br>קריאות שירות: <b>${esc(counts.serviceCalls)}</b> · פריטי מלאי: <b>${esc(counts.inventoryItems)}</b> · אירועי מלאי: <b>${esc(counts.inventoryEvents)}</b> · הזמנות מחסן: <b>${esc(counts.warehouseOrders)}</b> · פתקים: <b>${esc(counts.notes)}</b></div><label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px"><input id="restoreJsonChecks" type="checkbox"><span><b>שחזר גם ${esc(counts.checks)} צ׳קים</b><br><small>הצ׳קים הם מסמך משותף נפרד. ללא סימון, המסמך העדכני יישאר ללא שינוי.</small></span></label>`,`<button class="btn danger" data-action="apply-json-restore">שחזר את הגיבוי</button><button class="btn" data-action="pending-json-restore">ביטול</button>`);
+        modal('שחזור מגיבוי JSON',`<div class="notice"><b>קובץ:</b> ${esc(file.name)}<br><b>נשמר:</b> ${esc(savedAt)}</div><div class="notice">ספקים: <b>${esc(counts.suppliers)}</b> · תנועות: <b>${esc(counts.transactions)}</b> · חובות: <b>${esc(counts.customerDebts)}</b> · הזמנות לקוח: <b>${esc(counts.customerOrders)}</b><br>קריאות שירות: <b>${esc(counts.serviceCalls)}</b> · פריטי מלאי: <b>${esc(counts.inventoryItems)}</b> · אירועי מלאי: <b>${esc(counts.inventoryEvents)}</b> · הזמנות מחסן: <b>${esc(counts.warehouseOrders)}</b> · פתקים: <b>${esc(counts.notes)}</b> · גליונות: <b>${esc(counts.sheets)}</b> · שורות בגליונות: <b>${esc(counts.sheetRows)}</b></div><label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px"><input id="restoreJsonChecks" type="checkbox"><span><b>שחזר גם ${esc(counts.checks)} צ׳קים</b><br><small>הצ׳קים הם מסמך משותף נפרד. ללא סימון, המסמך העדכני יישאר ללא שינוי.</small></span></label>`,`<button class="btn danger" data-action="apply-json-restore">שחזר את הגיבוי</button><button class="btn" data-action="pending-json-restore">ביטול</button>`);
       }catch(error){console.error('json restore read',error);toast('לא ניתן לפתוח את הגיבוי: '+(error.message||error))}
     });
     input.click();

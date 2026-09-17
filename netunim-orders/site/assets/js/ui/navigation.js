@@ -46,7 +46,7 @@ function openKupaBank(account='עסקי'){
 }
 
 function openNotesNote(noteId=''){
-  prepareView('notes');
+  notesUi.notesTab='notes';prepareView('notes');
   render();
   if(noteId)revealAlertTarget(`[data-note-id="${CSS.escape(String(noteId))}"]`);
 }

@@ -1,3 +1,4 @@
+import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
@@ -90,6 +91,7 @@ const uiConnection=createUiConnection({
 });
 
 const stateNormalization=createStateNormalization({
+  externalWorkbooks:true,
   model,
 });
 
@@ -103,6 +105,7 @@ const storageIndexedDb=createStorageIndexedDb({
 });
 
 const storagePending=createStoragePending({
+  externalWorkbooks:true,captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   session,
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
@@ -142,6 +145,7 @@ const storageTabLock=createStorageTabLock({
 });
 
 const syncRecovery=createSyncRecovery({
+  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
   model,
   session,
@@ -175,6 +179,7 @@ const storageBackup=createStorageBackup({
 });
 
 const storagePersistence=createStoragePersistence({
+  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
   session,
@@ -487,7 +492,14 @@ const domainsCashController=createDomainsCashController({
   toast:(...args)=>uiStatus.toast(...args),
 });
 
+const spreadsheetWorkspace=createSpreadsheetWorkspace({
+  domain:'kupa',request:(...args)=>cloudAuth.supaRest(...args),account:()=>cloudAuth.loadSupaSession()?.user?.id,enabled:()=>session.connectionMode==='supabase'&&!!cloudAuth.loadSupaSession(),primary:()=>tab.primaryTab,
+  active:()=>ui.currentPage==='notes'&&ui.notesTab==='sheet',render:()=>domainsNotesController.renderNotes(),legacy:()=>model.legacyNotesSheet,
+  esc,confirmDialog:(...args)=>uiModal.confirmDialog(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),
+});
+
 const domainsNotesController=createDomainsNotesController({
+  workspace:spreadsheetWorkspace,
   model,
   ui,
   saveState:(...args)=>storagePersistence.saveState(...args),
@@ -769,6 +781,7 @@ document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(canR
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
 
 const uiActions=createUiActions({
+  notesSheetActions:{...domainsNotesController.sheetActions,...spreadsheetWorkspace.actions},
   creditOrderActions:creditCardOrderView.actions,
   reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args))uiModal.closeModal(true)},
   ui,

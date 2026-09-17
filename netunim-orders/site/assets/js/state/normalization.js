@@ -1,10 +1,11 @@
+import {normalizeNotesSheet} from '../shared/notes-sheet-model.js';
 import {clone} from '../core/values.js';
 import {assertOrderEntityInvariants,restoreJsonRequiredArrays} from './validation.js';
 import {INITIAL_STATE} from './constants.js';
 import {normalizeNoteReminderDate} from '../domains/notes/alerts.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStateNormalization({}){
+export function createStateNormalization({model={},externalWorkbooks=false}){
   function normalizeState(input){
     const state=input&&typeof input==='object'&&!Array.isArray(input)?input:{};
     // Validate before any filter/map/Set transform so malformed records cannot disappear silently.
@@ -20,6 +21,7 @@ export function createStateNormalization({}){
     }else{state.inventoryCategoryOrder=inventoryCategories.filter(value=>value!=='אביזרים');if(inventoryCategories.includes('אביזרים'))state.inventoryCategoryOrder.push('אביזרים')}
     state.inventoryItems.forEach(item=>{for(const key of ['minStock','targetStock']){const value=Number(item[key]||0);item[key]=Number.isSafeInteger(value)&&value>=0?value:0}item.targetStock=Math.max(item.minStock,item.targetStock);item.sku=String(item.sku||'')});
     state.inventoryEvents=seed('inventoryEvents');state.inventoryEvents.forEach(event=>{if(event.type==='order'){event.supplier=String(event.supplier||'');event.reference=String(event.reference||'');event.expectedAt=/^\d{4}-\d{2}-\d{2}$/.test(String(event.expectedAt||''))?String(event.expectedAt):''}});state.warehouseOrders=seed('warehouseOrders');state.checks=seed('checks').map(check=>({...check,account:check.account==='ביתי'?'ביתי':'עסקי',amount:Math.round(Number(check.amount||0)),name:String(check.name||''),dueDate:String(check.dueDate||''),status:String(check.status||'בקופה'),depositDate:check.depositDate||null,depositedAt:check.depositedAt||null,clearedDate:check.clearedDate||null,checkNumber:String(check.checkNumber||''),note:String(check.note||''),createdAt:check.createdAt||''}));
+    if(externalWorkbooks||state.notesWorkbookExternal===1){if(state.notesSheet&&externalWorkbooks)model.legacyNotesSheet??=clone(state.notesSheet);delete state.notesSheet;state.notesWorkbookExternal=1}else state.notesSheet=normalizeNotesSheet(state.notesSheet);
     state.notes=seed('notes').map(note=>{const normalized={...note,id:String(note.id),content:String(note.content||''),createdAt:String(note.createdAt||''),updatedAt:String(note.updatedAt||note.createdAt||'')},reminderDate=normalizeNoteReminderDate(note?.reminderDate);if(reminderDate)normalized.reminderDate=reminderDate;else delete normalized.reminderDate;return normalized});
     state.importAudit=state.importAudit||{};state.stage2Audit=state.stage2Audit||structuredClone(INITIAL_STATE.stage2Audit||{});
     const explicitInvoice=state.customerDebts.find(debt=>debt?.source?.sheet==='חובות_וזכויות'&&Number(debt?.source?.row)===32&&!debt.updatedAt&&/יצאה\s*ח[״"']?מ/.test(`${debt.sourceInvoiceText||''} ${debt.note||''}`));if(explicitInvoice)explicitInvoice.invoiceIssued=true;

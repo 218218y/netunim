@@ -86,6 +86,9 @@ return {
     inventoryLocationOpen:new Set()
   },
   notesUi:{
+    notesTab:'notes',
+    notesSheetId:'',
+    notesSheetSearchValue:'',
     notesBulkMode:false,
     notesBulkSelected:new Set(),
     notesBulkAnchorId:null

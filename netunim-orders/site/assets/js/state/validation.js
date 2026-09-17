@@ -6,6 +6,12 @@ export const ORDER_ENTITY_COLLECTIONS=Object.freeze(['suppliers','transactions',
 
 export function assertOrderEntityInvariants(d,{includeChecks=false,required=false}={}){
   assertEntityCollections(d,includeChecks?[...ORDER_ENTITY_COLLECTIONS,'checks']:ORDER_ENTITY_COLLECTIONS,{required});
+  if(d?.notesSheet!==undefined){
+    if(!d.notesSheet||typeof d.notesSheet!=='object'||Array.isArray(d.notesSheet))throw new Error('Invalid notes workbook');
+    assertEntityCollections(d,['notesSheet.sheets','notesSheet.columns','notesSheet.rows'],{required:true});
+    const ids=new Set(d.notesSheet.sheets.map(sheet=>sheet.id));
+    if(!ids.size||d.notesSheet.sheets.some(sheet=>typeof sheet.name!=='string'||!sheet.name.trim())||[...d.notesSheet.columns,...d.notesSheet.rows].some(row=>!ids.has(row.sheetId)))throw new Error('Invalid notes workbook parent');
+  }
   if(Array.isArray(d?.customerDebts))d.customerDebts.forEach((debt,index)=>validateCustomerDebtProgress(debt,`customerDebts[${index}]`));
   return d;
 }
@@ -16,4 +22,4 @@ export function assertValidOrderCloudState(d,context='Orders cloud state'){if(!v
 
 export function restoreJsonRequiredArrays(){return ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryEvents','warehouseOrders','checks']}
 
-export function restoreJsonCounts(x){return {suppliers:x.suppliers?.length||0,transactions:x.transactions?.length||0,customerDebts:x.customerDebts?.length||0,customerOrders:x.customerOrders?.length||0,serviceCalls:x.serviceCalls?.length||0,inventoryItems:x.inventoryItems?.length||0,inventoryEvents:x.inventoryEvents?.length||0,warehouseOrders:x.warehouseOrders?.length||0,checks:x.checks?.length||0,notes:x.notes?.length||0}}
+export function restoreJsonCounts(x){return {suppliers:x.suppliers?.length||0,transactions:x.transactions?.length||0,customerDebts:x.customerDebts?.length||0,customerOrders:x.customerOrders?.length||0,serviceCalls:x.serviceCalls?.length||0,inventoryItems:x.inventoryItems?.length||0,inventoryEvents:x.inventoryEvents?.length||0,warehouseOrders:x.warehouseOrders?.length||0,checks:x.checks?.length||0,notes:x.notes?.length||0,sheets:x.notesSheet?.sheets?.length||0,sheetRows:x.notesSheet?.rows?.length||0}}

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-a2fd03defe97';
+const CACHE='orders-app-shell-esm-971c197ea1de';
 const SHELL=[
   './',
   './index.html',
@@ -105,10 +105,19 @@ const SHELL=[
   './assets/js/shared/finance-fence.js',
   './assets/js/shared/html.js',
   './assets/js/shared/kupa-cashflow.js',
+  './assets/js/shared/notes-sheet-model.js',
+  './assets/js/shared/notes-workbook-merge.js',
+  './assets/js/shared/notes-workbook.css',
+  './assets/js/shared/notes-workbook.js',
   './assets/js/shared/orders-finance.js',
   './assets/js/shared/restore-groups.js',
   './assets/js/shared/search-scheduler.js',
   './assets/js/shared/shared-checks-flight.js',
+  './assets/js/shared/spreadsheet-cutover.js',
+  './assets/js/shared/spreadsheet-model.js',
+  './assets/js/shared/spreadsheet-store.js',
+  './assets/js/shared/spreadsheet-sync.js',
+  './assets/js/shared/spreadsheet-workspace.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-status.js',
   './assets/js/state/constants.js',

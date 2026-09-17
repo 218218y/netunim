@@ -1,3 +1,4 @@
+import {createNotesWorkbookMerger} from '../shared/notes-workbook-merge.js';
 import {clone} from '../core/values.js';
 import {eq, mergeArray, mergeCustomerDebtArray} from './merge-records.js';
 
@@ -9,6 +10,7 @@ function protectImplicitDeletes(base,local,deleteIds,key='id'){
   for(const item of Array.isArray(base)?base:[]){const id=String(item?.[key]??'');if(id&&!present.has(id)&&!allowed.has(id)){safe.push(clone(item));present.add(id)}}
   return safe;
 }
+const mergeNotesWorkbook=createNotesWorkbookMerger({clone,jsonEq:eq,mergeRecordArray:(b,l,r,key,path,conflicts)=>mergeArray(b,l,r,key,conflicts,path),mergeRecordArrayPreferLocal:(b,l,r,key)=>mergeArray(b,l,r,key,[], 'notesSheet',true)});
 function merge3(base,local,remote,{preferLocalConflicts=false,deleteIntents={}}={}){
   const conflicts=[],out=clone(remote||{});out.version=4;
   const scalar=key=>{const b=base?.[key],l=local?.[key],r=remote?.[key];if(!eq(l,b)&&!eq(r,b)&&!eq(l,r)){conflicts.push(key);return undefined}return clone(eq(l,b)?r:l)};
@@ -19,6 +21,7 @@ function merge3(base,local,remote,{preferLocalConflicts=false,deleteIntents={}}=
   out.customerOrders=mergeArray(base?.customerOrders,protectImplicitDeletes(base?.customerOrders,local?.customerOrders,deleteIntents.customerOrders),remote?.customerOrders,'id',conflicts,'customerOrder',preferLocalConflicts);
   out.serviceCalls=mergeArray(base?.serviceCalls,protectImplicitDeletes(base?.serviceCalls,local?.serviceCalls,deleteIntents.serviceCalls),remote?.serviceCalls,'id',conflicts,'serviceCall',preferLocalConflicts);
   out.notes=mergeArray(base?.notes,protectImplicitDeletes(base?.notes,local?.notes,deleteIntents.notes),remote?.notes,'id',conflicts,'note',preferLocalConflicts);
+  if(![base,local,remote].some(state=>state?.notesWorkbookExternal===1))out.notesSheet=mergeNotesWorkbook(base?.notesSheet,local?.notesSheet,remote?.notesSheet,deleteIntents,conflicts,preferLocalConflicts);else{delete out.notesSheet;out.notesWorkbookExternal=1}
   /* הצ'קים נשמרים כאן כעותק מקומי בלבד. מקור האמת וה־conflict resolution שלהם הוא מסמך הצ'קים המשותף. */
   out.checks=clone(local?.checks||remote?.checks||base?.checks||[]);
   out.inventoryItems=mergeArray(base?.inventoryItems,protectImplicitDeletes(base?.inventoryItems,local?.inventoryItems,deleteIntents.inventoryItems),remote?.inventoryItems,'id',conflicts,'inventoryItem',preferLocalConflicts);

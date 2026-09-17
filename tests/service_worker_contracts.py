@@ -123,6 +123,7 @@ for label, site in APPS.items():
         "./android-chrome-512x512.png",
     }
     required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets').rglob('*.js'))
+    required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets/js/shared').glob('*.css'))
     ok(set(shell) == required and len(shell)==len(required), f"{label}: shell contains exactly the expected public app files")
     for item in shell:
         if item == "./":

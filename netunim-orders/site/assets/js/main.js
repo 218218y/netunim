@@ -1,3 +1,4 @@
+import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createStateNormalization} from './state/normalization.js';
@@ -88,10 +89,13 @@ import {bindOrdersRuntimeEvents} from './runtime-events.js';
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
 
 const stateNormalization=createStateNormalization({
-
+  externalWorkbooks:true,
+  model,
 });
 
 const storageBrowser=createStorageBrowser({
+  externalWorkbooks:true,
+  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   model,
   files,
   session,
@@ -196,6 +200,7 @@ const storagePersistence=createStoragePersistence({
 });
 
 const stateSnapshots=createStateSnapshots({
+  externalWorkbooks:true,
   model,
   ui,
   session,
@@ -754,7 +759,14 @@ const domainsCalendarController=createDomainsCalendarController({
   setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
 });
 
+const spreadsheetWorkspace=createSpreadsheetWorkspace({
+  domain:'orders',request:(...args)=>cloudAuth.supaFetch(...args),account:()=>cloudAuth.loadSession()?.user?.id,enabled:()=>cloudAuth.cloudEnabled(),primary:()=>tab.primaryTab,
+  active:()=>ui.currentView==='notes'&&notesUi.notesTab==='sheet',render:()=>domainsNotesController.renderNotes(),legacy:()=>model.legacyNotesSheet,
+  esc,confirmDialog:(...args)=>uiModal.confirmDialog(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),
+});
+
 const domainsNotesController=createDomainsNotesController({
+  workspace:spreadsheetWorkspace,
   model,
   notesUi,
   scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
@@ -832,6 +844,7 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
 
 const uiActions=createUiActions({
+  notesSheetActions:domainsNotesController.sheetActions,
   creditOrderActions:creditCardOrderView.actions,
   reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();domainsBankCache.renderKupaDependentView()}},
   supplierUi,
@@ -1054,6 +1067,7 @@ const uiActions=createUiActions({
 
 const uiGlobalSearch=createUiGlobalSearch({
   model,
+  notesUi,
   ui,
   supplierUi,
   customerUi,
@@ -1064,7 +1078,9 @@ const uiGlobalSearch=createUiGlobalSearch({
   openInventoryItemModal:(...args)=>domainsInventoryEditor.openInventoryItemModal(...args),
 });
 
-model.state=stateNormalization.normalizeState(storageBrowser.loadLocal()||structuredClone(INITIAL_STATE));
+const initialOrdersLocal=storageBrowser.loadLocal();
+await spreadsheetWorkspace.sync.captureLegacy(initialOrdersLocal?.notesSheet);
+model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClone(INITIAL_STATE));
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();

@@ -49,7 +49,12 @@ function warehouseEntries(state){
 
 function noteEntries(state){return (Array.isArray(state.notes)?state.notes:[]).map(n=>({group:'notes',kind:'note',id:n.id,context:'הערות',badge:'פתק',title:String(n.content||'').trim().slice(0,70)||'פתק ללא תוכן',subtitle:String(n.content||'').trim().slice(70,190),meta:[n.updatedAt?String(n.updatedAt).slice(0,10):''].filter(Boolean),searchText:entrySearchText([n.content,n.createdAt,n.updatedAt])}))}
 
-export function buildGlobalSearchEntries(state={}){return [...supplierEntries(state),...customerEntries(state),...serviceEntries(state),...checkEntries(state),...warehouseEntries(state),...noteEntries(state)].filter(entry=>entry.id!==undefined&&entry.id!==null&&entry.id!=='')}
+function sheetEntries(state){
+  const book=state.notesSheet;if(!book)return [];
+  return (book.rows||[]).map(row=>{const name=book.sheets?.find(sheet=>sheet.id===row.sheetId)?.name||'גליון',values=(book.columns||[]).filter(column=>column.sheetId===row.sheetId).map(column=>row.cells?.[column.id]||'');return {group:'notes',kind:'sheet-row',id:row.id,sheetId:row.sheetId,context:`גליון · ${name}`,badge:'גליון',title:values.filter(Boolean).slice(0,3).join(' · ')||name,subtitle:'',meta:[],searchText:entrySearchText([name,...values])}});
+}
+
+export function buildGlobalSearchEntries(state={}){return [...supplierEntries(state),...customerEntries(state),...serviceEntries(state),...checkEntries(state),...warehouseEntries(state),...noteEntries(state),...sheetEntries(state)].filter(entry=>entry.id!==undefined&&entry.id!==null&&entry.id!=='')}
 
 function matchEntry(entry,queryCompact,tokens){
   const hay=entry.searchText||'',hayCompact=hay.replace(/\s+/g,'');

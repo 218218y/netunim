@@ -1,3 +1,4 @@
+import {createNotesWorkbookMerger} from '../shared/notes-workbook-merge.js';
 import {clone} from '../core/values.js';
 import {jsonEq, mergeRecordArray, mergeValue, mergeRecordArrayPreferLocal, mergeValuePreferLocal} from './merge-records.js';
 import {migrateLegacyCards3Way} from './legacy-card-migration.js';
@@ -10,27 +11,7 @@ function protectImplicitDeletes(base,local,deleteIds,key='id'){
   for(const item of Array.isArray(base)?base:[]){const id=String(item?.[key]??'');if(id&&!present.has(id)&&!allowed.has(id)){safe.push(clone(item));present.add(id)}}
   return safe;
 }
-function mergeNotesWorkbook(base={},local={},remote={},deleteIntents={},conflicts=[],preferLocal=false){
-  const safe={version:2};
-  for(const part of ['sheets','columns','rows'])safe[part]=protectImplicitDeletes(base[part],local[part],deleteIntents[`notesSheet.${part}`]);
-  const book={version:2},problems=[];
-  // Deleting a parent conflicts with edits OR additions anywhere in that sheet.
-  // Independent array merges alone miss a new row beneath a deleted parent.
-  for(const sheet of base.sheets||[]){
-    const localHas=safe.sheets.some(row=>row.id===sheet.id),remoteHas=(remote.sheets||[]).some(row=>row.id===sheet.id);
-    if(localHas===remoteHas)continue;
-    const surviving=localHas?safe:remote;
-    if(['columns','rows'].some(part=>!jsonEq((base[part]||[]).filter(row=>row.sheetId===sheet.id),(surviving[part]||[]).filter(row=>row.sheetId===sheet.id))))problems.push(`notesSheet.sheets:${sheet.id}`);
-  }
-  for(const part of ['sheets','columns','rows'])book[part]=preferLocal
-    ?mergeRecordArrayPreferLocal(base[part],safe[part],remote[part],'id')
-    :mergeRecordArray(base[part],safe[part],remote[part],'id',`notesSheet.${part}`,problems);
-  // Two computers can each delete a different sheet while retaining the other.
-  // Do not let normalization silently resurrect a default sheet after that merge.
-  if((base.sheets||[]).length&&!book.sheets.length)problems.push('notesSheet.sheets');
-  if(problems.length){conflicts.push(...new Set(problems));return clone(preferLocal?safe:remote)}
-  return book;
-}
+const mergeNotesWorkbook=createNotesWorkbookMerger({clone,jsonEq,mergeRecordArray,mergeRecordArrayPreferLocal});
 function mergeState3Way(base,local,remote,{deleteIntents={}}={}){
   const lineage=migrateLegacyCards3Way(base,local,remote);
   if(lineage.conflicts.length)return {state:normalizeState(clone(remote||{})),conflicts:lineage.conflicts};
@@ -43,7 +24,7 @@ function mergeState3Way(base,local,remote,{deleteIntents={}}={}){
   out.rights=mergeRecordArray(base.rights,protectImplicitDeletes(base.rights,local.rights,deleteIntents.rights),remote.rights,'id','rights',conflicts);
   out.rightsLastCalculatedDate=mergeValue(base.rightsLastCalculatedDate,local.rightsLastCalculatedDate,remote.rightsLastCalculatedDate,'rightsLastCalculatedDate',conflicts);
   out.notes=mergeRecordArray(base.notes,protectImplicitDeletes(base.notes,local.notes,deleteIntents.notes),remote.notes,'id','notes',conflicts);
-  out.notesSheet=mergeNotesWorkbook(base.notesSheet,local.notesSheet,remote.notesSheet,deleteIntents,conflicts);
+  if(![base,local,remote].some(state=>state?.notesWorkbookExternal===1))out.notesSheet=mergeNotesWorkbook(base.notesSheet,local.notesSheet,remote.notesSheet,deleteIntents,conflicts);else{delete out.notesSheet;out.notesWorkbookExternal=1}
   out.expenses=mergeRecordArray(base.expenses,protectImplicitDeletes(base.expenses,local.expenses,deleteIntents.expenses),remote.expenses,'id','expenses',conflicts);
   out.cards=mergeRecordArray(base.cards,protectImplicitDeletes(base.cards,local.cards,deleteIntents.cards),remote.cards,'id','cards',conflicts);
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};
@@ -64,7 +45,7 @@ function rebaseLocalProgress(base,local,remote,{deleteIntents={}}={}){
   out.rights=mergeRecordArrayPreferLocal(base.rights,protectImplicitDeletes(base.rights,local.rights,deleteIntents.rights),remote.rights,'id');
   out.rightsLastCalculatedDate=mergeValuePreferLocal(base.rightsLastCalculatedDate,local.rightsLastCalculatedDate,remote.rightsLastCalculatedDate);
   out.notes=mergeRecordArrayPreferLocal(base.notes,protectImplicitDeletes(base.notes,local.notes,deleteIntents.notes),remote.notes,'id');
-  out.notesSheet=mergeNotesWorkbook(base.notesSheet,local.notesSheet,remote.notesSheet,deleteIntents,[],true);
+  if(![base,local,remote].some(state=>state?.notesWorkbookExternal===1))out.notesSheet=mergeNotesWorkbook(base.notesSheet,local.notesSheet,remote.notesSheet,deleteIntents,[],true);else{delete out.notesSheet;out.notesWorkbookExternal=1}
   out.expenses=mergeRecordArrayPreferLocal(base.expenses,protectImplicitDeletes(base.expenses,local.expenses,deleteIntents.expenses),remote.expenses,'id');
   out.cards=mergeRecordArrayPreferLocal(base.cards,protectImplicitDeletes(base.cards,local.cards,deleteIntents.cards),remote.cards,'id');
   const bc=base.cashflowSettings||{},lc=local.cashflowSettings||{},rc=remote.cashflowSettings||{};

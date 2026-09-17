@@ -10,7 +10,7 @@ import {normalizeCashflowSettings} from '../shared/cashflow.js';
 import {normalizeNotesSheet} from '../domains/notes/sheet-model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStateNormalization({model}){
+export function createStateNormalization({model,externalWorkbooks=false}){
 function prepareKupaCloudState(source=model.state){const x=normalizeState(clone(source));delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return x}
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
@@ -41,7 +41,7 @@ function normalizeState(d){
     if(match){const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]),d=new Date(Date.UTC(year,month-1,day));n.rightsLastCalculatedDate=d.getUTCFullYear()===year&&d.getUTCMonth()===month-1&&d.getUTCDate()===day?raw:null}else n.rightsLastCalculatedDate=null;
   }
   n.notes=(Array.isArray(n.notes)?n.notes:[]).filter(x=>x&&x.id).map(x=>({...x,id:String(x.id),content:String(x.content||''),createdAt:String(x.createdAt||''),updatedAt:String(x.updatedAt||x.createdAt||'')}));
-  n.notesSheet=normalizeNotesSheet(n.notesSheet);
+  if(externalWorkbooks||n.notesWorkbookExternal===1){if(n.notesSheet&&externalWorkbooks)model.legacyNotesSheet??=clone(n.notesSheet);delete n.notesSheet;n.notesWorkbookExternal=1}else n.notesSheet=normalizeNotesSheet(n.notesSheet);
   n.expenses=(Array.isArray(n.expenses)?n.expenses:[]).map(x=>({...x,account:x.account==='ביתי'?'ביתי':'עסקי',amount:wholeMoney(x.amount),recurring:x.recurring===undefined?true:!!x.recurring}));
   n.cards=(Array.isArray(n.cards)?n.cards:[]).map((card,index)=>({...card,id:card.id||stableLegacyPositionId('CARD',index)}));
   n.cashflowSettings=normalizeCashflowSettings(n.cashflowSettings);

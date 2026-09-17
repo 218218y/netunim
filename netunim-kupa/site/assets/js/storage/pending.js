@@ -1,3 +1,4 @@
+import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
 import {CLOUD_PENDING_LOCAL_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
 import {acknowledgedGenerationMatches,compareOutboxFreshness,migrateOutboxRecord} from '../shared/cloud-sync.js';
 import {legacyCardMigrationConflict,migrateLegacyCardPair} from '../sync/legacy-card-migration.js';
@@ -15,7 +16,7 @@ export function migrateKupaOutboxRecord(value,migration){
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePending({session, idbPut, idbGet, idbDelete}){
+export function createStoragePending({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},session, idbPut, idbGet, idbDelete}){
 function loadCloudPendingSync(){try{const raw=localStorage.getItem(CLOUD_PENDING_LOCAL_KEY),pending=raw?JSON.parse(raw):null;if(compareOutboxFreshness(session.cloudOutboxCached,pending)>0)return session.cloudOutboxCached;if(pending)session.localGeneration=Math.max(session.localGeneration,Number(pending.generation||0));return pending}catch(e){console.error('pending local load',e);return null}}
 
 function persistCloudPendingSync(p){if(Number(session.cloudOutboxCached?.generation||0)>Number(p?.generation||0)||(Number(session.cloudOutboxCached?.generation||0)===Number(p?.generation||0)&&Number(session.cloudOutboxCached?.mutationSeq||0)>Number(p?.mutationSeq||0)))return false;session.cloudOutboxCached=p;try{const text=JSON.stringify(p);localStorage.setItem(CLOUD_PENDING_LOCAL_KEY,text);if(localStorage.getItem(CLOUD_PENDING_LOCAL_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('pending local save',e);return false}}
@@ -28,7 +29,7 @@ async function getCloudPending(){
   try{rawV3=await idbGet('sync',CLOUD_OUTBOX_V3_KEY);rawV2=await idbGet('sync',CLOUD_PENDING_KEY)}catch(e){console.error('pending idb load',e)}
   if(session.cloudOutboxCommitPromise!==observedCommit)return getCloudPending();
   const candidates=[rawLocal,rawV3,rawV2].filter(Boolean).map(value=>migrateKupaOutboxRecord(value,migrationDefaults(value))).filter(Boolean).sort(compareOutboxFreshness);
-  const chosen=candidates.at(-1)||null;if(!chosen)return null;
+  let chosen=candidates.at(-1)||null;if(!chosen)return null;if(externalWorkbooks)chosen=await detachLegacyOutbox(chosen,captureLegacyWorkbook);
   session.localGeneration=Math.max(session.localGeneration,Number(chosen.generation||0));persistCloudPendingSync(chosen);
   try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,chosen);if(rawV2)await idbDelete('sync',CLOUD_PENDING_KEY);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('pending idb repair',e)}
   if(session.cloudOutboxCommitPromise!==observedCommit)return getCloudPending();

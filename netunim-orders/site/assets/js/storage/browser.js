@@ -1,3 +1,4 @@
+import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
 import {clone} from '../core/values.js';
 import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
 import {acknowledgedGenerationMatches,compareOutboxFreshness,createOutboxRecord,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
@@ -7,7 +8,7 @@ const LOCAL_SYNC_STORE='sync';
 const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBrowser({model, files, session, prepareState, prepareCloudState, normalizeState}){
+export function createStorageBrowser({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState}){
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
 function localSnapshot(source=model.state){assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0))+1;payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
@@ -24,7 +25,7 @@ function queueBrowserStateSnapshot(payload){files.browserStatePendingPayload=clo
 
 async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_STORE).objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}finally{db.close()}}catch(e){console.error('browser state load',e);return null}}
 
-async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
+async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){await captureLegacyWorkbook(record.payload.notesSheet);model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
 
 function readPendingCache(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null')}catch(e){console.error('cloud pending cache load',e);return null}}
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
@@ -62,8 +63,9 @@ async function getCloudPending(){
   const local=migrateOrdersOutboxRecord(readPendingCache(),migration);let durable=null;
   try{durable=migrateOrdersOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration)}catch(e){console.error('orders outbox load',e)}
   if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
-  const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
+  let chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
   if(!chosen){session.ordersOutboxCached=null;return null}
+  if(externalWorkbooks)chosen=await detachLegacyOutbox(chosen,captureLegacyWorkbook);
   session.ordersOutboxCached=chosen;session.localGeneration=Math.max(Number(session.localGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
   try{await idbSyncPut(ORDERS_OUTBOX_KEY,chosen);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('orders outbox repair',e)}
   if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();

@@ -4,7 +4,7 @@ import {assertEntityCollection,assertEntityCollections} from '../shared/data-inv
 export const KUPA_ENTITY_COLLECTIONS=Object.freeze(['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets']);
 
 export function assertKupaEntityInvariants(state,{includeChecks=false,required=false,allowLegacyCards=false}={}){
-  const paths=KUPA_ENTITY_COLLECTIONS.filter(path=>path!=='cards'&&(path!=='notesSheet.sheets'||Number(state?.notesSheet?.version)>=2));assertEntityCollections(state,includeChecks?[...paths,'checks']:paths,{required});
+  const paths=KUPA_ENTITY_COLLECTIONS.filter(path=>path!=='cards'&&(!path.startsWith('notesSheet.')||state?.notesSheet!==undefined)&&(path!=='notesSheet.sheets'||Number(state?.notesSheet?.version)>=2));assertEntityCollections(state,includeChecks?[...paths,'checks']:paths,{required});
   if(Array.isArray(state?.cards)&&allowLegacyCards){
     const migrated=state.cards.filter(card=>card?.id!==undefined);assertEntityCollection(migrated,'cards');
   }else assertEntityCollection(state?.cards,'cards',{required});
