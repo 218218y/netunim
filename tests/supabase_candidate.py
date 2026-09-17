@@ -7,6 +7,7 @@ from morning_schema_contract import assert_morning_schema_contract
 from check_bank_reconciliation import run as check_bank_reconciliation
 from check_bank_items import run as check_bank_items
 from check_notification_retention import run as check_notification_retention
+from notes_workbook_delete import run as notes_workbook_delete
 
 sys.path.insert(0, str(ROOT / 'tools'))
 from supabase_candidate_schema import (
@@ -145,6 +146,7 @@ with IsolatedPostgres(schema_files=all_files) as db:
         'Production-upgrade replay and clean install disagree on the bank merge function contract'
     db.sql((ROOT / 'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
     authorization(db)
+    notes_workbook_delete(db)
 
 with IsolatedPostgres(schema_files=all_files) as db:
     check_bank_reconciliation(db)

@@ -88,5 +88,10 @@
     "version": "20260916090000",
     "name": "check_notification_retention",
     "sha256": "d4ae8a18485707e7dece685612415163052b6b4bc28eb75ff746d271dbeefa9d"
+  },
+  {
+    "version": "20260917120000",
+    "name": "notes_workbook_delete",
+    "sha256": "f15ef0ccd2b02cbdd233616ef63041fca3eb5b8e9df5dc84954ad67956e508dc"
   }
 ]

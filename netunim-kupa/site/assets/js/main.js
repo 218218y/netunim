@@ -843,6 +843,7 @@ const uiActions=createUiActions({
   setNotesWorkspaceTab:(...args)=>domainsNotesController.setNotesWorkspaceTab(...args),
   setActiveNotesSheet:(...args)=>domainsNotesController.setActiveNotesSheet(...args),
   addNotesSheet:(...args)=>domainsNotesController.addNotesSheet(...args),
+  deleteNotesSheet:(...args)=>domainsNotesController.deleteNotesSheet(...args),
   renameNotesSheet:(...args)=>domainsNotesController.renameNotesSheet(...args),
   addSheetRow:(...args)=>domainsNotesController.addSheetRow(...args),
   updateSheetCell:(...args)=>domainsNotesController.updateSheetCell(...args),

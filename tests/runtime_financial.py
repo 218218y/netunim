@@ -75,7 +75,7 @@ breakdown_fixture = r"""
 
 def run_breakdown(app):
     with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-breakdown") as browser:
-        setup = "state=normalizeState(fixture);domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';ui.bankAccountView='business';domainsFinanceView.renderKupa();"
+        setup = "state=normalizeState(fixture);ui.bankAccountView='business';domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';ui.bankAccountView='business';domainsFinanceView.renderKupa();"
         browser.evaluate("(()=>{"+breakdown_fixture+setup+"return true;})()")
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})

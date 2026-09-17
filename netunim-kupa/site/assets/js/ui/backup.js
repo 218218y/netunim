@@ -19,7 +19,7 @@ function restoreDeleteIntents(before,after){
     const kept=new Set((after?.[key]||[]).map(row=>String(row?.id||'')));
     const ids=(before?.[key]||[]).map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));if(ids.length)out[key]=ids;
   }
-  for(const part of ['rows','columns']){
+  for(const part of ['sheets','rows','columns']){
     const oldRows=before?.notesSheet?.[part]||[],newRows=after?.notesSheet?.[part]||[],kept=new Set(newRows.map(row=>String(row?.id||''))),ids=oldRows.map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));
     if(ids.length)out[`notesSheet.${part}`]=ids;
   }

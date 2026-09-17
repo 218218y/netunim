@@ -76,6 +76,23 @@ function renameNotesSheet(el){
   const {meta}=activeSheetData(),name=String(el?.value||'').trim()||meta.name;if(meta.name===name){if(el)el.value=name;return}meta.name=name;if(el)el.value=name;saveState('שם הגיליון עודכן');renderNotes();
 }
 
+async function deleteNotesSheet(id){
+  const initial=ensureWorkbook(),meta=initial.sheets.find(sheet=>sheet.id===id);if(!meta)return;
+  if(!await confirmDialog('מחיקת גיליון',`למחוק את הגיליון „${meta.name}” עם כל השורות והעמודות שלו?`,{confirmText:'מחק גיליון'}))return;
+  // Re-read after the dialog: synchronization may have replaced the state meanwhile.
+  const book=ensureWorkbook(),index=book.sheets.findIndex(sheet=>sheet.id===id);if(index<0)return;
+  const rows=book.rows.filter(row=>row.sheetId===id).map(row=>row.id),columns=book.columns.filter(column=>column.sheetId===id).map(column=>column.id);
+  book.sheets.splice(index,1);book.rows=book.rows.filter(row=>row.sheetId!==id);book.columns=book.columns.filter(column=>column.sheetId!==id);
+  for(const key of dirtySheetCells)if(rows.includes(key.split('\u0000')[0]))dirtySheetCells.delete(key);
+  for(const columnId of columns)sheetTitleDrafts.delete(columnId);
+  if(!book.sheets.length){
+    const replacementId=uid('SHEET');book.sheets.push({id:replacementId,name:'גיליון 1'});
+    for(let i=0;i<5;i++)book.columns.push({id:uid('SHEETCOL'),sheetId:replacementId,title:`עמודה ${i+1}`,type:'text',width:NOTES_SHEET_DEFAULT_WIDTH});
+  }
+  if(ui.notesSheetId===id){ui.notesSheetId=book.sheets[Math.min(index,book.sheets.length-1)].id;ui.notesSheetSearchValue=''}
+  saveState('הגיליון נמחק',{deleteIntents:{'notesSheet.sheets':[id],'notesSheet.rows':rows,'notesSheet.columns':columns},mutationType:'bulk-delete',surface:'kupa.delete.notesSheet.sheets'});renderNotes();
+}
+
 function sheetCellKey(rowId,columnId){return `${rowId}\u0000${columnId}`}
 function findSheetCell(rowId,columnId){return [...(document.querySelectorAll?.('[data-sheet-cell]')||[])].find(el=>el.dataset?.sheetRowId===rowId&&el.dataset?.sheetColumnId===columnId)||null}
 function findSheetTitle(columnId){return [...(document.querySelectorAll?.('.notes-sheet-title-input')||[])].find(el=>el.dataset?.sheetColumnId===columnId)||null}
@@ -181,7 +198,7 @@ function sheetTabs(){return `<div class="notes-tabs" role="tablist" aria-label="
 
 function workbookTabsMarkup(sheet){
   const tabs=sheet.book.sheets.map(tab=>`<button type="button" class="notes-sheet-book-tab ${tab.id===sheet.sheetId?'active':''}" role="tab" aria-selected="${tab.id===sheet.sheetId}" data-action="set-active-notes-sheet" data-click-arg0="${esc(tab.id)}">${esc(tab.name)}</button>`).join('');
-  return `<div class="notes-sheet-workbook-bar"><div class="notes-sheet-book-tabs" role="tablist" aria-label="גיליונות">${tabs}<button type="button" class="notes-sheet-book-add" data-action="add-notes-sheet" title="הוסף גיליון" aria-label="הוסף גיליון">＋</button></div><label class="notes-sheet-name"><span>שם הגיליון</span><input class="notes-sheet-name-input" value="${esc(sheet.meta.name)}" data-blur="rename-notes-sheet"></label></div>`;
+  return `<div class="notes-sheet-workbook-bar"><div class="notes-sheet-book-tabs" role="tablist" aria-label="גיליונות">${tabs}<button type="button" class="notes-sheet-book-add" data-action="add-notes-sheet" title="הוסף גיליון" aria-label="הוסף גיליון">＋</button></div><div class="notes-sheet-manage"><label class="notes-sheet-name"><span>שם הגיליון</span><input class="notes-sheet-name-input" value="${esc(sheet.meta.name)}" data-blur="rename-notes-sheet"></label><button type="button" class="btn danger small" data-action="delete-notes-sheet" data-click-arg0="${esc(sheet.sheetId)}" aria-label="מחק את הגיליון ${esc(sheet.meta.name)}">מחק גיליון</button></div></div>`;
 }
 
 function sheetMarkup(){
@@ -204,9 +221,9 @@ function renderNotes(){
   const interaction=ui.notesTab==='sheet'?captureSheetInteraction():null;
   if(ui.notesTab!=='sheet')ui.notesTab='notes';
   const sheetActive=ui.notesTab==='sheet';if(sheetActive)activeSheetData();
-  document.getElementById('content').innerHTML=`<div class="notes-view"><section class="notes-hero"><div class="notes-hero-main"><div class="notes-title-row">${sheetTabs()}</div><p>${sheetActive?'גיליונות נפרדים עם שמות, שורות, עמודות וסיכומים משלהם.':'פתקים מהירים שנשמרים ומסתנכרנים יחד עם נתוני הקופה.'}</p>${localSearchMarkup({value:sheetActive?(ui.notesSheetSearchValue||''):(ui.notesSearchValue||''),placeholder:sheetActive?'חיפוש בגיליון הפעיל…':'חיפוש בפתקים…',label:sheetActive?'חיפוש בגיליון הפעיל':'חיפוש בפתקים',inputAction:'notes-search',className:'notes-search-field'})}</div><div class="notes-actions">${sheetActive?'<button class="btn" data-action="add-notes-sheet-column">+ עמודה</button><button class="btn primary" data-action="add-notes-sheet-row">+ שורה</button>':'<button class="btn primary" data-action="add-kupa-sticky-note">+ פתק חדש</button>'}</div></section><div id="notesWorkspaceResults">${notesWorkspaceMarkup(sheetActive)}</div></div>`;
+  document.getElementById('content').innerHTML=`<div class="notes-view"><section class="notes-hero"><div class="notes-hero-main">${sheetTabs()}${localSearchMarkup({value:sheetActive?(ui.notesSheetSearchValue||''):(ui.notesSearchValue||''),placeholder:sheetActive?'חיפוש בגיליון הפעיל…':'חיפוש בפתקים…',label:sheetActive?'חיפוש בגיליון הפעיל':'חיפוש בפתקים',inputAction:'notes-search',className:'notes-search-field'})}</div><div class="notes-actions">${sheetActive?'<button class="btn" data-action="add-notes-sheet-column">+ עמודה</button><button class="btn primary" data-action="add-notes-sheet-row">+ שורה</button>':'<button class="btn primary" data-action="add-kupa-sticky-note">+ פתק חדש</button>'}</div></section><div id="notesWorkspaceResults">${notesWorkspaceMarkup(sheetActive)}</div></div>`;
   if(sheetActive){bindSheetColumnResizeHandles();restoreSheetInteraction(interaction)}else requestAnimationFrame(resizeAllStickyNotes);
 }
 
-return {noteDisplayDate,noteSortRows,visibleNoteRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,setNotesWorkspaceTab,setNotesSearch,setActiveNotesSheet,addNotesSheet,renameNotesSheet,addSheetRow,updateSheetCell,saveSheetCell,updateSheetColumnTitleDraft,handleSheetCellKeydown,deleteSheetRow,addSheetColumn,renameSheetColumn,setSheetColumnNumeric,deleteSheetColumn,renderNotes,flushNoteSave};
+return {noteDisplayDate,noteSortRows,visibleNoteRows,resizeStickyNoteTextarea,resizeAllStickyNotes,addStickyNote,updateStickyNote,blurStickyNote,deleteStickyNote,stickyNoteCard,setNotesWorkspaceTab,setNotesSearch,setActiveNotesSheet,addNotesSheet,renameNotesSheet,deleteNotesSheet,addSheetRow,updateSheetCell,saveSheetCell,updateSheetColumnTitleDraft,handleSheetCellKeydown,deleteSheetRow,addSheetColumn,renameSheetColumn,setSheetColumnNumeric,deleteSheetColumn,renderNotes,flushNoteSave};
 }

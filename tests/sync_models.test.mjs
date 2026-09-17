@@ -289,3 +289,34 @@ test('Orders cloud poll silently advances a revision when remote business data a
  const api=orderDocumentSync({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:x=>x,localSnapshot:()=>{},markCloudPending:()=>{},getCloudPending:async()=>null,clearCloudPending:async()=>true,toast:()=>{toasts++},setCloud:()=>{},prepareCloudState:x=>structuredClone(x||model.state),writeStateToFolder:async()=>{},readCloud:async()=>({revision:6,updated_at:'2026-09-03T19:00:00Z',state:structuredClone(model.state)}),rpcSave:async()=>{},merge3:()=>({state:model.state,conflicts:[]}),applyOrderCloudState:()=>{applied++},cloudPendingExists:()=>false,setSave:()=>{},cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:()=>true,cloudHasLocalWork:()=>false,render:()=>{renders++},readCloudMeta:async()=>({revision:6,updated_at:'2026-09-03T19:00:00Z'}),refreshKupaReadout:async()=>false,pollSharedChecks:async()=>{},refreshCloudTimestamp:()=>{}});
  await api.cloudPoll();assert.equal(session.cloudRevision,6);assert.equal(applied,0);assert.equal(toasts,0);assert.equal(renders,0);
 });
+
+
+test('Kupa workbook deletion merges unrelated work but conflicts with child additions and edits in either direction',()=>{
+ const base=k.normalizeState({});base.notesSheet.sheets.push({id:'S2',name:'Second'});
+ base.notesSheet.columns.push({id:'C2',sheetId:'S2',title:'Value',type:'text',width:90});
+ base.notesSheet.rows.push({id:'R2',sheetId:'S2',cells:{C2:'keep'},createdAt:'',updatedAt:''});
+ const deleted=structuredClone(base),id=base.notesSheet.sheets[0].id;
+ const intents={'notesSheet.sheets':[id],'notesSheet.columns':base.notesSheet.columns.filter(c=>c.sheetId===id).map(c=>c.id)};
+ for(const part of ['sheets','columns','rows'])deleted.notesSheet[part]=deleted.notesSheet[part].filter(row=>(part==='sheets'?row.id:row.sheetId)!==id);
+ const remote=structuredClone(base);remote.notesSheet.rows[0].cells.C2='unrelated edit';
+ const merged=km.mergeState3Way(base,deleted,remote,{deleteIntents:intents});
+ assert.deepEqual(merged.conflicts,[]);assert.equal(merged.state.notesSheet.sheets.length,1);assert.equal(merged.state.notesSheet.rows[0].cells.C2,'unrelated edit');
+ assert.equal(km.mergeState3Way(base,deleted,base).state.notesSheet.sheets.length,2,'implicit deletion must be protected');
+ for(const mutate of [
+   book=>book.rows.push({id:'new-row',sheetId:id,cells:{},createdAt:'',updatedAt:''}),
+   book=>book.columns.push({id:'new-col',sheetId:id,title:'New',type:'text',width:90}),
+   book=>{book.columns[0].title='edited'}
+ ]){
+   const edited=structuredClone(base);mutate(edited.notesSheet);
+   for(const [local,other,deleteIntents] of [[deleted,edited,intents],[edited,deleted,{}]]){
+     const result=km.mergeState3Way(base,local,other,{deleteIntents});
+     assert.ok(result.conflicts.includes(`notesSheet.sheets:${id}`));
+     assert.ok(result.state.notesSheet.rows.every(row=>result.state.notesSheet.sheets.some(sheet=>sheet.id===row.sheetId)));
+   }
+ }
+ const both=km.mergeState3Way(base,deleted,deleted,{deleteIntents:intents});assert.deepEqual(both.conflicts,[]);assert.equal(both.state.notesSheet.sheets.length,1);
+ const otherDeleted=structuredClone(base);
+ for(const part of ['sheets','columns','rows'])otherDeleted.notesSheet[part]=otherDeleted.notesSheet[part].filter(row=>(part==='sheets'?row.id:row.sheetId)!=='S2');
+ const emptied=km.mergeState3Way(base,deleted,otherDeleted,{deleteIntents:intents});
+ assert.ok(emptied.conflicts.includes('notesSheet.sheets'));assert.deepEqual(emptied.state.notesSheet.sheets,otherDeleted.notesSheet.sheets);
+});

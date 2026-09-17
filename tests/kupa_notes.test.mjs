@@ -121,3 +121,27 @@ test('Kupa notes sheet uses a horizontal-only scroller without a reserved RTL sc
   const rule=css.match(/\.notes-sheet-scroll\{([^}]*)\}/)?.[1]||'';
   assert.match(rule,/overflow-x:auto/);assert.match(rule,/overflow-y:hidden/);assert.match(rule,/scrollbar-gutter:auto/);assert.doesNotMatch(rule,/scrollbar-gutter:stable/);
 });
+
+
+test('Kupa workbook deletion confirms, removes only the selected sheet, and replaces the last sheet with fresh IDs',async()=>{
+  Object.defineProperty(globalThis,'document',{value:makeDocument(),configurable:true});
+  Object.defineProperty(globalThis,'requestAnimationFrame',{value:fn=>fn(),configurable:true});
+  const model={state:{notes:[]}},ui={notesTab:'sheet'},saves=[];let confirm;
+  const notes=createDomainsNotesController({model,ui,saveState:(message,options)=>saves.push(options),confirmDialog:()=>new Promise(resolve=>{confirm=resolve})});
+  notes.renderNotes();notes.addSheetRow();const original=structuredClone(model.state.notesSheet);
+  notes.addNotesSheet();notes.addSheetRow();const deletedId=ui.notesSheetId;
+  let deletion=notes.deleteNotesSheet(deletedId);confirm(false);await deletion;
+  assert.equal(model.state.notesSheet.sheets.length,2);
+  deletion=notes.deleteNotesSheet(deletedId);
+  // A cloud refresh while the dialog is open must not leave a stale reference.
+  model.state=structuredClone(model.state);confirm(true);await deletion;
+  assert.deepEqual(model.state.notesSheet,original);assert.equal(ui.notesSheetId,original.sheets[0].id);
+  assert.deepEqual(saves.at(-1).deleteIntents['notesSheet.sheets'],[deletedId]);
+  assert.equal(saves.at(-1).deleteIntents['notesSheet.rows'].length,1);
+  assert.equal(saves.at(-1).deleteIntents['notesSheet.columns'].length,5);
+  assert.equal(saves.at(-1).mutationType,'bulk-delete');
+  deletion=notes.deleteNotesSheet(ui.notesSheetId);confirm(true);await deletion;
+  assert.equal(model.state.notesSheet.sheets.length,1);assert.equal(model.state.notesSheet.rows.length,0);
+  assert.notEqual(ui.notesSheetId,original.sheets[0].id);
+  assert.ok(model.state.notesSheet.columns.every(column=>column.sheetId===ui.notesSheetId));
+});

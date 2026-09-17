@@ -2,6 +2,7 @@
 from browser_harness import BrowserSession, ROOT
 import json
 import time
+from notes_workbook_workflow import run as notes_workbook_workflow
 
 helpers=r"""
  const element=s=>{const e=document.querySelector(s);if(!e)throw new Error('Missing control '+s);return e};
@@ -169,3 +170,5 @@ for label,flow in flows.items():
         assert not browser.drain_serious_errors()
     if isolated_download_dir is not None:
         assert not isolated_download_dir.exists(), 'browser test download directory was not cleaned after the session'
+
+notes_workbook_workflow()
