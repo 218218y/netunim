@@ -213,6 +213,7 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, sett
    and folder_slot_pos < save_pill_pos < cloud_pill_pos < save_now_pos < settings_pos,
    "orders: reserved folder-access slot is beside local-save status, not between action buttons")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
+orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
 ok('<div class="brand">ניהול הזמנות</div>' not in orders_html
    and 'grid-template-areas:"nav actions"' in orders_css
    and '.topbar-nav-cluster{grid-area:nav;min-width:0;max-width:100%;display:flex;align-items:center;gap:7px;justify-self:start}' in orders_css
@@ -234,6 +235,10 @@ ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margi
    and '.main{padding:10px env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}' in orders_css
    and orders_css.count('.main{padding:8px env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}') == 2,
    "orders content width: the shared page shell reaches both viewport edges at every breakpoint while preserving safe-area insets")
+ok('הגדרות, ענן וגיבוי' not in orders_settings
+   and 'נתוני ההזמנות נשמרים במסמך נפרד' not in orders_settings
+   and "mountViewLayout({headCount:0,className:'settings-view-shell',scrollKey:'settings'})" in orders_settings,
+   "orders settings: removed explanatory hero is not rendered, and the settings grid remains the scroll body instead of being misclassified as a fixed header")
 ok('.customer-visible-total{display:inline-flex;align-items:center;gap:5px;border:' in orders_css
    and '.customer-visible-total{display:inline-flex;align-items:center;gap:5px;margin-inline-start:auto' not in orders_css,
    "orders: customer debt total stays adjacent to the add-debt button instead of being pushed to the far edge")
@@ -245,7 +250,7 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table{width:100%!important;max-width:none;min-width:0!important;table-layout:fixed;margin:0}' in orders_css
    and 'width:min(100%,1000px)' not in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
-   and '.customer-table .customer-col-name{width:146px;min-width:0}' in orders_css
+   and '.customer-table .customer-col-name{width:146px;min-width:0;padding-inline-start:10px}' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:98px;padding-inline:4px}' in orders_css
    and '.customer-table .customer-col-state{width:96px;padding-inline:4px;text-align:center}' in orders_css
    and '.customer-table .customer-col-note{width:auto;min-width:0}' in orders_css
