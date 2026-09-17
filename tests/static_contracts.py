@@ -366,12 +366,18 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===
 ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
    and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
    "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+credit_markup_block = orders_finance_view.split('function creditMarkup(s)', 1)[1].split('function headerContextMarkup', 1)[0]
 ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finance_view
    and '.kupa-subcontent-credit{gap:6px}' in orders_css
+   and 'class="credit-primary-report"' in credit_markup_block
+   and credit_markup_block.index('creditFiltersMarkup(s,filtered)') < credit_markup_block.index('creditDetailSectionMarkup(s,summary)') < credit_markup_block.index('creditForecastSectionMarkup(s)') < credit_markup_block.index('creditLiveMarkup(summary)')
+   and '.credit-primary-report{display:grid;gap:0;overflow:hidden;border:1px solid #dbe3e8;border-radius:15px' in orders_css
+   and '.credit-primary-report>.credit-filter-toolbar,.credit-primary-report>.credit-detail-section{border:0;border-radius:0;box-shadow:none}' in orders_css
+   and '.credit-primary-report>.credit-filter-toolbar{border-bottom:1px solid #dbe3e8}' in orders_css
    and '.checks-page-embedded{gap:6px}' in orders_css
    and '.checks-page-embedded>.check-bank-review,.checks-page-embedded>.check-bank-activity{margin-block:0}' in orders_css
    and '.checks-page-embedded #checkGroups>.checks-month:first-child{margin-top:0}' in orders_css,
-   "orders Kupa compact rhythm: credit filter/forecast/details and embedded checks activity/forecast/month groups use a small deliberate gap without changing Bank or Balance spacing")
+   "orders Kupa compact rhythm: Credit joins the global filters directly to Transactions, places the future-card disclosure after Transactions and before live provider data, while embedded Checks keep their compact rhythm")
 orders_alert_center = (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8")
 ok('data-action="check-tab">הכל</button>' in orders_checks_view
    and 'data-action="check-tab">הכל</button>' in kupa_checks_view
