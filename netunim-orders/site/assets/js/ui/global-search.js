@@ -1,15 +1,18 @@
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
-import {searchGlobalData} from '../domains/search/model.js';
+import {buildGlobalSearchEntries,searchGlobalEntries} from '../domains/search/model.js';
 import {checkIsClosedStatus} from '../domains/checks/model.js';
 import {customerDebtProgressData} from '../shared/customer-debt-progress.js';
+import {createSearchScheduler} from '../shared/search-scheduler.js';
 
 // Global search is a UI coordinator: data matching stays in domains/search/model.js,
 // while navigation reuses the existing view renderers and their native state.
 export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
-  let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null;
+  let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null,searchEntries=null;
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose')});
+  const scheduledRender=createSearchScheduler(value=>renderResults(value));
+  const indexedEntries=()=>searchEntries||(searchEntries=buildGlobalSearchEntries(model.state));
 
   function scopeIntro(){return `<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>חיפוש בכל מאגר ניהול ההזמנות</b><p>אפשר לחפש שם ספק או לקוח, מספר הזמנה, טלפון, מספר צ'ק, סכום, הערה, מיקום, תוכן שירות ועוד.</p><div class="global-search-scopes"><span>ספקים</span><span>לקוחות</span><span>שירות</span><span>צ'קים</span><span>מחסן ומלאי</span><span>הערות</span></div></div>`}
 
@@ -19,7 +22,7 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
     const {results,meta}=refs();if(!results||!meta)return;
     const raw=String(value||'').trim();resultByKey=new Map();
     if(!raw){meta.textContent='כל המאגרים במקום אחד';results.innerHTML=scopeIntro();return}
-    const data=searchGlobalData(model.state,raw),visibleGroups=data.groups.filter(group=>group.total>0);meta.textContent=data.total?`${data.total} תוצאות בכל המאגרים`:'לא נמצאו תוצאות';
+    const data=searchGlobalEntries(indexedEntries(),raw),visibleGroups=data.groups.filter(group=>group.total>0);meta.textContent=data.total?`${data.total} תוצאות בכל המאגרים`:'לא נמצאו תוצאות';
     if(!visibleGroups.length){results.innerHTML=`<div class="global-search-empty"><div class="global-search-empty-icon">∅</div><b>לא נמצאו תוצאות</b><p>החיפוש נבדק בכל ספקים, לקוחות, שירות, צ'קים, מחסן והערות.</p></div>`;return}
     results.innerHTML=visibleGroups.map(group=>{
       const rows=group.items.map((item,index)=>{const key=`${group.key}:${item.kind}:${item.id}:${index}`;resultByKey.set(key,item);const metaParts=resultMeta(item);return `<button class="global-search-result" type="button" data-global-result-key="${esc(key)}"><span class="global-search-result-main"><span class="global-search-result-kicker">${esc(item.context||group.label)} · ${esc(item.badge||group.label)}</span><b>${esc(item.title||'תוצאה')}</b>${item.subtitle?`<span class="global-search-result-subtitle">${esc(item.subtitle)}</span>`:''}</span>${metaParts.length?`<span class="global-search-result-meta">${metaParts.map(x=>`<em>${esc(x)}</em>`).join('')}</span>`:''}<span class="global-search-result-arrow" aria-hidden="true">←</span></button>`}).join('');
@@ -27,8 +30,8 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
     }).join('')
   }
 
-  function open(){const {backdrop,input,trigger}=refs();if(!backdrop)return;backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');renderResults(input?.value||'');requestAnimationFrame(()=>input?.focus())}
-  function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
+  function open(){const {backdrop,input,trigger,results,meta}=refs();if(!backdrop)return;searchEntries=null;scheduledRender.cancel();backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');const value=input?.value||'';if(String(value).trim()){resultByKey=new Map();if(meta)meta.textContent='מעדכן תוצאות…';if(results)results.innerHTML='<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>מעדכן את אינדקס החיפוש…</b></div>';scheduledRender(value)}else renderResults('');requestAnimationFrame(()=>input?.focus())}
+  function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;scheduledRender.cancel();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
   function toggle(){const {backdrop}=refs();if(!backdrop)return;backdrop.hidden?open():close()}
 
   function findDataElement(attribute,id){return [...document.querySelectorAll(`[${attribute}]`)].find(el=>el.getAttribute(attribute)===String(id))||null}
@@ -51,8 +54,8 @@ export function createUiGlobalSearch({model,ui,supplierUi,customerUi,serviceUi,w
 
   function bind(){
     const {trigger,backdrop,input,results,close:closeButton}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
-    trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);input.addEventListener('input',()=>renderResults(input.value));
-    input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){const first=results.querySelector('.global-search-result');if(first){event.preventDefault();first.focus()}}});
+    trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);input.addEventListener('input',()=>scheduledRender(input.value));
+    input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){scheduledRender.flush();const first=results.querySelector('.global-search-result');if(first){event.preventDefault();first.focus()}}});
     results.addEventListener('keydown',event=>{if(!event.target.matches('.global-search-result'))return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){const buttons=[...results.querySelectorAll('.global-search-result')],index=buttons.indexOf(event.target),next=event.key==='ArrowDown'?Math.min(buttons.length-1,index+1):Math.max(0,index-1);event.preventDefault();buttons[next]?.focus()}else if(event.key==='Escape')close()});
     results.addEventListener('click',event=>{const button=event.target.closest('[data-global-result-key]');if(button)openResult(button.dataset.globalResultKey)});
     backdrop.addEventListener('pointerdown',event=>{backdropPointerId=event.target===backdrop?event.pointerId:null});backdrop.addEventListener('pointerup',event=>{const dismiss=backdropPointerId===event.pointerId&&event.target===backdrop;backdropPointerId=null;if(dismiss)close()});backdrop.addEventListener('pointercancel',()=>{backdropPointerId=null});

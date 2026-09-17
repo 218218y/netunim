@@ -1,8 +1,15 @@
 import {creditDateRangeFromControl} from '../shared/credit-detail-controls.js';
+import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiActions({creditOrderActions={},reviewCheckBank, openCashflowBreakdown, ui, chooseBackupFolder, loadSupabaseState, cloudPoll, discardCloudPendingAndLoadRemote, openSupabaseLoginModal, enableCloudFromCurrentState, logoutSupabase, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, setPage, clearCheckFocus, toggleBulkMode, toggleBulkRow, toggleBulkVisible, deleteBulkSelected, renderChecks, renderChecksSearch, renderCredit, renderCreditDetails, setExpenseSearch, setCashSearch, setNotesSearch, saveBankBridgeToken, configureBankBridge, selectBankBridgeAccount, setBankAccountView, setBankDataView, openBankChequeImage, acknowledgeMissingBankTransaction, setBankSearch, setBankDateMode, setBankDateBoundary, toggleBankSyncOptions, refreshBankBalance, deleteBankBridgeCredentials, exportBankChequeDiagnostics, setBankAutoRefresh, openCreditConnectionModal, deleteCreditConnection, resetCreditSync, refreshCreditSync, copySafeCreditDiagnostics, exportCreditDataDiagnostics, setCreditSearch, toggleCreditSyncOptions, setCreditCardMapping, setCreditAutoRefresh, setCreditAutoMode, closeModal, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, markDeposited, markCleared, openCreditModal, prefillChargeDate, openCashModal, openRightModal, setRightsLastCalculatedDate, addStickyNote, updateStickyNote, blurStickyNote, deleteStickyNote, setNotesWorkspaceTab, setActiveNotesSheet, addNotesSheet, renameNotesSheet, deleteNotesSheet, addSheetRow, updateSheetCell, saveSheetCell, updateSheetColumnTitleDraft, handleSheetCellKeydown, deleteSheetRow, addSheetColumn, renameSheetColumn, setSheetColumnNumeric, deleteSheetColumn, openExpenseModal, updateCard, updateCashflowMinimum, updateCashflowCheckCutoff, manualBackup, downloadJsonBackup, restoreBackup, refreshCloudBackups, loadMoreCloudBackups, previewCloudBackup, downloadCloudBackup, downloadSelectedCloudBackup, switchFolder, exportCSV}){
+const checksSearch=createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
+const creditSearch=createLazyDeferredSearchUpdater(value=>{ui.creditSearchValue=value},setCreditSearch);
+const expenseSearch=createLazyDeferredSearchUpdater(value=>{ui.expenseSearchValue=value},setExpenseSearch);
+const cashSearch=createLazyDeferredSearchUpdater(value=>{ui.cashSearchValue=value},setCashSearch);
+const notesSearch=createLazyDeferredSearchUpdater(value=>{if(ui.notesTab==='sheet')ui.notesSheetSearchValue=value;else ui.notesSearchValue=value},setNotesSearch);
+const bankSearch=createLazyDeferredSearchUpdater(value=>{ui.bankSearchValue=value},setBankSearch);
 return {
   ...creditOrderActions,
   'review-check-bank':element=>reviewCheckBank(element.dataset.clickArg2==='remove-selected'?[...ui.bulkSelected]:element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2),
@@ -30,13 +37,13 @@ return {
   'check-bank-history-page':(element,event)=>{ui.checkBankHistoryPage=Number(element.dataset.clickArg0)||0;renderChecks();document.querySelectorAll('.check-bank-activity').forEach(panel=>{panel.open=true})},
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'toggle-checks-forecast':(element,event)=>{ui.checksForecastOpen=!ui.checksForecastOpen;const body=document.getElementById('checksForecastBody'),button=document.querySelector('[data-action="toggle-checks-forecast"]');if(body)body.hidden=!ui.checksForecastOpen;if(button){button.classList.toggle('open',ui.checksForecastOpen);button.setAttribute('aria-expanded',String(ui.checksForecastOpen))}},
-  'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
+  'render-checks-search':(element,event)=>{checksSearch(element.value,element)},
   'clear-check-focus':(element,event)=>{clearCheckFocus()},
   'expenses-hub-tab':(element,event)=>{ui.expensesTab=element.dataset.clickArg0==='expenses'?'expenses':'credit';renderCredit()},
-  'credit-search':(element,event)=>{setCreditSearch(element.value)},
-  'expense-search':(element,event)=>{setExpenseSearch(element.value)},
-  'cash-search':(element,event)=>{setCashSearch(element.value)},
-  'notes-search':(element,event)=>{setNotesSearch(element.value)},
+  'credit-search':(element,event)=>{creditSearch(element.value,element)},
+  'expense-search':(element,event)=>{expenseSearch(element.value,element)},
+  'cash-search':(element,event)=>{cashSearch(element.value,element)},
+  'notes-search':(element,event)=>{notesSearch(element.value,element)},
   'toggle-credit-sync-options':(element,event)=>{toggleCreditSyncOptions()},
   'credit-view':(element,event)=>{ui.creditView=element.value;if(ui.creditDetailFocus?.cardKey)ui.creditDetailFocus={...ui.creditDetailFocus,cardKey:''};renderCredit()},
   'toggle-credit-forecast':(element,event)=>{ui.creditForecastOpen=!ui.creditForecastOpen;const body=document.getElementById('creditForecastBody'),button=document.querySelector('[data-action="toggle-credit-forecast"]');if(body)body.hidden=!ui.creditForecastOpen;if(button){button.classList.toggle('open',ui.creditForecastOpen);button.setAttribute('aria-expanded',String(ui.creditForecastOpen))}},
@@ -84,7 +91,7 @@ return {
   'set-bank-data-view':(element,event)=>{event?.preventDefault();event?.stopPropagation();setBankDataView(element.dataset.clickArg0)},
   'view-bank-cheque-image':(element,event)=>{event?.preventDefault();event?.stopPropagation();openBankChequeImage(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2)},
   'ack-bank-missing':(element,event)=>{event?.preventDefault();event?.stopPropagation();acknowledgeMissingBankTransaction(Number(element.dataset.clickArg0))},
-  'bank-search':(element,event)=>{setBankSearch(element.value)},
+  'bank-search':(element,event)=>{bankSearch(element.value,element)},
   'bank-date-mode':(element,event)=>{setBankDateMode(element.dataset.clickArg0||element.value)},
   'bank-date-apply':(element,event)=>{const host=element.closest('.bank-date-filter');setBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')},
   'bank-date-from':(element,event)=>{setBankDateBoundary('from',element.value)},

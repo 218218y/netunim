@@ -1,8 +1,16 @@
 import {creditDateRangeFromControl} from '../shared/credit-detail-controls.js';
+import {createLazyDeferredSearchUpdater} from '../shared/search-scheduler.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createUiActions({creditOrderActions={},reviewCheckBank, supplierUi, customerUi, serviceUi, warehouseUi, ui, openAlertTarget, markAlertCheckDeposited, dismissBankAlert, dismissNoteAlert, setKupaSection, setOrdersBankAccountView, openOrdersCashflowBreakdown, setOrdersBankDataView, openOrdersBankChequeImage, acknowledgeOrdersBankMissing, setOrdersBankSearch, setOrdersBankDateMode, setOrdersBankDateBoundary, toggleOrdersBankSyncOptions, saveOrdersBankToken, configureOrdersBank, selectOrdersBankAccount, deleteOrdersBankCredentials, exportOrdersBankChequeDiagnostics, refreshOrdersBank, setOrdersBankAuto, saveOrdersCashflowMinimum, saveOrdersCashflowCheckCutoff, refreshOrdersCredit, copyOrdersSafeCreditDiagnostics, exportOrdersCreditDataDiagnostics, acknowledgeOrdersCreditSettlementWarning, setOrdersCreditAuto, setOrdersCreditAutoMode, setOrdersCreditView, setOrdersCreditAccountFilter, setOrdersCreditProviderFilter, setOrdersCreditCardFilter, setOrdersCreditDetailUpcoming, setOrdersCreditDetailMonth, setOrdersCreditDateRange, setOrdersCreditDetailFocus, clearOrdersCreditDetailFocus, setOrdersCreditSearch, toggleOrdersCreditSyncOptions, setOrdersCreditCardMapping, openOrdersCreditConnection, saveOrdersCreditConnection, deleteOrdersCreditConnection, resetOrdersCreditSync, setSupplierYearView, setSummarySupplierYearView, handleCheckDatePartInput, handleCheckDatePartBlur, handleCheckDatePartKeydown, openCheckDatePicker, applyCheckDatePicker, toggleChecksBulkMode, toggleChecksBulkRow, toggleChecksBulkVisible, renderChecks, renderChecksSearch, openCheckModal, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markCheckDeposited, markCheckCleared, deleteCheck, deleteChecksBulkSelected, openSupplierOrderModal, moveSupplierOrder, supplierOrderDragStart, supplierOrderDrop, saveSupplierOrder, toggleSupplierMenu, chooseSupplier, openSupplier, toggleSupplierBulkMode, toggleSupplierBulkRow, toggleSupplierBulkVisible, openSelectedSupplierMove, cancelSupplierMoveTarget, openSupplierMoveConfirm, executeSupplierTransactionMove, openSelectedSupplierYearBoundary, saveSupplierYearBoundary, removeSupplierYearBoundary, deleteSelectedTransactions, renderSupplier, filterSupplierSearch, setInlineTri, setInlineBool, saveInlineText, closeModal, dismissModal, openTransactionModal, saveTransaction, deleteTransaction, openSelectedSupplierEditor, openSupplierModal, saveSupplier, setCustomerTab, toggleCustomerBulkMode, toggleCustomerBulkRow, toggleCustomerBulkVisible, deleteSelectedCustomerRows, renderCustomers, addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, setCustomerFlag, saveDebtNote, openDebtModal, openDebtProgressDetails, saveDebt, deleteDebt, openMorningDocument, openStandaloneMorningDocument, syncMorningDocumentType, syncMorningPaymentType, previewMorningDocument, createMorningDocument, openMorningExistingDocument, reconcileMorningDocument, saveMorningRecoveryChoice, confirmMorningRecoveryChoice, openMorningDocuments, searchMorningDocuments, pageMorningDocuments, openMorningInvoicePicker, selectMorningInvoice, morningDocumentDetails, downloadMorningDocument, toggleServiceBulkMode, toggleServiceBulkRow, toggleServiceBulkVisible, deleteSelectedServiceCalls, renderService, openServiceGmail, toggleServiceFlag, openServiceModal, saveService, deleteService, openInventoryCategoryOrderModal, moveInventoryCategoryOrder, inventoryCategoryOrderDragStart, inventoryCategoryOrderDrop, saveInventoryCategoryOrder, toggleInventoryGroup, setWarehouseTab, toggleWarehouseBulkMode, toggleWarehouseBulkRow, toggleWarehouseBulkVisible, archiveSelectedInventoryItems, deleteSelectedWarehouseOrders, deleteSelectedInventoryEvents, toggleWarehousePickedOrders, renderWarehouse, openInventoryItemModal, saveInventoryItem, archiveInventoryItem, openStockAdjustmentModal, saveStockAdjustment, previewInventoryLocation, previewStockAdjustment, openStockTransfer, saveStockTransfer, previewStockTransfer, openInventoryDetails, openInventoryEventModal, saveInventoryEvent, editInventoryEvent, openStockReceive, receiveIncoming, confirmReceive, pickupReservation, releaseReservation, cancelIncoming, openWarehouseOrderModal, saveWarehouseOrder, setWarehouseOrderStatus, deleteWarehouseOrder, exportJson, beginJsonRestore, applyJsonRestore, refreshCloudBackups, loadMoreCloudBackups, previewCloudBackup, downloadCloudBackup, downloadSelectedCloudBackup, applySelectedCloudBackup, exportCsv, activateSavedFolder, chooseFolder, backupToFolder, finishCloudLogin, enableCloud, openCloud, logoutCloud, addStickyNote, updateStickyNote, deleteStickyNote, openStickyNoteReminder, changeStickyNoteReminderMonth, selectStickyNoteReminderDate, handleStickyNoteReminderCalendarKeydown, syncStickyNoteReminderCalendar, saveStickyNoteReminder, toggleNotesBulkMode, toggleNotesBulkRow, toggleNotesBulkVisible, deleteSelectedStickyNotes, calendarPrevPeriod, calendarToday, calendarNextPeriod, calendarSetView, calendarRefresh, calendarAuthAction, calendarNewEvent, calendarDayCreate, calendarOpenEvent, calendarToggleAllDay, calendarSyncStartDate, calendarSyncEndDate, calendarSaveQuickEvent, calendarExpandQuickEvent, calendarSaveEvent, calendarDeleteEvent}){
+const bankSearch=createLazyDeferredSearchUpdater(value=>{ui.bankSearchValue=value},setOrdersBankSearch);
+const creditSearch=createLazyDeferredSearchUpdater(value=>{ui.creditSearchValue=value},setOrdersCreditSearch);
+const checksSearch=createLazyDeferredSearchUpdater(value=>{ui.checkSearchValue=value},renderChecksSearch);
+const supplierSearch=createLazyDeferredSearchUpdater(()=>{},filterSupplierSearch);
+const customerSearch=createLazyDeferredSearchUpdater(value=>{customerUi.customerSearch=value},()=>renderCustomers({resultsOnly:true}));
+const serviceSearch=createLazyDeferredSearchUpdater(value=>{serviceUi.serviceSearch=value},()=>renderService({resultsOnly:true}));
+const warehouseSearch=createLazyDeferredSearchUpdater(value=>{warehouseUi.warehouseSearch=value},()=>renderWarehouse({resultsOnly:true}));
 const actions={
   ...creditOrderActions,
   'orders-cashflow-breakdown':element=>openOrdersCashflowBreakdown(element.dataset.clickArg0),
@@ -17,7 +25,7 @@ const actions={
   'set-orders-bank-data-view':(element,event)=>{setOrdersBankDataView(element.dataset.clickArg0)},
   'view-orders-bank-cheque-image':(element,event)=>{event?.preventDefault();event?.stopPropagation();openOrdersBankChequeImage(element.dataset.clickArg0,element.dataset.clickArg1,element.dataset.clickArg2)},
   'ack-orders-bank-missing':(element,event)=>{event?.preventDefault();event?.stopPropagation();acknowledgeOrdersBankMissing(Number(element.dataset.clickArg0))},
-  'orders-bank-search':(element,event)=>{setOrdersBankSearch(element.value)},
+  'orders-bank-search':(element,event)=>{bankSearch(element.value,element)},
   'orders-bank-date-mode':(element,event)=>{setOrdersBankDateMode(element.dataset.clickArg0||element.value)},
   'orders-bank-date-apply':(element,event)=>{const host=element.closest('.bank-date-filter');setOrdersBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')},
   'orders-bank-date-from':(element,event)=>{setOrdersBankDateBoundary('from',element.value)},
@@ -53,7 +61,7 @@ const actions={
   'orders-credit-detail-month-day':(element,event)=>{setOrdersCreditDetailMonth(element.dataset.clickArg0,element.dataset.clickArg1)},
   'orders-credit-detail-focus':(element,event)=>{setOrdersCreditDetailFocus(element.dataset.clickArg0,element.dataset.clickArg1)},
   'clear-orders-credit-detail-focus':(element,event)=>{clearOrdersCreditDetailFocus(element.dataset.clickArg0)},
-  'orders-credit-search':(element,event)=>{setOrdersCreditSearch(element.value)},
+  'orders-credit-search':(element,event)=>{creditSearch(element.value,element)},
   'toggle-orders-credit-sync-options':(element,event)=>{toggleOrdersCreditSyncOptions()},
   'orders-credit-included':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'included',element.checked)},
   'orders-credit-hidden':(element,event)=>{setOrdersCreditCardMapping(element.dataset.changeArg0,element.dataset.changeArg1,'hidden',element.checked)},
@@ -82,7 +90,7 @@ const actions={
   'check-bank-history-page':(element,event)=>{ui.checkBankHistoryPage=Number(element.dataset.clickArg0)||0;renderChecks();document.querySelectorAll('.check-bank-activity').forEach(panel=>{panel.open=true})},
   'check-year':(element,event)=>{ui.checkYear=element.value;renderChecks()},
   'toggle-checks-forecast':(element,event)=>{ui.checksForecastOpen=!ui.checksForecastOpen;const body=document.getElementById('checksForecastBody'),button=document.querySelector('[data-action="toggle-checks-forecast"]');if(body)body.hidden=!ui.checksForecastOpen;if(button){button.classList.toggle('open',ui.checksForecastOpen);button.setAttribute('aria-expanded',String(ui.checksForecastOpen))}},
-  'render-checks-search':(element,event)=>{renderChecksSearch(element.value)},
+  'render-checks-search':(element,event)=>{checksSearch(element.value,element)},
   'open-check-modal':(element,event)=>{openCheckModal()},
   'mark-check-deposited':(element,event)=>{markCheckDeposited(element.dataset.clickArg0)},
   'mark-check-cleared':(element,event)=>{markCheckCleared(element.dataset.clickArg0)},
@@ -113,7 +121,7 @@ const actions={
   'open-transaction-modal':(element,event)=>{openTransactionModal(null,element.dataset.clickArg0)},
   'set-supplier-year-view':(element,event)=>{setSupplierYearView(element.value)},
   'set-summary-supplier-year-view':(element,event)=>{setSummarySupplierYearView(element.value)},
-  'filter-supplier-search':(element,event)=>{filterSupplierSearch(element.value)},
+  'filter-supplier-search':(element,event)=>{supplierSearch(element.value,element)},
   'filter-mode':(element,event)=>{supplierUi.filterMode='all';renderSupplier({scrollMode:'end'})},
   'filter-mode-2':(element,event)=>{supplierUi.filterMode='pending';renderSupplier({scrollMode:'end'})},
   'filter-mode-3':(element,event)=>{supplierUi.filterMode='invoice';renderSupplier({scrollMode:'end'})},
@@ -145,7 +153,7 @@ const actions={
   'customer-filter-4':(element,event)=>{customerUi.customerFilter='closed';renderCustomers({resetScroll:true})},
   'set-customer-tab':(element,event)=>{setCustomerTab('debts')},
   'set-customer-tab-2':(element,event)=>{setCustomerTab('orders')},
-  'customer-search':(element,event)=>{customerUi.customerSearch=element.value;renderCustomers({resultsOnly:true})},
+  'customer-search':(element,event)=>{customerSearch(element.value,element)},
   'open-debt-modal':(element,event)=>{openDebtModal()},
   'blur-on-enter':(element,event)=>{if(event.key==='Enter')element.blur()},
   'add-customer-order':(element,event)=>{addCustomerOrder()},
@@ -183,7 +191,7 @@ const actions={
   'toggle-service-bulk-visible':(element,event)=>{toggleServiceBulkVisible()},
   'delete-selected-service-calls':(element,event)=>{deleteSelectedServiceCalls()},
   'open-service-modal':(element,event)=>{openServiceModal()},
-  'service-search':(element,event)=>{serviceUi.serviceSearch=element.value;renderService({resultsOnly:true})},
+  'service-search':(element,event)=>{serviceSearch(element.value,element)},
   'service-filter':(element,event)=>{serviceUi.serviceFilter='all';renderService()},
   'service-filter-2':(element,event)=>{serviceUi.serviceFilter='open';renderService()},
   'service-filter-3':(element,event)=>{serviceUi.serviceFilter='follow';renderService()},
@@ -215,7 +223,7 @@ const actions={
   'toggle-warehouse-picked-orders':(element,event)=>{toggleWarehousePickedOrders()},
   'open-inventory-item-modal-2':(element,event)=>{openInventoryItemModal()},
   'open-warehouse-order-modal':(element,event)=>{openWarehouseOrderModal()},
-  'warehouse-search':(element,event)=>{warehouseUi.warehouseSearch=element.value;renderWarehouse({resultsOnly:true})},
+  'warehouse-search':(element,event)=>{warehouseSearch(element.value,element)},
   'set-warehouse-tab':()=>{const hadStatusFilter=!!warehouseUi.inventoryFilter;warehouseUi.inventoryFilter='';if(warehouseUi.warehouseTab==='stock'){if(hadStatusFilter)renderWarehouse();return}setWarehouseTab('stock')},
   'set-warehouse-tab-2':(element,event)=>{setWarehouseTab('incoming')},
   'set-warehouse-tab-3':(element,event)=>{setWarehouseTab('reservations')},

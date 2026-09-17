@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildGlobalSearchEntries,normalizeGlobalSearchText,searchGlobalData} from '../netunim-orders/site/assets/js/domains/search/model.js';
+import {buildGlobalSearchEntries,normalizeGlobalSearchText,searchGlobalData,searchGlobalEntries} from '../netunim-orders/site/assets/js/domains/search/model.js';
 
 const state={
  suppliers:[{id:'S1',name:'אלפא רהיטים',note:'ספק ראשי'}],
@@ -35,6 +35,11 @@ test('global search spans modules for the same customer and keeps repository gro
  assert.ok(result.total>=7);
  const counts=Object.fromEntries(result.groups.map(x=>[x.key,x.total]));
  assert.ok(counts.customers>=2);assert.ok(counts.service>=1);assert.ok(counts.checks>=1);assert.ok(counts.warehouse>=2);assert.ok(counts.notes>=1);
+});
+
+test('global search can reuse a prebuilt index without changing results',()=>{
+ const entries=buildGlobalSearchEntries(state);
+ assert.deepEqual(searchGlobalEntries(entries,'משה כהן'),searchGlobalData(state,'משה כהן'));
 });
 
 test('global search normalizes punctuation, phone separators and money formatting',()=>{

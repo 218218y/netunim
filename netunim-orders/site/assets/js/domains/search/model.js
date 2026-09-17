@@ -66,10 +66,12 @@ function entryRank(entry,queryNormalized){
   return 4
 }
 
-export function searchGlobalData(state,query,{limitPerGroup=60}={}){
+export function searchGlobalEntries(entries,query,{limitPerGroup=60}={}){
   const queryNormalized=normalizeGlobalSearchText(query),queryCompact=compactSearchText(query),tokens=queryNormalized.split(' ').filter(Boolean);
   if(!queryNormalized)return{query:'',total:0,groups:GROUPS.map(group=>({...group,total:0,items:[]}))};
-  const matches=buildGlobalSearchEntries(state).filter(entry=>matchEntry(entry,queryCompact,tokens)).map((entry,index)=>({...entry,_rank:entryRank(entry,queryNormalized),_index:index}));
+  const matches=(Array.isArray(entries)?entries:[]).filter(entry=>matchEntry(entry,queryCompact,tokens)).map((entry,index)=>({...entry,_rank:entryRank(entry,queryNormalized),_index:index}));
   const groups=GROUPS.map(group=>{const items=matches.filter(x=>x.group===group.key).sort((a,b)=>a._rank-b._rank||String(a.context||'').localeCompare(String(b.context||''),'he')||a._index-b._index);return{...group,total:items.length,items:items.slice(0,Math.max(1,limitPerGroup)).map(({_rank,_index,...item})=>item)}});
   return{query:queryNormalized,total:matches.length,groups}
 }
+
+export function searchGlobalData(state,query,options={}){return searchGlobalEntries(buildGlobalSearchEntries(state),query,options)}

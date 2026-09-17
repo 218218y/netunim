@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeSearchText,searchMatch} from '../netunim-kupa/site/assets/js/core/search.js';
-import {buildKupaGlobalSearchEntries,searchKupaGlobalData} from '../netunim-kupa/site/assets/js/domains/search/model.js';
+import {buildKupaGlobalSearchEntries,searchKupaGlobalData,searchKupaGlobalEntries} from '../netunim-kupa/site/assets/js/domains/search/model.js';
 import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash/view.js';
 import {createDomainsExpensesView} from '../netunim-kupa/site/assets/js/domains/expenses/view.js';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
@@ -46,6 +46,11 @@ test('Kupa global search reaches the correct repository for domain-specific term
     assert.ok(bucket.total>0,`${query} should match ${group}`);
     if(id)assert.ok(bucket.items.some(x=>x.id===id),`${query} should reveal ${id}`);
   }
+});
+
+test('Kupa global search can reuse a prebuilt index without changing results',()=>{
+  const entries=buildKupaGlobalSearchEntries(state);
+  assert.deepEqual(searchKupaGlobalEntries(entries,'אלפא רהיטים'),searchKupaGlobalData(state,'אלפא רהיטים'));
 });
 
 test('shared Kupa search normalization handles punctuation, compact numbers and date aliases',()=>{
