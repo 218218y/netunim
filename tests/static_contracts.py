@@ -324,6 +324,7 @@ orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_te
 kupa_checks_view = (K / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 kupa_dashboard_view = (K / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 kupa_credit_view = (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8")
+kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
 ok('data-view="kupa"' in orders_html and 'data-view="checks"' not in orders_html and 'data-view="summary"' not in orders_html,
@@ -337,7 +338,7 @@ ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</sec
    and "if(section==='checks')return `<div class=\"kupa-checks-status\">${checksView.checksCloudLabel()}</div>`" in orders_finance_view
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
-   and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px' in orders_css
+   and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:8px;padding:0 2px}' in orders_css
    and '.kupa-hero>.finance-sync-section{flex:1 1 auto;min-width:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}' in orders_css
    and '.kupa-hero>.finance-sync-section .finance-command-row{min-height:36px;padding:0;background:transparent;align-items:center}' in orders_css
    and '.kupa-subtabs{display:flex;align-items:center;flex:0 0 auto;height:36px;gap:3px;padding:2px' in orders_css
@@ -378,6 +379,18 @@ ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finan
    and '.checks-page-embedded>.check-bank-review,.checks-page-embedded>.check-bank-activity{margin-block:0}' in orders_css
    and '.checks-page-embedded #checkGroups>.checks-month:first-child{margin-top:0}' in orders_css,
    "orders Kupa compact rhythm: Credit joins the global filters directly to Transactions, places the future-card disclosure after Transactions and before live provider data, while embedded Checks keep their compact rhythm")
+kupa_credit_render = kupa_credit_view.split('function renderCredit(){', 1)[1].split('function creditLocalProfileRow', 1)[0]
+ok('class="credit-report-stack"' in kupa_credit_render
+   and 'class="credit-primary-report"' in kupa_credit_render
+   and kupa_credit_render.index('class="toolbar credit-filter-toolbar"') < kupa_credit_render.index('${creditTransactionSectionsMarkup()}') < kupa_credit_render.index('class="section credit-forecast-section forecast-disclosure-section"') < kupa_credit_render.index("${summary.hasData?renderSyncedAccounts(summary):''}")
+   and 'style="margin-top:16px"' not in kupa_credit_view
+   and '.credit-report-stack{display:grid;gap:6px;min-width:0}' in kupa_css
+   and '.credit-primary-report>#credit-transaction-sections>.credit-detail-section{margin:0;border:0;border-radius:0;box-shadow:none}' in kupa_css
+   and 'class="checks-page-compact"' in kupa_checks_view
+   and '.checks-page-compact{display:flex;flex-direction:column;gap:6px;min-width:0}' in kupa_css
+   and '.checks-page-compact>.check-bank-review,.checks-page-compact>.check-bank-activity{margin-block:0}' in kupa_css
+   and '.checks-page-compact>.checks-forecast{margin-bottom:0}' in kupa_css,
+   "standalone Kupa compact rhythm: shared Credit and Checks surfaces follow the same ordering and spacing principles as Orders without inheriting unrelated Orders page geometry")
 orders_alert_center = (O / "site/assets/js/ui/alert-center.js").read_text(encoding="utf-8")
 ok('data-action="check-tab">הכל</button>' in orders_checks_view
    and 'data-action="check-tab">הכל</button>' in kupa_checks_view
@@ -450,15 +463,22 @@ ok(all('grid-template-columns:minmax(0,1fr) 68px' in css
    and 'height:38px' in orders_css
    and '.credit-detail-cycle-divider td{padding:5px 11px!important' in orders_css
    and '.credit-detail-cycle-divider td b{font-size:12px;font-weight:900}' in orders_css
-   and 'height:44px' in kupa_css
-   and '.credit-detail-cycle-divider td b{font-size:13px;font-weight:900}' in kupa_css,
-   "credit cycle controls: both apps keep the 10/15 choices and RTL menu behavior; Orders uses a denser 38px transaction toolbar and compact billing dividers while standalone Kupa preserves its existing sizing")
+   and '.credit-cycle-menu-trigger{box-sizing:border-box;width:168px;height:38px' in kupa_css
+   and '.credit-cycle-selector{box-sizing:border-box;display:inline-grid;grid-template-columns:minmax(0,1fr) 68px;width:168px;min-width:168px;height:38px' in kupa_css
+   and '.credit-detail-cycle-divider td{padding:5px 11px!important' in kupa_css
+   and '.credit-detail-cycle-divider td b{font-size:12px;font-weight:900}' in kupa_css,
+   "credit cycle controls: both apps keep the same compact 38px controls, 10/15 choices, billing dividers and RTL menu behavior")
 ok('.credit-filter-toolbar{display:grid;gap:8px;padding:5px 10px}' in orders_css
    and '.credit-primary-report .credit-detail-section-head{padding:6px 11px}' in orders_css
    and '.credit-cycle-menu-trigger{box-sizing:border-box;width:168px;height:38px' in orders_css
    and '.credit-cycle-selector{box-sizing:border-box;display:inline-grid;grid-template-columns:minmax(0,1fr) 68px;width:168px;min-width:168px;height:38px' in orders_css
-   and '.credit-cycle-selector-header{width:168px;min-width:168px;height:38px' in orders_css,
-   "orders credit density: filter frame and Transactions header use compact vertical padding and all billing-cycle controls share the same reduced 38px height")
+   and '.credit-cycle-selector-header{width:168px;min-width:168px;height:38px' in orders_css
+   and '.credit-filter-toolbar{display:grid;grid-template-columns:1fr;gap:8px;padding:5px 10px' in kupa_css
+   and '.credit-primary-report .credit-detail-section-head{padding:6px 11px}' in kupa_css
+   and '.credit-cycle-menu-trigger{box-sizing:border-box;width:168px;height:38px' in kupa_css
+   and '.credit-cycle-selector{box-sizing:border-box;display:inline-grid;grid-template-columns:minmax(0,1fr) 68px;width:168px;min-width:168px;height:38px' in kupa_css
+   and '.credit-cycle-selector-header{width:168px;min-width:168px;height:38px' in kupa_css,
+   "shared credit density: Orders and standalone Kupa use matching compact filter padding, Transactions header spacing and 38px billing-cycle controls")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
