@@ -335,7 +335,7 @@ ok("const KUPA_SECTIONS=['bank','credit','checks','summary']" in orders_finance_
 ok('<section class="kupa-hero">${kupaTabsMarkup()}${headerContextMarkup(s)}</section>' in orders_finance_view
    and "if(section==='bank')return bankCommandMarkup(s)" in orders_finance_view
    and "if(section==='credit')return creditCommandMarkup(s)" in orders_finance_view
-   and "if(section==='checks')return `<div class=\"kupa-checks-status\">${checksView.checksCloudLabel()}</div>`" in orders_finance_view
+   and "if(section==='checks')return checksView.checksHeaderContextMarkup()" in orders_finance_view
    and '<h1>קופה</h1>' not in orders_finance_view
    and 'בנק, אשראי, צ׳קים ומאזן במקום אחד.' not in orders_finance_view
    and '.kupa-hero{display:flex;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:8px;padding:0 2px}' in orders_css
@@ -364,9 +364,13 @@ ok("if(section==='bank')return `${bankSyncPanelMarkup(s,{open:ui.bankSyncOpen===
    and '.finance-sync-settings-page{min-width:0;border:1px solid #dbe3e8' in orders_css
    and 'max-height:52vh' not in orders_css and 'max-height:52dvh' not in orders_css,
    "orders Kupa sync disclosure: settings live in the main scroll surface, close reliably, and never create a nested vertical scroller")
-ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
-   and "checksMarkup({embedded=false,showEmbeddedStatus=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
-   "orders Kupa UI: existing Checks and Balance views are embedded without duplicating the shared-checks status row")
+ok("checksView.checksMarkup({embedded:true,showEmbeddedStatus:false,showBankActivity:false})" in orders_finance_view and "dashboardView.summaryMarkup({embedded:true})" in orders_finance_view
+   and "if(section==='checks')return checksView.checksHeaderContextMarkup()" in orders_finance_view
+   and 'function checksHeaderContextMarkup()' in orders_checks_view
+   and 'class="checks-header-activity"' in orders_checks_view
+   and orders_checks_view.index('class="checks-header-activity"') < orders_checks_view.index('${checksCloudLabel()}</div>`;', orders_checks_view.index('function checksHeaderContextMarkup'))
+   and "checksMarkup({embedded=false,showEmbeddedStatus=true,showBankActivity=true}" in orders_checks_view and "summaryMarkup({embedded=false}" in orders_dashboard_view,
+   "orders Kupa Checks header: the live bank-activity disclosure moves beside the shared-checks source label while embedded content omits the duplicate body disclosure")
 credit_markup_block = orders_finance_view.split('function creditMarkup(s)', 1)[1].split('function headerContextMarkup', 1)[0]
 ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finance_view
    and '.kupa-subcontent-credit{gap:6px}' in orders_css
@@ -375,10 +379,14 @@ ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finan
    and '.credit-primary-report{display:grid;gap:0;overflow:hidden;border:1px solid #dbe3e8;border-radius:15px' in orders_css
    and '.credit-primary-report>.credit-filter-toolbar,.credit-primary-report>.credit-detail-section{border:0;border-radius:0;box-shadow:none}' in orders_css
    and '.credit-primary-report>.credit-filter-toolbar{border-bottom:1px solid #dbe3e8}' in orders_css
-   and '.checks-page-embedded{gap:6px}' in orders_css
-   and '.checks-page-embedded>.check-bank-review,.checks-page-embedded>.check-bank-activity{margin-block:0}' in orders_css
-   and '.checks-page-embedded #checkGroups>.checks-month:first-child{margin-top:0}' in orders_css,
-   "orders Kupa compact rhythm: Credit joins the global filters directly to Transactions, places the future-card disclosure after Transactions and before live provider data, while embedded Checks keep their compact rhythm")
+   and '.checks-page-embedded{gap:0}' in orders_css
+   and '.checks-page-embedded>.check-bank-review{margin-block:0}' in orders_css
+   and '.checks-page-embedded #checkGroups>.checks-month:first-child{margin-top:0}' in orders_css
+   and '.checks-page-embedded>.checks-toolbar{padding:5px 7px;gap:6px}' in orders_css
+   and '.checks-page-embedded>.checks-toolbar .checks-segmented button{padding:5px 10px;line-height:1.15}' in orders_css
+   and '.checks-page-embedded>.checks-toolbar input,.checks-page-embedded>.checks-toolbar select{min-height:32px;padding:5px 8px}' in orders_css
+   and '.checks-header-activity>.check-bank-activity>.section-body{position:absolute;' in orders_css,
+   "orders Kupa compact rhythm: Credit keeps its joined report layout, while embedded Checks use a lower filter row and zero empty spacing from filters to monthly disclosure to the first month")
 kupa_credit_render = kupa_credit_view.split('function renderCredit(){', 1)[1].split('function creditLocalProfileRow', 1)[0]
 ok('class="credit-report-stack"' in kupa_credit_render
    and 'class="credit-primary-report"' in kupa_credit_render
