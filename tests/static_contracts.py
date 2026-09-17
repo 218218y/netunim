@@ -442,14 +442,23 @@ ok(all('grid-template-columns:minmax(0,1fr) 68px' in css
        and 'width:fit-content;max-width:100%' in css
        and 'min-width:0;flex:1 1 auto' in css
        and 'flex:0 0 auto;white-space:nowrap' in css
-       and 'height:44px' in css
        and 'min-height:0;height:100%' in css
        and 'padding-inline-start:9px;padding-inline-end:0' in css
        and 'padding-inline-end:6px;overflow-y:auto' in css
        and 'scrollbar-width:thin' in css
-       and '.credit-detail-cycle-divider td b{font-size:13px;font-weight:900}' in css
-       for css in (orders_css,kupa_css)),
-   "credit cycle controls: both apps keep the 10/15 choices side by side, anchor every RTL menu at its right edge, keep forecast amounts in bounds, center selector content, place the scrollbar at the menu edge, highlight pending bank settlement in yellow, and emphasize billing-time dividers")
+       for css in (orders_css,kupa_css))
+   and 'height:38px' in orders_css
+   and '.credit-detail-cycle-divider td{padding:5px 11px!important' in orders_css
+   and '.credit-detail-cycle-divider td b{font-size:12px;font-weight:900}' in orders_css
+   and 'height:44px' in kupa_css
+   and '.credit-detail-cycle-divider td b{font-size:13px;font-weight:900}' in kupa_css,
+   "credit cycle controls: both apps keep the 10/15 choices and RTL menu behavior; Orders uses a denser 38px transaction toolbar and compact billing dividers while standalone Kupa preserves its existing sizing")
+ok('.credit-filter-toolbar{display:grid;gap:8px;padding:5px 10px}' in orders_css
+   and '.credit-primary-report .credit-detail-section-head{padding:6px 11px}' in orders_css
+   and '.credit-cycle-menu-trigger{box-sizing:border-box;width:168px;height:38px' in orders_css
+   and '.credit-cycle-selector{box-sizing:border-box;display:inline-grid;grid-template-columns:minmax(0,1fr) 68px;width:168px;min-width:168px;height:38px' in orders_css
+   and '.credit-cycle-selector-header{width:168px;min-width:168px;height:38px' in orders_css,
+   "orders credit density: filter frame and Transactions header use compact vertical padding and all billing-cycle controls share the same reduced 38px height")
 ok('.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in orders_css
    and '.credit-cycle-selector:hover,.credit-cycle-selector:focus-within' in (ROOT/'netunim-kupa/site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-forecast-month:hover,.credit-forecast-month:focus-within' in orders_css
