@@ -9,6 +9,11 @@ common = r"""
  };
  const fire=(el,type)=>el.dispatchEvent(new Event(type,{bubbles:true}));
  const frame=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ const eventually=async(predicate,message,timeout=1500)=>{
+   const deadline=performance.now()+timeout;
+   while(performance.now()<deadline){if(predicate())return;await frame()}
+   if(!predicate())throw new Error(message);
+ };
  const respondConfirm=async accept=>{
    const backdrop=document.getElementById('confirmBackdrop');
    if(!backdrop?.classList.contains('open'))throw new Error('Expected styled confirmation dialog');
@@ -84,9 +89,11 @@ expressions = {
  if(state.transactions[0].invoiceReceived!==true)throw new Error('Tri-state yes failed');
  document.querySelector('.status-toggle .yes').click();
  if(state.transactions[0].invoiceReceived!==null)throw new Error('Tri-state toggle failed');
- const search=document.querySelector('.supplier-search');search.value='missing';fire(search,'input');
- if(!document.querySelector('tr[data-tx-id]').hidden)throw new Error('Delegated search failed');
+ const search=document.querySelector('.supplier-search'),supplierRow=document.querySelector('tr[data-tx-id]');
+ search.value='missing';fire(search,'input');
+ await eventually(()=>supplierRow.hidden,'Delegated search failed');
  search.value='';fire(search,'input');
+ await eventually(()=>!supplierRow.hidden,'Delegated search clear failed');
  toggleSupplierBulkMode();const cb=document.querySelector('tbody .bulk-check');cb.checked=true;fire(cb,'change');
  if(!supplierBulkSelected.has('T1'))throw new Error('Bulk selection failed');
  openSupplierOrderModal();await frame();clickText('#modal','↓');
