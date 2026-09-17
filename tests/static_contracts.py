@@ -440,23 +440,25 @@ ok('.bank-date-menu{position:absolute' in orders_css and '.bank-transactions-reg
    and '.bank-date-menu{position:absolute' in (K / 'site/assets/app.css').read_text(encoding='utf-8') and '.bank-transactions-caption{position:relative;overflow:visible}' in (K / 'site/assets/app.css').read_text(encoding='utf-8'),
    "bank date scope layout: the date picker is an anchored floating panel that cannot consume caption-row width or be clipped behind balance/cashflow content")
 kupa_compact_css=(K / 'site/assets/app.css').read_text(encoding='utf-8')
-ok(bank_view.count('class="bank-account-overview ')==2 and bank_view.count('class="bank-account-metrics"')==2
+ok(kupa_dashboard_view.count('class="bank-account-overview ')==2 and kupa_dashboard_view.count('class="bank-account-metrics"')==2
+   and bank_view.count('class="bank-account-overview ')==0 and bank_view.count('class="bank-account-metrics"')==0
    and '.bank-account-overview-body{display:grid;grid-template-columns:minmax(270px,1.25fr) minmax(0,3.75fr)' in kupa_compact_css
    and '.bank-account-metrics{min-width:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))' in kupa_compact_css
    and '.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 14px' in kupa_compact_css
-   and '.net-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))' in kupa_compact_css
+   and '.dashboard-net-summary{grid-template-columns:repeat(3,minmax(0,1fr))' in kupa_compact_css
    and 'grid-template-columns:minmax(260px,1.15fr) repeat(3,minmax(150px,.75fr))' not in kupa_compact_css,
-   "kupa compact UI: each bank account is one cohesive overview with a five-metric strip, dashboard KPIs stay compact, and the old multi-row amount-card grid cannot return")
+   "kupa compact UI: business/home bank overviews live once at the start of Dashboard with five-metric strips, while Bank stays transaction-focused and dashboard KPIs stay compact")
 ok('הוצאות לפי חשבון' in expense_view and 'הגדרת הוצאות קבועות ונוספות' in expense_view and '+ הוצאה חדשה' in expense_view
    and "cycleAccountRows('עסקי',businessCycle)" in expense_view and "cycleAccountRows('ביתי',homeCycle)" in expense_view
    and 'הגדרת הוצאות קבועות ונוספות' not in bank_view and '<div class="net-summary">' not in bank_view,
    "kupa expense ownership: editable expense sections live in the Expenses domain and render explicit business/home groups instead of depending on Bank markup")
 ok('class="net-summary dashboard-net-summary"' in kupa_dashboard_view
-   and all(label in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד','סה״כ קופה','חוב לקוחות פתוח','נטו ספקים','מאזן כולל נטו'))
+   and all(label in kupa_dashboard_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי עד אופק התזרים','הוצאות עסקיות עד אופק התזרים','עו״ש עסקי באופק','אשראי ביתי עד אופק התזרים','הוצאות ביתיות עד אופק התזרים','עו״ש ביתי באופק','סה״כ קופה','חוב לקוחות פתוח','נטו ספקים','מאזן כולל נטו'))
+   and all(label not in kupa_dashboard_view for label in ('עו״ש עסקי מעודכן','כל האשראי העסקי שנותר','הוצאות עסקיות חודש אחד'))
    and 'עו״ש עסקי − כל האשראים העסקיים העתידיים − חודש הוצאות עסקיות + קופה + חוב לקוחות פתוח + נטו ספקים' in kupa_dashboard_view
    and 'class="grid kpis"' not in kupa_dashboard_view
-   and 'forecastIncomplete' in kupa_dashboard_view and 'סכום ₪ ידוע בלבד' in kupa_dashboard_view,
-   "kupa dashboard: cash-inclusive Kupa position is extended by canonical open-customer and supplier-net balances, and incomplete credit can never look exact")
+   and 'forecastIncomplete' in kupa_dashboard_view and 'מבוסס על סכומי ₪ הידועים כרגע' in kupa_dashboard_view and 'partialFacts' in kupa_dashboard_view,
+   "kupa dashboard: the canonical bank/cashflow overview replaces duplicate business KPI cards, while cash/customer/supplier net position remains compact and incomplete credit is visibly partial")
 bank_model=(K / "site/assets/js/domains/bank/model.js").read_text(encoding="utf-8")
 shared_kupa_cashflow=(ROOT / "shared/kupa-cashflow.js").read_text(encoding="utf-8")
 shared_credit_cycles=(ROOT / "shared/credit-billing-cycles.js").read_text(encoding="utf-8")
@@ -482,9 +484,9 @@ ok("ordersFinanceSummaryData" in orders_finance_shared
 ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowData(state,account,reference)" in bank_model
    and "from '../../shared/kupa-cashflow.js'" in bank_model and "from '../../shared/kupa-cashflow.js'" in orders_bank_readout
    and "account.months" in shared_credit_cycles and "creditCyclesThroughHorizonData" in shared_kupa_cashflow and "bankHomeNextCycleCommitmentsData" in bank_model and "bankHomeProjectedThisMonthData" in bank_model
-   and all(label in bank_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי עד אופק התזרים','הוצאות עסקיות עד אופק התזרים','עו״ש עסקי באופק','אשראי ביתי עד אופק התזרים','הוצאות ביתיות עד אופק התזרים','עו״ש ביתי באופק'))
+   and all(label in kupa_dashboard_view for label in ('חשבון עסקי','חשבון ביתי','אשראי עסקי עד אופק התזרים','הוצאות עסקיות עד אופק התזרים','עו״ש עסקי באופק','אשראי ביתי עד אופק התזרים','הוצאות ביתיות עד אופק התזרים','עו״ש ביתי באופק'))
    and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
-   "kupa account ownership: business/home bank, credit and expenses use one role-aware exact-horizon model and render as two explicit four-card groups with separated expense tables")
+   "kupa account ownership: business/home bank, credit and expenses use one role-aware exact-horizon model and render as two explicit five-metric Dashboard groups with separated expense tables")
 ok("function applyKupaCoreState" in kupa_sync_document
    and kupa_sync_document.count("applyKupaCoreState(authoritative") >= 2
    and "applyKupaCoreState(pending.snapshot" in kupa_sync_document

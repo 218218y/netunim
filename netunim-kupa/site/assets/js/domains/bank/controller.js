@@ -81,12 +81,6 @@ async function commitBankSnapshot(balance,{source='manual',accountNumber=null,ba
   return saveState(message);
 }
 
-async function saveBankBalance(){
-  const el=document.getElementById('bankBalanceInput');
-  if(!el||el.value==='')return toast('יש להזין יתרת עו״ש');
-  try{await commitBankSnapshot(el.value,{source:'manual'})}catch(e){toast(e.message||String(e))}
-}
-
 function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows,directSnapshot:cache.directSnapshot}):normalized}
 function bankBridgeUiState(){
   const feed=displayArchiveFeed('business',model.state.bank?.feed),homeFeed=displayArchiveFeed('home',model.state.bank?.homeFeed);
@@ -288,5 +282,5 @@ function maybeAutoRefreshBankBalance(){
   autoTimer=setTimeout(()=>{autoTimer=null;refreshBankBalance({interactive:false,auto:true}).catch(e=>console.error('bank auto refresh',e))},300);
 }
 
-return {saveBankBalance,bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
+return {bankBridgeUiState,ensureBankDisplayArchive,refreshBankBridgeStatus,saveBankBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,setBankAutoRefresh,refreshBankBalance,acknowledgeMissingBankTransaction,maybeAutoRefreshBankBalance,commitBankSnapshot};
 }
