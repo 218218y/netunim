@@ -230,11 +230,17 @@ ok(-1 not in (nav_open, nav_close, alert_slot_pos, alert_button_pos)
    "orders warning indicator: alerts live in a dedicated non-scrolling slot beside the tabs and disappear as a unit when empty")
 ok('.folder-access-slot{display:flex;flex:0 0 5rem;inline-size:5rem}' in orders_css,
    "orders: desktop folder-access slot keeps stable header geometry")
-ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:13px env(safe-area-inset-right,0px) max(22px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px);overflow:hidden}' in orders_css
+ok('.main{flex:1 1 auto;min-width:0;min-height:0;width:100%;max-width:none;margin:0;padding:0 env(safe-area-inset-right,0px) max(22px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px);overflow:hidden}' in orders_css
    and 'max-width:1900px' not in orders_css
-   and '.main{padding:10px env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}' in orders_css
-   and orders_css.count('.main{padding:8px env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}') == 2,
-   "orders content width: the shared page shell reaches both viewport edges at every breakpoint while preserving safe-area insets")
+   and '.main{padding:0 env(safe-area-inset-right,0px) max(14px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}' in orders_css
+   and orders_css.count('.main{padding:0 env(safe-area-inset-right,0px) max(12px,env(safe-area-inset-bottom)) env(safe-area-inset-left,0px)}') == 2,
+   "orders content geometry: the shared page shell reaches both viewport edges and starts directly under the top navigation at every breakpoint while preserving safe-area insets")
+ok('.view-shell>.view-head>:last-child{margin-bottom:0}' in orders_css
+   and '.calendar-view .view-head{padding-bottom:0}' in orders_css
+   and '.settings-view-shell{padding-top:13px}' in orders_css
+   and '.settings-view-shell{padding-top:10px}' in orders_css
+   and '.settings-view-shell{padding-top:8px}' in orders_css,
+   "orders view stack: tab command/header rows meet the top navigation and their scroll content without duplicate blank gutters, while the non-tab settings screen keeps its intentional breathing room")
 ok('הגדרות, ענן וגיבוי' not in orders_settings
    and 'נתוני ההזמנות נשמרים במסמך נפרד' not in orders_settings
    and "mountViewLayout({headCount:0,className:'settings-view-shell',scrollKey:'settings'})" in orders_settings,
