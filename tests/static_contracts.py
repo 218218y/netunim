@@ -575,10 +575,13 @@ ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowD
    and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
    "kupa account ownership: business/home bank, credit and expenses use one role-aware exact-horizon model and render as two explicit five-metric Dashboard groups with separated expense tables")
 ok("function applyKupaCoreState" in kupa_sync_document
-   and kupa_sync_document.count("applyKupaCoreState(authoritative") >= 2
+   and "function applyAcknowledgedCoreState" in kupa_sync_document
+   and "const next=applyKupaCoreState(snapshot,model.state.checks)" in kupa_sync_document
+   and "businessChanged=applyAcknowledgedCoreState(authoritative)" in kupa_sync_document
+   and "businessChanged=applyAcknowledgedCoreState(newest.snapshot)" in kupa_sync_document
    and "applyKupaCoreState(pending.snapshot" in kupa_sync_document
-   and "applyKupaCoreState(newest.snapshot" in kupa_sync_document,
-   "kupa save ownership: Kupa-only save responses are reapplied through a finance-preserving overlay instead of resetting bank/credit state")
+   and "applyKupaCoreState(newest?.snapshot||authoritative" in kupa_sync_document,
+   "kupa save ownership: normal ACK and recovery paths reapply Kupa-only responses through the finance-preserving overlay without forcing an unchanged render")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
 ok('button data-action="set-page"' in kupa_dashboard_view

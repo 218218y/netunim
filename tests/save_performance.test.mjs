@@ -64,9 +64,10 @@ test('Kupa offline burst stays durable and resumes from the latest pending recor
   const f=fixture();navigator.onLine=false;
   for(let i=0;i<5;i++){f.model.state.notes[0].content=String(i);f.api.saveState()}
   assert.equal(await f.session.saveQueue,false);assert.equal(f.sent.length,0);
+  assert.equal(f.renders,0,'offline persistence updates sync status without rebuilding an unchanged business view');
   assert.equal((await f.storage.getCloudPending()).snapshot.notes[0].content,'4');
   navigator.onLine=true;assert.equal(await f.document.persistSupabaseState(f.model.state,'',f.session.localGeneration),true);
-  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'4');assert.equal(f.stages,5);
+  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'4');assert.equal(f.stages,5);assert.equal(f.renders,0);
 });
 
 test('Kupa authoritative changes still render, while plain ACKs preserve the screen',async()=>{
