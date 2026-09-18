@@ -1,8 +1,8 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsRecordsCommands({model, saveState, saveChecksState, closeModal, confirmDialog}){
-async function deleteRecord(collection,id){if(!await confirmDialog(collection==='checks'?'מחיקת צ׳ק':'מחיקת רשומה','למחוק את הרשומה? פעולה זו תישמר במקור הנתונים.',{confirmText:'מחק',cancelText:'ביטול',tone:'danger'}))return;model.state[collection]=model.state[collection].filter(x=>x.id!==id);closeModal(true);if(collection==='checks')saveChecksState('הצק נמחק',{deletedIds:[id],mutationType:'delete',surface:'kupa.delete.checks'});else saveState('הרשומה נמחקה',{deleteIntents:{[collection]:[id]},mutationType:'delete',surface:`kupa.delete.${collection}`})}
+export function createDomainsRecordsCommands({model, saveState, saveChecksState, closeModal, confirmDialog, renderCollection}){
+async function deleteRecord(collection,id){if(!await confirmDialog(collection==='checks'?'מחיקת צ׳ק':'מחיקת רשומה','למחוק את הרשומה? פעולה זו תישמר במקור הנתונים.',{confirmText:'מחק',cancelText:'ביטול',tone:'danger'}))return false;model.state[collection]=model.state[collection].filter(x=>x.id!==id);closeModal(true);if(collection==='checks')saveChecksState('הצק נמחק',{deletedIds:[id],mutationType:'delete',surface:'kupa.delete.checks'});else{saveState('הרשומה נמחקה',{deleteIntents:{[collection]:[id]},mutationType:'delete',surface:`kupa.delete.${collection}`});renderCollection(collection)}return true}
 
 return { deleteRecord };
 }

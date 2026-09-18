@@ -9,6 +9,10 @@ import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/nor
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {createStorageBrowser as kupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {createStorageBackup} from '../netunim-kupa/site/assets/js/storage/backup.js';
+import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/cash/editor.js';
+import {createDomainsExpensesEditor} from '../netunim-kupa/site/assets/js/domains/expenses/editor.js';
+import {createDomainsCreditEditor} from '../netunim-kupa/site/assets/js/domains/credit/editor.js';
+import {createDomainsRecordsCommands} from '../netunim-kupa/site/assets/js/domains/records/commands.js';
 import {BROWSER_STATE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 import {configurePerformance,beginMeasure,performanceSummary,clearPerformance} from '../shared/runtime-performance.js';
 import {supplierRenderModelData,supplierViewRowsData,balanceRowsData,supplierYearContextData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
@@ -73,6 +77,32 @@ test('Kupa offline burst stays durable and resumes from the latest pending recor
 test('Kupa authoritative changes still render, while plain ACKs preserve the screen',async()=>{
   const f=fixture({send:async body=>{const state=clone(body.p_state);state.notes[1].content='remote';return {revision:11,state}}});
   assert.equal(await f.api.saveState(),true);assert.equal(f.renders,1);assert.equal(f.model.state.notes[1].content,'remote');
+});
+
+test('Kupa local mutation owners refresh their own view without relying on persistence renders',async t=>{
+  const previousDocument=globalThis.document;t.after(()=>{globalThis.document=previousDocument});
+  const fields=new Map(),field=(id,value)=>fields.set(id,{value,String(){return this.value}}).get(id);
+  globalThis.document={getElementById:id=>fields.get(id)};
+  let saves=0,cashRenders=0,creditRenders=0,closed=0;
+  const common={armModalDraftGuard:noop,modal:noop,deleteRecord:noop,saveState:()=>{saves++},toast:message=>{throw new Error(message)},closeModal:()=>{closed++},dateEditorMarkup:noop};
+
+  field('mType','הכנסה');field('mDate','2026-09-18');field('mDesc','Cash');field('mAmount','120');field('mNote','note');
+  const cashModel={state:{cash:[],rights:[]}},cash=createDomainsCashEditor({...common,model:cashModel,renderCash:()=>{cashRenders++}});
+  cash.saveCash('');
+  assert.equal(cashModel.state.cash.length,1);assert.equal(cashModel.state.cash[0].amount,120);assert.equal(cashRenders,1);
+
+  field('eDesc','Rent');field('eAccount','עסקי');field('eAmount','50');field('eDate','2026-09-18');field('eType','חיוב קבוע');field('eRecurring','כן');field('eActive','כן');field('eNote','');
+  const expenseModel={state:{expenses:[]}},expenses=createDomainsExpensesEditor({...common,model:expenseModel,renderCredit:()=>{creditRenders++}});
+  expenses.saveExpense('');assert.equal(expenseModel.state.expenses.length,1);assert.equal(creditRenders,1);
+
+  field('cAccount','עסקי');field('cOwner','Owner');field('cCard','VISA');field('cDesc','Legacy');field('cTx','2026-09-18');field('cTotal','90');field('cParts','1');field('cFirst','2026-10-10');field('cActive','כן');field('cNote','');
+  const creditModel={state:{credits:[{id:'CR1',createdAt:'2026-01-01'}],cards:[],creditSync:{}}},credit=createDomainsCreditEditor({...common,model:creditModel,nextChargeDate:noop,setDateValue:noop,renderCredit:()=>{creditRenders++}});
+  credit.saveCredit('CR1');assert.equal(creditModel.state.credits[0].totalAmount,90);assert.equal(creditRenders,2);
+
+  const deletedModel={state:{cash:[{id:'C1'}],checks:[]}},rendered=[];
+  const records=createDomainsRecordsCommands({model:deletedModel,saveState:()=>{saves++},saveChecksState:noop,closeModal:()=>{closed++},confirmDialog:async()=>true,renderCollection:name=>rendered.push(name)});
+  assert.equal(await records.deleteRecord('cash','C1'),true);assert.deepEqual(rendered,['cash']);assert.equal(deletedModel.state.cash.length,0);
+  assert.equal(saves,4);assert.equal(closed,4);
 });
 
 test('supplier render model groups once, preserves financial/year semantics and sees subsequent in-place edits',()=>{

@@ -46,13 +46,14 @@ test('rights editor keeps canonical types, shows requested labels and applies th
     mDate:{value:'2026-09-01'},mType:{value:'הכנסה'},mDesc:{value:'בדיקה'},mAmount:{value:'75.48'},mNote:{value:'הערה'}
   };
   Object.defineProperty(globalThis,'document',{value:{getElementById:id=>fields[id]},configurable:true});
-  let modalSave=null,modalBody='',saved='',cashOpened=0,rightOpened=0;
+  let modalSave=null,modalBody='',saved='',cashOpened=0,rightOpened=0,renders=0;
   const model={state:{cash:[],rights:[]}};
-  const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,body,_s,onSave)=>{modalBody=body;modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup});
+  const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,body,_s,onSave)=>{modalBody=body;modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup,renderCash:()=>{renders++}});
   editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);assert.match(modalBody,/value="הכנסה" selected>זכות למעשר/);assert.match(modalBody,/value="הוצאה" >חובה למעשר/);assert.match(modalBody,/אין צורך להוסיף מינוס/);modalSave();
   assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].type,'הכנסה');assert.equal(model.state.rights[0].amount,75.48);assert.equal(saved,'תנועת המעשר נשמרה');
   fields.mType.value='הוצאה';fields.mAmount.value='12.34';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-12.34);
   fields.mAmount.value='-9.99';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-9.99,'a typed minus must not invert a debit into a credit');
+  assert.equal(renders,3,'each local ledger mutation refreshes the cash view immediately');
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
   actions['open-cash-modal']({dataset:{}},{});actions['open-right-modal']({dataset:{}},{});
   assert.equal(cashOpened,1);assert.equal(rightOpened,1);

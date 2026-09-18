@@ -46,8 +46,9 @@ test('Kupa bulk rights deletion declares exact IDs',()=>assertKupaBulkIntent('ri
 
 test('single Kupa deletion declares intent for main records and Shared Checks',async()=>{
   for(const collection of ['credits','checks']){
-    const calls=[],model={state:{[collection]:[{id:'ONE'},{id:'KEEP'}]}},api=createDomainsRecordsCommands({model,closeModal(){},confirmDialog:async()=>true,saveState:(message,options)=>calls.push(options),saveChecksState:(message,options)=>calls.push(options)});
+    const calls=[],renders=[],model={state:{[collection]:[{id:'ONE'},{id:'KEEP'}]}},api=createDomainsRecordsCommands({model,closeModal(){},confirmDialog:async()=>true,saveState:(message,options)=>calls.push(options),saveChecksState:(message,options)=>calls.push(options),renderCollection:name=>renders.push(name)});
     await api.deleteRecord(collection,'ONE');assert.deepEqual(model.state[collection],[{id:'KEEP'}]);assert.deepEqual(calls[0],collection==='checks'?{deletedIds:['ONE'],mutationType:'delete',surface:'kupa.delete.checks'}:{deleteIntents:{credits:['ONE']},mutationType:'delete',surface:'kupa.delete.credits'});
+    assert.deepEqual(renders,collection==='checks'?[]:[collection]);
   }
 });
 

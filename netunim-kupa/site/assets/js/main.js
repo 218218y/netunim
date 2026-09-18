@@ -640,6 +640,7 @@ const domainsCreditEditor=createDomainsCreditEditor({
   closeModal:(...args)=>uiModal.closeModal(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
+  renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
 });
 
 const domainsCashEditor=createDomainsCashEditor({
@@ -651,6 +652,7 @@ const domainsCashEditor=createDomainsCashEditor({
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  renderCash:(...args)=>domainsCashView.renderCash(...args),
 });
 
 const domainsExpensesEditor=createDomainsExpensesEditor({
@@ -662,6 +664,7 @@ const domainsExpensesEditor=createDomainsExpensesEditor({
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
 });
 
 const domainsRecordsCommands=createDomainsRecordsCommands({
@@ -670,6 +673,10 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
   saveChecksState:(...args)=>storagePersistence.saveChecksState(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  renderCollection:collection=>{
+    if(collection==='cash'||collection==='rights')domainsCashView.renderCash();
+    else if(collection==='expenses'||collection==='credits')domainsCreditView.renderCredit();
+  },
 });
 
 const uiBackup=createUiBackup({

@@ -8,7 +8,7 @@ function amountGuide(labels){
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCashEditor({model, armModalDraftGuard, modal, deleteRecord, saveState, toast, closeModal, dateEditorMarkup}){
+export function createDomainsCashEditor({model, armModalDraftGuard, modal, deleteRecord, saveState, toast, closeModal, dateEditorMarkup, renderCash}){
 function ledgerModal(collection,id,labels){
   const r=id?model.state[collection].find(x=>x.id===id):{date:todayISO(),type:'הכנסה',description:'',amount:'',note:''};
   const supportsCents=labels.supportsCents===true,types=ledgerTypeOptions(collection),amountValue=ledgerEditorAmount(r.type,r.amount);
@@ -20,7 +20,7 @@ function saveLedger(collection,id,labels){
   const rec={id:id||uid(labels.idPrefix),date:document.getElementById('mDate').value,type,description:document.getElementById('mDesc').value.trim(),amount:applyLedgerTypeSign(type,parsedAmount),note:document.getElementById('mNote').value.trim()};
   if(!rec.date||!rec.amount)return toast('יש למלא תאריך וסכום');
   if(id)model.state[collection][model.state[collection].findIndex(x=>x.id===id)]=rec;else model.state[collection].push(rec);
-  closeModal(true);saveState(labels.savedMessage)
+  closeModal(true);saveState(labels.savedMessage);renderCash()
 }
 const CASH_LABELS={editTitle:'עריכת תנועת מזומן',newTitle:'תנועת מזומן חדשה',idPrefix:'CASH',savedMessage:'תנועת המזומן נשמרה',positiveLabel:'הכנסה',negativeLabel:'הוצאה'};
 const RIGHTS_LABELS={editTitle:'עריכת תנועת מעשר',newTitle:'תנועת מעשר חדשה',idPrefix:'RIGHT',savedMessage:'תנועת המעשר נשמרה',supportsCents:true,positiveLabel:'זכות למעשר',negativeLabel:'חובה למעשר'};
