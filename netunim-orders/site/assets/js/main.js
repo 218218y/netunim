@@ -34,6 +34,7 @@ import {createDomainsCustomers} from './domains/customers/composition.js';
 import {createDomainsServiceBulk} from './domains/service/bulk.js';
 import {createDomainsServiceView} from './domains/service/view.js';
 import {createDomainsServiceEditor} from './domains/service/editor.js';
+import {createServiceActionPorts} from './domains/service/action-ports.js';
 import {createDomainsInventorySelectors} from './domains/inventory/selectors.js';
 import {createDomainsInventoryOrder} from './domains/inventory/order.js';
 import {createDomainsInventoryView} from './domains/inventory/view.js';
@@ -41,6 +42,7 @@ import {createDomainsWarehouseBulk} from './domains/warehouse/bulk.js';
 import {createDomainsWarehouseView} from './domains/warehouse/view.js';
 import {createDomainsInventoryEditor} from './domains/inventory/editor.js';
 import {createDomainsWarehouseEditor} from './domains/warehouse/editor.js';
+import {createWarehouseActionPorts} from './domains/warehouse/action-ports.js';
 import {createUiBackup} from './ui/backup.js';
 import {createStateSelectors} from './state/selectors.js';
 import {createStorageFiles} from './storage/files.js';
@@ -651,6 +653,7 @@ const domainsFinanceController=createDomainsFinanceController({
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
   acknowledgeBankTransactionAlert:(...args)=>cloudTransport.acknowledgeBankTransactionAlert(...args),
   syncBankChequeImages:bankChequeImages.sync,
+  touchBankDisplayRevision:()=>domainRevisions.touch('bankDisplay'),
 });
 
 const domainsFinanceView=createDomainsFinanceView({
@@ -973,55 +976,8 @@ const uiActions=createUiActions({
   selectMorningInvoice:(...args)=>domainsCustomers.selectMorningInvoice(...args),
   morningDocumentDetails:(...args)=>domainsCustomers.morningDocumentDetails(...args),
   downloadMorningDocument:(...args)=>domainsCustomers.downloadMorningDocument(...args),
-  toggleServiceBulkMode:(...args)=>domainsServiceBulk.toggleServiceBulkMode(...args),
-  toggleServiceBulkRow:(...args)=>domainsServiceBulk.toggleServiceBulkRow(...args),
-  toggleServiceBulkVisible:(...args)=>domainsServiceBulk.toggleServiceBulkVisible(...args),
-  deleteSelectedServiceCalls:(...args)=>domainsServiceBulk.deleteSelectedServiceCalls(...args),
-  renderService:(...args)=>domainsServiceView.renderService(...args),
-  openServiceGmail:(...args)=>domainsServiceView.openServiceGmail(...args),
-  toggleServiceFlag:(...args)=>domainsServiceView.toggleServiceFlag(...args),
-  openServiceModal:(...args)=>domainsServiceEditor.openServiceModal(...args),
-  saveService:(...args)=>domainsServiceEditor.saveService(...args),
-  deleteService:(...args)=>domainsServiceEditor.deleteService(...args),
-  openInventoryCategoryOrderModal:(...args)=>domainsInventoryOrder.openInventoryCategoryOrderModal(...args),
-  moveInventoryCategoryOrder:(...args)=>domainsInventoryOrder.moveInventoryCategoryOrder(...args),
-  inventoryCategoryOrderDragStart:(...args)=>domainsInventoryOrder.inventoryCategoryOrderDragStart(...args),
-  inventoryCategoryOrderDrop:(...args)=>domainsInventoryOrder.inventoryCategoryOrderDrop(...args),
-  saveInventoryCategoryOrder:(...args)=>domainsInventoryOrder.saveInventoryCategoryOrder(...args),
-  toggleInventoryGroup:(...args)=>domainsInventorySelectors.toggleInventoryGroup(...args),
-  setWarehouseTab:(...args)=>domainsWarehouseBulk.setWarehouseTab(...args),
-  toggleWarehouseBulkMode:(...args)=>domainsWarehouseBulk.toggleWarehouseBulkMode(...args),
-  toggleWarehouseBulkRow:(...args)=>domainsWarehouseBulk.toggleWarehouseBulkRow(...args),
-  toggleWarehouseBulkVisible:(...args)=>domainsWarehouseBulk.toggleWarehouseBulkVisible(...args),
-  archiveSelectedInventoryItems:(...args)=>domainsWarehouseBulk.archiveSelectedInventoryItems(...args),
-  deleteSelectedWarehouseOrders:(...args)=>domainsWarehouseBulk.deleteSelectedWarehouseOrders(...args),
-  deleteSelectedInventoryEvents:(...args)=>domainsWarehouseBulk.deleteSelectedInventoryEvents(...args),
-  toggleWarehousePickedOrders:(...args)=>domainsWarehouseView.toggleWarehousePickedOrders(...args),
-  renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
-  openInventoryItemModal:(...args)=>domainsInventoryEditor.openInventoryItemModal(...args),
-  saveInventoryItem:(...args)=>domainsInventoryEditor.saveInventoryItem(...args),
-  archiveInventoryItem:(...args)=>domainsInventoryEditor.archiveInventoryItem(...args),
-  openStockAdjustmentModal:(...args)=>domainsInventoryEditor.openStockAdjustmentModal(...args),
-  previewInventoryLocation:(...args)=>domainsInventoryEditor.previewInventoryLocation(...args),
-  previewStockAdjustment:(...args)=>domainsInventoryEditor.previewStockAdjustment(...args),
-  openStockTransfer:(...args)=>domainsInventoryEditor.openStockTransfer(...args),
-  saveStockTransfer:(...args)=>domainsInventoryEditor.saveStockTransfer(...args),
-  previewStockTransfer:(...args)=>domainsInventoryEditor.previewStockTransfer(...args),
-  openInventoryDetails:(...args)=>domainsInventoryEditor.openInventoryDetails(...args),
-  saveStockAdjustment:(...args)=>domainsInventoryEditor.saveStockAdjustment(...args),
-  openInventoryEventModal:(...args)=>domainsInventoryEditor.openInventoryEventModal(...args),
-  saveInventoryEvent:(...args)=>domainsInventoryEditor.saveInventoryEvent(...args),
-  editInventoryEvent:(...args)=>domainsInventoryEditor.editInventoryEvent(...args),
-  openStockReceive:(...args)=>domainsInventoryEditor.openStockReceive(...args),
-  receiveIncoming:(...args)=>domainsInventoryEditor.receiveIncoming(...args),
-  confirmReceive:(...args)=>domainsInventoryEditor.confirmReceive(...args),
-  pickupReservation:(...args)=>domainsInventoryEditor.pickupReservation(...args),
-  releaseReservation:(...args)=>domainsInventoryEditor.releaseReservation(...args),
-  cancelIncoming:(...args)=>domainsInventoryEditor.cancelIncoming(...args),
-  openWarehouseOrderModal:(...args)=>domainsWarehouseEditor.openWarehouseOrderModal(...args),
-  saveWarehouseOrder:(...args)=>domainsWarehouseEditor.saveWarehouseOrder(...args),
-  setWarehouseOrderStatus:(...args)=>domainsWarehouseEditor.setWarehouseOrderStatus(...args),
-  deleteWarehouseOrder:(...args)=>domainsWarehouseEditor.deleteWarehouseOrder(...args),
+  ...createServiceActionPorts({bulk:domainsServiceBulk,view:domainsServiceView,editor:domainsServiceEditor}),
+  ...createWarehouseActionPorts({inventoryOrder:domainsInventoryOrder,inventorySelectors:domainsInventorySelectors,bulk:domainsWarehouseBulk,view:domainsWarehouseView,inventoryEditor:domainsInventoryEditor,editor:domainsWarehouseEditor}),
   exportJson:(...args)=>uiBackup.exportJson(...args),
   beginJsonRestore:(...args)=>uiBackup.beginJsonRestore(...args),
   applyJsonRestore:(...args)=>uiBackup.applyJsonRestore(...args),

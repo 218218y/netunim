@@ -6,7 +6,7 @@ export const ORDER_VIEW_DOMAINS=Object.freeze({
   'customer-orders':['customerOrders'],
   service:['service'],
   warehouse:['inventory','warehouseOrders'],
-  checks:['checks','finance'],
+  checks:['checks','finance','bankDisplay'],
   summary:['suppliers','transactions','customerDebts','checks','finance'],
 });
 
@@ -23,6 +23,7 @@ export function createOrderDomainRevisions(session){
     notes:{field:'notesRev',select:state=>state?.notes||[]},
     checks:{field:'checksRev',select:state=>state?.checks||[]},
     finance:{field:'financeRev'},
+    bankDisplay:{field:'bankDisplayRev'},
   }});
 }
 

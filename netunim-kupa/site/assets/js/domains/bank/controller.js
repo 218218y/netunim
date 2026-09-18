@@ -30,7 +30,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]})}){
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{}}){
 const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
 const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
@@ -96,7 +96,7 @@ async function ensureBankDisplayArchive(){
   const pending=targets.filter(([role,feed])=>{const cache=bankDisplayArchive[role];return cache.accountKey!==String(feed.accountNumber||'')||cache.syncKey!==String(feed.syncedAt||'')||!Array.isArray(cache.rows)});
   if(!pending.length)return false;
   bankDisplayArchivePromise=(async()=>{let changed=false;for(const [role,feed] of pending){try{const [rows,directSnapshot]=await Promise.all([readBankTransactions(feed.accountNumber,role,{days:null}),readBankTransactionSnapshot(feed.accountNumber,role)]);bankDisplayArchive[role]={accountKey:String(feed.accountNumber||''),syncKey:String(feed.syncedAt||''),rows,directSnapshot};changed=true}catch(error){console.error(`bank display archive ${role}`,error)}}return changed})();
-  try{const changed=await bankDisplayArchivePromise;if(changed)render();return changed}finally{bankDisplayArchivePromise=null}
+  try{const changed=await bankDisplayArchivePromise;if(changed){touchBankDisplayRevision();render()}return changed}finally{bankDisplayArchivePromise=null}
 }
 
 let bridgeStatusPromise=null,bridgeStatusToken=null,bridgeStatusCheckedAt=0;

@@ -48,7 +48,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]})}){
+export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{}}){
   const local={bankBusy:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
   const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
   const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
@@ -77,6 +77,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
         }
         if(requestVersion===bankDisplayArchiveRequestVersion)break;
       }
+      if(changed)touchBankDisplayRevision();
       return changed;
     })();
     try{return await bankDisplayArchivePromise}finally{bankDisplayArchivePromise=null}

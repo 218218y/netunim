@@ -38,6 +38,9 @@ test('Orders domain revisions invalidate only views that consume the changed dom
   assert.equal(orderViewRevision(ledger,'warehouse'),warehouse0,'supplier mutation must not evict warehouse DOM');
   ledger.touch('finance');
   assert.notEqual(orderViewRevision(ledger,'checks'),checks0,'checks view consumes bank activity from the finance snapshot');
+  const checks1=orderViewRevision(ledger,'checks');
+  ledger.touch('bankDisplay');
+  assert.notEqual(orderViewRevision(ledger,'checks'),checks1,'checks view consumes the asynchronously loaded bank display archive');
 });
 
 test('Kupa domain revisions keep unrelated pages warm and propagate checks to cashflow consumers',()=>{
@@ -54,6 +57,10 @@ test('Kupa domain revisions keep unrelated pages warm and propagate checks to ca
   assert.notEqual(kupaPageRevision(ledger,'checks'),checks0);
   assert.notEqual(kupaPageRevision(ledger,'credit'),credit0,'credit projections consume shared checks');
   assert.equal(kupaPageRevision(ledger,'notes'),notes1);
+  const checks1=kupaPageRevision(ledger,'checks'),credit1=kupaPageRevision(ledger,'credit');
+  ledger.touch('bankDisplay');
+  assert.notEqual(kupaPageRevision(ledger,'checks'),checks1,'check bank-image actions consume the asynchronously loaded display archive');
+  assert.equal(kupaPageRevision(ledger,'credit'),credit1,'display-only bank archive expansion must not evict credit derivations');
 });
 
 test('remote Orders state replacement reconciles only semantically changed collections',()=>{

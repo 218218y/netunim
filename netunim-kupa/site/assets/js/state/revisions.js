@@ -5,11 +5,11 @@ function bankFeed(state){return {feed:state?.bank?.feed||null,homeFeed:state?.ba
 
 export const KUPA_PAGE_DOMAINS=Object.freeze({
   dashboard:['cash','rights','checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings','ordersFinance'],
-  checks:['checks'],
+  checks:['checks','bankFeed','bankDisplay'],
   credit:['checks','credits','creditSync','expenses','bankFeed'],
   cash:['cash','rights'],
-  bank:['checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings'],
-  expenses:['checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings'],
+  bank:['checks','credits','creditSync','expenses','bank','bankFeed','bankDisplay','cashflowSettings'],
+  expenses:['checks','credits','creditSync','expenses','bank','bankFeed','bankDisplay','cashflowSettings'],
   notes:['notes'],
 });
 
@@ -24,6 +24,7 @@ export function createKupaDomainRevisions(session){
     expenses:{field:'expensesRev',select:state=>state?.expenses||[]},
     bank:{field:'bankRev',select:bankCore},
     bankFeed:{field:'bankFeedRev',select:bankFeed},
+    bankDisplay:{field:'bankDisplayRev'},
     notes:{field:'notesRev',select:state=>state?.notes||[]},
     cashflowSettings:{field:'cashflowSettingsRev',select:state=>state?.cashflowSettings||null},
     ordersFinance:{field:'ordersFinanceRev'},
