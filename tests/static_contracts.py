@@ -73,6 +73,16 @@ def norm(text: str | None):
     return re.sub(r"\s+", " ", text or "").strip().lower()
 
 
+def section_between(text: str, start: str, end: str) -> str:
+    """Return a static source section without turning a missing marker into a test crash."""
+    start_at = text.find(start)
+    if start_at < 0:
+        return ""
+    start_at += len(start)
+    end_at = text.find(end, start_at)
+    return text[start_at:] if end_at < 0 else text[start_at:end_at]
+
+
 # 1. Both browser bundles must remain syntactically valid JavaScript, regardless
 # of whether code is inline or stored in local script assets.
 for label, site in [("kupa", K / "site"), ("orders", O / "site")]:
@@ -398,8 +408,9 @@ ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finan
    and '.checks-page-embedded>.checks-toolbar input,.checks-page-embedded>.checks-toolbar select{min-height:32px;padding:5px 8px}' in orders_css
    and '.checks-header-activity>.check-bank-activity>.section-body{position:absolute;' in orders_css,
    "orders Kupa compact rhythm: Credit keeps its joined report layout, while embedded Checks use a lower filter row and zero empty spacing from filters to monthly disclosure to the first month")
-kupa_credit_render = kupa_credit_view.split('function renderCredit(){', 1)[1].split('function creditLocalProfileRow', 1)[0]
-ok('class="credit-report-stack"' in kupa_credit_render
+kupa_credit_render = section_between(kupa_credit_view, 'function renderCreditContent(){', 'function creditLocalProfileRow')
+ok('function renderCredit(...args){return withFinanceDerivations(()=>renderCreditContent(...args))}' in kupa_credit_view
+   and 'class="credit-report-stack"' in kupa_credit_render
    and 'class="credit-primary-report"' in kupa_credit_render
    and kupa_credit_render.index('class="toolbar credit-filter-toolbar"') < kupa_credit_render.index('${creditTransactionSectionsMarkup()}') < kupa_credit_render.index('class="section credit-forecast-section forecast-disclosure-section"') < kupa_credit_render.index("${summary.hasData?renderSyncedAccounts(summary):''}")
    and 'style="margin-top:16px"' not in kupa_credit_view
