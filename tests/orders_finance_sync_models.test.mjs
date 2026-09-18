@@ -181,18 +181,19 @@ assert.equal(passiveProbeSnapshot.creditErrorAt,null);
 assert.equal(passiveProbeSnapshot.bankBridgeError,'bridge offline');
 assert.equal(passiveProbeSnapshot.creditBridgeError,'credit bridge offline');
 
-let viewProbeCalls=0,viewProbeChecked=false;
+let viewProbeCalls=0,viewProbeChecked=false,viewSnapshots=0;
 const mainStub={innerHTML:'',querySelector:()=>null};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?mainStub:null},configurable:true});
 const financeView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business'},
   controller:{
-    snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:viewProbeChecked,creditStatusChecked:false,bankBridgeError:viewProbeChecked?'bridge offline':'',creditBridgeError:''}),
+    snapshot:()=>(viewSnapshots++,{kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:viewProbeChecked,creditStatusChecked:false,bankBridgeError:viewProbeChecked?'bridge offline':'',creditBridgeError:''}),
     refreshBankBridgeStatus:async()=>{viewProbeCalls++;viewProbeChecked=true;return null},
   },
   checksView:{syncChecksBulkUi(){},checksCloudLabel:()=>'',checksMarkup:()=>''},dashboardView:{summaryMarkup:()=>''},mountViewLayout(){},modal(){},closeModal(){},confirmDialog:async()=>false,dateEditorMarkup:testDateEditorMarkup,
 });
 financeView.renderKupa();
+assert.equal(viewSnapshots,1,'a bank render uses exactly one detached finance snapshot including its table caption');
 await Promise.resolve();await Promise.resolve();
 assert.equal(viewProbeCalls,1,'failed bank availability probe is one-shot per loaded state and cannot create a render/probe loop');
 

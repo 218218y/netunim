@@ -73,3 +73,16 @@ test('Orders navigation reuses a clean supplier view but refuses stale DOM after
   revision++;nav.switchView('customers');nav.switchView('supplier');
   assert.equal(customerRenders,2);assert.equal(supplierRenders,2);
 });
+
+
+test('view cache applies a total node/row budget and skips oversized views without evicting useful ones',()=>{
+  const document={createDocumentFragment:()=>new FakeFragment()},host=new FakeNode();host.ownerDocument=document;
+  const cache=createCleanViewCache({container:host,maxEntries:10,maxNodes:5,maxRows:2});
+  const draw=(key,count,row=false)=>{for(let i=0;i<count;i++){const n=new FakeNode(key);if(row)n.nodeName='TR';host.appendChild(n)}cache.markRendered(key)};
+  draw('a',2);cache.activate('b');draw('b',2);cache.activate('c');
+  assert.deepEqual(cache.cachedKeys(),['a','b']);
+  draw('c',2);cache.activate('huge');assert.deepEqual(cache.cachedKeys(),['b','c'],'node budget evicts oldest');
+  draw('huge',6);cache.activate('rows');assert.deepEqual(cache.cachedKeys(),['b','c']);
+  draw('rows',3,true);cache.activate('b');assert.equal(host.firstChild.name,'b','oversized table was not cached');
+  assert.deepEqual(cache.cachedKeys(),['c']);
+});

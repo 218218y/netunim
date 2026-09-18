@@ -1,3 +1,4 @@
+import {withFinanceDerivations} from '../shared/finance-derivations.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createCleanViewCache} from '../shared/clean-view-cache.js';
 import {TITLES} from '../state/constants.js';
@@ -18,7 +19,11 @@ const viewCache=createCleanViewCache({container:()=>document.getElementById('con
 function afterNavigation(){refreshCheckBankIndicator();maybeAutoRefreshBankBalance();maybeAutoRefreshCreditSync();maybeShowCashflowStartupAlert()}
 function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();return}render()}
 
-function render(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation()}finally{done()}}
+function render(){return withFinanceDerivations(renderContent)}
+function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation()}finally{done()}}
 
-return { setPage, render };
+// Checks affect financial projections, but never require rebuilding Notes or Cash.
+function checksChanged(){if(['checks','dashboard','bank','expenses','credit'].includes(ui.currentPage))render();else refreshCheckBankIndicator()}
+
+return { setPage, render, checksChanged };
 }

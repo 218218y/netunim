@@ -1,3 +1,4 @@
+import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {esc} from '../../core/values.js';
 import {money, moneyWithCents, formatNullableMoney} from '../../core/money.js';
 import {dateFmt, daysFromToday, monthLabel} from '../../core/dates.js';
@@ -63,7 +64,8 @@ function bankOverviewMarkup(){
   </div>`;
 }
 
-function renderDashboard(){
+function renderDashboard(...args){return withFinanceDerivations(()=>renderDashboardContent(...args))}
+function renderDashboardContent(){
   const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const overdue=activeChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const depOver=depositedChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));

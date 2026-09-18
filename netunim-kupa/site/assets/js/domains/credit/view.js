@@ -1,3 +1,4 @@
+import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {esc} from '../../core/values.js';
 import {moneyWithCents as money} from '../../core/money.js';
 import {dateFmt, todayISO, monthKey, monthLabel, addMonthsISO} from '../../core/dates.js';
@@ -141,7 +142,8 @@ function creditDetailSectionMarkup(){
   const selectedMonthKey=upcoming?'':detailFocus?.monthKey||'';
   return `<section id="credit-active-transactions" class="section credit-detail-section"><div class="section-head credit-detail-section-head"><div><div class="credit-detail-title-row"><h3 title="מוצגים עד ${esc(CREDIT_DETAIL_HISTORY_MONTHS)} חודשים קודמים וכל החיובים העתידיים שהתקבלו מהחברות">עסקאות ותשלומים</h3>${creditHistoryControl(historyMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditUpcomingControl(upcoming,chargeDay,upcomingTotal)}${creditFutureControl(detailMonths,selectedMonthKey,upcoming?'all':chargeDay)}${creditDateRangeMarkup({active:mode==='range',from:ui.creditDateFrom,to:ui.creditDateTo,action:'credit-date-apply',escapeHtml:esc,dateEditorMarkup})}</div>${searching?`<small class="credit-search-count">${esc(detailItems.length)} מתוך ${esc(focusedCount)} תוצאות</small>`:''}</div></div>${detailFocus?.cardKey?`<div class="credit-detail-focus"><span><b>${esc(detailFocusLabel)}</b><small>${esc(focusMonthLabel)} · מיקוד בכרטיס מתוך התחזית</small></span><button type="button" class="iconbtn" data-action="clear-credit-detail-focus" data-click-arg0="${esc(detailFocus.monthKey)}">כל הכרטיסים ×</button></div>`:''}<div class="credit-detail-table-wrap"><table class="credit-detail-table"><thead><tr>${bulkHeader('credits')}<th class="credit-detail-col-card">כרטיס</th><th class="credit-detail-col-description">תיאור</th><th class="credit-detail-col-transaction-date">תאריך עסקה</th><th class="credit-detail-col-total">סכום מקורי</th><th class="credit-detail-col-installment">תשלום</th><th class="credit-detail-col-charge" data-column-label="חיוב בחודש">${creditChargeHeading(detailItems)}</th><th class="credit-detail-col-status">מצב</th><th class="credit-detail-col-actions"></th></tr></thead><tbody>${rowsMarkup}</tbody></table></div></section>`;
 }
-function renderCreditDetails(){
+function renderCreditDetails(...args){return withFinanceDerivations(()=>renderCreditDetailsContent(...args))}
+function renderCreditDetailsContent(){
   replaceCreditDetailMarkup(document.getElementById('credit-transaction-sections'),creditTransactionSectionsMarkup());
   syncBulkUi('credits');
 }
@@ -159,7 +161,8 @@ function expensesHubTabsMarkup(){
   const tab=ui.expensesTab==='expenses'?'expenses':'credit';
   return `<div class="toolbar expenses-hub-toolbar"><div class="segmented expenses-hub-tabs" role="tablist" aria-label="אשראי והוצאות"><button type="button" role="tab" aria-selected="${tab==='credit'}" class="${tab==='credit'?'active':''}" data-action="expenses-hub-tab" data-click-arg0="credit">אשראי</button><button type="button" role="tab" aria-selected="${tab==='expenses'}" class="${tab==='expenses'?'active':''}" data-action="expenses-hub-tab" data-click-arg0="expenses">הוצאות</button></div></div>`;
 }
-function renderCredit(){
+function renderCredit(...args){return withFinanceDerivations(()=>renderCreditContent(...args))}
+function renderCreditContent(){
   if(!['credit','expenses'].includes(ui.expensesTab))ui.expensesTab='credit';
   if(ui.expensesTab==='expenses'){document.getElementById('content').innerHTML=`${expensesHubTabsMarkup()}${expensesMarkup()}`;return}
   const today=todayISO(),allReconciled=kupaReconciledCreditRowsData(model.state,'all',today),allFuture=creditForecastInstallmentsData(model.state,today),summary=creditSyncSummary(model.state),syncUi=creditSyncUiState(),includedCards=includedCardModels(summary,allReconciled,today);

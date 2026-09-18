@@ -266,7 +266,7 @@ const syncChecks=createSyncChecks({
   clearSharedChecksPending:(...args)=>syncChecksState.clearSharedChecksPending(...args),
   readSharedChecksDocument:(...args)=>cloudTransport.readSharedChecksDocument(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  render:(...args)=>uiNavigation.render(...args),
+  render:(...args)=>uiNavigation.checksChanged(...args),
   rpcSaveSharedChecks:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
@@ -618,6 +618,7 @@ const domainsBankAlerts=createDomainsBankAlerts({
 });
 
 const domainsChecksEditor=createDomainsChecksEditor({
+  onChecksChanged:()=>uiNavigation.checksChanged(),
   model,
   checkDateEditorMarkup:(...args)=>uiDateEditor.checkDateEditorMarkup(...args),
   toast:(...args)=>uiStatus.toast(...args),
@@ -675,6 +676,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   renderCollection:collection=>{
+    if(collection==='checks')uiNavigation.checksChanged();
     if(collection==='cash'||collection==='rights')domainsCashView.renderCash();
     else if(collection==='expenses'||collection==='credits')domainsCreditView.renderCredit();
   },

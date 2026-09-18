@@ -1,3 +1,4 @@
+import {withFinanceDerivations} from '../../shared/finance-derivations.js';
 import {updateCashflowExplorer,cashflowExplorerMarkup,cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
 import {kupaAccountCashflowData,kupaBankCreditSettlementIdentitiesData} from '../../shared/kupa-cashflow.js';
 import {esc} from '../../core/values.js';
@@ -215,7 +216,8 @@ function updateBridgePanel(){
 
 function openCashflowBreakdown(role,targetDate='',input=null){const account=role==='home'?'ביתי':'עסקי';if(input)return updateCashflowExplorer(input,date=>kupaAccountCashflowData(model.state,account,undefined,{targetDate:date}));modal(`פירוט שינוי צפוי · ${account}`,cashflowExplorerMarkup(kupaAccountCashflowData(model.state,account,undefined,{targetDate}),'cashflow-breakdown',role,dateEditorMarkup),'סגור',()=>closeModal(true))}
 
-function renderBank(){
+function renderBank(...args){return withFinanceDerivations(()=>renderBankContent(...args))}
+function renderBankContent(){
   const cycle=bankNextCycleCommitments(),homeCycle=bankHomeNextCycleCommitments(),homeBank=bankHomeBalance();
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses;
   document.getElementById('content').innerHTML=`

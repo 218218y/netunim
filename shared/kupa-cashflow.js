@@ -1,3 +1,4 @@
+import {financeDerivation} from './finance-derivations.js';
 import {CREDIT_DETAIL_HISTORY_MONTHS,creditCardCompare} from './credit-history.js';
 import {cashflowAlertForAccount,cashflowCheckCutoffDayForAccount} from './cashflow.js';
 import {cashflowNotificationData} from './cashflow-notification.js';
@@ -350,6 +351,10 @@ function rollForwardSettledCycleRows(rows,settlement,reference,{retainSettledCom
 }
 
 function reconciledCreditRowsForAccount(kupa,account,reference,{retainSettledCompleted=false,includeHidden=true,monthlySettlement=false}={}){
+  const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),options={retainSettledCompleted,includeHidden,monthlySettlement};
+  return financeDerivation(kupa,'reconciliation',JSON.stringify([role,ref,retainSettledCompleted,includeHidden,monthlySettlement]),()=>calculateReconciledCreditRows(kupa,role,ref,options));
+}
+function calculateReconciledCreditRows(kupa,account,reference,{retainSettledCompleted,includeHidden,monthlySettlement}){
   // Visibility is a presentation choice, never evidence that another card paid.
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),start=kupaAccountBankAsOfDateData(kupa,role,ref),forecastStart=start>ref?start:ref,billingRows=creditBillingRowsData(kupa,{asOf:forecastStart,includeHidden:true}).filter(row=>row.account===role);
   const finalized=billingRows.filter(row=>row.status!=='pending'&&row.amountSource!=='issuer_not_billed'),recentStart=addDaysISO(forecastStart,-CREDIT_SETTLEMENT_MAX_HOLD_DAYS);
@@ -409,6 +414,10 @@ function creditUnassignedDisplayTarget(row,context,reference){
   if(known)return known;const account=context.accountsByCard.get(key);if(!account)return null;const next=creditAccountNextDisplayBillingDateData(account,floor);return next.date&&next.date>=floor?next:null;
 }
 export function kupaReconciledCreditDetailMonthsData(kupa,reference=localTodayISO(),historyMonths=CREDIT_DETAIL_HISTORY_MONTHS){
+  const ref=isoDay(reference)||localTodayISO(),history=Math.max(0,Math.trunc(Number(historyMonths)||0));
+  return financeDerivation(kupa,'credit-detail',`${ref}:${history}`,()=>calculateCreditDetailMonths(kupa,ref,history));
+}
+function calculateCreditDetailMonths(kupa,reference,historyMonths){
   const ref=isoDay(reference)||localTodayISO(),currentMonth=monthKey(ref),safeHistory=Math.max(0,Math.trunc(Number(historyMonths)||0)),cutoffMonth=monthKey(addMonthsISO(`${currentMonth}-01`,-safeHistory)),rows=kupaReconciledCreditDetailRowsData(kupa,'all',ref),displayContext=creditAccountDisplayContext(kupa,rows),byMonth=new Map(),unassigned=[],unplacedUnassigned=[];
   const add=(key,row)=>{if(!byMonth.has(key))byMonth.set(key,{key,total:0,items:[]});const month=byMonth.get(key);month.total+=num(row.amount);month.items.push(row)};
   for(const row of rows){const key=monthKey(row.date);if(key){if(key>=cutoffMonth)add(key,row);continue}unassigned.push(row);const target=creditUnassignedDisplayTarget(row,displayContext,ref);if(target?.date){const targetMonth=monthKey(target.date);if(targetMonth){add(targetMonth,{...row,detailCycleUncertain:true,detailDisplayBillingDate:target.date,detailDisplayBillingDateSource:target.source,detailDisplayBillingDateConfidence:target.confidence});continue}}unplacedUnassigned.push({...row,detailCycleUncertain:true})}
@@ -527,6 +536,10 @@ function cashflowContributionsThroughDate(kupa,role,reconciliation,remaining,tar
 // Never advance reference to simulate the future: it would expire pending issuer
 // data and treat future bank debits as already reflected in today's balance.
 export function kupaAccountCashflowData(kupa,account='עסקי',reference=localTodayISO(),options={}){
+  const role=accountRole(account),ref=isoDay(reference)||localTodayISO();
+  return financeDerivation(kupa,'cashflow',JSON.stringify([role,ref,options.targetDate||'']),()=>calculateAccountCashflow(kupa,role,ref,options));
+}
+function calculateAccountCashflow(kupa,account,reference,options){
   const role=accountRole(account),ref=isoDay(reference)||localTodayISO(),balance=kupaAccountBankBalanceData(kupa,role);
   const reconciliation=reconciledCreditRowsForAccount(kupa,role,ref,{monthlySettlement:true});
   const {start,forecastStart,unassignedRows}=reconciliation;

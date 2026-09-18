@@ -2,6 +2,7 @@ import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {payloadFromState} from '../state/serialization.js';
 import {assertKupaEntityInvariants} from '../state/validation.js';
+import {jsonEq} from '../sync/merge-records.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePersistence({captureLegacyWorkbook=async()=>{},reportError, model, session, files, tab, checksSession, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
@@ -44,13 +45,13 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
 function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks'}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   assertKupaEntityInvariants(model.state,{includeChecks:true,required:true});
-  if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg);
+  if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface});
   const fullSnapshot=normalizeState(model.state),localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true});
   checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds,mutationType,surface});
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
   if(files.backupsDirHandle)backupSnapshotToComputer(fullSnapshot,session.dbRevision).catch(e=>console.error('shared checks local backup',e));
   clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(()=>{checksSession.sharedChecksSaveTimer=null;saveSharedChecksToCloud(msg)},220);
-  render();return Promise.resolve(localOk)
+  return Promise.resolve(localOk)
 }
 
 async function persistState(snapshot,msg,generation=session.localGeneration,deleteIntents={}){
@@ -73,13 +74,15 @@ async function persistState(snapshot,msg,generation=session.localGeneration,dele
     const nextRev=expected+1,payload=payloadFromState(candidate,nextRev);
     await writeJsonHandleVerified(files.dataFileHandle,payload);
     session.dbRevision=nextRev;session.lastSavedSnapshot=JSON.stringify(candidate);session.serverInfo.lastSavedAt=payload._meta.savedAt;
+    const visibleBefore=model.state;
     if(generation===session.localGeneration){model.state=normalizeState(clone(candidate))}else{
       const rebased=mergeState3Way(snapshot,model.state,candidate,{deleteIntents});
       if(rebased.conflicts.length){session.localFileConflictPending=true;setSaveStatus('שינוי נוסף התנגש — נשמר בדפדפן','error')}else model.state=rebased.state
     }
     persistImmediateBrowserSnapshot(model.state,session.dbRevision);
+    if(!jsonEq(visibleBefore,model.state))render();
     if(files.backupsDirHandle)await backupSnapshotToComputer(candidate,nextRev);session.serverInfo.backups=await listBackups();
-    if(generation===session.localGeneration&&!session.localFileConflictPending){setSaveStatus('נשמר בקובץ','ok');toast(msg);render()}else if(!session.localFileConflictPending)setSaveStatus('שומר שינוי נוסף…','saving');
+    if(generation===session.localGeneration&&!session.localFileConflictPending){setSaveStatus('נשמר בקובץ','ok');toast(msg)}else if(!session.localFileConflictPending)setSaveStatus('שומר שינוי נוסף…','saving');
     return !session.localFileConflictPending
   }catch(e){console.error(e);persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('שגיאת שמירה — העותק המקומי שמור','error');reportError('השמירה לקובץ נכשלה. השינוי נשמר בעותק התאוששות בדפדפן ולא יידרס בלי אזהרה. מומלץ לייצא גיבוי JSON ולטפל בגישה לתיקייה.');return false}
 }

@@ -82,3 +82,42 @@ for label,setup in fixtures.items():
             assert inline['p95ActionMs']<250,inline
             assert not browser.drain_serious_errors()
             print('PASS orders inline status: stable DOM/scroll, immediate verified snapshot, filter/archive invalidation;',json.dumps(inline))
+
+# Measure real finance views independently of the simpler Cash/Supplier tables.
+# Absolute times are baseline observations; deterministic work-count gates catch
+# duplicate calculations without depending on the speed of the CI machine.
+with BrowserSession(ROOT/'netunim-kupa/site','kupa-finance-performance') as browser:
+    finance=browser.evaluate("""(async()=>{
+      const metrics=await import('./assets/js/shared/runtime-performance.js');
+      const ref=todayISO(),future=addMonthsISO(ref,1),mappings={};
+      const accounts=Array.from({length:4},(_,card)=>{
+        const accountNumber=String(1000+card);mappings['perf:'+accountNumber]={included:true,hidden:false,account:card%2?'ביתי':'עסקי'};
+        return {accountNumber,pendingStatus:'success',txns:Array.from({length:250},(_,i)=>({id:card+'-'+i,description:'Purchase '+i,status:'completed',transactionDate:ref,processedDate:future,chargedAmount:-(i%100+1),chargedCurrency:'ILS'}))};
+      });
+      const transactions=Array.from({length:1000},(_,i)=>({id:'B'+i,date:ref,description:'Transfer '+i,amount:i%2?100:-100}));
+      state=normalizeState({credits:[],checks:[{id:'C',name:'Check',amount:300,dueDate:future,status:'בקופה'}],expenses:[{id:'E',description:'Rent',active:true,recurring:true,amount:500,date:future,account:'עסקי'}],
+        bank:{currentBalance:100000,asOfDate:ref,feed:{accountNumber:'123',syncedAt:ref,balance:100000,transactions},homeFeed:{accountNumber:'456',syncedAt:ref,balance:50000,transactions}},
+        creditSync:{profiles:[{profileId:'perf',provider:'max',defaultAccount:'עסקי',accounts}],cardMappings:mappings}});
+      backendReady=false;const results={};metrics.configurePerformance(true);
+      try{
+        for(const page of ['dashboard','bank','credit']){
+          currentPage=page;metrics.clearPerformance();const start=performance.now();render();
+          results[page]={ms:Math.round(performance.now()-start),metrics:metrics.performanceSummary()};
+        }
+        metrics.clearPerformance();const start=performance.now();setCreditSearch('Purchase 24');
+        results.search={ms:Math.round(performance.now()-start),metrics:metrics.performanceSummary()};
+        // Same data and UI keys: navigation preserves the exact DOM and does no derivation.
+        setPage('cash');const cash=document.getElementById('content').firstChild;
+        setPage('notes');metrics.clearPerformance();setPage('cash');
+        results.warm={same:cash===document.getElementById('content').firstChild,metrics:metrics.performanceSummary()};
+      }finally{metrics.configurePerformance(false);metrics.clearPerformance()}
+      return results;
+    })()""",timeout=60)
+    for view in ['dashboard','bank','credit','search']:
+        assert finance[view]['ms']<10000,finance  # catastrophe guard; collect CI baseline first
+    for view in ['credit','search']:
+        assert finance[view]['metrics']['finance:compute:credit-detail']['count']==1,finance
+    assert finance['dashboard']['metrics']['finance:compute:cashflow']['count']==2,finance
+    assert finance['warm']['same'] and not finance['warm']['metrics'],finance
+    assert not browser.drain_serious_errors()
+    print('PASS finance: 1000 credit + 2000 bank rows, single detail derivation, two account forecasts, warm DOM identity;',json.dumps(finance))

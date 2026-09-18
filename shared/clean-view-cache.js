@@ -2,7 +2,7 @@
 // while both its data revision and its UI-state key still match the render that
 // produced it. Detached DOM preserves event handlers without retaining duplicate
 // live IDs in the document.
-export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey=()=>'',cacheable=()=>true,maxEntries=3}={}){
+export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey=()=>'',cacheable=()=>true,maxEntries=3,maxNodes=20000,maxRows=1500}={}){
   const entries=new Map();
   let activeKey=null,activeRevision='',activeStateKey='';
   const host=()=>typeof container==='function'?container():container;
@@ -12,7 +12,21 @@ export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey
 
   function trim(){
     const limit=Math.max(0,Number(maxEntries)||0);
-    while(entries.size>limit)entries.delete(entries.keys().next().value);
+    let nodes=0,rows=0;for(const entry of entries.values()){nodes+=entry.nodes;rows+=entry.rows}
+    while(entries.size&&(entries.size>limit||nodes>maxNodes||rows>maxRows)){
+      const key=entries.keys().next().value,entry=entries.get(key);
+      nodes-=entry.nodes;rows-=entry.rows;entries.delete(key);
+    }
+  }
+
+  function sizeOf(target){
+    let nodes=0,rows=0;const pending=[...(target.childNodes||target.children||[])];
+    while(pending.length){
+      const node=pending.pop();nodes++;if(node.nodeName==='TR')rows++;
+      if(nodes>maxNodes||rows>maxRows)return null;
+      for(const child of node.childNodes||node.children||[])pending.push(child);
+    }
+    return {nodes,rows};
   }
 
   function markRendered(key){
@@ -29,10 +43,12 @@ export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey
     // navigation wrapper. In that case the old stamp no longer proves that the
     // attached DOM matches the current state, so discard it instead of caching it.
     if(!canCache||revision!==currentRevision(key)||stateKey!==currentStateKey(key)){target.replaceChildren();return}
+    // Count once on detachment, with an early exit for oversized views.
+    const size=sizeOf(target);if(!size){target.replaceChildren();return}
     const fragment=(target.ownerDocument||globalThis.document)?.createDocumentFragment?.();
     if(!fragment){target.replaceChildren();return}
     while(target.firstChild)fragment.appendChild(target.firstChild);
-    entries.set(key,{fragment,revision,stateKey});trim();
+    entries.set(key,{fragment,revision,stateKey,...size});trim();
   }
 
   function activate(key){

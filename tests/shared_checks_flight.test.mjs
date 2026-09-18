@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {normalizeSharedChecks} from '../netunim-kupa/site/assets/js/domains/checks/model.js';
 import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
@@ -18,7 +19,7 @@ function fixture(app,t){
   const cs={[baseKey]:[],[prefix+'Generation']:0,[prefix+'BankEvents']:[],[prefix+'OutboxCommitPromise']:Promise.resolve()};
   const session={backendReady:true,connectionMode:'supabase',dbRevision:1};
   const model={state:{checks:[],bank:{adjustments:[]}}};
-  let pending=null,head={revision:7,state:{checks:[],bankEvents:[]}},readGate=null,ackGate=null,mirrorGate=null,bankWrites=0;
+  let pending=null,head={revision:7,state:{checks:[],bankEvents:[]}},readGate=null,ackGate=null,mirrorGate=null,bankWrites=0,renders=0;
   const readStarted=gate(),saveStarted=gate(),mirrorStarted=gate(),calls=[];
   const get=async()=>clone(pending);
   function mark(snapshot,_message,conflict,options={}){
@@ -41,7 +42,7 @@ function fixture(app,t){
     clearChecksPending:clear,clearSharedChecksPending:clear,checksPendingExists:()=>!!pending,sharedChecksPendingExists:()=>!!pending,
     checksHaveLocalWork:()=>!!pending,sharedChecksHaveLocalWork:()=>!!pending,readSharedChecksCloud:read,readSharedChecksDocument:read,
     readSharedChecksCloudMeta:async()=>({revision:head.revision}),readSharedChecksMeta:async()=>({revision:head.revision}),rpcSaveSharedChecks:rpc,
-    writeStateToFolder:mirror,backupSnapshotToComputer:mirror,queueSharedChecksSave:noop,toast:noop,render:noop,renderKupaDependentView:noop,
+    writeStateToFolder:mirror,backupSnapshotToComputer:mirror,queueSharedChecksSave:noop,toast:noop,render:()=>{renders++},renderKupaDependentView:noop,
     recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,refreshCloudHeaderTimestamp:noop,setSaveStatus:noop,setCloudHeaderStatus:noop};
   const api=(app==='orders'?ordersChecks:kupaChecks)(deps);
   // Real bank commit contract, driven by each app's real sync implementation.
@@ -51,7 +52,7 @@ function fixture(app,t){
     saveState:async()=>{bankWrites++;return true},toast:noop,render:noop,bridge:{}});
   return {api,bank,cs,session,model,calls,readStarted,saveStarted,mirrorStarted,stage,get,
     holdRead:()=>readGate=gate(),holdAck:()=>ackGate=gate(),holdMirror:()=>mirrorGate=gate(),
-    writes:()=>bankWrites,pending:()=>pending,head:()=>head};
+    renders:()=>renders,writes:()=>bankWrites,pending:()=>pending,head:()=>head};
 }
 
 test('coordinator reserves and shares exact promises, serializes opposite operations, and derives status',async()=>{
@@ -159,4 +160,15 @@ for(const app of ['orders','kupa'])test(`${app}: transient shared-check poll out
   const api=(isOrders?ordersChecks:kupaChecks)(deps);
   await api.pollSharedChecks();assert.equal(state[errorKey],'','temporary network/backoff failures must not masquerade as a check-data integrity warning');
   mode='fatal';await api.pollSharedChecks();assert.match(state[errorKey],/invalid shared checks payload/,'non-transient read errors must remain actionable');
+});
+
+
+test('Kupa shared-check ACK and identical pull do not render; an authoritative remote change does',async t=>{
+  const f=fixture('kupa',t);f.stage(20);
+  f.model.state.checks=normalizeSharedChecks(f.model.state.checks);
+  f.pending().snapshot=clone(f.model.state.checks);
+  assert.equal(await f.api.saveSharedChecksToCloud(''),true);assert.equal(f.renders(),0);
+  assert.equal(await f.api.syncSharedChecksFromCloud(),true);assert.equal(f.renders(),0);
+  f.head().state.checks[0].amount=30;f.head().revision++;
+  await f.api.pollSharedChecks();assert.equal(f.renders(),1);assert.equal(f.model.state.checks[0].amount,30);
 });
