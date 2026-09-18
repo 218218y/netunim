@@ -100,7 +100,7 @@ function setCustomerFlag(id,field,value){
     d.updatedAt=now;
   }
   const after=customerDebtProgressData(d);d.closedAt=after.paymentComplete&&after.invoiceComplete?(d.closedAt||now):null;
-  scheduleSave('סטטוס חוב הלקוח עודכן');renderCustomers();
+  scheduleSave('סטטוס חוב הלקוח עודכן');renderCustomers({resultsOnly:true});
 }
 
 function saveDebtNote(id,el){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;const v=el.value.trim();if((d.note||'')===v)return;d.note=v;d.updatedAt=new Date().toISOString();scheduleSave('הערת הלקוח עודכנה')}

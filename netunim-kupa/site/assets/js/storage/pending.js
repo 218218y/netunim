@@ -17,28 +17,33 @@ export function migrateKupaOutboxRecord(value,migration){
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePending({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},session, idbPut, idbGet, idbDelete}){
-function loadCloudPendingSync(){try{const raw=localStorage.getItem(CLOUD_PENDING_LOCAL_KEY),pending=raw?JSON.parse(raw):null;if(compareOutboxFreshness(session.cloudOutboxCached,pending)>0)return session.cloudOutboxCached;if(pending)session.localGeneration=Math.max(session.localGeneration,Number(pending.generation||0));return pending}catch(e){console.error('pending local load',e);return null}}
+let outboxHeadVerified=false,localPendingReadOk=true;
+function invalidateCloudPendingHead(){outboxHeadVerified=false}
+globalThis.addEventListener?.('storage',event=>{if(event.key===CLOUD_PENDING_LOCAL_KEY||event.key===null)invalidateCloudPendingHead()});
+function loadCloudPendingSync(){if(outboxHeadVerified)return session.cloudOutboxCached||null;try{const raw=localStorage.getItem(CLOUD_PENDING_LOCAL_KEY),pending=raw?JSON.parse(raw):null;localPendingReadOk=true;if(compareOutboxFreshness(session.cloudOutboxCached,pending)>0)return session.cloudOutboxCached;if(pending)session.localGeneration=Math.max(session.localGeneration,Number(pending.generation||0));return pending}catch(e){localPendingReadOk=false;console.error('pending local load',e);return session.cloudOutboxCached||null}}
 
-function persistCloudPendingSync(p){if(Number(session.cloudOutboxCached?.generation||0)>Number(p?.generation||0)||(Number(session.cloudOutboxCached?.generation||0)===Number(p?.generation||0)&&Number(session.cloudOutboxCached?.mutationSeq||0)>Number(p?.mutationSeq||0)))return false;session.cloudOutboxCached=p;try{const text=JSON.stringify(p);localStorage.setItem(CLOUD_PENDING_LOCAL_KEY,text);if(localStorage.getItem(CLOUD_PENDING_LOCAL_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('pending local save',e);return false}}
+function persistCloudPendingSync(p){if(Number(session.cloudOutboxCached?.generation||0)>Number(p?.generation||0)||(Number(session.cloudOutboxCached?.generation||0)===Number(p?.generation||0)&&Number(session.cloudOutboxCached?.mutationSeq||0)>Number(p?.mutationSeq||0)))return false;session.cloudOutboxCached=p;outboxHeadVerified=false;try{const text=JSON.stringify(p);localStorage.setItem(CLOUD_PENDING_LOCAL_KEY,text);if(localStorage.getItem(CLOUD_PENDING_LOCAL_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('pending local save',e);return false}}
 
 function migrationDefaults(candidate={}){return {domain:'kupa',documentName:candidate.documentName||session.cloudDocumentName||'main',baseRevision:candidate.baseRevision??session.dbRevision??0,baseState:candidate.baseState||candidate.snapshot||{},snapshot:candidate.snapshot||{},generation:Math.max(1,Number(candidate.generation||session.localGeneration||0))}}
 
 async function getCloudPending(){
   const observedCommit=session.cloudOutboxCommitPromise;await observedCommit;
-  const rawLocal=loadCloudPendingSync();let rawV3=null,rawV2=null;
-  try{rawV3=await idbGet('sync',CLOUD_OUTBOX_V3_KEY);rawV2=await idbGet('sync',CLOUD_PENDING_KEY)}catch(e){console.error('pending idb load',e)}
+  if(session.cloudOutboxCommitPromise!==observedCommit)return getCloudPending();
+  if(outboxHeadVerified)return session.cloudOutboxCached||null;
+  const rawLocal=loadCloudPendingSync();let rawV3=null,rawV2=null,durableReadOk=false;
+  try{rawV3=await idbGet('sync',CLOUD_OUTBOX_V3_KEY);rawV2=await idbGet('sync',CLOUD_PENDING_KEY);durableReadOk=true}catch(e){console.error('pending idb load',e)}
   if(session.cloudOutboxCommitPromise!==observedCommit)return getCloudPending();
   const candidates=[rawLocal,rawV3,rawV2].filter(Boolean).map(value=>migrateKupaOutboxRecord(value,migrationDefaults(value))).filter(Boolean).sort(compareOutboxFreshness);
-  let chosen=candidates.at(-1)||null;if(!chosen)return null;if(externalWorkbooks)chosen=await detachLegacyOutbox(chosen,captureLegacyWorkbook);
-  session.localGeneration=Math.max(session.localGeneration,Number(chosen.generation||0));persistCloudPendingSync(chosen);
-  try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,chosen);if(rawV2)await idbDelete('sync',CLOUD_PENDING_KEY);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('pending idb repair',e)}
+  let chosen=candidates.at(-1)||null;if(!chosen){session.cloudOutboxCached=null;outboxHeadVerified=localPendingReadOk&&durableReadOk;return null}if(externalWorkbooks)chosen=await detachLegacyOutbox(chosen,captureLegacyWorkbook);
+  session.localGeneration=Math.max(session.localGeneration,Number(chosen.generation||0));const cacheOk=persistCloudPendingSync(chosen);let durableOk=false;
+  try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,chosen);if(rawV2)await idbDelete('sync',CLOUD_PENDING_KEY);durableOk=true;session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('pending idb repair',e)}
   if(session.cloudOutboxCommitPromise!==observedCommit)return getCloudPending();
-  return chosen;
+  outboxHeadVerified=cacheOk&&durableOk;return chosen;
 }
 
-async function putCloudPending(p){const record=migrateKupaOutboxRecord(p,migrationDefaults(p));if(!record)throw new Error('invalid_outbox_record');const localOk=persistCloudPendingSync(record);let durable=false,idbError=null;try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,record);durable=true;session.cloudDurabilityDegraded=false}catch(e){idbError=e;session.cloudDurabilityDegraded=true;console.error('pending idb save failed',e)}if(!durable&&!localOk)throw new Error('kupa_outbox_persistence_failed',{cause:idbError});return {record,durable,localOk}}
+async function putCloudPending(p){const record=migrateKupaOutboxRecord(p,migrationDefaults(p));if(!record)throw new Error('invalid_outbox_record');const cachedGeneration=Number(session.cloudOutboxCached?.generation||0),recordGeneration=Number(record.generation||0),cachedSequence=Number(session.cloudOutboxCached?.mutationSeq||0),recordSequence=Number(record.mutationSeq||0);if(cachedGeneration>recordGeneration||(cachedGeneration===recordGeneration&&cachedSequence>recordSequence))return {record:session.cloudOutboxCached,durable:false,localOk:false,superseded:true};const localOk=persistCloudPendingSync(record);let durable=false,idbError=null;try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,record);durable=true;session.cloudDurabilityDegraded=false}catch(e){idbError=e;session.cloudDurabilityDegraded=true;console.error('pending idb save failed',e)}if(!durable&&!localOk)throw new Error('kupa_outbox_persistence_failed',{cause:idbError});if(compareOutboxFreshness(session.cloudOutboxCached,record)<=0)outboxHeadVerified=localOk&&durable;return {record,durable,localOk}}
 
-function cloudPendingExistsSync(){return !!loadCloudPendingSync()}
+function cloudPendingExistsSync(){return outboxHeadVerified?!!session.cloudOutboxCached:!!loadCloudPendingSync()}
 
 async function clearCloudPending(acknowledgedGeneration){
   const current=await getCloudPending();if(!current)return true;
@@ -49,8 +54,8 @@ async function clearCloudPending(acknowledgedGeneration){
   session.cloudOutboxCommitPromise=clearing;if(!await clearing)return false;
   if(session.cloudOutboxCommitPromise!==clearing||!acknowledgedGenerationMatches(loadCloudPendingSync(),acknowledgedGeneration))return false;
   try{localStorage.removeItem(CLOUD_PENDING_LOCAL_KEY)}catch(e){console.error('pending cache clear',e);session.cloudDurabilityDegraded=true;return false}
-  session.cloudOutboxCached=null;session.cloudDurabilityDegraded=false;return true;
+  session.cloudOutboxCached=null;outboxHeadVerified=true;session.cloudDurabilityDegraded=false;return true;
 }
 
-return { loadCloudPendingSync, persistCloudPendingSync, getCloudPending, putCloudPending, cloudPendingExistsSync, clearCloudPending };
+return { loadCloudPendingSync, persistCloudPendingSync, getCloudPending, putCloudPending, cloudPendingExistsSync, clearCloudPending, invalidateCloudPendingHead };
 }

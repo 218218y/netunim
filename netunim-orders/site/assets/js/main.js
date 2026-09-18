@@ -234,6 +234,12 @@ const uiNavigation=createUiNavigation({
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
+  dataRevision:view=>{
+    const orders=[session.localGeneration,session.cloudRevision].map(value=>Number(value||0));
+    if(view==='checks')return [checksSession.checksGeneration,checksSession.checksCloudRevision].map(value=>Number(value||0)).join(':');
+    if(view==='summary')return [...orders,checksSession.kupaReadRevision,checksSession.financeReadRevision].map(value=>Number(value||0)).join(':');
+    return orders.join(':');
+  },
 });
 
 const domainsChecksView=createDomainsChecksView({

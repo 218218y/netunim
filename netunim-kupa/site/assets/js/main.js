@@ -422,6 +422,7 @@ const uiNavigation=createUiNavigation({
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
+  dataRevision:()=>[session.localGeneration,session.dbRevision,session.financeRevision,session.ordersFinanceRevision,checksSession.sharedChecksGeneration,checksSession.sharedChecksRevision].map(value=>Number(value||0)).join(':'),
 });
 
 const uiGlobalSearch=createUiGlobalSearch({model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});

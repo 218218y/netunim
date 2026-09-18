@@ -55,13 +55,13 @@ test('Kupa changes during an in-flight RPC coalesce without overwriting newer lo
   assert.notEqual(f.sent[0].p_operation_id,f.sent[1].p_operation_id);assert.equal(f.sent[1].p_expected_revision,11);
 });
 
-test('Kupa edit during outbox read is acknowledged with its own generation, without a duplicate send',async()=>{
-  let edit=null;
-  const f=fixture({beforeRead:()=>{if(edit){const fn=edit;edit=null;fn()}}});
-  edit=()=>{f.model.state.notes[0].content='during-read';f.api.saveState()};
+test('Kupa verified outbox head avoids redundant durable reads after a successful stage',async()=>{
+  let reads=0;const f=fixture({beforeRead:()=>{reads++}});
+  f.model.state.notes[0].content='verified-head';
   assert.equal(await f.api.saveState(),true);
-  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'during-read');assert.equal(f.stages,2);
-  assert.equal(await f.storage.getCloudPending(),null);
+  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'verified-head');
+  assert.equal(reads,0,'the writer reuses the just-committed in-memory head instead of rereading IndexedDB');
+  assert.equal(await f.storage.getCloudPending(),null);assert.equal(reads,0);
 });
 
 test('Kupa offline burst stays durable and resumes from the latest pending record',async()=>{
@@ -180,6 +180,16 @@ test('backup ACK fast path skips directory scans but retains the latest payload 
     assert.equal(scans,initialScans);assert.equal(writes,1);assert.equal(files.pendingAutoBackupPayload.notes[0].content,'latest');
     files.backupsDirHandle=directory();assert.ok(await api.backupSnapshotToComputer());assert.ok(scans>initialScans);assert.equal(writes,2);
   }finally{api.clearPendingAutomaticBackup()}
+});
+
+test('Orders ACK with a newer pending generation writes the rebased local snapshot only once',async()=>{
+  const {createSyncDocument:createOrdersSyncDocument}=await import('../netunim-orders/site/assets/js/sync/document.js');
+  const cloneValue=structuredClone,snapshot={notes:[{id:'A',content:'sent'}]},newer={schemaVersion:4,domain:'orders',documentName:'suppliers',operationId:'newer',generation:2,mutationSeq:2,baseRevision:10,baseState:cloneValue(snapshot),snapshot:{notes:[{id:'A',content:'newer'}]},deleteIntents:{}};
+  const model={state:cloneValue(newer.snapshot)},session={localGeneration:2,cloudRevision:10,lastCloudState:cloneValue(snapshot),ordersOutboxCommitPromise:Promise.resolve(),cloudConflictBlocked:false};let localWrites=0,staged=0;
+  globalThis.localStorage={setItem:noop,getItem:()=>null,removeItem:noop};
+  const api=createOrdersSyncDocument({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:cloneValue,localSnapshot:()=>{localWrites++;return true},markCloudPending:()=>{staged++;session.ordersOutboxCommitPromise=Promise.resolve();return true},getCloudPending:async()=>cloneValue(newer),clearCloudPending:async()=>true,toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>cloneValue(value),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>({r:{ok:true},row:{revision:11,operation_revision:10,state:cloneValue(snapshot),updated_at:'2026-09-18T00:00:00Z'}}),merge3:(_base,local)=>({state:cloneValue(local),conflicts:[]}),applyOrderCloudState:value=>{model.state=cloneValue(value)},cloudPendingExists:()=>true,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>true,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop});
+  assert.equal(await api.saveCloudSnapshot(snapshot,1,{...newer,generation:1,operationId:'sent-op',snapshot:cloneValue(snapshot),baseState:cloneValue(snapshot)}),true);
+  assert.equal(staged,1);assert.equal(localWrites,1,'successful rebase snapshot is not serialized twice in the same ACK');
 });
 
 test('performance diagnostics are opt-in, bounded and resettable',()=>{

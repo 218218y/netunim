@@ -11,9 +11,10 @@ const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState}){
-let sequenceLoaded=false;
+let sequenceLoaded=false,outboxHeadVerified=false,pendingCacheReadOk=true;
 // Another primary tab may have saved while this tab was inactive.
-globalThis.addEventListener?.('storage',event=>{if(event.key===STORAGE_KEY||event.key===null)sequenceLoaded=false});
+function invalidateCloudPendingHead(){outboxHeadVerified=false}
+globalThis.addEventListener?.('storage',event=>{if(event.key===STORAGE_KEY||event.key===null)sequenceLoaded=false;if(event.key===CLOUD_PENDING_KEY||event.key===null)invalidateCloudPendingHead()});
 function nextSnapshotSequence(){
   if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0));sequenceLoaded=true}
   return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
@@ -37,7 +38,7 @@ async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();
 
 async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){await captureLegacyWorkbook(record.payload.notesSheet);model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
 
-function readPendingCache(){try{return JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null')}catch(e){console.error('cloud pending cache load',e);return null}}
+function readPendingCache(){try{const value=JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null');pendingCacheReadOk=true;return value}catch(e){pendingCacheReadOk=false;console.error('cloud pending cache load',e);return null}}
 function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
 function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
 function mergeDeleteIntents(...values){const out={};for(const value of values){for(const [key,ids] of Object.entries(normalizeDeleteIntents(value))){out[key]=[...new Set([...(out[key]||[]),...ids])].sort()}}return out}
@@ -45,7 +46,7 @@ function migrateOrdersOutboxRecord(value,migration){const record=migrateOutboxRe
 
 function markCloudPending(snapshot=prepareCloudState(),message='',progress=null){
   assertValidOrderCloudState(snapshot,'Orders outbox snapshot');
-  const diskCache=readPendingCache(),cached=compareOutboxFreshness(session.ordersOutboxCached,diskCache)>0?session.ordersOutboxCached:diskCache,canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,record=createOutboxRecord({
+  const diskCache=outboxHeadVerified?session.ordersOutboxCached:readPendingCache(),cached=compareOutboxFreshness(session.ordersOutboxCached,diskCache)>0?session.ordersOutboxCached:diskCache,canonical=clone(snapshot),generation=Math.max(Number(session.localGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,record=createOutboxRecord({
     domain:'orders',documentName:'suppliers',operationId:sameGeneration?(cached.operationId||cached.id):undefined,
     generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),
     baseRevision:progress?.baseRevision??(cached?.baseRevision??session.cloudRevision??0),
@@ -55,32 +56,35 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
     mutationType:progress?.mutationType||cached?.mutationType||'autosave',surface:progress?.surface||cached?.surface||'orders',restoreGroupId:progress?.restoreGroupId||cached?.restoreGroupId||null,
   });
   record.deleteIntents=mergeDeleteIntents(cached?.deleteIntents,progress?.deleteIntents);
-  const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;
+  const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;outboxHeadVerified=false;
   const previous=session.ordersOutboxCommitPromise||Promise.resolve();
   const outboxDone=beginMeasure('orders:outbox-durable');
-  session.ordersOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{
+  const commit=previous.catch(()=>{}).then(async()=>{
     try{await idbSyncPut(ORDERS_OUTBOX_KEY,record);session.cloudDurabilityDegraded=false;return {record,durable:true}}
     catch(error){console.error('orders outbox IndexedDB',error);session.cloudDurabilityDegraded=true;if(!cacheOk)throw new Error('orders_outbox_persistence_failed',{cause:error});return {record,durable:true,store:'localStorage'}}
   });
-  session.ordersOutboxCommitPromise.then(outboxDone,()=>{});
+  session.ordersOutboxCommitPromise=commit;
+  commit.then(result=>{if(session.ordersOutboxCommitPromise===commit)outboxHeadVerified=cacheOk&&result?.store!=='localStorage'},()=>{});commit.then(outboxDone,()=>{});
   return cacheOk;
 }
 
-function cloudPendingExists(){return !!(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY))}
+function cloudPendingExists(){return outboxHeadVerified?!!session.ordersOutboxCached:!!(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY))}
 
 async function getCloudPending(){
   const observedCommit=session.ordersOutboxCommitPromise;await observedCommit;
+  if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
+  if(outboxHeadVerified)return session.ordersOutboxCached||null;
   const fallbackSnapshot=prepareCloudState(loadLocal()||model.state),migration={domain:'orders',documentName:'suppliers',baseRevision:session.cloudRevision||0,baseState:session.lastCloudState||fallbackSnapshot,snapshot:fallbackSnapshot,generation:Math.max(1,Number(session.localGeneration||0))};
-  const local=migrateOrdersOutboxRecord(readPendingCache(),migration);let durable=null;
-  try{durable=migrateOrdersOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration)}catch(e){console.error('orders outbox load',e)}
+  const local=migrateOrdersOutboxRecord(readPendingCache(),migration);let durable=null,durableReadOk=false;
+  try{durable=migrateOrdersOutboxRecord(await idbSyncGet(ORDERS_OUTBOX_KEY),migration);durableReadOk=true}catch(e){console.error('orders outbox load',e)}
   if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
   let chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
-  if(!chosen){session.ordersOutboxCached=null;return null}
+  if(!chosen){session.ordersOutboxCached=null;outboxHeadVerified=pendingCacheReadOk&&durableReadOk;return null}
   if(externalWorkbooks)chosen=await detachLegacyOutbox(chosen,captureLegacyWorkbook);
-  session.ordersOutboxCached=chosen;session.localGeneration=Math.max(Number(session.localGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
-  try{await idbSyncPut(ORDERS_OUTBOX_KEY,chosen);session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('orders outbox repair',e)}
+  session.ordersOutboxCached=chosen;session.localGeneration=Math.max(Number(session.localGeneration||0),Number(chosen.generation||0));const cacheOk=writePendingCache(chosen);let durableOk=false;
+  try{await idbSyncPut(ORDERS_OUTBOX_KEY,chosen);durableOk=true;session.cloudDurabilityDegraded=false}catch(e){session.cloudDurabilityDegraded=true;console.error('orders outbox repair',e)}
   if(session.ordersOutboxCommitPromise!==observedCommit)return getCloudPending();
-  return chosen;
+  outboxHeadVerified=cacheOk&&durableOk;return chosen;
 }
 
 async function clearCloudPending(acknowledgedGeneration){
@@ -94,10 +98,10 @@ async function clearCloudPending(acknowledgedGeneration){
   if(!await clearing)return false;
   if(session.ordersOutboxCommitPromise!==clearing||!acknowledgedGenerationMatches(session.ordersOutboxCached,acknowledgedGeneration))return false;
   try{localStorage.removeItem(CLOUD_PENDING_KEY)}catch(e){console.error('orders outbox cache clear',e);session.cloudDurabilityDegraded=true;return false}
-  session.ordersOutboxCached=null;session.cloudDurabilityDegraded=false;return true;
+  session.ordersOutboxCached=null;outboxHeadVerified=true;session.cloudDurabilityDegraded=false;return true;
 }
 
 function loadCloudPendingState(){try{const pending=readPendingCache();if(!pending)return null;if(pending?.pending===true)return loadLocal();return pending?.snapshot&&typeof pending.snapshot==='object'?pending.snapshot:pending}catch(e){console.error('cloud pending load',e);return loadLocal()}}
 
-return { loadLocal, localSnapshot, openLocalStateDb, idbSyncPut, idbSyncGet, idbSyncDelete, persistBrowserStateSnapshot, queueBrowserStateSnapshot, loadBrowserStateSnapshot, restoreBrowserStateFallback, markCloudPending, getCloudPending, cloudPendingExists, clearCloudPending, loadCloudPendingState };
+return { loadLocal, localSnapshot, openLocalStateDb, idbSyncPut, idbSyncGet, idbSyncDelete, persistBrowserStateSnapshot, queueBrowserStateSnapshot, loadBrowserStateSnapshot, restoreBrowserStateFallback, markCloudPending, getCloudPending, cloudPendingExists, clearCloudPending, loadCloudPendingState, invalidateCloudPendingHead };
 }
