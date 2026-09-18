@@ -180,7 +180,9 @@ def check_kupa(browser: BrowserSession) -> list[dict]:
               const menu=document.getElementById('mobileMenu'),sidebar=document.getElementById('sidebar'),backdrop=document.getElementById('sidebarBackdrop');
               let drawer=null;
               if(innerWidth<=820){
-                menu.click();await new Promise(resolve=>setTimeout(resolve,240));await frame();
+                // Under parallel browser load a fixed delay can sample the final
+                // fractional pixel of a running transition. Check the settled layout.
+                menu.click();await frame();await Promise.all(sidebar.getAnimations().map(animation=>animation.finished));await frame();
                 const sidebarRect=sidebar.getBoundingClientRect();
                 drawer={open:sidebar.classList.contains('open'),visible:withinViewport(sidebar),expanded:menu.getAttribute('aria-expanded'),backdrop:backdrop.classList.contains('open'),rect:{left:sidebarRect.left,right:sidebarRect.right,top:sidebarRect.top,bottom:sidebarRect.bottom}};
                 backdrop.click();await frame();

@@ -1,19 +1,42 @@
+import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {payloadFromState} from '../state/serialization.js';
 import {assertKupaEntityInvariants} from '../state/validation.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStoragePersistence({captureLegacyWorkbook=async()=>{},reportError, model, session, files, tab, checksSession, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+let cloudSaveRequest=null;
+function requestCloudSave(snapshot,msg,generation){
+  cloudSaveRequest={snapshot,msg,generation};
+  if(session.cloudSavePromise)return session.cloudSavePromise;
+  // Preserve the ordering with an outstanding file save when changing storage mode.
+  session.cloudSavePromise=(session.saveQueue||Promise.resolve()).catch(error=>{console.error('previous save queue',error)}).then(async()=>{
+    let ok=true;
+    while(cloudSaveRequest){
+      const next=cloudSaveRequest;cloudSaveRequest=null;
+      ok=await persistSupabaseState(next.snapshot,next.msg,next.generation);
+      // Offline, retry-after and conflicts resume through the existing outbox poller.
+      if(!ok)break;
+      if(cloudSaveRequest&&cloudSaveRequest.generation<=Number(session.cloudAcknowledgedGeneration||0))cloudSaveRequest=null;
+    }
+    return ok;
+  }).finally(()=>{session.cloudSavePromise=null});
+  session.saveQueue=session.cloudSavePromise;
+  return session.cloudSavePromise;
+}
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
 async function loadState(){if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');const p=await readJsonHandle(files.dataFileHandle);await captureLegacyWorkbook(p.notesSheet);const parsed=stateFromPayload(p);model.state=parsed.state;const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];session.dbRevision=Number(parsed.meta.revision||0);session.backendReady=true;session.localFileConflictPending=false;session.lastSavedSnapshot=JSON.stringify(model.state);session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};persistImmediateBrowserSnapshot(model.state,session.dbRevision);if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');setSaveStatus('נשמר בקובץ','ok');if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds}}),0);return model.state}
 
 function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa'}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   assertKupaEntityInvariants(model.state,{includeChecks:true,required:true});
-  const fullSnapshot=normalizeState(clone(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),generation=++session.localGeneration,snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot):fullSnapshot;
-  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision);
+  const localDone=beginMeasure('kupa:save-local',{paint:true});
+  const fullSnapshot=normalizeState(model.state),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),generation=++session.localGeneration,snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
+  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true});
+  localDone();
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
   if(session.connectionMode==='supabase'&&session.backendReady)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});
+  if(session.connectionMode==='supabase'&&session.backendReady)return requestCloudSave(snapshot,msg,generation);
   session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));
   return session.saveQueue
 }
@@ -22,7 +45,7 @@ function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='auto
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   assertKupaEntityInvariants(model.state,{includeChecks:true,required:true});
   if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg);
-  const fullSnapshot=normalizeState(clone(model.state)),localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision);
+  const fullSnapshot=normalizeState(model.state),localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true});
   checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds,mutationType,surface});
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
   if(files.backupsDirHandle)backupSnapshotToComputer(fullSnapshot,session.dbRevision).catch(e=>console.error('shared checks local backup',e));
@@ -32,7 +55,7 @@ function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='auto
 
 async function persistState(snapshot,msg,generation=session.localGeneration,deleteIntents={}){
   if(!session.backendReady){setSaveStatus('לא מחובר למקור נתונים','error');return false}
-  if(generation===session.localGeneration)snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(model.state):normalizeState(clone(model.state));
+  if(generation===session.localGeneration)snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(model.state):normalizeState(model.state);
   if(session.connectionMode==='supabase')return persistSupabaseState(prepareKupaCloudState(snapshot),msg,generation);
   if(!files.dataFileHandle){setSaveStatus('אין קובץ נתונים','error');return false}
   if(session.localFileConflictPending){persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');return false}

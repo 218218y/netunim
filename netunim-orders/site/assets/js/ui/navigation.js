@@ -1,3 +1,4 @@
+import {beginMeasure} from '../shared/runtime-performance.js';
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
@@ -5,7 +6,7 @@ export function createUiNavigation({ui, model, supplierUi, customerUi, serviceUi
 let alertTargetTimer=null;
 function syncActiveNav(){document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view===ui.currentView))}
 
-function render({supplierScrollMode='auto'}={}){syncActiveNav();if(ui.currentView==='dashboard')renderDashboard();else if(ui.currentView==='supplier')renderSupplier({scrollMode:supplierScrollMode});else if(ui.currentView==='customers'||ui.currentView==='customer-orders')renderCustomers();else if(ui.currentView==='service')renderService();else if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='warehouse')renderWarehouse();else if(ui.currentView==='summary')renderSummary();else if(ui.currentView==='notes')renderNotes();else if(ui.currentView==='calendar')renderCalendar();else renderSettings();refreshAlertCenter()}
+function render({supplierScrollMode='auto'}={}){const done=beginMeasure(`orders:render:${ui.currentView}`);try{syncActiveNav();if(ui.currentView==='dashboard')renderDashboard();else if(ui.currentView==='supplier')renderSupplier({scrollMode:supplierScrollMode});else if(ui.currentView==='customers'||ui.currentView==='customer-orders')renderCustomers();else if(ui.currentView==='service')renderService();else if(ui.currentView==='kupa')renderKupa();else if(ui.currentView==='checks')renderChecks();else if(ui.currentView==='warehouse')renderWarehouse();else if(ui.currentView==='summary')renderSummary();else if(ui.currentView==='notes')renderNotes();else if(ui.currentView==='calendar')renderCalendar();else renderSettings();refreshAlertCenter()}finally{done()}}
 
 function renderDashboard(){ui.currentView='supplier';syncActiveNav();renderSupplier({scrollMode:'end'})}
 

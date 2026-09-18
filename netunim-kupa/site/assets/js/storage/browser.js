@@ -1,9 +1,18 @@
+import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {BROWSER_STATE_KEY, BROWSER_STATE_IDB_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({model, session, files, normalizeState, idbPut, idbGet}){
-function browserStateRecord(snapshot=model.state,revision=session.dbRevision){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadBrowserStateSync()?.snapshotSeq||0))+1;return {schemaVersion:1,snapshotSeq:session.localSnapshotSeq,state:normalizeState(clone(snapshot)),revision:Number(revision||0),savedAt:new Date().toISOString()}}
+let sequenceLoaded=false;
+// Another primary tab may have saved while this tab was inactive.
+globalThis.addEventListener?.('storage',event=>{if(event.key===BROWSER_STATE_KEY||event.key===null)sequenceLoaded=false});
+function nextSnapshotSequence(){
+  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadBrowserStateSync()?.snapshotSeq||0));sequenceLoaded=true}
+  return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
+}
+
+function browserStateRecord(snapshot=model.state,revision=session.dbRevision,{normalized=false}={}){nextSnapshotSequence();return {schemaVersion:1,snapshotSeq:session.localSnapshotSeq,state:normalized?clone(snapshot):normalizeState(snapshot),revision:Number(revision||0),savedAt:new Date().toISOString()}}
 
 function persistBrowserStateSync(record){try{const text=JSON.stringify(record);localStorage.setItem(BROWSER_STATE_KEY,text);if(localStorage.getItem(BROWSER_STATE_KEY)!==text)throw new Error('אימות עותק הדפדפן נכשל');return true}catch(e){console.error('browser state localStorage',e);return false}}
 
@@ -11,7 +20,7 @@ function loadBrowserStateSync(){try{const raw=localStorage.getItem(BROWSER_STATE
 
 function queueBrowserStateIdb(record){files.browserStatePendingRecord=clone(record);if(files.browserStateWritePromise)return files.browserStateWritePromise;files.browserStateWritePromise=(async()=>{while(files.browserStatePendingRecord){const next=files.browserStatePendingRecord;files.browserStatePendingRecord=null;await idbPut('sync',BROWSER_STATE_IDB_KEY,next)}})().catch(e=>console.error('browser state idb',e)).finally(()=>{files.browserStateWritePromise=null;if(files.browserStatePendingRecord)queueBrowserStateIdb(files.browserStatePendingRecord)});return files.browserStateWritePromise}
 
-function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.dbRevision){const record=browserStateRecord(snapshot,revision),ok=persistBrowserStateSync(record);queueBrowserStateIdb(record);return ok}
+function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.dbRevision,options){const done=beginMeasure('kupa:local-snapshot');try{const record=browserStateRecord(snapshot,revision,options),ok=persistBrowserStateSync(record);queueBrowserStateIdb(record);return ok}finally{done()}}
 
 async function loadBrowserState(){const local=loadBrowserStateSync();let idb=null;try{idb=await idbGet('sync',BROWSER_STATE_IDB_KEY)}catch(e){console.error('browser state idb load',e)}const lt=Number(local?.snapshotSeq||0),it=Number(idb?.snapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),lt,it);const chosen=!local||it>lt?idb:local;if(chosen){persistBrowserStateSync(chosen);queueBrowserStateIdb(chosen)}return chosen||null}
 

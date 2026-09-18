@@ -11,7 +11,7 @@ import {normalizeNotesSheet} from '../domains/notes/sheet-model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateNormalization({model,externalWorkbooks=false}){
-function prepareKupaCloudState(source=model.state){const x=normalizeState(clone(source));delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return x}
+function prepareKupaCloudState(source=model.state,{normalized=false}={}){const x=normalized?clone(source):normalizeState(source);delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return x}
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
 
@@ -30,7 +30,7 @@ function normalizeState(d){
   n.bank.bankSyncAt=n.bank.feed?.syncedAt||n.bank.bankSyncAt||(n.bank.source==='hapoalim'?n.bank.updatedAt:null);
   n.bank.asOfDate=n.bank.asOfDate||(n.bank.updatedAt?String(n.bank.updatedAt).slice(0,10):null);
   n.bank.snapshotToken=n.bank.snapshotToken?String(n.bank.snapshotToken):null;
-  {const seq=Number(n.bank.snapshotSeq);n.bank.snapshotSeq=Number.isSafeInteger(seq)&&seq>=0?seq:null}
+  {const seq=n.bank.snapshotSeq==null?NaN:Number(n.bank.snapshotSeq);n.bank.snapshotSeq=Number.isSafeInteger(seq)&&seq>=0?seq:null}
   n.bank.adjustments=Array.isArray(n.bank.adjustments)?n.bank.adjustments.map(x=>({...x,amount:wholeMoney(x.amount)})):[];
   n.checks=normalizeSharedChecks(n.checks);
   n.cash=(Array.isArray(n.cash)?n.cash:[]).map(x=>({...x,amount:wholeMoney(x.amount)}));

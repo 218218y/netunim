@@ -1,3 +1,4 @@
+import {beginMeasure} from '../shared/runtime-performance.js';
 import {financeFencePayload} from '../shared/finance-fence.js';
 import {assertValidOrderCloudState,validOrderCloudState} from '../state/validation.js';
 import {normalizeSharedChecks} from '../domains/checks/model.js';
@@ -13,7 +14,7 @@ async function readCloud(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?docu
 
 async function readCloudMeta(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הענן נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
 
-async function rpcSave(snapshot,expected,operationId,deleteIntents={},audit={}){assertValidOrderCloudState(snapshot,'Orders write');const op=String(operationId||'').trim();if(!op)throw new Error('מזהה פעולת השמירה חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${CLOUD_RPC}_v5`:`${CLOUD_RPC}_v5`;const r=await supaFetch(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:CLOUD_DOC,p_expected_revision:Number(expected||0),p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}return{r,j,txt,row:Array.isArray(j)?j[0]:j}}
+async function rpcSave(snapshot,expected,operationId,deleteIntents={},audit={}){const ackDone=beginMeasure('orders:cloud-ack');assertValidOrderCloudState(snapshot,'Orders write');const op=String(operationId||'').trim();if(!op)throw new Error('מזהה פעולת השמירה חסר');const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_${CLOUD_RPC}_v5`:`${CLOUD_RPC}_v5`;const r=await supaFetch(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:CLOUD_DOC,p_expected_revision:Number(expected||0),p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});const txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch(e){j=null}if(r.ok)ackDone();return{r,j,txt,row:Array.isArray(j)?j[0]:j}}
 
 
 async function readBackupList(table,documentName,limit,offset=0){const safeLimit=Math.max(1,Math.min(20,Math.trunc(Number(limit)||8))),safeOffset=Math.max(0,Math.min(5000,Math.trunc(Number(offset)||0))),q=`/rest/v1/${table}?document_name=eq.${encodeURIComponent(documentName)}&select=id,revision,saved_at&order=saved_at.desc,id.desc&limit=${safeLimit}&offset=${safeOffset}`,r=await supaFetch(q,{method:'GET'}),j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת רשימת גיבויי הענן נכשלה');return Array.isArray(j)?j:[]}

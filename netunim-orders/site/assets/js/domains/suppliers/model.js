@@ -4,7 +4,7 @@ export const ALL_SUPPLIERS_ID='__all_suppliers__';
 
 export function supplierTxData(state,id){return state.transactions.filter(t=>t.supplierId===id).sort((a,b)=>Number(a.sequence||0)-Number(b.sequence||0))}
 
-export function balanceRowsData(state,id){let bal=0;return supplierTxData(state,id).map(t=>{bal+=Number(t.credit||0)-Number(t.debit||0);return {t,balance:Math.round((bal+Number.EPSILON)*100)/100}})}
+export function balanceRowsData(state,id,rows=supplierTxData(state,id)){let bal=0;return rows.map(t=>{bal+=Number(t.credit||0)-Number(t.debit||0);return {t,balance:Math.round((bal+Number.EPSILON)*100)/100}})}
 
 export function supplierBalanceData(state,id){const rows=balanceRowsData(state,id);return rows.length?rows.at(-1).balance:0}
 
@@ -12,7 +12,20 @@ export function validSupplierYear(value){const y=Number(value);return Number.isI
 
 export function transactionWorkflowComplete(t){const flags=[t?.invoiceReceived,t?.signed,t?.supplied];return flags.every(v=>v==null)||flags.every(v=>v===true)}
 
-export function supplierYearContextData(state,id){const rows=supplierTxData(state,id),yearById=new Map(),boundaries=[],segment=[];for(const t of rows){segment.push(t);const year=validSupplierYear(t.yearEnd);if(year!==null){boundaries.push({id:t.id,sequence:Number(t.sequence||0),year});segment.forEach(row=>yearById.set(row.id,year));segment.length=0}}const years=[...new Set(boundaries.map(b=>b.year))].sort((a,b)=>b-a),maxClosedYear=years.length?Math.max(...years):null,currentYear=maxClosedYear!==null?maxClosedYear+1:new Date().getFullYear(),carryOpen=rows.filter(t=>yearById.has(t.id)&&!transactionWorkflowComplete(t)).length;return{rows,yearById,boundaries,years,currentYear,carryOpen}}
+export function supplierYearContextData(state,id,rows=supplierTxData(state,id)){const yearById=new Map(),boundaries=[],segment=[];for(const t of rows){segment.push(t);const year=validSupplierYear(t.yearEnd);if(year!==null){boundaries.push({id:t.id,sequence:Number(t.sequence||0),year});segment.forEach(row=>yearById.set(row.id,year));segment.length=0}}const years=[...new Set(boundaries.map(b=>b.year))].sort((a,b)=>b-a),maxClosedYear=years.length?Math.max(...years):null,currentYear=maxClosedYear!==null?maxClosedYear+1:new Date().getFullYear(),carryOpen=rows.filter(t=>yearById.has(t.id)&&!transactionWorkflowComplete(t)).length;return{rows,yearById,boundaries,years,currentYear,carryOpen}}
+
+// Scoped to one render/derivation, never cached across mutable state revisions.
+export function supplierRenderModelData(state,supplierIds=state.suppliers.map(s=>s.id)){
+  const selected=new Set(supplierIds),grouped=new Map([...selected].map(id=>[id,[]])),bySupplier=new Map();
+  for(const row of state.transactions)grouped.get(row.supplierId)?.push(row);
+  for(const supplier of state.suppliers){
+    if(!selected.has(supplier.id))continue;
+    const rows=grouped.get(supplier.id);rows.sort((a,b)=>Number(a.sequence||0)-Number(b.sequence||0));
+    const context=supplierYearContextData(state,supplier.id,rows),balances=balanceRowsData(state,supplier.id,rows);
+    bySupplier.set(supplier.id,{supplier,context,balances,balance:balances.at(-1)?.balance||0});
+  }
+  return bySupplier;
+}
 
 export function supplierArchiveYearsData(state){return [...new Set(state.suppliers.flatMap(s=>supplierYearContextData(state,s.id).years))].sort((a,b)=>b-a)}
 
@@ -36,12 +49,12 @@ export function supplierFinancialStatsData(state,id,yearView='current'){
   return transactionFinancialStatsData(supplierPeriodTxData(state,id,yearView));
 }
 
-export function supplierViewRowsData(state,supplierIds=[],yearView='current',filterMode='all'){
+export function supplierViewRowsData(state,supplierIds=[],yearView='current',filterMode='all',renderModel=supplierRenderModelData(state,supplierIds)){
   const rows=[];
   for(const supplierId of supplierIds){
-    const supplier=state.suppliers.find(s=>s.id===supplierId);if(!supplier)continue;
-    const ctx=supplierYearContextData(state,supplierId);
-    for(const {t,balance} of balanceRowsData(state,supplierId)){
+    const entry=renderModel.get(supplierId);if(!entry)continue;
+    const {supplier,context:ctx,balances}=entry;
+    for(const {t,balance} of balances){
       const assignedYear=ctx.yearById.get(t.id)??null;
       if(yearView==='current'){if(assignedYear!==null&&transactionWorkflowComplete(t))continue}
       else if(yearView!=='all'&&assignedYear!==validSupplierYear(yearView))continue;

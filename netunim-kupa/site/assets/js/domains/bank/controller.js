@@ -99,7 +99,16 @@ async function ensureBankDisplayArchive(){
   try{const changed=await bankDisplayArchivePromise;if(changed)render();return changed}finally{bankDisplayArchivePromise=null}
 }
 
-async function refreshBankBridgeStatus(){
+let bridgeStatusPromise=null,bridgeStatusToken=null,bridgeStatusCheckedAt=0;
+async function refreshBankBridgeStatus({force=true}={}){
+  const token=bridge.getBridgeToken(),now=Date.now();
+  if(bridgeStatusPromise){await bridgeStatusPromise;if(token!==bridgeStatusToken)return refreshBankBridgeStatus({force});return bankBridgeUiState()}
+  if(!force&&token===bridgeStatusToken&&now>=bridgeStatusCheckedAt&&now-bridgeStatusCheckedAt<15000)return bankBridgeUiState();
+  bridgeStatusToken=token;
+  bridgeStatusPromise=readBankBridgeStatus();
+  try{return await bridgeStatusPromise}finally{bridgeStatusCheckedAt=Date.now();bridgeStatusPromise=null}
+}
+async function readBankBridgeStatus(){
   if(!bridge.getBridgeToken()){
     Object.assign(bridgeState,{checked:true,available:null,configured:false,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:'יש להזין מפתח Bridge כדי לחבר את הקופה לתוכנה המקומית.'});
     return bankBridgeUiState();

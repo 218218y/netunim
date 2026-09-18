@@ -1,10 +1,10 @@
 import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
-import {ALL_SUPPLIERS_ID, validSupplierYear, transactionFinancialStatsData} from './model.js';
+import {ALL_SUPPLIERS_ID, validSupplierYear, transactionFinancialStatsData, supplierRenderModelData, supplierViewRowsData} from './model.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsSuppliersView({model, supplierUi, balanceRows, supplierYearContext, supplierViewRows, mountViewLayout, orderedSuppliers, captureSupplierViewport, restoreSupplierViewport, syncSupplierBulkUi, supplierMoveTargetRow, storeSupplierViewport, scrollSupplierTransactionsEnd, scheduleSave}){
+export function createDomainsSuppliersView({model, supplierUi, mountViewLayout, orderedSuppliers, captureSupplierViewport, restoreSupplierViewport, syncSupplierBulkUi, supplierMoveTargetRow, storeSupplierViewport, scrollSupplierTransactionsEnd, scheduleSave}){
 function supplierSearchText(t,assignedYear=null,supplierName=''){return `${supplierName||''} ${t.action||''} ${t.note||''} ${t.supplyInfo||''} ${t.source?.row||''} ${assignedYear||''}`}
 
 function supplierViewState(){
@@ -12,11 +12,12 @@ function supplierViewState(){
   let selectedSupplier=allMode?null:model.state.suppliers.find(x=>x.id===supplierUi.currentSupplierId);
   if(!allMode&&!selectedSupplier){supplierUi.currentSupplierId=suppliers[0]?.id||null;selectedSupplier=suppliers[0]||null}
   const displaySuppliers=allMode?[...suppliers].reverse():selectedSupplier?[selectedSupplier]:[];
-  const contexts=displaySuppliers.map(s=>({supplier:s,ctx:supplierYearContext(s.id)}));
+  const renderModel=supplierRenderModelData(model.state,displaySuppliers.map(s=>s.id));
+  const contexts=displaySuppliers.map(s=>({supplier:s,ctx:renderModel.get(s.id).context}));
   const availableYears=[...new Set(contexts.flatMap(({ctx})=>ctx.years))].sort((a,b)=>b-a);
   let selectedArchiveYear=['current','all'].includes(supplierUi.supplierYearView)?null:validSupplierYear(supplierUi.supplierYearView);
   if(!['current','all'].includes(supplierUi.supplierYearView)&&(selectedArchiveYear===null||!availableYears.includes(selectedArchiveYear))){supplierUi.supplierYearView='current';selectedArchiveYear=null}
-  return{suppliers,allMode,selectedSupplier,displaySuppliers,contexts,availableYears,selectedArchiveYear,supplierIds:displaySuppliers.map(s=>s.id)};
+  return{renderModel,suppliers,allMode,selectedSupplier,displaySuppliers,contexts,availableYears,selectedArchiveYear,supplierIds:displaySuppliers.map(s=>s.id)};
 }
 
 function currentPeriodLabel(contexts,allMode){
@@ -34,27 +35,26 @@ function supplierFinancialPeriod(contexts,selectedArchiveYear,allMode){
 
 function filteredSupplierRows(state,{includeSearch=false}={}){
   const moving=!state.allMode&&!!supplierUi.supplierMoveTargetId;
-  const rows=supplierViewRows(state.supplierIds,moving?'all':supplierUi.supplierYearView,moving?'all':supplierUi.filterMode);
+  const rows=supplierViewRowsData(model.state,state.supplierIds,moving?'all':supplierUi.supplierYearView,moving?'all':supplierUi.filterMode,state.renderModel);
   const q=includeSearch&&!moving?supplierUi.searchText.trim():'';
   return q?rows.filter(({supplier,t,assignedYear})=>supplierSearchText(t,assignedYear,supplier.name).includes(q)):rows;
 }
 
-function supplierFullBalance(displaySuppliers){
-  return displaySuppliers.reduce((sum,sp)=>{const supplierRows=balanceRows(sp.id);return sum+(supplierRows.length?supplierRows.at(-1).balance:0)},0);
+function supplierFullBalance(state){
+  return state.displaySuppliers.reduce((sum,sp)=>sum+state.renderModel.get(sp.id).balance,0);
 }
 
-function supplierDisplayedFinancial(){
-  const state=supplierViewState();
+function supplierDisplayedFinancial(state=supplierViewState()){
   if(!state.displaySuppliers.length)return{financial:transactionFinancialStatsData([]),financialPeriod:'',headerBalance:0};
-  const rows=filteredSupplierRows(state,{includeSearch:true}),financial=transactionFinancialStatsData(rows.map(({t})=>t)),fullBalance=supplierFullBalance(state.displaySuppliers);
+  const rows=filteredSupplierRows(state,{includeSearch:true}),financial=transactionFinancialStatsData(rows.map(({t})=>t)),fullBalance=supplierFullBalance(state);
   const headerBalance=supplierUi.supplierMoveTargetId||supplierUi.filterMode==='all'?fullBalance:financial.net;
   return{financial,financialPeriod:supplierFinancialPeriod(state.contexts,state.selectedArchiveYear,state.allMode),headerBalance};
 }
 
-function updateSupplierFinancialSummary(){
+function updateSupplierFinancialSummary(state){
   const main=$('#main');if(!main)return;
   const summary=main.querySelector('.supplier-bottom-summary'),headerBalanceEl=main.querySelector('[data-supplier-header-balance]');
-  const {financial,financialPeriod,headerBalance}=supplierDisplayedFinancial();
+  const {financial,financialPeriod,headerBalance}=supplierDisplayedFinancial(state);
   if(headerBalanceEl){headerBalanceEl.textContent=money(headerBalance);headerBalanceEl.classList.toggle('badtext',headerBalance<0);headerBalanceEl.classList.toggle('goodtext',headerBalance>=0)}
   if(!summary)return;
   const debit=summary.querySelector('[data-supplier-summary="debit"]'),credit=summary.querySelector('[data-supplier-summary="credit"]'),net=summary.querySelector('[data-supplier-summary="net"]'),meta=summary.querySelector('[data-supplier-summary="meta"]');
@@ -64,12 +64,12 @@ function updateSupplierFinancialSummary(){
 function renderSupplier({scrollMode='auto'}={}){
   const viewport=captureSupplierViewport(),state=supplierViewState();
   if(!state.displaySuppliers.length){$('#main').innerHTML='<div class="empty">אין ספקים.</div>';return}
-  const {suppliers,allMode,selectedSupplier,displaySuppliers,contexts,availableYears,selectedArchiveYear}=state;
+  const {suppliers,allMode,selectedSupplier,contexts,availableYears,selectedArchiveYear}=state;
   if(allMode){supplierUi.supplierMoveTargetId=null;supplierUi.supplierBulkMode=false;supplierUi.supplierBulkSelected.clear();supplierUi.supplierBulkAnchorId=null}
   else if(supplierUi.supplierMoveTargetId&&(!supplierUi.supplierBulkMode||!model.state.transactions.some(t=>t.id===supplierUi.supplierMoveTargetId&&t.supplierId===selectedSupplier.id)))supplierUi.supplierMoveTargetId=null;
 
   const rows=filteredSupplierRows(state),visibleRows=filteredSupplierRows(state,{includeSearch:true});
-  const totalBalance=supplierFullBalance(displaySuppliers);
+  const totalBalance=supplierFullBalance(state);
   const yearOptions=availableYears.map(y=>`<option value="${esc(y)}" ${String(y)===supplierUi.supplierYearView?'selected':''}>ארכיון ${esc(y)}</option>`).join(''),allYearsOption=`<option value="all" ${supplierUi.supplierYearView==='all'?'selected':''}>כל השנים</option>`,currentLabel=currentPeriodLabel(contexts,allMode);
   const movingTx=!allMode&&supplierUi.supplierMoveTargetId?model.state.transactions.find(t=>t.id===supplierUi.supplierMoveTargetId&&t.supplierId===selectedSupplier.id):null,moveLocked=!!movingTx;
   const tableColumnCount=12+(allMode?1:0)+(supplierUi.supplierBulkMode?1:0);
@@ -95,12 +95,12 @@ function renderSupplier({scrollMode='auto'}={}){
   </section>
   <div class="panel supplier-table-panel ${esc(moveLocked?'supplier-move-mode':'')}">${moveGuide}<div class="table-wrap"><table class="${allMode?'supplier-all-table':''}"><thead><tr>${supplierUi.supplierBulkMode?'<th class="bulk-check-col"><input id="supplierBulkAll" class="bulk-check" type="checkbox" title="בחר את כל השורות המוצגות" data-change="toggle-supplier-bulk-visible"></th>':''}<th class="col-seq">#</th>${allMode?'<th class="col-supplier table-head-center">ספק</th>':''}<th class="col-invoice table-head-center">חשבונית</th><th class="col-action table-head-center">פעולה</th><th class="col-money table-head-center">חובה</th><th class="col-money table-head-center">זכות</th><th class="col-balance table-head-center">יתרה</th><th class="col-status table-head-center">חתום</th><th class="col-status table-head-center">סופק</th><th class="col-supply table-head-center">זמן / אספקה</th><th class="col-status table-head-center">ח״מ</th><th class="col-note table-head-input-text">הערה</th><th class="col-row-actions"></th></tr></thead><tbody>${moveRowsHtml}</tbody></table><section class="supplier-bottom-summary" aria-label="${allMode?'סיכום כספי לכל הספקים':'סיכום כספי לספק'}"><div class="supplier-bottom-head"><h2>סיכום כספי</h2><small class="supplier-bottom-meta" data-supplier-summary="meta">${esc(financialPeriod)} · ${esc(financial.txCount)} תנועות מוצגות</small></div><div class="supplier-bottom-grid"><div><span>סה״כ חובה</span><b class="badtext" data-supplier-summary="debit">${money(financial.debit)}</b></div><div><span>סה״כ זכות</span><b class="goodtext" data-supplier-summary="credit">${money(financial.credit)}</b></div><div><span>סה״כ יתרה</span><b class="${esc(financial.net<0?'badtext':'goodtext')}" data-supplier-summary="net">${money(financial.net)}</b></div></div></section></div></div>`;
   mountViewLayout({headCount:1,className:'supplier-view-shell'});
-  filterSupplierSearch(supplierUi.searchText);
+  filterSupplierSearch(supplierUi.searchText,state);
   syncSupplierBulkUi();
   restoreSupplierViewport(viewport,viewKey,scrollMode);
 }
 
-function filterSupplierSearch(value){if(supplierUi.supplierMoveTargetId){document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=false);updateSupplierFinancialSummary();syncSupplierBulkUi();return}const hadQuery=!!supplierUi.searchText.trim();supplierUi.searchText=value;const q=value.trim();document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=!!q&&!row.dataset.search.includes(q));updateSupplierFinancialSummary();syncSupplierBulkUi();if(hadQuery&&!q){const wrap=$('#main')?.querySelector('.supplier-table-panel .table-wrap');if(wrap)requestAnimationFrame(()=>{scrollSupplierTransactionsEnd(wrap);storeSupplierViewport(supplierUi.currentSupplierId,wrap)})}}
+function filterSupplierSearch(value,state){if(supplierUi.supplierMoveTargetId){document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=false);updateSupplierFinancialSummary(state);syncSupplierBulkUi();return}const hadQuery=!!supplierUi.searchText.trim();supplierUi.searchText=value;const q=value.trim();document.querySelectorAll('tbody tr[data-search]').forEach(row=>row.hidden=!!q&&!row.dataset.search.includes(q));updateSupplierFinancialSummary(state);syncSupplierBulkUi();if(hadQuery&&!q){const wrap=$('#main')?.querySelector('.supplier-table-panel .table-wrap');if(wrap)requestAnimationFrame(()=>{scrollSupplierTransactionsEnd(wrap);storeSupplierViewport(supplierUi.currentSupplierId,wrap)})}}
 
 function boolText(v){return v===true?'כן':v===false?'לא':'—'}
 
@@ -110,9 +110,23 @@ function inlineTri(t,field,label){const v=t[field];return `<div class="status-to
 
 function inlineBool(t,field,label){const v=!!t[field];return `<div class="status-toggle binary" title="${esc(label)}"><button class="yes ${esc(v?'active':'')}" data-action="set-inline-bool" data-click-arg0="${esc(t.id)}" data-click-arg1="${esc(field)}">כן</button><button class="no ${esc(!v?'active':'')}" data-action="set-inline-bool-2" data-click-arg0="${esc(t.id)}" data-click-arg1="${esc(field)}">לא</button></div>`}
 
-function setInlineTri(id,field,value){const t=model.state.transactions.find(x=>x.id===id);if(!t||!['invoiceReceived','signed','supplied'].includes(field))return;t[field]=t[field]===value?null:value;t.updatedAt=new Date().toISOString();scheduleSave('הסטטוס עודכן');renderSupplier({scrollMode:'preserve'})}
+function refreshInlineStatus(t,field){
+  const state=supplierViewState(),visible=filteredSupplierRows(state).some(row=>row.t.id===t.id);
+  const row=$('#main')?.querySelector(`tr[data-tx-id="${CSS.escape(t.id)}"]`),cell=row?.querySelector(`[data-click-arg1="${field}"]`)?.closest('td');
+  // Completing an archived carry row or changing the active filter requires a structural render.
+  if(!visible||!cell){renderSupplier({scrollMode:'preserve'});return}
+  const labels={invoiceReceived:'חשבונית התקבלה',signed:'חתום',supplied:'סופק',hmIssued:'ח״מ יצא'};
+  const active=document.activeElement,action=cell.contains(active)?active.getAttribute('data-action'):null;
+  cell.innerHTML=field==='hmIssued'?inlineBool(t,field,labels[field]):inlineTri(t,field,labels[field]);
+  if(field!=='hmIssued'){cell.classList.toggle('tri-status-yes',t[field]===true);cell.classList.toggle('tri-status-no',t[field]===false)}
+  row.classList.toggle('pending',t.supplied===false);
+  if(action)cell.querySelector(`[data-action="${action}"]`)?.focus({preventScroll:true});
+  updateSupplierFinancialSummary(state);syncSupplierBulkUi();
+}
 
-function setInlineBool(id,field,value){const t=model.state.transactions.find(x=>x.id===id);if(!t||field!=='hmIssued')return;if(t[field]===value)return;t[field]=value;t.updatedAt=new Date().toISOString();scheduleSave('הסטטוס עודכן');renderSupplier({scrollMode:'preserve'})}
+function setInlineTri(id,field,value){const t=model.state.transactions.find(x=>x.id===id);if(!t||!['invoiceReceived','signed','supplied'].includes(field))return;t[field]=t[field]===value?null:value;t.updatedAt=new Date().toISOString();scheduleSave('הסטטוס עודכן');refreshInlineStatus(t,field)}
+
+function setInlineBool(id,field,value){const t=model.state.transactions.find(x=>x.id===id);if(!t||field!=='hmIssued')return;if(t[field]===value)return;t[field]=value;t.updatedAt=new Date().toISOString();scheduleSave('הסטטוס עודכן');refreshInlineStatus(t,field)}
 
 function saveInlineText(id,field,el){const t=model.state.transactions.find(x=>x.id===id);if(!t||!['supplyInfo','note'].includes(field))return;const value=el.value.trim();if((t[field]||'')===value)return;t[field]=value;t.updatedAt=new Date().toISOString();scheduleSave(field==='supplyInfo'?'פרטי האספקה עודכנו':'ההערה עודכנה')}
 

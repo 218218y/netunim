@@ -1,3 +1,5 @@
+import {beginMeasure} from '../shared/runtime-performance.js';
+import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
 import {clone} from '../core/values.js';
 import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
@@ -9,21 +11,29 @@ const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState}){
+let sequenceLoaded=false;
+// Another primary tab may have saved while this tab was inactive.
+globalThis.addEventListener?.('storage',event=>{if(event.key===STORAGE_KEY||event.key===null)sequenceLoaded=false});
+function nextSnapshotSequence(){
+  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0));sequenceLoaded=true}
+  return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
+}
+
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
-function localSnapshot(source=model.state){assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0))+1;payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}
+function localSnapshot(source=model.state){const done=beginMeasure('orders:local-snapshot');try{assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);nextSnapshotSequence();payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}finally{done()}}
 
-async function openLocalStateDb(){return await new Promise((resolve,reject)=>{const r=indexedDB.open(LOCAL_DB,2);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(LOCAL_STORE))r.result.createObjectStore(LOCAL_STORE);if(!r.result.objectStoreNames.contains(LOCAL_SYNC_STORE))r.result.createObjectStore(LOCAL_SYNC_STORE)};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})}
+const openLocalStateDb=createIndexedDbConnection(LOCAL_DB,2,db=>{if(!db.objectStoreNames.contains(LOCAL_STORE))db.createObjectStore(LOCAL_STORE);if(!db.objectStoreNames.contains(LOCAL_SYNC_STORE))db.createObjectStore(LOCAL_SYNC_STORE)});
 
-async function idbSyncPut(key,value){const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(clone(value),key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}finally{db.close()}}
-async function idbSyncGet(key){const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}finally{db.close()}}
-async function idbSyncDelete(key){const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}finally{db.close()}}
+async function idbSyncPut(key,value){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
+async function idbSyncGet(key){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
+async function idbSyncDelete(key){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
 
-async function persistBrowserStateSnapshot(payload){const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_STORE,'readwrite');tx.objectStore(LOCAL_STORE).put({payload:clone(payload),savedAt:Date.parse(payload?._meta?.savedAt||'')||Date.now()},LOCAL_STATE_KEY);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'))})}finally{db.close()}}
+async function persistBrowserStateSnapshot(payload){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_STORE,'readwrite');tx.objectStore(LOCAL_STORE).put({payload,savedAt:Date.parse(payload?._meta?.savedAt||'')||Date.now()},LOCAL_STATE_KEY);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'))})}
 
 function queueBrowserStateSnapshot(payload){files.browserStatePendingPayload=clone(payload);if(files.browserStateWritePromise)return files.browserStateWritePromise;files.browserStateWritePromise=(async()=>{while(files.browserStatePendingPayload){const next=files.browserStatePendingPayload;files.browserStatePendingPayload=null;await persistBrowserStateSnapshot(next)}})().catch(e=>{console.error('browser state mirror',e)}).finally(()=>{files.browserStateWritePromise=null;if(files.browserStatePendingPayload)queueBrowserStateSnapshot(files.browserStatePendingPayload)});return files.browserStateWritePromise}
 
-async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();try{return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_STORE).objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}finally{db.close()}}catch(e){console.error('browser state load',e);return null}}
+async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_STORE).objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}catch(e){console.error('browser state load',e);return null}}
 
 async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){await captureLegacyWorkbook(record.payload.notesSheet);model.state=normalizeState(clone(record.payload));try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
 
@@ -47,11 +57,12 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
   record.deleteIntents=mergeDeleteIntents(cached?.deleteIntents,progress?.deleteIntents);
   const cacheOk=writePendingCache(record);session.ordersOutboxCached=record;
   const previous=session.ordersOutboxCommitPromise||Promise.resolve();
+  const outboxDone=beginMeasure('orders:outbox-durable');
   session.ordersOutboxCommitPromise=previous.catch(()=>{}).then(async()=>{
     try{await idbSyncPut(ORDERS_OUTBOX_KEY,record);session.cloudDurabilityDegraded=false;return {record,durable:true}}
     catch(error){console.error('orders outbox IndexedDB',error);session.cloudDurabilityDegraded=true;if(!cacheOk)throw new Error('orders_outbox_persistence_failed',{cause:error});return {record,durable:true,store:'localStorage'}}
   });
-  session.ordersOutboxCommitPromise.catch(()=>{});
+  session.ordersOutboxCommitPromise.then(outboxDone,()=>{});
   return cacheOk;
 }
 

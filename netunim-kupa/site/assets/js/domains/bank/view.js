@@ -257,7 +257,7 @@ function renderBank(){
 `;
   updateBridgePanel();
   for(const formId of ['bankBridgePairForm','bankBridgeCredentialsForm'])document.getElementById(formId)?.addEventListener('submit',event=>event.preventDefault());
-  refreshBankBridgeStatus().then(updateBridgePanel).catch(()=>updateBridgePanel());
+  refreshBankBridgeStatus({force:false}).then(updateBridgePanel).catch(()=>updateBridgePanel());
   ensureBankDisplayArchive().catch(error=>console.error('bank display archive',error));
 }
 

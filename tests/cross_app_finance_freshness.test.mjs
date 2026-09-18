@@ -147,7 +147,7 @@ assert.equal(persistModel.state.bank.currentBalance,4321,'a Kupa document save m
 assert.equal(persistModel.state.bank.homeFeed.balance,8765,'a Kupa document save must not erase the synchronized home bank overlay');
 assert.equal(persistModel.state.creditSync.syncedAt,fresh,'a Kupa document save must not reset synchronized credit status to unsynchronized');
 assert.equal(persistSession.financeRevision,9,'saving Kupa-owned data does not invent or roll back the independent finance revision');
-assert.equal(persistRenders,1);
+assert.equal(persistRenders,0,'an unchanged core ACK preserves the visible screen and finance overlays');
 
 // A manual business balance is Kupa-owned even when an older synchronized feed is still retained for diagnostics.
 persistModel.state.bank={...persistModel.state.bank,currentBalance:1111,updatedAt:'2026-09-01T04:10:00.000Z',asOfDate:'2026-09-01',source:'manual',sourceAccount:null};

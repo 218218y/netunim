@@ -1,3 +1,4 @@
+import {beginMeasure} from './runtime-performance.js';
 // Stable-container delegation; handlers receive the actual actionable element.
 export function bindActionEvents(root,actions,{canRun=()=>true}={}){
   const types=['click','change','input','keydown','focus','blur','dragstart','dragover','drop','dragend'];
@@ -13,7 +14,7 @@ export function bindActionEvents(root,actions,{canRun=()=>true}={}){
           if(!canRun(name,element,event)){event.preventDefault();event.stopPropagation();return}
           const action=actions[name];
           if(typeof action!=='function')throw new Error('Unknown UI action: '+name);
-          if(!element.matches(':disabled'))action(element,event);
+          if(!element.matches(':disabled')){const done=beginMeasure(`action:${name}`,{paint:true});try{action(element,event)}finally{done()}}
         }
         if(event.cancelBubble)break;
       }
