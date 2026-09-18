@@ -20,7 +20,7 @@ function saveLedger(collection,id,labels){
   const rec={id:id||uid(labels.idPrefix),date:document.getElementById('mDate').value,type,description:document.getElementById('mDesc').value.trim(),amount:applyLedgerTypeSign(type,parsedAmount),note:document.getElementById('mNote').value.trim()};
   if(!rec.date||!rec.amount)return toast('יש למלא תאריך וסכום');
   if(id)model.state[collection][model.state[collection].findIndex(x=>x.id===id)]=rec;else model.state[collection].push(rec);
-  closeModal(true);saveState(labels.savedMessage);renderCash()
+  closeModal(true);saveState(labels.savedMessage,{domains:[collection]});renderCash()
 }
 const CASH_LABELS={editTitle:'עריכת תנועת מזומן',newTitle:'תנועת מזומן חדשה',idPrefix:'CASH',savedMessage:'תנועת המזומן נשמרה',positiveLabel:'הכנסה',negativeLabel:'הוצאה'};
 const RIGHTS_LABELS={editTitle:'עריכת תנועת מעשר',newTitle:'תנועת מעשר חדשה',idPrefix:'RIGHT',savedMessage:'תנועת המעשר נשמרה',supportsCents:true,positiveLabel:'זכות למעשר',negativeLabel:'חובה למעשר'};

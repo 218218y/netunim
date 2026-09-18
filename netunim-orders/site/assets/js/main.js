@@ -66,6 +66,7 @@ import {bindActionEvents,bindDismissibleDetails} from './shared/events.js';
 import {createUiActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
+import {createOrderDomainRevisions,orderViewRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
 import {createOrdersBankChequeImageRuntime} from './domains/finance/bank-cheque-image-runtime.js';
 import {INITIAL_STATE} from "./state/constants.js";
@@ -86,6 +87,7 @@ import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
 
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
+const domainRevisions=createOrderDomainRevisions(session);
 
 const stateNormalization=createStateNormalization({
   externalWorkbooks:true,
@@ -101,6 +103,7 @@ const storageBrowser=createStorageBrowser({
   prepareState:(...args)=>stateSelectors.prepareState(...args),
   prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+  domainRevisions,
 });
 
 const restoreGroupStore=createRestoreGroupStore({
@@ -174,6 +177,7 @@ const storagePersistence=createStoragePersistence({
   tab,
   session,
   ui,
+  domainRevisions,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   loadLocal:(...args)=>storageBrowser.loadLocal(...args),
   showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
@@ -208,6 +212,7 @@ const stateSnapshots=createStateSnapshots({
   cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
   checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+  domainRevisions,
 });
 
 const uiLayout=createUiLayout({
@@ -234,12 +239,7 @@ const uiNavigation=createUiNavigation({
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
-  dataRevision:view=>{
-    const orders=[session.localGeneration,session.cloudRevision].map(value=>Number(value||0));
-    if(view==='checks')return [checksSession.checksGeneration,checksSession.checksCloudRevision].map(value=>Number(value||0)).join(':');
-    if(view==='summary')return [...orders,checksSession.kupaReadRevision,checksSession.financeReadRevision].map(value=>Number(value||0)).join(':');
-    return orders.join(':');
-  },
+  dataRevision:view=>orderViewRevision(domainRevisions,view),
 });
 
 const domainsChecksView=createDomainsChecksView({
@@ -267,6 +267,7 @@ const domainsBankCache=createDomainsBankCache({
   readKupaReadOnlyMeta:(...args)=>cloudTransport.readKupaReadOnlyMeta(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   refreshBankAlertArchive:(...args)=>domainsFinanceController.ensureBankDisplayArchive(...args),
+  touchFinanceRevision:()=>domainRevisions.touch('finance'),
 });
 
 const uiDateEditor=createUiDateEditor({
@@ -305,6 +306,7 @@ const syncChecksPersistence=createSyncChecksPersistence({
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
+  touchChecksRevision:()=>domainRevisions.touch('checks'),
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -325,7 +327,7 @@ const domainsSuppliersOrder=createDomainsSuppliersOrder({
   supplierUi,
   ui,
   modal:(...args)=>uiModal.modal(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
   render:(...args)=>uiNavigation.render(...args),
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
@@ -342,7 +344,7 @@ const domainsSuppliersBulk=createDomainsSuppliersBulk({
   resequenceSupplier:(...args)=>domainsSuppliersCommands.resequenceSupplier(...args),
   moveTransactionAfter:(...args)=>domainsSuppliersCommands.moveTransactionAfter(...args),
   supplierBalance:(...args)=>domainsSuppliersSelectors.supplierBalance(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
   closeModal:(...args)=>uiModal.closeModal(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -361,7 +363,7 @@ const domainsSuppliersView=createDomainsSuppliersView({
   supplierMoveTargetRow:(...args)=>domainsSuppliersBulk.supplierMoveTargetRow(...args),
   storeSupplierViewport:(...args)=>uiLayout.storeSupplierViewport(...args),
   scrollSupplierTransactionsEnd:(...args)=>uiLayout.scrollSupplierTransactionsEnd(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
 });
 
 const uiModal=createUiModal({
@@ -377,7 +379,7 @@ const domainsSuppliersEditor=createDomainsSuppliersEditor({
   resequenceSupplier:(...args)=>domainsSuppliersCommands.resequenceSupplier(...args),
   insertTransactionAfter:(...args)=>domainsSuppliersCommands.insertTransactionAfter(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['suppliers','transactions']}),
   render:(...args)=>uiNavigation.render(...args),
   renderSupplier:(...args)=>domainsSuppliersView.renderSupplier(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
@@ -404,7 +406,7 @@ const domainsServiceBulk=createDomainsServiceBulk({
   model,
   renderService:(...args)=>domainsServiceView.renderService(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
@@ -415,14 +417,14 @@ const domainsServiceView=createDomainsServiceView({
   serviceBulkControls:(...args)=>domainsServiceBulk.serviceBulkControls(...args),
   syncServiceBulkUi:(...args)=>domainsServiceBulk.syncServiceBulkUi(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
 });
 
 const domainsServiceEditor=createDomainsServiceEditor({
   model,
   modal:(...args)=>uiModal.modal(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['service']}),
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderService:(...args)=>domainsServiceView.renderService(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
@@ -441,7 +443,7 @@ const domainsInventoryOrder=createDomainsInventoryOrder({
   ui,
   modal:(...args)=>uiModal.modal(...args),
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory']}),
   closeModal:(...args)=>uiModal.closeModal(...args),
   inventoryCategoryNames:(...args)=>domainsInventorySelectors.inventoryCategoryNames(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
@@ -464,7 +466,7 @@ const domainsWarehouseBulk=createDomainsWarehouseBulk({
   model,
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory','warehouseOrders']}),
   inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
@@ -490,7 +492,7 @@ const domainsInventoryEditor=createDomainsInventoryEditor({
   inventoryLocationOptions:(...args)=>domainsInventoryView.inventoryLocationOptions(...args),
   inventoryCategoryDatalist:(...args)=>domainsInventoryView.inventoryCategoryDatalist(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory']}),
   closeModal:(...args)=>uiModal.closeModal(...args),
   ensureInventoryCategoryOrder:(...args)=>domainsInventoryOrder.ensureInventoryCategoryOrder(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
@@ -501,7 +503,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   model,
   modal:(...args)=>uiModal.modal(...args),
   toast:(...args)=>uiStatus.toast(...args),
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['warehouseOrders']}),
   closeModal:(...args)=>uiModal.closeModal(...args),
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
@@ -548,6 +550,7 @@ const uiBackup=createUiBackup({
   supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
   boolText:(...args)=>domainsSuppliersView.boolText(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  invalidateAllViewDomains:()=>domainRevisions.touchAll(),
 });
 
 const stateSelectors=createStateSelectors({
@@ -619,6 +622,7 @@ const syncChecks=createSyncChecks({
   checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
   readSharedChecksCloudMeta:(...args)=>cloudTransport.readSharedChecksCloudMeta(...args),
   refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
+  touchChecksRevision:()=>domainRevisions.touch('checks'),
 });
 
 const domainsFinanceController=createDomainsFinanceController({
@@ -788,6 +792,7 @@ const lifecycle=createLifecycle({
   ui,
   session,
   checksSession,
+  domainRevisions,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),

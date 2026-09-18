@@ -31,7 +31,7 @@ async function deleteSelectedCustomerRows(){
   const blocked=()=>collection==='customerDebts'&&ids.some(id=>rejectDebtRecoveryMutation(id));if(blocked())return;
   if(!await confirmDialog('מחיקת רשומות',`למחוק ${ids.length} ${label} שנבחרו?\n\nהמחיקה תישמר בגיבוי ובסנכרון כמו כל שינוי אחר.`,{confirmText:'מחק נבחרים'}))return;
   if(blocked())return;
-  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;scheduleSave(`${ids.length} ${label} נמחקו`,{deleteIntents:{[collection]:ids},mutationType:'bulk-delete',surface:`orders.bulk.${collection}`});renderCustomers();
+  const set=new Set(ids);model.state[collection]=model.state[collection].filter(x=>!set.has(x.id));customerUi.customerBulkSelected.clear();customerUi.customerBulkAnchorId=null;scheduleSave(`${ids.length} ${label} נמחקו`,{deleteIntents:{[collection]:ids},mutationType:'bulk-delete',surface:`orders.bulk.${collection}`,domains:[collection]});renderCustomers();
 }
 
 function customerBottomSummary(st){

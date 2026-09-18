@@ -6,7 +6,7 @@ import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {clone} from '../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStateSnapshots({externalWorkbooks=false,model, ui, session, checksSession, prepareState, cloudPendingExists, checksPendingExists, normalizeState}){
+export function createStateSnapshots({externalWorkbooks=false,model, ui, session, checksSession, prepareState, cloudPendingExists, checksPendingExists, normalizeState, domainRevisions}){
 function sameBusinessData(a,b){return comparableBackupData(a)===comparableBackupData(b)}
 
 function prepareCloudState(source=model.state){const x=externalWorkbooks?withoutEmbeddedWorkbook(prepareState(source)):prepareState(source);delete x.checks;return x}
@@ -19,7 +19,7 @@ function cloudHasLocalWork(){return session.cloudSaveRequested||cloudPendingExis
 
 function checksHaveLocalWork(){return checksSession.checksSaveRequested||checksPendingExists()||!!(checksSession.checksCloudBase&&!eq(normalizeSharedChecks(model.state.checks),normalizeSharedChecks(checksSession.checksCloudBase)))}
 
-function applyOrderCloudState(remoteState){const sharedChecks=clone(model.state.checks||[]);model.state=normalizeState(remoteState);model.state.checks=sharedChecks;return model.state}
+function applyOrderCloudState(remoteState){const previous=model.state,sharedChecks=clone(model.state.checks||[]);model.state=normalizeState(remoteState);model.state.checks=sharedChecks;domainRevisions?.reconcile(previous,model.state);return model.state}
 
 return { sameBusinessData, prepareCloudState, sameOrderCloudData, hasMeaningfulLocalData, cloudHasLocalWork, checksHaveLocalWork, applyOrderCloudState };
 }

@@ -56,6 +56,7 @@ import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails} from './s
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
+import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
 import {createBankChequeImageStorage} from './shared/bank-cheque-images.js';
 
@@ -73,6 +74,7 @@ import {jsonEq} from "./sync/merge-records.js";
 
 
 const {model, session, ui, files, tab, checksSession}=createContexts();
+const domainRevisions=createKupaDomainRevisions(session);
 
 const uiConnection=createUiConnection({
   session,
@@ -163,6 +165,7 @@ const syncRecovery=createSyncRecovery({
   sharedChecksPendingExists:(...args)=>syncChecksState.sharedChecksPendingExists(...args),
   startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
   render:(...args)=>uiNavigation.render(...args),
+  domainRevisions,
 });
 
 const storageFiles=createStorageFiles({
@@ -186,6 +189,7 @@ const storagePersistence=createStoragePersistence({
   files,
   tab,
   checksSession,
+  domainRevisions,
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
@@ -251,6 +255,7 @@ const domainsDashboardController=createDomainsDashboardController({
   readOrdersReadOnlyMeta:(...args)=>cloudTransport.readOrdersReadOnlyMeta(...args),
   readOrdersReadOnlyCloud:(...args)=>cloudTransport.readOrdersReadOnlyCloud(...args),
   renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
+  touchOrdersFinanceRevision:()=>domainRevisions.touch('ordersFinance'),
 });
 
 const syncChecks=createSyncChecks({
@@ -275,6 +280,7 @@ const syncChecks=createSyncChecks({
   sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
   readSharedChecksMeta:(...args)=>cloudTransport.readSharedChecksMeta(...args),
   refreshCloudHeaderTimestamp:(...args)=>uiStatus.refreshCloudHeaderTimestamp(...args),
+  touchChecksRevision:()=>domainRevisions.touch('checks'),
 });
 
 const syncMerge=createSyncMerge({
@@ -328,6 +334,7 @@ const syncDocument=createSyncDocument({
   toast:(...args)=>uiStatus.toast(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
+  domainRevisions,
 });
 
 const uiCloud=createUiCloud({
@@ -422,7 +429,7 @@ const uiNavigation=createUiNavigation({
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
-  dataRevision:()=>[session.localGeneration,session.dbRevision,session.financeRevision,session.ordersFinanceRevision,checksSession.sharedChecksGeneration,checksSession.sharedChecksRevision].map(value=>Number(value||0)).join(':'),
+  dataRevision:page=>kupaPageRevision(domainRevisions,page),
 });
 
 const uiGlobalSearch=createUiGlobalSearch({model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
@@ -489,7 +496,7 @@ const domainsCashView=createDomainsCashView({
 
 const domainsCashController=createDomainsCashController({
   model,
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['rights']}),
   toast:(...args)=>uiStatus.toast(...args),
 });
 
@@ -503,7 +510,7 @@ const domainsNotesController=createDomainsNotesController({
   workspace:spreadsheetWorkspace,
   model,
   ui,
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['notes']}),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
@@ -539,7 +546,7 @@ async function releaseSharedFinanceSyncLease(kind,token){
 
 const domainsCreditController=createDomainsCreditController({
   model,
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']}),
   toast:(...args)=>uiStatus.toast(...args),
   render:(...args)=>uiNavigation.render(...args),
   bridge:domainsBankBridge,
@@ -559,7 +566,7 @@ const domainsBankController=createDomainsBankController({
   checksSession,
   sharedChecksHaveLocalWork:(...args)=>syncChecksState.sharedChecksHaveLocalWork(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['bank','bankFeed']}),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   sharedChecksObservedSequence:(...args)=>domainsBankSelectors.sharedChecksObservedSequence(...args),
   toast:(...args)=>uiStatus.toast(...args),
@@ -637,7 +644,7 @@ const domainsCreditEditor=createDomainsCreditEditor({
   modal:(...args)=>uiModal.modal(...args),
   nextChargeDate:(...args)=>domainsCreditSelectors.nextChargeDate(...args),
   deleteRecord:(...args)=>domainsRecordsCommands.deleteRecord(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['credits']}),
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
@@ -662,7 +669,7 @@ const domainsExpensesEditor=createDomainsExpensesEditor({
   armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
   modal:(...args)=>uiModal.modal(...args),
   deleteRecord:(...args)=>domainsRecordsCommands.deleteRecord(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
+  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['expenses']}),
   toast:(...args)=>uiStatus.toast(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
@@ -715,6 +722,7 @@ const uiBackup=createUiBackup({
   closeModal:(...args)=>uiModal.closeModal(...args),
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  invalidateAllViewDomains:()=>domainRevisions.touchAll(),
 });
 
 const lifecycle=createLifecycle({

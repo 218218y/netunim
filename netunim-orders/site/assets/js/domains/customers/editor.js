@@ -17,7 +17,7 @@ function addCustomerOrder(){
   model.state.customerOrders=Array.isArray(model.state.customerOrders)?model.state.customerOrders:[];
   model.state.customerOrders.push(row);
   if(customerUi)customerUi.customerSearch=''
-  scheduleSave('שורת מעקב הזמנה נוספה');renderCustomers({resultsOnly:true});return row.id;
+  scheduleSave('שורת מעקב הזמנה נוספה',{domains:['customerOrders']});renderCustomers({resultsOnly:true});return row.id;
 }
 
 function saveCustomerOrderField(id,field,el){
@@ -25,7 +25,7 @@ function saveCustomerOrderField(id,field,el){
   const o=(model.state.customerOrders||[]).find(x=>x.id===id);if(!o)return;
   const booleanField=field==='urgent',value=booleanField?String(el?.value??'').trim()==='true':String(el?.value??'').trim(),before=booleanField?o[field]===true:String(o[field]||'');
   if(before===value)return;
-  o[field]=value;o.updatedAt=new Date().toISOString();scheduleSave(booleanField?'סימון הדחיפות של ההזמנה עודכן':'מעקב ההזמנה עודכן');
+  o[field]=value;o.updatedAt=new Date().toISOString();scheduleSave(booleanField?'סימון הדחיפות של ההזמנה עודכן':'מעקב ההזמנה עודכן',{domains:['customerOrders']});
 }
 
 async function deleteCustomerOrder(id){
@@ -33,7 +33,7 @@ async function deleteCustomerOrder(id){
   const label=o.customerName||o.orderNumber||'השורה הנבחרת';
   if(confirmDialog&&!await confirmDialog('מחיקת שורת מעקב',`למחוק את ${label}?`,{confirmText:'מחק שורה'}))return;
   model.state.customerOrders=model.state.customerOrders.filter(x=>x.id!==id);customerUi?.customerBulkSelected?.delete(id);
-  scheduleSave('שורת מעקב ההזמנה נמחקה',{deleteIntents:{customerOrders:[id]},mutationType:'delete',surface:'orders.delete.customerOrders'});renderCustomers({resultsOnly:true});
+  scheduleSave('שורת מעקב ההזמנה נמחקה',{deleteIntents:{customerOrders:[id]},mutationType:'delete',surface:'orders.delete.customerOrders',domains:['customerOrders']});renderCustomers({resultsOnly:true});
 }
 
 function progressModeOptions(mode,kind,p){
@@ -115,7 +115,7 @@ function saveDebt(id=''){
   const scalarChanged=!d||!sameScalar(d,row),progressChanged=JSON.stringify(customerDebtProgressEntries(d||{}))!==JSON.stringify(entries);
   if(scalarChanged||progressChanged||!d){const wasClosed=currentProgress.paymentComplete&&currentProgress.invoiceComplete;row.updatedAt=now;row.paidAt=finalProgress.paymentComplete?(currentProgress.paymentComplete?(d?.paidAt||now):now):null;row.suppliedAt=supplied?(d?.suppliedAt||now):null;row.invoiceIssuedAt=finalProgress.invoiceComplete?(currentProgress.invoiceComplete?(d?.invoiceIssuedAt||now):now):null;row.closedAt=finalProgress.paymentComplete&&finalProgress.invoiceComplete?(wasClosed?(d?.closedAt||now):now):null}else{row.updatedAt=d.updatedAt;row.paidAt=d.paidAt;row.suppliedAt=d.suppliedAt;row.invoiceIssuedAt=d.invoiceIssuedAt;row.closedAt=d.closedAt}
   if(d)Object.assign(d,row);else model.state.customerDebts.push(row);
-  closeModal();if(scalarChanged||progressChanged||!d)scheduleSave(d?'חוב הלקוח עודכן':'חוב הלקוח נוסף');renderCustomers({resultsOnly:true});
+  closeModal();if(scalarChanged||progressChanged||!d)scheduleSave(d?'חוב הלקוח עודכן':'חוב הלקוח נוסף',{domains:['customerDebts']});renderCustomers({resultsOnly:true});
 }
 
 function localDateTime(value){const date=new Date(value||'');return Number.isFinite(date.getTime())?date.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'ללא תאריך'}
@@ -136,14 +136,14 @@ function applyVerifiedMorningDocument({debtId,operationId,type,amount,verifiedAt
     if(!result.changed&&persistedMorningDebts.get(d)===JSON.stringify(d))return {...result,persisted:true};
     // A replay can mean the first verified application changed memory but localSnapshot failed.
     // Re-attempt durable persistence before recovery is allowed to clear its operation binding.
-    const persisted=scheduleSave(result.changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'עדכון החוב מ-Morning נשמר מחדש לאחר התאוששות',{surface:'orders.morning.customerDebt'});
+    const persisted=scheduleSave(result.changed?'חוב הלקוח עודכן לפי מסמך Morning מאומת':'עדכון החוב מ-Morning נשמר מחדש לאחר התאוששות',{surface:'orders.morning.customerDebt',domains:['customerDebts']});
     if(persisted!==false)persistedMorningDebts.set(d,JSON.stringify(d));
     if(result.changed)renderCustomers({resultsOnly:true});return {...result,persisted:persisted!==false};
   }
   return result;
 }
 
-async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts'});renderCustomers({resultsOnly:true})}
+async function deleteDebt(id){const d=model.state.customerDebts.find(x=>x.id===id);if(!d||rejectDebtRecoveryMutation(id))return;if(!await confirmDialog('מחיקת חוב',`למחוק את החוב של ${d.customerName}?`,{confirmText:'מחק חוב'}))return;if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter(x=>x.id!==id);closeModal();scheduleSave('חוב הלקוח נמחק',{deleteIntents:{customerDebts:[id]},mutationType:'delete',surface:'orders.delete.customerDebts',domains:['customerDebts']});renderCustomers({resultsOnly:true})}
 
 return { addCustomerOrder, saveCustomerOrderField, deleteCustomerOrder, openDebtModal, saveDebt, openDebtProgressDetails, applyVerifiedMorningDocument, deleteDebt };
 }

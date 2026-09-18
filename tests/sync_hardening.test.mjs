@@ -36,7 +36,7 @@ async function assertKupaBulkIntent(collection){
   assert.deepEqual(model.state[collection].map(row=>row.id),[`${collection}-3`]);assert.equal(calls.length,1);
   const [kind,options]=calls[0];assert.equal(options.mutationType,'bulk-delete');assert.equal(options.surface,`kupa.bulk.${collection}`);
   if(collection==='checks'){assert.equal(kind,'checks');assert.deepEqual(options.deletedIds,[`${collection}-1`,`${collection}-2`])}
-  else{assert.equal(kind,'main');assert.deepEqual(options.deleteIntents,{[collection]:[`${collection}-1`,`${collection}-2`]})}
+  else{assert.equal(kind,'main');assert.deepEqual(options.deleteIntents,{[collection]:[`${collection}-1`,`${collection}-2`]});assert.deepEqual(options.domains,[collection])}
 }
 
 test('Kupa bulk checks deletion declares exact IDs',()=>assertKupaBulkIntent('checks'));
@@ -47,7 +47,7 @@ test('Kupa bulk rights deletion declares exact IDs',()=>assertKupaBulkIntent('ri
 test('single Kupa deletion declares intent for main records and Shared Checks',async()=>{
   for(const collection of ['credits','checks']){
     const calls=[],renders=[],model={state:{[collection]:[{id:'ONE'},{id:'KEEP'}]}},api=createDomainsRecordsCommands({model,closeModal(){},confirmDialog:async()=>true,saveState:(message,options)=>calls.push(options),saveChecksState:(message,options)=>calls.push(options),renderCollection:name=>renders.push(name)});
-    await api.deleteRecord(collection,'ONE');assert.deepEqual(model.state[collection],[{id:'KEEP'}]);assert.deepEqual(calls[0],collection==='checks'?{deletedIds:['ONE'],mutationType:'delete',surface:'kupa.delete.checks'}:{deleteIntents:{credits:['ONE']},mutationType:'delete',surface:'kupa.delete.credits'});
+    await api.deleteRecord(collection,'ONE');assert.deepEqual(model.state[collection],[{id:'KEEP'}]);assert.deepEqual(calls[0],collection==='checks'?{deletedIds:['ONE'],mutationType:'delete',surface:'kupa.delete.checks'}:{deleteIntents:{credits:['ONE']},mutationType:'delete',surface:'kupa.delete.credits',domains:['credits']});
     assert.deepEqual(renders,[collection]);
   }
 });

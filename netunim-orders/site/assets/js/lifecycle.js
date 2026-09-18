@@ -5,12 +5,12 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState(){
   try{session.lastCloudState=JSON.parse(localStorage.getItem(CLOUD_BASE_KEY)||'null')}catch(e){console.error('orders cloud base load',e)}
   const durablePending=await getCloudPending(),pending=durablePending?.snapshot||loadCloudPendingState();
   if(pending){
-    model.state=normalizeState(clone(pending));session.localGeneration=Math.max(session.localGeneration,Number(durablePending?.generation||1));session.cloudSaveRequested=true;return;
+    const previous=model.state;model.state=normalizeState(clone(pending));domainRevisions?.reconcile(previous,model.state);session.localGeneration=Math.max(session.localGeneration,Number(durablePending?.generation||1));session.cloudSaveRequested=true;return;
   }
   if(cloudEnabled()&&session.lastCloudState&&!sameOrderCloudData(model.state,session.lastCloudState)){
     session.localGeneration=Math.max(session.localGeneration,1);session.cloudSaveRequested=true;markCloudPending();return;
@@ -25,7 +25,7 @@ async function recoverChecksLocalState(){
     const pending=await getChecksPending();
     if(pending||checksPendingExists()){
       checksSession.checksGeneration=Math.max(checksSession.checksGeneration,Number(pending?.generation||1));checksSession.checksSaveRequested=true;
-      if(pending?.snapshot){model.state.checks=clone(pending.snapshot);if(['checks','kupa','summary'].includes(ui.currentView))render()}
+      if(pending?.snapshot){model.state.checks=clone(pending.snapshot);domainRevisions?.touch('checks');if(['checks','kupa','summary'].includes(ui.currentView))render()}
     }
     return pending||null;
   }catch(error){console.error('checks pending recovery',error);return null}

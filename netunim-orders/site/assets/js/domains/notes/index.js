@@ -13,7 +13,7 @@ const domainsNotesController=createDomainsNotesController({
   workspace:spreadsheetWorkspace,
   model,
   notesUi,
-  scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
+  scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['notes']}),
   toast:(...args)=>uiStatus.toast(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
