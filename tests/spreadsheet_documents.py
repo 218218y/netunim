@@ -6,15 +6,18 @@ from isolated_sync_postgres import IsolatedPostgres, ROOT, OWNER, quote
 
 def run():
     files=sorted((ROOT/'supabase/migrations').glob('*.sql'))
-    migration=files[-1]
-    assert migration.name=='20260917180000_independent_spreadsheet_documents.sql'
+    migration_name='20260917180000_independent_spreadsheet_documents.sql'
+    matches=[path for path in files if path.name==migration_name]
+    assert len(matches)==1, f'Expected exactly one {migration_name}, found {len(matches)}'
+    migration=matches[0]
+    migration_index=files.index(migration)
     book={'version':2,'sheets':[{'id':'S','name':'Workbook'}],
           'columns':[{'id':'C','sheetId':'S','title':'Amount','type':'number','width':90}],
           'rows':[{'id':'R','sheetId':'S','cells':{'C':'12'},'createdAt':'','updatedAt':''}]}
     main={'credits':[],'cash':[],'rights':[],'notes':[],'expenses':[],'cards':[],'bank':{'adjustments':[]},'notesSheet':book}
     orders={key:[] for key in ('suppliers','transactions','customerDebts','customerOrders','serviceCalls','notes','inventoryItems','inventoryCategoryOrder','inventoryEvents','warehouseOrders')}
     orders['notesSheet']=book
-    with IsolatedPostgres(schema_files=files[:-1]) as db:
+    with IsolatedPostgres(schema_files=files[:migration_index]) as db:
         for domain,state,name in [('kupa',main,'main'),('orders',orders,'suppliers')]:
             rpc='save_kupa_document_v5' if domain=='kupa' else 'save_order_management_document_v5'
             db.rpc(rpc,dict(p_document_name=name,p_expected_revision=0,p_state=state,p_operation_id='migration-seed',p_delete_intents={},p_audit={}))

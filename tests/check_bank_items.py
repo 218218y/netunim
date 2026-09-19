@@ -33,6 +33,12 @@ def run(db):
         serial=0
         db.sql('delete from netunim_internal.check_bank_claims;delete from public.bank_transaction_snapshots;delete from public.bank_transactions;delete from public.shared_checks_documents')
         save(rows)
+    def claim_bank_lease(token):
+        lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank',"+quote(token)+",60) x"))
+        assert lease['acquired'] and lease['lease_token']==token, 'Bank RPC regression must own the finance lease before publishing'
+        return lease
+    def release_bank_lease(token):
+        assert auth("set local role authenticated;select public.release_finance_sync_lease('bank',"+quote(token)+")")=="t", 'Bank RPC regression must release its finance lease'
 
     # A proven numbered match needs no manual review. Pending age still cannot
     # shorten settlement, and every change remains in server-owned history.
@@ -266,7 +272,7 @@ def run(db):
     # retaining the exact amount, post-transaction balance and credit direction. No shared-check
     # claim exists here, so reconciliation must not depend on UI/check-workflow evidence.
     reset([])
-    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-transition-rpc',60) x"))
+    lease=claim_bank_lease('archive-transition-rpc')
     pending=dict(mergeKey='pending-direct-1710',date='2026-09-19T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=1710,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=20611.29,activityTypeCode=1,bankReference='pending-placeholder',bankSerial='0')
     completed_items=[dict(checkNumber=n,amount=570,bankNumber='17',branchNumber='725',accountNumber='13807') for n in ('80020179','80020012','80020099')]
     completed=dict(mergeKey='serial:2026-09-18:1:1710',date='2026-09-18T09:00:00Z',processedDate='2026-09-18T09:00:00Z',amount=1710,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=20611.29,activityTypeCode=1,bankReference='-1',bankSerial='1',checkDetails=dict(kind='deposit',checkItems=completed_items,checkNumbers=['80020179','80020012','80020099'],checkCount=3))
@@ -278,12 +284,13 @@ def run(db):
     rows=json.loads(db.sql("select coalesce(json_agg(json_build_object('id',id,'mergeKey',merge_key,'status',status,'presence',presence_state,'description',description,'amount',amount,'balance',balance_after,'activity',activity_type_code) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='home'"))
     assert len(rows)==1 and str(rows[0]['id'])==pending_id,'Pending direct deposit and completed machine deposit must collapse into one archived movement'
     assert rows[0]['mergeKey']==completed['mergeKey'] and rows[0]['status']=='completed' and rows[0]['presence']=='present' and rows[0]['description']==completed['description'],'The surviving row must become the exact completed bank representation instead of producing a missing warning'
+    release_bank_lease('archive-transition-rpc')
 
     # Upgrade healing: Production may already contain the old false-positive pair (the
     # stale pending placeholder plus the completed machine-deposit row). Re-reading the completed
     # bank row after this migration must remove only the uniquely matched stale placeholder.
     reset([])
-    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-heal-rpc',60) x"))
+    lease=claim_bank_lease('archive-heal-rpc')
     def heal_rpc(payload,second):
         return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:30:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-heal-rpc',"+str(lease['fence_epoch'])+") x")
     heal_rpc([pending],1)
@@ -293,11 +300,12 @@ def run(db):
     heal_rpc([completed],2)
     assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='1','The migration must heal an already-created pending/completed duplicate on the next complete bank sync'
     assert db.sql("select count(*) from public.bank_transactions where id="+pending_id).strip()=='0','Only the uniquely matched stale pending placeholder is removed during healing'
+    release_bank_lease('archive-heal-rpc')
 
     # Safety guard: the semantic label rule is not a fuzzy matcher. If two pending cheque
     # deposits carry the same strong facts, ambiguity must remain unresolved rather than guessing.
     reset([])
-    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-ambiguous-rpc',60) x"))
+    lease=claim_bank_lease('archive-ambiguous-rpc')
     a=dict(pending,mergeKey='pending-ambiguous-a',bankReference='pending-a')
     b=dict(pending,mergeKey='pending-ambiguous-b',bankReference='pending-b')
     def ambiguous_rpc(payload,second):
@@ -306,12 +314,13 @@ def run(db):
     ambiguous_rpc([completed],2)
     assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='3','Ambiguous same-fact cheque deposits must stay separate; reconciliation must never guess'
     assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home' and status='pending' and presence_state='missing'").strip()=='2','Ambiguous stale pending rows remain visible as review evidence rather than being silently collapsed'
+    release_bank_lease('archive-ambiguous-rpc')
 
     # Real fenced RPC: references can change on completion; a complete, unique
     # numbered claim supplies identity even if the pending bank row has no items.
     for pending_items in (False,True):
         reset([check('Pending1',830,'111'),check('Pending2',1000,'222')])
-        lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','item-rpc',60) x"))
+        lease=claim_bank_lease('item-rpc')
         source=dict(mergeKey='pending-group',date='2026-08-02T09:00:00Z',processedDate='2026-08-02T09:00:00Z',amount=1830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',bankReference='unrelated-pending-reference',bankSerial='0')
         details=dict(checkItems=[item('111',830),item('222',1000)],checkNumbers=['111','222'],checkCount=2)
         if pending_items:source['checkDetails']=details
@@ -337,6 +346,7 @@ def run(db):
         rpc(True,5,[]);assert all(c['bankMatch']['phase']=='missing' and c['status']!='נפרע' for c in checks()),'A vanished full deposit retains every original check identity'
         assert all(c['bankHistory'][-1]['phase']=='missing' and c['bankMatch']['eventId']!=c.get('bankReview') and c['bankMatch']['eventId']!=c.get('bankHistoryHiddenEvent') for c in checks()),'Removing deposit notices must not hide a fresh disappearance alert before settlement'
         rpc(True,6);assert all(c['bankMatch']['phase']=='deposited' and c['bankMatch']['eventId']!=c.get('bankReview') for c in checks()),'Reappearance needs a new acknowledgement'
+        release_bank_lease('item-rpc')
     # The normal disappearance window is BEFORE clearing. A dismissed deposit
     # notice must leave both a single check and its future clearing guard intact.
     for adverse in ('missing','returned'):
