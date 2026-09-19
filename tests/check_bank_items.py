@@ -261,6 +261,52 @@ def run(db):
     tx('later-arrival',550,[item('111',550)],day='2026-08-03');snapshot('2026-08-03')
     assert checks()[0]['bankMatch']['phase']=='deposited'
 
+    # Archive-only cheque transition: Hapoalim can replace a pending direct-deposit row
+    # with a completed machine-deposit row, changing date/reference/serial/description while
+    # retaining the exact amount, post-transaction balance and credit direction. No shared-check
+    # claim exists here, so reconciliation must not depend on UI/check-workflow evidence.
+    reset([])
+    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-transition-rpc',60) x"))
+    pending=dict(mergeKey='pending-direct-1710',date='2026-09-19T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=1710,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=20611.29,activityTypeCode=1,bankReference='pending-placeholder',bankSerial='0')
+    completed_items=[dict(checkNumber=n,amount=570,bankNumber='17',branchNumber='725',accountNumber='13807') for n in ('80020179','80020012','80020099')]
+    completed=dict(mergeKey='serial:2026-09-18:1:1710',date='2026-09-18T09:00:00Z',processedDate='2026-09-18T09:00:00Z',amount=1710,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=20611.29,activityTypeCode=1,bankReference='-1',bankSerial='1',checkDetails=dict(kind='deposit',checkItems=completed_items,checkNumbers=['80020179','80020012','80020099'],checkCount=3))
+    def archive_rpc(payload,second,complete=True):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',"+str(complete).lower()+",'bank','archive-transition-rpc',"+str(lease['fence_epoch'])+") x")
+    archive_rpc([pending],1)
+    pending_id=db.sql("select id from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()
+    archive_rpc([completed],2)
+    rows=json.loads(db.sql("select coalesce(json_agg(json_build_object('id',id,'mergeKey',merge_key,'status',status,'presence',presence_state,'description',description,'amount',amount,'balance',balance_after,'activity',activity_type_code) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='home'"))
+    assert len(rows)==1 and str(rows[0]['id'])==pending_id,'Pending direct deposit and completed machine deposit must collapse into one archived movement'
+    assert rows[0]['mergeKey']==completed['mergeKey'] and rows[0]['status']=='completed' and rows[0]['presence']=='present' and rows[0]['description']==completed['description'],'The surviving row must become the exact completed bank representation instead of producing a missing warning'
+
+    # Upgrade healing: Production may already contain the old false-positive pair (the
+    # stale pending placeholder plus the completed machine-deposit row). Re-reading the completed
+    # bank row after this migration must remove only the uniquely matched stale placeholder.
+    reset([])
+    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-heal-rpc',60) x"))
+    def heal_rpc(payload,second):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:30:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-heal-rpc',"+str(lease['fence_epoch'])+") x")
+    heal_rpc([pending],1)
+    pending_id=db.sql("select id from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()
+    db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,status,presence_state,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details) values("+quote(OWNER)+",'item-tests','home',"+quote(completed['mergeKey'])+","+quote(completed['date'])+","+quote(completed['processedDate'])+",1710,'ILS',"+quote(completed['description'])+",'completed','present',20611.29,'-1','1',1,true,"+quote(json.dumps(completed['checkDetails']))+")")
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='2'
+    heal_rpc([completed],2)
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='1','The migration must heal an already-created pending/completed duplicate on the next complete bank sync'
+    assert db.sql("select count(*) from public.bank_transactions where id="+pending_id).strip()=='0','Only the uniquely matched stale pending placeholder is removed during healing'
+
+    # Safety guard: the semantic label rule is not a fuzzy matcher. If two pending cheque
+    # deposits carry the same strong facts, ambiguity must remain unresolved rather than guessing.
+    reset([])
+    lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','archive-ambiguous-rpc',60) x"))
+    a=dict(pending,mergeKey='pending-ambiguous-a',bankReference='pending-a')
+    b=dict(pending,mergeKey='pending-ambiguous-b',bankReference='pending-b')
+    def ambiguous_rpc(payload,second):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T13:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-ambiguous-rpc',"+str(lease['fence_epoch'])+") x")
+    ambiguous_rpc([a,b],1)
+    ambiguous_rpc([completed],2)
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='3','Ambiguous same-fact cheque deposits must stay separate; reconciliation must never guess'
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home' and status='pending' and presence_state='missing'").strip()=='2','Ambiguous stale pending rows remain visible as review evidence rather than being silently collapsed'
+
     # Real fenced RPC: references can change on completion; a complete, unique
     # numbered claim supplies identity even if the pending bank row has no items.
     for pending_items in (False,True):

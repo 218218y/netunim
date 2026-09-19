@@ -88,6 +88,7 @@ assert candidate_contract == reviewed_contract, \
 
 bank_migration_pending = any(row['name'] == 'bank_instant_credit_reconciliation' for row in receipt_pending)
 credit_identity_migration_pending = any(row['name'] == 'bank_credit_settlement_identity' for row in receipt_pending)
+cheque_pending_transition_pending = any(row['name'] == 'bank_cheque_deposit_pending_transition' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
@@ -101,6 +102,14 @@ else:
             '          netunim_internal.check_bank_pending_items_equal(b,r)\n          or\n',
         ):
             definition=definition.replace(fragment,'')
+        if cheque_pending_transition_pending:
+            # Production evidence predates the cheque-deposit presentation transition fix.
+            # Normalize only that reviewed body change back to its previous exact-label gate;
+            # every other SQL token must still match the authenticated baseline.
+            definition=definition.replace(
+                """            and (\n              b.description=v_description\n              or (\n                netunim_internal.check_bank_kind(b.description)='deposit'\n                and netunim_internal.check_bank_kind(v_description)='deposit'\n              )\n            ))""",
+                '            and b.description=v_description)'
+            )
         if credit_identity_migration_pending:
             # The authenticated snapshot predates the reviewed 18:30 migration. Strip
             # only that migration's three persistence edits for the semantic baseline
@@ -115,6 +124,8 @@ else:
 assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
 assert 'and netunim_internal.check_bank_pending_compatible(b,r)' in candidate_definition
 assert 'netunim_internal.check_bank_pending_items_equal(b,r)' in candidate_definition
+assert "netunim_internal.check_bank_kind(b.description)='deposit'" in candidate_definition
+assert "netunim_internal.check_bank_kind(v_description)='deposit'" in candidate_definition
 if credit_identity_migration_pending:
     credit_columns=[row for row in (candidate.get('columns') or []) if row.get('schema')=='public' and row.get('table')=='bank_transactions' and row.get('name')=='credit_settlement_details']
     assert len(credit_columns)==1, 'credit settlement migration did not add exactly one bank_transactions.credit_settlement_details column'

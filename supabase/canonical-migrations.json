@@ -83,6 +83,10 @@
     {
       "version": "20260917180000",
       "name": "independent_spreadsheet_documents"
+    },
+    {
+      "version": "20260919234500",
+      "name": "bank_cheque_deposit_pending_transition"
     }
   ]
 }

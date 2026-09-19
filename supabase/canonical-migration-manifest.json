@@ -103,5 +103,10 @@
     "version": "20260917180000",
     "name": "independent_spreadsheet_documents",
     "sha256": "c6a9a9e429ac03c7d72213d16178d64b85e9b57522c1ef31b7402ecc65f09b9b"
+  },
+  {
+    "version": "20260919234500",
+    "name": "bank_cheque_deposit_pending_transition",
+    "sha256": "75df913c47b443043d86197a7cdeb5ccf3a0105aafa0465fec2bc8bb01f8982f"
   }
 ]
