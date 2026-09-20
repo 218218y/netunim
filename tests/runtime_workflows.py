@@ -11,7 +11,7 @@ helpers=r"""
  const click=name=>action(name).click();
  const fill=values=>{for(const [id,value]of Object.entries(values)){const e=element('#'+id);e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}))}};
  const saved=()=>new Promise(r=>setTimeout(r,60));
- const waitFor=async(predicate,message)=>{for(let i=0;i<80;i++){if(predicate())return;await new Promise(r=>setTimeout(r,10))}throw new Error(message)};
+ const waitFor=async(predicate,message,timeoutMs=3000)=>{const deadline=performance.now()+timeoutMs;do{if(predicate())return;await new Promise(r=>setTimeout(r,10))}while(performance.now()<deadline);if(predicate())return;throw new Error(message)};
  const acceptStyledConfirm=async()=>{
    const backdrop=document.getElementById('confirmBackdrop');
    await waitFor(()=>backdrop?.classList.contains('open'),'Styled confirmation did not open');
@@ -146,7 +146,7 @@ flows={
 
 
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
- const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await saved();click('apply-json-restore');await acceptStyledConfirm();await saved();assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
+ const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await waitFor(()=>!!ui.pendingJsonRestore&&!!document.querySelector('[data-action="apply-json-restore"]'),'JSON restore preview did not become ready');click('apply-json-restore');await acceptStyledConfirm();await waitFor(()=>state.notes?.[0]?.content==='Workflow note'&&state.checks.length===1&&ui.pendingJsonRestore===null,'JSON restore did not finish applying');assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
  switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');
  assert(!!loadLocal(),'actual browser snapshot');
  return {suppliers:true,transactions:true,debts:true,service:true,inventory:true,partialReceipt:true,reservation:true,warehouse:true,checks:true,notes:true,backupRestore:true,delete:true};
