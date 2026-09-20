@@ -25,19 +25,23 @@ function remainderMarkup(m){
   return `<p>ההפקדה המקורית: ${esc(r.originalAmount)} ₪ · נותר מההפקדה: ${esc(r.observedAmount)} ₪${r.missingAmount!==undefined?` · חסר: ${esc(r.missingAmount)} ₪`:''}</p>${missing.length?`<p><b>הצ׳קים החסרים מההפקדה:</b> ${missing.map(c=>`${esc(c.name||c.id)}${c.checkNumber?` (צ׳ק ${esc(c.checkNumber)})`:''} — ${esc(c.amount)} ₪`).join(' · ')}</p><p>${r.evidence==='bank_items'?'הזיהוי מבוסס על פרטי השיקים שהופיעו בהפקדה המקורית.':'הזיהוי מבוסס על יתרת ההפקדה והקבוצה המקורית.'} אין בכך לבדו אישור שהצ׳ק חזר.</p>`:''}`;
 }
 
+function provisionalReferenceEvent(m){return !m?.warning&&m?.phase==='deposited'&&m.provisional===true&&m.provisionalReference===true}
+
 function evidenceMarkup(m){
   if(!m.transactionId)return `<p>מועד ההפקדה: ${esc(m.date)} · נבדק בסנכרון מלא מ־${esc(m.observedDate)}</p><p>לא נמצאה התאמה ודאית בתנועות שנבדקו. יש לבדוק את פרטי הרישום ואת ההפקדה.</p>`;
   const b=m.bankItem;
-  return `<p>${esc(m.description)} · ${esc(m.amount)} ₪ · ${esc(m.date)}${m.checkIds?.length>1?` · קבוצה של ${esc(m.checkIds.length)} צ׳קים`:''}</p>${b?`<p>פרטי השיק בבנק: ${esc(b.checkNumber||'ללא מספר')} · ${esc(b.amount)} ₪${b.bankNumber?` · בנק ${esc(b.bankNumber)}`:''}${b.branchNumber?` · סניף ${esc(b.branchNumber)}`:''}${b.accountNumber?` · חשבון ${esc(b.accountNumber)}`:''}</p>`:''}${m.matchMethod?`<p>${m.matchMethod==='number'?'התאמה לפי מספר השיק והסכום':'התאמה חלופית לפי סכום ומועד; מספר השיק לא אומת מול הרישום'}</p>`:''}${m.provisional?'<p><b>זיהוי ראשוני — התנועה עדיין ממתינה.</b> אסמכתת הפקדה אינה בהכרח מספר שיק. תנועה ממתינה אינה מאשרת פירעון.</p>':''}`;
+  const provisionalText=m.provisionalReference?'<p><b>זיהוי זמני — התנועה עדיין ממתינה.</b> מספר הצ׳ק והסכום זוהו מאסמכתת ההפקדה של תנועת ההפקדה הישירה. האימות הסופי ייעשה מחדש רק מול פרטי הצ׳קים בתנועה הסופית; תנועה ממתינה אינה מאשרת פירעון.</p>':m.provisional?'<p><b>זיהוי ראשוני — התנועה עדיין ממתינה.</b> אסמכתת הפקדה אינה בהכרח מספר שיק. תנועה ממתינה אינה מאשרת פירעון.</p>':'';
+  return `<p>${esc(m.description)} · ${esc(m.amount)} ₪ · ${esc(m.date)}${m.checkIds?.length>1?` · קבוצה של ${esc(m.checkIds.length)} צ׳קים`:''}</p>${b?`<p>פרטי השיק בבנק: ${esc(b.checkNumber||'ללא מספר')} · ${esc(b.amount)} ₪${b.bankNumber?` · בנק ${esc(b.bankNumber)}`:''}${b.branchNumber?` · סניף ${esc(b.branchNumber)}`:''}${b.accountNumber?` · חשבון ${esc(b.accountNumber)}`:''}</p>`:''}${m.matchMethod?`<p>${m.matchMethod==='number'?'התאמה לפי מספר השיק והסכום':'התאמה חלופית לפי סכום ומועד; מספר השיק לא אומת מול הרישום'}</p>`:''}${provisionalText}`;
 }
 
 function incidentLabel(m){
   if(m?.phase==='missing'&&!m.warning)return 'תנועת ההפקדה נעלמה מתנועות הבנק — הצ׳ק נשמר ונדרשת בדיקה';
+  if(provisionalReferenceEvent(m))return 'זוהתה הפקדה ממתינה לפי מספר הצ׳ק — ממתין לאימות סופי';
   if(m?.phase==='deposited'&&m.autoConfirmed&&!m.warning)return m.provisional?'זוהתה הפקדה ממתינה לפי מספר השיק והסכום':'ההפקדה אושרה אוטומטית לפי מספר השיק והסכום';
   return labels[m?.phase]||'התאמת צ׳ק בבנק';
 }
 
-function quietBankEvent(m){return !m?.warning&&(m?.phase==='cleared'||m?.phase==='deposited'&&m.autoConfirmed===true)}
+function quietBankEvent(m){return !m?.warning&&(m?.phase==='cleared'||m?.phase==='deposited'&&(m.autoConfirmed===true||provisionalReferenceEvent(m)))}
 
 export function removableCheckBankEvents(check,{bulk=false}={}){
   const events=new Map((check.bankHistory||[]).map(m=>[m.eventId,m]));
@@ -65,10 +69,10 @@ export function checkBankReviewItems(checks){
 }
 
 export function checkBankReviewCard(item,{activity=false,current=true,...imageOptions}={}){
-  const m=item.match,canReject=current&&m.phase==='deposited'&&!m.warning,canConfirm=canReject&&!m.autoConfirmed;
+  const m=item.match,canReject=current&&m.phase==='deposited'&&!m.warning,canConfirm=canReject&&!m.autoConfirmed&&!m.provisionalReference;
   const reviewButton=current&&!item.reviewed&&!quietBankEvent(m)?`<button type="button" class="btn" data-action="review-check-bank" data-click-arg0="${esc(item.checkId)}" data-click-arg1="${esc(m.eventId)}" data-click-arg2="accept">${canConfirm?'מאשר את ההתאמה':'ראיתי · הסר התראה'}</button>`:'';
   const removeButton=activity&&(!current||quietBankEvent(m)||item.reviewed)?`<button type="button" class="btn" data-action="review-check-bank" data-click-arg0="${esc(item.checkId)}" data-click-arg1="${esc(JSON.stringify([...(item.updates||[]).map(update=>update.match.eventId),m.eventId]))}" data-click-arg2="remove">אישור והסרת ההודעה</button>`:'';
-  const clearingText=current&&m.phase==='deposited'&&!m.warning?`<p>${m.autoConfirmed?'ההתאמה אושרה אוטומטית.':'נדרש אישור ידני להתאמה זו.'} מעבר לנפרע יתבצע בסנכרון בנק מלא חדש לאחר 3 ימי עסקים בנקאיים נוספים, לפי לוח המסלקה. הספירה מתחילה לא לפני זיהוי התנועה הסופית.</p>`:'';
+  const clearingText=current&&m.phase==='deposited'&&!m.warning?(m.provisionalReference?'<p>אין צורך באישור ידני בשלב זה. זהו זיהוי זמני בלבד; לאחר שתופיע תנועת ההפקדה הסופית, המערכת תאמת מחדש את מספר הצ׳ק מפרטי הצ׳קים ותתחיל רק אז את תקופת המעקב לפירעון.</p>':`<p>${m.autoConfirmed?'ההתאמה אושרה אוטומטית.':'נדרש אישור ידני להתאמה זו.'} מעבר לנפרע יתבצע בסנכרון בנק מלא חדש לאחר 3 ימי עסקים בנקאיים נוספים, לפי לוח המסלקה. הספירה מתחילה לא לפני זיהוי התנועה הסופית.</p>`):'';
   return `<div class="check-bank-review${activity?'':' notice'}"${activity?'':' role="status"'}><b>${esc(item.title)}</b><p>${esc(item.name)} · חשבון ${esc(item.account)} · ${esc(item.amount)} ₪${item.checkNumber?` · צ׳ק ${esc(item.checkNumber)}`:''}</p>${evidenceMarkup(m)}${checkBankFrontImageMarkup(m,imageOptions)}${remainderMarkup(m)}${m.warning?`<p>${esc(warnings[m.warning]||'נדרשת בדיקת תנועת הבנק')}</p>`:''}${m.reason?`<p>${esc(m.reason)}</p>`:''}${clearingText}<div class="row-actions">${reviewButton}${removeButton}${canReject?`<button type="button" class="btn" data-action="review-check-bank" data-click-arg0="${esc(item.checkId)}" data-click-arg1="${esc(m.eventId)}" data-click-arg2="reject">ההתאמה שגויה · בטל</button>`:''}<button type="button" class="btn" data-action="open-check-modal-2" data-click-arg0="${esc(item.checkId)}">בדיקה / עריכה</button></div></div>`;
 }
 
@@ -84,10 +88,14 @@ export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}){
       if(!m?.eventId||m.phase==='manual'||seen.has(m.eventId)||m.eventId===c.bankHistoryHiddenEvent||(c.bankHistoryDismiss||[]).includes(m.eventId))continue;
       seen.add(m.eventId);
       const current=m.eventId===c.bankMatch?.eventId&&m.phase===c.bankMatch?.phase&&c.bankAutomationDisabled!==true;
-      const item={checkId:c.id,reviewed:c.bankReview===m.eventId,name:m.checkName??c.name,amount:m.checkAmount??c.amount,account:m.checkAccount||c.account||'עסקי',checkNumber:m.checkNumber??c.checkNumber,match:current?c.bankMatch:m,title:!current&&m.phase==='deposited'&&!m.autoConfirmed&&!m.warning?'התבקש אישור התאמה בעבר':incidentLabel(current?c.bankMatch:m),current,time:m.recordedAt||m.detectedAt||m.observedDate||m.date||''};
+      const item={checkId:c.id,reviewed:c.bankReview===m.eventId,name:m.checkName??c.name,amount:m.checkAmount??c.amount,account:m.checkAccount||c.account||'עסקי',checkNumber:m.checkNumber??c.checkNumber,match:current?c.bankMatch:m,title:!current&&m.phase==='deposited'&&!m.autoConfirmed&&!m.warning&&!m.provisionalReference?'התבקש אישור התאמה בעבר':incidentLabel(current?c.bankMatch:m),current,time:m.recordedAt||m.detectedAt||m.observedDate||m.date||''};
       // Pending/final evidence and approval upgrades update one deposit card.
       // Adverse events and later deposit cycles remain separate and visible.
-      if(previous&&previous.match.phase==='deposited'&&m.phase==='deposited'&&!previous.match.warning&&!m.warning&&m.transactionId&&String(previous.match.transactionId)===String(m.transactionId)&&previous.match.accountKey===m.accountKey){
+      const sameDeposit=previous&&previous.match.phase==='deposited'&&m.phase==='deposited'&&!previous.match.warning&&!m.warning&&previous.match.accountKey===m.accountKey&&(
+        (m.transactionId&&String(previous.match.transactionId)===String(m.transactionId))||
+        (previous.match.provisionalReference&&previous.match.bankItem?.checkNumber&&String(previous.match.bankItem.checkNumber)===String(m.bankItem?.checkNumber)&&Math.round(Number(previous.match.bankItem.amount)*100)===Math.round(Number(m.bankItem?.amount)*100))
+      );
+      if(sameDeposit){
         item.updates=[...(previous.updates||[]),previous];items[items.length-1]=item;
       }else items.push(item);
       previous=item;
@@ -119,6 +127,6 @@ export function applyCheckBankReview(checks,id,eventId,action){
 
 export function checkBankStatusMarkup(check){
   const m=check.bankMatch;
-  const label=check.bankAutomationDisabled?labels.manual:m?.phase==='deposited'&&m.provisional?'זיהוי ראשוני · תנועת בנק ממתינה':m?.phase==='deposited'&&m.autoConfirmed&&!m.warning?'זוהתה הפקדה בבנק · אושרה אוטומטית':m?.phase==='deposited'&&check.bankReview===m.eventId?'זוהתה הפקדה בבנק · ההתאמה אושרה':incidentLabel(m);
+  const label=check.bankAutomationDisabled?labels.manual:provisionalReferenceEvent(m)?'זוהתה הפקדה ממתינה לפי מספר הצ׳ק · ממתין לאימות סופי':m?.phase==='deposited'&&m.provisional?'זיהוי ראשוני · תנועת בנק ממתינה':m?.phase==='deposited'&&m.autoConfirmed&&!m.warning?'זוהתה הפקדה בבנק · אושרה אוטומטית':m?.phase==='deposited'&&check.bankReview===m.eventId?'זוהתה הפקדה בבנק · ההתאמה אושרה':incidentLabel(m);
   return m?`<small class="check-bank-status">${esc(label||'התאמה לבנק')}${m.clearAfter&&!check.bankAutomationDisabled?` · בדיקת פירעון מ־${esc(m.clearAfter)}`:''}</small>`:'';
 }

@@ -74,8 +74,8 @@ def run(db):
     snapshot('2026-08-10');assert checks()[0]['status']=='נפרע'
 
     reset([check('Reference only',550,'111')])
-    tx('reference-not-number',550,reference='111',status='pending');snapshot()
-    assert not checks()[0]['bankMatch']['autoConfirmed'],'A coincident deposit reference is not a bank-supplied cheque number'
+    tx('reference-not-number',550,reference='111',status='pending',description='הפק שיק-ע.ישיר');snapshot()
+    assert not checks()[0]['bankMatch']['autoConfirmed'] and not checks()[0]['bankMatch'].get('provisionalReference'),'A numeric direct-deposit reference without the verified cheque/deposit shape is not a bank-supplied cheque number'
 
     reset([check('Group A',830,'111'),check('Group B',1000,'222')])
     tx('certain-group',1830,[item('111',830),item('222',1000)]);snapshot();snapshot('2026-08-10')
@@ -266,6 +266,65 @@ def run(db):
     assert checks()[0]['bankMatch']['phase']=='unverified' and not checks()[0].get('bankAutomationDisabled')
     tx('later-arrival',550,[item('111',550)],day='2026-08-03');snapshot('2026-08-03')
     assert checks()[0]['bankMatch']['phase']=='deposited'
+
+    # Live Hapoalim contract, 2026-09-20: three checks deposited together first appear as
+    # separate TODAY/pending rows. In this exact direct-deposit presentation the temporary
+    # bank reference is the printed cheque number, while checkItems/checkNumbers are still empty.
+    # Two rows can already carry the future value/event date, so coverage-date filtering must not
+    # hide them. This identity is informational only until the completed multi-cheque row arrives.
+    pending_reference_checks=[
+        check('Pending reference 830',830,'4463455'),
+        check('Pending reference 850',850,'1370002'),
+        check('Pending reference 1000',1000,'80000072'),
+    ]
+    for row in pending_reference_checks:row['dueDate']='2026-09-20'
+    reset(pending_reference_checks)
+    lease=claim_bank_lease('pending-reference-rpc')
+    empty_deposit_details=dict(kind='deposit',checkNumbers=[],checkCount=None,checkItems=[],hasDocumentReference=False,warning='')
+    pending_reference_rows=[
+        dict(mergeKey='pending-reference-4463455',date='2026-09-20T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=81694.41,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='pending-reference-1370002',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=850,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=83544.41,activityTypeCode=1,bankReference='1370002',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='pending-reference-80000072',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=1000,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=82694.41,activityTypeCode=1,bankReference='80000072',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+    ]
+    def pending_reference_rpc(payload,at,coverage_to):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+","+quote('2026-08-22')+","+quote(coverage_to)+",true,'bank','pending-reference-rpc',"+str(lease['fence_epoch'])+") x")
+    pending_reference_rpc(pending_reference_rows,'2026-09-20T01:30:00Z','2026-09-20')
+    rows=checks();assert len(rows)==3
+    for c in rows:
+        m=c['bankMatch']
+        assert c['status']=='הופקד - במעקב' and c['depositDate']=='2026-09-20'
+        assert m['phase']=='deposited' and m['provisional'] and m['provisionalReference'] and not m.get('autoConfirmed') and not m.get('warning')
+        assert m['matchMethod']=='number' and m['bankItem']['checkNumber']==c['checkNumber'] and float(m['bankItem']['amount'])==float(c['amount'])
+        assert m['bankReference']==c['checkNumber'],'The strict pending direct-deposit reference is recorded as provisional cheque identity'
+    assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and account_key='item-tests' and account_role='business'").strip()=='0','Pending reference identity must not create a durable claim before completed cheque details exist'
+
+    # Heal the exact production state that existed before this migration: one of these rows may
+    # already have been accepted as an amount/date fallback and therefore own a legacy claim.
+    rows=checks();legacy=next(c for c in rows if c['checkNumber']=='4463455');legacy_tx=legacy['bankMatch']['transactionId']
+    legacy_match={k:v for k,v in legacy['bankMatch'].items() if k not in ('provisionalReference','bankReference','bankItem','autoConfirmed')}
+    legacy_match['matchMethod']='amount';legacy['bankMatch']=legacy_match
+    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state="+quote(json.dumps({'checks':rows}))+"::jsonb where owner_id="+quote(OWNER)+" and document_name='main';commit")
+    db.sql("insert into netunim_internal.check_bank_claims(owner_id,document_name,transaction_id,account_key,account_role,check_ids,members,source_transaction) select owner_id,'main',id,account_key,account_role,"+quote(json.dumps([legacy['id']]))+"::jsonb,"+quote(json.dumps([dict(id=legacy['id'],name=legacy['name'],amount=legacy['amount'],dueDate=legacy['dueDate'],account=legacy['account'],status='בקופה',checkNumber=legacy['checkNumber'])]))+"::jsonb,to_jsonb(b) from public.bank_transactions b where b.id="+str(legacy_tx))
+    pending_reference_rpc(pending_reference_rows,'2026-09-20T01:31:00Z','2026-09-20')
+    healed=next(c for c in checks() if c['checkNumber']=='4463455')
+    assert healed['bankMatch']['provisionalReference'] and healed['bankMatch']['matchMethod']=='number' and not healed['bankMatch'].get('warning'),'A legacy amount/date claim is upgraded to the strict provisional number evidence'
+    assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and transaction_id="+str(legacy_tx)).strip()=='0','The stale single-member fallback claim must be removed so the final grouped deposit can own identity'
+
+    final_items=[item('4463455',830,'13807'),item('1370002',850,'13807'),item('80000072',1000,'13807')]
+    for i in final_items:i.update(bankNumber='17',branchNumber='725')
+    final_group=dict(mergeKey='final-machine-2680',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=2680,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=83544.41,activityTypeCode=1,bankReference='-1',bankSerial='1',cheque=True,checkDetails=dict(kind='deposit',checkItems=final_items,checkNumbers=['4463455','1370002','80000072'],checkCount=3,hasDocumentReference=True,warning=''))
+    pending_reference_rpc([final_group],'2026-09-22T10:00:00Z','2026-09-22')
+    rows=checks();transaction_ids={c['bankMatch']['transactionId'] for c in rows}
+    assert len(transaction_ids)==1,'The completed grouped deposit becomes the one durable transaction identity for all three checks'
+    for c in rows:
+        m=c['bankMatch']
+        assert c['status']=='הופקד - במעקב' and c['depositDate']=='2026-09-20','Final value-date evidence must not rewrite the actual pending deposit day'
+        assert m['phase']=='deposited' and not m['provisional'] and not m.get('provisionalReference') and m['autoConfirmed'] and not m.get('warning')
+        assert m['matchMethod']=='number' and m['bankItem']['checkNumber']==c['checkNumber']
+    claim_where="owner_id="+quote(OWNER)+" and account_key='item-tests' and account_role='business'"
+    claim_row=json.loads(db.sql("select json_build_object('count',(select count(*) from netunim_internal.check_bank_claims where "+claim_where+"),'ids',coalesce((select check_ids from netunim_internal.check_bank_claims where "+claim_where+" limit 1),'[]'::jsonb))"))
+    assert claim_row['count']==1 and set(claim_row['ids'])=={c['id'] for c in rows},'Only completed structured evidence creates the grouped durable claim'
+    release_bank_lease('pending-reference-rpc')
 
     # Archive-only cheque transition: Hapoalim can replace a pending direct-deposit row
     # with a completed machine-deposit row, changing date/reference/serial/description while

@@ -108,5 +108,10 @@
     "version": "20260919234500",
     "name": "bank_cheque_deposit_pending_transition",
     "sha256": "75df913c47b443043d86197a7cdeb5ccf3a0105aafa0465fec2bc8bb01f8982f"
+  },
+  {
+    "version": "20260920024000",
+    "name": "check_pending_direct_deposit_reference",
+    "sha256": "8f9e3da175fb5085531ceb11200efac8f78527242fe87bba1ffb44a815f5e60b"
   }
 ]

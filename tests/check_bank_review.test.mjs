@@ -95,6 +95,26 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.equal(checkBankReviewItems([c]).length,1,'Final evidence requires its own confirmation');
 }
 {
+  const c=sample();
+  c.bankMatch={...c.bankMatch,eventId:'pending-reference:4463455',transactionId:101,description:'הפק שיק-ע.ישיר',amount:300,date:'2026-09-20',provisional:true,provisionalReference:true,bankReference:'4463455',autoConfirmed:false,matchMethod:'number',bankItem:{checkNumber:'4463455',amount:300,bankNumber:'',branchNumber:'',accountNumber:''}};
+  c.checkNumber='4463455';
+  assert.equal(checkBankReviewItems([c]).length,0,'A strict pending-reference match is an informational automatic action, not a warning');
+  assert.equal(checkBankReviewMarkup([c]),'','Pending reference identity must never ask for manual confirmation in the alert area');
+  const center=createUiAlertCenter({model:{state:{checks:[c]}},financeSnapshot:()=>({})});
+  assert.equal(center.currentAlerts('2026-09-20').length,0,'A strict pending-reference match must suppress both bank-review and generic due-date warnings');
+  assert.match(checkBankStatusMarkup(c),/ממתין לאימות סופי/);
+  let html=checkBankActivityMarkup([c],'ביתי');
+  assert.match(html,/זוהתה הפקדה ממתינה לפי מספר הצ׳ק/);assert.match(html,/זיהוי זמני/);assert.match(html,/אין צורך באישור ידני/);
+  assert.doesNotMatch(html,/מאשר את ההתאמה|נדרש אישור ידני/);
+  assert.match(html,/ההתאמה שגויה/,'The informational activity remains rejectable if the bank association is actually wrong');
+  const pending={...c.bankMatch,recordedAt:'2026-09-20T01:00:00Z',checkName:c.name,checkAmount:c.amount,checkNumber:c.checkNumber,checkAccount:c.account};
+  c.bankHistory=[pending];
+  c.bankMatch={...c.bankMatch,eventId:'final:501',transactionId:501,description:'הפק.שיק במכונה',date:'2026-09-22',provisional:false,provisionalReference:false,autoConfirmed:true,bankReference:'-1',bankItem:{...c.bankMatch.bankItem,bankNumber:'17',branchNumber:'725',accountNumber:'13807'}};
+  html=checkBankActivityMarkup([c],'ביתי');
+  assert.match(html,/הודעות ופעולות אוטומטיות בבנק \(1\)/,'Final structured evidence upgrades the same activity instead of presenting two unrelated deposits');
+  assert.match(html,/עדכונים קודמים להפקדה \(1\)/);assert.match(html,/אושרה אוטומטית/);
+}
+{
   const c=sample();c.bankMatch={phase:'unverified',eventId:'no-bank:c1',date:'2026-08-03',observedDate:'2026-08-05'};
   const html=checkBankReviewMarkup([c]);assert.match(html,/סומן הופקד ידנית/);assert.match(html,/סנכרון מלא מ־2026-08-05/);
   assert.doesNotMatch(html,/undefined|מאשר את ההתאמה/);

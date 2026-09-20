@@ -87,6 +87,10 @@
     {
       "version": "20260919234500",
       "name": "bank_cheque_deposit_pending_transition"
+    },
+    {
+      "version": "20260920024000",
+      "name": "check_pending_direct_deposit_reference"
     }
   ]
 }

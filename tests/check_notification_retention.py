@@ -11,16 +11,22 @@ def run(db):
     def event(id,phase='deposited',**extra):
         return dict(eventId=id,phase=phase,autoConfirmed=True,recordedAt='2026-07-17T12:00:00Z',**extra)
     quiet=event('quiet');missing=event('missing','missing');uncertain=event('uncertain');uncertain['autoConfirmed']=False
-    check=dict(id='retention',name='Retention',status='הופקד - במעקב',amount=100,dueDate='2026-07-17',account='ביתי',bankMatch=quiet,bankHistory=[quiet,missing,uncertain])
+    provisional=event('pending-reference',autoConfirmed=False,provisional=True,provisionalReference=True)
+    check=dict(id='retention',name='Retention',status='הופקד - במעקב',amount=100,dueDate='2026-07-17',account='ביתי',bankMatch=quiet,bankHistory=[quiet,provisional,missing,uncertain])
     cleaned=call('check_bank_prune_history',check)
-    assert [x['eventId'] for x in cleaned['bankHistory']]==['missing','uncertain']
+    assert [x['eventId'] for x in cleaned['bankHistory']]==['missing','uncertain'],'Both confirmed and strict provisional-reference notifications are quiet retention data'
     assert cleaned['bankHistoryHiddenEvent']=='quiet' and cleaned['bankMatch']==quiet and cleaned['status']==check['status']
-    assert len(call('check_bank_prune_history',check,'2026-09-14T12:00:00Z')['bankHistory'])==3,'59 days is not 60 days'
+    assert len(call('check_bank_prune_history',check,'2026-09-14T12:00:00Z')['bankHistory'])==4,'59 days is not 60 days'
     for phase in ('missing','returned','ambiguous','unverified','overdue'):
         current=event(phase,phase);value={**check,'bankMatch':current,'bankHistory':[current]}
         assert call('check_bank_prune_history',value,requested=[phase])['bankHistory']==[current],'Unacknowledged current incidents cannot be removed'
         value['bankReview']=phase
         assert call('check_bank_prune_history',value,requested=[phase])['bankHistory']==[]
+    current_provisional=event('pending-reference-current',autoConfirmed=False,provisional=True,provisionalReference=True)
+    provisional_value={**check,'bankMatch':current_provisional,'bankHistory':[current_provisional]}
+    removed_provisional=call('check_bank_prune_history',provisional_value,requested=['pending-reference-current'])
+    assert removed_provisional['bankHistory']==[] and removed_provisional['bankHistoryHiddenEvent']=='pending-reference-current','Informational provisional-reference activity can be dismissed without a manual review flag'
+
     warned=event('warn',warning='possible_return')
     assert call('check_bank_prune_history',{**check,'bankMatch':warned,'bankHistory':[warned]})['bankHistory']==[warned]
     assert call('check_bank_record_history',cleaned)['bankHistory']==cleaned['bankHistory'],'A hidden current event must not reappear at the next bank sync'
