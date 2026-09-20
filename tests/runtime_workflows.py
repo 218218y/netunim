@@ -54,20 +54,16 @@ flows={
  assert(!document.querySelector('[data-action="review-check-bank"][data-click-arg2="accept"]'),'Kupa does not request confirmation for exact evidence');
  activity.querySelector('.check-bank-activity-item summary').click();activity.querySelector('[data-click-arg2="reject"]').click();await saved();assert(state.checks[0].bankAutomationDisabled,'Kupa quiet match remains manually rejectable');
  quiet.bankHistory.push(...Array.from({length:30},(_,i)=>({...quiet.bankHistory[0],eventId:'older:'+i,phase:'cleared',recordedAt:'2026-08-01T12:00:00Z'})));renderChecks();
- element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===25,'History page is bounded');
- element('[data-action="check-bank-history-page"][data-click-arg0="1"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length<25,'History next-page action works');
- element('[data-action="check-bank-history-page"][data-click-arg0="0"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length===25,'History previous-page action works');
+ element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===1,'Many bank milestones for one cheque stay in one activity group');
+ element('.check-bank-activity-item summary').click();assert(document.querySelectorAll('.check-bank-activity-timeline li').length===31,'The grouped cheque keeps its meaningful internal timeline');
  const originalCheckStatus=quiet.status;quiet.status='הופקד - במעקב';ui.checkTab='open';ui.checkSearchValue='';
  state.checks.push({...quiet,id:'future-total',name:'Future total only',amount:4230,status:'בקופה',bankMatch:undefined,bankHistory:[]});renderChecks();
  assert(Number(element('#checksGrandTotal b').textContent.replace(/[^\d.]/g,''))===4230,'All-tab total excludes deposited cheques: '+element('#checksGrandTotal').textContent+' '+JSON.stringify({tab:ui.checkTab,account:ui.checkAccount,year:ui.checkYear,rows:state.checks.map(c=>({id:c.id,status:c.status,amount:c.amount,account:c.account}))}));
  assert(document.querySelectorAll('[data-check-summary-status]').length===2,'Monthly summary separates deposited and future cheques');
  renderChecksSearch('Future total only');assert(Number(element('#checksGrandTotal b').textContent.replace(/[^\d.]/g,''))===4230,'Search preserves future-only total');
  renderChecksSearch('');state.checks=state.checks.filter(c=>c.id!=='future-total');renderChecks();
- const beforeRemoval=quiet.bankHistory.length;element('[data-click-arg2="remove"]').click();await saved();assert(state.checks[0].bankHistory.length<beforeRemoval&&state.checks.length===1,'Individual notification removal retains the cheque: '+JSON.stringify({beforeRemoval,length:state.checks[0].bankHistory.length,requests:state.checks[0].bankHistoryDismiss}));
- ui.bulkCollection='checks';ui.bulkSelected=new Set([quiet.id]);
- renderChecks();element('[data-click-arg2="remove-selected"]').click();await saved();assert(state.checks.length===1&&quiet.status==='הופקד - במעקב','Bulk notification removal does not delete or change the selected cheque');
- assert(state.checks[0].bankHistoryDismiss.length>=30,'Bulk removal persisted notification requests');
- ui.bulkCollection=null;ui.bulkSelected.clear();
+ const beforeRemoval=quiet.bankHistory.length;element('[data-click-arg2="remove"]').click();await saved();assert(state.checks[0].bankHistory.length<beforeRemoval&&state.checks.length===1,'Grouped notification removal retains the cheque: '+JSON.stringify({beforeRemoval,length:state.checks[0].bankHistory.length,requests:state.checks[0].bankHistoryDismiss}));
+ assert(state.checks[0].bankHistoryDismiss.length>=30,'Grouped removal persists all visible cheque notification requests');
  quiet.status=originalCheckStatus;renderChecks();
 
 
@@ -124,23 +120,19 @@ flows={
  const quiet=state.checks[0];quiet.bankMatch={...quiet.bankMatch,phase:'cleared',eventId:'orders:cleared',autoConfirmed:true};quiet.bankHistory=[{...auto.bankMatch,autoConfirmed:true,recordedAt:'2026-09-11T12:00:00Z'},{...quiet.bankMatch,recordedAt:'2026-09-16T12:00:00Z'}];
 
  kupaCloudReadState ||= {};kupaCloudReadState.bank ||= {};const imageBank=kupaCloudReadState.bank;const imageRole=quiet.account==='\u05d1\u05d9\u05ea\u05d9'?'home':'business',imageFeed=imageRole==='home'?'homeFeed':'feed',imageDate=new Date().toLocaleDateString('en-CA');quiet.bankMatch.accountRole=imageRole;quiet.bankMatch.accountKey='image-account';quiet.bankMatch.bankItem={checkNumber:'0007',amount:quiet.amount};imageBank[imageFeed]={accountNumber:'image-account',syncedAt:imageDate,balance:1000,transactions:[{id:String(quiet.bankMatch.transactionId),date:imageDate,amount:quiet.amount,description:'cheque deposit',checkDetails:{checkItems:[{checkNumber:'0007',amount:quiet.amount,imageFrontKey:'a'.repeat(64)}]}}]};
- renderChecks();const activity=element('.check-bank-activity');activity.querySelector('summary').click();assert(activity.open&&activity.querySelectorAll('.check-bank-activity-item').length===2,'Orders retains deposit and settlement history');assert(document.querySelector('[data-action="view-orders-bank-cheque-image"]')?.dataset.clickArg1==='a'.repeat(64),'Check activity links the individually matched front image through the bank viewer');
+ renderChecks();const activity=element('.check-bank-activity');activity.querySelector('summary').click();assert(activity.open&&activity.querySelectorAll('.check-bank-activity-item').length===1&&activity.querySelectorAll('.check-bank-activity-timeline li').length===2,'Orders groups deposit and settlement history under one cheque');assert(document.querySelector('[data-action="view-orders-bank-cheque-image"]')?.dataset.clickArg1==='a'.repeat(64),'Check activity links the individually matched front image through the bank viewer');
  assert(!document.querySelector('.check-bank-review[role="status"]'),'Orders routine settlement is not an alert');
  quiet.bankHistory.push(...Array.from({length:30},(_,i)=>({...quiet.bankHistory[0],eventId:'older:'+i,phase:'cleared',recordedAt:'2026-08-01T12:00:00Z'})));renderChecks();
- element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===25,'History page is bounded');
- element('[data-action="check-bank-history-page"][data-click-arg0="1"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length<25,'History next-page action works');
- element('[data-action="check-bank-history-page"][data-click-arg0="0"]').click();assert(element('.check-bank-activity').open&&document.querySelectorAll('.check-bank-activity-item').length===25,'History previous-page action works');
+ element('.check-bank-activity > summary').click();assert(document.querySelectorAll('.check-bank-activity-item').length===1,'Many bank milestones for one cheque stay in one activity group');
+ element('.check-bank-activity-item summary').click();assert(document.querySelectorAll('.check-bank-activity-timeline li').length===32,'Orders grouped cheque keeps its meaningful internal timeline');
  const originalCheckStatus=quiet.status;quiet.status='הופקד - במעקב';ui.checkTab='open';ui.checkSearchValue='';
  state.checks.push({...quiet,id:'future-total',name:'Future total only',amount:4230,status:'בקופה',bankMatch:undefined,bankHistory:[]});renderChecks();
  assert(Number(element('#checksGrandTotal b').textContent.replace(/[^\d.]/g,''))===4230,'All-tab total excludes deposited cheques: '+element('#checksGrandTotal').textContent+' '+JSON.stringify({tab:ui.checkTab,account:ui.checkAccount,year:ui.checkYear,rows:state.checks.map(c=>({id:c.id,status:c.status,amount:c.amount,account:c.account}))}));
  assert(document.querySelectorAll('[data-check-summary-status]').length===2,'Monthly summary separates deposited and future cheques');
  renderChecksSearch('Future total only');assert(Number(element('#checksGrandTotal b').textContent.replace(/[^\d.]/g,''))===4230,'Search preserves future-only total');
  renderChecksSearch('');state.checks=state.checks.filter(c=>c.id!=='future-total');renderChecks();
- const beforeRemoval=quiet.bankHistory.length;element('[data-click-arg2="remove"]').click();await saved();assert(state.checks[0].bankHistory.length<beforeRemoval&&state.checks.length===1,'Individual notification removal retains the cheque: '+JSON.stringify({beforeRemoval,length:state.checks[0].bankHistory.length,requests:state.checks[0].bankHistoryDismiss}));
- ui.checksBulkMode=true;ui.checksBulkSelected=new Set([quiet.id]);
- renderChecks();element('[data-click-arg2="remove-selected"]').click();await saved();assert(state.checks.length===1&&quiet.status==='הופקד - במעקב','Bulk notification removal does not delete or change the selected cheque');
- assert(state.checks[0].bankHistoryDismiss.length>=30,'Bulk removal persisted notification requests');
- ui.checksBulkMode=false;ui.checksBulkSelected.clear();
+ const beforeRemoval=quiet.bankHistory.length;element('[data-click-arg2="remove"]').click();await saved();assert(state.checks[0].bankHistory.length<beforeRemoval&&state.checks.length===1,'Grouped notification removal retains the cheque: '+JSON.stringify({beforeRemoval,length:state.checks[0].bankHistory.length,requests:state.checks[0].bankHistoryDismiss}));
+ assert(state.checks[0].bankHistoryDismiss.length>=30,'Orders grouped removal persists all visible cheque notification requests');
  quiet.status=originalCheckStatus;renderChecks();
 
 
