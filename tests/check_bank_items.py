@@ -309,7 +309,7 @@ def run(db):
     rows=checks();legacy=next(c for c in rows if c['checkNumber']=='4463455');legacy_tx=legacy['bankMatch']['transactionId']
     legacy_match={k:v for k,v in legacy['bankMatch'].items() if k not in ('provisionalReference','bankReference','bankItem','autoConfirmed')}
     legacy_match['matchMethod']='amount';legacy['bankMatch']=legacy_match
-    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state="+quote(json.dumps({'checks':rows}))+"::jsonb where owner_id="+quote(OWNER)+" and document_name='main';commit")
+    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state=jsonb_set(state,'{checks}',"+quote(json.dumps(rows))+"::jsonb,true) where owner_id="+quote(OWNER)+" and document_name='main';commit")
     db.sql("insert into netunim_internal.check_bank_claims(owner_id,document_name,transaction_id,account_key,account_role,check_ids,members,source_transaction) select owner_id,'main',id,account_key,account_role,"+quote(json.dumps([legacy['id']]))+"::jsonb,"+quote(json.dumps([dict(id=legacy['id'],name=legacy['name'],amount=legacy['amount'],dueDate=legacy['dueDate'],account=legacy['account'],status='בקופה',checkNumber=legacy['checkNumber'])]))+"::jsonb,to_jsonb(b) from public.bank_transactions b where b.id="+str(legacy_tx))
     pending_reference_rpc(pending_reference_rows,pending_seen_day+'T10:31:00Z',pending_seen_day)
     healed=next(c for c in checks() if c['checkNumber']=='4463455')
