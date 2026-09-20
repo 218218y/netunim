@@ -272,27 +272,33 @@ def run(db):
     # bank reference is the printed cheque number, while checkItems/checkNumbers are still empty.
     # Two rows can already carry the future value/event date, so coverage-date filtering must not
     # hide them. This identity is informational only until the completed multi-cheque row arrives.
+    # Keep the regression clock safely historical. The production trigger deliberately
+    # rejects snapshots more than five minutes in the future; using the live incident date
+    # here made CI depend on wall-clock time on 2026-09-20. These synthetic dates preserve
+    # the exact +2-day pending/value-date relationship without weakening that safety guard.
+    pending_seen_day='2026-08-18'
+    pending_value_day='2026-08-20'
     pending_reference_checks=[
         check('Pending reference 830',830,'4463455'),
         check('Pending reference 850',850,'1370002'),
         check('Pending reference 1000',1000,'80000072'),
     ]
-    for row in pending_reference_checks:row['dueDate']='2026-09-20'
+    for row in pending_reference_checks:row['dueDate']=pending_seen_day
     reset(pending_reference_checks)
     lease=claim_bank_lease('pending-reference-rpc')
     empty_deposit_details=dict(kind='deposit',checkNumbers=[],checkCount=None,checkItems=[],hasDocumentReference=False,warning='')
     pending_reference_rows=[
-        dict(mergeKey='pending-reference-4463455',date='2026-09-20T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=81694.41,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
-        dict(mergeKey='pending-reference-1370002',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=850,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=83544.41,activityTypeCode=1,bankReference='1370002',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
-        dict(mergeKey='pending-reference-80000072',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=1000,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=82694.41,activityTypeCode=1,bankReference='80000072',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='pending-reference-4463455',date=pending_seen_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=81694.41,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='pending-reference-1370002',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=850,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=83544.41,activityTypeCode=1,bankReference='1370002',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='pending-reference-80000072',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=1000,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=82694.41,activityTypeCode=1,bankReference='80000072',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
     ]
     def pending_reference_rpc(payload,at,coverage_to):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+","+quote('2026-08-22')+","+quote(coverage_to)+",true,'bank','pending-reference-rpc',"+str(lease['fence_epoch'])+") x")
-    pending_reference_rpc(pending_reference_rows,'2026-09-20T01:30:00Z','2026-09-20')
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+","+quote('2026-07-20')+","+quote(coverage_to)+",true,'bank','pending-reference-rpc',"+str(lease['fence_epoch'])+") x")
+    pending_reference_rpc(pending_reference_rows,pending_seen_day+'T10:30:00Z',pending_seen_day)
     rows=checks();assert len(rows)==3
     for c in rows:
         m=c['bankMatch']
-        assert c['status']=='הופקד - במעקב' and c['depositDate']=='2026-09-20'
+        assert c['status']=='הופקד - במעקב' and c['depositDate']==pending_seen_day
         assert m['phase']=='deposited' and m['provisional'] and m['provisionalReference'] and not m.get('autoConfirmed') and not m.get('warning')
         assert m['matchMethod']=='number' and m['bankItem']['checkNumber']==c['checkNumber'] and float(m['bankItem']['amount'])==float(c['amount'])
         assert m['bankReference']==c['checkNumber'],'The strict pending direct-deposit reference is recorded as provisional cheque identity'
@@ -305,20 +311,20 @@ def run(db):
     legacy_match['matchMethod']='amount';legacy['bankMatch']=legacy_match
     db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state="+quote(json.dumps({'checks':rows}))+"::jsonb where owner_id="+quote(OWNER)+" and document_name='main';commit")
     db.sql("insert into netunim_internal.check_bank_claims(owner_id,document_name,transaction_id,account_key,account_role,check_ids,members,source_transaction) select owner_id,'main',id,account_key,account_role,"+quote(json.dumps([legacy['id']]))+"::jsonb,"+quote(json.dumps([dict(id=legacy['id'],name=legacy['name'],amount=legacy['amount'],dueDate=legacy['dueDate'],account=legacy['account'],status='בקופה',checkNumber=legacy['checkNumber'])]))+"::jsonb,to_jsonb(b) from public.bank_transactions b where b.id="+str(legacy_tx))
-    pending_reference_rpc(pending_reference_rows,'2026-09-20T01:31:00Z','2026-09-20')
+    pending_reference_rpc(pending_reference_rows,pending_seen_day+'T10:31:00Z',pending_seen_day)
     healed=next(c for c in checks() if c['checkNumber']=='4463455')
     assert healed['bankMatch']['provisionalReference'] and healed['bankMatch']['matchMethod']=='number' and not healed['bankMatch'].get('warning'),'A legacy amount/date claim is upgraded to the strict provisional number evidence'
     assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and transaction_id="+str(legacy_tx)).strip()=='0','The stale single-member fallback claim must be removed so the final grouped deposit can own identity'
 
     final_items=[item('4463455',830,'13807'),item('1370002',850,'13807'),item('80000072',1000,'13807')]
     for i in final_items:i.update(bankNumber='17',branchNumber='725')
-    final_group=dict(mergeKey='final-machine-2680',date='2026-09-22T09:00:00Z',processedDate='2026-09-22T09:00:00Z',amount=2680,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=83544.41,activityTypeCode=1,bankReference='-1',bankSerial='1',cheque=True,checkDetails=dict(kind='deposit',checkItems=final_items,checkNumbers=['4463455','1370002','80000072'],checkCount=3,hasDocumentReference=True,warning=''))
-    pending_reference_rpc([final_group],'2026-09-22T10:00:00Z','2026-09-22')
+    final_group=dict(mergeKey='final-machine-2680',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=2680,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=83544.41,activityTypeCode=1,bankReference='-1',bankSerial='1',cheque=True,checkDetails=dict(kind='deposit',checkItems=final_items,checkNumbers=['4463455','1370002','80000072'],checkCount=3,hasDocumentReference=True,warning=''))
+    pending_reference_rpc([final_group],pending_value_day+'T10:00:00Z',pending_value_day)
     rows=checks();transaction_ids={c['bankMatch']['transactionId'] for c in rows}
     assert len(transaction_ids)==1,'The completed grouped deposit becomes the one durable transaction identity for all three checks'
     for c in rows:
         m=c['bankMatch']
-        assert c['status']=='הופקד - במעקב' and c['depositDate']=='2026-09-20','Final value-date evidence must not rewrite the actual pending deposit day'
+        assert c['status']=='הופקד - במעקב' and c['depositDate']==pending_seen_day,'Final value-date evidence must not rewrite the actual pending deposit day'
         assert m['phase']=='deposited' and not m['provisional'] and not m.get('provisionalReference') and m['autoConfirmed'] and not m.get('warning')
         assert m['matchMethod']=='number' and m['bankItem']['checkNumber']==c['checkNumber']
     claim_where="owner_id="+quote(OWNER)+" and account_key='item-tests' and account_role='business'"
