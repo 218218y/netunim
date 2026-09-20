@@ -89,6 +89,7 @@ assert candidate_contract == reviewed_contract, \
 bank_migration_pending = any(row['name'] == 'bank_instant_credit_reconciliation' for row in receipt_pending)
 credit_identity_migration_pending = any(row['name'] == 'bank_credit_settlement_identity' for row in receipt_pending)
 cheque_pending_transition_pending = any(row['name'] == 'bank_cheque_deposit_pending_transition' for row in receipt_pending)
+pending_date_rollover_pending = any(row['name'] == 'bank_pending_direct_deposit_date_rollover' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
@@ -102,6 +103,70 @@ else:
             '          netunim_internal.check_bank_pending_items_equal(b,r)\n          or\n',
         ):
             definition=definition.replace(fragment,'')
+        if pending_date_rollover_pending:
+            # Production evidence predates the strict pending->pending date/value-day rollover fix.
+            # Remove only that migration's declarations and guarded identity/healing blocks before
+            # comparing the rest of the reviewed merge function to authenticated Production.
+            for fragment in (
+                "  v_direct_pending_reference text;\n  v_stale_pending_id bigint;\n  v_stale_pending_candidates int;\n",
+                """    -- Reuse the already-reviewed strict provisional-reference classifier instead of duplicating
+    -- its Hapoalim-shape rules here. The JSON keys are mapped explicitly to the archive row type.
+    v_direct_pending_reference:=netunim_internal.check_bank_pending_reference_number(jsonb_populate_record(
+      null::public.bank_transactions,jsonb_build_object(
+        'status',v_status,'amount',v_amount,'currency',coalesce(nullif(r->>'currency',''),'ILS'),
+        'cheque',coalesce((r->>'cheque')::boolean,false),'activity_type_code',v_activity,
+        'bank_serial',v_serial,'description',v_description,'check_details',r->'checkDetails',
+        'bank_reference',v_reference)));
+""",
+                """    -- Hapoalim can first expose a direct-cheque pending row on the physical deposit day and
+    -- later move that SAME pending row to the future business/value day. mergeKey/date are then
+    -- different, and the running balance can also move because the bank reorders pending rows.
+    -- The processed/value day remains stable. Reuse the old archive id only for the exact strict
+    -- provisional-reference shape, exact cheque reference + amount + value day, one candidate,
+    -- and only when the old representation is absent from the current bank payload.
+    if v_id is null and v_direct_pending_reference<>'' and v_processed is not null then
+      select count(*),min(b.id) into v_candidates,v_candidate
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.status='pending' and b.amount=v_amount and b.currency='ILS'
+        and netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference
+        and b.processed_date is not null
+        and (b.processed_date at time zone 'Asia/Jerusalem')::date=(v_processed at time zone 'Asia/Jerusalem')::date
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);
+      if v_candidates=1 then v_id:=v_candidate; end if;
+    end if;
+
+""",
+                """    -- Heal the pre-upgrade false-positive pair: the old deposit-day pending row may already be
+    -- stored beside the current value-day pending row. Delete only ONE stale strict provisional
+    -- representation with the same cheque reference + amount + processed/value day, and never a
+    -- row whose mergeKey is still present in this payload. This preserves genuine simultaneous
+    -- source rows and fails closed when historical evidence is ambiguous.
+    if v_direct_pending_reference<>'' and v_processed is not null and v_id is not null then
+      select count(*),min(b.id) into v_stale_pending_candidates,v_stale_pending_id
+      from public.bank_transactions b
+      where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
+        and b.id<>v_id and b.status='pending' and b.amount=v_amount and b.currency='ILS'
+        and netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference
+        and b.processed_date is not null
+        and (b.processed_date at time zone 'Asia/Jerusalem')::date=(v_processed at time zone 'Asia/Jerusalem')::date
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);
+      if v_stale_pending_candidates=1 then
+        perform netunim_internal.move_check_bank_claim(v_stale_pending_id,v_id);
+        delete from public.bank_transactions b
+        where b.id=v_stale_pending_id and b.owner_id=v_owner and b.account_key=p_account_key
+          and b.account_role=p_account_role and b.status='pending'
+          and netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference
+          and b.amount=v_amount and b.processed_date is not null
+          and (b.processed_date at time zone 'Asia/Jerusalem')::date=(v_processed at time zone 'Asia/Jerusalem')::date;
+      end if;
+    end if;
+
+""",
+            ):
+                definition=definition.replace(fragment,'')
         if cheque_pending_transition_pending:
             # Production evidence predates the cheque-deposit presentation transition fix.
             # Normalize only that reviewed body change back to its previous exact-label gate;
@@ -126,6 +191,9 @@ assert 'and netunim_internal.check_bank_pending_compatible(b,r)' in candidate_de
 assert 'netunim_internal.check_bank_pending_items_equal(b,r)' in candidate_definition
 assert "netunim_internal.check_bank_kind(b.description)='deposit'" in candidate_definition
 assert "netunim_internal.check_bank_kind(v_description)='deposit'" in candidate_definition
+assert "v_direct_pending_reference<>'' and v_processed is not null" in candidate_definition
+assert "netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference" in candidate_definition
+assert "if v_stale_pending_candidates=1 then" in candidate_definition
 if credit_identity_migration_pending:
     credit_columns=[row for row in (candidate.get('columns') or []) if row.get('schema')=='public' and row.get('table')=='bank_transactions' and row.get('name')=='credit_settlement_details']
     assert len(credit_columns)==1, 'credit settlement migration did not add exactly one bank_transactions.credit_settlement_details column'

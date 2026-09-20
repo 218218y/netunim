@@ -304,6 +304,34 @@ def run(db):
         assert m['bankReference']==c['checkNumber'],'The strict pending direct-deposit reference is recorded as provisional cheque identity'
     assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and account_key='item-tests' and account_role='business'").strip()=='0','Pending reference identity must not create a durable claim before completed cheque details exist'
 
+    # The same pending row can move from the physical deposit day to the future bank/value day
+    # while its cheque reference, amount and processed/value day remain stable. That is an identity
+    # update, not a disappearance. Running balance is deliberately allowed to change because Hapoalim
+    # reorders pending rows when the business day rolls forward.
+    rollover_before_id=int(db.sql("select id from public.bank_transactions where account_key='item-tests' and account_role='business' and bank_reference='4463455'").strip())
+    rolled_pending_reference_rows=[dict(row) for row in pending_reference_rows]
+    rolled_pending_reference_rows[0]=dict(rolled_pending_reference_rows[0],mergeKey='pending-reference-value-4463455',date=pending_value_day+'T09:00:00Z',balanceAfter=83544.41)
+    rolled_pending_reference_rows[1]=dict(rolled_pending_reference_rows[1],balanceAfter=82714.41)
+    pending_reference_rpc(rolled_pending_reference_rows,pending_seen_day+'T10:30:30Z',pending_seen_day)
+    rollover_archive=json.loads(db.sql("select coalesce(json_agg(json_build_object('id',id,'mergeKey',merge_key,'date',transaction_date,'processedDate',processed_date,'reference',bank_reference,'presence',presence_state,'missingSince',missing_since) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='business'"))
+    assert len(rollover_archive)==3 and sum(1 for row in rollover_archive if row['reference']=='4463455')==1,'A bank business-day rollover must update one archived pending movement instead of creating a duplicate'
+    rollover_row=next(row for row in rollover_archive if row['reference']=='4463455')
+    assert int(rollover_row['id'])==rollover_before_id and rollover_row['mergeKey']=='pending-reference-value-4463455' and rollover_row['presence']=='present' and rollover_row['missingSince'] is None,'The original archive id survives the date/mergeKey rollover and cannot become missing'
+    rollover_check=next(c for c in checks() if c['checkNumber']=='4463455');rollover_match=rollover_check['bankMatch']
+    assert rollover_match['transactionId']==rollover_before_id and rollover_match['phase']=='deposited' and rollover_match['provisionalReference'] and not rollover_match.get('warning'),'The provisional cheque match survives the bank date rollover without a disappearance alert'
+
+    # Heal Production data that already contains both representations from the old behavior. The
+    # current source row wins only when there is exactly one source-absent stale row with the same
+    # strict cheque reference + amount + processed/value day. Reconciliation then repoints the
+    # provisional check evidence to the surviving current archive id automatically.
+    stale_id=int(db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,status,presence_state,missing_since,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details) values("+quote(OWNER)+",'item-tests','business','stale-deposit-day-4463455',"+quote(pending_seen_day+'T09:00:00Z')+","+quote(pending_value_day+'T09:00:00Z')+",830,'ILS','הפק שיק-ע.ישיר','pending','missing',"+quote(pending_seen_day+'T10:40:00Z')+",81694.41,'4463455','0',1,true,"+quote(json.dumps(empty_deposit_details))+"::jsonb) returning id").strip())
+    rows=checks();stale_check=next(c for c in rows if c['checkNumber']=='4463455');stale_match=dict(stale_check['bankMatch']);stale_match.update(transactionId=stale_id,phase='missing',eventId=str(stale_id)+':missing');stale_check['bankMatch']=stale_match
+    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state=jsonb_set(state,'{checks}',"+quote(json.dumps(rows))+"::jsonb,true) where owner_id="+quote(OWNER)+" and document_name='main';commit")
+    pending_reference_rpc(rolled_pending_reference_rows,pending_seen_day+'T10:30:45Z',pending_seen_day)
+    assert db.sql("select count(*) from public.bank_transactions where id="+str(stale_id)).strip()=='0','Exactly one stale source-absent pending representation is removed during rollover healing'
+    healed_rollover=next(c for c in checks() if c['checkNumber']=='4463455')
+    assert healed_rollover['bankMatch']['transactionId']==rollover_before_id and healed_rollover['bankMatch']['phase']=='deposited' and healed_rollover['bankMatch']['provisionalReference'] and not healed_rollover['bankMatch'].get('warning'),'An already-created false missing incident heals back to the current provisional pending row'
+
     # Heal the exact production state that existed before this migration: one of these rows may
     # already have been accepted as an amount/date fallback and therefore own a legacy claim.
     rows=checks();legacy=next(c for c in rows if c['checkNumber']=='4463455');legacy_tx=legacy['bankMatch']['transactionId']
@@ -311,7 +339,7 @@ def run(db):
     legacy_match['matchMethod']='amount';legacy['bankMatch']=legacy_match
     db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state=jsonb_set(state,'{checks}',"+quote(json.dumps(rows))+"::jsonb,true) where owner_id="+quote(OWNER)+" and document_name='main';commit")
     db.sql("insert into netunim_internal.check_bank_claims(owner_id,document_name,transaction_id,account_key,account_role,check_ids,members,source_transaction) select owner_id,'main',id,account_key,account_role,"+quote(json.dumps([legacy['id']]))+"::jsonb,"+quote(json.dumps([dict(id=legacy['id'],name=legacy['name'],amount=legacy['amount'],dueDate=legacy['dueDate'],account=legacy['account'],status='בקופה',checkNumber=legacy['checkNumber'])]))+"::jsonb,to_jsonb(b) from public.bank_transactions b where b.id="+str(legacy_tx))
-    pending_reference_rpc(pending_reference_rows,pending_seen_day+'T10:31:00Z',pending_seen_day)
+    pending_reference_rpc(rolled_pending_reference_rows,pending_seen_day+'T10:31:00Z',pending_seen_day)
     healed=next(c for c in checks() if c['checkNumber']=='4463455')
     assert healed['bankMatch']['provisionalReference'] and healed['bankMatch']['matchMethod']=='number' and not healed['bankMatch'].get('warning'),'A legacy amount/date claim is upgraded to the strict provisional number evidence'
     assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and transaction_id="+str(legacy_tx)).strip()=='0','The stale single-member fallback claim must be removed so the final grouped deposit can own identity'

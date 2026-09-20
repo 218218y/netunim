@@ -91,6 +91,10 @@
     {
       "version": "20260920024000",
       "name": "check_pending_direct_deposit_reference"
+    },
+    {
+      "version": "20260920034500",
+      "name": "bank_pending_direct_deposit_date_rollover"
     }
   ]
 }
