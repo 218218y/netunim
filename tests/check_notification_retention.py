@@ -9,7 +9,7 @@ def run(db):
         if requested is not None:args+=','+quote(json.dumps(requested))+'::jsonb'
         return json.loads(db.sql('select netunim_internal.'+name+'('+args+')'))
     def event(id,phase='deposited',**extra):
-        return dict(eventId=id,phase=phase,autoConfirmed=True,recordedAt='2026-07-17T12:00:00Z',**extra)
+        return {**dict(eventId=id,phase=phase,autoConfirmed=True,recordedAt='2026-07-17T12:00:00Z'),**extra}
     quiet=event('quiet');missing=event('missing','missing');uncertain=event('uncertain');uncertain['autoConfirmed']=False
     provisional=event('pending-reference',autoConfirmed=False,provisional=True,provisionalReference=True)
     check=dict(id='retention',name='Retention',status='הופקד - במעקב',amount=100,dueDate='2026-07-17',account='ביתי',bankMatch=quiet,bankHistory=[quiet,provisional,missing,uncertain])
