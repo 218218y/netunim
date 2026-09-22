@@ -1,7 +1,8 @@
-// Reviewed against Bank of Israel's identification-code table updated 2026-07-12; bank/credit-union entries only.
+// Reviewed against Bank of Israel's identification-code table updated 2026-07-12; bank/credit-union entries plus Postal Finance (code 9), which is used with bank/account payment details.
 const BANKS=Object.freeze([
   {code:'3',name:'בנק אש ישראל בע״מ',aliases:['אש','esh']},
   {code:'4',name:'בנק יהב לעובדי המדינה בע״מ',aliases:['יהב']},
+  {code:'9',name:'ד.י. דואר פיננסים בע״מ',aliases:['בנק הדואר','דואר פיננסים','דואר','postal finance','postal bank']},
   {code:'10',name:'בנק לאומי לישראל בע״מ',aliases:['לאומי']},
   {code:'11',name:'בנק דיסקונט לישראל בע״מ',aliases:['דיסקונט']},
   {code:'12',name:'בנק הפועלים בע״מ',aliases:['הפועלים','פועלים']},

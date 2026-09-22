@@ -83,12 +83,9 @@ function clearBankTransactionLink(){return bankTransactionLinker.clear({blocked,
 
 function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
-  const heroAmount=standalone?'<div class="morning-amount standalone"><small>מסמך כללי</small></div>':`<div class="morning-amount"><small>${bank?'סכום תנועת הבנק':'סכום החוב'}</small><b>${money(d.amount)}</b></div>`;
   const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':bank?'הפרטים מולאו מתנועת הבנק. תקבולים שמקורם בבנק נשמרים כנתוני מקור; בהפקדת כמה צ׳קים אפשר להסיר צ׳ק שאינו שייך למסמך ולהוסיף תקבולים נוספים.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
   const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER;
   return `<div class="morning-document-dialog" data-morning-generation="${modalGeneration}">
-    <div class="morning-document-hero"><div><span class="morning-brand">Morning</span><h4>${standalone?'הפקת מסמך כללי':bank?'הפקת מסמך מתנועת בנק':'הפקת מסמך ללקוח'}</h4><p>המסמך הרשמי יופק ויישמר ב-Morning. הקישור המקומי נרשם רק לאחר אימות ודאי.</p></div>${heroAmount}</div>
-    <div id="morningConnectionStatus" class="morning-connection loading"><span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span></div>
     <div id="morningRecoveryDecision" hidden></div>
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${allowedTypes.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${value}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
@@ -96,17 +93,17 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
     ${bankTransactionLinkPanel(source)}${bankDebtLinkPanel()}<div id="morningDebtUpdateHost">${debtUpdatePanel()}</div>
     <div class="morning-form-card">
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
-      <div class="form-grid">
-        <div class="field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
-        <div class="field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
-        <div class="field"><label>אימייל <small>(רשות)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email||'')}"></div>
-        <div class="field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone||'')}"></div>
-        <div class="field"><label>מספר עוסק / ח.פ. <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
-        <div class="field"><label>תאריך מסמך</label>${dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'})}</div>
+      <div class="form-grid morning-document-fields">
+        <div class="field morning-client-name-field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
+        <div class="field morning-document-amount-field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
+        <div class="field morning-order-field"><label>מספר הזמנה <small>(רשות)</small></label><input id="morningOrderNumber" maxlength="80" value="${esc(d.orderNumber||'')}"></div>
+        <div class="field morning-client-tax-field"><label>מספר עוסק / ח.פ. <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
+        <div class="field morning-document-date-field"><label>תאריך מסמך</label>${dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'})}</div>
         <div class="field morning-due-date-field" data-document-kind="305"><label>לתשלום עד <small>(רשות)</small></label>${dateEditorMarkup('morningDueDate','',{label:'תאריך לתשלום'})}</div>
-        <div class="field"><label>מספר הזמנה <small>(לזיהוי אצלך)</small></label><input id="morningOrderNumber" maxlength="80" value="${esc(d.orderNumber||'')}"></div>
-        <div class="field full"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(d.description||defaultDescription(d,kind))}"></div>
-        <div class="field full"><label>הערות במסמך <small>(רשות)</small></label><textarea id="morningRemarks" maxlength="500" rows="2" placeholder="הערה שתופיע במסמך ב-Morning">${esc(d.remarks||'')}</textarea></div>
+        <div class="field morning-client-email-field"><label>אימייל <small>(רשות)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email||'')}"></div>
+        <div class="field morning-client-phone-field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone||'')}"></div>
+        <div class="field full morning-description-field"><label>תיאור במסמך</label><input id="morningDescription" maxlength="250" value="${esc(d.description||defaultDescription(d,kind))}"></div>
+        <div class="field full morning-remarks-field"><label>הערות במסמך <small>(רשות)</small></label><textarea id="morningRemarks" maxlength="500" rows="2" placeholder="הערה שתופיע במסמך ב-Morning">${esc(d.remarks||'')}</textarea></div>
       </div>
       <div class="morning-allocation-note"><b>חשבוניות ישראל</b><span>Morning מטפלת במספר הקצאה אוטומטית כאשר החיבור לרשות המסים פעיל והמסמך עומד בתנאים. לא בכל חשבונית נדרש מספר; ללקוח עסקי חשוב להזין מספר עוסק / ח.פ.</span></div>
     </div>
@@ -141,7 +138,8 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
-  modal('הפקת מסמך Morning',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
+  modal('בודק חיבור ל-Morning…',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
+  mountMorningConnectionStatus();
   syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void bankTransactionLinker.refresh();await refreshStatus();
 }
 function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
@@ -294,7 +292,8 @@ function settleVerifiedRecovery(operationId,result,{serverLinkPending=false}={})
 }
 function notifyBankVerified(context,bankLink){if(context?.sourceKind!=='bank'||!context.bankTransactionId||!bankLink||bankLink.pending===true)return;try{onBankDocumentVerified(Number(context.bankTransactionId),bankLink)}catch(error){console.error('Bank Morning local projection update failed',error)}}
 
-function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;el.className=`morning-connection ${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
+function mountMorningConnectionStatus(){const heading=document.querySelector('#modal .modal-head h3');if(!heading||!document.querySelector('#modal .morning-document-dialog'))return;heading.id='morningConnectionStatus';heading.className='morning-connection morning-modal-connection loading';heading.innerHTML='<span class="morning-dot"></span><span>בודק חיבור ל-Morning…</span>'}
+function connectionStatus(kind,text){const el=currentField('morningConnectionStatus');if(!el)return;const inHeader=el.matches('#modal .modal-head h3');el.className=`morning-connection ${inHeader?'morning-modal-connection ':''}${kind}`;el.innerHTML=`<span class="morning-dot"></span><span>${esc(text)}</span>`}
 function renderOperation(op){
   const result=currentField('morningOperationResult');if(!result)return;
   if(op?.state==='reserved'){result.innerHTML='<div class="morning-form-card"><b>פעולת ההפקה נרשמה בשרת אך טרם נשלחה ל-Morning</b><span>לא שולחים מחדש מתוך הטופס המשוחזר. לחץ „בדוק מצב הפקה” כדי לבטל את ההזמנה המוקדמת בבטחה ואז להפיק מחדש.</span></div>';return}

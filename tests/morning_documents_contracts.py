@@ -220,6 +220,8 @@ ok('morningBrowserPreviewFrame' in browser and "action:'document_pdf'" in browse
    'Existing-document view is rendered inside the app rather than navigating to Morning')
 ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
+ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
+   'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')
 
 if errors:
     print('\nERRORS',len(errors))
