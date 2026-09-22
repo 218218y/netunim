@@ -5,6 +5,8 @@ import {readStorageRecord} from '../shared/storage-journal-model.js';
 import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_STORAGE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createStorageBrowser as createKupaStorageBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
+import {createStoragePending as createKupaStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
+import {createOutboxRecord} from '../shared/cloud-sync.js';
 import {INITIAL_STATE as KUPA_INITIAL_STATE,BROWSER_STATE_KEY as KUPA_STORAGE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const clone=structuredClone;
@@ -106,6 +108,39 @@ test('browser adapters mirror a compatibility snapshot when an edit is reserved 
 });
 
 
+
+test('Cloud V2 cutover waits for durable V1 outbox verification and drains an IndexedDB-only Kupa pending record',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const session={cloudDocumentName:'main',dbRevision:10,localGeneration:1,localSnapshotSeq:0,storageV2CloudPending:false,cloudOutboxCached:null,cloudOutboxCommitPromise:Promise.resolve(),cloudDurabilityDegraded:false},durable=new Map(),deleted=[];
+    const pendingRecord=createOutboxRecord({domain:'kupa',documentName:'main',generation:1,mutationSeq:1,baseRevision:10,baseState:{notes:[]},snapshot:{notes:[{id:'legacy-only'}]}});durable.set('cloud-pending-v3',pendingRecord);
+    const pending=createKupaStoragePending({session,idbPut:async(_store,key,value)=>{durable.set(key,clone(value));return true},idbGet:async(_store,key)=>clone(durable.get(key)??null),idbDelete:async(_store,key)=>{deleted.push(key);durable.delete(key);return true}});
+    assert.equal(pending.cloudPendingExistsSync(),false,'LocalStorage alone does not reveal the durable-only pending record');assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),false,'unverified legacy head is never considered clean');
+    let captures=0;const cloudBase={version:2,owner:'kupa:test',epoch:'epoch-1',revision:10,state:clone(KUPA_INITIAL_STATE),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base:cloudBase,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return cloudBase}};
+    const browser=createKupaStorageBrowser({storageV2,legacyCloudPendingExists:()=>pending.cloudPendingExistsSync(),legacyCloudHeadVerifiedClean:()=>pending.cloudPendingHeadVerifiedCleanSync(),verifyLegacyCloudPending:()=>pending.getCloudPending(),model:{state:clone(KUPA_INITIAL_STATE)},session,files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),false,'V2 is gated before durable legacy verification');assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0);assert.ok(await pending.getCloudPending(),'IndexedDB-only legacy pending is recovered instead of bypassed');assert.equal(browser.storageV2CloudOutboxActive(),false);
+    assert.equal(await pending.clearCloudPending(1),true);assert.ok(deleted.includes('cloud-pending-v3'));assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),true);assert.ok(await browser.initializeStorageV2CloudCursor(10));assert.equal(captures,1);assert.equal(browser.storageV2CloudOutboxActive(),true,'V2 activates only after durable V1 drain is verified clean');
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Kupa Cloud V2 refuses cutover when the durable V1 head cannot be verified',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const session={cloudDocumentName:'main',dbRevision:10,localGeneration:1,localSnapshotSeq:0,storageV2CloudPending:false,cloudOutboxCached:null,cloudOutboxCommitPromise:Promise.resolve(),cloudDurabilityDegraded:false};
+    const pending=createKupaStoragePending({session,idbPut:async()=>true,idbGet:async()=>{throw new Error('injected durable read failure')},idbDelete:async()=>true});
+    let captures=0;const cloudBase={version:2,owner:'kupa:test',epoch:'epoch-1',revision:10,state:clone(KUPA_INITIAL_STATE),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base:cloudBase,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return cloudBase}};
+    const browser=createKupaStorageBrowser({storageV2,legacyCloudPendingExists:()=>pending.cloudPendingExistsSync(),legacyCloudHeadVerifiedClean:()=>pending.cloudPendingHeadVerifiedCleanSync(),verifyLegacyCloudPending:()=>pending.getCloudPending(),model:{state:clone(KUPA_INITIAL_STATE)},session,files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    await browser.refreshStorageV2CloudState();assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),false);assert.equal(browser.storageV2CloudOutboxActive(),false);assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0,'cursor is not captured after a failed durable legacy-head read');
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Orders Cloud V2 refuses cutover when the durable V1 head cannot be verified',async()=>{
+  const previousStorage=globalThis.localStorage,previousIndexedDb=globalThis.indexedDB,storage=emergencyStore();globalThis.localStorage=storage;delete globalThis.indexedDB;
+  try{
+    let captures=0;const state=clone(ORDERS_INITIAL_STATE),session={localSnapshotSeq:0,localGeneration:1,cloudRevision:10,lastCloudState:clone(state),storageV2CloudPending:false,ordersOutboxCached:null,ordersOutboxCommitPromise:Promise.resolve()},base={version:2,owner:'orders:test',epoch:'epoch-1',revision:10,state:clone(state),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return base}};
+    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareState:clone,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),false,'an unverified legacy head cannot activate V2');assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0,'cursor is not captured after a failed durable legacy-head read');assert.equal(browser.storageV2CloudOutboxActive(),false);
+  }finally{if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;if(previousIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=previousIndexedDb}
+});
 
 test('cloud reset keeps the compatibility mirror on the newest visible state when an edit lands during the reset',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;

@@ -57,7 +57,7 @@ Cloud base הוא projection מפורש עם `revision` ו־`ackSeq`. בעת ש�
 
 ה־RPCs של Supabase, finance fencing וגיבויי השרת לא שונו. ב־Orders וב־Kupa, כאשר Storage V2 `primary` מוכן ויש base תקין ואין V1 pending, ה־writer משתמש ב־V2 flight. כשל רשת או lost ACK משאיר את ה־flight immutable; `revision_conflict` שקיבל תשובה ודאית קורא remote, עושה 3-way merge, דוחה את ה־flight הישן ורק אז יוצר flight חדש לאותו `endSeq`. ACK מתקדם רק עד סוף ה־flight, ופעולות שנוצרו בזמן ה־RPC עוברות rebase ונשמרות ב־checkpoint באותה עסקה עם ה־ACK.
 
-ה־migration אינו מנסה להמיר `baseState + snapshot` ישן לרשימת operations: V1 pending קיים ממשיך להישלח ב־writer הישן עד ACK, ורק כשהוא נקי נלכד cursor V2 מה־state הסמכותי. אם אין עדיין cursor תקין, האפליקציה נשארת זמנית במסלול V1 במקום למחוק pending או לנחש בסיס. בקופה גם משיכת Shared Checks/Finance מרחוק מעדכנת checkpoint בתוך אותו epoch ואינה מאפסת את cursor של המסמך הראשי.
+ה־migration אינו מנסה להמיר `baseState + snapshot` ישן לרשימת operations: V1 pending קיים ממשיך להישלח ב־writer הישן עד ACK, ורק כשהוא נקי נלכד cursor V2 מה־state הסמכותי. ניקיון ה־V1 head אינו מוסק מ־LocalStorage בלבד: לפני הפעלת writer/cursor של V2 נבדקים גם ה־cache המקומי וגם רשומת ה־IndexedDB העמידה. אם הקריאה העמידה נכשלת או שה־head טרם אומת כנקי, ה־cutover נשאר fail-closed במסלול V1 ואינו לוכד cursor חדש. אם אין עדיין cursor תקין, האפליקציה נשארת זמנית במסלול V1 במקום למחוק pending או לנחש בסיס. בקופה גם משיכת Shared Checks/Finance מרחוק מעדכנת checkpoint בתוך אותו epoch ואינה מאפסת את cursor של המסמך הראשי.
 
 ## מצבי הפעלה
 

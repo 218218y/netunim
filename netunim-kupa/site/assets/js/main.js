@@ -124,6 +124,8 @@ const storageShadow=createStorageV2Runtime({app:'kupa',owner:()=>String(cloudAut
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
   legacyCloudPendingExists:(...args)=>storagePending.cloudPendingExistsSync(...args),
+  legacyCloudHeadVerifiedClean:(...args)=>storagePending.cloudPendingHeadVerifiedCleanSync(...args),
+  verifyLegacyCloudPending:(...args)=>storagePending.getCloudPending(...args),
   model,
   session,
   files,

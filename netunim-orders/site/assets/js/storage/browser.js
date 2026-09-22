@@ -80,7 +80,8 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
 }
 
 function legacyCloudPendingExists(){return outboxHeadVerified?!!session.ordersOutboxCached:!!(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY))}
-function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&!legacyCloudPendingExists())}
+function legacyCloudOutboxVerifiedClean(){return outboxHeadVerified&&!session.ordersOutboxCached}
+function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&legacyCloudOutboxVerifiedClean())}
 function cloudPendingExists(){return legacyCloudPendingExists()||!!(storageV2CloudOutboxActive()&&(session.storageV2CloudPending||v2CloudStateCache?.pending||v2CloudStateCache?.flight))}
 
 async function getCloudPending(){
@@ -125,6 +126,7 @@ function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,stat
 }
 async function refreshStorageV2CloudState(){
   if(!storageV2?.primaryReady){cacheStorageV2CloudState(null);return null}
+  await getCloudPending();
   const state=await storageV2.cloudState({validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});cacheStorageV2CloudState(state);if(state?.control?.conflict)session.cloudConflictBlocked=true;return state
 }
 async function refreshStorageV2CloudStateAfterCommit(label,committedState){
@@ -135,6 +137,7 @@ async function refreshStorageV2CloudStateAfterCommit(label,committedState){
 async function initializeStorageV2CloudCursor(revision){
   if(!storageV2?.primaryReady)return false;
   if(await getCloudPending())return false;
+  if(!legacyCloudOutboxVerifiedClean())return false;
   await storageV2.flush();
   const base=await storageV2.captureCloudCursor(Number(revision||0),{project:state=>prepareCloudState(state),validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});
   cacheStorageV2CloudState(settledStorageV2CloudState(base.ackSeq,base));return true

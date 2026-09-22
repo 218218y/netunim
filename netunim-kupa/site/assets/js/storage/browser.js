@@ -6,7 +6,7 @@ import {assertValidCloudState} from '../state/validation.js';
 import {BROWSER_STATE_KEY, BROWSER_STATE_IDB_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBrowser({storageV2=null,observeStorage=()=>{},legacyCloudPendingExists=()=>false,model, session, files, normalizeState, prepareKupaCloudState=state=>state, idbPut, idbGet}){
+export function createStorageBrowser({storageV2=null,observeStorage=()=>{},legacyCloudPendingExists=()=>false,legacyCloudHeadVerifiedClean=()=>false,verifyLegacyCloudPending=async()=>null,model, session, files, normalizeState, prepareKupaCloudState=state=>state, idbPut, idbGet}){
 let sequenceLoaded=false,v2CloudStateCache=null;
 // Another primary tab may have saved while this tab was inactive.
 globalThis.addEventListener?.('storage',event=>{if(event.key===BROWSER_STATE_KEY||event.key===null)sequenceLoaded=false});
@@ -32,13 +32,14 @@ async function loadBrowserState(){const local=loadBrowserStateSync();let idb=nul
 
 async function requestPersistentBrowserStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist()}catch(e){console.error('persistent storage request',e)}}
 
-function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&!legacyCloudPendingExists())}
+function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&legacyCloudHeadVerifiedClean()&&!legacyCloudPendingExists())}
 function cacheStorageV2CloudState(state){v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
 function settledStorageV2CloudState(seq,base,control=null){return {seq:Number(seq||0),base:base?clone(base):null,flight:null,control:control?clone(control):null,pending:false,pendingDeleteIntents:{},pendingGeneration:0,pendingMutationType:'autosave',pendingSurface:'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function resetStorageV2CloudState(seq,base){const current=Number(seq||0),ackSeq=Number(base?.ackSeq||0),pending=current>ackSeq;return {seq:current,base:base?clone(base):null,flight:null,control:null,pending,pendingDeleteIntents:{},pendingGeneration:pending?Number(session.localGeneration||0):0,pendingMutationType:'autosave',pendingSurface:pending?'epoch-transition':'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
 function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,state,control){const sent=prior?.flight?.operationId===operationId?prior.flight:null,ackSeq=Number(receipt?.ackSeq??sent?.endSeq??prior?.base?.ackSeq??0),seq=Math.max(ackSeq,Number(prior?.seq||0)),pending=seq>ackSeq,pendingDeleteIntents=pending&&sent?clone(prior?.afterFlightDeleteIntents||{}):{},pendingGeneration=pending&&sent?Number(prior?.afterFlightGeneration||0):0,pendingMutationType=pending&&sent?(prior?.afterFlightMutationType||'autosave'):'autosave',pendingSurface=pending&&sent?(prior?.afterFlightSurface||'unknown'):'unknown';return {...(prior||{}),seq,base:{...(prior?.base||{}),version:2,revision:Number(revision),state:clone(state),projection:'cloud',ackSeq},flight:null,control:control?clone(control):null,pending,pendingDeleteIntents,pendingGeneration,pendingMutationType,pendingSurface,afterFlightPending:false,afterFlightDeleteIntents:clone(pendingDeleteIntents),afterFlightGeneration:pendingGeneration,afterFlightMutationType:pendingMutationType,afterFlightSurface:pendingSurface}}
 async function refreshStorageV2CloudState(){
   if(!storageV2?.primaryReady){cacheStorageV2CloudState(null);return null}
+  await verifyLegacyCloudPending();
   const state=await storageV2.cloudState({validateBase:value=>assertValidCloudState(value,'Kupa V2 cloud base')});cacheStorageV2CloudState(state);if(state?.control?.conflict)session.cloudConflictPending=true;return state
 }
 async function refreshStorageV2CloudStateAfterCommit(label,committedState){
@@ -46,7 +47,9 @@ async function refreshStorageV2CloudStateAfterCommit(label,committedState){
   try{return await refreshStorageV2CloudState()}catch(error){console.warn(`Storage V2 ${label} committed; cloud cache refresh deferred`,error);return committedState}
 }
 async function initializeStorageV2CloudCursor(revision){
-  if(!storageV2?.primaryReady||legacyCloudPendingExists())return false;
+  if(!storageV2?.primaryReady)return false;
+  if(await verifyLegacyCloudPending())return false;
+  if(!legacyCloudHeadVerifiedClean()||legacyCloudPendingExists())return false;
   await storageV2.flush();const base=await storageV2.captureCloudCursor(Number(revision||0),{project:state=>prepareKupaCloudState(state),validateBase:value=>assertValidCloudState(value,'Kupa V2 cloud base')});cacheStorageV2CloudState(settledStorageV2CloudState(base.ackSeq,base));return true
 }
 async function materializeStorageV2CloudFlight({throughSeq,snapshot}={}){

@@ -45,6 +45,7 @@ async function getCloudPending(){
 async function putCloudPending(p){const record=migrateKupaOutboxRecord(p,migrationDefaults(p));if(!record)throw new Error('invalid_outbox_record');const cachedGeneration=Number(session.cloudOutboxCached?.generation||0),recordGeneration=Number(record.generation||0),cachedSequence=Number(session.cloudOutboxCached?.mutationSeq||0),recordSequence=Number(record.mutationSeq||0);if(cachedGeneration>recordGeneration||(cachedGeneration===recordGeneration&&cachedSequence>recordSequence))return {record:session.cloudOutboxCached,durable:false,localOk:false,superseded:true};const localOk=persistCloudPendingSync(record);let durable=false,idbError=null;try{await idbPut('sync',CLOUD_OUTBOX_V3_KEY,record);durable=true;session.cloudDurabilityDegraded=false}catch(e){idbError=e;session.cloudDurabilityDegraded=true;console.error('pending idb save failed',e)}if(!durable&&!localOk)throw new Error('kupa_outbox_persistence_failed',{cause:idbError});if(compareOutboxFreshness(session.cloudOutboxCached,record)<=0)outboxHeadVerified=localOk&&durable;return {record,durable,localOk}}
 
 function cloudPendingExistsSync(){return outboxHeadVerified?!!session.cloudOutboxCached:!!loadCloudPendingSync()}
+function cloudPendingHeadVerifiedCleanSync(){return outboxHeadVerified&&!session.cloudOutboxCached}
 
 async function clearCloudPending(acknowledgedGeneration){
   const current=await getCloudPending();if(!current)return true;
@@ -58,5 +59,5 @@ async function clearCloudPending(acknowledgedGeneration){
   session.cloudOutboxCached=null;outboxHeadVerified=true;session.cloudDurabilityDegraded=false;return true;
 }
 
-return { loadCloudPendingSync, persistCloudPendingSync, getCloudPending, putCloudPending, cloudPendingExistsSync, clearCloudPending, invalidateCloudPendingHead };
+return { loadCloudPendingSync, persistCloudPendingSync, getCloudPending, putCloudPending, cloudPendingExistsSync, cloudPendingHeadVerifiedCleanSync, clearCloudPending, invalidateCloudPendingHead };
 }
