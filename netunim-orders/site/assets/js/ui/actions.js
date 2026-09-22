@@ -180,6 +180,7 @@ const actions={
   'morning-payment-add':(element,event)=>{addMorningPayment()},
   'morning-payment-remove':(element,event)=>{removeMorningPayment(Number(element.dataset.clickArg0))},
   'morning-payment-amount':(element,event)=>{syncMorningPaymentTotal()},
+  'morning-document-amount':(element,event)=>{syncMorningPaymentTotal()},
   'morning-bank-debt-link':(element,event)=>{linkBankMorningDebt(element.value)},
   'morning-bank-debt-select':(element,event)=>{linkBankMorningDebt(element.dataset.clickArg0)},
   'morning-bank-debt-clear':(element,event)=>{linkBankMorningDebt('')},

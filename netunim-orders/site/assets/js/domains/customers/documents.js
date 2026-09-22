@@ -5,7 +5,7 @@ import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning.js';
 import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
-import {createMorningPayments} from './morning-payments.js';
+import {createMorningPayments,morningPaymentTotalCents} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 import {createMorningBankTransactionLinker} from './morning-bank-transaction-link.js';
 
@@ -95,7 +95,7 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
       <div class="form-grid morning-document-fields">
         <div class="field morning-client-name-field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
-        <div class="field morning-document-amount-field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
+        <div class="field morning-document-amount-field"><label>סכום כולל מע״מ <small id="morningAmountPaymentHint" hidden>חייב להתאים לסה״כ התקבולים</small></label><input id="morningAmount" class="number-input" data-input="morning-document-amount" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
         <div class="field morning-order-field"><label>מספר הזמנה <small>(רשות)</small></label><input id="morningOrderNumber" maxlength="80" value="${esc(d.orderNumber||'')}"></div>
         <div class="field morning-client-tax-field"><label>מספר עוסק / ח.פ. <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
         <div class="field morning-document-date-field"><label>תאריך מסמך</label>${dateEditorMarkup('morningDocumentDate',documentDate,{label:'תאריך מסמך'})}</div>
@@ -151,9 +151,9 @@ function debtUpdatePolicy(type=selectedType()){
   return {applyPayment:paymentSupported&&currentField('morningApplyPayment')?.checked!==false,applyInvoice:invoiceSupported&&currentField('morningApplyInvoice')?.checked!==false};
 }
 function syncDocumentType(){
-  const type=selectedType(),needsPayment=type===320||type===400,payment=currentField('morningPaymentFields'),linked=currentField('morningLinkedDocumentPanel'),paymentUpdate=currentField('morningApplyPaymentOption'),invoiceUpdate=currentField('morningApplyInvoiceOption'),amount=currentField('morningAmount');
+  const type=selectedType(),needsPayment=type===320||type===400,payment=currentField('morningPaymentFields'),linked=currentField('morningLinkedDocumentPanel'),paymentUpdate=currentField('morningApplyPaymentOption'),invoiceUpdate=currentField('morningApplyInvoiceOption'),amount=currentField('morningAmount'),amountHint=currentField('morningAmountPaymentHint');
   if(activeSource.kind==='bank'&&![320,400].includes(type))return;
-  if(payment)payment.hidden=!needsPayment;if(linked)linked.hidden=type!==400;if(paymentUpdate)paymentUpdate.hidden=!(type===320||type===400);if(invoiceUpdate)invoiceUpdate.hidden=!(type===305||type===320);if(amount)amount.readOnly=needsPayment;
+  if(payment)payment.hidden=!needsPayment;if(linked)linked.hidden=type!==400;if(paymentUpdate)paymentUpdate.hidden=!(type===320||type===400);if(invoiceUpdate)invoiceUpdate.hidden=!(type===305||type===320);if(amount)amount.readOnly=false;if(amountHint)amountHint.hidden=!needsPayment;
   document.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
 }
 function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),exists=!id||activeBankDebts().some(row=>String(row.id)===id);if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection();collapseMorningBankDebtPicker()}
@@ -162,8 +162,8 @@ function validateTaxId(value){const digits=String(value||'').replace(/\D/g,'');i
 function readForm(){
   if(!activeOperationId)throw new Error('יש לפתוח את חלון ההפקה');
   const type=selectedType();if(!DOCUMENT_TYPES[type])throw new Error('יש לבחור סוג מסמך');if(activeSource.kind==='bank'&&![320,400].includes(type))throw new Error('מתנועת בנק ניתן להפיק חשבונית מס / קבלה או קבלה בלבד');
-  const clientName=cleanText(currentField('morningClientName')?.value,160),email=cleanText(currentField('morningClientEmail')?.value,180),phone=cleanText(currentField('morningClientPhone')?.value,50),taxId=validateTaxId(currentField('morningClientTaxId')?.value),date=String(currentField('morningDocumentDate')?.value||''),dueDate=type===305?String(currentField('morningDueDate')?.value||''):'',description=cleanText(currentField('morningDescription')?.value,250),remarks=cleanText(currentField('morningRemarks')?.value,500),orderNumber=cleanText(currentField('morningOrderNumber')?.value,80),payments=(type===320||type===400)?readPaymentRows():[],amount=payments.length?payments.reduce((sum,row)=>sum+Math.round(Number(row.price)*100),0)/100:Number(currentField('morningAmount')?.value||0);
-  if(!clientName)throw new Error('יש להזין שם לקוח');if(!Number.isFinite(amount)||amount<=0)throw new Error('יש להזין סכום חיובי תקין');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('יש לבחור תאריך מסמך');if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))throw new Error('תאריך לתשלום אינו תקין');if(dueDate&&dueDate<date)throw new Error('תאריך לתשלום לא יכול להיות לפני תאריך המסמך');if(!description)throw new Error('יש להזין תיאור למסמך');if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('כתובת האימייל אינה תקינה');
+  const clientName=cleanText(currentField('morningClientName')?.value,160),email=cleanText(currentField('morningClientEmail')?.value,180),phone=cleanText(currentField('morningClientPhone')?.value,50),taxId=validateTaxId(currentField('morningClientTaxId')?.value),date=String(currentField('morningDocumentDate')?.value||''),dueDate=type===305?String(currentField('morningDueDate')?.value||''):'',description=cleanText(currentField('morningDescription')?.value,250),remarks=cleanText(currentField('morningRemarks')?.value,500),orderNumber=cleanText(currentField('morningOrderNumber')?.value,80),payments=(type===320||type===400)?readPaymentRows():[],amount=Number(currentField('morningAmount')?.value||0);
+  if(!clientName)throw new Error('יש להזין שם לקוח');if(!Number.isFinite(amount)||amount<=0)throw new Error('יש להזין סכום חיובי תקין');if(payments.length){const amountCents=Math.round(amount*100),paymentCents=morningPaymentTotalCents(payments);if(paymentCents!==amountCents)throw new Error(`סכום המסמך (${money(amount)}) אינו תואם לסך התקבולים (${money(paymentCents/100)}). יש לתקן את הסכומים לפני המשך.`)}if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('יש לבחור תאריך מסמך');if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))throw new Error('תאריך לתשלום אינו תקין');if(dueDate&&dueDate<date)throw new Error('תאריך לתשלום לא יכול להיות לפני תאריך המסמך');if(!description)throw new Error('יש להזין תיאור למסמך');if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('כתובת האימייל אינה תקינה');
   if(activeSource.kind==='bank'){
     const sourcePayments=payments.filter(row=>String(row.bankSourceKey||'')),bankAmount=Number(activeSource.bankAmount),mode=String(activeSource.paymentMode||'transfer');
     if(!sourcePayments.length)throw new Error('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק');

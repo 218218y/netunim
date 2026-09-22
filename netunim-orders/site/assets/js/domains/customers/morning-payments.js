@@ -1,4 +1,5 @@
 import {esc} from '../../core/values.js';
+import {money} from '../../core/money.js';
 import {formatMorningBank,morningBankCode,morningBankDatalistMarkup,morningBankName,resolveMorningBank} from './morning-banks.js';
 
 const PAYMENT_TYPES=Object.freeze({1:'מזומן',2:'צ׳ק',3:'כרטיס אשראי',4:'העברה בנקאית'});
@@ -8,6 +9,7 @@ function todayLocal(){const d=new Date(),shift=d.getTimezoneOffset()*60_000;retu
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function bankDisplayValue(payment={}){const code=cleanText(payment.bankCode,20),name=cleanText(payment.bankName,80),resolved=resolveMorningBank(code||name);return resolved?formatMorningBank(resolved):name}
 function paymentKindVisible(element,type){return String(element.dataset.paymentKinds||element.dataset.paymentKind||'').split(',').map(value=>Number(value.trim())).includes(Number(type))}
+export function morningPaymentTotalCents(payments=[]){return (Array.isArray(payments)?payments:[]).reduce((sum,row)=>{const value=Number(row?.price);return sum+(Number.isFinite(value)&&value>0?Math.round(value*100):0)},0)}
 
 export function createMorningPayments({dateEditorMarkup,toast,currentField,getSource,getSelectedType}){
 function paymentRowMarkup(index,payment={},source=getSource()){
@@ -30,10 +32,11 @@ function paymentRowMarkup(index,payment={},source=getSource()){
 }
 function initialPayments(data){if(Array.isArray(data?.payment)&&data.payment.length)return data.payment.slice(0,12).map(row=>({...row}));if(data?.payment&&typeof data.payment==='object')return [{...data.payment}];const amount=Number(data?.amount);return [{type:4,date:data?.date||todayLocal(),price:Number.isFinite(amount)&&amount>0?amount:'',currency:'ILS'}]}
 function paymentFields(data,source){return `<div id="morningPaymentFields" class="morning-payment-panel">
-  <div class="morning-section-title"><span>תקבולים</span><small>סכום המסמך מחושב מסך התקבולים</small></div>
+  <div class="morning-section-title"><span>תקבולים</span><small>סך התקבולים חייב להתאים לסכום המסמך</small></div>
   ${morningBankDatalistMarkup()}
   <div id="morningPaymentRows" class="morning-payment-rows">${initialPayments(data,source).map((payment,index)=>paymentRowMarkup(index,payment,source)).join('')}</div>
   <button type="button" class="btn small morning-payment-add" data-action="morning-payment-add">+ הוסף תקבול</button>
+  <div id="morningPaymentSummary" class="morning-payment-summary" role="status" aria-live="polite"><span>סה״כ סכום התקבולים</span><strong id="morningPaymentTotal">${money(morningPaymentTotalCents(initialPayments(data,source))/100)}</strong><small id="morningPaymentMatch">הסכום ייבדק מול סכום המסמך</small></div>
 </div>`}
 function syncPaymentType(index=null){
   const rows=[...document.querySelectorAll('[data-payment-row]')];for(const row of rows){if(index!==null&&Number(row.dataset.paymentRow)!==Number(index))continue;const type=Number(row.querySelector('[data-payment-field="type"]')?.value||4);row.querySelectorAll('[data-payment-kind],[data-payment-kinds]').forEach(el=>{el.hidden=!paymentKindVisible(el,type)})}
@@ -64,6 +67,13 @@ function removeMorningPayment(index){
   const payments=readPaymentRows({strict:false}),i=Number(index);if(!Number.isInteger(i)||i<0||i>=payments.length)return;if(payments.length<=1)return toast('יש להשאיר לפחות תקבול אחד');const target=payments[i];if(target.bankSourceKey){const bankRows=payments.filter(row=>row.bankSourceKey);if(!target.removable)return toast('התקבול שמייצג את תנועת הבנק אינו ניתן להסרה');if(bankRows.length<=1)return toast('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק')}
   payments.splice(i,1);renderPaymentRows(payments);
 }
-function syncPaymentTotal(){if(![320,400].includes(Number(getSelectedType())))return;const total=readPaymentRows({strict:false}).reduce((sum,row)=>sum+(Number.isFinite(Number(row.price))&&Number(row.price)>0?Math.round(Number(row.price)*100):0),0)/100,field=currentField('morningAmount');if(field)field.value=total>0?total.toFixed(2):''}
+function syncPaymentTotal(){
+  if(![320,400].includes(Number(getSelectedType())))return;
+  const totalCents=morningPaymentTotalCents(readPaymentRows({strict:false})),amountField=currentField('morningAmount'),summary=currentField('morningPaymentSummary'),totalEl=currentField('morningPaymentTotal'),matchEl=currentField('morningPaymentMatch'),amount=Number(amountField?.value||0),amountCents=Number.isFinite(amount)&&amount>0?Math.round(amount*100):0;
+  if(totalEl)totalEl.textContent=money(totalCents/100);
+  if(!summary||!matchEl)return;
+  const matched=amountCents>0&&totalCents>0&&amountCents===totalCents,mismatched=amountCents>0&&totalCents>0&&amountCents!==totalCents;summary.classList.toggle('is-match',matched);summary.classList.toggle('is-mismatch',mismatched);amountField?.setAttribute('aria-invalid',mismatched?'true':'false');amountField?.closest('.morning-document-amount-field')?.classList.toggle('is-mismatch',mismatched);
+  matchEl.textContent=!amountCents?'יש להזין סכום מסמך':!totalCents?'יש להזין לפחות תקבול אחד':matched?'תואם לסכום המסמך':`לא תואם · הפרש ${money(Math.abs(amountCents-totalCents)/100)}`;
+}
 return {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal};
 }
