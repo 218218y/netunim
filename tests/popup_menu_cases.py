@@ -64,11 +64,22 @@ WAREHOUSE_CASES = r"""
  await check(document.querySelector('.warehouse-menu'));renderWarehouse();await wait();
  assert(!document.querySelector('[data-menu-panel]:popover-open'),'rerender closes old top layer');
  switchView('supplier');await wait();
- const supplier=document.querySelector('[data-floating-menu]');
+ const supplier=document.querySelector('[data-floating-menu]'),supplierCommand=supplier.closest('.supplier-command'),supplierOptions=supplier.querySelector('#supplierMenuOptions');
+ // Supplier filtering changes the rendered height of an already-open top-layer
+ // menu. Force an upward placement with enough rows so a stale anchor is
+ // deterministic: after filtering to one row, the popup must remain attached.
+ for(let i=0;i<24;i++)supplierOptions.querySelector('[data-supplier-menu-empty]').insertAdjacentHTML('beforebegin',`<button type="button" class="supplier-menu-item" data-supplier-picker-option data-supplier-name="Resize Probe ${i}" data-action="choose-supplier" data-click-arg0="RESIZE-PROBE-${i}"><span>Resize Probe ${i}</span><span></span></button>`);
+ Object.assign(supplierCommand.style,{position:'fixed',top:'auto',bottom:'10px',right:'10px',left:'auto',width:'340px'});
  supplier.querySelector('[data-menu-trigger]').click();await wait();
- assert(supplier.querySelector('[data-menu-panel]').matches(':popover-open'),'supplier uses the same top layer');
+ const supplierPanel=supplier.querySelector('[data-menu-panel]');
+ assert(supplierPanel.matches(':popover-open'),'supplier uses the same top layer');
+ const supplierInput=supplier.querySelector('#supplierMenuSearch');supplierInput.value='Resize Probe 23';supplierInput.dispatchEvent(new Event('input',{bubbles:true}));await wait();await wait();
+ const supplierTriggerRect=supplier.querySelector('[data-menu-trigger]').getBoundingClientRect(),supplierPanelRect=supplierPanel.getBoundingClientRect(),supplierGap=supplierTriggerRect.top-supplierPanelRect.bottom;
+ assert(supplierGap>=-2&&supplierGap<=12,'supplier popup did not re-anchor after filtered content resized it: '+supplierGap);
+ const resizeProbe=supplier.querySelector('[data-supplier-name="Resize Probe 23"]'),resizeRect=resizeProbe.getBoundingClientRect(),resizeHit=document.elementFromPoint(resizeRect.left+resizeRect.width/2,resizeRect.top+resizeRect.height/2);
+ assert(resizeProbe===resizeHit||resizeProbe.contains(resizeHit),'resized supplier option is not the pointer hit target');
  document.body.click();await wait();assert(!supplier.classList.contains('open'),'supplier outside closes through shared controller');
- return {warehouse:true,attention:true,reservations:true,orders:true,supplier:true,rerender:true};
+ return {warehouse:true,attention:true,reservations:true,orders:true,supplier:true,supplierResize:true,rerender:true};
 """
 
 BANK_CASES = r"""
