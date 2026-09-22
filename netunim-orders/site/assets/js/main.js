@@ -877,7 +877,6 @@ const uiActions=createUiActions({
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
   setOrdersBankTransactionHandled:(...args)=>domainsFinanceView.setBankTransactionHandled(...args),
-  openOrdersBankDocumentChoice:(...args)=>domainsFinanceView.openBankDocumentChoice(...args),
   createOrdersBankDocument:(...args)=>domainsFinanceView.createBankDocument(...args),
   openOrdersBankChequeImage:(...args)=>domainsFinanceView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error))),
   acknowledgeOrdersBankMissing:(...args)=>domainsFinanceView.acknowledgeBankMissing(...args),

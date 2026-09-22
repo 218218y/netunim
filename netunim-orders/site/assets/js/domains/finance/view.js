@@ -34,7 +34,7 @@ export function createDomainsFinanceView({runFinance=withFinanceDerivations, ui,
   function currentSection(){if(!KUPA_SECTIONS.includes(ui.kupaSubView))ui.kupaSubView='bank';return ui.kupaSubView}
   let lastRenderedData=null;
   function snapshot(){return controller.readSnapshot?.()||controller.snapshot()}
-  const {openBankDocumentChoice,createBankDocument}=createBankMorningDocumentActions({getBusinessRows:()=>snapshot().bank?.feed?.transactions||[],ensureArchive:()=>controller.ensureBankDisplayArchive?.(),modal,openDocument:openBankMorningDocument});
+  const {createBankDocument}=createBankMorningDocumentActions({getBusinessRows:()=>snapshot().bank?.feed?.transactions||[],openDocument:openBankMorningDocument});
   function bankDateFilterActive(){return ui.bankDateMode==='range'}
   function bankRowMatchesDateRange(row){return !bankDateFilterActive()||dateInRange(row?.date||row?.processedDate,ui.bankDateFrom||'',ui.bankDateTo||'')}
   function dateInput(value,key){return dateEditorMarkup('',value,{data:{[key]:''},compact:true})}
@@ -166,5 +166,5 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
 
 
   const creditConnectionView=createCreditConnectionView({controller,modal,closeModal,confirmDialog,render:renderKupa});
-  return {renderKupa,openCashflowBreakdown,openBankChequeImage,setKupaSection,setBankAccountView,setBankDataView,setBankTransactionHandled,openBankDocumentChoice,createBankDocument,acknowledgeBankMissing,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions,saveBankToken,configureBank,selectBankAccount,deleteBankCredentials,exportBankChequeDiagnostics,refreshBank,setBankAuto,refreshCredit,copySafeCreditDiagnostics,exportCreditDataDiagnostics,setCreditAuto,setCreditAutoMode,setCreditView,setCreditAccountFilter,setCreditProviderFilter,setCreditCardFilter,setCreditDetailUpcoming,setCreditDetailMonth,setCreditDetailFocus,clearCreditDetailFocus,setCreditDateRange,setCreditSearch,toggleCreditSyncOptions,setCardMapping,acknowledgeCreditSettlementWarning,...creditConnectionView};
+  return {renderKupa,openCashflowBreakdown,openBankChequeImage,setKupaSection,setBankAccountView,setBankDataView,setBankTransactionHandled,createBankDocument,acknowledgeBankMissing,setBankSearch,setBankDateMode,setBankDateBoundary,toggleBankSyncOptions,saveBankToken,configureBank,selectBankAccount,deleteBankCredentials,exportBankChequeDiagnostics,refreshBank,setBankAuto,refreshCredit,copySafeCreditDiagnostics,exportCreditDataDiagnostics,setCreditAuto,setCreditAutoMode,setCreditView,setCreditAccountFilter,setCreditProviderFilter,setCreditCardFilter,setCreditDetailUpcoming,setCreditDetailMonth,setCreditDetailFocus,clearCreditDetailFocus,setCreditDateRange,setCreditSearch,toggleCreditSyncOptions,setCardMapping,acknowledgeCreditSettlementWarning,...creditConnectionView};
 }

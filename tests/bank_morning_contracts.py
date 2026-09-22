@@ -110,6 +110,8 @@ ok('getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.fe
    'Morning bank picker consumes the existing finance archive projection instead of creating a second bank-data path')
 ok('bankMorningLinkedDocumentsMarkup' in bank_view and 'data-action="morning-open-document"' in bank_view and 'bankMorningLinkedDocumentsMarkup(row)' in bank_table,
    'Verified Morning documents are directly visible and openable from their bank movement row')
+ok('data-action="orders-bank-create-document"' in bank_view and 'data-click-arg1="320"' in bank_view and 'orders-bank-document-choice' not in bank_view and 'bankMorningChoiceMarkup' not in bank_view and 'openBankDocumentChoice' not in bank_view and 'openOrdersBankDocumentChoice' not in main,
+   'Bank document action opens the real Morning issuance form directly with type 320 as the default; type 400 remains selectable inside that form')
 ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in debt_picker,
    'Debt suggestions exclude completed debts and compare bank credits to the current payment remainder')
 ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and 'row.documentLinks=[entry' in controller,

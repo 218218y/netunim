@@ -237,6 +237,8 @@ ok('const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400
    'Morning document browser types: unnecessary types stay displayable for existing documents but are excluded from the search filter')
 ok('.morning-document-fields .morning-client-name-field,.morning-document-fields .morning-document-amount-field,.morning-document-fields .morning-order-field{grid-column:span 2}' in app_css,
    'Morning issuance layout: customer, gross amount and optional order number share equal first-row widths for every issuance type')
+ok('morningAmountPaymentHint' not in documents and 'חייב להתאים לסה״כ התקבולים' not in documents,
+   'Morning issuance amount label stays single-line; payment matching remains visible in the payment summary and enforced by validation')
 
 if errors:
     print('\nERRORS',len(errors))
