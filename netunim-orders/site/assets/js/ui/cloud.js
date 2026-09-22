@@ -5,7 +5,8 @@ import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({model, files, tab, session, checksSession, ui, modal, supaConfigured, toast, closeModal, authPassword, localSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}}){
+export function createUiCloud({model, files, tab, session, checksSession, ui, modal, supaConfigured, toast, closeModal, authPassword, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}}){
+const localSnapshot=(source,options)=>writeLocalSnapshot(source,options||{storageBoundary:'cloud-ui-state'});
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(CLOUD_AUTO_KEY)!=='1'||!loadSession()||session.cloudRecoveryTimer)return;

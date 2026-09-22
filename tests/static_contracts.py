@@ -226,8 +226,8 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
 runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
 orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
 ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_events and "async function manualSaveNow()" in orders_persistence
-   and "const generation=++session.localGeneration,localOk=localSnapshot(undefined,{changes:operations,generation,mutationType,surface})" in orders_persistence
-   and "window.addEventListener('pagehide'" in runtime_events and "storageBrowser.localSnapshot()" in runtime_events,
+   and "const generation=++session.localGeneration,localOk=localSnapshot(undefined,{operations,storageBoundary,generation,mutationType,surface,deleteIntents})" in orders_persistence
+   and "window.addEventListener('pagehide'" in runtime_events and "storageBrowser.localSnapshot(undefined,{storageBoundary:'pagehide-v1-checkpoint'})" in runtime_events,
    "orders: header omits manual-save UI while the tested durable flush API and automatic local/page-exit staging remain available")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")

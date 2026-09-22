@@ -47,7 +47,7 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
     const previous=clone(model.state);model.state=clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]});
     session.connectionMode='supabase';session.backendReady=true;session.dbRevision=Number(result.main_revision||session.dbRevision||group.main.baseRevision);session.lastSavedSnapshot=JSON.stringify(group.main.state);
     if(group.checks){checksSession.sharedChecksRevision=Number(result.checks_revision||checksSession.sharedChecksRevision||group.checks.baseRevision);checksSession.sharedChecksBase=clone(group.checks.state.checks);checksSession.sharedChecksBankEvents=clone(group.checks.state.bankEvents||[]);persistSharedChecksBase(checksSession.sharedChecksBase,checksSession.sharedChecksBankEvents)}
-    if(!persistImmediateBrowserSnapshot(model.state,session.dbRevision)){model.state=previous;invalidateAllViewDomains();persistImmediateBrowserSnapshot(previous,session.dbRevision);throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה; השחזור נשאר ניתן לחידוש')}
+    if(!persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'restore-checkpoint'})){model.state=previous;invalidateAllViewDomains();persistImmediateBrowserSnapshot(previous,session.dbRevision,{storageBoundary:'restore-rollback'});throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה; השחזור נשאר ניתן לחידוש')}
     invalidateAllViewDomains();render();return true;
   }
 
@@ -81,7 +81,7 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
     });
     const applyLocal=cloudActive?applyCompletedGroupLocally:async(_group,result={})=>{
       const previous=clone(model.state);model.state=clone(state);
-      try{await saveState('הגיבוי שוחזר',{deleteIntents:restoreDeleteIntents(currentState,state),mutationType:'restore',surface})}catch(error){model.state=previous;invalidateAllViewDomains();throw error}
+      try{await saveState('הגיבוי שוחזר',{deleteIntents:restoreDeleteIntents(currentState,state),mutationType:'restore',surface,storageBoundary:'restore-checkpoint'})}catch(error){model.state=previous;invalidateAllViewDomains();throw error}
       render();
     };
     if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});

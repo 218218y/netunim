@@ -22,7 +22,7 @@ function checksAudit(pending,before,after,baseRevision,deletedIds){return operat
 function mergeSharedChecks(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check');return {checks:normalizeSharedChecks(checks),conflicts}}
 function mergeSharedChecksPreferLocal(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check',true);return{checks:normalizeSharedChecks(checks),conflicts}}
 
-async function mirrorChecksLocally(){localSnapshot();try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}}
+async function mirrorChecksLocally(){localSnapshot(undefined,{storageBoundary:'shared-checks-remote-mirror'});try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}}
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
   return flight.pull(async()=>{

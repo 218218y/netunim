@@ -16,7 +16,7 @@ function setRightsLastCalculatedDate(value){
   const normalized=next||null;
   if((model.state.rightsLastCalculatedDate||null)===normalized)return true;
   model.state.rightsLastCalculatedDate=normalized;
-  saveState(normalized?'תאריך חישוב המעשר נשמר':'תאריך חישוב המעשר נוקה');
+  saveState(normalized?'תאריך חישוב המעשר נשמר':'תאריך חישוב המעשר נוקה',{operations:[{type:'set',field:'rightsLastCalculatedDate',value:normalized}]});
   return true;
 }
 

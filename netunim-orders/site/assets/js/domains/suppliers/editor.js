@@ -4,6 +4,7 @@ import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsSuppliersEditor({model, supplierUi, ui, modal, triSelect, resequenceSupplier, insertTransactionAfter, toast, scheduleSave, render, renderSupplier, closeModal, parseTri, confirmDialog}){
+function transactionOperations(supplierIds,{insertId=''}={}){const ids=new Set(supplierIds.filter(Boolean));return model.state.transactions.filter(row=>ids.has(row.supplierId)).map(row=>({type:'put',collection:'transactions',id:row.id,mode:row.id===insertId?'insert':'replace',index:model.state.transactions.findIndex(item=>item.id===row.id),record:row}))}
 function openTransactionModal(id=null,supplierId=null,insertAfterId=null){
   const t=id?model.state.transactions.find(x=>x.id===id):null;
   const anchor=insertAfterId?model.state.transactions.find(x=>x.id===insertAfterId):null;
@@ -30,16 +31,16 @@ async function saveTransaction(id,insertAfterId=''){
     model.state.transactions.push(row);
     insertTransactionAfter(row,supplierId,insertAfterId||null)
   }
-  if(!keepAllSuppliers)supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה');if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
+  if(!keepAllSuppliers)supplierUi.currentSupplierId=supplierId;closeModal();scheduleSave(existing?'התנועה עודכנה':insertAfterId?'התנועה נוספה במיקום שבחרת':'התנועה נוספה',{operations:transactionOperations([oldSupplierId,supplierId],{insertId:existing?'':row.id})});if(ui.currentView==='supplier')renderSupplier({scrollMode:(!existing&&!insertAfterId)?'end':'preserve'});else render()
 }
 
-async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה',{deleteIntents:{transactions:[id]},mutationType:'delete',surface:'orders.delete.transactions'});if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
+async function deleteTransaction(id){const t=model.state.transactions.find(x=>x.id===id);if(!t)return;if(validSupplierYear(t.yearEnd)!==null)return toast(`יש להסיר קודם את סימון סוף שנה ${t.yearEnd} מהשורה`);if(!await confirmDialog('מחיקת תנועה','למחוק את התנועה? היתרות יחושבו מחדש אוטומטית.',{confirmText:'מחק תנועה'}))return;const sid=t.supplierId;model.state.transactions=model.state.transactions.filter(x=>x.id!==id);resequenceSupplier(sid);closeModal();scheduleSave('התנועה נמחקה',{deleteIntents:{transactions:[id]},mutationType:'delete',surface:'orders.delete.transactions',operations:[{type:'delete',collection:'transactions',id},...transactionOperations([sid])]});if(ui.currentView==='supplier')renderSupplier({scrollMode:'preserve'});else render()}
 
 function openSelectedSupplierEditor(){const id=$('#settingsSupplierEdit')?.value;if(!id)return toast('יש לבחור ספק לעריכה');openSupplierModal(id)}
 
 function openSupplierModal(id=null){const s=id?model.state.suppliers.find(x=>x.id===id):null;modal(s?'עריכת ספק':'ספק חדש',`<div class="form-grid"><div class="field full"><label>שם ספק</label><input id="sName" value="${esc(s?.name||'')}"></div><div class="field full"><label>הערה</label><input id="sNote" value="${esc(s?.note||'')}"></div></div>`,`<button class="btn primary" data-action="save-supplier" data-click-arg0="${esc(id||'')}">שמור</button><button class="btn" data-action="close-modal">ביטול</button>`)}
 
-function saveSupplier(id){const name=$('#sName').value.trim();if(!name)return toast('יש להזין שם ספק');let s=id?model.state.suppliers.find(x=>x.id===id):null;if(s){s.name=name;s.note=$('#sNote').value.trim()}else{const nextOrder=model.state.suppliers.reduce((m,x)=>Math.max(m,supplierSortValue(x)),-1)+1;s={id:uid('SUP'),name,note:$('#sNote').value.trim(),active:true,sortOrder:nextOrder};model.state.suppliers.push(s);supplierUi.currentSupplierId=s.id}closeModal();scheduleSave(s?'הספק נשמר':'הספק נוסף');render()}
+function saveSupplier(id){const name=$('#sName').value.trim();if(!name)return toast('יש להזין שם ספק');let s=id?model.state.suppliers.find(x=>x.id===id):null;const existing=!!s;if(s){s.name=name;s.note=$('#sNote').value.trim()}else{const nextOrder=model.state.suppliers.reduce((m,x)=>Math.max(m,supplierSortValue(x)),-1)+1;s={id:uid('SUP'),name,note:$('#sNote').value.trim(),active:true,sortOrder:nextOrder};model.state.suppliers.push(s);supplierUi.currentSupplierId=s.id}closeModal();scheduleSave(existing?'הספק נשמר':'הספק נוסף',{operations:[{type:'put',collection:'suppliers',id:s.id,mode:existing?'replace':'insert',index:model.state.suppliers.findIndex(row=>row.id===s.id),record:s}]});render()}
 
 return { openTransactionModal, saveTransaction, deleteTransaction, openSelectedSupplierEditor, openSupplierModal, saveSupplier };
 }

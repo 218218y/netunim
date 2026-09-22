@@ -105,10 +105,10 @@ function setCustomerFlag(id,field,value){
     d.updatedAt=now;
   }
   const after=customerDebtProgressData(d);d.closedAt=after.paymentComplete&&after.invoiceComplete?(d.closedAt||now):null;
-  scheduleSave('סטטוס חוב הלקוח עודכן',{domains:['customerDebts']});renderCustomers({resultsOnly:true});
+  scheduleSave('סטטוס חוב הלקוח עודכן',{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]});renderCustomers({resultsOnly:true});
 }
 
-function saveDebtNote(id,el){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;const v=el.value.trim();if((d.note||'')===v)return;d.note=v;d.updatedAt=new Date().toISOString();scheduleSave('הערת הלקוח עודכנה',{domains:['customerDebts']})}
+function saveDebtNote(id,el){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;const v=el.value.trim();if((d.note||'')===v)return;d.note=v;d.updatedAt=new Date().toISOString();scheduleSave('הערת הלקוח עודכנה',{domains:['customerDebts'],operations:[{type:'put',collection:'customerDebts',id:d.id,mode:'replace',record:d}]})}
 
 return { pageCustomerResults, renderCustomers, customerOrderRow, debtToggle, debtRow, setCustomerFlag, saveDebtNote };
 }

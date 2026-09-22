@@ -14,7 +14,7 @@ function supplierOrderDragStart(ev,id,element){ev.dataTransfer.effectAllowed='mo
 
 function supplierOrderDrop(ev,targetId){ev.preventDefault();const sourceId=ev.dataTransfer.getData('text/plain');if(!sourceId||sourceId===targetId)return;const from=supplierUi.supplierOrderDraft.indexOf(sourceId),to=supplierUi.supplierOrderDraft.indexOf(targetId);if(from<0||to<0)return;supplierUi.supplierOrderDraft.splice(from,1);supplierUi.supplierOrderDraft.splice(to,0,sourceId);renderSupplierOrderList()}
 
-function saveSupplierOrder(){const index=new Map(supplierUi.supplierOrderDraft.map((id,i)=>[id,i]));model.state.suppliers.forEach((sp,i)=>sp.sortOrder=index.has(sp.id)?index.get(sp.id):supplierUi.supplierOrderDraft.length+i);closeModal();scheduleSave('סדר הספקים נשמר');if(ui.currentView==='supplier')renderSupplier({scrollMode:'auto'});else render()}
+function saveSupplierOrder(){const index=new Map(supplierUi.supplierOrderDraft.map((id,i)=>[id,i]));model.state.suppliers.forEach((sp,i)=>sp.sortOrder=index.has(sp.id)?index.get(sp.id):supplierUi.supplierOrderDraft.length+i);closeModal();scheduleSave('סדר הספקים נשמר',{operations:model.state.suppliers.map(record=>({type:'put',collection:'suppliers',id:record.id,mode:'replace',record}))});if(ui.currentView==='supplier')renderSupplier({scrollMode:'auto'});else render()}
 
 return { openSupplierOrderModal, renderSupplierOrderList, moveSupplierOrder, supplierOrderDragStart, supplierOrderDrop, saveSupplierOrder };
 }

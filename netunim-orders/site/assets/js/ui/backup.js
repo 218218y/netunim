@@ -69,7 +69,7 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
     const previous=clone(model.state),target=normalizeState(clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]}));
     model.state=target;session.localGeneration++;session.cloudRevision=Number(result.main_revision||session.cloudRevision||group.main.baseRevision);session.cloudUpdatedAt=new Date().toISOString();session.lastCloudState=clone(group.main.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(group.main.state));
     if(group.checks){checksSession.checksCloudBase=clone(group.checks.state.checks);checksSession.checksBankEvents=clone(group.checks.state.bankEvents||[]);checksSession.checksCloudRevision=Number(result.checks_revision||checksSession.checksCloudRevision||group.checks.baseRevision);persistChecksBase(checksSession.checksCloudBase,checksSession.checksBankEvents)}
-    if(!localSnapshot()){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot();throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה; השחזור נשאר ניתן לחידוש')}
+    if(!localSnapshot(undefined,{storageBoundary:'restore-checkpoint'})){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot(undefined,{storageBoundary:'restore-rollback'});throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה; השחזור נשאר ניתן לחידוש')}
     invalidateAllViewDomains();render();return true;
   }
 
@@ -106,7 +106,7 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
         beforeState:{local:current,main:clone(remoteRow?.state||current),checks:clone(checksRow?.state||{checks:currentChecks,bankEvents:checksSession.checksBankEvents||[]})},
         localTargetState:imported,
       });
-      const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;if(!localSnapshot()){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot();throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}invalidateAllViewDomains();render()};
+      const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;if(!localSnapshot(undefined,{storageBoundary:'import-checkpoint'})){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot(undefined,{storageBoundary:'import-rollback'});throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}invalidateAllViewDomains();render()};
       if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});
       else{const staged=await restoreGroupStore.stage(group);await applyLocal(staged,{});await restoreGroupStore.complete(staged)}
       if(folderBackupAvailable())await writeStateToFolder(true);setSave('מקומי: שמור','',folderSaveTitle());toast('השחזור הושלם ונשמר כפעולה מאוחדת');return true;

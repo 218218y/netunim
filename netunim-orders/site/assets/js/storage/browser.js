@@ -11,7 +11,7 @@ const LOCAL_SYNC_STORE='sync';
 const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBrowser({observeStorage=()=>{},externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState, domainRevisions}){
+export function createStorageBrowser({storageV2=null,observeStorage=()=>{},externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState, domainRevisions}){
 let sequenceLoaded=false,outboxHeadVerified=false,pendingCacheReadOk=true;
 // Another primary tab may have saved while this tab was inactive.
 function invalidateCloudPendingHead(){outboxHeadVerified=false}
@@ -23,7 +23,11 @@ function nextSnapshotSequence(){
 
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
-function localSnapshot(source=model.state,options){const done=beginMeasure('orders:local-snapshot');try{measureStorage('validate',()=>assertOrderEntityInvariants(source,{includeChecks:true,required:true}));const payload=measureStorage('checkpoint-clone',()=>prepareState(source));nextSnapshotSequence();payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);try{observeStorage(payload,options)}catch(error){console.error('storage shadow observation',error)}return localStorageOk}finally{done()}}
+function localSnapshot(source=model.state,options){const done=beginMeasure('orders:local-snapshot');try{
+  measureStorage('validate',()=>assertOrderEntityInvariants(source,{includeChecks:true,required:true}));nextSnapshotSequence();const appMetadata={snapshotSeq:session.localSnapshotSeq,revision:Number(session.cloudRevision||0)};
+  const fast=storageV2?.persist?.(source,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;return true}
+  const payload=measureStorage('checkpoint-clone',()=>prepareState(source));payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);try{if(storageV2)storageV2.afterLegacy(payload,options,appMetadata);else observeStorage(payload,options)}catch(error){console.error('storage V2 observation',error)}return localStorageOk
+}finally{done()}}
 
 const openLocalStateDb=createIndexedDbConnection(LOCAL_DB,2,db=>{if(!db.objectStoreNames.contains(LOCAL_STORE))db.createObjectStore(LOCAL_STORE);if(!db.objectStoreNames.contains(LOCAL_SYNC_STORE))db.createObjectStore(LOCAL_SYNC_STORE)});
 
@@ -37,7 +41,13 @@ function queueBrowserStateSnapshot(payload){files.browserStatePendingPayload=clo
 
 async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_STORE).objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);r.onsuccess=()=>resolve(r.result||null);r.onerror=()=>reject(r.error)})}catch(e){console.error('browser state load',e);return null}}
 
-async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){await captureLegacyWorkbook(record.payload.notesSheet);const previous=model.state;model.state=normalizeState(clone(record.payload));domainRevisions?.reconcile(previous,model.state);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
+async function restoreBrowserStateFallback(){
+  const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0),legacy=!local||idbSeq>localSeq?record?.payload:local;
+  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);const recovered=await storageV2?.recover?.(legacy,{snapshotSeq:Math.max(localSeq,idbSeq),revision:Number(session.cloudRevision||0)}),selected=recovered?.state||legacy;
+  if(!selected)return false;session.localSnapshotSeq=Math.max(session.localSnapshotSeq,Number(recovered?.appMetadata?.snapshotSeq||0));await captureLegacyWorkbook(selected.notesSheet);const previous=model.state;model.state=normalizeState(clone(selected));domainRevisions?.reconcile(previous,model.state);
+  if(!recovered&&record?.payload&&(!local||idbSeq>localSeq))try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}
+  return !!recovered||!!(record?.payload&&(!local||idbSeq>localSeq));
+}
 
 function readPendingCache(){try{const value=JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null');pendingCacheReadOk=true;return value}catch(e){pendingCacheReadOk=false;console.error('cloud pending cache load',e);return null}}
 function writePendingCache(record){try{const text=stringifyStorage('pending',record);writeVerifiedStorage(localStorage,CLOUD_PENDING_KEY,text);return true}catch(e){console.error('cloud pending cache',e);return false}}

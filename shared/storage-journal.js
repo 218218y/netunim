@@ -3,8 +3,26 @@ import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {sealStorageRecord,readStorageRecord,validateStoredOperation,replayStorageJournal} from './storage-journal-model.js';
 
-// Experimental local store. Application adapters use shadow mode only; no cloud
-// API, local-file authority, legacy snapshot or legacy outbox is changed here.
+function normalizeDeleteIntents(value){
+  if(value==null)return {};
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('storage_delete_intents_invalid');
+  const result={};
+  for(const [collection,rawIds] of Object.entries(value)){
+    if(!collection||['__proto__','prototype','constructor'].includes(collection)||!Array.isArray(rawIds))throw new Error('storage_delete_intents_invalid');
+    const ids=[...new Set(rawIds.map(id=>String(id||'').trim()).filter(Boolean))].sort();
+    if(ids.length)result[collection]=ids;
+  }
+  return result;
+}
+function mergeDeleteIntents(...sources){
+  const merged={};
+  for(const source of sources)for(const [collection,ids] of Object.entries(normalizeDeleteIntents(source)))(merged[collection]??=[]).push(...ids);
+  for(const collection of Object.keys(merged))merged[collection]=[...new Set(merged[collection])].sort();
+  return merged;
+}
+
+// Local checkpoint/journal engine. Rollout policy lives in the application
+// adapter; this layer is equally usable for shadow comparison and primary recovery.
 export function createStorageJournal({owner,schema,validate,primary=()=>true,db=createStorageJournalDb(),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
   if(!owner||!schema||!validate)throw new Error('storage_configuration_required');
   const prefix='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':',writer=operationId();
@@ -54,37 +72,42 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     }
     return recovered;
   }
-  async function install(state,{expectedEpoch=epoch}={}){
+  async function install(state,{expectedEpoch=epoch,appMetadata={}}={}){
     if(!primary())throw new Error('storage_secondary_tab');validate(state);await queue;
-    const nextEpoch=operationId(),checkpoint=sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:0,state,savedAt:now()},{kind:'checkpoint'});
+    const nextEpoch=operationId(),checkpoint=sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:0,state,appMetadata:structuredClone(appMetadata),savedAt:now()},{kind:'checkpoint'});
     const done=beginMeasure('storage:checkpoint');try{await db.install(owner,checkpoint,writer,{expectedEpoch});epoch=nextEpoch;seq=0;ready=true;failed=null;
       // The new epoch is durable before obsolete emergency entries are retired.
       for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);
       return {epoch,seq};
     }finally{done()}
   }
-  function append(changes,{generation=0,surface='unknown',mutationType='edit'}={}){
-    guard();const operation={version:2,owner,epoch,seq:seq+1,generation,operationId:operationId(),at:now(),surface,mutationType,changes:structuredClone(changes)};
+  function append(changes,{generation=0,surface='unknown',mutationType='edit',deleteIntents={},appMetadata={}}={}){
+    guard();const operation={version:2,owner,epoch,seq:seq+1,generation,operationId:operationId(),at:now(),surface,mutationType,changes:structuredClone(changes),deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:structuredClone(appMetadata)};
     validateStoredOperation(operation,schema);const record=sealStorageRecord(operation,{kind:'journal'}),emergencyDurable=writeEmergency(record);seq=operation.seq;
     const committed=enqueue(async()=>{if(!primary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);return true}finally{done()}});
     return {seq:operation.seq,operationId:operation.operationId,emergencyDurable,committed};
   }
   async function compact(){guard();await queue;if(failed)throw failed;const recovered=await recover();validate(recovered.state);
-    const checkpoint=sealStorageRecord({version:2,owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,savedAt:now()},{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');
+    const checkpoint=sealStorageRecord({version:2,owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,appMetadata:recovered.appMetadata||{},savedAt:now()},{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');
     try{await db.compact(owner,recovered.epoch,writer,checkpoint);return recovered.seq}finally{done()}
   }
-  async function setCloudBase(revision,state){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validate(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord({revision,state},{kind:'cloud-base'}))}
-  async function materializeFlight({operationId:flightId,baseRevision,deleteIntents={},project=state=>state,validateCloud=validate}={}){
+  async function setCloudBase(revision,state,{validateBase=validate,ackSeq}={}){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');if(!Number.isSafeInteger(ackSeq)||ackSeq<0||ackSeq>seq)throw new Error('storage_base_sequence');validateBase(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord({revision,state,projection:'cloud',ackSeq},{kind:'cloud-base'}))}
+  async function materializeFlight({operationId:flightId,baseRevision,deleteIntents={},snapshot:exactSnapshot,project=state=>state,validateCloud=validate}={}){
     guard();await queue;const recovered=await recover();
     if(recovered.stored.flights)return readStorageRecord(recovered.stored.flights);
     if(!flightId)throw new Error('storage_flight_id_required');
-    if(!Number.isSafeInteger(baseRevision)||baseRevision<0||!recovered.stored.bases||readStorageRecord(recovered.stored.bases).revision!==baseRevision)throw new Error('storage_cloud_base_mismatch');
+    if(!Number.isSafeInteger(baseRevision)||baseRevision<0||!recovered.stored.bases)throw new Error('storage_cloud_base_mismatch');
+    const base=readStorageRecord(recovered.stored.bases);
+    if(base.revision!==baseRevision||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>recovered.seq)throw new Error('storage_cloud_base_mismatch');
+    const pendingRecords=recovered.stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=recovered.seq).sort((a,b)=>a.seq-b.seq);
+    for(let expected=base.ackSeq+1;expected<=recovered.seq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const done=beginMeasure('storage:outbox-materialize');let snapshot;
-    try{snapshot=project(recovered.state);validateCloud(snapshot)}finally{done()}
-    const value={version:2,owner,epoch,operationId:flightId,baseRevision,endSeq:recovered.seq,snapshot,deleteIntents:structuredClone(deleteIntents)};
+    try{snapshot=exactSnapshot===undefined?project(recovered.state):structuredClone(exactSnapshot);validateCloud(snapshot)}finally{done()}
+    const pendingDeleteIntents=mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{}),deleteIntents);
+    const value={version:2,owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:recovered.seq,snapshot,deleteIntents:pendingDeleteIntents};
     const sealed=sealStorageRecord(value,{kind:'flight-payload'}),flightDone=beginMeasure('storage:flight-write');
     try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageRecord(sealed)}finally{flightDone()}
   }
-  async function acknowledge(flightId,revision,state){guard();validate(state);await queue;return db.acknowledge(owner,epoch,writer,flightId,sealStorageRecord({revision,state},{kind:'cloud-base'}))}
+  async function acknowledge(flightId,revision,state,{validateBase=validate}={}){guard();validateBase(state);await queue;const stored=await db.load(owner),flight=stored.flights&&readStorageRecord(stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');return db.acknowledge(owner,epoch,writer,flightId,sealStorageRecord({revision,state,projection:'cloud',ackSeq:flight.endSeq},{kind:'cloud-base'}))}
   return {open,install,append,recover,compact,setCloudBase,materializeFlight,acknowledge,settled:()=>queue,get ready(){return ready&&!failed},get epoch(){return epoch},get seq(){return seq},get error(){return failed}};
 }

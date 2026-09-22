@@ -43,19 +43,24 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     assertFence(current,epoch,writer);const data=readStorageRecord(checkpoint),prior=readStorageRecord(current.checkpoints);
     if(data.owner!==owner||data.epoch!==epoch||data.seq<prior.seq||data.seq>current.metadata.seq)throw new Error('storage_compaction_range');
     tx.objectStore('checkpoints').put(checkpoint,owner);
-    for(const row of current.journal)if(row.data.epoch===epoch&&row.data.seq<=data.seq)tx.objectStore('journal').delete([owner,epoch,row.data.seq]);done(true);
+    // Operations newer than the durable cloud cursor remain available even when
+    // their state is already represented by a local checkpoint. This preserves
+    // explicit deletes and audit metadata until the cloud has acknowledged them.
+    const base=current.bases?readStorageRecord(current.bases):null,deleteThrough=base?Math.min(data.seq,Number(base.ackSeq||0)):data.seq;
+    for(const row of current.journal)if(row.data.epoch===epoch&&row.data.seq<=deleteThrough)tx.objectStore('journal').delete([owner,epoch,row.data.seq]);done(true);
   })}
   function setBase(owner,epoch,writer,base){return change(owner,(tx,current,done)=>{assertFence(current,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');tx.objectStore('bases').put(base,owner);done(true)})}
   function beginFlight(owner,epoch,writer,flight){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);const data=readStorageRecord(flight);
-    if(data.owner!==owner||data.epoch!==epoch||data.endSeq>current.metadata.seq)throw new Error('storage_flight_range');
+    const base=current.bases&&readStorageRecord(current.bases);
+    if(data.owner!==owner||data.epoch!==epoch||data.endSeq>current.metadata.seq||!base||data.baseRevision!==base.revision||data.startSeq!==base.ackSeq+1||data.endSeq<base.ackSeq)throw new Error('storage_flight_range');
     if(current.flights){if(JSON.stringify(current.flights)!==JSON.stringify(flight))throw new Error('storage_flight_pending');done(current.flights);return}
     tx.objectStore('flights').put(flight,owner);done(flight);
   })}
   function acknowledge(owner,epoch,writer,operationId,base){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);if(!current.flights||readStorageRecord(current.flights).operationId!==operationId)throw new Error('storage_ack_mismatch');
     const acknowledged=readStorageRecord(base),flight=readStorageRecord(current.flights);
-    if(!Number.isSafeInteger(acknowledged.revision)||acknowledged.revision<=flight.baseRevision)throw new Error('storage_ack_revision');
+    if(!Number.isSafeInteger(acknowledged.revision)||acknowledged.revision<=flight.baseRevision||acknowledged.ackSeq!==flight.endSeq)throw new Error('storage_ack_revision');
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
   })}

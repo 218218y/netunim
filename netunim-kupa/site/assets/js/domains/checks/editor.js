@@ -37,7 +37,7 @@ function saveCheckSeries(){
   const depositedStatus=['הופקד - במעקב','נפרע'].includes(status);
   const createdAt=todayISO(),depositedAt=depositedStatus?new Date().toISOString():null,records=drafts.map(r=>({id:uid('CHK'),name,account,amount:wholeMoney(r.amount),dueDate:r.date,status,depositDate:depositedStatus?r.date:null,depositedAt,depositSeq:null,clearedDate:status==='נפרע'?todayISO():null,checkNumber:r.number,note,createdAt}));
   model.state.checks.push(...records);
-  closeModal(true);saveChecksState(records.length===1?'הצק נוסף':`${records.length} צקים נוספו`);onChecksChanged();
+  closeModal(true);saveChecksState(records.length===1?'הצק נוסף':`${records.length} צקים נוספו`,{operations:records.map(record=>({type:'put',collection:'checks',id:record.id,mode:'insert',index:model.state.checks.findIndex(row=>row.id===record.id),record}))});onChecksChanged();
 }
 
 function saveCheck(id){
@@ -47,14 +47,14 @@ function saveCheck(id){
   if(!rec.name||!rec.amount||!rec.dueDate)return toast('יש למלא שם, סכום ותאריך');
   const wasDeposited=['הופקד - במעקב','נפרע'].includes(oldRec.status),isDeposited=['הופקד - במעקב','נפרע'].includes(rec.status);rec.depositDate=isDeposited?rec.dueDate:(rec.status==='חזר'&&oldRec.depositDate?rec.dueDate:null);if(oldRec.depositDate&&(wasDeposited||rec.status===oldRec.status)&&rec.dueDate===oldRec.dueDate&&['הופקד - במעקב','נפרע','חזר'].includes(rec.status))rec.depositDate=oldRec.depositDate;if(isDeposited&&!wasDeposited){rec.depositedAt=new Date().toISOString();rec.depositSeq=null}if(rec.status==='נפרע'&&!rec.clearedDate)rec.clearedDate=todayISO();if(rec.status!=='נפרע')rec.clearedDate=null;
   model.state.checks[model.state.checks.findIndex(x=>x.id===id)]=rec;
-  closeModal(true);saveChecksState('הצק עודכן');onChecksChanged();
+  closeModal(true);saveChecksState('הצק עודכן',{operations:[{type:'put',collection:'checks',id:rec.id,mode:'replace',record:rec}]});onChecksChanged();
 }
 
-function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד');onChecksChanged();return true}
+function markDeposited(id){const c=model.state.checks.find(x=>x.id===id);if(!c||c.status!=='בקופה')return false;c.status='הופקד - במעקב';c.depositDate=c.dueDate;c.depositedAt=new Date().toISOString();c.depositSeq=null;c.clearedDate=null;saveChecksState('הצק סומן כהופקד',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged();return true}
 
-function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע');onChecksChanged()}
+function markCleared(id){const c=model.state.checks.find(x=>x.id===id);if(!c)return;const wasDeposited=['הופקד - במעקב','נפרע'].includes(c.status);c.status='נפרע';c.clearedDate=todayISO();c.depositDate=c.depositDate||c.dueDate;if(!wasDeposited){c.depositedAt=new Date().toISOString();c.depositSeq=null}saveChecksState('הצק סומן כנפרע',{operations:[{type:'put',collection:'checks',id:c.id,mode:'replace',record:c}]});onChecksChanged()}
 
-function reviewCheckBank(id,eventId,action){if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]);let changed=false;for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changed=true}if(changed){saveChecksState('הודעות שטופלו הוסרו');onChecksChanged()}return changed;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;saveChecksState('בדיקת התאמת הצ׳ק נשמרה');onChecksChanged();return true}
+function reviewCheckBank(id,eventId,action){if(action==='remove-selected'){const selected=new Set(Array.isArray(id)?id:[]),changedRows=[];for(const check of model.state.checks){if(selected.has(check.id)&&removeCheckBankEvents(check,removableCheckBankEvents(check,{bulk:true}).map(m=>m.eventId)))changedRows.push(check)}if(changedRows.length){saveChecksState('הודעות שטופלו הוסרו',{operations:changedRows.map(record=>({type:'put',collection:'checks',id:record.id,mode:'replace',record}))});onChecksChanged()}return !!changedRows.length;}if(!applyCheckBankReview(model.state.checks,id,eventId,action))return false;const check=model.state.checks.find(row=>row.id===id);saveChecksState('בדיקת התאמת הצ׳ק נשמרה',{operations:check?[{type:'put',collection:'checks',id:check.id,mode:'replace',record:check}]:null,storageBoundary:check?'':'check-review-unknown-target'});onChecksChanged();return true}
 
 return { reviewCheckBank, openCheckModal, checkSeriesDrafts, renderCheckSeriesRows, markCheckSeriesManual, changeCheckSeriesCount, syncCheckSeriesFromFirst, saveCheckSeries, saveCheck, markDeposited, markCleared };
 }

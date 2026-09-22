@@ -46,7 +46,9 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       write=journal.append(change('during compaction'));await write.committed;release();await compacting;
       check((await db.load('matrix')).journal.length===1&&await text(journal)==='during compaction','new operation survives checkpoint boundary');
 
-      await journal.setCloudBase(4,(await journal.recover()).state);
+      const cloudBaseState=(await journal.recover()).state;
+      check(await fails(()=>journal.setCloudBase(4,cloudBaseState)),'cloud base requires an explicit acknowledged cursor');
+      await journal.setCloudBase(4,cloudBaseState,{ackSeq:journal.seq});
       const flight=await journal.materializeFlight({operationId:'cloud-operation',baseRevision:4});
       write=journal.append(change('during RPC'));await write.committed;
       journal=make('matrix');await journal.open();
@@ -59,8 +61,19 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       const next=await journal.materializeFlight({operationId:'second-flight',baseRevision:5});
       check(next.snapshot.notes[0].text==='during RPC','next flight materializes newer generation');
       await journal.acknowledge(next.operationId,6,next.snapshot);
-      write=journal.append([{type:'delete',collection:'notes',id:'n'}]);await write.committed;await journal.compact();
+      write=journal.append([{type:'delete',collection:'notes',id:'n'}],{deleteIntents:{notes:['n']}});await write.committed;await journal.compact();
+      check((await db.load('matrix')).journal.length===1,'checkpoint retains cloud-unacknowledged operations');
+      const deleteFlight=await journal.materializeFlight({operationId:'delete-flight',baseRevision:6});
+      check(deleteFlight.deleteIntents.notes[0]==='n','flight derives explicit delete intents from pending journal range');
+      await journal.acknowledge(deleteFlight.operationId,7,deleteFlight.snapshot);await journal.compact();
+      check((await db.load('matrix')).journal.length===0,'acknowledged operation compacts after checkpoint');
       journal=make('matrix');await journal.open();check((await journal.recover()).state.notes.length===0,'explicit deletion never resurrects on restart');
+
+      journal=make('projection');await journal.install(initial);await journal.setCloudBase(2,{document:{value:'base'}},{ackSeq:0,validateBase:value=>{if(!value?.document)throw Error('bad projection')}});
+      write=journal.append(change('projected'));await write.committed;
+      const projected=await journal.materializeFlight({operationId:'projection-flight',baseRevision:2,project:state=>({document:{value:state.notes[0].text}}),validateCloud:value=>{if(!value?.document)throw Error('bad projection')}});
+      check(projected.snapshot.document.value==='projected','cloud base and flight use an explicit projection contract');
+      await journal.acknowledge(projected.operationId,3,projected.snapshot,{validateBase:value=>{if(!value?.document)throw Error('bad projection')}});
 
       const quota={...noCleanup,removeItem:key=>localStorage.removeItem(key),setItem:()=>{throw Error('quota')}};
       journal=make('quota',{emergency:quota});await journal.install(initial);write=journal.append(change('IDB fallback'));
@@ -140,11 +153,11 @@ for app in ['kupa','orders']:
           if(!await storageShadow.flush())throw Error('Typed operation shadow failed: '+storageShadow.diagnostics.lastError);
           if(storageShadow.diagnostics.parityChecks!==1||storageShadow.diagnostics.operations!==1)throw Error('Shadow parity did not execute');
           state.notes=[];
-          const deletion={domains:['notes'],deleteIntents:{notes:[record.id]},mutationType:'delete'};
+          const deletion={domains:['notes'],deleteIntents:{notes:[record.id]},mutationType:'delete',operations:[{type:'delete',collection:'notes',id:record.id}]};
           DELETE;
           if(!await storageShadow.flush()||storageShadow.diagnostics.mismatches)throw Error('Explicit deletion differs from V1');
           localStorage.removeItem('netunim-storage-v2-shadow');return storageShadow.diagnostics;
-        })()""".replace('SNAPSHOT', 'storageBrowser.persistImmediateBrowserSnapshot()' if app=='kupa' else 'storageBrowser.localSnapshot()')
+        })()""".replace('SNAPSHOT', "storageBrowser.persistImmediateBrowserSnapshot(undefined,undefined,{storageBoundary:'test-initial-checkpoint'})" if app=='kupa' else "storageBrowser.localSnapshot(undefined,{storageBoundary:'test-initial-checkpoint'})")
         .replace('SAVE', "await storagePersistence.saveState('test',options)" if app=='kupa' else "storagePersistence.scheduleSave('test',options)")
         .replace('DELETE', "await storagePersistence.saveState('test',deletion)" if app=='kupa' else "storagePersistence.scheduleSave('test',deletion)"))
         assert result['mismatches']==0 and result['operations']==2,result
@@ -170,3 +183,44 @@ for app in ['kupa','orders']:
         (directory/(app+'-v1-baseline.json')).write_text(json.dumps(baseline,indent=2),encoding='utf-8')
         assert not browser.drain_serious_errors()
         print('PASS '+app+' V1 snapshot baseline: '+json.dumps(baseline))
+
+        primary=browser.evaluate("""(async()=>{
+          const metrics=await import('./assets/js/shared/runtime-performance.js');
+          localStorage.setItem('netunim-storage-v2-mode:APP','primary');
+          PREF
+          INITIAL;
+          if(!await storageShadow.flush())throw Error('V2 primary promotion failed: '+storageShadow.diagnostics.lastError);
+          const snapshotKey=Object.keys(localStorage).find(key=>key.includes('browser')||key==='orders.management.state.v1'),before=snapshotKey?localStorage.getItem(snapshotKey):null;
+          metrics.configurePerformance(true);metrics.clearPerformance();
+          state.notes[0].content='primary journal edit';state.notes[0].updatedAt='2026-09-22T12:00:00Z';
+          const operation={type:'put',collection:'notes',id:state.notes[0].id,mode:'replace',record:state.notes[0]};
+          const ok=EDIT;if(!ok)throw Error('V2 emergency durability was not acknowledged');
+          if(!await storageShadow.flush())throw Error('V2 IDB commit failed: '+storageShadow.diagnostics.lastError);
+          const after=snapshotKey?localStorage.getItem(snapshotKey):null,summary=metrics.performanceSummary();metrics.configurePerformance(false);
+          if(before!==after)throw Error('Typed primary edit rewrote the full V1 LocalStorage snapshot');
+          if(summary['storage:bytes:browser-snapshot'])throw Error('Typed primary edit serialized a browser snapshot');
+          return {diagnostics:storageShadow.diagnostics,summary};
+        })()""".replace('APP',app).replace('PREF',"localStorage.setItem('kupa.storage.preferred.v1','supabase');" if app=='kupa' else '')
+        .replace('INITIAL', "storageBrowser.persistImmediateBrowserSnapshot(undefined,undefined,{storageBoundary:'test-primary-promotion'})" if app=='kupa' else "storageBrowser.localSnapshot(undefined,{storageBoundary:'test-primary-promotion'})")
+        .replace('EDIT', "(storagePersistence.saveState('primary test',{domains:['notes'],operations:[operation],surface:'test.primary'}),true)" if app=='kupa' else "storagePersistence.scheduleSave('primary test',{domains:['notes'],operations:[operation],surface:'test.primary'})"))
+        assert primary['diagnostics']['operations']==1 and primary['diagnostics']['commitFailures']==0,primary
+        browser._navigate()
+        recovered=browser.evaluate("""(async()=>{await appReady;return {content:state.notes[0]?.content||null,ready:storageShadow.primaryReady,modeKey:localStorage.getItem('netunim-storage-v2-mode:APP'),keys:Object.keys(localStorage),diagnostics:storageShadow.diagnostics}})()""".replace('APP',app))
+        assert recovered['content']=='primary journal edit' and recovered['ready'],recovered
+        assert browser.evaluate("""(async()=>{
+          session.backendReady=false;
+          state.notes=[{id:'restore-boundary',content:'restored checkpoint',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];
+          BOUNDARY;if(!await storageShadow.flush())throw Error(storageShadow.diagnostics.lastError);return true;
+        })()""".replace('BOUNDARY',"storageBrowser.persistImmediateBrowserSnapshot(undefined,undefined,{storageBoundary:'restore-checkpoint'})" if app=='kupa' else "storageBrowser.localSnapshot(undefined,{storageBoundary:'restore-checkpoint'})"))
+        browser._navigate()
+        boundary_recovered=browser.evaluate("""(async()=>{await appReady;return state.notes[0]?.content})()""")
+        assert boundary_recovered=='restored checkpoint',boundary_recovered
+        assert browser.evaluate("""(()=>{
+          session.backendReady=false;localStorage.setItem('netunim-storage-v2-mode:APP','off');state.notes[0].content='newer V1 fallback';
+          WRITE;localStorage.setItem('netunim-storage-v2-mode:APP','primary');return true;
+        })()""".replace('APP',app).replace('WRITE',"storageBrowser.persistImmediateBrowserSnapshot(undefined,undefined,{storageBoundary:'rollback-v1-write'})" if app=='kupa' else "storageBrowser.localSnapshot(undefined,{storageBoundary:'rollback-v1-write'})"))
+        browser._navigate()
+        fallback_recovered=browser.evaluate("""(async()=>{await appReady;return {content:state.notes[0]?.content,source:storageShadow.diagnostics.migrations,ready:storageShadow.primaryReady}})()""")
+        assert fallback_recovered['content']=='newer V1 fallback' and fallback_recovered['ready'],fallback_recovered
+        errors=browser.drain_serious_errors();assert not errors,errors
+        print('PASS '+app+' V2 primary skips full LocalStorage serialization and recovers after hard navigation: '+json.dumps(primary))

@@ -18,8 +18,8 @@ export function storageChecksum(text){let a=2166136261,b=0x9e3779b9;for(let i=0;
 export function sealStorageRecord(value,{kind=null}={}){
   const run=(name,work)=>kind?measureStorage(name,work):work();
   run('validate',()=>assertStorageJson(value));
-  const data=run('checkpoint-clone',()=>structuredClone(value));
-  const text=run('checkpoint-stringify',()=>JSON.stringify(data));
+  const data=run(`${kind}-clone`,()=>structuredClone(value));
+  const text=run(`${kind}-stringify`,()=>JSON.stringify(data));
   if(kind)storageBytes(kind,text);
   return {data,checksum:storageChecksum(text)};
 }
@@ -38,6 +38,10 @@ export function validateStoredOperation(operation,{collections=[],fields=[]}={})
     if(change.type==='put'){
       if(!['insert','replace'].includes(change.mode)||!change.record||change.record.id!==change.id||(change.mode==='insert'&&!integer(change.index)))throw new Error('storage_invalid_put');
     }else if(change.type!=='delete')throw new Error('storage_unknown_operation');
+  }
+  if(operation.deleteIntents!=null){
+    if(!operation.deleteIntents||typeof operation.deleteIntents!=='object'||Array.isArray(operation.deleteIntents))throw new Error('storage_delete_intents_invalid');
+    for(const [collection,ids] of Object.entries(operation.deleteIntents))if(!identity(collection)||forbidden.has(collection)||!Array.isArray(ids)||ids.some(id=>!identity(id))||new Set(ids).size!==ids.length)throw new Error('storage_delete_intents_invalid');
   }
   return operation;
 }
@@ -59,7 +63,7 @@ export function applyStoredOperation(state,operation,schema){
 export function replayStorageJournal(checkpoint,records,schema){
   const base=readStorageRecord(checkpoint);
   if(base.version!==2||!identity(base.owner)||!identity(base.epoch)||!integer(base.seq)||!base.state)throw new Error('storage_invalid_checkpoint');
-  const state=structuredClone(base.state),bySeq=new Map(),ids=new Set();let seq=base.seq;
+  const state=structuredClone(base.state),bySeq=new Map(),ids=new Set();let seq=base.seq,appMetadata=structuredClone(base.appMetadata||{});
   for(const sealed of records){
     const operation=readStorageRecord(sealed);validateStoredOperation(operation,schema);
     if(operation.owner!==base.owner||operation.epoch!==base.epoch)throw new Error('storage_foreign_operation');
@@ -70,7 +74,7 @@ export function replayStorageJournal(checkpoint,records,schema){
   for(const operation of [...bySeq.values()].sort((a,b)=>a.seq-b.seq)){
     if(operation.seq<=base.seq)continue;
     if(operation.seq!==seq+1||ids.has(operation.operationId))throw new Error('storage_journal_gap_or_duplicate');
-    applyStoredOperation(state,operation,schema);seq=operation.seq;ids.add(operation.operationId);
+    applyStoredOperation(state,operation,schema);seq=operation.seq;ids.add(operation.operationId);if(Object.hasOwn(operation,'appMetadata'))appMetadata={...appMetadata,...structuredClone(operation.appMetadata||{})};
   }
-  return {state,seq,epoch:base.epoch,owner:base.owner};
+  return {state,seq,epoch:base.epoch,owner:base.owner,appMetadata};
 }

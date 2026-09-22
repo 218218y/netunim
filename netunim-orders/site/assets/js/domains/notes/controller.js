@@ -35,7 +35,7 @@ function addStickyNote(){const now=new Date().toISOString(),note={id:uid('NOTE')
 
 function updateStickyNote(id,el){const note=model.state.notes.find(x=>x.id===id);if(!note)return;note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);layoutStickyNoteCard(el.closest('.sticky-note'));const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);scheduleSave('הפתק עודכן',{operations:[{type:'put',collection:'notes',id,mode:'replace',record:note}]})}
 
-async function deleteStickyNote(id){const note=model.state.notes.find(x=>x.id===id);if(!note)return;if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;model.state.notes=model.state.notes.filter(x=>x.id!==id);notesUi.notesBulkSelected.delete(id);scheduleSave('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'orders.delete.notes'});refreshAlertCenter();renderNotes()}
+async function deleteStickyNote(id){const note=model.state.notes.find(x=>x.id===id);if(!note)return;if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;model.state.notes=model.state.notes.filter(x=>x.id!==id);notesUi.notesBulkSelected.delete(id);scheduleSave('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'orders.delete.notes',operations:[{type:'delete',collection:'notes',id}]});refreshAlertCenter();renderNotes()}
 
 function reminderButtonLabel(note){const date=normalizeNoteReminderDate(note?.reminderDate);return date?`התראה · ${checkDateFmt(date)}`:'התראה'}
 
@@ -93,7 +93,7 @@ function saveStickyNoteReminder(id){
   if(!reminderDate){toast('בחר תאריך תקין להתראה');return false}
   if(reminderDate<checkTodayISO()){toast('אפשר לבחור התראה מהיום ואילך');return false}
   note.reminderDate=reminderDate;note.updatedAt=new Date().toISOString();
-  scheduleSave('התראה להערה נוספה');closeModal();
+  scheduleSave('התראה להערה נוספה',{operations:[{type:'put',collection:'notes',id:note.id,mode:'replace',record:note}]});closeModal();
   if(currentView()==='notes')renderNotes();
   refreshAlertCenter();toast(`ההתראה נקבעה ל־${checkDateFmt(reminderDate)}`);return true;
 }
@@ -101,7 +101,7 @@ function saveStickyNoteReminder(id){
 async function removeStickyNoteReminder(id){
   const note=model.state.notes.find(x=>x.id===id),reminderDate=normalizeNoteReminderDate(note?.reminderDate);if(!note||!reminderDate)return false;
   if(!await confirmDialog('ביטול התראה',`לבטל את ההתראה להערה שנקבעה ל־${checkDateFmt(reminderDate)}?`,{confirmText:'בטל התראה'}))return false;
-  delete note.reminderDate;note.updatedAt=new Date().toISOString();scheduleSave('התראה להערה בוטלה');
+  delete note.reminderDate;note.updatedAt=new Date().toISOString();scheduleSave('התראה להערה בוטלה',{operations:[{type:'put',collection:'notes',id:note.id,mode:'replace',record:note}]});
   if(currentView()==='notes')renderNotes();
   refreshAlertCenter();toast('ההתראה בוטלה');return true;
 }
@@ -116,7 +116,7 @@ function notesBulkControls(){return `<div class="notes-bulk-controls"><button cl
 
 function syncNotesBulkUi(){if(!notesUi.notesBulkMode)return;const valid=new Set(model.state.notes.map(x=>x.id));[...notesUi.notesBulkSelected].forEach(id=>{if(!valid.has(id))notesUi.notesBulkSelected.delete(id)});const del=$('#notesBulkDelete');if(del){del.disabled=!notesUi.notesBulkSelected.size;del.textContent=notesUi.notesBulkSelected.size?`מחק ${notesUi.notesBulkSelected.size}`:'מחק נבחרים'}const ids=noteSortRows().map(x=>x.id),all=ids.length>0&&ids.every(id=>notesUi.notesBulkSelected.has(id)),allBtn=$('#notesBulkAll');if(allBtn)allBtn.textContent=all?'בטל הכל':'בחר הכל';document.querySelectorAll('[data-note-id]').forEach(card=>{const selected=notesUi.notesBulkSelected.has(card.dataset.noteId);card.classList.toggle('bulk-selected-card',selected);const cb=card.querySelector('[data-note-bulk-check]');if(cb)cb.checked=selected})}
 
-async function deleteSelectedStickyNotes(){const valid=new Set(model.state.notes.map(x=>x.id)),ids=[...notesUi.notesBulkSelected].filter(id=>valid.has(id));if(!ids.length)return toast('לא נבחרו פתקים למחיקה');if(!await confirmDialog('מחיקת פתקים',`למחוק ${ids.length} פתקים שנבחרו?`,{confirmText:'מחק פתקים'}))return;const set=new Set(ids);model.state.notes=model.state.notes.filter(x=>!set.has(x.id));notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;scheduleSave(`${ids.length} פתקים נמחקו`,{deleteIntents:{notes:ids},mutationType:'bulk-delete',surface:'orders.bulk.notes'});refreshAlertCenter();renderNotes()}
+async function deleteSelectedStickyNotes(){const valid=new Set(model.state.notes.map(x=>x.id)),ids=[...notesUi.notesBulkSelected].filter(id=>valid.has(id));if(!ids.length)return toast('לא נבחרו פתקים למחיקה');if(!await confirmDialog('מחיקת פתקים',`למחוק ${ids.length} פתקים שנבחרו?`,{confirmText:'מחק פתקים'}))return;const set=new Set(ids);model.state.notes=model.state.notes.filter(x=>!set.has(x.id));notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;scheduleSave(`${ids.length} פתקים נמחקו`,{deleteIntents:{notes:ids},mutationType:'bulk-delete',surface:'orders.bulk.notes',operations:ids.map(id=>({type:'delete',collection:'notes',id}))});refreshAlertCenter();renderNotes()}
 
 function stickyNoteCard(note){const selected=notesUi.notesBulkSelected.has(note.id),reminderDate=normalizeNoteReminderDate(note.reminderDate);return `<article class="sticky-note ${esc(selected?'bulk-selected-card':'')} ${reminderDate?'has-reminder':''}" data-note-id="${esc(note.id)}">${notesUi.notesBulkMode?`<label class="sticky-note-select" title="בחר פתק"><input type="checkbox" data-note-bulk-check ${selected?'checked':''} data-action="toggle-notes-bulk-row" data-change="toggle-notes-bulk-row" data-click-arg0="${esc(note.id)}"></label>`:''}<div class="sticky-note-paper"><textarea aria-label="תוכן הפתק" placeholder="כתוב כאן הערה או תזכורת…" data-input="update-sticky-note" data-input-arg0="${esc(note.id)}">${esc(note.content)}</textarea></div><footer class="sticky-note-footer"><span class="sticky-note-date" data-note-date>${esc(noteDisplayDate(note))}</span><div class="sticky-note-footer-actions"><button class="btn small sticky-note-reminder ${reminderDate?'active':''}" type="button" data-action="open-sticky-note-reminder" data-click-arg0="${esc(note.id)}" title="${esc(reminderDate?'לחץ לביטול ההתראה':'הוסף התראה להערה')}">${esc(reminderButtonLabel(note))}</button><button class="btn danger small" type="button" data-action="delete-sticky-note" data-click-arg0="${esc(note.id)}">מחק</button></div></footer></article>`}
 

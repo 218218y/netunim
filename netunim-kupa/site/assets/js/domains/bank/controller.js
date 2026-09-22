@@ -78,7 +78,7 @@ async function commitBankSnapshot(balance,{source='manual',accountNumber=null,ba
   const previousHomeFeed=model.state.bank?.homeFeed||null;
   const nextHomeFeed=homeBankFeed===undefined?previousHomeFeed:normalizeBankFeed(homeBankFeed);
   model.state.bank={...model.state.bank,currentBalance:wholeMoney(numeric),updatedAt:new Date().toISOString(),asOfDate:todayISO(),snapshotToken:uid('BANK'),snapshotSeq:observedSeq,adjustments:[],source,sourceAccount:accountNumber||null,bankSyncAt:nextSyncAt,feed:nextFeed,homeFeed:nextHomeFeed};
-  return saveState(message);
+  return saveState(message,{operations:[{type:'set',field:'bank',value:model.state.bank}]});
 }
 
 function displayArchiveFeed(role,feed){const normalized=normalizeBankFeed(feed);if(!normalized)return null;const cache=bankDisplayArchive[role],accountKey=String(normalized.accountNumber||''),syncKey=String(normalized.syncedAt||'');return cache.accountKey===accountKey&&cache.syncKey===syncKey&&Array.isArray(cache.rows)?normalizeBankFeed({...normalized,transactions:cache.rows,directSnapshot:cache.directSnapshot}):normalized}
@@ -254,7 +254,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     }else{
       await saveFinancePatch(state=>({...state,bank:financeBankPayload(nextBank)}),lease);
       model.state.bank=nextBank;
-      await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
+      await saveState(historyDays>=365?'ארכיון הבנק אותחל והופרד מגיבויי הקופה':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד',{operations:[{type:'set',field:'bank',value:model.state.bank}]});
     }
     Object.assign(bridgeState,{available:true,configured:true,upgradeRequired:false,bridgeVersion:Math.max(BANK_BRIDGE_VERSION,bridgeState.bridgeVersion||0),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountSelectionRole:homeFailure?'home':'',lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:warnings.join(' | '),lastWarningCode:homeFailure?.code||'',lastWarningStage:homeFailure?.stage||'',lastWarningHttpStatus:Number(homeFailure?.httpStatus)||0,message:homeFailure?'החשבון העסקי עודכן בהצלחה; החשבון הביתי לא עודכן ונשמר הנתון הביתי האחרון.':warnings.length?'היתרות עודכנו בהצלחה; קיימת אזהרה לגבי חלק מהתנועות.':home?'שני החשבונות והפעילות האחרונה התקבלו בהצלחה מבנק הפועלים.':'החשבון העסקי והתנועות האחרונות התקבלו בהצלחה מבנק הפועלים.'});
     applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});

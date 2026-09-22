@@ -1,77 +1,114 @@
-# אחסון V2 — מנוע יומן ומצב בדיקה מקביל
+# Storage V2 — מצב מימוש וחוזי בטיחות
 
 עודכן ב־22 בספטמבר 2026.
 
 ## מצב ההטמעה
 
-**V1 עדיין אחראי לשמירה ולשחזור באפליקציות.** נבנה מנוע V2 ונוסף חיבור ניסיוני בשתי האפליקציות, במצב shadow שניתן להפעיל לצורך בדיקה. הוא כבוי כברירת מחדל. לא הופסקה כתיבת snapshot מלא ב־LocalStorage, ולא השתנו RPCs, Outbox הענן, Shared Checks, מצב קובץ מקומי, גיבויים או שמירה בעת סגירת הדף.
+מנוע Storage V2 מחובר כעת לשתי האפליקציות בשלושה מצבים: `off`, ‏`shadow` ו־`primary`. ברירת המחדל נשארת `off` עד להשלמת rollout מבוקר של Outbox הענן ו־Shared Checks. במצב `primary`, פעולה מתוארת נשמרת מיד כפעולת journal קטנה ב־LocalStorage ומועברת ל־IndexedDB, בלי לכתוב browser snapshot מלא בכל עריכה. V1 נשאר fallback מאומת לגבולות מלאים ולכשלי מעבר.
 
-זו הבחנה מהותית: תוצאות הביצועים של פעולת היומן הן של המנוע החדש בבידוד. הן אינן מדידה של שיפור במסלול השמירה הכולל של האפליקציה, שבמצב shadow עדיין מבצע גם V1. אין להפעיל shadow כדי להאיץ את האפליקציה; הוא מוסיף עבודה לצורך הוכחת שקילות.
+החיבור כולל:
 
-## מה הושלם
+- שחזור `checkpoint + IndexedDB journal + emergency journal` בעת פתיחה;
+- promotion בטוח מ־V1 או מ־shadow ל־primary באמצעות epoch חדש;
+- בחירה ב־V1 כאשר עותק V1 חדש יותר, ולעולם לא בחירה שקטה בעותק V2 פגום;
+- `mutationSeq`, ‏`operationId`, ‏generation, writer fencing ו־primary-tab protection;
+- compaction אטומי לפי סף פעולות או זמן idle;
+- cloud cursor מפורש (`ackSeq`), ‏cloud projection נפרד מ־browser state ו־immutable flight;
+- שמירת operations ו־delete intents שלא אושרו בענן גם לאחר checkpoint מקומי;
+- ACK שמאשר רק את ה־flight המדויק ואינו מוחק פעולות שנוצרו בזמן ה־RPC.
 
-- חזרה לגליון בקופה מבצעת מיד poll שאינו חוסם את הצגת ה־DOM השמור. בקשות מקבילות מתאחדות, מוצג מצב בדיקת עדכונים, וגרסת הגליון נכללת במפתח מטמון התצוגה. פתקיות נשארות במטמון.
-- מדדי זמן ונפח במסלול V1: אימות, נרמול, הכנת snapshot, serialization, כתיבה וקריאה מאמתת, browser snapshot ו־pending Outbox.
-- מנוע V2 משותף: פעולות מפורשות, replay דטרמיניסטי, emergency journal מאומת ב־LocalStorage, חמש חנויות IndexedDB, checkpoints, compaction אטומי, cloud base ו־flight קבוע לניסיון שליחה חוזר.
-- מתאם shadow: ה־snapshot הקנוני של V1 מושווה לתוצאת replay. פעולות שלא תוארו, ייבוא, שחזור והחלפת מצב יוצרים גבול checkpoint מלא; אין הסקת מחיקות או diff של כל המסמך בכל עריכה.
-- תיאור פעולות מזומן/מעשר בקופה, פתקיות בשתי האפליקציות ומחיקות בעלות delete intents מפורשים. עריכת מספר פתקיות לפני שמירה אחת כוללת את כולן באותה קבוצת פעולות.
-- בדיקות Node ובדיקות Chromium מול IndexedDB אמיתי, כולל טעינה מחדש של הדף, תקלות transaction, כשל מכסה, שינוי בזמן compaction/flight ושמירת מחיקות.
-- suite חדש, `tests/runtime_storage.py`, נכלל ב־CI; דוחות הביצועים נשמרים כ־artifacts.
+## חוזה mutation
 
-## חוזה המנוע
+כל קריאה עסקית אל `scheduleSave`, ‏`saveState`, ‏`scheduleCheckSave` או `saveChecksState` חייבת לספק אחד משני חוזים:
 
-`storage-journal-model.js` מגדיר `put` עם `insert` או `replace`, מחיקה מפורשת ו־`set` לשדות מורשים. הכנסת רשומה כוללת מיקום כדי לשחזר גם את סדר המשתמש. עדכון אינו הופך אוטומטית להכנסה כאשר היעד חסר. שעון ויצירת מזהים אינם חלק מ־replay: הערכים נשמרים בפעולה מראש. checksum מזהה שיבוש מקרי; הוא אינו חתימה קריפטוגרפית.
+1. `operations` מלאות שמתארות את כל השינוי; או
+2. `storageBoundary` מפורש עבור restore, import, remote authoritative apply או שינוי רחב אחר.
 
-`storage-journal-idb.js` שומר `checkpoints`, `journal`, `metadata`, `bases` ו־`flights` במסד נפרד בשם `netunim-storage-v2`. הנתונים מופרדים לפי בעלים ואפליקציה. append קורא רק metadata קטן ואת מפתח הפעולה הנוכחית, ואינו קורא checkpoint או את כל היומן. הבטחת commit נפתרת רק ב־`transaction.oncomplete`.
+אין הסקה של פעולת delete מתוך `mutationType` או מתוך `deleteIntents`. מחיקת עסקת ספק כוללת גם את כל שינויי ה־sequence שנגרמו בעקבות resequence. ניקוי היסטוריית מלאי כולל גם את רשומות ה־adjustment שנוצרו. תופעות לוואי של normalization מתוארות כמחיקות מפורשות או גורמות ל־checkpoint boundary.
 
-`storage-journal.js` מחזיר מ־append שתי תוצאות שונות: `emergencyDurable` סינכרוני ו־`committed` אסינכרוני. כשל בכתיבה או בקריאה המאמתת ב־LocalStorage אינו מוצג כהצלחה; הצלחת IndexedDB עדיין יכולה להבטיח עמידות. כשל בשתיהן חוסם המשך שימוש במופע המנוע. רשומת emergency נמחקת רק אחרי commit. גבולות ברירת המחדל הם 64 פעולות ממתינות ו־128KiB מחושבים באופן שמרני; כשהגבול נחצה אין הבטחת emergency, ויש להמתין ל־IDB.
+הכיסוי קיים כעת ב־Suppliers, Customers/Debts, Service, Inventory/Warehouse, Notes, Orders checks, ובקופה ב־Cash, Rights, Expenses, Cards/Credit, Bank, Credit Sync, Settings, Notes ו־Checks. בדיקת AST ב־CI מונעת הוספת mutation owner חדש ללא אחד משני החוזים.
 
-checkpoint חדש ומחיקת הפעולות הכלולות בו מתבצעים באותה עסקה. פעולות מאוחרות יותר נשארות ביומן. restore מחליף epoch רק לאחר commit, ואסור להחליף checkpoint כאשר יש flight שלא הוכרע. flight מכיל payload ו־operation ID קבועים; ACK שגוי נדחה, ו־ACK תקין אינו מוחק את היומן. כך ACK ישן אינו מוחק פעולות שנוצרו בזמן השליחה.
+## מסלול הכתיבה
 
-primary-tab נשאר תנאי חיצוני מחייב, בנוסף ל־writer fence בתוך עסקאות IDB. מצב shadow אינו מחליף את מנגנון הבעלות הקיים של האפליקציות. אין להשתמש במנוע העצמאי כמערכת נעילת טאבים.
+ב־primary, פעולה רגילה עוברת כך:
 
-## הפעלת בדיקה מקבילה
+```text
+validation מלא
+→ emergency operation קטן ומאומת ב־LocalStorage
+→ עדכון UI יכול להיצבע
+→ commit של אותה פעולה ב־IndexedDB
+→ ניקוי emergency רק לאחר transaction.oncomplete
+→ materialization כבד יותר בתור הבא
+→ checkpoint בזמן idle או לאחר סף פעולות
+```
 
-בפרופיל בדיקה של האפליקציה, בקונסולת הדפדפן:
+אם כתיבת emergency נכשלת, מסלול ה־browser snapshot של V1 משמש fallback. אם גם V1 נכשל, הפעולה אינה מסומנת כשמורה. כשל IndexedDB לאחר emergency אינו מאבד את הפעולה: היא משוחזרת מן ה־emergency journal בפתיחה הבאה.
+
+בקופה, במסלול primary מתואר, `action → local durable` מסתיים לפני normalize והכנת cloud/file payload. פעולת Checks אינה מנרמלת את כל הקופה לצורך העמידות המקומית. normalization, גיבוי וקובץ מקומי נשארים בתור הבטוח הקיים.
+
+## checkpoints ו־Outbox
+
+Checkpoint נכתב יחד עם `checkpointSeq` באותה עסקת IndexedDB. journal entries נמחקים רק עד הסמן שכבר אושר בענן. לכן delete intent אינו יכול להיעלם עקב compaction מקומי.
+
+Cloud base הוא projection מפורש עם `revision` ו־`ackSeq`. בעת שליחה נוצר flight מלא אחד בלבד ובו `startSeq`, ‏`endSeq`, ‏operation ID, snapshot מדויק ו־delete intents שנאספו מטווח הפעולות. retry לאחר lost ACK מחזיר את אותו flight. ACK מעדכן base עד `endSeq` בלבד; פעולות חדשות יותר נשארות.
+
+ה־RPCs של Supabase, חוזי merge/rebase, finance fencing וגיבויי השרת לא שונו. ה־Outbox הפעיל של האפליקציות נשאר V1 בברירת המחדל עד rollout ייעודי, אף שתשתית cursor/flight של V2 והבדיקות שלה מוכנות.
+
+## מצבי הפעלה
+
+Shadow, לצורך השוואת replay מול V1:
 
 ```js
-localStorage.setItem('netunim-storage-v2-shadow', '1');
-// לאחר טעינה מחדש ופעולות עריכה, V1 נשאר מקור האמת.
+localStorage.setItem('netunim-storage-v2-mode:kupa', 'shadow');
+localStorage.setItem('netunim-storage-v2-mode:orders', 'shadow');
+```
+
+Primary מקומי מבוקר:
+
+```js
+localStorage.setItem('netunim-storage-v2-mode:kupa', 'primary');
+localStorage.setItem('netunim-storage-v2-mode:orders', 'primary');
 ```
 
 כיבוי:
 
 ```js
-localStorage.removeItem('netunim-storage-v2-shadow');
+localStorage.setItem('netunim-storage-v2-mode:kupa', 'off');
+localStorage.setItem('netunim-storage-v2-mode:orders', 'off');
 ```
 
-המתאם מרכז פעולות בחלון קצר של 250ms ומגביל את התור. זה מותר רק מפני ש־V1 כבר כתב את העותק הבטוח; אין זו הבטחת durability סינכרונית של V2 באפליקציה. לכל היותר 128 פעולות נבדקות בין checkpoints. שגיאה נרשמת במונה המתאם ואינה משנה את תוצאת V1. בפתיחת עותק קיים נרשם גם אם הוא שונה מ־V1; הבדל כזה אפשרי לאחר עבודה בזמן שה־shadow היה כבוי. הבדל לאחר replay של פעולות מתוארות הוא כשל שקילות.
+הפעלת primary אינה מיועדת כרגע למשתמשי production לפני החלטת rollout. מעבר מ־shadow לעולם אינו מעניק ל־shadow סמכות אוטומטית: V1 מקודם ל־epoch ראשי מאומת. חזרה זמנית ל־V1 ולאחריה primary בוחרת ב־V1 אם `snapshotSeq` שלו חדש יותר.
 
-בדיקות האינטגרציה קוראות `storageShadow.diagnostics` דרך test probe. האובייקט אינו נחשף ל־window בייצור. המונים כוללים פעולות, checkpoints, בדיקות שקילות, אי־התאמות, הבדלי פתיחה ושגיאה אחרונה. עותק V2 פגום אינו נבחר לשחזור האפליקציה ואינו נדרס בשקט.
-
-## מדידה חוזרת
+## בדיקות וקבלה
 
 ```text
+node --test tests/storage_journal.test.mjs tests/storage_operation_contract.test.mjs
 python tests/runtime_storage.py
-node --test tests/storage_journal.test.mjs
 python tests/run_all.py --keep-going
 ```
 
-דוחות מקומיים:
+`runtime_storage.py` מריץ Chromium ו־IndexedDB אמיתיים ובודק בין היתר:
 
-- `.work/storage-performance/latest.json` — מטריצת כשל, replay וסקיילינג של המנוע.
-- `.work/storage-performance/kupa-v1-baseline.json` ו־`orders-v1-baseline.json` — שלוש שמירות snapshot לכל גודל במנגנון הקיים.
+- crash לפני ואחרי emergency/IDB;
+- transaction abort בזמן journal ובזמן checkpoint;
+- duplicate emergency + IDB ללא effect כפול;
+- mutation בזמן compaction ובזמן flight;
+- lost ACK, ACK שגוי ו־ACK שאינו מוחק mutation חדש יותר;
+- delete intent שנשמר עד ACK גם לאחר checkpoint;
+- cloud projection ששונה ממבנה browser state;
+- quota failure, כשל IDB וכשל של שתי השכבות;
+- writer fencing ו־secondary tab;
+- restore שמחליף epoch רק לאחר commit;
+- hard navigation בשתי האפליקציות תחת primary;
+- הוכחה שעריכה קטנה אינה משנה את full V1 LocalStorage snapshot.
 
-מדדי V2 כוללים `storage:journal-emergency`, `storage:idb-journal`, `storage:checkpoint`, `storage:replay`, `storage:outbox-materialize`, `storage:flight-write` ונפחי checkpoint/journal/base/flight. כבשאר מדדי הפרויקט, האיסוף אופציונלי, מוגבל במספר דגימות ואינו שולח תוכן עסקי.
+במדידה הסינתטית הנוכחית, browser snapshot של כ־1.18MB דרש בערך 19–36ms במסלול V1, בהתאם לאפליקציה ולריצה. אותה עריכת Notes במסלול primary כתבה emergency של כ־595–597 bytes, ו־`save-local` הסתיים סביב 0.3–0.7ms. המדד הארכיטקטוני ב־CI הוא שהיקף הכתיבה הסינכרונית של edit קטן אינו גדל עם גודל המסמך.
 
-במדידה מקומית ראשונית, שינוי רשומה אחת יצר emergency בגודל 407–409 bytes עבור 100, 10,000 ו־50,000 רשומות; checkpoint הגדול היה כ־5.3MB. ה־CI אוכף payload קטן והפרש זניח בנפחו בין הגדלים, ולא מספר milliseconds שתלוי במחשב. ה־baseline של V1 משתמש ב־100/1,000/5,000 פתקיות וממחיש שהנפח עדיין גדל עם המסמך. אלה נתונים סינתטיים; לא מדידת מסמכי משתמש או תעבורת Supabase.
+## מה נשאר לפני rollout מלא
 
-## מה נותר לפני V2 כמקור ראשי
+- להעביר את Outbox הפעיל בשתי האפליקציות מ־`baseState + snapshot` של V1 אל cloud cursor/flight של V2;
+- להעביר את Shared Checks לאחר שה־Outbox הראשי עבר soak מוצלח;
+- להריץ upgrade/restart ו־offline soak מול נתוני production מייצגים;
+- רק לאחר מכן לשנות את ברירת המחדל ל־primary ולהשאיר V1 checkpoint נדיר לתקופת rollback.
 
-1. להשלים תיאור פעולות בכל בעלי השינויים, כולל תנועות ספקים, לקוחות, מלאי, יבוא פיננסי, שינויים מרחוק ופעולות מורכבות. checkpoints של shadow אינם תחליף לכך.
-2. להוכיח migration של snapshot ושל Outbox קיימים, עם כוונות מחיקה ופעולות אופליין. לחבר recovery של האפליקציה ל־V2 עם בחירת סמכות ו־V1 fallback מפורשים.
-3. לחבר את המנוע ל־cloud writer ול־Local File writer הקיימים, כולל rebase ו־finance fencing. API ה־flight העצמאי אינו חיבור כזה.
-4. להשלים מטריצת כשל ברמת האפליקציות: שרת ששמר ללא ACK, restore מול עבודה ממתינה, שינוי בעלות בין טאבים, עבודה אופליין ושדרוג גרסאות. בדיקות V1 הקיימות ומטריצת המנוע אינן לבדן הוכחה ל־V2 primary.
-5. רק לאחר הוכחות אלה להפסיק snapshots מלאים בכל עריכה, לשנות pagehide ולחבר Shared Checks. אימות מלא ותקופת fallback נשארים עד להוכחת חלופה.
-
-לא שונו retention, גיבויי ענן או פרוטוקול הענן. לא נאספו נתוני נפח ממסד ייצור. החלטות על WAL ראשי, ולידציה חלקית או שינוי RPC צריכות להסתמך על כיסוי ועל מדידות, ולא על ביצועי המנוע בבידוד בלבד.
+אין שינוי ברמת הגיבויים, ב־3-way merge, ב־conflict fail-closed, ב־delete semantics, ב־Local File conflict handling או ב־RPCs. כל מעבר סמכות דורש בדיקות התאוששות ירוקות; שיפור מהירות לבדו אינו תנאי קבלה.

@@ -96,7 +96,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.setItem(CREDIT_AUTO_MODE_KEY,'daily');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
       model.state.creditSync=normalizeCreditSync({});
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
-      await saveState('סנכרון האשראי אופס והופרד מגיבויי הקופה');
+      await saveState('סנכרון האשראי אופס והופרד מגיבויי הקופה',{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]});
       await refreshCreditBridgeStatus();
       toast('סנכרון האשראי אופס. אפשר להגדיר מחדש חיבור אחד לכל בעל חשבון וחברה.');
     }catch(e){local.error=e?.message||String(e);local.errorAt=new Date().toISOString();toast(local.error)}
@@ -128,7 +128,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}),lease);
       const deferredOnly=Array.isArray(result.errors)&&result.errors.length>0&&result.errors.every(error=>error?.severity==='deferred'||error?.deferred===true);
-      await saveState(deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה');
+      await saveState(deferredOnly?'סנכרון האשראי הושהה ו־Last Known Good נשמר':result.errors?.length?'האשראי עודכן עם אזהרות ונשמר מחוץ לגיבויי הקופה':'האשראי עודכן ונשמר מחוץ לגיבויי הקופה',{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]});
       await refreshCreditBridgeStatus();
       if(!auto)toast(deferredOnly?'החיבור מושהה עקב 403/429; לא יישלח ניסיון נוסף לפני המועד.':result.errors?.length?`הסנכרון הושלם עם ${result.errors.length} אזהרות`:'נתוני האשראי עודכנו');
     }catch(e){
@@ -149,7 +149,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     const result=await saveFinancePatch(state=>{candidate=mutator(normalizeCreditSync(state.creditSync));return {...state,creditSync:candidate}});
     if(!result?.saved)throw new Error('השינוי לא נשמר בענן. יש להתחבר ולנסות שוב.');
     model.state.creditSync=normalizeCreditSync(result.row?.state?.creditSync||candidate);
-    await saveState(message);return true;
+    await saveState(message,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]});return true;
   }
   async function saveCreditCardOrder(keys){return persistCreditSettings(sync=>applyCreditCardOrderData(sync,keys),'סדר הכרטיסים נשמר')}
   async function setCreditCardMapping(profileId,accountNumber,field,value){

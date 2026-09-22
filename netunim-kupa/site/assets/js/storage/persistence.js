@@ -4,9 +4,10 @@ import {clone} from '../core/values.js';
 import {payloadFromState} from '../state/serialization.js';
 import {assertKupaEntityInvariants} from '../state/validation.js';
 import {jsonEq} from '../sync/merge-records.js';
+import {inactiveCreditExpired} from '../domains/credit/model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({captureLegacyWorkbook=async()=>{},reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function requestCloudSave(snapshot,msg,generation){
   cloudSaveRequest={snapshot,msg,generation};
@@ -27,16 +28,31 @@ function requestCloudSave(snapshot,msg,generation){
   return session.cloudSavePromise;
 }
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
-async function loadState(){if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');const p=await readJsonHandle(files.dataFileHandle);await captureLegacyWorkbook(p.notesSheet);const parsed=stateFromPayload(p),previous=model.state;model.state=parsed.state;domainRevisions?.reconcile(previous,model.state,{forceAll:true});const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];session.dbRevision=Number(parsed.meta.revision||0);session.backendReady=true;session.localFileConflictPending=false;session.lastSavedSnapshot=JSON.stringify(model.state);session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};persistImmediateBrowserSnapshot(model.state,session.dbRevision);if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');setSaveStatus('נשמר בקובץ','ok');if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds}}),0);return model.state}
+const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
+async function loadState(){if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');const p=await readJsonHandle(files.dataFileHandle);await captureLegacyWorkbook(p.notesSheet);const parsed=stateFromPayload(p),previous=model.state;model.state=parsed.state;domainRevisions?.reconcile(previous,model.state,{forceAll:true});const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];session.dbRevision=Number(parsed.meta.revision||0);session.backendReady=true;session.localFileConflictPending=false;session.lastSavedSnapshot=JSON.stringify(model.state);session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-load'});if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');setSaveStatus('נשמר בקובץ','ok');if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);return model.state}
 
-function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null}={}){
+function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();
-  if(!operations&&['delete','bulk-delete'].includes(mutationType))operations=Object.entries(deleteIntents).flatMap(([collection,ids])=>ids.map(id=>({type:'delete',collection,id})));
   const localDone=beginMeasure('kupa:save-local',{paint:true});
-  const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),generation=++session.localGeneration,snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
-  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,changes:operations,generation,mutationType,surface});
+  const generation=++session.localGeneration,typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(inactiveCreditExpired),fastLocal=storageV2Primary()&&typed&&!storageBoundary&&!normalizationMayDelete;
+  if(fastLocal){
+    const localOk=persistImmediateBrowserSnapshot(model.state,session.dbRevision,{operations,generation,mutationType,surface,deleteIntents});localDone();
+    if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
+    // The operation is already durable. Yield so normalization, cloud projection
+    // and file I/O cannot delay the paint caused by the user's edit.
+    return nextTurn(()=>{
+      const currentGeneration=session.localGeneration,fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
+      if(session.connectionMode==='supabase'&&session.backendReady)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});
+      if(session.connectionMode==='supabase'&&session.backendReady)return requestCloudSave(snapshot,msg,currentGeneration);
+      session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return session.saveQueue;
+    });
+  }
+  const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
+  if(Array.isArray(operations)&&autoCreditDeleteIds.length){const described=new Set(operations.filter(operation=>operation.type==='delete'&&operation.collection==='credits').map(operation=>operation.id));operations=[...operations,...autoCreditDeleteIds.filter(id=>!described.has(id)).map(id=>({type:'delete',collection:'credits',id}))]}
+  else if(autoCreditDeleteIds.length&&!storageBoundary)storageBoundary='normalize-expired-credits';
+  const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,storageBoundary,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
   localDone();
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
   if(session.connectionMode==='supabase'&&session.backendReady)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});
@@ -45,15 +61,15 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   return session.saveQueue
 }
 
-function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks'}={}){
+function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
-  if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks']});
+  if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks'],operations,storageBoundary});
   domainRevisions?.touch('checks');
-  const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true});
+  const deleteIntents={checks:deletedIds},generation=checksSession.sharedChecksGeneration+1,fastLocal=storageV2Primary()&&Array.isArray(operations)&&operations.length>0&&!storageBoundary&&!(model.state.credits||[]).some(inactiveCreditExpired),fullSnapshot=fastLocal?null:measureStorage('normalize',()=>normalizeState(model.state)),localOk=persistImmediateBrowserSnapshot(fastLocal?model.state:fullSnapshot,session.dbRevision,{normalized:!fastLocal,owned:!fastLocal,operations,storageBoundary,generation,mutationType,surface,deleteIntents});
   checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds,mutationType,surface});
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
-  if(files.backupsDirHandle)backupSnapshotToComputer(fullSnapshot,session.dbRevision).catch(e=>console.error('shared checks local backup',e));
+  if(files.backupsDirHandle)(fastLocal?nextTurn(()=>backupSnapshotToComputer(normalizeState(model.state),session.dbRevision)):backupSnapshotToComputer(fullSnapshot,session.dbRevision)).catch(e=>console.error('shared checks local backup',e));
   clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(()=>{checksSession.sharedChecksSaveTimer=null;saveSharedChecksToCloud(msg)},220);
   return Promise.resolve(localOk)
 }
@@ -63,16 +79,16 @@ async function persistState(snapshot,msg,generation=session.localGeneration,dele
   if(generation===session.localGeneration)snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(model.state):normalizeState(model.state);
   if(session.connectionMode==='supabase')return persistSupabaseState(prepareKupaCloudState(snapshot),msg,generation);
   if(!files.dataFileHandle){setSaveStatus('אין קובץ נתונים','error');return false}
-  if(session.localFileConflictPending){persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');return false}
+  if(session.localFileConflictPending){persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-conflict-mirror'});setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');return false}
   setSaveStatus(generation===session.localGeneration?'שומר…':'שומר תור שינויים…','saving');
   try{
     const current=await readJsonHandle(files.dataFileHandle),curMeta=current?._meta||{},curRev=Number(curMeta.revision||0),remote=stateFromPayload(current).state;
     let candidate=clone(snapshot),expected=curRev;
     if(curRev!==session.dbRevision){
       const base=lastSavedState();
-      if(!base){session.localFileConflictPending=true;persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('קובץ השתנה — נדרשת בדיקה','error');reportError('קובץ הנתונים השתנה ולא קיימת גרסת בסיס בטוחה למיזוג. השינויים שעל המסך נשמרו בעותק הדפדפן ולא נדרסו. מומלץ לייצא JSON ולפתוח מחדש את הקופה.');return false}
+      if(!base){session.localFileConflictPending=true;persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-missing-base'});setSaveStatus('קובץ השתנה — נדרשת בדיקה','error');reportError('קובץ הנתונים השתנה ולא קיימת גרסת בסיס בטוחה למיזוג. השינויים שעל המסך נשמרו בעותק הדפדפן ולא נדרסו. מומלץ לייצא JSON ולפתוח מחדש את הקופה.');return false}
       const merged=mergeState3Way(base,snapshot,remote,{deleteIntents});
-      if(merged.conflicts.length){session.localFileConflictPending=true;persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');reportError('אותה רשומה שונתה גם בקובץ וגם במסך הזה. כדי למנוע דריסה השמירה לקובץ נעצרה; השינויים המקומיים נשמרו בעותק הדפדפן. ייצא גיבוי JSON ופתח מחדש את הקופה לפני המשך עריכה.');return false}
+      if(merged.conflicts.length){session.localFileConflictPending=true;persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-merge-conflict'});setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');reportError('אותה רשומה שונתה גם בקובץ וגם במסך הזה. כדי למנוע דריסה השמירה לקובץ נעצרה; השינויים המקומיים נשמרו בעותק הדפדפן. ייצא גיבוי JSON ופתח מחדש את הקופה לפני המשך עריכה.');return false}
       candidate=merged.state;
     }
     const nextRev=expected+1,payload=payloadFromState(candidate,nextRev);
@@ -84,12 +100,12 @@ async function persistState(snapshot,msg,generation=session.localGeneration,dele
       if(rebased.conflicts.length){session.localFileConflictPending=true;setSaveStatus('שינוי נוסף התנגש — נשמר בדפדפן','error')}else model.state=rebased.state
     }
     const visibleChanged=!jsonEq(visibleBefore,model.state);if(visibleChanged)domainRevisions?.reconcile(visibleBefore,model.state);
-    persistImmediateBrowserSnapshot(model.state,session.dbRevision);
+    persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-authoritative-write'});
     if(visibleChanged)render();
     if(files.backupsDirHandle)await backupSnapshotToComputer(candidate,nextRev);session.serverInfo.backups=await listBackups();
     if(generation===session.localGeneration&&!session.localFileConflictPending){setSaveStatus('נשמר בקובץ','ok');toast(msg)}else if(!session.localFileConflictPending)setSaveStatus('שומר שינוי נוסף…','saving');
     return !session.localFileConflictPending
-  }catch(e){console.error(e);persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus('שגיאת שמירה — העותק המקומי שמור','error');reportError('השמירה לקובץ נכשלה. השינוי נשמר בעותק התאוששות בדפדפן ולא יידרס בלי אזהרה. מומלץ לייצא גיבוי JSON ולטפל בגישה לתיקייה.');return false}
+  }catch(e){console.error(e);persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-write-error'});setSaveStatus('שגיאת שמירה — העותק המקומי שמור','error');reportError('השמירה לקובץ נכשלה. השינוי נשמר בעותק התאוששות בדפדפן ולא יידרס בלי אזהרה. מומלץ לייצא גיבוי JSON ולטפל בגישה לתיקייה.');return false}
 }
 
 return { loadState, saveState, saveChecksState, persistState };
