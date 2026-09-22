@@ -59,13 +59,14 @@ const menuBindings=new WeakMap();
 export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-outside], [data-floating-menu]'}={}){
   if(menuBindings.has(root))return menuBindings.get(root);
   const doc=root.ownerDocument||root,win=doc.defaultView;
-  let active=null,frame=0;
+  let active=null,frame=0,popupResizeObserver=null;
   const isOpen=host=>host.tagName==='DETAILS'?host.open:host.classList.contains('open');
   const trigger=host=>host.querySelector(':scope > summary, :scope > [data-menu-trigger]');
   const panel=host=>host.querySelector(':scope > [data-menu-panel]');
   const setOpen=(host,open)=>{if(host.tagName==='DETAILS')host.open=open;else host.classList.toggle('open',open);trigger(host)?.setAttribute('aria-expanded',String(open))};
   const close=(restoreFocus=false)=>{
     const current=active;if(!current)return;active=null;
+    popupResizeObserver?.unobserve(current.panel);
     if(current.panel.matches(':popover-open'))current.panel.hidePopover();
     if(current.style===null)current.panel.removeAttribute('style');else current.panel.setAttribute('style',current.style);
     if(current.popover===null)current.panel.removeAttribute('popover');else current.panel.setAttribute('popover',current.popover);
@@ -91,6 +92,13 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
     for(const [key,value] of Object.entries({left:`${place.left}px`,top:`${place.top}px`,width:`${place.width}px`,'max-height':`${place.maxHeight}px`}))popup.style.setProperty(key,value,'important');
   };
   const schedulePosition=()=>{if(active&&!frame)frame=win.requestAnimationFrame(()=>{frame=0;position()})};
+  // Dynamic menus can change their own size while open (for example, a filtered
+  // supplier picker). A top-layer popover keeps the fixed coordinates we assigned
+  // at open time, so a size change must be followed by a fresh anchor calculation.
+  // Observe the rendered popup box instead of coupling components to positioning.
+  popupResizeObserver=typeof win.ResizeObserver==='function'?new win.ResizeObserver(entries=>{
+    if(active&&entries.some(entry=>entry.target===active.panel))schedulePosition();
+  }):null;
   const open=host=>{
     if(active?.host===host){position();return}
     close();
@@ -102,7 +110,7 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
     active.width=popup.getBoundingClientRect().width||popup.scrollWidth||180;
     popup.setAttribute('popover','manual');
     for(const [key,value] of Object.entries({position:'fixed',inset:'auto',margin:'0',transform:'none',visibility:'visible',opacity:'1','pointer-events':'auto','box-sizing':'border-box','min-width':'0','max-width':`${Math.max(0,viewport().width-16)}px`,'overflow-y':'auto','overscroll-behavior':'contain'}))popup.style.setProperty(key,value,'important');
-    popup.showPopover();position();
+    popup.showPopover();position();popupResizeObserver?.observe(popup);
   };
   const outside=event=>{if(active&&!active.host.contains(event.target))close()};
   root.addEventListener('pointerdown',outside,true);
