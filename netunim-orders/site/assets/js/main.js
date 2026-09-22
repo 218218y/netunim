@@ -1057,7 +1057,7 @@ model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClon
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,storagePersistence,uiFolders,uiAlertCenter,uiTabGuard});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard});
 const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,action])=>{
   const domain=action.startupMutationDomain;
   if(!domain)return [name,action];

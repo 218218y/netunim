@@ -219,9 +219,16 @@ save_pill_pos = orders_html.find('id="savePill"')
 cloud_pill_pos = orders_html.find('id="cloudPill"')
 save_now_pos = orders_html.find('id="saveNowButton"')
 settings_pos = orders_html.find('id="settingsTopButton"')
-ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, save_now_pos, settings_pos)
-   and folder_slot_pos < save_pill_pos < cloud_pill_pos < save_now_pos < settings_pos,
-   "orders: reserved folder-access slot is beside local-save status, not between action buttons")
+ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
+   and save_now_pos == -1
+   and folder_slot_pos < save_pill_pos < cloud_pill_pos < settings_pos,
+   "orders: autosave status leads directly to settings; redundant manual save action is removed")
+runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
+orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
+ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_events and "async function manualSaveNow()" in orders_persistence
+   and "const generation=++session.localGeneration,localOk=localSnapshot()" in orders_persistence
+   and "window.addEventListener('pagehide'" in runtime_events and "storageBrowser.localSnapshot()" in runtime_events,
+   "orders: header omits manual-save UI while the tested durable flush API and automatic local/page-exit staging remain available")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
 ok('<div class="brand">ניהול הזמנות</div>' not in orders_html

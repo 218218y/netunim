@@ -76,6 +76,11 @@ ok("status==='pending'" in bank and "currency!=='ILS'" in bank and "amount<=0" i
    'Client eligibility rejects provisional/non-credit/non-ILS rows and debt matching remains a suggestion engine')
 ok('morningBankDebtPickerMarkup' in documents and 'filterBankDebtPicker' in documents and 'morningBankDebtSearch' in debt_picker and 'morning-bank-debt-search' in debt_picker and 'morning-bank-debt-select' in debt_picker and 'preferredCard' in debt_picker and 'pickerRow' in debt_picker and 'linkBankDebt' in documents and "activeDebtId=id" in documents and '<select id="morningBankDebtLink"' not in debt_picker,
    'Bank debt linkage uses a dedicated searchable debt-view module with one preferred suggestion instead of a separate select list')
+ok('class="morning-bank-debt-row ${selected' in debt_picker and 'data-action="morning-bank-debt-select"' in debt_picker and 'morning-bank-debt-action' not in debt_picker
+   and '.morning-bank-debt-results{display:none;' in app_css and '.morning-bank-debt-search-shell:focus-within .morning-bank-debt-results{display:block}' in app_css
+   and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(0,1.45fr)' in app_css
+   and 'collapseMorningBankDebtPicker' in debt_picker and 'collapseMorningBankDebtPicker()' in documents,
+   'Bank debt picker stays collapsed until search focus, uses full-row selection and fits the Morning modal without horizontal scrolling')
 ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in debt_picker,
    'Debt suggestions exclude completed debts and compare bank credits to the current payment remainder')
 ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and 'row.documentLinks=[entry' in controller,

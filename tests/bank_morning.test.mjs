@@ -47,7 +47,7 @@ const partialCandidates=bankMorningDebtCandidates({...row,amount:1000},[{id:'par
 const pickerDebts=[{id:'a',customerName:'משה כהן',amount:1250,orderNumber:'A-15',phone:'0501234567',note:'מיטה לבנה'},{id:'b',customerName:'ישראל לוי',amount:900,orderNumber:'B-2'},{id:'closed',customerName:'סגור',amount:700,paid:true,invoiceIssued:true}];
 assert.deepEqual(activeMorningBankDebts(pickerDebts).map(x=>x.id),['a','b'],'completed debts are absent from the bank debt picker');
 const pickerMarkup=morningBankDebtPickerMarkup({debts:pickerDebts,transaction:row,activeDebtId:'',aggregate:false});
-assert.match(pickerMarkup,/חפש לקוח, הזמנה, טלפון או הערה/);assert.match(pickerMarkup,/התאמה מועדפת/);assert.match(pickerMarkup,/data-bank-debt-search="ישראל לוי b-2"/);assert.doesNotMatch(pickerMarkup,/id="morningBankDebtLink"/);
+assert.match(pickerMarkup,/חפש לקוח, הזמנה, טלפון או הערה/);assert.match(pickerMarkup,/התאמה מועדפת/);assert.match(pickerMarkup,/data-bank-debt-search="ישראל לוי b-2"/);assert.match(pickerMarkup,/<button type="button" class="morning-bank-debt-row[^>]*data-action="morning-bank-debt-select"[^>]*data-click-arg0="b"/,'the entire debt result row is the selection control');assert.doesNotMatch(pickerMarkup,/>בחר</,'bank debt results do not waste a separate action column on a choose button');assert.doesNotMatch(pickerMarkup,/id="morningBankDebtLink"/);
 const direct=attachBankArchiveMetadata([{id:'k1',amount:1250}],[{archiveId:42,id:'k1',handledAt:'2026-09-21T00:00:00Z'}]);assert.equal(direct[0].archiveId,42);assert.ok(direct[0].handledAt);
 
 const response=body=>({ok:true,async json(){return body},async text(){return JSON.stringify(body)}});
