@@ -1,4 +1,5 @@
-function normalizedText(value){return String(value??'').normalize('NFKC').toLocaleLowerCase('he-IL')}
+export function normalizeSearchText(value){return String(value??'').normalize('NFKD').replace(/[\u0591-\u05C7]/g,'').toLocaleLowerCase('he-IL').replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ')}
+function compactSearchText(value){return normalizeSearchText(value).replace(/\s+/g,'')}
 
 function dateParts(value){
   const raw=String(value??'').trim();if(!raw)return null;
@@ -23,9 +24,21 @@ export function dateSearchAliases(value){
 }
 
 export function searchMatch(query,values=[],dateValues=[]){
-  const q=normalizedText(query).trim();if(!q)return true;
-  const hay=[...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].map(normalizedText).join(' ');
-  return hay.includes(q);
+  if(!normalizeSearchText(query))return true;
+  return createPreparedSearchMatcher(query)(prepareSearchValues(values,dateValues));
+}
+
+export function prepareSearchValues(values=[],dateValues=[]){
+  const hay=normalizeSearchText([...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].filter(value=>value!==undefined&&value!==null).join(' '));
+  return {hay,hayCompact:hay.replace(/\s+/g,''),words:hay.split(' ').filter(Boolean)};
+}
+export function createPreparedSearchMatcher(query){
+  const q=normalizeSearchText(query),qCompact=compactSearchText(query),tokens=q.split(' ').filter(Boolean);
+  return ({hay,hayCompact,words})=>{
+  if(!q)return true;
+  if(qCompact&&hayCompact.includes(qCompact))return true;
+  return tokens.every(token=>/^\d{1,2}$/.test(token)?words.includes(token):(hay.includes(token)||hayCompact.includes(token)));
+  };
 }
 
 export function dateInRange(value,from='',to=''){

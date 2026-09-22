@@ -23,7 +23,8 @@ function harness(){
   const first=option('supplierMenuOption0','שלמה אסייג','S1');
   const second=option('supplierMenuOption1','שמואל אסייג','S2');
   const other=option('supplierMenuOption2','משה כהן','S3');
-  const options=[all,first,second,other],empty={hidden:true},attrs=new Map();let focused=false;
+  const punctuated=option('supplierMenuOption3','ת.ב.י רהיטים','S4');
+  const options=[all,first,second,other,punctuated],empty={hidden:true},attrs=new Map();let focused=false;
   const trigger={setAttribute:(key,value)=>attrs.set(key,value)};
   const menu={
     classList:new FakeClassList(),
@@ -45,7 +46,7 @@ function harness(){
   const supplierUi={currentSupplierId:'S3',supplierMoveTargetId:null,supplierBulkSelected:new Set(),supplierBulkAnchorId:null,supplierBulkMode:false,supplierYearView:'current',searchText:''};
   const renders=[];
   const navigation=createDomainsSuppliersNavigation({supplierUi,ui:{currentView:'supplier'},supplierYearContext:()=>({years:[]}),renderSupplier:()=>{},render:options=>renders.push(options)});
-  return {navigation,supplierUi,renders,menu,input,options,all,first,second,other,empty,attrs,focused:()=>focused};
+  return {navigation,supplierUi,renders,menu,input,options,all,first,second,other,punctuated,empty,attrs,focused:()=>focused};
 }
 
 function key(name){return {key:name,isComposing:false,preventDefault(){this.defaultPrevented=true}}}
@@ -67,4 +68,13 @@ test('supplier picker arrows move among filtered matches while the search input 
   const down2=key('ArrowDown');h.navigation.supplierMenuSearchKeydown(down2,h.input);assert.equal(h.second.classList.contains('keyboard-active'),true);assert.equal(h.input.attributes.get('aria-activedescendant'),h.second.id);
   const up=key('ArrowUp');h.navigation.supplierMenuSearchKeydown(up,h.input);assert.equal(h.first.classList.contains('keyboard-active'),true);
   h.navigation.filterSupplierMenu('לא קיים');assert.equal(h.empty.hidden,false);assert.equal(h.options.every(row=>row.hidden),true);assert.equal(h.input.attributes.has('aria-activedescendant'),false);
+});
+
+
+test('supplier picker ignores punctuation when matching compact supplier names',()=>{
+  const h=harness(),visible=h.navigation.filterSupplierMenu('תבי');
+  assert.deepEqual(visible,[h.punctuated]);
+  assert.equal(h.punctuated.classList.contains('keyboard-active'),true);
+  const enter=key('Enter');h.navigation.supplierMenuSearchKeydown(enter,h.input);
+  assert.equal(enter.defaultPrevented,true);assert.equal(h.supplierUi.currentSupplierId,'S4');assert.deepEqual(h.renders,[{supplierScrollMode:'end'}]);
 });
