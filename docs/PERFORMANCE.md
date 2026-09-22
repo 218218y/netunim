@@ -21,7 +21,7 @@
 
 Mutation חייב להעלות revision דרך בעל הפעולה הקיים. אין להשוות JSON בכל render. החלפת state מרחוק עוברת reconcile ברמת collections; restore מלא מעלה epoch. בדיקה שמחליפה fixture ישירות צריכה לעדכן revisions באותה נקודת החלפה. בדיקות parity והשחזור מכסות גם החלפה מרחוק וגם mutations במקום.
 
-אף שינוי בסבב זה אינו מסיר snapshot מיידי, read-back verification, עותק IndexedDB, Outbox, generation, operation IDs, delete intents, merge, עצירה בהתנגשות, primary-tab protection, finance fencing או גיבויים. אין שינוי בפורמט האחסון או בחוזה הענן.
+הערת מצב: הסעיף מתאר את סבב ה־UI/חישובים. בפרויקט Storage V2 המאוחר יותר, Orders ו־Kupa במצב `primary` כבר אינם כותבים browser snapshot או V1 Outbox מלא בכל mutation רגיל לאחר ש־V1 pending קודם נוקז ונקבע cloud cursor. חוזה השרת נשאר מסמך מלא, והגנות generation/operation ID/delete intents/merge/conflict/primary-tab/finance fencing והגיבויים נשמרות.
 
 ### מדידה ו־CI
 
@@ -35,7 +35,7 @@ Mutation חייב להעלות revision דרך בעל הפעולה הקיים. �
 
 ### מה אינו חלק מהסבב
 
-Dynamic imports יישקלו לפי מדידת startup נפרדת. WAL/journal אינו מבוצע: אין כרגע הצדקה להחלפת ארכיטקטורת השמירה. הסבב מטפל בחישובים חוזרים, חיפוש, cloning ותצוגה; הרחבות עתידיות צריכות להתבסס על המדידות, ולא להחליש את חוזה השמירה.
+Dynamic imports יישקלו לפי מדידת startup נפרדת. פרויקט Storage V2 שבוצע לאחר הסבב הזה מוסיף journal/checkpoints ו־cloud cursor באופן מדורג; הוא מתועד ב־[STORAGE_V2.md](STORAGE_V2.md). השינויים כאן בחישובים, חיפוש, cloning ותצוגה נשארים עצמאיים ממנו.
 
 ### אימות מסכם
 
@@ -107,7 +107,7 @@ metrics.clearPerformance();
 
 ## עדכון אחסון — ספטמבר 2026
 
-נוספו מדדי אחסון ובדיקות סקיילינג, תוקן רענון הגליון בחזרה לטאב שמור, ונבנה מנוע journal/checkpoint עם חיבור shadow אופציונלי לשתי האפליקציות. V1 נשאר מקור האמת; ביטול snapshots מלאים עדיין אינו מופעל. פירוט המימוש, המדידות וגבולות ההטמעה נמצא ב־[STORAGE_V2.md](STORAGE_V2.md).
+נוספו מדדי אחסון ובדיקות סקיילינג, תוקן רענון הגליון בחזרה לטאב שמור, ונבנה מנוע journal/checkpoint עם מצבי `shadow` ו־`primary`. מאז, Orders ו־Kupa קיבלו cutover מדורג ל־Cloud Outbox V2: רק לאחר ניקוז V1 pending וקביעת cursor סמכותי הם מפסיקים לייצר full V1 Outbox בכל עריכה רגילה. Shared Checks נשאר במסלול V1 עד soak מתאים של ה־Outbox הראשי. פירוט המימוש, המדידות וגבולות ההטמעה נמצא ב־[STORAGE_V2.md](STORAGE_V2.md).
 
 ## ההמשך לפי ממצאים — התכנית המקורית
 

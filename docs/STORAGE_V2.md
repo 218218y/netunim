@@ -4,7 +4,7 @@
 
 ## מצב ההטמעה
 
-מנוע Storage V2 מחובר כעת לשתי האפליקציות בשלושה מצבים: `off`, ‏`shadow` ו־`primary`. ברירת המחדל נשארת `off` עד להשלמת rollout מבוקר של Outbox הענן ו־Shared Checks. במצב `primary`, פעולה מתוארת נשמרת מיד כפעולת journal קטנה ב־LocalStorage ומועברת ל־IndexedDB, בלי לכתוב browser snapshot מלא בכל עריכה. V1 נשאר fallback מאומת לגבולות מלאים ולכשלי מעבר.
+מנוע Storage V2 מחובר כעת לשתי האפליקציות בשלושה מצבים: `off`, ‏`shadow` ו־`primary`. ברירת המחדל נשארת `off` עד להשלמת rollout מבוקר. במצב `primary`, פעולה מתוארת נשמרת מיד כפעולת journal קטנה ב־LocalStorage ומועברת ל־IndexedDB, בלי לכתוב browser snapshot מלא בכל עריכה. בשתי האפליקציות הושלם גם cutover מדורג של ה־Cloud Outbox הראשי: לאחר ש־V1 pending קודם נוקז ונקבע cloud cursor סמכותי, עריכות רגילות אינן בונות עוד `baseState + snapshot` מלא בכל mutation. Shared Checks נשאר בשלב זה על Outbox V1 בכוונה, עד soak של המסמך הראשי. V1 ממשיך לשמש compatibility/fallback לגבולות מלאים, restore/import ולשדרוגים ישנים.
 
 החיבור כולל:
 
@@ -15,7 +15,10 @@
 - compaction אטומי לפי סף פעולות או זמן idle;
 - cloud cursor מפורש (`ackSeq`), ‏cloud projection נפרד מ־browser state ו־immutable flight;
 - שמירת operations ו־delete intents שלא אושרו בענן גם לאחר checkpoint מקומי;
-- ACK שמאשר רק את ה־flight המדויק ואינו מוחק פעולות שנוצרו בזמן ה־RPC.
+- ACK שמאשר רק את ה־flight המדויק ואינו מוחק פעולות שנוצרו בזמן ה־RPC;
+- reject/rebase מפורש ל־`revision_conflict` מוכח: lost ACK שומר את אותו flight, ואילו conflict ודאי מסובב operation ID חדש לאחר rebase;
+- retry/conflict control עמיד ב־IndexedDB, ו־ACK בשתי האפליקציות מסוגל לכתוב cloud base + checkpoint נוכחי + control באותה transaction;
+- reset מפורש של head סמכותי יוצר epoch חדש ומחליף checkpoint + cloud base תוך מחיקת flight/journal/control הישן באותה transaction. הוא משמש רק בוויתור מפורש על pending מקומי, לא כפתרון אוטומטי להתנגשות.
 
 ## חוזה mutation
 
@@ -52,7 +55,9 @@ Checkpoint נכתב יחד עם `checkpointSeq` באותה עסקת IndexedDB. j
 
 Cloud base הוא projection מפורש עם `revision` ו־`ackSeq`. בעת שליחה נוצר flight מלא אחד בלבד ובו `startSeq`, ‏`endSeq`, ‏operation ID, snapshot מדויק ו־delete intents שנאספו מטווח הפעולות. retry לאחר lost ACK מחזיר את אותו flight. ACK מעדכן base עד `endSeq` בלבד; פעולות חדשות יותר נשארות.
 
-ה־RPCs של Supabase, חוזי merge/rebase, finance fencing וגיבויי השרת לא שונו. ה־Outbox הפעיל של האפליקציות נשאר V1 בברירת המחדל עד rollout ייעודי, אף שתשתית cursor/flight של V2 והבדיקות שלה מוכנות.
+ה־RPCs של Supabase, finance fencing וגיבויי השרת לא שונו. ב־Orders וב־Kupa, כאשר Storage V2 `primary` מוכן ויש base תקין ואין V1 pending, ה־writer משתמש ב־V2 flight. כשל רשת או lost ACK משאיר את ה־flight immutable; `revision_conflict` שקיבל תשובה ודאית קורא remote, עושה 3-way merge, דוחה את ה־flight הישן ורק אז יוצר flight חדש לאותו `endSeq`. ACK מתקדם רק עד סוף ה־flight, ופעולות שנוצרו בזמן ה־RPC עוברות rebase ונשמרות ב־checkpoint באותה עסקה עם ה־ACK.
+
+ה־migration אינו מנסה להמיר `baseState + snapshot` ישן לרשימת operations: V1 pending קיים ממשיך להישלח ב־writer הישן עד ACK, ורק כשהוא נקי נלכד cursor V2 מה־state הסמכותי. אם אין עדיין cursor תקין, האפליקציה נשארת זמנית במסלול V1 במקום למחוק pending או לנחש בסיס. בקופה גם משיכת Shared Checks/Finance מרחוק מעדכנת checkpoint בתוך אותו epoch ואינה מאפסת את cursor של המסמך הראשי.
 
 ## מצבי הפעלה
 
@@ -82,7 +87,7 @@ localStorage.setItem('netunim-storage-v2-mode:orders', 'off');
 ## בדיקות וקבלה
 
 ```text
-node --test tests/storage_journal.test.mjs tests/storage_operation_contract.test.mjs
+node --test tests/storage_journal.test.mjs tests/storage_operation_contract.test.mjs tests/storage_cloud_v2.test.mjs tests/orders_storage_v2_cloud.test.mjs tests/kupa_storage_v2_cloud.test.mjs
 python tests/runtime_storage.py
 python tests/run_all.py --keep-going
 ```
@@ -106,8 +111,8 @@ python tests/run_all.py --keep-going
 
 ## מה נשאר לפני rollout מלא
 
-- להעביר את Outbox הפעיל בשתי האפליקציות מ־`baseState + snapshot` של V1 אל cloud cursor/flight של V2;
-- להעביר את Shared Checks לאחר שה־Outbox הראשי עבר soak מוצלח;
+- להריץ soak ייעודי ל־Cloud Outbox V2 הראשי בשתי האפליקציות על upgrade, restart, offline, lost ACK, conflict ונתונים גדולים;
+- להעביר את Shared Checks רק לאחר שה־Outbox הראשי בשתי האפליקציות עבר soak מוצלח;
 - להריץ upgrade/restart ו־offline soak מול נתוני production מייצגים;
 - רק לאחר מכן לשנות את ברירת המחדל ל־primary ולהשאיר V1 checkpoint נדיר לתקופת rollback.
 

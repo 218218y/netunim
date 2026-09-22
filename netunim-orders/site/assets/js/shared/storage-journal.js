@@ -91,23 +91,66 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const checkpoint=sealStorageRecord({version:2,owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,appMetadata:recovered.appMetadata||{},savedAt:now()},{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');
     try{await db.compact(owner,recovered.epoch,writer,checkpoint);return recovered.seq}finally{done()}
   }
-  async function setCloudBase(revision,state,{validateBase=validate,ackSeq}={}){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');if(!Number.isSafeInteger(ackSeq)||ackSeq<0||ackSeq>seq)throw new Error('storage_base_sequence');validateBase(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord({revision,state,projection:'cloud',ackSeq},{kind:'cloud-base'}))}
-  async function materializeFlight({operationId:flightId,baseRevision,deleteIntents={},snapshot:exactSnapshot,project=state=>state,validateCloud=validate}={}){
+  async function setCloudBase(revision,state,{validateBase=validate,ackSeq}={}){guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');if(!Number.isSafeInteger(ackSeq)||ackSeq<0||ackSeq>seq)throw new Error('storage_base_sequence');validateBase(state);await queue;return db.setBase(owner,epoch,writer,sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq},{kind:'cloud-base'}))}
+  async function captureCloudCursor(revision,{project=state=>state,validateBase=validate}={}){
+    guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');await queue;const recovered=await recover(),state=project(recovered.state);validateBase(state);
+    const base={version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:recovered.seq};await db.setBase(owner,epoch,writer,sealStorageRecord(base,{kind:'cloud-base'}));await db.clearControl(owner,epoch,writer);return structuredClone(base);
+  }
+  async function cloudState({validateBase=validate}={}){
+    guard();await queue;const stored=await db.load(owner),base=stored.bases&&readStorageRecord(stored.bases),flight=stored.flights&&readStorageRecord(stored.flights),control=stored.controls&&readStorageRecord(stored.controls),committedSeq=Number(stored.metadata?.seq);
+    if(!Number.isSafeInteger(committedSeq)||committedSeq<0)throw new Error('storage_committed_metadata_mismatch');
+    if(base){if(base.owner!==owner||base.epoch!==epoch||!Number.isSafeInteger(base.revision)||base.revision<0||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>committedSeq)throw new Error('storage_cloud_base_mismatch');validateBase(base.state)}
+    if(flight){if(flight.owner!==owner||flight.epoch!==epoch||!base||flight.baseRevision!==base.revision||!String(flight.operationId||'').trim()||!Number.isSafeInteger(flight.startSeq)||!Number.isSafeInteger(flight.endSeq)||flight.startSeq!==base.ackSeq+1||flight.endSeq<flight.startSeq||flight.endSeq>committedSeq)throw new Error('storage_cloud_flight_mismatch');validateBase(flight.snapshot)}
+    if(control&&(control.owner!==owner||control.epoch!==epoch))throw new Error('storage_control_scope');
+    const pendingRecords=base?stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=committedSeq).sort((a,b)=>a.seq-b.seq):[];
+    if(base)for(let expected=base.ackSeq+1;expected<=committedSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
+    const latest=pendingRecords.at(-1)||{},afterFlightRecords=flight?pendingRecords.filter(operation=>operation.seq>flight.endSeq):pendingRecords,afterFlightLatest=afterFlightRecords.at(-1)||{};
+    return {seq:committedSeq,base,flight,control,pending:!!base&&committedSeq>base.ackSeq,pendingDeleteIntents:mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),pendingGeneration:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),pendingMutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',pendingSurface:latest.surface||'unknown',afterFlightPending:!!flight&&committedSeq>flight.endSeq,afterFlightDeleteIntents:mergeDeleteIntents(...afterFlightRecords.map(operation=>operation.deleteIntents||{})),afterFlightGeneration:Math.max(0,...afterFlightRecords.map(operation=>Number(operation.generation||0))),afterFlightMutationType:afterFlightRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':afterFlightLatest.mutationType||'autosave',afterFlightSurface:afterFlightLatest.surface||'unknown'};
+  }
+  async function materializeFlight({operationId:flightId,baseRevision,throughSeq,snapshot:exactSnapshot,project=state=>state,validateCloud=validate}={}){
     guard();await queue;const recovered=await recover();
     if(recovered.stored.flights)return readStorageRecord(recovered.stored.flights);
     if(!flightId)throw new Error('storage_flight_id_required');
     if(!Number.isSafeInteger(baseRevision)||baseRevision<0||!recovered.stored.bases)throw new Error('storage_cloud_base_mismatch');
-    const base=readStorageRecord(recovered.stored.bases);
+    const base=readStorageRecord(recovered.stored.bases),targetSeq=throughSeq===undefined?recovered.seq:Number(throughSeq);
     if(base.revision!==baseRevision||!Number.isSafeInteger(base.ackSeq)||base.ackSeq<0||base.ackSeq>recovered.seq)throw new Error('storage_cloud_base_mismatch');
-    const pendingRecords=recovered.stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=recovered.seq).sort((a,b)=>a.seq-b.seq);
-    for(let expected=base.ackSeq+1;expected<=recovered.seq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
+    if(!Number.isSafeInteger(targetSeq)||targetSeq<base.ackSeq||targetSeq>recovered.seq)throw new Error('storage_flight_range');
+    if(targetSeq===base.ackSeq)return null;
+    if(targetSeq<recovered.seq&&exactSnapshot===undefined)throw new Error('storage_historical_snapshot_required');
+    const pendingRecords=recovered.stored.journal.map(readStorageRecord).filter(operation=>operation.epoch===epoch&&operation.seq>base.ackSeq&&operation.seq<=targetSeq).sort((a,b)=>a.seq-b.seq);
+    for(let expected=base.ackSeq+1;expected<=targetSeq;expected++)if(pendingRecords[expected-base.ackSeq-1]?.seq!==expected)throw new Error('storage_cloud_journal_gap');
     const done=beginMeasure('storage:outbox-materialize');let snapshot;
     try{snapshot=exactSnapshot===undefined?project(recovered.state):structuredClone(exactSnapshot);validateCloud(snapshot)}finally{done()}
-    const pendingDeleteIntents=mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{}),deleteIntents);
-    const value={version:2,owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:recovered.seq,snapshot,deleteIntents:pendingDeleteIntents};
+    const pendingDeleteIntents=mergeDeleteIntents(...pendingRecords.map(operation=>operation.deleteIntents||{})),latest=pendingRecords.at(-1)||{};
+    const value={version:2,owner,epoch,operationId:flightId,baseRevision,startSeq:base.ackSeq+1,endSeq:targetSeq,snapshot,deleteIntents:pendingDeleteIntents,generation:Math.max(0,...pendingRecords.map(operation=>Number(operation.generation||0))),mutationType:pendingRecords.some(operation=>operation.mutationType==='bulk-delete')?'bulk-delete':latest.mutationType||'autosave',surface:latest.surface||'unknown'};
     const sealed=sealStorageRecord(value,{kind:'flight-payload'}),flightDone=beginMeasure('storage:flight-write');
     try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageRecord(sealed)}finally{flightDone()}
   }
-  async function acknowledge(flightId,revision,state,{validateBase=validate}={}){guard();validateBase(state);await queue;const stored=await db.load(owner),flight=stored.flights&&readStorageRecord(stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');return db.acknowledge(owner,epoch,writer,flightId,sealStorageRecord({revision,state,projection:'cloud',ackSeq:flight.endSeq},{kind:'cloud-base'}))}
-  return {open,install,append,recover,compact,setCloudBase,materializeFlight,acknowledge,settled:()=>queue,get ready(){return ready&&!failed},get epoch(){return epoch},get seq(){return seq},get error(){return failed}};
+  async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,appMetadata={},control=null}={}){
+    guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageRecord(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
+    const base=sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:flight.endSeq},{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
+    return db.acknowledge(owner,epoch,writer,flightId,base,{checkpoint,control:sealedControl});
+  }
+  async function rejectAndRebase(flightId,revision,state,{validateBase=validate,control=null}={}){
+    guard();validateBase(state);await queue;const stored=await db.load(owner),flight=stored.flights&&readStorageRecord(stored.flights),base=stored.bases&&readStorageRecord(stored.bases);if(!flight||flight.operationId!==flightId)throw new Error('storage_reject_mismatch');if(!base)throw new Error('storage_cloud_base_mismatch');
+    const nextBase=sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:base.ackSeq},{kind:'cloud-base'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
+    await db.rejectFlight(owner,epoch,writer,flightId,nextBase,sealedControl);return {rejected:structuredClone(flight),base:readStorageRecord(nextBase),control:sealedControl&&readStorageRecord(sealedControl)};
+  }
+  async function setCloudControl(control={}){guard();await queue;const sealed=sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'});await db.setControl(owner,epoch,writer,sealed);return readStorageRecord(sealed)}
+  async function clearCloudControl(){guard();await queue;return db.clearControl(owner,epoch,writer)}
+  async function replaceCurrentState(state,{appMetadata={}}={}){
+    guard();validate(state);await queue;const recovered=await recover();if(recovered.seq!==seq)throw new Error('storage_checkpoint_stale');
+    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state,appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'});await db.replaceCheckpoint(owner,epoch,writer,checkpoint);return recovered.seq;
+  }
+  async function adoptCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={}}={}){
+    guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);await queue;const recovered=await recover(),base=recovered.stored.bases&&readStorageRecord(recovered.stored.bases);if(!base||recovered.stored.flights||base.ackSeq!==recovered.seq)throw new Error('storage_cloud_pending');
+    const checkpoint=sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:structuredClone(currentState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch,revision,state:structuredClone(cloudState),projection:'cloud',ackSeq:recovered.seq},{kind:'cloud-base'});
+    await db.adoptCloudHead(owner,epoch,writer,checkpoint,nextBase);return {seq:recovered.seq,revision};
+  }
+  async function resetCloudHead(revision,cloudState,currentState,{validateBase=validate,appMetadata={}}={}){
+    guard();if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');validateBase(cloudState);validate(currentState);await queue;
+    const nextEpoch=operationId(),checkpoint=sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:0,state:structuredClone(currentState),appMetadata:structuredClone(appMetadata),savedAt:now()},{kind:'checkpoint'}),nextBase=sealStorageRecord({version:2,owner,epoch:nextEpoch,revision,state:structuredClone(cloudState),projection:'cloud',ackSeq:0},{kind:'cloud-base'});
+    await db.resetCloudHead(owner,epoch,writer,checkpoint,nextBase);epoch=nextEpoch;seq=0;ready=true;failed=null;for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);return {epoch,seq,revision};
+  }
+  return {open,install,append,recover,compact,setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,resetCloudHead,settled:()=>queue,get ready(){return ready&&!failed},get epoch(){return epoch},get seq(){return seq},get error(){return failed}};
 }

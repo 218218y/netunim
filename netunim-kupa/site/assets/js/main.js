@@ -11,6 +11,7 @@ import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
 import {createStoragePending} from './storage/pending.js';
 import {createStorageBrowser} from './storage/browser.js';
+import {createStorageV2CloudPorts} from './storage/v2-cloud-ports.js';
 import {createSyncChecksState} from './sync/checks-state.js';
 import {createStorageTabLock} from './storage/tab-lock.js';
 import {createSyncRecovery} from './sync/recovery.js';
@@ -122,13 +123,16 @@ const storagePending=createStoragePending({
 const storageShadow=createStorageV2Runtime({app:'kupa',owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.normalizeState(state)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
+  legacyCloudPendingExists:(...args)=>storagePending.cloudPendingExistsSync(...args),
   model,
   session,
   files,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
+  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
+const storageV2Cloud=createStorageV2CloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'kupa.restore.group.v1',
@@ -165,6 +169,7 @@ const syncRecovery=createSyncRecovery({
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
+  ...storageV2Cloud,
   getCloudPending:(...args)=>storagePending.getCloudPending(...args),
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   loadBrowserState:(...args)=>storageBrowser.loadBrowserState(...args),
@@ -191,6 +196,7 @@ const storageBackup=createStorageBackup({
 const storagePersistence=createStoragePersistence({
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   storageV2Primary:()=>storageShadow.primaryReady,
+  ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
   session,
@@ -273,6 +279,7 @@ const syncChecks=createSyncChecks({
   files,
   tab,
   persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
+  ...storageV2Cloud,
   persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
   markSharedChecksPending:(...args)=>syncChecksState.markSharedChecksPending(...args),
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
@@ -342,6 +349,7 @@ const syncDocument=createSyncDocument({
   toast:(...args)=>uiStatus.toast(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
+  ...storageV2Cloud,
   domainRevisions,
 });
 
@@ -350,6 +358,7 @@ const uiCloud=createUiCloud({
   tab,
   checksSession,
   model,
+  ...storageV2Cloud,
   clearCloudPending:(...args)=>storagePending.clearCloudPending(...args),
   loadSupabaseState:(...args)=>syncDocument.loadSupabaseState(...args),
   toast:(...args)=>uiStatus.toast(...args),
@@ -746,6 +755,7 @@ const lifecycle=createLifecycle({
   openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
+  ...storageV2Cloud,
   tab,
   checksSession,
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
@@ -934,8 +944,8 @@ sidebarMedia.addEventListener('change',syncSidebarMode);syncSidebarMode();
 document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(sidebar.classList.contains('open'))setSidebarOpen(false,{restoreFocus:true});else uiModal.closeModal()}});
-window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});if(session.connectionMode==='supabase'&&session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending()});
-window.addEventListener('beforeunload',e=>{if(!tab.primaryTab)return;const unsavedKupa=session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()),unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync())return;storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});if(session.connectionMode==='supabase'&&unsavedKupa&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(unsavedChecks)syncChecksState.markSharedChecksPending();e.preventDefault();e.returnValue=''});
+window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending()});
+window.addEventListener('beforeunload',e=>{if(!tab.primaryTab)return;const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive(),unsavedKupa=session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()),unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork(),v2Pending=v2Cloud&&!!session.storageV2CloudPending;if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync()&&!v2Pending)return;storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});if(session.connectionMode==='supabase'&&unsavedKupa&&!v2Cloud&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(unsavedChecks)syncChecksState.markSharedChecksPending();e.preventDefault();e.returnValue=''});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 bindDismissibleDetails(document);

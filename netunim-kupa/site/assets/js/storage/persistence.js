@@ -7,7 +7,7 @@ import {jsonEq} from '../sync/merge-records.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function requestCloudSave(snapshot,msg,generation){
   cloudSaveRequest={snapshot,msg,generation};
@@ -44,8 +44,9 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
     // and file I/O cannot delay the paint caused by the user's edit.
     return nextTurn(()=>{
       const currentGeneration=session.localGeneration,fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
-      if(session.connectionMode==='supabase'&&session.backendReady)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});
-      if(session.connectionMode==='supabase'&&session.backendReady)return requestCloudSave(snapshot,msg,currentGeneration);
+      const v2Cloud=storageV2CloudOutboxActive();
+      if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});
+      if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,currentGeneration)):requestCloudSave(snapshot,msg,currentGeneration);
       session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return session.saveQueue;
     });
   }
@@ -55,8 +56,12 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,storageBoundary,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
   localDone();
   if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
-  if(session.connectionMode==='supabase'&&session.backendReady)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});
-  if(session.connectionMode==='supabase'&&session.backendReady)return requestCloudSave(snapshot,msg,generation);
+  // Boundary operations (restore/import/authoritative replacement) intentionally stay on
+  // the legacy compatibility outbox until the replacement-checkpoint migration is fully
+  // drained. A boundary can install a new V2 epoch, so it must never reuse a stale V2 cursor.
+  const v2Cloud=storageV2CloudOutboxActive()&&!storageBoundary;
+  if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});
+  if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,generation)):requestCloudSave(snapshot,msg,generation);
   session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));
   return session.saveQueue
 }

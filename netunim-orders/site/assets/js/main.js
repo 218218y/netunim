@@ -6,6 +6,7 @@ import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
+import {createStorageV2CloudPorts} from './storage/v2-cloud-ports.js';
 import {createStorageChecks} from './storage/checks.js';
 import {createDomainsSuppliersSelectors} from './domains/suppliers/selectors.js';
 import {createDomainsSuppliersCommands} from './domains/suppliers/commands.js';
@@ -115,6 +116,7 @@ const storageBrowser=createStorageBrowser({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });
+const storageV2Cloud=createStorageV2CloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'orders.restore.group.v1',
@@ -194,6 +196,7 @@ const storagePersistence=createStoragePersistence({
   render:(...args)=>uiNavigation.render(...args),
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
+  ...storageV2Cloud,
   setSave:(...args)=>uiStatus.setSave(...args),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
@@ -735,6 +738,7 @@ const syncDocument=createSyncDocument({
   refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
+  ...storageV2Cloud,
 });
 
 const uiCloud=createUiCloud({
@@ -770,6 +774,7 @@ const uiCloud=createUiCloud({
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+  ...storageV2Cloud,
 });
 
 const domainsCalendarController=createDomainsCalendarController({
@@ -822,6 +827,8 @@ const lifecycle=createLifecycle({
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
   loadCloudPendingState:(...args)=>storageBrowser.loadCloudPendingState(...args),
+  ...storageV2Cloud,
+  cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
   getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
   checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
