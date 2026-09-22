@@ -1,3 +1,5 @@
+import {createStorageShadow} from './shared/storage-shadow.js';
+import {assertOrderEntityInvariants} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
@@ -100,7 +102,9 @@ const stateNormalization=createStateNormalization({
   model,
 });
 
+const storageShadow=createStorageShadow({app:'orders',owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true})});
 const storageBrowser=createStorageBrowser({
+  observeStorage:(...args)=>storageShadow.observe(...args),
   externalWorkbooks:true,
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   model,

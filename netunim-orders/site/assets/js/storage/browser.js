@@ -1,3 +1,4 @@
+import {measureStorage,stringifyStorage,writeVerifiedStorage} from '../shared/storage-metrics.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
@@ -10,7 +11,7 @@ const LOCAL_SYNC_STORE='sync';
 const ORDERS_OUTBOX_KEY='orders-outbox-v3';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBrowser({externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState, domainRevisions}){
+export function createStorageBrowser({observeStorage=()=>{},externalWorkbooks=false,captureLegacyWorkbook=async()=>{},model, files, session, prepareState, prepareCloudState, normalizeState, domainRevisions}){
 let sequenceLoaded=false,outboxHeadVerified=false,pendingCacheReadOk=true;
 // Another primary tab may have saved while this tab was inactive.
 function invalidateCloudPendingHead(){outboxHeadVerified=false}
@@ -22,7 +23,7 @@ function nextSnapshotSequence(){
 
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
-function localSnapshot(source=model.state){const done=beginMeasure('orders:local-snapshot');try{assertOrderEntityInvariants(source,{includeChecks:true,required:true});const payload=prepareState(source);nextSnapshotSequence();payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=JSON.stringify(payload);localStorage.setItem(STORAGE_KEY,text);if(localStorage.getItem(STORAGE_KEY)!==text)throw new Error('local snapshot verification failed');localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk}finally{done()}}
+function localSnapshot(source=model.state,options){const done=beginMeasure('orders:local-snapshot');try{measureStorage('validate',()=>assertOrderEntityInvariants(source,{includeChecks:true,required:true}));const payload=measureStorage('checkpoint-clone',()=>prepareState(source));nextSnapshotSequence();payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);try{observeStorage(payload,options)}catch(error){console.error('storage shadow observation',error)}return localStorageOk}finally{done()}}
 
 const openLocalStateDb=createIndexedDbConnection(LOCAL_DB,2,db=>{if(!db.objectStoreNames.contains(LOCAL_STORE))db.createObjectStore(LOCAL_STORE);if(!db.objectStoreNames.contains(LOCAL_SYNC_STORE))db.createObjectStore(LOCAL_SYNC_STORE)});
 
@@ -39,7 +40,7 @@ async function loadBrowserStateSnapshot(){try{const db=await openLocalStateDb();
 async function restoreBrowserStateFallback(){const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);if(record?.payload&&(!local||idbSeq>localSeq)){await captureLegacyWorkbook(record.payload.notesSheet);const previous=model.state;model.state=normalizeState(clone(record.payload));domainRevisions?.reconcile(previous,model.state);try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}return true}return false}
 
 function readPendingCache(){try{const value=JSON.parse(localStorage.getItem(CLOUD_PENDING_KEY)||'null');pendingCacheReadOk=true;return value}catch(e){pendingCacheReadOk=false;console.error('cloud pending cache load',e);return null}}
-function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CLOUD_PENDING_KEY,text);if(localStorage.getItem(CLOUD_PENDING_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('cloud pending cache',e);return false}}
+function writePendingCache(record){try{const text=stringifyStorage('pending',record);writeVerifiedStorage(localStorage,CLOUD_PENDING_KEY,text);return true}catch(e){console.error('cloud pending cache',e);return false}}
 function normalizeDeleteIntents(value){const out={};if(!value||typeof value!=='object'||Array.isArray(value))return out;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))].sort();if(clean.length)out[key]=clean}return out}
 function mergeDeleteIntents(...values){const out={};for(const value of values){for(const [key,ids] of Object.entries(normalizeDeleteIntents(value))){out[key]=[...new Set([...(out[key]||[]),...ids])].sort()}}return out}
 function migrateOrdersOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIntents=normalizeDeleteIntents(value?.deleteIntents);return record}

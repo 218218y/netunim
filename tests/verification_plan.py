@@ -30,7 +30,7 @@ GROUPS = {
     "browser-ui": ["runtime_smoke.py", "runtime_responsive.py", "runtime_calendar.py", "runtime_events.py"],
     "browser-morning": ["runtime_morning.py"],
     "browser-lifecycle": ["runtime_security.py", "runtime_pwa.py", "runtime_performance.py", "runtime_data_integrity.py"],
-    "browser-sync": ["spreadsheet_runtime.py", "runtime_workflows.py", "runtime_sync_recovery.py", "runtime_sync_multitab.py", "runtime_sync_two_computers.py", "runtime_financial.py"],
+    "browser-sync": ["runtime_storage.py", "spreadsheet_runtime.py", "runtime_workflows.py", "runtime_sync_recovery.py", "runtime_sync_multitab.py", "runtime_sync_two_computers.py", "runtime_financial.py"],
     "browser-database": ["runtime_sync_postgres.py"],
 }
 CORE_SUITES = [suite for group, suites in GROUPS.items() if not group.startswith("browser-") for suite in suites]

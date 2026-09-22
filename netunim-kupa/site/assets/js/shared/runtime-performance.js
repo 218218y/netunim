@@ -3,6 +3,9 @@ const samples=new Map();
 let enabled=false,observer=null,epoch=0;
 const noop=()=>{};
 function record(name,duration){if(!enabled||!Number.isFinite(duration))return;const rows=samples.get(name)||[];rows.push(duration);if(rows.length>120)rows.shift();samples.set(name,rows)}
+// Numeric diagnostics (bytes/passes), using the same bounded opt-in sink.
+export function recordPerformanceValue(name,value){record(name,value)}
+export function performanceEnabled(){return enabled}
 export function configurePerformance(value=true){
   enabled=!!value;epoch++;observer?.disconnect();observer=null;
   if(enabled&&globalThis.PerformanceObserver?.supportedEntryTypes?.includes('longtask')){

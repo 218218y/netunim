@@ -7,7 +7,17 @@ export function createSpreadsheetWorkspace({domain,request,account,enabled,prima
     onChange:()=>{if(active())render()},
     onStatus:state=>{for(const element of document.querySelectorAll('[data-spreadsheet-status]')){element.textContent=state.error||labels[state.status];element.dataset.state=state.status}},
   });
-  let pollTimer=null,started=false;
+  let pollTimer=null,started=false,activation=null,refreshError='';
+  function activate(){
+    if(!active())return Promise.resolve(false);
+    if(activation)return activation;
+    refreshError='';
+    activation=(async()=>{
+      if(!sync.ready)return sync.open();
+      for(const element of document.querySelectorAll('[data-spreadsheet-status]'))element.textContent='\u05d1\u05d5\u05d3\u05e7 \u05e2\u05d3\u05db\u05d5\u05e0\u05d9\u05dd\u2026';
+      try{return await sync.poll()}catch{refreshError='לא ניתן לבדוק עדכונים כרגע — מוצג העותק המקומי';return false}finally{if(active())for(const element of document.querySelectorAll('[data-spreadsheet-status]'))element.textContent=refreshError||sync.error||labels[sync.status]}
+    })().catch(()=>false).finally(()=>{activation=null});return activation;
+  }
   function start(){if(started)return;started=true;window.addEventListener('pagehide',sync.pagehide);window.addEventListener('beforeunload',sync.beforeUnload);document.addEventListener('visibilitychange',()=>{if(document.hidden){sync.pagehide();void sync.flush({send:false})}else if(active())void sync.poll().catch(()=>{})});window.addEventListener('online',()=>{if(sync.ready)void sync.flush()});document.addEventListener('click',event=>{if(sync.ready&&event.target.closest?.('[data-page],[data-view],[data-action="notes-workspace-notes"]'))void sync.flush()},true);pollTimer=setInterval(()=>{if(active()&&!document.hidden)void sync.poll().catch(()=>{})},20000)}
   function exportLocal(){const source=sync.model.state.notesSheet||legacy();if(!source&&!sync.recovery)return;const blob=new Blob([JSON.stringify({format:'netunim-workbook',domain,version:1,workbook:source,recovery:sync.recovery!==source?sync.recovery:undefined},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`${domain}-workbook-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   async function showBackups(){
@@ -36,5 +46,5 @@ export function createSpreadsheetWorkspace({domain,request,account,enabled,prima
   function toolbarMarkup(){start();return `<div class="spreadsheet-toolbar"><span data-spreadsheet-status data-state="${sync.status}" role="status">${esc(sync.error||labels[sync.status])}</span><div><button class="btn small" data-action="spreadsheet-export">ייצוא גליון</button><button class="btn small" data-action="spreadsheet-import">ייבוא JSON</button><button class="btn small" data-action="spreadsheet-backups">גיבויים ושחזור</button>${sync.conflict?'<button class="btn small" data-action="spreadsheet-use-remote">פתרון התנגשות</button>':''}</div></div>`}
   function saveWorkbook(message,options={}){if(message==='תא בגליון עודכן')return;sync.changed(null,{immediate:true,deleteIntents:options.deleteIntents})}
   function cellChanged(rowId,columnId,value,updatedAt){sync.changed({rowId,columnId,value,updatedAt})}
-  return {sync,model:sync.model,saveWorkbook,cellChanged,loadingMarkup,toolbarMarkup,actions,get ready(){return sync.ready},get readOnly(){return !!sync.conflict||!primary()},dispose(){if(pollTimer)clearInterval(pollTimer)}};
+  return {sync,activate,model:sync.model,saveWorkbook,cellChanged,loadingMarkup,toolbarMarkup,actions,get ready(){return sync.ready},get readOnly(){return !!sync.conflict||!primary()},dispose(){if(pollTimer)clearInterval(pollTimer)}};
 }

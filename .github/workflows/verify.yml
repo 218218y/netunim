@@ -84,6 +84,7 @@ jobs:
           path: |
             .work/ci/${{ matrix.group }}/
             .work/performance/latest.json
+            .work/storage-performance/latest.json
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14

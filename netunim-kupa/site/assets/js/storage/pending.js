@@ -1,3 +1,4 @@
+import {stringifyStorage,writeVerifiedStorage} from '../shared/storage-metrics.js';
 import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
 import {CLOUD_PENDING_LOCAL_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
 import {acknowledgedGenerationMatches,compareOutboxFreshness,migrateOutboxRecord} from '../shared/cloud-sync.js';
@@ -22,7 +23,7 @@ function invalidateCloudPendingHead(){outboxHeadVerified=false}
 globalThis.addEventListener?.('storage',event=>{if(event.key===CLOUD_PENDING_LOCAL_KEY||event.key===null)invalidateCloudPendingHead()});
 function loadCloudPendingSync(){if(outboxHeadVerified)return session.cloudOutboxCached||null;try{const raw=localStorage.getItem(CLOUD_PENDING_LOCAL_KEY),pending=raw?JSON.parse(raw):null;localPendingReadOk=true;if(compareOutboxFreshness(session.cloudOutboxCached,pending)>0)return session.cloudOutboxCached;if(pending)session.localGeneration=Math.max(session.localGeneration,Number(pending.generation||0));return pending}catch(e){localPendingReadOk=false;console.error('pending local load',e);return session.cloudOutboxCached||null}}
 
-function persistCloudPendingSync(p){if(Number(session.cloudOutboxCached?.generation||0)>Number(p?.generation||0)||(Number(session.cloudOutboxCached?.generation||0)===Number(p?.generation||0)&&Number(session.cloudOutboxCached?.mutationSeq||0)>Number(p?.mutationSeq||0)))return false;session.cloudOutboxCached=p;outboxHeadVerified=false;try{const text=JSON.stringify(p);localStorage.setItem(CLOUD_PENDING_LOCAL_KEY,text);if(localStorage.getItem(CLOUD_PENDING_LOCAL_KEY)!==text)throw new Error('pending cache verification failed');return true}catch(e){console.error('pending local save',e);return false}}
+function persistCloudPendingSync(p){if(Number(session.cloudOutboxCached?.generation||0)>Number(p?.generation||0)||(Number(session.cloudOutboxCached?.generation||0)===Number(p?.generation||0)&&Number(session.cloudOutboxCached?.mutationSeq||0)>Number(p?.mutationSeq||0)))return false;session.cloudOutboxCached=p;outboxHeadVerified=false;try{const text=stringifyStorage('pending',p);writeVerifiedStorage(localStorage,CLOUD_PENDING_LOCAL_KEY,text);return true}catch(e){console.error('pending local save',e);return false}}
 
 function migrationDefaults(candidate={}){return {domain:'kupa',documentName:candidate.documentName||session.cloudDocumentName||'main',baseRevision:candidate.baseRevision??session.dbRevision??0,baseState:candidate.baseState||candidate.snapshot||{},snapshot:candidate.snapshot||{},generation:Math.max(1,Number(candidate.generation||session.localGeneration||0))}}
 

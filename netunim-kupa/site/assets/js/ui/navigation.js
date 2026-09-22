@@ -4,7 +4,7 @@ import {createCleanViewCache} from '../shared/clean-view-cache.js';
 import {TITLES} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiNavigation({runFinance=withFinanceDerivations, ui, renderDashboard, renderChecks, renderCredit, renderCash, renderBank, renderNotes, renderSettings, maybeAutoRefreshBankBalance, maybeAutoRefreshCreditSync, refreshCheckBankIndicator=()=>{}, maybeShowCashflowStartupAlert=()=>{},dataRevision=()=>''}){
+export function createUiNavigation({onPageActivated=()=>{},runFinance=withFinanceDerivations, ui, renderDashboard, renderChecks, renderCredit, renderCash, renderBank, renderNotes, renderSettings, maybeAutoRefreshBankBalance, maybeAutoRefreshCreditSync, refreshCheckBankIndicator=()=>{}, maybeShowCashflowStartupAlert=()=>{},dataRevision=()=>''}){
 const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(page){
   if(page==='checks')return JSON.stringify([ui.checkTab,ui.checkAccount,ui.checkYear,ui.checkFocus,ui.checkSearchValue,ui.bulkCollection,setKey(ui.bulkSelected)]);
@@ -17,7 +17,7 @@ function viewStateKey(page){
 const cacheablePage=page=>['dashboard','checks','credit','cash','bank','expenses','notes'].includes(page);
 const viewCache=createCleanViewCache({container:()=>document.getElementById('content'),dataRevision,viewStateKey,cacheable:cacheablePage,maxEntries:3});
 function afterNavigation(){refreshCheckBankIndicator();maybeAutoRefreshBankBalance();maybeAutoRefreshCreditSync();maybeShowCashflowStartupAlert()}
-function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();return}render()}
+function setPage(p){ui.bulkCollection=null;ui.bulkSelected.clear();ui.currentPage=p;document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));const [t,s]=TITLES[p];document.getElementById('pageTitle').textContent=t;document.getElementById('pageSub').textContent=s;document.getElementById('sidebar').classList.remove('open');if(viewCache.activate(p)){afterNavigation();onPageActivated(p);return}render();onPageActivated(p)}
 
 function render(){return runFinance(renderContent)}
 function renderContent(){const done=beginMeasure(`kupa:render:${ui.currentPage}`);try{if(ui.currentPage==='dashboard')renderDashboard();if(ui.currentPage==='checks')renderChecks();if(ui.currentPage==='credit')renderCredit();if(ui.currentPage==='cash')renderCash();if(ui.currentPage==='bank')renderBank();if(ui.currentPage==='expenses')renderBank();if(ui.currentPage==='notes')renderNotes();if(ui.currentPage==='settings')renderSettings();viewCache.markRendered(ui.currentPage);afterNavigation()}finally{done()}}

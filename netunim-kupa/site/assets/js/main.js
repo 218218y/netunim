@@ -1,3 +1,5 @@
+import {createStorageShadow} from './shared/storage-shadow.js';
+import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
@@ -117,7 +119,9 @@ const storagePending=createStoragePending({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
+const storageShadow=createStorageShadow({app:'kupa',owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true})});
 const storageBrowser=createStorageBrowser({
+  observeStorage:(...args)=>storageShadow.observe(...args),
   model,
   session,
   files,
@@ -433,7 +437,8 @@ const uiNavigation=createUiNavigation({
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
-  dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA'),
+  onPageActivated:page=>{if(page==='notes'&&ui.notesTab==='sheet')void spreadsheetWorkspace.activate()},
+  dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA')+(page==='notes'&&ui.notesTab==='sheet'?':'+spreadsheetWorkspace.sync.cacheStamp:''),
 });
 
 const uiGlobalSearch=createUiGlobalSearch({

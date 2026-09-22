@@ -8,7 +8,7 @@ export const SPREADSHEET_DRAFT_MS=120;
 
 export function createSpreadsheetSync({domain,request,account,enabled,primary=()=>true,online=()=>globalThis.navigator?.onLine!==false,store=createSpreadsheetStore(),onChange=()=>{},onStatus=()=>{},legacy=()=>undefined,setTimer=setTimeout,clearTimer=clearTimeout}){
   const model={state:{notesSheet:null}};
-  let key='',owner='',record=null,loading=null,sending=null,writeQueue=Promise.resolve(),draftTimer=null,idleTimer=null,retryTimer=null,dirty=false,generation=0;
+  let key='',owner='',record=null,loading=null,sending=null,polling=null,writeQueue=Promise.resolve(),draftTimer=null,idleTimer=null,retryTimer=null,dirty=false,generation=0;
   const patches=new Map();
   const metrics={rpc:0,sentBytes:0,reads:0,localCommits:0,journals:0};
   let status='unloaded',error='',durableGeneration=0,structureGeneration=0,committedGeneration=0;
@@ -141,7 +141,7 @@ export function createSpreadsheetSync({domain,request,account,enabled,primary=()
       setStatus(record.conflict?'conflict':dirty?'pending':'saved');onChange();return !dirty;
     })().catch(e=>{setStatus('pending',e.message);clearTimer(retryTimer);retryTimer=setTimer(()=>{retryTimer=null;if(cloud())void flush().catch(()=>{})},15000);return false}).finally(()=>{sending=null});return sending;
   }
-  async function poll(){if(!record||!cloud()||sending||loading||record.conflict)return false;if(dirty)return flush();const metadata=await readRemote(true);if(metadata&&Number(metadata.revision)>record.revision){await reconcileRemote();await commit();setStatus(record.conflict?'conflict':'saved');onChange();return true}return false}
+  function poll(){if(polling)return polling;polling=(async()=>{if(!record||!cloud()||sending||loading||record.conflict)return false;if(dirty)return flush();const metadata=await readRemote(true);if(metadata&&Number(metadata.revision)>record.revision){await reconcileRemote();await commit();setStatus(record.conflict?'conflict':'saved');onChange();return true}return false})().finally(()=>{polling=null});return polling}
   function pagehide(){if(!record||!available())return;store.saveEmergency(key,[...patches.values()]);void persistDrafts().catch(()=>{})}
   function beforeUnload(event){if(!record||generation<=durableGeneration)return;const journalSafe=structureGeneration<=committedGeneration&&store.saveEmergency(key,[...patches.values()]);if(!journalSafe){event.preventDefault();event.returnValue=''}}
   async function backups(){if(!record||!cloud())return [];const response=await request(`/rest/v1/spreadsheet_backups?domain=eq.${domain}&document_name=eq.main&select=id,revision,created_at,kind&order=created_at.desc&limit=40`,{method:'GET'});if(!response.ok)throw new Error('לא ניתן לקרוא את גיבויי הגליון');return response.json()}
@@ -171,5 +171,5 @@ export function createSpreadsheetSync({domain,request,account,enabled,primary=()
       await commit();setStatus('conflict');onChange();
     }
   }
-  return {model,open,changed,flush,poll,pagehide,beforeUnload,backups,restore,importWorkbook,useRemoteAfterExport,captureLegacy,metrics,get ownerKey(){return key},get recovery(){return record?.legacyRecovery||record?.legacy||model.state.notesSheet},get status(){return status},get error(){return error},get revision(){return record?.revision||0},get ready(){return !!record&&owner===currentAccount()&&status!=='loading'&&status!=='error'},get conflict(){return record?.conflict||null}};
+  return {model,open,changed,flush,poll,pagehide,beforeUnload,backups,restore,importWorkbook,useRemoteAfterExport,captureLegacy,metrics,get cacheStamp(){return `${key}:${record?.revision||0}:${generation}`},get ownerKey(){return key},get recovery(){return record?.legacyRecovery||record?.legacy||model.state.notesSheet},get status(){return status},get error(){return error},get revision(){return record?.revision||0},get ready(){return !!record&&owner===currentAccount()&&status!=='loading'&&status!=='error'},get conflict(){return record?.conflict||null}};
 }

@@ -31,9 +31,9 @@ function mountNotesLayout(){
   resizeAllStickyNotes();layoutStickyNoteGrid(grid);
 }
 
-function addStickyNote(){const now=new Date().toISOString(),note={id:uid('NOTE'),content:'',createdAt:now,updatedAt:now};model.state.notes.unshift(note);notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;scheduleSave('פתק חדש נוסף');renderNotes();requestAnimationFrame(()=>{const el=document.querySelector(`[data-note-id="${CSS.escape(String(note.id))}"] textarea`);if(el){resizeStickyNoteTextarea(el);el.focus()}})}
+function addStickyNote(){const now=new Date().toISOString(),note={id:uid('NOTE'),content:'',createdAt:now,updatedAt:now};model.state.notes.unshift(note);notesUi.notesBulkSelected.clear();notesUi.notesBulkAnchorId=null;scheduleSave('פתק חדש נוסף',{operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:0,record:note}]});renderNotes();requestAnimationFrame(()=>{const el=document.querySelector(`[data-note-id="${CSS.escape(String(note.id))}"] textarea`);if(el){resizeStickyNoteTextarea(el);el.focus()}})}
 
-function updateStickyNote(id,el){const note=model.state.notes.find(x=>x.id===id);if(!note)return;note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);layoutStickyNoteCard(el.closest('.sticky-note'));const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);scheduleSave('הפתק עודכן')}
+function updateStickyNote(id,el){const note=model.state.notes.find(x=>x.id===id);if(!note)return;note.content=el.value;note.updatedAt=new Date().toISOString();resizeStickyNoteTextarea(el);layoutStickyNoteCard(el.closest('.sticky-note'));const date=el.closest('.sticky-note')?.querySelector('[data-note-date]');if(date)date.textContent=noteDisplayDate(note);scheduleSave('הפתק עודכן',{operations:[{type:'put',collection:'notes',id,mode:'replace',record:note}]})}
 
 async function deleteStickyNote(id){const note=model.state.notes.find(x=>x.id===id);if(!note)return;if(!await confirmDialog('מחיקת פתק','למחוק את הפתק הזה?',{confirmText:'מחק פתק'}))return;model.state.notes=model.state.notes.filter(x=>x.id!==id);notesUi.notesBulkSelected.delete(id);scheduleSave('הפתק נמחק',{deleteIntents:{notes:[id]},mutationType:'delete',surface:'orders.delete.notes'});refreshAlertCenter();renderNotes()}
 
