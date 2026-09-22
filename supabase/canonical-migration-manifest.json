@@ -123,5 +123,10 @@
     "version": "20260922043000",
     "name": "bank_morning_documents",
     "sha256": "df970244b88ade30f62169d1e017ae0f01677f4579766d8ba6fc590a1499f22b"
+  },
+  {
+    "version": "20260922050000",
+    "name": "bank_morning_payments_v2",
+    "sha256": "74d38389f483c41f79021b08af9f72eb5f929b6eb9a0d3f58e33e12984f4dea0"
   }
 ]

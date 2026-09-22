@@ -4,6 +4,8 @@ ROOT=Path(__file__).resolve().parents[1]
 SITE=ROOT/'netunim-orders/site/assets/js'
 MIGRATION=ROOT/'supabase/migrations/20260922043000_bank_morning_documents.sql'
 UPGRADE=ROOT/'netunim-orders/supabase/bank_morning_documents_v1_upgrade.sql'
+MIGRATION_V2=ROOT/'supabase/migrations/20260922050000_bank_morning_payments_v2.sql'
+UPGRADE_V2=ROOT/'netunim-orders/supabase/bank_morning_payments_v2_upgrade.sql'
 SETUP=ROOT/'netunim-orders/supabase/setup.sql'
 MORNING_SQL=ROOT/'netunim-orders/supabase/morning_documents.sql'
 EDGE=ROOT/'netunim-orders/supabase/functions/morning-documents/index.ts'
@@ -16,6 +18,8 @@ def ok(condition,message):
 
 migration=MIGRATION.read_text(encoding='utf-8')
 upgrade=UPGRADE.read_text(encoding='utf-8')
+migration_v2=MIGRATION_V2.read_text(encoding='utf-8')
+upgrade_v2=UPGRADE_V2.read_text(encoding='utf-8')
 setup=SETUP.read_text(encoding='utf-8')
 sql=MORNING_SQL.read_text(encoding='utf-8')
 edge=EDGE.read_text(encoding='utf-8')
@@ -23,6 +27,10 @@ bank=(SITE/'domains/finance/bank-morning.js').read_text(encoding='utf-8')
 bank_view=(SITE/'domains/finance/bank-morning-view.js').read_text(encoding='utf-8')
 documents=(SITE/'domains/customers/documents.js').read_text(encoding='utf-8')
 payments=(SITE/'domains/customers/morning-payments.js').read_text(encoding='utf-8')
+banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
+bank_detail=(SITE/'domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8')
+bank_table=(SITE/'domains/finance/view.js').read_text(encoding='utf-8')
+finance_controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
 recovery=(SITE/'domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
 transport=(SITE/'cloud/transport.js').read_text(encoding='utf-8')
 bank_feed=(SITE/'domains/finance/bank-feed.js').read_text(encoding='utf-8')
@@ -30,7 +38,8 @@ controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
 editor=(SITE/'domains/customers/editor.js').read_text(encoding='utf-8')
 docs=DOCS.read_text(encoding='utf-8')
 
-ok(migration==upgrade,'Bank Morning migration and manual upgrade are byte-for-byte identical')
+ok(migration==upgrade,'Bank Morning v1 migration and manual upgrade are byte-for-byte identical')
+ok(migration_v2==upgrade_v2,'Bank Morning payment v2 migration and manual upgrade are byte-for-byte identical')
 ok('add column if not exists handled_at timestamptz' in migration and 'handled_at timestamptz' in setup,
    'Handled state is durable in both upgrade and fresh-install schemas')
 ok("b.account_role='business' and b.status='completed'" in migration and "b.account_role='business' and b.status='completed'" in setup,
@@ -51,12 +60,16 @@ ok('debt_id' not in sql.lower() and 'source_bank_transaction_id' in sql,
    'Server issuance ledger stays debt-agnostic while retaining stable bank source identity')
 ok("if(!d||rejectDebtRecoveryMutation(id))return" in editor and "if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter" in editor,
    'Debt deletion is blocked only while a matching Morning recovery is pending; after durable settlement no permanent bank/document debt reference prevents normal deletion')
-ok("async function validateBankSource" in edge and ".eq('owner_id',ownerId)" in edge and "data.account_role!=='business'" in edge and "data.status!=='completed'" in edge and "Number(first.type)!==4" in edge and 'sameAmount(first.price,data.amount)' in edge,
-   'Edge Function independently verifies ownership, account role, completion and exact bank-transfer payment')
+ok("async function validateBankSource" in edge and ".eq('owner_id',ownerId)" in edge and "data.account_role!=='business'" in edge and "data.status!=='completed'" in edge and "Number(first.type)!==4" in edge and 'sameAmount(first.price,data.amount)' in edge and "Number(line.type)!==2" in edge and 'archiveCents!==Math.round(Number(data.amount)*100)' in edge and 'bankCode!==itemBank' in edge,
+   'Edge Function independently verifies both exact transfer payments and structured cheque subsets against the owned finalized bank transaction')
 ok('const raw=Array.isArray(doc.payment)' in edge and 'raw.length>12' in edge and 'totalCents!==Math.round(amount*100)' in edge and 'payload.payment=lines' in edge,
    'Multi-payment contract is bounded and exact to the agorot on the server')
-ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and "source?.kind==='bank'&&index===0" in payments,
-   'Client payment editor supports additional receipts while locking the bank-source payment')
+ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments,
+   'Client payment editor shows only method-relevant fields, keeps cheque source identity locked and lets transfer bank details be completed manually')
+ok('morningBankDirectory' in payments and 'resolveMorningBank' in banks and 'findMorningBanks' in banks and "code:'12'" in banks and 'בנק הפועלים' in banks and "code:'20'" in banks and 'בנק מזרחי' in banks,
+   'Bank selector supports current code/name lookup and partial autocomplete from the reviewed bank directory')
+ok('bankTransferReferenceDetails' in bank_detail and '<b>אסמכתא:</b>' in bank_detail and 'bankTransferReferenceDetails(row)' in bank_table,
+   'Ordinary bank transfers visibly surface the archived transfer reference in the transaction table')
 ok("status==='pending'" in bank and "currency!=='ILS'" in bank and "amount<=0" in bank and 'bankMorningDebtCandidates' in bank,
    'Client eligibility rejects provisional/non-credit/non-ILS rows and debt matching remains a suggestion engine')
 ok('ללא קישור לחוב' in documents and 'linkBankDebt' in documents and "activeDebtId=id" in documents,
@@ -73,6 +86,12 @@ ok('hydrateRecoveredSource' in documents and 'activeSource=hydrateRecoveredSourc
    'Recovered bank issuance rehydrates fresh bank amount/row details without persisting them in recovery storage')
 ok('bank_link_pending' in edge and 'record_verified_bank_morning_document' in edge,
    'A verified Morning document remains fail-closed until the durable bank link is saved')
+ok('v_multi_check_deposit' in migration_v2 and "jsonb_array_length(v_tx.check_details->'checkItems')>1" in migration_v2 and 'and not v_multi_check_deposit' in migration_v2 and 'if v_multi_check_deposit then' in migration_v2 and 'handled_at:=v_tx.handled_at' in migration_v2,
+   'Multi-cheque subset documents may link durably without falsely marking the entire aggregate deposit handled')
+ok('v_multi_check_deposit' in sql and 'and not v_multi_check_deposit' in sql,
+   'Fresh Morning schema includes the same multi-cheque subset semantics as the v2 upgrade')
+ok('row.handledAt=row.handledAt||link.handledAt||null' in finance_controller and 'new Date().toISOString()' not in finance_controller.split('function markBankMorningVerified',1)[1].split(');if(changed)',1)[0].split('row.handledAt=',1)[1].split(';',1)[0],
+   'Local verified-link projection does not invent a handled timestamp when the server intentionally leaves an aggregate cheque deposit open')
 ok('PCN / ריכוז הכנסות - L' in docs and 'אינו שולח כרגע `accountingClassification`' in docs,
    'PCN behavior is documented without inventing an unverified income-document API field')
 

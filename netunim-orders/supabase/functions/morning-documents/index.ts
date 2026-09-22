@@ -56,6 +56,8 @@ function validDate(value:unknown){const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(S
 function amountNumber(value:unknown){const n=Number(value);return Number.isFinite(n)?Math.round(n*100)/100:NaN}
 function sameAmount(a:unknown,b:unknown){return Math.abs(Number(a||0)-Number(b||0))<0.01}
 function normalizeText(value:unknown){return String(value??'').trim().replace(/\s+/g,' ').toLocaleLowerCase('he')}
+function digits(value:unknown,max=80){return clean(value,max).replace(/\D/g,'')}
+function bankCheckSourceKey(item:any){const bank=digits(item?.bankNumber,20),branch=digits(item?.branchNumber,20),account=digits(item?.accountNumber,40),check=digits(item?.checkNumber,80),price=amountNumber(item?.amount),cents=Math.round(price*100);return bank&&branch&&account&&check&&Number.isFinite(price)&&price>0?`check:${bank}:${branch}:${account}:${check}:${cents}`:''}
 function validateTaxId(value:unknown){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('invalid_tax_id');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('invalid_tax_id');return padded}
 async function requireUser(req:Request){const authorization=req.headers.get('Authorization')||'',token=authorization.match(/^Bearer\s+(.+)$/i)?.[1]||'';if(!token)return null;const client=createClient(SUPABASE_URL,PUBLISHABLE_KEY,{auth:{persistSession:false,autoRefreshToken:false},global:{headers:{Authorization:`Bearer ${token}`}}});const {data,error}=await client.auth.getUser(token);if(error||!data.user?.id)return null;return data.user}
 async function sha256(value:string){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));return Array.from(new Uint8Array(digest),item=>item.toString(16).padStart(2,'0')).join('')}
@@ -110,12 +112,14 @@ function normalizeInput(body:any){
   if(sourceKind==='bank'&&![320,400].includes(type))throw new Error('invalid_bank_document_type');
   const client:any={name:clientName,add:false};if(email)client.emails=[email];if(taxId)client.taxId=taxId;if(phone)client.phone=phone;
   const payload:any={type,description,date,lang:'he',currency:'ILS',vatType:0,signed:true,rounding:false,client,income:[{price:amount,currency:'ILS',quantity:1,description,vatType:1}]};if(dueDate)payload.dueDate=dueDate;if(remarks)payload.remarks=remarks;if(orderNumber)payload.description=description+' · הזמנה '+orderNumber;
+  const bankSourcePayments:any[]=[];
   if(type===320||type===400){
     const raw=Array.isArray(doc.payment)?doc.payment:(doc.payment&&typeof doc.payment==='object'?[doc.payment]:[]);if(!raw.length||raw.length>12)throw new Error('invalid_payment');const lines:any[]=[];let totalCents=0;
-    for(const payment of raw){const paymentType=Number(payment?.type),paymentDate=String(payment?.date||''),price=amountNumber(payment?.price??(raw.length===1?amount:NaN));if(!PAYMENT_TYPES.has(paymentType)||!validDate(paymentDate)||!Number.isFinite(price)||price<=0)throw new Error('invalid_payment');totalCents+=Math.round(price*100);const line:any={type:paymentType,date:paymentDate,price,currency:'ILS'};
-      if(paymentType===4){const transactionId=clean(payment.transactionId,80);if(transactionId)line.transactionId=transactionId}
+    for(let paymentIndex=0;paymentIndex<raw.length;paymentIndex++){const payment=raw[paymentIndex],paymentType=Number(payment?.type),paymentDate=String(payment?.date||''),price=amountNumber(payment?.price??(raw.length===1?amount:NaN));if(!PAYMENT_TYPES.has(paymentType)||!validDate(paymentDate)||!Number.isFinite(price)||price<=0)throw new Error('invalid_payment');totalCents+=Math.round(price*100);const line:any={type:paymentType,date:paymentDate,price,currency:'ILS'},bankName=clean(payment.bankName,80),bankBranch=clean(payment.bankBranch,30),bankAccount=clean(payment.bankAccount,40),bankCode=digits(payment.bankCode,20);
+      if(paymentType===4){const transactionId=clean(payment.transactionId,80);if(transactionId)line.transactionId=transactionId;if(bankName)line.bankName=bankName;if(bankBranch)line.bankBranch=bankBranch;if(bankAccount)line.bankAccount=bankAccount}
       if(paymentType===3){const cardType=Number(payment.cardType),cardNum=String(payment.cardNum||'').replace(/\D/g,'');if(!CARD_TYPES.has(cardType)||!/^\d{4}$/.test(cardNum))throw new Error('invalid_card_payment');Object.assign(line,{dealType:1,cardType,cardNum})}
-      if(paymentType===2){const bankName=clean(payment.bankName,80),bankBranch=clean(payment.bankBranch,30),bankAccount=clean(payment.bankAccount,40),chequeNum=clean(payment.chequeNum,40);if(!bankName||!bankBranch||!bankAccount||!chequeNum)throw new Error('invalid_check_payment');Object.assign(line,{bankName,bankBranch,bankAccount,chequeNum})}
+      if(paymentType===2){const chequeNum=clean(payment.chequeNum,40);if(!bankName||!bankBranch||!bankAccount||!chequeNum)throw new Error('invalid_check_payment');Object.assign(line,{bankName,bankBranch,bankAccount,chequeNum})}
+      const bankSourceKey=clean(payment.bankSourceKey,180);if(bankSourceKey)bankSourcePayments.push({index:paymentIndex,key:bankSourceKey,bankCode,line});
       lines.push(line);
     }
     if(totalCents!==Math.round(amount*100))throw new Error('invalid_payment_total');payload.payment=lines;
@@ -124,7 +128,7 @@ function normalizeInput(body:any){
   // Local debt/source metadata must never weaken account-wide duplicate protection.
   // The fingerprint describes only the Morning-side financial document.
   const fingerprintSource={type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone},payment:payload.payment||[],linked:payload.linkedDocumentIds||[]};
-  return {operationId,type,amount,date,dueDate,description:payload.description,remarks,orderNumber,clientName,linkedDocumentId:linked||'',payload,fingerprintSource,sourceKind,sourceDebtId,sourceBankTransactionId:sourceKind==='bank'?sourceBankTransactionId:null};
+  return {operationId,type,amount,date,dueDate,description:payload.description,remarks,orderNumber,clientName,linkedDocumentId:linked||'',payload,fingerprintSource,sourceKind,sourceDebtId,sourceBankTransactionId:sourceKind==='bank'?sourceBankTransactionId:null,bankSourcePayments};
 }
 
 function userMessage(code:string){const messages:Record<string,string>={invalid_operation_id:'מזהה הפעולה אינו תקין',invalid_document_type:'סוג המסמך אינו נתמך',invalid_amount:'סכום המסמך אינו תקין',invalid_document_date:'תאריך המסמך אינו תקין',invalid_due_date:'תאריך לתשלום אינו תקין או מוקדם מתאריך המסמך',missing_description:'תיאור המסמך חסר',missing_client_name:'שם הלקוח חסר',invalid_email:'כתובת האימייל אינה תקינה',invalid_tax_id:'מספר העוסק / ח.פ. אינו תקין',invalid_payment:'פרטי התשלום אינם תקינים',invalid_card_payment:'פרטי כרטיס האשראי אינם תקינים',invalid_check_payment:'פרטי הצ׳ק אינם מלאים',invalid_payment_total:'סכום התקבולים חייב להיות זהה לסכום המסמך',invalid_source:'מקור המסמך אינו תקין',invalid_bank_source:'תנועת הבנק המקורית אינה תקינה',invalid_bank_document_type:'מתנועת בנק ניתן להפיק חשבונית מס / קבלה או קבלה בלבד',invalid_linked_document:'מזהה החשבונית המקושרת אינו תקין'};return messages[code]||'פרטי המסמך אינם תקינים'}
@@ -164,9 +168,23 @@ async function reserveOperation(ownerId:string,input:any,fingerprint:string,allo
 
 async function validateBankSource(ownerId:string,input:any){
   if(input.sourceKind!=='bank')return null;
-  const {data,error}=await admin.from('bank_transactions').select('id,owner_id,account_role,status,amount,currency,bank_reference,bank_serial').eq('id',input.sourceBankTransactionId).eq('owner_id',ownerId).maybeSingle();if(error)throw error;
+  const {data,error}=await admin.from('bank_transactions').select('id,owner_id,account_role,status,amount,currency,bank_reference,bank_serial,cheque,check_details').eq('id',input.sourceBankTransactionId).eq('owner_id',ownerId).maybeSingle();if(error)throw error;
   if(!data||data.account_role!=='business'||data.status!=='completed'||String(data.currency||'ILS').toUpperCase()!=='ILS'||Number(data.amount)<=0)throw Object.assign(new Error('invalid_bank_source'),{code:'invalid_bank_source'});
-  const first=input.payload?.payment?.[0];if(!first||Number(first.type)!==4||!sameAmount(first.price,data.amount))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
+  const details=data.check_details&&typeof data.check_details==='object'?data.check_details:null,kind=clean(details?.kind,30),items=Array.isArray(details?.checkItems)?details.checkItems:[],sourceRows=Array.isArray(input.bankSourcePayments)?input.bankSourcePayments:[];
+  if(kind==='returned'||kind==='returned_credit')throw Object.assign(new Error('invalid_bank_source'),{code:'invalid_bank_source'});
+  if(kind==='deposit'||data.cheque===true){
+    if(!items.length||items.length>12)throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
+    const archiveByKey=new Map<string,any>();let archiveCents=0;for(const item of items){const key=bankCheckSourceKey(item),cents=Math.round(Number(item?.amount)*100);if(!key||!Number.isSafeInteger(cents)||cents<=0||archiveByKey.has(key))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});archiveByKey.set(key,item);archiveCents+=cents}
+    if(archiveCents!==Math.round(Number(data.amount)*100)||!sourceRows.length)throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
+    const seen=new Set<string>();let selectedCents=0;
+    for(const source of sourceRows){const key=clean(source?.key,180),line=source?.line||{},item=archiveByKey.get(key);if(!key.startsWith('check:')||seen.has(key)||!item||Number(line.type)!==2||!sameAmount(line.price,item.amount))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});seen.add(key);selectedCents+=Math.round(Number(line.price)*100);
+      const bankCode=digits(source?.bankCode,20),itemBank=digits(item?.bankNumber,20);if(!bankCode||bankCode!==itemBank||digits(line.bankBranch,30)!==digits(item?.branchNumber,30)||digits(line.bankAccount,40)!==digits(item?.accountNumber,40)||digits(line.chequeNum,40)!==digits(item?.checkNumber,80))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
+    }
+    if(selectedCents<=0||selectedCents>Math.round(Number(data.amount)*100))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
+    return data;
+  }
+  // Backward-compatible transfer validation: old cached clients may not yet send the source marker.
+  const source=sourceRows.find((row:any)=>row?.key==='transfer'),first=source?.line||input.payload?.payment?.[0];if(sourceRows.length>1||!first||Number(first.type)!==4||!sameAmount(first.price,data.amount))throw Object.assign(new Error('bank_payment_mismatch'),{code:'bank_payment_mismatch'});
   const reference=clean(data.bank_reference,80),serial=clean(data.bank_serial,80),paymentRef=clean(first.transactionId,80);if((reference||serial)&&paymentRef&&paymentRef!==reference&&paymentRef!==serial)throw Object.assign(new Error('bank_reference_mismatch'),{code:'bank_reference_mismatch'});
   return data;
 }

@@ -122,6 +122,7 @@ declare
   v_op public.morning_document_operations%rowtype;
   v_tx public.bank_transactions%rowtype;
   v_link_id bigint;
+  v_multi_check_deposit boolean:=false;
 begin
   if p_owner_id is null or p_operation_id is null then
     raise exception 'invalid_bank_morning_link_input' using errcode='22023';
@@ -148,7 +149,14 @@ begin
      or upper(coalesce(v_tx.currency,'ILS'))<>'ILS' or v_tx.amount<=0 then
     raise exception 'bank_morning_transaction_not_eligible' using errcode='22023';
   end if;
-  if round(v_op.amount::numeric,2) < round(v_tx.amount::numeric,2) then
+  v_multi_check_deposit:=case
+    when coalesce(v_tx.cheque,false)
+      and coalesce(v_tx.check_details->>'kind','')='deposit'
+      and jsonb_typeof(v_tx.check_details->'checkItems')='array'
+    then jsonb_array_length(v_tx.check_details->'checkItems')>1
+    else false
+  end;
+  if round(v_op.amount::numeric,2) < round(v_tx.amount::numeric,2) and not v_multi_check_deposit then
     raise exception 'bank_morning_document_below_transaction_amount' using errcode='22023';
   end if;
 
@@ -168,10 +176,17 @@ begin
         verified_at=excluded.verified_at
   returning id into v_link_id;
 
-  update public.bank_transactions b
-     set handled_at=coalesce(b.handled_at,v_op.verified_at,now())
-   where b.id=v_tx.id and b.owner_id=p_owner_id
-  returning b.id,b.handled_at into transaction_id,handled_at;
+  if v_multi_check_deposit then
+    -- One document may intentionally cover only a subset of the deposited cheques.
+    -- Do not mark the entire aggregate transaction handled until the user decides it is complete.
+    transaction_id:=v_tx.id;
+    handled_at:=v_tx.handled_at;
+  else
+    update public.bank_transactions b
+       set handled_at=coalesce(b.handled_at,v_op.verified_at,now())
+     where b.id=v_tx.id and b.owner_id=p_owner_id
+    returning b.id,b.handled_at into transaction_id,handled_at;
+  end if;
 
   link_id:=v_link_id;
   return next;

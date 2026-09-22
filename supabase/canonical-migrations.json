@@ -99,6 +99,10 @@
     {
       "version": "20260922043000",
       "name": "bank_morning_documents"
+    },
+    {
+      "version": "20260922050000",
+      "name": "bank_morning_payments_v2"
     }
   ]
 }

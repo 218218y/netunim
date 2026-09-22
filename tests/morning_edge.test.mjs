@@ -59,6 +59,15 @@ const laterIdentical=await decode(await api.create(owner,body(100)));assert.equa
 const changed={...first,document:{...first.document,amount:101}};
 assert.equal((await decode(await api.create(owner,changed))).code,'morning_operation_conflict');assert.equal(postCount,2);
 assert.equal(api.normalizeInput(first).payload.income[0].vatType,1,'gross-amount VAT-included behavior is intentionally preserved until sandbox validation proves an API enum change');
+const receiptInput=payment=>api.normalizeInput({operation_id:crypto.randomUUID(),document:{type:320,amount:100,date:'2026-09-08',description:'Payment method contract',client:{name:'Test'},payment:[payment]}}).payload.payment[0];
+const transferPayment=receiptInput({type:4,date:'2026-09-08',price:100,transactionId:'REF-100',bankName:'Test Bank',bankBranch:'123',bankAccount:'000456',cardType:2,cardNum:'1234',chequeNum:'999'});
+assert.deepEqual(JSON.parse(JSON.stringify(transferPayment)),{type:4,date:'2026-09-08',price:100,currency:'ILS',transactionId:'REF-100',bankName:'Test Bank',bankBranch:'123',bankAccount:'000456'},'bank transfer forwards only reference and bank-account fields');
+const cashPayment=receiptInput({type:1,date:'2026-09-08',price:100,transactionId:'DROP',bankName:'DROP',bankBranch:'1',bankAccount:'2',cardType:2,cardNum:'1234',chequeNum:'3'});
+assert.deepEqual(JSON.parse(JSON.stringify(cashPayment)),{type:1,date:'2026-09-08',price:100,currency:'ILS'},'cash forwards only date and amount');
+const chequePayment=receiptInput({type:2,date:'2026-09-08',price:100,transactionId:'DROP',bankName:'Test Bank',bankBranch:'123',bankAccount:'000456',chequeNum:'9001',cardType:2,cardNum:'1234'});
+assert.deepEqual(JSON.parse(JSON.stringify(chequePayment)),{type:2,date:'2026-09-08',price:100,currency:'ILS',bankName:'Test Bank',bankBranch:'123',bankAccount:'000456',chequeNum:'9001'},'cheque forwards bank-account and cheque-number fields only');
+const cardPayment=receiptInput({type:3,date:'2026-09-08',price:100,transactionId:'DROP',bankName:'DROP',bankBranch:'1',bankAccount:'2',chequeNum:'3',cardType:2,cardNum:'1234'});
+assert.deepEqual(JSON.parse(JSON.stringify(cardPayment)),{type:3,date:'2026-09-08',price:100,currency:'ILS',dealType:1,cardType:2,cardNum:'1234'},'credit card forwards only card fields');
 
 // A successful POST is not success until the same Morning ID is canonically re-read and matched.
 failure='readback';const readbackPending=body(110);const pendingResult=await decode(await api.create(owner,readbackPending));

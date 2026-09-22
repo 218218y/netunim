@@ -17,6 +17,13 @@ export function bankChequeDetails(row){
 }
 
 
+
+export function bankTransferReferenceDetails(row){
+  const reference=String(row?.bankReference||'').trim(),details=row?.checkDetails&&typeof row.checkDetails==='object'?row.checkDetails:null,kind=String(details?.kind||'').trim(),isCheque=!!row?.cheque||['deposit','returned','returned_credit'].includes(kind);
+  if(!reference||reference==='0'||isCheque||row?.creditSettlementDetails)return '';
+  return `<div class="bank-cheque-info bank-transfer-reference"><div class="bank-cheque-facts"><span><b>אסמכתא:</b> ${esc(reference)}</span></div></div>`;
+}
+
 export function bankCreditSettlementDetails(row,identity={}){
   const details=row?.creditSettlementDetails&&typeof row.creditSettlementDetails==='object'?row.creditSettlementDetails:null;if(!details)return '';
   const facts=[],cards=[...new Set((Array.isArray(identity.last4s)?identity.last4s:Array.isArray(details.cardLast4s)?details.cardLast4s:[]).filter(value=>/^\d{4}$/.test(String(value))))];

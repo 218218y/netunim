@@ -33,7 +33,7 @@ window.auditOpen=async()=>{switchView('customers');openMorningDocument(window.au
 window.auditIssue=async(type,amount,policy={})=>{
  scheduleSave('fixture debt before issuance');window.auditSetServer({operation:null});await window.auditOpen();
  document.querySelector('input[name="morningDocumentType"][value="'+type+'"]').click();
- document.getElementById('morningAmount').value=String(amount);
+ if(type===320||type===400){const payment=document.querySelector('[data-payment-row] [data-payment-field="price"]');window.auditAssert(payment,'missing receipt amount');payment.value=String(amount);payment.dispatchEvent(new Event('input',{bubbles:true}));window.auditAssert(Number(document.getElementById('morningAmount').value)===Number(amount),'document total did not follow receipt amount')}else document.getElementById('morningAmount').value=String(amount);
  for(const [key,value] of Object.entries(policy))document.getElementById(key).checked=value;
  const pendingConfirmation=window.auditWaitForIssueConfirmation();document.querySelector('[data-action="morning-create"]').click();
  await pendingConfirmation;

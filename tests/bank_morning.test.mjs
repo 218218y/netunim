@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {attachBankArchiveMetadata,bankMorningDebtCandidates,bankMorningEligibility,bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
+import {findMorningBanks,morningBankDatalistMarkup,resolveMorningBank} from '../netunim-orders/site/assets/js/domains/customers/morning-banks.js';
 import {normalizeBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
 import {bankMorningActionCell,bankMorningChoiceMarkup} from '../netunim-orders/site/assets/js/domains/finance/bank-morning-view.js';
+import {bankTransferReferenceDetails} from '../netunim-orders/site/assets/js/domains/finance/bank-transaction-detail-view.js';
 import {createCloudTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
 
 const row={archiveId:42,id:'k1',amount:1250,currency:'ILS',status:'completed',date:'2026-09-20T09:00:00Z',processedDate:'2026-09-20T09:00:00Z',partyName:'  משה   כהן ',description:'העברה',bankReference:'REF-7'};
@@ -10,13 +12,37 @@ assert.equal(bankMorningEligibility({...row,status:'pending'},'business').code,'
 assert.equal(bankMorningEligibility({...row,amount:-10},'business').code,'not-credit');
 assert.equal(bankMorningEligibility({...row,currency:'USD'},'business').code,'currency');
 assert.equal(bankMorningEligibility(row,'home').code,'home-account');
-const prefill=bankMorningPrefill(row);assert.equal(prefill.customerName,'משה כהן');assert.equal(prefill.payment.price,1250);assert.equal(prefill.payment.type,4);assert.equal(prefill.payment.transactionId,'REF-7');assert.equal(prefill.source.bankTransactionId,42);
-const detailedPrefill=bankMorningPrefill({...row,description:'זיכוי מהמזרחי',memo:'המבצע: · בצלאלי אביחי ורב · עבור: · עבור מיטות - בצלאלי מח-ן:000559674',partyName:'בצלאלי אביחי ורב',partyHeadline:'המבצע:',messageHeadline:'עבור:',messageDetail:'עבור מיטות - בצלאלי מח-ן:000559674'});
-assert.equal(detailedPrefill.description,'זיכוי מהמזרחי · המבצע: · בצלאלי אביחי ורב · עבור: · עבור מיטות - בצלאלי מח-ן:000559674','bank Morning prefill carries the full bank narrative into the document description without duplicating structured detail');
+const prefill=bankMorningPrefill(row);assert.equal(prefill.customerName,'משה כהן');assert.equal(prefill.payment.price,1250);assert.equal(prefill.payment.type,4);assert.equal(prefill.payment.transactionId,'REF-7');assert.equal(prefill.source.bankTransactionId,42);assert.equal(prefill.source.paymentMode,'transfer');
+assert.match(bankTransferReferenceDetails(row),/REF-7/,'ordinary bank transfers surface their stable bank reference in the movement view');
+assert.match(bankTransferReferenceDetails({...row,checkDetails:{}}),/REF-7/,'an empty check-detail shell must not hide an ordinary transfer reference');
+assert.equal(bankTransferReferenceDetails({...row,cheque:true,checkDetails:{kind:'deposit'}}),'','check movements keep their reference in the structured check detail block');
+
+const detailedPrefill=bankMorningPrefill({...row,description:'זיכוי מהמזרחי',memo:'המבצע: · לקוח בדיקה · עבור: · הזמנה מח-ן:000123456',partyName:'לקוח בדיקה',partyHeadline:'המבצע:',messageHeadline:'עבור:',messageDetail:'הזמנה מח-ן:000123456'});
+assert.equal(detailedPrefill.description,'זיכוי מהמזרחי · המבצע: · לקוח בדיקה · עבור: · הזמנה מח-ן:000123456','bank Morning prefill carries the full bank narrative into the document description without duplicating structured detail');
+assert.equal(detailedPrefill.payment.bankCode,'20','Mizrahi is inferred from an explicit incoming-transfer description');
+assert.equal(detailedPrefill.payment.bankName,'בנק מזרחי טפחות בע״מ');
+assert.equal(detailedPrefill.payment.bankAccount,'000123456','leading zeroes in a bank account are preserved');
+const explicitBankPrefill=bankMorningPrefill({...row,description:'זיכוי מהמזרחי',messageDetail:'מבנק 020,סניף 570 ,חשבון 000654321'});
+assert.equal(explicitBankPrefill.payment.bankCode,'20');assert.equal(explicitBankPrefill.payment.bankBranch,'570');assert.equal(explicitBankPrefill.payment.bankAccount,'000654321');
+assert.equal(resolveMorningBank('12')?.name,'בנק הפועלים בע״מ');assert.equal(resolveMorningBank('הפועלים')?.code,'12');assert.equal(findMorningBanks('12')[0]?.code,'12');assert.equal(findMorningBanks('פועל')[0]?.code,'12');
+const bankOptions=morningBankDatalistMarkup();assert.match(bankOptions,/value="12 · בנק הפועלים בע״מ"/);assert.match(bankOptions,/value="פועלים"/,'autocomplete offers searchable name aliases as well as numeric codes');
+
+const checkItems=[
+  {bankNumber:'17',branchNumber:'725',accountNumber:'12345',checkNumber:'700001',amount:570},
+  {bankNumber:'17',branchNumber:'725',accountNumber:'12345',checkNumber:'700002',amount:570},
+  {bankNumber:'17',branchNumber:'725',accountNumber:'12345',checkNumber:'700003',amount:570},
+];
+const multiCheck={...row,archiveId:43,amount:1710,description:'הפק.שיק במכונה',bankReference:'-1',cheque:true,checkDetails:{kind:'deposit',checkCount:3,checkItems}};
+assert.equal(bankMorningEligibility(multiCheck,'business').eligible,true);assert.equal(bankMorningEligibility(multiCheck,'business').aggregate,true);
+const multiPrefill=bankMorningPrefill(multiCheck);assert.equal(multiPrefill.source.paymentMode,'checks');assert.equal(multiPrefill.source.bankCheckCount,3);assert.equal(multiPrefill.payment.length,3);assert.ok(multiPrefill.payment.every(payment=>payment.type===2&&payment.bankCode==='17'&&payment.bankName==='בנק מרכנתיל דיסקונט בע״מ'&&payment.removable===true));assert.equal(multiPrefill.payment.reduce((sum,payment)=>sum+payment.price,0),1710);
+const singleCheck={...row,archiveId:44,amount:1000,description:'הפק.שיק בסלולר',bankReference:'20001',cheque:true,checkDetails:{kind:'deposit',checkCount:1,checkItems:[{bankNumber:'12',branchNumber:'655',accountNumber:'654321',checkNumber:'20001',amount:1000}]}};
+const singlePrefill=bankMorningPrefill(singleCheck);assert.equal(singlePrefill.payment.length,1);assert.equal(singlePrefill.payment[0].type,2);assert.equal(singlePrefill.payment[0].bankCode,'12');assert.equal(singlePrefill.payment[0].removable,false);
+assert.equal(bankMorningEligibility({...singleCheck,checkDetails:{...singleCheck.checkDetails,kind:'returned_credit'}},'business').code,'returned-cheque');
+assert.equal(bankMorningEligibility({...multiCheck,amount:1700},'business').code,'check-details-mismatch');
+
 const candidates=bankMorningDebtCandidates(row,[{id:'a',customerName:'משה כהן',amount:1250},{id:'b',customerName:'משה כהן בעמ',amount:900},{id:'c',customerName:'ישראל לוי',amount:1250},{id:'closed',customerName:'משה כהן',amount:1250,paid:true,invoiceIssued:true}]);
 assert.deepEqual(candidates.map(x=>x.debtId),['a','b']);assert.ok(candidates[0].score>candidates[1].score);assert.match(candidates[0].reason,/יתרת התשלום תואמת/);
 const partialCandidates=bankMorningDebtCandidates({...row,amount:1000},[{id:'partial',customerName:'משה כהן',amount:1250,debtProgress:[{id:'P1',kind:'payment',action:'add',amount:250,createdAt:'2026-09-01T00:00:00Z'}]}]);assert.equal(partialCandidates[0].remainingPayment,1000);assert.match(partialCandidates[0].reason,/יתרת התשלום תואמת/);
-assert.equal(bankMorningEligibility({...row,checkDetails:{checkCount:2,checkItems:[{},{}]}},'business').aggregate,true);
 const direct=attachBankArchiveMetadata([{id:'k1',amount:1250}],[{archiveId:42,id:'k1',handledAt:'2026-09-21T00:00:00Z'}]);assert.equal(direct[0].archiveId,42);assert.ok(direct[0].handledAt);
 
 const response=body=>({ok:true,async json(){return body},async text(){return JSON.stringify(body)}});

@@ -27,7 +27,7 @@ globalThis.addEventListener?.('offline',()=>{issuanceInterruptionEpoch++});
 globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)issuanceInterruptionEpoch++});
 let pendingRecovery=loadMorningDebtRecoveryContext();
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
-const {paymentFields,readPaymentRows,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
+const {paymentFields,readPaymentRows,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
 function isDebtRecoveryPending(debtId){
   const stored=loadMorningDebtRecoveryContext();
   return !!debtId&&[stored,pendingRecovery].some(context=>context?.debtId===debtId);
@@ -83,7 +83,7 @@ function bankDebtLinkPanel(){
 function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
   const heroAmount=standalone?'<div class="morning-amount standalone"><small>מסמך כללי</small></div>':`<div class="morning-amount"><small>${bank?'סכום תנועת הבנק':'סכום החוב'}</small><b>${money(d.amount)}</b></div>`;
-  const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':bank?'הפרטים מולאו מתנועת הבנק וניתנים לעריכה, למעט התקבול שמייצג את התנועה עצמה.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
+  const formHint=standalone?'הזן את פרטי הלקוח והמסמך. המסמך אינו יוצר חוב ואינו תלוי ברשומת חוב.':bank?'הפרטים מולאו מתנועת הבנק. תקבולים שמקורם בבנק נשמרים כנתוני מקור; בהפקדת כמה צ׳קים אפשר להסיר צ׳ק שאינו שייך למסמך ולהוסיף תקבולים נוספים.':'הפרטים נלקחים מהחוב וניתנים לעריכה לפני ההפקה';
   const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER;
   return `<div class="morning-document-dialog" data-morning-generation="${modalGeneration}">
     <div class="morning-document-hero"><div><span class="morning-brand">Morning</span><h4>${standalone?'הפקת מסמך כללי':bank?'הפקת מסמך מתנועת בנק':'הפקת מסמך ללקוח'}</h4><p>המסמך הרשמי יופק ויישמר ב-Morning. הקישור המקומי נרשם רק לאחר אימות ודאי.</p></div>${heroAmount}</div>
@@ -165,7 +165,16 @@ function readForm(){
   const type=selectedType();if(!DOCUMENT_TYPES[type])throw new Error('יש לבחור סוג מסמך');if(activeSource.kind==='bank'&&![320,400].includes(type))throw new Error('מתנועת בנק ניתן להפיק חשבונית מס / קבלה או קבלה בלבד');
   const clientName=cleanText(currentField('morningClientName')?.value,160),email=cleanText(currentField('morningClientEmail')?.value,180),phone=cleanText(currentField('morningClientPhone')?.value,50),taxId=validateTaxId(currentField('morningClientTaxId')?.value),date=String(currentField('morningDocumentDate')?.value||''),dueDate=type===305?String(currentField('morningDueDate')?.value||''):'',description=cleanText(currentField('morningDescription')?.value,250),remarks=cleanText(currentField('morningRemarks')?.value,500),orderNumber=cleanText(currentField('morningOrderNumber')?.value,80),payments=(type===320||type===400)?readPaymentRows():[],amount=payments.length?payments.reduce((sum,row)=>sum+Math.round(Number(row.price)*100),0)/100:Number(currentField('morningAmount')?.value||0);
   if(!clientName)throw new Error('יש להזין שם לקוח');if(!Number.isFinite(amount)||amount<=0)throw new Error('יש להזין סכום חיובי תקין');if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('יש לבחור תאריך מסמך');if(dueDate&&!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))throw new Error('תאריך לתשלום אינו תקין');if(dueDate&&dueDate<date)throw new Error('תאריך לתשלום לא יכול להיות לפני תאריך המסמך');if(!description)throw new Error('יש להזין תיאור למסמך');if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('כתובת האימייל אינה תקינה');
-  if(activeSource.kind==='bank'){const first=payments[0],bankAmount=Number(activeSource.bankAmount);if(!first||first.type!==4||!Number.isFinite(bankAmount)||Math.round(first.price*100)!==Math.round(bankAmount*100))throw new Error('התקבול הראשון חייב להישאר זהה לתנועת הבנק המקורית')}
+  if(activeSource.kind==='bank'){
+    const sourcePayments=payments.filter(row=>String(row.bankSourceKey||'')),bankAmount=Number(activeSource.bankAmount),mode=String(activeSource.paymentMode||'transfer');
+    if(!sourcePayments.length)throw new Error('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק');
+    if(mode==='checks'){
+      if(sourcePayments.some(row=>row.type!==2||!String(row.bankSourceKey||'').startsWith('check:')))throw new Error('תקבולי הצ׳קים שמקורם בבנק חייבים להישאר מסוג צ׳ק');
+      const sourceTotal=sourcePayments.reduce((sum,row)=>sum+Math.round(Number(row.price)*100),0);if(!Number.isFinite(bankAmount)||sourceTotal<=0||sourceTotal>Math.round(bankAmount*100))throw new Error('סכומי הצ׳קים שנבחרו אינם תואמים להפקדת הבנק המקורית');
+    }else{
+      const source=sourcePayments.find(row=>row.bankSourceKey==='transfer');if(sourcePayments.length!==1||!source||source.type!==4||!Number.isFinite(bankAmount)||Math.round(source.price*100)!==Math.round(bankAmount*100))throw new Error('תקבול ההעברה שמקורו בבנק חייב להישאר זהה לתנועת הבנק המקורית');
+    }
+  }
   const payload={operation_id:activeOperationId,source:{kind:activeSource.kind||'standalone',debtId:activeDebtId||'',...(activeSource.kind==='bank'?{bankTransactionId:Number(activeSource.bankTransactionId)}:{})},document:{type,amount,date,dueDate,description,remarks,orderNumber,client:{name:clientName,email,taxId,phone}}};
   if(payments.length)payload.document.payment=payments;if(type===400){const linked=String(currentField('morningLinkedDocument')?.value||'').trim();if(linked)payload.document.linkedDocumentId=linked}return payload;
 }
@@ -406,5 +415,5 @@ async function createMorningDocument(button){
 function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
+return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
 }

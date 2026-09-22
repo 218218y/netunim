@@ -987,6 +987,7 @@ const uiActions=createUiActions({
   syncMorningPaymentTotal:(...args)=>domainsCustomers.syncMorningPaymentTotal(...args),
   syncMorningDocumentType:(...args)=>domainsCustomers.syncMorningDocumentType(...args),
   syncMorningPaymentType:(...args)=>domainsCustomers.syncMorningPaymentType(...args),
+  syncMorningPaymentBank:(...args)=>domainsCustomers.syncMorningPaymentBank(...args),
   previewMorningDocument:(...args)=>domainsCustomers.previewMorningDocument(...args),
   createMorningDocument:(...args)=>domainsCustomers.createMorningDocument(...args),
   openMorningExistingDocument:(...args)=>domainsCustomers.openMorningExistingDocument(...args),
