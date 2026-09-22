@@ -529,6 +529,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
 });
 
 const uiBackup=createUiBackup({
+  ...storageV2Cloud,
   validateRestoreJson:(...args)=>stateNormalization.validateRestoreJson(...args),
   tab,
   ui,

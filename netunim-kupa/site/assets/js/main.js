@@ -716,6 +716,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 });
 
 const uiBackup=createUiBackup({
+  ...storageV2Cloud,
   model,
   session,
   ui,

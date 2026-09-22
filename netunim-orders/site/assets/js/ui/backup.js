@@ -45,7 +45,7 @@ function diffRowMarkup(row,entry){const parts=[];if(row.removed)parts.push(`יו
 function settingsDiffMarkup(setting){return `<div class="cloud-backup-field-change"><b>${esc(setting.label)}</b><span class="cloud-backup-now">עכשיו: ${esc(compactBackupValue(setting.current))}</span><span class="cloud-backup-target">אחרי שחזור: ${esc(compactBackupValue(setting.target))}</span></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,invalidateAllViewDomains=()=>{}}){
+export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,invalidateAllViewDomains=()=>{}}){
   function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
   function exportJson(){const payload=prepareState();downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-backup_${stamp()}.json`)}
@@ -66,10 +66,12 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
   }
 
   async function applyCompletedGroupLocally(group,result={}){
-    const previous=clone(model.state),target=normalizeState(clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]}));
-    model.state=target;session.localGeneration++;session.cloudRevision=Number(result.main_revision||session.cloudRevision||group.main.baseRevision);session.cloudUpdatedAt=new Date().toISOString();session.lastCloudState=clone(group.main.state);localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(group.main.state));
+    const v2Before=await refreshStorageV2CloudState();if(v2Before&&(v2Before.pending||v2Before.flight||v2Before.control))throw new Error('נוצר שינוי מקומי בזמן השחזור; השחזור בענן הושלם אך היישום המקומי נעצר כדי לא למחוק את השינוי. יש לפתור את השינוי המקומי ואז לחדש את השחזור');
+    const previous=clone(model.state),previousCloudRevision=session.cloudRevision,previousCloudUpdatedAt=session.cloudUpdatedAt,previousLastCloudState=clone(session.lastCloudState),target=normalizeState(clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]})),nextRevision=Number(result.main_revision||session.cloudRevision||group.main.baseRevision);
+    model.state=target;session.localGeneration++;session.cloudRevision=nextRevision;session.cloudUpdatedAt=new Date().toISOString();session.lastCloudState=clone(group.main.state);
+    try{const v2Applied=await resetStorageV2CloudHead(nextRevision,model.state);if(!v2Applied&&!localSnapshot(undefined,{storageBoundary:'restore-checkpoint'}))throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה');try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(group.main.state))}catch(error){console.warn('Storage V2 restore committed; legacy cloud base mirror could not be refreshed',error)}}
+    catch(error){model.state=normalizeState(previous);session.cloudRevision=previousCloudRevision;session.cloudUpdatedAt=previousCloudUpdatedAt;session.lastCloudState=previousLastCloudState;invalidateAllViewDomains();throw new Error((error?.message||'שמירת המצב המקומי לאחר השחזור נכשלה')+'; השחזור נשאר ניתן לחידוש')}
     if(group.checks){checksSession.checksCloudBase=clone(group.checks.state.checks);checksSession.checksBankEvents=clone(group.checks.state.bankEvents||[]);checksSession.checksCloudRevision=Number(result.checks_revision||checksSession.checksCloudRevision||group.checks.baseRevision);persistChecksBase(checksSession.checksCloudBase,checksSession.checksBankEvents)}
-    if(!localSnapshot(undefined,{storageBoundary:'restore-checkpoint'})){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot(undefined,{storageBoundary:'restore-rollback'});throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה; השחזור נשאר ניתן לחידוש')}
     invalidateAllViewDomains();render();return true;
   }
 
@@ -89,10 +91,10 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
       if(beforeDownload)downloadBlob(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}),`orders-before-restore_${stamp()}.json`);
       if(folderBackupAvailable())await writeStateSnapshotToFolder(current,true);
       const cloudActive=cloudEnabled();if(!restoreChecks)imported.checks=currentChecks;
+      const v2Pending=await refreshStorageV2CloudState();if(await getCloudPending()||(v2Pending&&(v2Pending.pending||v2Pending.flight||v2Pending.control))||(restoreChecks&&await getChecksPending()))throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
       const mainState=prepareCloudState(imported);let remoteRow=null,checksRow=null;
       if(cloudActive){
         if(!navigator.onLine||!loadSession())throw new Error('שחזור ענן דורש חיבור פעיל כדי לקבע את כל היעדים לפני הכתיבה');
-        if(await getCloudPending()||(restoreChecks&&await getChecksPending()))throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
         remoteRow=await readCloud();if(!remoteRow)throw new Error('לא נמצא מסמך ניהול ההזמנות בענן');
         if(restoreChecks){checksRow=await readSharedChecksCloud();if(!checksRow)throw new Error('לא נמצא מסמך הצ׳קים המשותף בענן')}
       }
@@ -106,7 +108,7 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
         beforeState:{local:current,main:clone(remoteRow?.state||current),checks:clone(checksRow?.state||{checks:currentChecks,bankEvents:checksSession.checksBankEvents||[]})},
         localTargetState:imported,
       });
-      const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;if(!localSnapshot(undefined,{storageBoundary:'import-checkpoint'})){model.state=normalizeState(previous);invalidateAllViewDomains();localSnapshot(undefined,{storageBoundary:'import-rollback'});throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}invalidateAllViewDomains();render()};
+      const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;try{const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.cloudRevision);if(!v2Applied&&!localSnapshot(undefined,{storageBoundary:'import-checkpoint'}))throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}catch(error){model.state=normalizeState(previous);invalidateAllViewDomains();throw error}invalidateAllViewDomains();render()};
       if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});
       else{const staged=await restoreGroupStore.stage(group);await applyLocal(staged,{});await restoreGroupStore.complete(staged)}
       if(folderBackupAvailable())await writeStateToFolder(true);setSave('מקומי: שמור','',folderSaveTitle());toast('השחזור הושלם ונשמר כפעולה מאוחדת');return true;

@@ -49,7 +49,10 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       const cloudBaseState=(await journal.recover()).state;
       check(await fails(()=>journal.setCloudBase(4,cloudBaseState)),'cloud base requires an explicit acknowledged cursor');
       await journal.setCloudBase(4,cloudBaseState,{ackSeq:journal.seq});
+      check(await journal.materializeFlight({operationId:'empty-flight',baseRevision:4})===null,'cloud cursor does not materialize an empty flight');
+      write=journal.append(change('sent'));await write.committed;
       const flight=await journal.materializeFlight({operationId:'cloud-operation',baseRevision:4});
+      check(flight?.snapshot?.notes?.[0]?.text==='sent','real pending mutation materializes the immutable flight');
       write=journal.append(change('during RPC'));await write.committed;
       journal=make('matrix');await journal.open();
       const retry=await journal.materializeFlight({operationId:'do-not-replace',baseRevision:4});
@@ -89,6 +92,18 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       journal=make('restore');await journal.install(initial);const oldEpoch=journal.epoch;write=journal.append(change('before restore'));await write.committed;
       await journal.install({notes:[{id:'restored',text:'backup'}],setting:2});
       check(journal.epoch!==oldEpoch&&(await journal.recover()).state.notes[0].id==='restored','restore changes epoch only after checkpoint commit');
+
+      journal=make('authoritative-reset');await journal.install(initial);await journal.setCloudBase(8,initial,{ackSeq:0});
+      write=journal.append(change('obsolete local'));await write.committed;await journal.materializeFlight({operationId:'obsolete-flight',baseRevision:8});await journal.setCloudControl({retry:{attempts:2}});
+      const authoritativeEpoch=journal.epoch;await journal.replaceAuthoritativeState({notes:[{id:'restored',text:'authoritative'}],setting:3},{appMetadata:{storageRole:'primary',revision:0}});
+      journal=make('authoritative-reset');await journal.open();let resetCloud=await journal.cloudState(),resetRecovered=await journal.recover();
+      check(journal.epoch!==authoritativeEpoch&&resetRecovered.seq===0&&resetRecovered.state.notes[0].text==='authoritative'&&!resetCloud.base&&!resetCloud.flight&&!resetCloud.control&&!resetCloud.pending,'authoritative replacement atomically resets epoch, journal and cloud lifecycle across restart');
+
+      journal=make('cloud-reset');await journal.install(initial);await journal.setCloudBase(9,initial,{ackSeq:0});
+      write=journal.append(change('superseded local'));await write.committed;await journal.materializeFlight({operationId:'superseded-flight',baseRevision:9});await journal.setCloudControl({conflict:{kind:'restore'}});
+      const cloudResetEpoch=journal.epoch,remoteReset={notes:[{id:'n',text:'restored remote'}],setting:4};await journal.resetCloudHead(12,remoteReset,remoteReset,{appMetadata:{storageRole:'primary',revision:12}});
+      journal=make('cloud-reset');await journal.open();resetCloud=await journal.cloudState();resetRecovered=await journal.recover();
+      check(journal.epoch!==cloudResetEpoch&&resetRecovered.seq===0&&resetRecovered.state.notes[0].text==='restored remote'&&resetCloud.base.revision===12&&resetCloud.base.ackSeq===0&&!resetCloud.flight&&!resetCloud.control&&!resetCloud.pending,'cloud reset atomically installs authoritative checkpoint and cursor across restart');
 
       journal=make('hard-restart',{db:failDb});await journal.install(initial);write=journal.append(change('survives navigation'));await fails(()=>write.committed);
       check(write.emergencyDurable,'hard restart fixture safely staged');

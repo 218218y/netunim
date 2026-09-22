@@ -7,6 +7,7 @@ export function createStorageV2CloudPorts(browser){
     acknowledgeStorageV2CloudFlight:(...args)=>browser.acknowledgeStorageV2CloudFlight(...args),
     rejectStorageV2CloudFlight:(...args)=>browser.rejectStorageV2CloudFlight(...args),
     setStorageV2CloudControl:(...args)=>browser.setStorageV2CloudControl(...args),
+    replaceStorageV2AuthoritativeState:(...args)=>browser.replaceStorageV2AuthoritativeState(...args),
     clearStorageV2CloudControl:(...args)=>browser.clearStorageV2CloudControl(...args),
     replaceStorageV2CurrentState:(...args)=>browser.replaceStorageV2CurrentState(...args),
     adoptStorageV2CloudHead:(...args)=>browser.adoptStorageV2CloudHead(...args),

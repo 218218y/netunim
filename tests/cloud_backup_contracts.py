@@ -81,6 +81,8 @@ check("bankEvents:normalizeSharedBankEvents(checksRow?.state?.bankEvents" in ord
 check("!point?.checksState?.checks" in orders_backup and "!point?.checksState?.checks" in kupa_backup, "both apps reject an incomplete point-in-time restore without shared checks")
 check("cloud-backup-field-change" in orders_backup and "row.details" in orders_backup, "orders: preview exposes row-level current-vs-restore details")
 check("cloud-backup-field-change" in kupa_backup and "row.details" in kupa_backup, "kupa: preview exposes row-level current-vs-restore details")
+check("replaceStorageV2AuthoritativeState=async()=>false" in orders_backup and "const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.cloudRevision)" in orders_backup, "orders: local restore prefers an atomic Storage V2 authoritative replacement before legacy fallback")
+check("replaceStorageV2AuthoritativeState=async()=>false" in kupa_backup and "const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.dbRevision)" in kupa_backup, "kupa: local restore prefers an atomic Storage V2 authoritative replacement before legacy fallback")
 
 if errors:
     print("\nCloud backup contracts failed:")
