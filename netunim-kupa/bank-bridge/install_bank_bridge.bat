@@ -147,7 +147,7 @@ copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nu
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=56)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=57)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
   if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul

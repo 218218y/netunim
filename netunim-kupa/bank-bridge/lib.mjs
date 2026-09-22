@@ -788,4 +788,9 @@ export function expiredCamoufoxLoginPageBlock(errors,profile,now=Date.now()){
 export function creditErrorSeverity(error={}){const code=String(error?.code||''),stage=String(error?.stage||''),given=String(error?.severity||'');if(error?.deferred===true||code==='CREDIT_AUTOMATION_BLOCKED'||code==='CREDIT_PROVIDER_RATE_LIMITED')return 'deferred';if(['error','warning','deferred','info'].includes(given))return given;if(error?.tier==='forecast'||stage==='Frames'||stage==='Pending')return 'warning';return 'error'}
 export function creditErrorComponent(error={}){const given=String(error?.component||'');if(['core_transactions','forecast_transactions','pending','frames','profile'].includes(given))return given;if(error?.tier==='core')return 'core_transactions';if(error?.tier==='forecast')return 'forecast_transactions';if(String(error?.stage||'')==='Frames')return 'frames';if(String(error?.stage||'')==='Pending')return 'pending';return 'profile'}
 export function creditScrapeFailure(result,profile){return safeCreditScrapeFailure(result?.errorType,result?.errorMessage,profile)}
+export function creditLoginThrownScrapeFailure(error,profile){
+  if(String(error?.code||'').startsWith('CREDIT_'))return error;
+  const raw=String(error?.message||error||''),isTimeout=String(error?.name||'')==='TimeoutError'||/Navigation timeout of \d+ ms exceeded|waiting for (?:selector|navigation).*timeout/i.test(raw);
+  return safeCreditScrapeFailure(isTimeout?'TIMEOUT':'SCRAPE_FAILED',`login flow: ${raw}`,profile);
+}
 export function creditThrownScrapeFailure(error,profile){if(String(error?.code||'').startsWith('CREDIT_'))return error;return safeCreditScrapeFailure('SCRAPE_FAILED',error?.message||error,profile)}

@@ -4,6 +4,7 @@ import {
   CREDIT_HISTORY_DAYS,
   creditProfilePublic,
   creditScrapeFailure,
+  creditLoginThrownScrapeFailure,
   creditThrownScrapeFailure,
   normalizeCreditScrapeAccount,
   normalizeCreditScrapeTransaction,
@@ -20,7 +21,7 @@ import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isra
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
-export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-6.9.0-netunim-v3';
+export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v4+upstream-6.12.1-balance';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_SYNC_MODE_DAILY='daily';
 export const CREDIT_SYNC_MODE_FULL='full';
@@ -204,7 +205,7 @@ function validateFrameDate(value,name){if(value!==undefined&&value!==null&&typeo
 function validateFrameGroup(group,name){
   if(group===undefined||group===null)return null;
   if(typeof group!=='object'||Array.isArray(group))throw safeError(`כאל החזירה קבוצת ${name} שאינה אובייקט.`,'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Frames'});
-  validateFrameNumber(group.nextTotalDebitForAccount,`${name}.nextTotalDebitForAccount`);validateFrameDate(group.nextTotalDebitDateForAccount,`${name}.nextTotalDebitDateForAccount`);validateFrameNumber(group.frameLimitForCardAmount,`${name}.frameLimitForCardAmount`);
+  validateFrameNumber(group.nextTotalDebitForAccount,`${name}.nextTotalDebitForAccount`);validateFrameDate(group.nextTotalDebitDateForAccount,`${name}.nextTotalDebitDateForAccount`);validateFrameNumber(group.frameLimitForCardAmount,`${name}.frameLimitForCardAmount`);validateFrameNumber(group.fictiveMaxAccAmt,`${name}.fictiveMaxAccAmt`);
   if(group.cardLevelFrames!==undefined&&group.cardLevelFrames!==null&&!Array.isArray(group.cardLevelFrames))throw safeError(`כאל החזירה ${name}.cardLevelFrames שאינו מערך.`,'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Frames'});
   for(const frame of Array.isArray(group.cardLevelFrames)?group.cardLevelFrames:[]){if(!frame||typeof frame!=='object'||Array.isArray(frame)||typeof frame.cardUniqueId!=='string')throw safeError(`כאל החזירה רשומת cardLevelFrames לא תקינה בקבוצת ${name}.`,'CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'Frames'});validateFrameNumber(frame.nextTotalDebit,`${name}.cardLevelFrames.nextTotalDebit`);validateFrameDate(frame.nextDebitDate,`${name}.cardLevelFrames.nextDebitDate`)}
   return group;
@@ -221,7 +222,7 @@ export function parseVisaCalFrame(data,card={}){
   let frame=bankFrame||calFrame,group=bankFrame?bankGroup:calFrame?calGroup:null,cardType=bankFrame?'bankIssued':calFrame?'companyIssued':'';
   if(!group&&bankGroup&&!calGroup){group=bankGroup;cardType='bankIssued'}else if(!group&&calGroup&&!bankGroup){group=calGroup;cardType='companyIssued'}
   if(!group)return {balance:null,balanceDate:null,cardType:'',cardFrame:null,frameStatus:'missing',frameFetchStatus:'unavailable',warning:frameUnavailable()};
-  const amount=frame?.nextTotalDebit??group.nextTotalDebitForAccount,date=frame?.nextDebitDate??group.nextTotalDebitDateForAccount,limit=group.frameLimitForCardAmount,hasData=amount!==undefined&&amount!==null||date!==undefined&&date!==null||limit!==undefined&&limit!==null;
+  const limit=group.frameLimitForCardAmount,fictiveMax=group.fictiveMaxAccAmt,amount=frame?.nextTotalDebit??group.nextTotalDebitForAccount??(limit!==undefined&&limit!==null&&fictiveMax!==undefined&&fictiveMax!==null?limit-fictiveMax:undefined),date=frame?.nextDebitDate??group.nextTotalDebitDateForAccount,hasData=amount!==undefined&&amount!==null||date!==undefined&&date!==null||limit!==undefined&&limit!==null;
   if(!hasData)return {balance:null,balanceDate:null,cardType,cardFrame:null,frameStatus:'missing',frameFetchStatus:'unavailable',warning:frameUnavailable()};
   return {balance:amount===undefined||amount===null?null:-amount,balanceDate:calBillingDate(date),cardType,cardFrame:limit===undefined||limit===null?null:limit,frameStatus:'fresh',frameFetchStatus:'success',warning:null};
 }
@@ -230,6 +231,21 @@ function monthlyCoverageFailure(plan,error,at){return {month:plan.month,tier:pla
 function monthlyCoverageSuccess(plan,transactions,at,schemaVersion=VISA_CAL_PROVIDER_SCHEMA_VERSION){return {month:plan.month,tier:plan.tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:schemaVersion,lastErrorCode:'',lastErrorAt:null}}
 function coverageError(profile,error,{month='',tier='',accountNumber='',at=new Date().toISOString(),component='',severity=''}={}){const stage=String(error?.stage||'Transactions').slice(0,80),resolvedComponent=component||(tier==='core'?'core_transactions':tier==='forecast'?'forecast_transactions':stage==='Frames'?'frames':stage==='Pending'?'pending':'profile'),resolvedSeverity=severity||(resolvedComponent==='core_transactions'?'error':'warning');return {profileId:profile.profileId,provider:profile.provider,label:profile.label,code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage,httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת נתוני האשראי נכשלה',at,originalFailureAt:error?.originalFailureAt||at,retryAfterAt:error?.retryAfterAt||null,month,tier,component:resolvedComponent,severity:resolvedSeverity,accountSuffix:safeSuffix(accountNumber)}}
 
+export function applyVisaCalLoginNavigationPolicy(scraper){
+  if(!scraper||typeof scraper.getLoginOptions!=='function')throw safeError('מחבר כאל המותקן אינו חושף את חוזה getLoginOptions שנדרש למדיניות הניווט המקומית.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+  const getLoginOptions=scraper.getLoginOptions.bind(scraper);
+  scraper.getLoginOptions=credentials=>{
+    const options=getLoginOptions(credentials);
+    if(!options||typeof options!=='object'||Array.isArray(options))throw safeError('מחבר כאל המותקן החזיר חוזה LoginOptions לא תקין.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+    // The Cal landing page is an SPA. Waiting for the full load event can hang on
+    // non-essential resources even though the login UI is already usable. The upstream
+    // login flow already has an explicit #ccLoginDesktopBtn readiness gate immediately
+    // after navigation, so DOMContentLoaded is the correct document-level boundary here.
+    return {...options,waitUntil:'domcontentloaded'};
+  };
+  return scraper;
+}
+
 export class CreditProviderAdapter {
   constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_DAILY}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode);this.connectorVersion=''}
   event(event){diagnostic(this.onDiagnostic,{correlationId:this.correlationId,provider:this.profile?.provider,profileId:this.profile?.profileId,connectorVersion:this.connectorVersion||undefined,...event})}
@@ -237,14 +253,14 @@ export class CreditProviderAdapter {
 }
 
 export class VisaCalAdapter extends CreditProviderAdapter {
-  constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,browserPath:options.browserPath,interactive:!!options.interactive,fetchImpl:options.fetchImpl||globalThis.fetch,requestDelayMs:Number.isFinite(options.requestDelayMs)?options.requestDelayMs:650,excludedAccountNumbers:new Set((Array.isArray(options.excludedAccountNumbers)?options.excludedAccountNumbers:[]).map(value=>text(value,80)).filter(Boolean))})}
+  constructor(options={}){super(options);this.connectorVersion=VISA_CAL_PROVIDER_SCHEMA_VERSION;Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,browserPath:options.browserPath,interactive:!!options.interactive,fetchImpl:options.fetchImpl||globalThis.fetch,requestDelayMs:Number.isFinite(options.requestDelayMs)?options.requestDelayMs:650,excludedAccountNumbers:new Set((Array.isArray(options.excludedAccountNumbers)?options.excludedAccountNumbers:[]).map(value=>text(value,80)).filter(Boolean))})}
   async request(url,data,stage){if(this.blockingError)throw this.blockingError;const started=Date.now();try{const result=await postJson(this.fetchImpl,url,data,{headers:this.headers,stage,now:this.now().getTime()});this.event({stage,durationMs:Date.now()-started,responseShape:safeCreditResponseShape(result)});return result}catch(error){if(['CREDIT_AUTOMATION_BLOCKED','CREDIT_PROVIDER_RATE_LIMITED'].includes(String(error?.code||''))){error.originalFailureAt=error.originalFailureAt||this.now().toISOString();this.blockingError=error}this.event({stage,durationMs:Date.now()-started,errorClass:error?.code,httpStatus:error?.httpStatus,retryAfterAt:error?.retryAfterAt});throw error}}
   async scrape(){
-    const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:this.now()}),scraper=this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false});let initialized=false,success=false;
+    const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:this.now()}),scraper=applyVisaCalLoginNavigationPolicy(this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}));let initialized=false,success=false;
     try{
       await scraper.initialize();initialized=true;this.event({stage:'BrowserInit'});
-      let loginResult;try{loginResult=await scraper.login(profile.credentials)}catch(error){throw creditThrownScrapeFailure(error,profile)}
-      if(!loginResult?.success)throw creditScrapeFailure(loginResult,profile);this.event({stage:'Login'});
+      let loginResult,loginStarted=Date.now();try{loginResult=await scraper.login(profile.credentials)}catch(error){const failure=creditLoginThrownScrapeFailure(error,profile);this.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code});throw failure}
+      if(!loginResult?.success)throw creditScrapeFailure(loginResult,profile);this.event({stage:'Login',durationMs:Date.now()-loginStarted});
       let cards;try{cards=await scraper.getCards()}catch{throw safeError('נתוני init ורשימת הכרטיסים של כאל לא נמצאו לאחר הכניסה.','CREDIT_SESSION_INIT_MISSING',{stage:'DashboardInit'})}
       if(!Array.isArray(cards)||!cards.length)throw safeError('כאל לא החזירה רשימת כרטיסים תקינה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardInit'});
       let authorization;try{authorization=await scraper.getAuthorizationHeader()}catch{throw safeError('אסימון ההרשאה של כאל לא נמצא לאחר הכניסה.','CREDIT_AUTH_TOKEN_MISSING',{stage:'AuthToken'})}
