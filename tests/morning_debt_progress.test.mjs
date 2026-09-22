@@ -90,3 +90,15 @@ test('customer editor renders a verified Morning mutation once but re-persists a
  const duplicate=editor.applyVerifiedMorningDocument(input);assert.equal(duplicate.persisted,true);assert.equal(saves.length,2,'durable duplicate does not save again');assert.equal(renders.length,1);
  const missing=editor.applyVerifiedMorningDocument({...input,debtId:'missing',operationId:op(10)});assert.equal(missing.changed,false);assert.equal(missing.reason,'missing-debt');assert.equal(saves.length,2);
 });
+
+test('a debt may be deleted after a verified Morning application once no recovery lock remains',async()=>{
+ const row=debt(),model={state:{customerDebts:[row]}},saves=[];
+ const editor=createDomainsCustomersEditor({
+  model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true,
+  rejectDebtRecoveryMutation:()=>false,
+ });
+ const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
+ await editor.deleteDebt(row.id);
+ assert.equal(model.state.customerDebts.length,0,'verified Morning progress does not create a permanent local reference that prevents later debt deletion');
+ const deletion=saves.at(-1);assert.equal(deletion.meta.mutationType,'delete');assert.deepEqual(deletion.meta.deleteIntents,{customerDebts:[row.id]});
+});

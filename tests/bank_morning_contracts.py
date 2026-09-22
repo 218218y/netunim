@@ -27,6 +27,7 @@ recovery=(SITE/'domains/customers/morning-debt-recovery.js').read_text(encoding=
 transport=(SITE/'cloud/transport.js').read_text(encoding='utf-8')
 bank_feed=(SITE/'domains/finance/bank-feed.js').read_text(encoding='utf-8')
 controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
+editor=(SITE/'domains/customers/editor.js').read_text(encoding='utf-8')
 docs=DOCS.read_text(encoding='utf-8')
 
 ok(migration==upgrade,'Bank Morning migration and manual upgrade are byte-for-byte identical')
@@ -48,6 +49,8 @@ ok("source_kind text not null default 'standalone'" in migration and "source_kin
    'Morning ledger stores explicit source routing without persisting local debt identity')
 ok('debt_id' not in sql.lower() and 'source_bank_transaction_id' in sql,
    'Server issuance ledger stays debt-agnostic while retaining stable bank source identity')
+ok("if(!d||rejectDebtRecoveryMutation(id))return" in editor and "if(rejectDebtRecoveryMutation(id))return;model.state.customerDebts=model.state.customerDebts.filter" in editor,
+   'Debt deletion is blocked only while a matching Morning recovery is pending; after durable settlement no permanent bank/document debt reference prevents normal deletion')
 ok("async function validateBankSource" in edge and ".eq('owner_id',ownerId)" in edge and "data.account_role!=='business'" in edge and "data.status!=='completed'" in edge and "Number(first.type)!==4" in edge and 'sameAmount(first.price,data.amount)' in edge,
    'Edge Function independently verifies ownership, account role, completion and exact bank-transfer payment')
 ok('const raw=Array.isArray(doc.payment)' in edge and 'raw.length>12' in edge and 'totalCents!==Math.round(amount*100)' in edge and 'payload.payment=lines' in edge,

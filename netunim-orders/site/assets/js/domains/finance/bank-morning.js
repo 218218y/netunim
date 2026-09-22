@@ -7,6 +7,13 @@ function normalizeParty(value){return clean(value,180).toLocaleLowerCase('he').r
 function partyWords(value){return normalizeParty(value).split(' ').filter(word=>word.length>=2)}
 function transactionParty(row){return clean(row?.partyName,160)||clean(row?.partyHeadline,160)||clean(row?.messageHeadline,160)}
 function transactionReference(row){return clean(row?.bankReference,80)||clean(row?.bankSerial,80)}
+function transactionDescription(row){
+  const description=clean(row?.description,250),memo=clean(row?.memo,500),parts=[];
+  const push=value=>{const text=clean(value,250);if(!text)return;const joined=parts.join(' · ').toLocaleLowerCase('he');if(joined.includes(text.toLocaleLowerCase('he')))return;parts.push(text)};
+  push(description);push(memo);
+  for(const value of [row?.partyHeadline,row?.partyName,row?.messageHeadline,row?.messageDetail])push(value);
+  return clean(parts.join(' · '),250)||transactionParty(row)||'תקבול בהעברה בנקאית';
+}
 function aggregateTransaction(row){
   const settlement=row?.creditSettlementDetails;if(settlement&&typeof settlement==='object'&&Object.keys(settlement).length)return true;
   const checks=row?.checkDetails;if(!checks||typeof checks!=='object')return false;const count=Number(checks.checkCount),items=Array.isArray(checks.checkItems)?checks.checkItems.length:0;return count>1||items>1;
@@ -24,7 +31,7 @@ export function bankMorningEligibility(row,role='business'){
 
 export function bankMorningPrefill(row){
   const amount=amountCents(row?.amount)/100;if(!Number.isFinite(amount)||amount<=0)throw new Error('bank_morning_invalid_amount');
-  const customerName=transactionParty(row),date=dateOnly(row?.processedDate||row?.date),reference=transactionReference(row),description=clean(row?.description,250)||clean(row?.messageHeadline,250)||customerName||'תקבול בהעברה בנקאית';
+  const customerName=transactionParty(row),date=dateOnly(row?.processedDate||row?.date),reference=transactionReference(row),description=transactionDescription(row);
   if(!date)throw new Error('bank_morning_invalid_date');
   return {
     customerName,amount,date,description,orderNumber:'',email:'',phone:'',taxId:'',remarks:'',

@@ -97,7 +97,7 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
       <div class="form-grid">
         <div class="field"><label>שם לקוח</label><input id="morningClientName" maxlength="160" value="${esc(d.customerName||'')}"></div>
-        <div class="field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0.01" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
+        <div class="field"><label>סכום כולל מע״מ</label><input id="morningAmount" class="number-input" type="number" min="0" step="1" value="${esc(amountInput)}" placeholder="0.00"></div>
         <div class="field"><label>אימייל <small>(רשות)</small></label><input id="morningClientEmail" type="email" maxlength="180" value="${esc(d.email||'')}"></div>
         <div class="field"><label>טלפון <small>(רשות)</small></label><input id="morningClientPhone" inputmode="tel" maxlength="50" value="${esc(d.phone||'')}"></div>
         <div class="field"><label>מספר עוסק / ח.פ. <small>(רשות)</small></label><input id="morningClientTaxId" inputmode="numeric" maxlength="9" value="${esc(d.taxId||'')}"></div>
