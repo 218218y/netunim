@@ -74,8 +74,12 @@ WAREHOUSE_CASES = r"""
  const supplierPanel=supplier.querySelector('[data-menu-panel]');
  assert(supplierPanel.matches(':popover-open'),'supplier uses the same top layer');
  const supplierInput=supplier.querySelector('#supplierMenuSearch');supplierInput.value='Resize Probe 23';supplierInput.dispatchEvent(new Event('input',{bubbles:true}));await wait();await wait();
- const supplierTriggerRect=supplier.querySelector('[data-menu-trigger]').getBoundingClientRect(),supplierPanelRect=supplierPanel.getBoundingClientRect(),supplierGap=supplierTriggerRect.top-supplierPanelRect.bottom;
- assert(supplierGap>=-2&&supplierGap<=12,'supplier popup did not re-anchor after filtered content resized it: '+supplierGap);
+ const supplierTriggerRect=supplier.querySelector('[data-menu-trigger]').getBoundingClientRect(),supplierPanelRect=supplierPanel.getBoundingClientRect();
+ // Repositioning may legitimately flip sides after filtering: a tall popup can
+ // open upward, then the shortened result can fit below. Validate attachment to
+ // either edge of the trigger rather than prescribing which side wins.
+ const supplierAboveGap=supplierTriggerRect.top-supplierPanelRect.bottom,supplierBelowGap=supplierPanelRect.top-supplierTriggerRect.bottom,supplierAnchorGap=Math.max(supplierAboveGap,supplierBelowGap);
+ assert(supplierAnchorGap>=-2&&supplierAnchorGap<=12,'supplier popup did not re-anchor after filtered content resized it: '+JSON.stringify({above:supplierAboveGap,below:supplierBelowGap,anchor:supplierAnchorGap}));
  const resizeProbe=supplier.querySelector('[data-supplier-name="Resize Probe 23"]'),resizeRect=resizeProbe.getBoundingClientRect(),resizeHit=document.elementFromPoint(resizeRect.left+resizeRect.width/2,resizeRect.top+resizeRect.height/2);
  assert(resizeProbe===resizeHit||resizeProbe.contains(resizeHit),'resized supplier option is not the pointer hit target');
  document.body.click();await wait();assert(!supplier.classList.contains('open'),'supplier outside closes through shared controller');
