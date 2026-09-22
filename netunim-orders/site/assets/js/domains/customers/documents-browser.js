@@ -68,11 +68,16 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
   }
   async function search(refresh=false){try{query={...readFilters(),page:0};return await runSearch({refresh})}catch(error){toast(error.message)}}
   function page(delta){if(busy)return;query={...query,page:Math.max(0,query.page+Number(delta))};return runSearch()}
+  function allocationMarkup(value){
+    const allocation=String(value||'').trim();if(!allocation)return '<span class="morning-browser-allocation empty">—</span>';
+    const preview=allocation.length>7?allocation.slice(0,7)+'…':allocation;
+    return `<span class="morning-browser-allocation assigned" title="${esc(allocation)}" aria-label="מספר הקצאה ${esc(allocation)}"><span class="morning-browser-allocation-mark" aria-hidden="true">✓</span><span class="morning-browser-allocation-text">${esc(preview)}</span></span>`;
+  }
   function renderResults(items){
     const headers=['תאריך','סוג','מספר מסמך','לקוח','סכום','מטבע','סטטוס','מספר הקצאה','פעולות'];
     $('#morningBrowserResults').innerHTML=`<table class="morning-browser-table"><thead><tr>${headers.map(h=>`<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${items.map(doc=>{
-      const fields=[doc.date,TYPES[doc.type]||doc.type,doc.number,doc.clientName,amount(doc.amount,''),doc.currency,STATUSES[doc.status]??doc.status,doc.allocationNumber||'—'];
-      return `<tr>${fields.map((value,index)=>`<td data-label="${headers[index]}">${esc(value)}</td>`).join('')}<td data-label="פעולות"><div class="morning-browser-actions">${picker?`<button class="btn small" data-action="morning-select-invoice" data-click-arg0="${esc(doc.id)}">בחר</button>`:''}<button class="btn small" data-action="morning-browser-view" data-click-arg0="${esc(doc.id)}">צפה</button><button class="btn small" data-action="morning-download" data-click-arg0="${esc(doc.id)}">הורד</button><button class="btn small" data-action="morning-details" data-click-arg0="${esc(doc.id)}">פרטים</button></div></td></tr>`;
+      const fields=[doc.date,TYPES[doc.type]||doc.type,doc.number,doc.clientName,amount(doc.amount,''),doc.currency,STATUSES[doc.status]??doc.status];
+      return `<tr>${fields.map((value,index)=>`<td data-label="${headers[index]}" title="${esc(value)}"><span class="morning-browser-cell-text">${esc(value)}</span></td>`).join('')}<td class="morning-browser-allocation-cell" data-label="מספר הקצאה">${allocationMarkup(doc.allocationNumber)}</td><td data-label="פעולות"><div class="morning-browser-actions">${picker?`<button class="btn small" data-action="morning-select-invoice" data-click-arg0="${esc(doc.id)}">בחר</button>`:''}<button class="btn small" data-action="morning-browser-view" data-click-arg0="${esc(doc.id)}">צפה</button><button class="btn small" data-action="morning-download" data-click-arg0="${esc(doc.id)}">הורד</button><button class="btn small" data-action="morning-details" data-click-arg0="${esc(doc.id)}">פרטים</button></div></td></tr>`;
     }).join('')}</tbody></table>`;
   }
   function selectInvoice(id){

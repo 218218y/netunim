@@ -36,6 +36,18 @@ test('direct domain rerenders are discarded unless navigation has stamped the ne
   h.states.a='';assert.equal(h.cache.activate('a'),false,'an unstamped direct rerender can never be restored under an older state key');
 });
 
+
+test('clean view cache restores nested scroll offsets after a detached view is reactivated',()=>{
+  const h=harness(),view=h.node('view'),scroller=h.node('scroller'),other=h.node('other');
+  scroller.scrollTop=275;scroller.scrollLeft=38;view.appendChild(scroller);h.host.appendChild(view);h.cache.markRendered('a');
+  assert.equal(h.cache.activate('b'),false);
+  scroller.scrollTop=0;scroller.scrollLeft=0; // browsers may reset detached overflow boxes
+  h.host.appendChild(other);h.cache.markRendered('b');
+  assert.equal(h.cache.activate('a'),true);
+  assert.equal(scroller.scrollTop,275);
+  assert.equal(scroller.scrollLeft,38);
+});
+
 test('clean view cache is bounded by LRU size',()=>{
   const h=harness();
   for(const key of ['a','b','c']){h.host.appendChild(h.node(key));h.cache.markRendered(key);h.cache.activate(key==='a'?'b':key==='b'?'c':'d')}

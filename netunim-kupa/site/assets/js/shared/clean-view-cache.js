@@ -20,13 +20,22 @@ export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey
   }
 
   function sizeOf(target){
-    let nodes=0,rows=0;const pending=[...(target.childNodes||target.children||[])];
+    let nodes=0,rows=0;const scrollPositions=[],pending=[...(target.childNodes||target.children||[])];
     while(pending.length){
       const node=pending.pop();nodes++;if(node.nodeName==='TR')rows++;
+      const top=Number(node?.scrollTop)||0,left=Number(node?.scrollLeft)||0;
+      if(top||left)scrollPositions.push({node,top,left});
       if(nodes>maxNodes||rows>maxRows)return null;
       for(const child of node.childNodes||node.children||[])pending.push(child);
     }
-    return {nodes,rows};
+    return {nodes,rows,scrollPositions};
+  }
+
+  function restoreScrollPositions(positions){
+    for(const item of positions||[]){
+      const node=item?.node;if(!node)continue;
+      node.scrollTop=Number(item.top)||0;node.scrollLeft=Number(item.left)||0;
+    }
   }
 
   function markRendered(key){
@@ -62,7 +71,7 @@ export function createCleanViewCache({container,dataRevision=()=>'',viewStateKey
       target.replaceChildren();
       return false;
     }
-    target.replaceChildren(cached.fragment);entries.delete(key);
+    target.replaceChildren(cached.fragment);restoreScrollPositions(cached.scrollPositions);entries.delete(key);
     activeKey=key;activeRevision=cached.revision;activeStateKey=cached.stateKey;
     return true;
   }

@@ -129,6 +129,7 @@ ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
 
 
 browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
+app_css=(SITE/'assets/app.css').read_text(encoding='utf-8')
 
 migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql')).read_text(encoding='utf-8')
 ok(all(name not in documents for name in ('scheduleSave','renderCustomers','__standalone__','activeScopeId')) and 'customerDebts' not in edge and 'customerDebts' not in migration
@@ -218,6 +219,12 @@ ok('MAX_DOCUMENT_PDF_BYTES=20*1024*1024' in edge and "Content-Type':'application
    'Existing-document preview validates PDF magic bytes, caps payload size and disables storage/cache')
 ok('morningBrowserPreviewFrame' in browser and "action:'document_pdf'" in browser and "opened.length===0" not in browser,
    'Existing-document view is rendered inside the app rather than navigating to Morning')
+ok('.morning-browser-table{width:100%;min-width:0!important;table-layout:fixed' in app_css and '#morningBrowserResults{width:100%;max-width:100%;overflow:hidden}' in app_css,
+   'Morning document browser layout: the results table overrides the global wide-table minimum and fits the modal without horizontal scrolling')
+ok('grid-template-rows:auto 40px' in app_css and '.morning-browser-filters input,.morning-browser-filters select' in app_css and 'height:40px' in app_css and '.morning-browser-filters .date-editor{height:40px' in app_css,
+   'Morning document browser filters: text, select and date controls share the same control height and aligned labels')
+ok('function allocationMarkup(value)' in browser and 'morning-browser-allocation-text' in browser and 'title=\"${esc(allocation)}\"' in browser and '.morning-browser-allocation-text{display:none}' in app_css,
+   'Morning document browser allocation: allocation IDs are compact, expose the full value on hover and collapse to an existence marker at tighter widths')
 ok('localStorage' not in browser and 'sessionStorage' not in browser and 'document_links' in browser and 'document_pdf' in browser and 'URL.createObjectURL' in browser and 'noopener noreferrer' in browser,
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
 ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
