@@ -5,7 +5,7 @@ import {createDomainsCustomersEditor} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 
-export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,onBankDocumentVerified}){
+export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,getBusinessBankTransactions,ensureBusinessBankTransactions,onBankDocumentVerified}){
   let view,editor;
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
@@ -33,6 +33,9 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     supaFetch:(...args)=>cloudAuth.supaFetch(...args),
     documentsBrowser,
     dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+    setDateValue:(...args)=>uiDateEditor.setDateValue(...args),
+    getBusinessBankTransactions:(...args)=>getBusinessBankTransactions?.(...args)||[],
+    ensureBusinessBankTransactions:(...args)=>ensureBusinessBankTransactions?.(...args),
     rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args),
     rejectSecondaryMutation:(...args)=>storagePersistence.rejectSecondaryMutation(...args),
     applyVerifiedDebtDocument:(...args)=>{if(storagePersistence.rejectSecondaryMutation())return {changed:false,reason:'write-blocked'};return editor?.applyVerifiedMorningDocument(...args)||{changed:false,reason:'editor-unavailable'}},
@@ -93,6 +96,9 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     openBankMorningDocument:(...args)=>documents.openBankMorningDocument(...args),
     linkBankMorningDebt:(...args)=>documents.linkBankDebt(...args),
     filterBankMorningDebts:(...args)=>documents.filterBankDebtPicker(...args),
+    linkMorningBankTransaction:(...args)=>documents.linkBankTransaction(...args),
+    clearMorningBankTransaction:(...args)=>documents.clearBankTransactionLink(...args),
+    filterMorningBankTransactions:(...args)=>documents.filterBankTransactionPicker(...args),
     addMorningPayment:(...args)=>documents.addMorningPayment(...args),
     removeMorningPayment:(...args)=>documents.removeMorningPayment(...args),
     syncMorningPaymentTotal:(...args)=>documents.syncPaymentTotal(...args),

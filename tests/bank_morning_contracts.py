@@ -28,6 +28,10 @@ bank_view=(SITE/'domains/finance/bank-morning-view.js').read_text(encoding='utf-
 documents=(SITE/'domains/customers/documents.js').read_text(encoding='utf-8')
 payments=(SITE/'domains/customers/morning-payments.js').read_text(encoding='utf-8')
 debt_picker=(SITE/'domains/customers/morning-bank-debt-picker.js').read_text(encoding='utf-8')
+transaction_picker=(SITE/'domains/customers/morning-bank-transaction-picker.js').read_text(encoding='utf-8')
+transaction_link=(SITE/'domains/customers/morning-bank-transaction-link.js').read_text(encoding='utf-8')
+composition=(SITE/'domains/customers/composition.js').read_text(encoding='utf-8')
+main=(SITE/'main.js').read_text(encoding='utf-8')
 banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
 app_css=(ROOT/'netunim-orders/site/assets/app.css').read_text(encoding='utf-8')
 bank_detail=(SITE/'domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8')
@@ -81,6 +85,18 @@ ok('class="morning-bank-debt-row ${selected' in debt_picker and 'data-action="mo
    and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(0,1.45fr)' in app_css
    and 'collapseMorningBankDebtPicker' in debt_picker and 'collapseMorningBankDebtPicker()' in documents,
    'Bank debt picker stays collapsed until search focus, uses full-row selection and fits the Morning modal without horizontal scrolling')
+ok('search.value=id?String(debt?.customerName' in debt_picker and 'search.dataset.selectedDebtId=id' in debt_picker,
+   'Selecting a bank-linked debt replaces the stale search query with the chosen customer name')
+ok('createMorningBankTransactionLinker' in documents and 'linkBankTransaction' in documents and 'clearBankTransactionLink' in documents and 'bankMorningPrefill(row)' in transaction_link and "setActiveSource({...prefill.source,kind:'bank'" in transaction_link and 'activeDebtId' in documents,
+   'Debt/standalone Morning issuance can adopt the existing bank source contract without losing the selected debt')
+ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-transaction-search' in transaction_picker and 'bankMorningEligibility' in transaction_picker and 'documentLinks' in transaction_picker and 'already-linked' in transaction_picker,
+   'Reverse bank picker is searchable, restricted to eligible credits and visibly blocks already-linked transactions')
+ok('.morning-bank-transaction-results{display:none;' in app_css and '.morning-bank-transaction-search-shell:focus-within .morning-bank-transaction-results{display:block}' in app_css and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(62px,.65fr)' in app_css,
+   'Reverse bank picker stays collapsed until focus and fits inside the Morning modal without horizontal scrolling')
+ok('getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[]' in main and 'ensureBusinessBankTransactions' in main and 'getBusinessBankTransactions' in composition,
+   'Morning bank picker consumes the existing finance archive projection instead of creating a second bank-data path')
+ok('bankMorningLinkedDocumentsMarkup' in bank_view and 'data-action="morning-open-document"' in bank_view and 'bankMorningLinkedDocumentsMarkup(row)' in bank_table,
+   'Verified Morning documents are directly visible and openable from their bank movement row')
 ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in debt_picker,
    'Debt suggestions exclude completed debts and compare bank credits to the current payment remainder')
 ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and 'row.documentLinks=[entry' in controller,

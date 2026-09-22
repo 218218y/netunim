@@ -57,12 +57,13 @@ function readPaymentRows({strict=true}={}){
     return payment;
   });
 }
-function renderPaymentRows(payments){const host=currentField('morningPaymentRows');if(!host)return;host.innerHTML=payments.map((payment,index)=>paymentRowMarkup(index,payment,getSource())).join('');syncPaymentType();syncPaymentTotal()}
+function renderPaymentRows(payments){const host=currentField('morningPaymentRows');if(!host)return;host.innerHTML=(Array.isArray(payments)?payments:[]).slice(0,12).map((payment,index)=>paymentRowMarkup(index,payment,getSource())).join('');syncPaymentType();syncPaymentTotal()}
+function replaceMorningPayments(payments){const rows=Array.isArray(payments)?payments:(payments&&typeof payments==='object'?[payments]:[]);if(!rows.length)return false;renderPaymentRows(rows.map(row=>({...row})));return true}
 function addMorningPayment(){const payments=readPaymentRows({strict:false});if(payments.length>=12)return toast('ניתן להוסיף עד 12 תקבולים למסמך');payments.push({type:4,date:todayLocal(),price:'',currency:'ILS'});renderPaymentRows(payments)}
 function removeMorningPayment(index){
   const payments=readPaymentRows({strict:false}),i=Number(index);if(!Number.isInteger(i)||i<0||i>=payments.length)return;if(payments.length<=1)return toast('יש להשאיר לפחות תקבול אחד');const target=payments[i];if(target.bankSourceKey){const bankRows=payments.filter(row=>row.bankSourceKey);if(!target.removable)return toast('התקבול שמייצג את תנועת הבנק אינו ניתן להסרה');if(bankRows.length<=1)return toast('יש להשאיר לפחות תקבול אחד שמקורו בתנועת הבנק')}
   payments.splice(i,1);renderPaymentRows(payments);
 }
 function syncPaymentTotal(){if(![320,400].includes(Number(getSelectedType())))return;const total=readPaymentRows({strict:false}).reduce((sum,row)=>sum+(Number.isFinite(Number(row.price))&&Number(row.price)>0?Math.round(Number(row.price)*100):0),0)/100,field=currentField('morningAmount');if(field)field.value=total>0?total.toFixed(2):''}
-return {paymentFields,readPaymentRows,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal};
+return {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal};
 }

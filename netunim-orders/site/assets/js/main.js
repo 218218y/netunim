@@ -405,6 +405,8 @@ const domainsCustomers=createDomainsCustomers({
   cloudAuth,
   uiNavigation,
   uiDateEditor,
+  getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[],
+  ensureBusinessBankTransactions:async()=>{await domainsFinanceController.ensureBankDisplayArchive();return domainsFinanceController.snapshot().bank?.feed?.transactions||[]},
   onBankDocumentVerified:(...args)=>domainsFinanceController.markBankMorningVerified(...args),
 });
 
@@ -983,6 +985,9 @@ const uiActions=createUiActions({
   openStandaloneMorningDocument:(...args)=>domainsCustomers.openStandaloneMorningDocument(...args),
   linkBankMorningDebt:(...args)=>domainsCustomers.linkBankMorningDebt(...args),
   filterBankMorningDebts:(...args)=>domainsCustomers.filterBankMorningDebts(...args),
+  linkMorningBankTransaction:(...args)=>domainsCustomers.linkMorningBankTransaction(...args),
+  clearMorningBankTransaction:(...args)=>domainsCustomers.clearMorningBankTransaction(...args),
+  filterMorningBankTransactions:(...args)=>domainsCustomers.filterMorningBankTransactions(...args),
   addMorningPayment:(...args)=>domainsCustomers.addMorningPayment(...args),
   removeMorningPayment:(...args)=>domainsCustomers.removeMorningPayment(...args),
   syncMorningPaymentTotal:(...args)=>domainsCustomers.syncMorningPaymentTotal(...args),

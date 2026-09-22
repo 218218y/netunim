@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import {attachBankArchiveMetadata,bankMorningDebtCandidates,bankMorningEligibility,bankMorningPrefill} from '../netunim-orders/site/assets/js/domains/finance/bank-morning.js';
 import {MORNING_BANKS,findMorningBanks,morningBankDatalistMarkup,resolveMorningBank} from '../netunim-orders/site/assets/js/domains/customers/morning-banks.js';
 import {normalizeBankFeedTransaction} from '../netunim-orders/site/assets/js/domains/finance/bank-feed.js';
-import {bankMorningActionCell,bankMorningChoiceMarkup} from '../netunim-orders/site/assets/js/domains/finance/bank-morning-view.js';
+import {bankMorningActionCell,bankMorningChoiceMarkup,bankMorningLinkedDocumentsMarkup} from '../netunim-orders/site/assets/js/domains/finance/bank-morning-view.js';
 import {bankTransferReferenceDetails} from '../netunim-orders/site/assets/js/domains/finance/bank-transaction-detail-view.js';
 import {activeMorningBankDebts,morningBankDebtPickerMarkup} from '../netunim-orders/site/assets/js/domains/customers/morning-bank-debt-picker.js';
+import {morningBankTransactionLabel,morningBankTransactionPickerMarkup,morningLinkableBankTransactions} from '../netunim-orders/site/assets/js/domains/customers/morning-bank-transaction-picker.js';
 import {createCloudTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
 
 const row={archiveId:42,id:'k1',amount:1250,currency:'ILS',status:'completed',date:'2026-09-20T09:00:00Z',processedDate:'2026-09-20T09:00:00Z',partyName:'  משה   כהן ',description:'העברה',bankReference:'REF-7'};
@@ -48,6 +49,8 @@ const pickerDebts=[{id:'a',customerName:'משה כהן',amount:1250,orderNumber:
 assert.deepEqual(activeMorningBankDebts(pickerDebts).map(x=>x.id),['a','b'],'completed debts are absent from the bank debt picker');
 const pickerMarkup=morningBankDebtPickerMarkup({debts:pickerDebts,transaction:row,activeDebtId:'',aggregate:false});
 assert.match(pickerMarkup,/חפש לקוח, הזמנה, טלפון או הערה/);assert.match(pickerMarkup,/התאמה מועדפת/);assert.match(pickerMarkup,/data-bank-debt-search="ישראל לוי b-2"/);assert.match(pickerMarkup,/<button type="button" class="morning-bank-debt-row[^>]*data-action="morning-bank-debt-select"[^>]*data-click-arg0="b"/,'the entire debt result row is the selection control');assert.doesNotMatch(pickerMarkup,/>בחר</,'bank debt results do not waste a separate action column on a choose button');assert.doesNotMatch(pickerMarkup,/id="morningBankDebtLink"/);
+const transactionPickerRows=morningLinkableBankTransactions([row,{...row,archiveId:45,status:'pending'},{...row,archiveId:46,amount:-2}]);assert.deepEqual(transactionPickerRows.map(item=>item.archiveId),[42],'reverse bank picker exposes only finalized eligible credits');
+const transactionPicker=morningBankTransactionPickerMarkup({});assert.match(transactionPicker,/קישור לתנועת בנק/);assert.match(transactionPicker,/חפש לפי לקוח, פעולה, אסמכתא, תאריך או סכום/);assert.match(transactionPicker,/morning-bank-transaction-select/);assert.match(morningBankTransactionLabel(row),/משה כהן/);assert.match(morningBankTransactionLabel(row),/1,250/);
 const direct=attachBankArchiveMetadata([{id:'k1',amount:1250}],[{archiveId:42,id:'k1',handledAt:'2026-09-21T00:00:00Z'}]);assert.equal(direct[0].archiveId,42);assert.ok(direct[0].handledAt);
 
 const response=body=>({ok:true,async json(){return body},async text(){return JSON.stringify(body)}});
@@ -63,5 +66,5 @@ assert.ok(normalized.handledAt,'bank normalization must preserve the durable han
 assert.equal(normalized.documentLinks.length,1,'bank normalization must preserve verified Morning links');
 assert.match(bankMorningActionCell(normalized,'business'),/handled active/,'handled bank row stays visibly green after normalization');
 assert.match(bankMorningActionCell(normalized,'business'),/create-document linked/,'a verified linked document is surfaced on the + action');
-const existing=bankMorningChoiceMarkup(normalized);assert.match(existing.body,/כבר הופק מסמך מאומת/);assert.match(existing.body,/morning-open-document/);
+const existing=bankMorningChoiceMarkup(normalized);assert.match(existing.body,/כבר הופק מסמך מאומת/);assert.match(existing.body,/morning-open-document/);const inlineLinks=bankMorningLinkedDocumentsMarkup(normalized);assert.match(inlineLinks,/חשבונית מס \/ קבלה 1007/);assert.match(inlineLinks,/data-action="morning-open-document"/,'verified Morning documents are directly viewable from the bank row');
 console.log('bank morning tests passed');

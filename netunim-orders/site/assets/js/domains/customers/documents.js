@@ -7,6 +7,7 @@ import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning
 import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
 import {createMorningPayments} from './morning-payments.js';
 import {activeMorningBankDebts,collapseMorningBankDebtPicker,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
+import {createMorningBankTransactionLinker} from './morning-bank-transaction-link.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
@@ -20,7 +21,7 @@ function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function currentField(id){return $('#'+id)}
 function setBusy(button,busy,label=''){if(!button)return;button.disabled=!!busy;if(busy&&label){if(!button.dataset.idleLabel)button.dataset.idleLabel=button.textContent||'';button.textContent=label}else if(!busy&&button.dataset.idleLabel)button.textContent=button.dataset.idleLabel}
 
-export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,onBankDocumentVerified=()=>{}}){
+export function createDomainsCustomersDocuments({model,modal,toast,confirmDialog,markModalDraftSaved,supaFetch,dateEditorMarkup,setDateValue=()=>{},documentsBrowser,applyVerifiedDebtDocument,rejectSecondaryIssuance,rejectSecondaryMutation,refreshForMorningRecovery,getBusinessBankTransactions=()=>[],ensureBusinessBankTransactions=async()=>false,onBankDocumentVerified=()=>{}}){
 let activeOperationId='',activeDebtId='',activeSource={kind:'standalone'},issuanceContext=null,modalGeneration=0,createBusy=false,blocked=false,completed=false,recoveryTimer=null;
 let applicationPromise=null,recoveryPromise=null,decisionView=null;
 let issuanceInterruptionEpoch=0;
@@ -28,7 +29,8 @@ globalThis.addEventListener?.('offline',()=>{issuanceInterruptionEpoch++});
 globalThis.document?.addEventListener?.('visibilitychange',()=>{if(document.hidden)issuanceInterruptionEpoch++});
 let pendingRecovery=loadMorningDebtRecoveryContext();
 if(pendingRecovery){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
-const {paymentFields,readPaymentRows,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
+const {paymentFields,readPaymentRows,replaceMorningPayments,addMorningPayment,removeMorningPayment,syncPaymentType,syncPaymentBank,syncPaymentTotal}=createMorningPayments({dateEditorMarkup,toast,currentField,getSource:()=>activeSource,getSelectedType:()=>selectedType()});
+const bankTransactionLinker=createMorningBankTransactionLinker({toast,currentField,getActiveSource:()=>activeSource,setActiveSource:value=>{activeSource=value},getGeneration:()=>modalGeneration,isActive,getBusinessBankTransactions,ensureBusinessBankTransactions,readPaymentRows,replaceMorningPayments,selectedType,syncDocumentType,syncPaymentType,syncPaymentTotal,setDateValue});
 function isDebtRecoveryPending(debtId){
   const stored=loadMorningDebtRecoveryContext();
   return !!debtId&&[stored,pendingRecovery].some(context=>context?.debtId===debtId);
@@ -74,6 +76,10 @@ function activeBankDebts(){return activeMorningBankDebts(model.state.customerDeb
 function bankDebtLinkPanel(){return activeSource?.kind==='bank'?morningBankDebtPickerMarkup({debts:model.state.customerDebts||[],transaction:activeSource.bankTransaction||null,activeDebtId,aggregate:activeSource.aggregate===true}):''}
 function filterBankDebtPicker(query=''){return filterMorningBankDebtPicker(query)}
 function syncBankDebtPickerSelection(){return syncMorningBankDebtPickerSelection({activeDebtId,debt:currentDebt()})}
+function bankTransactionLinkPanel(source=activeSource){return bankTransactionLinker.panelMarkup(source)}
+function filterBankTransactionPicker(query=''){return bankTransactionLinker.filter(query)}
+function linkBankTransaction(transactionId){return bankTransactionLinker.link(transactionId,{blocked,busy:createBusy})}
+function clearBankTransactionLink(){return bankTransactionLinker.clear({blocked,busy:createBusy})}
 
 function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
@@ -87,7 +93,7 @@ function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
     <div class="morning-type-picker" role="group" aria-label="סוג מסמך">
       ${allowedTypes.map(value=>{const label=DOCUMENT_TYPES[value];return `<label class="morning-type-option"><input type="radio" name="morningDocumentType" value="${value}" data-change="morning-document-type" ${Number(value)===Number(type)?'checked':''}><span><b>${esc(label)}</b><small>${Number(value)===305?'חיוב ללא תקבול':Number(value)===320?'חשבונית ותקבול במסמך אחד':'תקבול כנגד חשבונית/חיוב'}</small></span></label>`}).join('')}
     </div>
-    ${bankDebtLinkPanel()}<div id="morningDebtUpdateHost">${debtUpdatePanel()}</div>
+    ${bankTransactionLinkPanel(source)}${bankDebtLinkPanel()}<div id="morningDebtUpdateHost">${debtUpdatePanel()}</div>
     <div class="morning-form-card">
       <div class="morning-section-title"><span>פרטי המסמך</span><small>${formHint}</small></div>
       <div class="form-grid">
@@ -131,12 +137,12 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   pendingRecovery=loadMorningDebtRecoveryContext()||pendingRecovery;
   if(pendingRecovery&&!completed){activeOperationId=pendingRecovery.operationId;activeDebtId=pendingRecovery.debtId;activeSource=sourceFromRecovery(pendingRecovery);issuanceContext=pendingRecovery;blocked=true}
   if(blocked&&requestedKey!==sourceKey(activeSource)){toast('יש ניסיון הפקה קודם שעדיין ממתין לאימות. יש להשלים את בדיקת ההפקה שלו לפני פתיחת מקור מסמך אחר.');return}
-  if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource)}
+  if(!blocked){activeOperationId=newOperationId();activeDebtId=requestedDebtId;activeSource=requestedSource;bankTransactionLinker.reset(requestedSource);issuanceContext=null;completed=false}else if(issuanceContext?.operationId===activeOperationId){activeDebtId=issuanceContext.debtId;activeSource=hydrateRecoveredSource(sourceFromRecovery(issuanceContext),requestedSource);bankTransactionLinker.reset(activeSource)}
   modalGeneration++;
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
   modal('הפקת מסמך Morning',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
-  syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();await refreshStatus();
+  syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();if(currentField('morningBankTransactionRows'))void bankTransactionLinker.refresh();await refreshStatus();
 }
 function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
 
@@ -410,5 +416,5 @@ async function createMorningDocument(button){
 function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,filterBankDebtPicker,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
+return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,filterBankDebtPicker,linkBankTransaction,clearBankTransactionLink,filterBankTransactionPicker,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
 }

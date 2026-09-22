@@ -74,7 +74,7 @@ ok('on delete cascade' not in sql.lower() and 'drop constraint if exists morning
    'Morning ledger retention: deleting an app user cannot erase issuance/idempotency evidence')
 ok("createDomainsCustomers" in composition and "openMorningDocument" in main and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
    'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
-for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-link','morning-preview','morning-create','morning-open-document','morning-reconcile'):
+for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-link','morning-bank-transaction-select','morning-bank-transaction-clear','morning-bank-transaction-search','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
 ok("openMorningDocumentModal({prefill:null,debtId:'',source:{kind:'standalone'}})" in documents and "openStandaloneMorningDocument" in documents and "source:{kind:activeSource.kind||'standalone'" in documents and "open-morning-standalone" in view,
