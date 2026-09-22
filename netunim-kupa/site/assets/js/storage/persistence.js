@@ -7,8 +7,11 @@ import {jsonEq} from '../sync/merge-records.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
+function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
+function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
+function clearLocalRiskAfter(token,promise){promise?.then(()=>clearLocalRisk(token),()=>{});return promise}
 function requestCloudSave(snapshot,msg,generation){
   cloudSaveRequest={snapshot,msg,generation};
   if(session.cloudSavePromise)return session.cloudSavePromise;
@@ -17,7 +20,8 @@ function requestCloudSave(snapshot,msg,generation){
     let ok=true;
     while(cloudSaveRequest){
       const next=cloudSaveRequest;cloudSaveRequest=null;
-      ok=await persistSupabaseState(next.snapshot,next.msg,next.generation);
+      try{ok=await persistSupabaseState(next.snapshot,next.msg,next.generation)}
+      catch(error){console.error('cloud save failed before durable staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');ok=false}
       // Offline, retry-after and conflicts resume through the existing outbox poller.
       if(!ok)break;
       if(cloudSaveRequest&&cloudSaveRequest.generation<=Number(session.cloudAcknowledgedGeneration||0))cloudSaveRequest=null;
@@ -39,15 +43,24 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   const generation=++session.localGeneration,typed=Array.isArray(operations)&&operations.length>0,normalizationMayDelete=(model.state.credits||[]).some(inactiveCreditExpired),fastLocal=storageV2Primary()&&typed&&!storageBoundary&&!normalizationMayDelete;
   if(fastLocal){
     const localOk=persistImmediateBrowserSnapshot(model.state,session.dbRevision,{operations,generation,mutationType,surface,deleteIntents});localDone();
-    if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
+    const idbPending=!localOk&&storageV2DurabilityAtRisk();
+    const riskToken=`state:${generation}`;if(!localOk)beginLocalRisk(riskToken);
+    if(idbPending)clearLocalRiskAfter(riskToken,storageV2CommitPromise());
+    if(!localOk){
+      if(idbPending){
+        setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
+        storageV2CommitPromise().then(()=>{if(generation===session.localGeneration)setSaveStatus('השינוי נשמר מקומית','saving')},()=>setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error'));
+      }else setSaveStatus('שגיאת עותק מקומי','error');
+    }
     // The operation is already durable. Yield so normalization, cloud projection
     // and file I/O cannot delay the paint caused by the user's edit.
-    return nextTurn(()=>{
+    return nextTurn(async()=>{
+      if(idbPending){try{await storageV2CommitPromise()}catch(error){setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error');return false}}
       const currentGeneration=session.localGeneration,fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
-      const v2Cloud=storageV2CloudOutboxActive();
-      if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});
+      const v2Cloud=storageV2CloudOutboxActive()&&(localOk||idbPending);
+      if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)try{stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});clearLocalRiskAfter(riskToken,session.cloudOutboxCommitPromise)}catch(error){console.error('cloud outbox staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');return false}
       if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,currentGeneration)):requestCloudSave(snapshot,msg,currentGeneration);
-      session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return session.saveQueue;
+      session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return session.saveQueue.then(ok=>{if(ok)clearLocalRisk(riskToken);return ok});
     });
   }
   const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
@@ -55,15 +68,22 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   else if(autoCreditDeleteIds.length&&!storageBoundary)storageBoundary='normalize-expired-credits';
   const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,storageBoundary,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
   localDone();
-  if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');
+  const idbPending=!localOk&&storageV2DurabilityAtRisk();
+  const riskToken=`state:${generation}`;if(!localOk)beginLocalRisk(riskToken);
+  if(idbPending)clearLocalRiskAfter(riskToken,storageV2CommitPromise());
+  if(!localOk&&!idbPending)setSaveStatus('שגיאת עותק מקומי','error');
+  if(idbPending)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
   // Boundary operations (restore/import/authoritative replacement) intentionally stay on
   // the legacy compatibility outbox until the replacement-checkpoint migration is fully
   // drained. A boundary can install a new V2 epoch, so it must never reuse a stale V2 cursor.
-  const v2Cloud=storageV2CloudOutboxActive()&&!storageBoundary;
-  if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});
-  if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,generation)):requestCloudSave(snapshot,msg,generation);
-  session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));
-  return session.saveQueue
+  const continueSave=()=>{
+    const v2Cloud=storageV2CloudOutboxActive()&&!storageBoundary&&(localOk||idbPending);
+    if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)try{stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});clearLocalRiskAfter(riskToken,session.cloudOutboxCommitPromise)}catch(error){console.error('cloud outbox staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');return false}
+    if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,generation)):requestCloudSave(snapshot,msg,generation);
+    session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));
+    return session.saveQueue.then(ok=>{if(ok)clearLocalRisk(riskToken);return ok})
+  };
+  return idbPending?storageV2CommitPromise().then(continueSave,()=>{setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error');return false}):continueSave()
 }
 
 function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null,storageBoundary=''}={}){
@@ -72,11 +92,18 @@ function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='auto
   if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks'],operations,storageBoundary});
   domainRevisions?.touch('checks');
   const deleteIntents={checks:deletedIds},generation=checksSession.sharedChecksGeneration+1,fastLocal=storageV2Primary()&&Array.isArray(operations)&&operations.length>0&&!storageBoundary&&!(model.state.credits||[]).some(inactiveCreditExpired),fullSnapshot=fastLocal?null:measureStorage('normalize',()=>normalizeState(model.state)),localOk=persistImmediateBrowserSnapshot(fastLocal?model.state:fullSnapshot,session.dbRevision,{normalized:!fastLocal,owned:!fastLocal,operations,storageBoundary,generation,mutationType,surface,deleteIntents});
+  const idbPending=!localOk&&storageV2DurabilityAtRisk(),durable=idbPending?storageV2CommitPromise():null;
+  const riskToken=`checks:${generation}`;if(!localOk)beginLocalRisk(riskToken);
+  if(durable)clearLocalRiskAfter(riskToken,durable);
   checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds,mutationType,surface});
-  if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
+  if(fastLocal)clearLocalRiskAfter(riskToken,checksSession.sharedChecksOutboxCommitPromise);
+  if(idbPending){
+    setSaveStatus('ממתין לאישור שמירת הצקים ב־IndexedDB','saving');
+    durable.then(()=>setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving'),()=>setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error'));
+  }else if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
   if(files.backupsDirHandle)(fastLocal?nextTurn(()=>backupSnapshotToComputer(normalizeState(model.state),session.dbRevision)):backupSnapshotToComputer(fullSnapshot,session.dbRevision)).catch(e=>console.error('shared checks local backup',e));
-  clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(()=>{checksSession.sharedChecksSaveTimer=null;saveSharedChecksToCloud(msg)},220);
-  return Promise.resolve(localOk)
+  clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(async()=>{checksSession.sharedChecksSaveTimer=null;if(durable)try{await durable}catch{return}await saveSharedChecksToCloud(msg)},220);
+  return durable?durable.then(()=>true,()=>false):Promise.resolve(localOk)
 }
 
 async function persistState(snapshot,msg,generation=session.localGeneration,deleteIntents={}){

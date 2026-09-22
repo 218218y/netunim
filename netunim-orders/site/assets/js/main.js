@@ -197,6 +197,7 @@ const storagePersistence=createStoragePersistence({
   localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   ...storageV2Cloud,
+  storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
   setSave:(...args)=>uiStatus.setSave(...args),
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
@@ -213,6 +214,7 @@ const storagePersistence=createStoragePersistence({
   checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
+  storageV2:storageShadow,
 });
 
 const stateSnapshots=createStateSnapshots({
@@ -1072,7 +1074,7 @@ model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClon
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

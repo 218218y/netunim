@@ -21,22 +21,24 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const shadow=createStorageShadow({app,owner,primary,validate,enabled:()=>mode()==='shadow',createJournal});
   const diagnostics={mode:'off',recoveries:0,migrations:0,operations:0,boundaries:0,fallbacks:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
-  let journal=null,identity='',starting=null,commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false;
+  let journal=null,identity='',starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,undurableFailed=false;
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
   function currentOwner(){return String(owner()||'local')}
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    identity=next;journal=createJournal({owner:`${identity}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primary()&&identity===currentOwner()});corruptIdentity='';return journal;
+    identity=next;const scopedOwner=next;
+    journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   async function recover(fallbackState=null,appMetadata={}){
     if(mode()!=='primary'||!primary())return null;
-    diagnostics.mode='primary';const active=create();
-    if(corruptIdentity===identity)return null;
-    if(starting)return starting;
-    starting=(async()=>{
+    diagnostics.mode='primary';const active=create(),activeIdentity=identity;
+    if(corruptIdentity===activeIdentity)return null;
+    if(starting&&startingIdentity===activeIdentity)return starting;
+    const request=(async()=>{
       try{
         let recovered=await active.open();
+        if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
         if(recovered?.appMetadata?.storageRole==='primary'){
           const fallbackSeq=Number(appMetadata?.snapshotSeq||0),v2Seq=Number(recovered.appMetadata?.snapshotSeq||0);
           if(!fallbackState||fallbackSeq<=v2Seq){diagnostics.recoveries++;operationsSinceCheckpoint=Math.max(0,recovered.seq-Number(recovered.stored?.checkpoints?.data?.seq||0));return {...recovered,source:'v2'}}
@@ -56,16 +58,17 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
         const canonical=prepareCheckpoint(business(fallbackState));validate(canonical);
         await active.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.migrations++;
         recovered=await active.recover();return {...recovered,source:'v1-migration'};
-      }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;corruptIdentity=identity;return null}
-      finally{starting=null}
+      }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;corruptIdentity=activeIdentity;return null}
+      finally{if(starting===request){starting=null;startingIdentity=''}}
     })();
-    return starting;
+    starting=request;startingIdentity=activeIdentity;return request;
   }
   function canonicalOperations(state,operations){
-    const source=state||{};
+    const source=state||{},byCollection=new Map();
     return operations.map(operation=>{
       if(operation.type!=='put')return structuredClone(operation);
-      const record=source[operation.collection]?.find?.(row=>row?.id===operation.id);
+      if(!byCollection.has(operation.collection))byCollection.set(operation.collection,new Map((source[operation.collection]||[]).map(row=>[row?.id,row])));
+      const record=byCollection.get(operation.collection).get(operation.id);
       if(!record)throw new Error('storage_operation_record_missing');
       return {...structuredClone(operation),record:structuredClone(record)};
     });
@@ -84,20 +87,25 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(!active.ready){diagnostics.fallbacks++;return {handled:false,reason:'not-ready'} }
     try{
       const write=active.append(canonicalOperations(state,operations),{generation,surface,mutationType,deleteIntents,appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.operations++;operationsSinceCheckpoint++;
-      if(!write.emergencyDurable)diagnostics.emergencyFailures++;
+      if(!write.emergencyDurable){
+        diagnostics.emergencyFailures++;undurableCount++;
+        // This mutation has no synchronous durable copy. It becomes safe only
+        // after the IndexedDB transaction completes; until then unload is blocked.
+        write.committed.then(()=>{undurableCount--},()=>{undurableCount--;undurableFailed=true});
+      }
       commits=commits.catch(()=>{}).then(()=>write.committed).catch(error=>{diagnostics.commitFailures++;diagnostics.lastError=error.message;throw error});
       if(operationsSinceCheckpoint>=compactEvery||Date.now()-lastCheckpointAt>=compactAfterMs)scheduleCompaction();
-      return {handled:write.emergencyDurable,emergencyDurable:write.emergencyDurable,committed:write.committed,seq:write.seq,transitioning:!!write.transitioning,reason:write.emergencyDurable?'journal':'emergency-failed'};
+      return {handled:true,emergencyDurable:write.emergencyDurable,committed:write.committed,seq:write.seq,transitioning:!!write.transitioning,reason:write.emergencyDurable?'journal':'idb-commit-pending'};
     }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;return {handled:false,reason:'append-failed',error}}
   }
   function afterLegacy(state,options={},appMetadata={}){
     if(mode()==='shadow')return shadow.observe(state,options);
     if(mode()!=='primary'||!primary())return false;
-    const snapshot=business(state),boundary=String(options?.storageBoundary||'').trim();
-    if(journal?.ready&&(!boundary||!LIFECYCLE_BOUNDARIES.has(boundary))){
-      const canonical=prepareCheckpoint(snapshot);commits=commits.catch(()=>{}).then(()=>journal.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}})).then(result=>{operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}).catch(error=>{diagnostics.errors++;diagnostics.lastError=error.message;throw error});return true;
+    const active=create(),snapshot=business(state),boundary=String(options?.storageBoundary||'').trim();
+    if(active.ready&&(!boundary||!LIFECYCLE_BOUNDARIES.has(boundary))){
+      const canonical=prepareCheckpoint(snapshot);commits=commits.catch(()=>{}).then(()=>active.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}})).then(result=>{operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}).catch(error=>{diagnostics.errors++;diagnostics.lastError=error.message;throw error});return true;
     }
-    if(!journal?.ready){void recover(snapshot,appMetadata)}
+    if(!active.ready){void recover(snapshot,appMetadata)}
     return true;
   }
   async function flush(){
@@ -118,5 +126,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function replaceAuthoritativeState(currentState,options={}){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return mode()==='primary'&&!!journal?.ready},get commitPromise(){return commits}};
+  return {recover,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return mode()==='primary'&&!!journal?.ready},get durabilityAtRisk(){return undurableCount>0||undurableFailed},get commitPromise(){return commits}};
 }

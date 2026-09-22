@@ -198,6 +198,7 @@ const storageBackup=createStorageBackup({
 const storagePersistence=createStoragePersistence({
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   storageV2Primary:()=>storageShadow.primaryReady,
+  storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
   ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
@@ -947,8 +948,29 @@ sidebarMedia.addEventListener('change',syncSidebarMode);syncSidebarMode();
 document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(sidebar.classList.contains('open'))setSidebarOpen(false,{restoreFocus:true});else uiModal.closeModal()}});
-window.addEventListener('pagehide',()=>{if(!tab.primaryTab)return;const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending()});
-window.addEventListener('beforeunload',e=>{if(!tab.primaryTab)return;const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive(),unsavedKupa=session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState()),unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork(),v2Pending=v2Cloud&&!!session.storageV2CloudPending;if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync()&&!v2Pending)return;storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});if(session.connectionMode==='supabase'&&unsavedKupa&&!v2Cloud&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);if(unsavedChecks)syncChecksState.markSharedChecksPending();e.preventDefault();e.returnValue=''});
+window.addEventListener('pagehide',()=>{
+  if(!tab.primaryTab)return;
+  const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
+  if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});
+  if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud&&session.lastSavedSnapshot){
+    const current=stateNormalization.prepareKupaCloudState(model.state);
+    if(!jsonEq(current,syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(current,'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);
+  }
+  if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending();
+});
+window.addEventListener('beforeunload',e=>{
+  if(!tab.primaryTab)return;
+  if(storageShadow.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
+  const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
+  const unsavedKupa=!v2Cloud&&session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState());
+  const unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();
+  const v2Pending=v2Cloud&&!!session.storageV2CloudPending;
+  if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync()&&!v2Pending)return;
+  if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});
+  if(session.connectionMode==='supabase'&&unsavedKupa&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);
+  if(unsavedChecks)syncChecksState.markSharedChecksPending();
+  e.preventDefault();e.returnValue='';
+});
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 bindDismissibleDetails(document);

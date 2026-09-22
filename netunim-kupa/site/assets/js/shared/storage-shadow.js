@@ -34,7 +34,8 @@ export function createStorageShadow({app,owner,primary,validate,enabled=storageS
     running=(async()=>{
       if(!primary()||job.owner!==owner())return false;
       if(!journal||identity!==job.owner){
-        identity=job.owner;journal=createJournal({owner:identity+':'+app,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primary()&&identity===owner()});
+        identity=job.owner;const scopedOwner=job.owner;
+        journal=createJournal({owner:scopedOwner+':'+app,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primary()&&scopedOwner===owner()});
         const restored=await journal.open();
         // V1 may have advanced while shadow was disabled. Record that difference
         // before establishing a new boundary; never select shadow as authority.

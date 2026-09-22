@@ -237,5 +237,30 @@ for app in ['kupa','orders']:
         browser._navigate()
         fallback_recovered=browser.evaluate("""(async()=>{await appReady;return {content:state.notes[0]?.content,source:storageShadow.diagnostics.migrations,ready:storageShadow.primaryReady}})()""")
         assert fallback_recovered['content']=='newer V1 fallback' and fallback_recovered['ready'],fallback_recovered
+        idb_only=browser.evaluate("""(async()=>{
+          session.backendReady=false;
+          const snapshotKey=Object.keys(localStorage).find(key=>key.includes('browser')||key==='orders.management.state.v1');
+          const before=snapshotKey?localStorage.getItem(snapshotKey):null,original=Storage.prototype.setItem;
+          Storage.prototype.setItem=function(key,value){if(String(key).startsWith('netunim-storage-v2-emergency:'))throw Error('injected emergency quota');return original.call(this,key,value)};
+          try{
+            state.notes[0].content='IDB-only durable edit';state.notes[0].updatedAt='2026-09-22T12:30:00Z';
+            const operation={type:'put',collection:'notes',id:state.notes[0].id,mode:'replace',record:state.notes[0]};
+            const immediatelyDurable=WRITE;
+            if(immediatelyDurable||!storageShadow.durabilityAtRisk)throw Error('IDB-only edit was incorrectly reported synchronously durable');
+            await storageShadow.commitPromise;
+            if(storageShadow.durabilityAtRisk)throw Error('IDB commit did not clear the unload guard');
+            if((snapshotKey?localStorage.getItem(snapshotKey):null)!==before)throw Error('Emergency failure rewrote full V1 snapshot');
+            return {emergencyFailures:storageShadow.diagnostics.emergencyFailures,content:state.notes[0].content};
+          }finally{Storage.prototype.setItem=original}
+        })()""".replace('WRITE',"storageBrowser.persistImmediateBrowserSnapshot(undefined,undefined,{operations:[operation],surface:'test.idb-only'})" if app=='kupa' else "storageBrowser.localSnapshot(undefined,{operations:[operation],surface:'test.idb-only'})"))
+        assert idb_only['content']=='IDB-only durable edit' and idb_only['emergencyFailures']>=1,idb_only
+        browser._navigate()
+        assert browser.evaluate("""(async()=>{await appReady;return state.notes[0]?.content})()""")== 'IDB-only durable edit'
+        assert browser.evaluate("""(()=>{
+          const snapshotKey=Object.keys(localStorage).find(key=>key.includes('browser')||key==='orders.management.state.v1');
+          const before=snapshotKey?localStorage.getItem(snapshotKey):null;
+          window.dispatchEvent(new Event('pagehide'));
+          return (snapshotKey?localStorage.getItem(snapshotKey):null)===before;
+        })()"""),app+' pagehide rewrote the full V1 snapshot in primary mode'
         errors=browser.drain_serious_errors();assert not errors,errors
         print('PASS '+app+' V2 primary skips full LocalStorage serialization and recovers after hard navigation: '+json.dumps(primary))

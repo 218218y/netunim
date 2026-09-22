@@ -45,7 +45,7 @@ validation מלא
 → checkpoint בזמן idle או לאחר סף פעולות
 ```
 
-אם כתיבת emergency נכשלת, מסלול ה־browser snapshot של V1 משמש fallback. אם גם V1 נכשל, הפעולה אינה מסומנת כשמורה. כשל IndexedDB לאחר emergency אינו מאבד את הפעולה: היא משוחזרת מן ה־emergency journal בפתיחה הבאה.
+אם כתיבת emergency נכשלת, הפעולה ממתינה לאישור commit של IndexedDB ואינה מסומנת כשמורה או נשלחת לענן לפניו; אין כתיבת full V1 snapshot רק בשל כשל זה. אם גם IndexedDB נכשל, השמירה נעצרת, מוצגת אזהרה שלא לסגור את החלון ו־beforeunload מנסה לחסום יציאה. כשל IndexedDB לאחר emergency מאומת אינו מאבד את הפעולה: היא משוחזרת מן ה־emergency journal בפתיחה הבאה. גבולות מלאים וחוסר מוכנות של V2 עדיין משתמשים במסלול התאימות של V1.
 
 בקופה, במסלול primary מתואר, `action → local durable` מסתיים לפני normalize והכנת cloud/file payload. פעולת Checks אינה מנרמלת את כל הקופה לצורך העמידות המקומית. normalization, גיבוי וקובץ מקומי נשארים בתור הבטוח הקיים.
 
@@ -111,6 +111,10 @@ python tests/run_all.py --keep-going
 
 ## מה נשאר לפני rollout מלא
 
+- כשל בכתיבת emergency כבר אינו מפעיל לבדו full V1 snapshot: רק commit מאושר ב־IndexedDB מתיר סימון שמירה ושליחת ענן. כשל בשתי השכבות נשאר fail-closed; בדיקות דפדפן מבצעות hard reload ומאמתות שחזור מדויק.
+- פעולת שחזור ו־writer ננעלים לזהות החשבון שהתחילה אותם. החלפת חשבון בזמן פתיחת IndexedDB אינה יכולה להעביר Promise, הרשאת כתיבה או סימון corruption לחשבון החדש; בדיקות חפיפה מכסות זאת.
+- ב־primary, ‏pagehide של המסמך הראשי אינו בונה snapshot מלא. מסלולי Shared Checks הזמניים עדיין עשויים לכתוב Outbox מלא בעת סגירה, עד להעברה שלהם ל־V2.
+- לפני cutover סופי יש להחליף את Shared Checks Outbox V1 ב־cursor/flight עצמאי, להמיר את כל גבולות ה־full-state שעדיין נזקקים ל־`afterLegacy`, ולהוסיף בדיקת Production שמכשילה כל כתיבה רגילה למפתחות V1. אין להפעיל ברירת מחדל `primary` או למחוק מפתחות V1 לפני שהחוזים הללו עוברים בדיקות restart, lost ACK, הפקדה/החזרה/מחיקה ושני מחשבים.
 - להריץ soak ייעודי ל־Cloud Outbox V2 הראשי בשתי האפליקציות על upgrade, restart, offline, lost ACK, conflict ונתונים גדולים;
 - להעביר את Shared Checks רק לאחר שה־Outbox הראשי בשתי האפליקציות עבר soak מוצלח;
 - להריץ upgrade/restart ו־offline soak מול נתוני production מייצגים;
