@@ -94,6 +94,30 @@ expressions = {
  await eventually(()=>supplierRow.hidden,'Delegated search failed');
  search.value='';fire(search,'input');
  await eventually(()=>!supplierRow.hidden,'Delegated search clear failed');
+ const openSupplierPicker=async()=>{
+   document.getElementById('supplierMenuTrigger').click();await frame();
+   const input=document.getElementById('supplierMenuSearch');
+   await eventually(()=>document.activeElement===input,'Supplier picker search was not focused on open');
+   return input;
+ };
+ let pickerInput=await openSupplierPicker();pickerInput.value='Second';fire(pickerInput,'input');
+ let pickerShown=[...document.querySelectorAll('[data-supplier-picker-option]')].filter(option=>!option.hidden);
+ if(pickerShown.length!==1||pickerShown[0].dataset.clickArg0!=='S2'||!document.querySelector('[data-supplier-menu-all]').hidden)throw new Error('Supplier picker did not narrow to the unique supplier');
+ pickerInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await frame();
+ if(currentSupplierId!=='S2')throw new Error('Enter did not open the unique filtered supplier');
+ pickerInput=await openSupplierPicker();pickerInput.value='S';fire(pickerInput,'input');
+ pickerShown=[...document.querySelectorAll('[data-supplier-picker-option]')].filter(option=>!option.hidden);
+ if(pickerShown.length!==2)throw new Error('Supplier picker multi-result filtering failed');
+ pickerInput.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true,cancelable:true}));
+ if(document.querySelector('.supplier-menu-item.keyboard-active')?.dataset.clickArg0!=='S1')throw new Error('Supplier picker ArrowDown did not highlight the first match');
+ pickerInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await frame();
+ if(currentSupplierId!=='S1')throw new Error('Supplier picker Enter did not open the keyboard-highlighted supplier');
+ pickerInput=await openSupplierPicker();pickerInput.value='Second';fire(pickerInput,'input');
+ document.querySelector('.supplier-menu-item:not([hidden])[data-supplier-name="Second"]').click();await frame();
+ if(currentSupplierId!=='S2')throw new Error('Supplier picker mouse selection failed after filtering');
+ pickerInput=await openSupplierPicker();pickerInput.value='Supplier';fire(pickerInput,'input');
+ pickerInput.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));await frame();
+ if(currentSupplierId!=='S1')throw new Error('Supplier picker did not return to the original supplier');
  toggleSupplierBulkMode();const cb=document.querySelector('tbody .bulk-check');cb.checked=true;fire(cb,'change');
  if(!supplierBulkSelected.has('T1'))throw new Error('Bulk selection failed');
  openSupplierOrderModal();await frame();clickText('#modal','↓');
@@ -109,7 +133,7 @@ expressions = {
  clickText('#modal','ביטול');await frame();
  if(document.getElementById('modalBackdrop').classList.contains('open'))throw new Error('Supplier order cancellation failed after restoring the original order');
  if(document.getElementById('confirmBackdrop').classList.contains('open'))throw new Error('Unchanged supplier order incorrectly triggered draft confirmation');
- return {triState:true,search:true,bulk:true,supplierOrder:true,dragDrop:true};
+ return {triState:true,search:true,supplierPicker:true,bulk:true,supplierOrder:true,dragDrop:true};
  """
 }
 
