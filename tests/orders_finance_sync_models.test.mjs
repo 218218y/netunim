@@ -183,7 +183,7 @@ assert.equal(passiveProbeSnapshot.creditBridgeError,'credit bridge offline');
 
 let viewProbeCalls=0,viewProbeChecked=false,viewSnapshots=0;
 const mainStub={innerHTML:'',querySelector:()=>null};
-Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?mainStub:null},configurable:true});
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?mainStub:null,querySelector:()=>null},configurable:true});
 const financeView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business'},
   controller:{
@@ -286,7 +286,7 @@ frameView.setCreditCardFilter('sync:max-filter:1111');
 assert.equal(frameMountCalls.at(-1).resetTop,true,'changing the selected credit card also resets the Kupa credit viewport to the start');
 
 const disclosureMain={innerHTML:''};
-Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null},configurable:true});
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?disclosureMain:null,querySelector:()=>null},configurable:true});
 const disclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:true,bankSearchValue:''},
   controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:52,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},
@@ -300,7 +300,7 @@ assert.match(disclosureMain.innerHTML,/data-input="orders-bank-search"/,'bank ac
 assert.match(disclosureMain.innerHTML,/<form id="ordersBankCredentialsForm"[\s\S]*type="password"[\s\S]*<\/form>/,'bank password input belongs to a real form so Chromium does not emit the password-outside-form warning');
 
 const closedDisclosureMain={innerHTML:''};
-Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?closedDisclosureMain:null},configurable:true});
+Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?closedDisclosureMain:null,querySelector:()=>null},configurable:true});
 const closedDisclosureView=createDomainsFinanceView({
   ui:{currentView:'kupa',kupaSubView:'bank',bankAccountView:'business',bankSyncOpen:false,bankSearchValue:''},
   controller:{snapshot:()=>({kupa:{bank:{}},bank:{},creditSync:normalizeCreditSync({}),cards:[],credits:[],bankLastSyncAt:null,creditLastSyncAt:null,bankAutoEnabled:false,creditAutoEnabled:false,creditAutoMode:'daily',bridgeTokenConfigured:true,bankBusy:false,creditBusy:false,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:{bridgeVersion:52,configured:true},creditStatus:null,bankStatusChecked:true,creditStatusChecked:true,bankBridgeError:'',creditBridgeError:''})},

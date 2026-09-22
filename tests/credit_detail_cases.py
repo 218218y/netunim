@@ -4,7 +4,7 @@ from browser_harness import BrowserSession, ROOT
 def run_credit_detail(app):
     with BrowserSession(ROOT / f'netunim-{app}/site', f'{app}-credit-detail') as browser:
         browser.call('Emulation.setDeviceMetricsOverride', {'width': 1600, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
-        setup = "state=normalizeState(fixture);ui.currentPage='credit';ui.expensesTab='credit';domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.currentView='kupa';ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
+        setup = "state=normalizeState(fixture);domainRevisions.touchAll();ui.currentPage='credit';ui.expensesTab='credit';domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.currentView='kupa';ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
         prefix = '' if app == 'kupa' else 'orders-'
         browser.evaluate(r"""(()=>{
           const OriginalDate=Date;

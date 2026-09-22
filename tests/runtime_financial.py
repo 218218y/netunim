@@ -75,7 +75,7 @@ breakdown_fixture = r"""
 
 def run_breakdown(app):
     with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-breakdown") as browser:
-        setup = "state=normalizeState(fixture);ui.bankAccountView='business';domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';ui.bankAccountView='business';domainsFinanceView.renderKupa();"
+        setup = "state=normalizeState(fixture);domainRevisions.touchAll();ui.bankAccountView='business';domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;domainRevisions.touchAll();ui.kupaSubView='bank';ui.bankAccountView='business';domainsFinanceView.renderKupa();"
         browser.evaluate("(()=>{"+breakdown_fixture+setup+"return true;})()")
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
@@ -129,7 +129,7 @@ def run_breakdown(app):
               document.querySelector('#modal .modal-foot [data-action="close-modal"],#modal .modal-foot [data-modal-save]').click();
               return true;
             }})()""")
-        credit_setup = "state=normalizeState(fixture);domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
+        credit_setup = "state=normalizeState(fixture);domainRevisions.touchAll();domainsCreditView.renderCredit();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.kupaSubView='credit';domainsFinanceView.renderKupa();"
         browser.evaluate("(()=>{"+breakdown_fixture+f"""
           fixture.creditSync.profiles=[{{profileId:'test',provider:'visaCal',accounts:[{{accountNumber:'2222',txns:[
             {{id:'billed',status:'completed',processedDate:due,transactionDate:today,chargedAmount:-1369.78,chargedCurrency:'ILS',originalAmount:-1369.78,originalCurrency:'ILS',chargeAmountStatus:'reported',description:'חיוב מאומת'}},
@@ -209,7 +209,7 @@ def run_forecast_header(app):
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             for role in ('business','home'):
-                setup="state=normalizeState(fixture);ui.bankAccountView=role;domainsBankView.renderBank();" if app=='kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
+                setup="state=normalizeState(fixture);domainRevisions.touchAll();ui.bankAccountView=role;domainsBankView.renderBank();" if app=='kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
                 result=browser.evaluate("(async()=>{"+f"const role='{role}';"+r"""
                   const {kupaAccountCashflowData}=await import('./assets/js/shared/kupa-cashflow.js');
                   const today=new Date().toLocaleDateString('en-CA'),feed={accountNumber:'123',balance:1000,syncedAt:today,transactions:[]};
@@ -229,7 +229,7 @@ def run_forecast_header(app):
 
 def run_cashflow_date_picker(app):
     with BrowserSession(ROOT / f"netunim-{app}/site", f"{app}-cashflow-date") as browser:
-        setup = "state=normalizeState(fixture);domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;ui.kupaSubView='bank';domainsFinanceView.renderKupa();"
+        setup = "state=normalizeState(fixture);domainRevisions.touchAll();domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=fixture.checks;domainRevisions.touchAll();ui.kupaSubView='bank';domainsFinanceView.renderKupa();"
         action = 'cashflow-breakdown' if app == 'kupa' else 'orders-cashflow-breakdown'
         for width in (1280, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
@@ -274,7 +274,7 @@ def run_cashflow_warning_layout(app):
         for width in (1440, 1280, 900, 390):
             browser.call('Emulation.setDeviceMetricsOverride', {'width': width, 'height': 900, 'deviceScaleFactor': 1, 'mobile': False})
             for role in ('business', 'home'):
-                setup = "state=normalizeState(fixture);ui.bankAccountView=role;domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
+                setup = "state=normalizeState(fixture);domainRevisions.touchAll();ui.bankAccountView=role;domainsBankView.renderBank();" if app == 'kupa' else "kupaCloudReadState=fixture;state.checks=[];domainRevisions.touchAll();ui.kupaSubView='bank';ui.bankAccountView=role;domainsFinanceView.renderKupa();"
                 browser.evaluate("(async()=>{"+f"const role='{role}';"+r"""
                   const today=new Date().toLocaleDateString('en-CA');
                   const feed={accountNumber:'123456789',balance:272.27,availableBalance:8272.27,creditLimit:8000,syncedAt:today,transactions:[]};

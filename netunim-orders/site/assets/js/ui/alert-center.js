@@ -1,3 +1,5 @@
+import {immutableProjection} from '../shared/revision-selector.js';
+import {withFinanceDerivations} from '../shared/finance-derivations.js';
 import {checkBankReviewItems,checkBankReviewCard} from '../shared/check-bank-review.js';
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
@@ -43,10 +45,18 @@ function alertCard(item){
   return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">הופקד</button></div></div>`;
 }
 
-export function createUiAlertCenter({model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false}){
+export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false}){
   let startupHandled=false,openMode=null,dateRefreshTimer=null,lastKnownDate=checkTodayISO();
 
+  let cachedAlerts=null,cachedRevision=null,cachedDate='';
   function currentAlerts(today=checkTodayISO()){
+    const revision=alertsRevision?.();
+    if(revision!==undefined&&revision!==null&&cachedAlerts&&revision===cachedRevision&&today===cachedDate)return cachedAlerts;
+    const result=runFinance(()=>calculateAlerts(today));
+    cachedAlerts=immutableProjection(result);cachedRevision=revision;cachedDate=today;
+    return cachedAlerts;
+  }
+  function calculateAlerts(today){
     const snapshot=financeSnapshot?.()||{};
     const bankCheckItems=checkBankReviewItems(model?.state?.checks);
     const explainedChecks=new Set(bankCheckItems.map(item=>item.checkId));

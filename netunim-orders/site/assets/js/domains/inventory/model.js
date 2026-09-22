@@ -1,4 +1,27 @@
 import {num} from '../../core/money.js';
+import {immutableProjection} from '../../shared/revision-selector.js';
+import {beginMeasure} from '../../shared/runtime-performance.js';
+
+let renderContext=null;
+// A read-only snapshot for rendering. Mutation/validation calls outside run()
+// continue to use the authoritative state and the original pure calculations.
+export function createInventoryRenderStore({state,revision}={}){
+  let stamp,context;
+  return {run(render){
+    const next=revision?.(),source=state();
+    if(!context||next===undefined||next===null||next!==stamp){
+      const done=beginMeasure('selector:compute:inventory');
+      try{
+        const data=immutableProjection({items:source.inventoryItems||[],events:source.inventoryEvents||[]});
+        const events=new Map();for(const event of data.events){if(!events.has(event.itemId))events.set(event.itemId,[]);events.get(event.itemId).push(event)}
+        for(const rows of events.values())Object.freeze(rows);
+        context={events,items:new Map(data.items.map(item=>[item.id,item])),stats:new Map(),locations:new Map(),search:new Map()};stamp=next;
+      }finally{done()}
+    }
+    const previous=renderContext;renderContext=context;context.source=source;
+    try{return render()}finally{renderContext=previous}
+  }};
+}
 
 export const WAREHOUSE_LOCATIONS=['מחסן קטן','מחסן גדול','מקלט','לא ידוע'];
 
@@ -6,19 +29,41 @@ export function inventoryCategoryNamesData(state){return [...new Set(state.inven
 
 export function orderedInventoryCategoryNamesData(state){const names=inventoryCategoryNamesData(state),order=Array.isArray(state.inventoryCategoryOrder)?state.inventoryCategoryOrder:[],index=new Map(order.map((name,i)=>[name,i]));return [...names].sort((a,b)=>(index.has(a)?index.get(a):999999)-(index.has(b)?index.get(b):999999)||a.localeCompare(b,'he'))}
 
-export function itemEventsData(state,itemId){return(state.inventoryEvents||[]).filter(e=>e.itemId===itemId)}
+export function itemEventsData(state,itemId){return renderContext&&renderContext.source===state?(renderContext.events.get(itemId)||[]):(state.inventoryEvents||[]).filter(e=>e.itemId===itemId)}
 
 export function incomingRemaining(e){if(!e||e.type!=='order'||e.cancelledAt||e.receivedAt)return 0;const total=Math.max(0,Number(e.quantity||0)),received=Math.max(0,Number(e.receivedQuantity||0));return Math.max(0,total-received)}
 
-export function inventoryStatsData(state,itemId){let onHand=0,incoming=0,reserved=0;for(const e of itemEventsData(state,itemId)){const q=Number(e.quantity||0);if(['opening','receive'].includes(e.type))onHand+=q;else if(e.type==='adjust')onHand+=q;else if(e.type==='pickup')onHand-=q;else if(e.type==='order')incoming+=incomingRemaining(e);else if(e.type==='reserve'){if(e.pickedAt)onHand-=q;else if(!e.releasedAt)reserved+=q}}return{onHand,reserved,incoming,available:onHand-reserved,projected:onHand-reserved+incoming}}
+export function inventoryStatsData(state,itemId){
+  if(!renderContext||renderContext.source!==state)return calculateinventoryStatsData(state,itemId);
+  if(!renderContext.stats.has(itemId))renderContext.stats.set(itemId,immutableProjection(calculateinventoryStatsData(state,itemId)));
+  return renderContext.stats.get(itemId);
+}
+function calculateinventoryStatsData(state,itemId){let onHand=0,incoming=0,reserved=0;for(const e of itemEventsData(state,itemId)){const q=Number(e.quantity||0);if(['opening','receive'].includes(e.type))onHand+=q;else if(e.type==='adjust')onHand+=q;else if(e.type==='pickup')onHand-=q;else if(e.type==='order')incoming+=incomingRemaining(e);else if(e.type==='reserve'){if(e.pickedAt)onHand-=q;else if(!e.releasedAt)reserved+=q}}return{onHand,reserved,incoming,available:onHand-reserved,projected:onHand-reserved+incoming}}
 
 export function inventoryTotalsData(state){let onHand=0,reserved=0,incoming=0,available=0;for(const i of state.inventoryItems.filter(x=>x.active!==false)){const s=inventoryStatsData(state,i.id);onHand+=s.onHand;reserved+=s.reserved;incoming+=s.incoming;available+=s.available}return{onHand,reserved,incoming,available}}
 
 export function inventoryCategoryName(i){return String(i?.category||'').trim()||'ללא קטגוריה'}
 
-export function inventoryCategoryGroupsData(state){const groups=new Map();for(const i of state.inventoryItems.filter(x=>x.active!==false)){const name=inventoryCategoryName(i);if(!groups.has(name))groups.set(name,[]);groups.get(name).push(i)}return orderedInventoryCategoryNamesData(state).filter(name=>groups.has(name)).map(name=>({name,items:groups.get(name).sort((a,b)=>a.name.localeCompare(b.name,'he'))}))}
+export function inventoryItemData(state,id){return renderContext&&renderContext.source===state?renderContext.items.get(id):state.inventoryItems.find(item=>item.id===id)}
 
-export function inventorySearchMatch(i,q,state){const events=state?itemEventsData(state,i.id):[];return inventoryTextMatch([i.name,i.category,i.sku,i.defaultLocation,i.note,...events.flatMap(e=>[e.id,e.customerName,e.location,e.fromLocation,e.toLocation,e.note,e.supplier,e.reference])],q)}
+export function inventoryCategoryGroupsData(state){
+  if(!renderContext||renderContext.source!==state)return calculateInventoryCategoryGroupsData(state);
+  if(!renderContext.groups)renderContext.groups=immutableProjection(calculateInventoryCategoryGroupsData(state));
+  return renderContext.groups;
+}
+function calculateInventoryCategoryGroupsData(state){const groups=new Map();for(const i of state.inventoryItems.filter(x=>x.active!==false)){const name=inventoryCategoryName(i);if(!groups.has(name))groups.set(name,[]);groups.get(name).push(i)}return orderedInventoryCategoryNamesData(state).filter(name=>groups.has(name)).map(name=>({name,items:groups.get(name).sort((a,b)=>a.name.localeCompare(b.name,'he'))}))}
+
+export function inventorySearchMatch(i,q,state){
+  if(renderContext&&renderContext.source===state){
+    if(!renderContext.search.has(i.id)){
+      const events=itemEventsData(state,i.id);
+      renderContext.search.set(i.id,[i.name,i.category,i.sku,i.defaultLocation,i.note,...events.flatMap(e=>[e.id,e.customerName,e.location,e.fromLocation,e.toLocation,e.note,e.supplier,e.reference])].filter(Boolean).join(' ').toLocaleLowerCase());
+    }
+    return renderContext.search.get(i.id).includes(String(q||'').trim().toLocaleLowerCase());
+  }
+  return calculateInventorySearchMatch(i,q,state);
+}
+function calculateInventorySearchMatch(i,q,state){const events=state?itemEventsData(state,i.id):[];return inventoryTextMatch([i.name,i.category,i.sku,i.defaultLocation,i.note,...events.flatMap(e=>[e.id,e.customerName,e.location,e.fromLocation,e.toLocation,e.note,e.supplier,e.reference])],q)}
 
 export function inventoryTextMatch(values,q){return values.filter(Boolean).join(' ').toLocaleLowerCase().includes(String(q||'').trim().toLocaleLowerCase())}
 
@@ -44,6 +89,11 @@ export function inventoryEventLocationEffects(e){
 }
 
 export function inventoryLocationStatsData(state,itemId){
+  if(!renderContext||renderContext.source!==state)return calculateinventoryLocationStatsData(state,itemId);
+  if(!renderContext.locations.has(itemId))renderContext.locations.set(itemId,immutableProjection(calculateinventoryLocationStatsData(state,itemId)));
+  return renderContext.locations.get(itemId);
+}
+function calculateinventoryLocationStatsData(state,itemId){
   const rows=Object.fromEntries(WAREHOUSE_LOCATIONS.map(location=>[location,{location,onHand:0,reserved:0,incoming:0,available:0,projected:0}]));
   for(const e of itemEventsData(state,itemId)){
     for(const [location,quantity] of inventoryEventLocationEffects(e))rows[location].onHand+=quantity;
@@ -101,4 +151,4 @@ export function inventoryHistoryDeletePlan(state,ids){
   return {blockedIds:blocked.map(e=>e.id),deletableIds:deletable.map(e=>e.id),effects,locationEffects};
 }
 
-export function inventoryEventViewData(state,e){const item=state.inventoryItems.find(i=>i.id===e.itemId),q=Number(e.quantity||0),when=e.pickedAt||e.releasedAt||e.receivedAt||e.cancelledAt||e.updatedAt||e.createdAt||'';let label='תנועה',cls='',effect='';if(e.type==='opening'){label='יתרת פתיחה';cls='green';effect=`+${num(q)}`}else if(e.type==='receive'){label='קליטה למחסן';cls='green';effect=`+${num(q)}`}else if(e.type==='adjust'){label=e.historyCompaction?'יתרת מעבר':'התאמת מלאי';cls=q<0?'red':'green';effect=`${q>0?'+':''}${num(q)}`}else if(e.type==='order'){const received=Math.max(0,Number(e.receivedQuantity||0)),remaining=incomingRemaining(e);if(e.receivedAt){label='הזמנה שהתקבלה';cls='green';effect=num(q)}else if(e.cancelledAt){label=received>0?'יתרת הזמנה בוטלה':'הזמנה שבוטלה';cls='red';effect=received>0?`${num(received)} נקלטו`:'0'}else if(received>0){label='הזמנה בדרך · נקלט חלקית';cls='yellow';effect=`${num(remaining)} בדרך`}else{label='הזמנה בדרך';cls='yellow';effect=num(q)}}else if(e.type==='reserve'){if(e.pickedAt){label='נאסף ע״י לקוח';cls='green';effect=`-${num(q)}`}else if(e.releasedAt){label='שמירה בוטלה';cls='';effect='0'}else{label='שמור ללקוח';cls='yellow';effect='0'}}else if(e.type==='transfer'){label='העברה בין מחסנים';effect=`${num(q)} · ${e.fromLocation} ← ${e.toLocation}`}else if(e.type==='pickup'){label='איסוף (נתון ישן)';cls='green';effect=`-${num(q)}`}else if(e.type==='release'){label='ביטול שמירה (נתון ישן)';effect='0'}return{e,item,label,cls,effect,when}}
+export function inventoryEventViewData(state,e){const item=renderContext&&renderContext.source===state?renderContext.items.get(e.itemId):state.inventoryItems.find(i=>i.id===e.itemId),q=Number(e.quantity||0),when=e.pickedAt||e.releasedAt||e.receivedAt||e.cancelledAt||e.updatedAt||e.createdAt||'';let label='תנועה',cls='',effect='';if(e.type==='opening'){label='יתרת פתיחה';cls='green';effect=`+${num(q)}`}else if(e.type==='receive'){label='קליטה למחסן';cls='green';effect=`+${num(q)}`}else if(e.type==='adjust'){label=e.historyCompaction?'יתרת מעבר':'התאמת מלאי';cls=q<0?'red':'green';effect=`${q>0?'+':''}${num(q)}`}else if(e.type==='order'){const received=Math.max(0,Number(e.receivedQuantity||0)),remaining=incomingRemaining(e);if(e.receivedAt){label='הזמנה שהתקבלה';cls='green';effect=num(q)}else if(e.cancelledAt){label=received>0?'יתרת הזמנה בוטלה':'הזמנה שבוטלה';cls='red';effect=received>0?`${num(received)} נקלטו`:'0'}else if(received>0){label='הזמנה בדרך · נקלט חלקית';cls='yellow';effect=`${num(remaining)} בדרך`}else{label='הזמנה בדרך';cls='yellow';effect=num(q)}}else if(e.type==='reserve'){if(e.pickedAt){label='נאסף ע״י לקוח';cls='green';effect=`-${num(q)}`}else if(e.releasedAt){label='שמירה בוטלה';cls='';effect='0'}else{label='שמור ללקוח';cls='yellow';effect='0'}}else if(e.type==='transfer'){label='העברה בין מחסנים';effect=`${num(q)} · ${e.fromLocation} ← ${e.toLocation}`}else if(e.type==='pickup'){label='איסוף (נתון ישן)';cls='green';effect=`-${num(q)}`}else if(e.type==='release'){label='ביטול שמירה (נתון ישן)';effect='0'}return{e,item,label,cls,effect,when}}

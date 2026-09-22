@@ -1,3 +1,5 @@
+import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
+import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
@@ -75,6 +77,7 @@ import {jsonEq} from "./sync/merge-records.js";
 
 const {model, session, ui, files, tab, checksSession}=createContexts();
 const domainRevisions=createKupaDomainRevisions(session);
+const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS)});
 
 const uiConnection=createUiConnection({
   session,
@@ -417,6 +420,7 @@ const domainsChecksView=createDomainsChecksView({
 });
 
 const uiNavigation=createUiNavigation({
+  runFinance:financeDerivations.run,
   refreshCheckBankIndicator:()=>{const b=document.getElementById('checkBankAlerts');if(b){const count=checkBankReviewItems(model.state.checks).length;b.hidden=!count;b.textContent=`⚠ צ׳קים (${count})`}},
   ui,
   renderDashboard:(...args)=>domainsDashboardView.renderDashboard(...args),
@@ -429,12 +433,15 @@ const uiNavigation=createUiNavigation({
   maybeAutoRefreshBankBalance:(...args)=>domainsBankController.maybeAutoRefreshBankBalance(...args),
   maybeAutoRefreshCreditSync:(...args)=>domainsCreditController.maybeAutoRefreshCreditSync(...args),
   maybeShowCashflowStartupAlert:(...args)=>domainsBankAlerts.maybeShowStartupCashflowAlert(...args),
-  dataRevision:page=>kupaPageRevision(domainRevisions,page),
+  dataRevision:page=>kupaPageRevision(domainRevisions,page)+':'+new Date().toLocaleDateString('en-CA'),
 });
 
-const uiGlobalSearch=createUiGlobalSearch({model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
+const uiGlobalSearch=createUiGlobalSearch({
+  searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
+  runFinance:financeDerivations.run,model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
 
 const domainsDashboardView=createDomainsDashboardView({
+  runFinance:financeDerivations.run,
   model,
   activeChecks:(...args)=>domainsChecksSelectors.activeChecks(...args),
   depositedChecks:(...args)=>domainsChecksSelectors.depositedChecks(...args),
@@ -469,6 +476,8 @@ const domainsExpensesView=createDomainsExpensesView({
 });
 
 const domainsCreditView=createDomainsCreditView({
+  detailRevision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS),
+  runFinance:financeDerivations.run,
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
   model,
   ui,
@@ -587,6 +596,7 @@ const domainsBankController=createDomainsBankController({
 });
 
 const domainsBankView=createDomainsBankView({
+  runFinance:financeDerivations.run,
   modal:(...args)=>uiModal.modal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   model,
@@ -826,6 +836,7 @@ const uiActions=createUiActions({
   renderChecksSearch:(...args)=>domainsChecksView.renderChecksSearch(...args),
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
   renderCreditDetails:(...args)=>domainsCreditView.renderCreditDetails(...args),
+  pageCreditDetails:(...args)=>domainsCreditView.pageCreditDetails(...args),
   setCreditSearch:(...args)=>domainsCreditView.setCreditSearch(...args),
   setExpenseSearch:(...args)=>domainsExpensesView.setExpenseSearch(...args),
   setCashSearch:(...args)=>domainsCashView.setCashSearch(...args),

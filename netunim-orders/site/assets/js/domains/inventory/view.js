@@ -1,8 +1,10 @@
+import {createResultPages} from '../../shared/result-pages.js';
 import {esc} from '../../core/values.js';
 import {WAREHOUSE_LOCATIONS, inventoryCategoryName, inventorySearchMatch, normalizedWarehouseLocation, inventoryLocationStatsData, inventoryStockStatus, knownWarehouseLocation} from './model.js';
 import {num} from '../../core/money.js';
 
 export function createDomainsInventoryView({warehouseUi, model, orderedInventoryCategoryNames, inventoryStats, inventoryCategoryGroups}){
+const pages=createResultPages({ui:warehouseUi,action:'warehouse-results-page'});
 function inventoryLocationOptions(value='',{knownOnly=false,optional=false}={}){
   const current=knownOnly?knownWarehouseLocation(value):normalizedWarehouseLocation(value);
   const prompt=knownOnly?`<option value="" ${!current?'selected':''}>${optional?'ללא מחסן מועדף':'בחר מחסן'}</option>`:'';
@@ -43,6 +45,10 @@ function inventoryStockViewData(){
 }
 
 function renderStockGrid(viewData=inventoryStockViewData()){
+  const key=JSON.stringify([warehouseUi.warehouseSearch,viewData.location,viewData.filter,viewData.grouping]),page=pages.page(viewData.items,'stock',key,{target:warehouseUi.resultTarget,limit:viewData.grouping==='location'&&!viewData.location?37:150});
+  return page.controls+renderStockPage({...viewData,items:page.rows});
+}
+function renderStockPage(viewData){
   const {location,grouping,items}=viewData;
   if(!items.length)return '<div class="empty module-empty">לא נמצאו פריטים בתצוגה הזאת. אפשר לשנות את החיפוש או הסינון.</div>';
   if(grouping==='location'&&!location)return WAREHOUSE_LOCATIONS.map(name=>{

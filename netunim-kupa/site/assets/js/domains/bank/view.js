@@ -11,7 +11,7 @@ import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';
 
-export function createDomainsBankView({modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
+export function createDomainsBankView({runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
 function bridgeStatusText(s){
   if(s.busy)return s.message||'מתבצע עדכון מול Bank Bridge…';
@@ -216,7 +216,7 @@ function updateBridgePanel(){
 
 function openCashflowBreakdown(role,targetDate='',input=null){const account=role==='home'?'ביתי':'עסקי';if(input)return updateCashflowExplorer(input,date=>kupaAccountCashflowData(model.state,account,undefined,{targetDate:date}));modal(`פירוט שינוי צפוי · ${account}`,cashflowExplorerMarkup(kupaAccountCashflowData(model.state,account,undefined,{targetDate}),'cashflow-breakdown',role,dateEditorMarkup),'סגור',()=>closeModal(true))}
 
-function renderBank(...args){return withFinanceDerivations(()=>renderBankContent(...args))}
+function renderBank(...args){return runFinance(()=>renderBankContent(...args))}
 function renderBankContent(){
   const cycle=bankNextCycleCommitments(),homeCycle=bankHomeNextCycleCommitments(),homeBank=bankHomeBalance();
   const bridgeUi=bankBridgeUiState(),staleTotal=cycle.elapsedCredit+cycle.elapsedExpenses,homeStaleTotal=homeCycle.elapsedCredit+homeCycle.elapsedExpenses;

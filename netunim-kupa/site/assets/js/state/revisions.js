@@ -6,7 +6,7 @@ function bankFeed(state){return {feed:state?.bank?.feed||null,homeFeed:state?.ba
 export const KUPA_PAGE_DOMAINS=Object.freeze({
   dashboard:['cash','rights','checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings','ordersFinance'],
   checks:['checks','bankFeed','bankDisplay'],
-  credit:['checks','credits','creditSync','expenses','bankFeed'],
+  credit:['checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings'],
   cash:['cash','rights'],
   bank:['checks','credits','creditSync','expenses','bank','bankFeed','bankDisplay','cashflowSettings'],
   expenses:['checks','credits','creditSync','expenses','bank','bankFeed','bankDisplay','cashflowSettings'],
@@ -32,3 +32,5 @@ export function createKupaDomainRevisions(session){
 }
 
 export function kupaPageRevision(ledger,page){return ledger.stamp(KUPA_PAGE_DOMAINS[page]||[])}
+
+export const KUPA_FINANCE_DOMAINS=Object.freeze(['checks','credits','creditSync','expenses','bank','bankFeed','cashflowSettings']);

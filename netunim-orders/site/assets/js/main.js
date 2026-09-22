@@ -1,3 +1,5 @@
+import {createInventoryRenderStore} from './domains/inventory/model.js';
+import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createStateNormalization} from './state/normalization.js';
@@ -90,6 +92,8 @@ import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
 const domainRevisions=createOrderDomainRevisions(session);
+const inventoryRenderStore=createInventoryRenderStore({state:()=>model.state,revision:()=>domainRevisions.stamp(['inventory'])});
+const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
 
 const stateNormalization=createStateNormalization({
   externalWorkbooks:true,
@@ -241,7 +245,7 @@ const uiNavigation=createUiNavigation({
   renderCalendar:(...args)=>domainsCalendarController.renderCalendar(...args),
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
-  dataRevision:view=>orderViewRevision(domainRevisions,view),
+  dataRevision:view=>orderViewRevision(domainRevisions,view)+':'+new Date().toLocaleDateString('en-CA'),
 });
 
 const domainsChecksView=createDomainsChecksView({
@@ -390,6 +394,7 @@ const domainsSuppliersEditor=createDomainsSuppliersEditor({
 });
 
 const domainsCustomers=createDomainsCustomers({
+  customerRevision:()=>domainRevisions.stamp(['customerDebts','customerOrders']),
   model,
   refreshForMorningRecovery:(...args)=>syncDocument.refreshForMorningRecovery(...args),
   customerUi,
@@ -413,6 +418,7 @@ const domainsServiceBulk=createDomainsServiceBulk({
 });
 
 const domainsServiceView=createDomainsServiceView({
+  serviceRevision:()=>domainRevisions.stamp(['service']),
   model,
   serviceUi,
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
@@ -474,6 +480,7 @@ const domainsWarehouseBulk=createDomainsWarehouseBulk({
 });
 
 const domainsWarehouseView=createDomainsWarehouseView({
+  runInventory:inventoryRenderStore.run,
   warehouseUi,
   model,
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
@@ -628,6 +635,7 @@ const syncChecks=createSyncChecks({
 });
 
 const domainsFinanceController=createDomainsFinanceController({
+  readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
   tab,
   checksSession,
   bridge:domainsFinanceBridge,
@@ -657,6 +665,7 @@ const domainsFinanceController=createDomainsFinanceController({
 });
 
 const domainsFinanceView=createDomainsFinanceView({
+  runFinance:financeDerivations.run,
   ui,
   controller:domainsFinanceController,
   checksView:domainsChecksView,
@@ -670,8 +679,10 @@ const domainsFinanceView=createDomainsFinanceView({
 });
 
 const uiAlertCenter=createUiAlertCenter({
+  alertsRevision:()=>domainRevisions.stamp(['checks','notes','finance','bankDisplay']),
+  runFinance:financeDerivations.run,
   model,
-  financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
+  financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
   modal:(...args)=>uiModal.modal(...args),
   closeModal:(...args)=>uiModal.closeModal(...args),
   navigateToChecks:(...args)=>uiNavigation.openKupaChecks(...args),
@@ -784,7 +795,7 @@ const uiSettings=createUiSettings({
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  financeSnapshot:(...args)=>domainsFinanceController.snapshot(...args),
+  financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
 });
 
 const lifecycle=createLifecycle({
@@ -837,6 +848,9 @@ const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
 
 const uiActions=createUiActions({
+  pageCustomerResults:(...args)=>domainsCustomers.view.pageCustomerResults(...args),
+  pageServiceResults:(...args)=>domainsServiceView.pageServiceResults(...args),
+  pageWarehouseResults:(...args)=>domainsWarehouseView.pageWarehouseResults(...args),
   notesSheetActions:domainsNotesController.sheetActions,
   creditOrderActions:creditCardOrderView.actions,
   reviewCheckBank:(...args)=>{if(domainsChecksEditor.reviewCheckBank(...args)){uiModal.closeModal();domainsBankCache.renderKupaDependentView()}},
@@ -1012,6 +1026,7 @@ const uiActions=createUiActions({
 });
 
 const uiGlobalSearch=createUiGlobalSearch({
+  searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
   model,
   notesUi,
   ui,

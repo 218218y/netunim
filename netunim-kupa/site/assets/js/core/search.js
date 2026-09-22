@@ -24,11 +24,21 @@ export function dateSearchAliases(value){
 }
 
 export function searchMatch(query,values=[],dateValues=[]){
-  const q=normalizeSearchText(query);if(!q)return true;
-  const hay=normalizeSearchText([...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].filter(value=>value!==undefined&&value!==null).join(' ')),hayCompact=hay.replace(/\s+/g,''),qCompact=compactSearchText(query);
+  if(!normalizeSearchText(query))return true;
+  return createPreparedSearchMatcher(query)(prepareSearchValues(values,dateValues));
+}
+
+export function prepareSearchValues(values=[],dateValues=[]){
+  const hay=normalizeSearchText([...values,...dateValues,...dateValues.flatMap(dateSearchAliases)].filter(value=>value!==undefined&&value!==null).join(' '));
+  return {hay,hayCompact:hay.replace(/\s+/g,''),words:hay.split(' ').filter(Boolean)};
+}
+export function createPreparedSearchMatcher(query){
+  const q=normalizeSearchText(query),qCompact=compactSearchText(query),tokens=q.split(' ').filter(Boolean);
+  return ({hay,hayCompact,words})=>{
+  if(!q)return true;
   if(qCompact&&hayCompact.includes(qCompact))return true;
-  const words=hay.split(' ').filter(Boolean);
-  return q.split(' ').filter(Boolean).every(token=>/^\d{1,2}$/.test(token)?words.includes(token):(hay.includes(token)||hayCompact.includes(token)));
+  return tokens.every(token=>/^\d{1,2}$/.test(token)?words.includes(token):(hay.includes(token)||hayCompact.includes(token)));
+  };
 }
 
 export function dateInRange(value,from='',to=''){

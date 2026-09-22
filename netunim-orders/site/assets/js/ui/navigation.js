@@ -8,9 +8,9 @@ let alertTargetTimer=null;
 const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(view){
   if(view==='supplier')return JSON.stringify([supplierUi.currentSupplierId,supplierUi.filterMode,supplierUi.searchText,supplierUi.supplierYearView,supplierUi.supplierBulkMode,setKey(supplierUi.supplierBulkSelected),supplierUi.supplierBulkAnchorId,supplierUi.supplierMoveTargetId]);
-  if(view==='customers'||view==='customer-orders')return JSON.stringify([customerUi.customerTab,customerUi.customerFilter,customerUi.customerSearch,customerUi.customerBulkMode,setKey(customerUi.customerBulkSelected),customerUi.customerBulkAnchorId]);
-  if(view==='service')return JSON.stringify([serviceUi.serviceFilter,serviceUi.serviceSearch,serviceUi.serviceBulkMode,setKey(serviceUi.serviceBulkSelected),serviceUi.serviceBulkAnchorId]);
-  if(view==='warehouse')return JSON.stringify([warehouseUi.warehouseTab,warehouseUi.inventoryLocation,warehouseUi.inventoryGrouping,warehouseUi.inventoryFilter,warehouseUi.inventoryHistoryItem,warehouseUi.warehouseSearch,warehouseUi.warehouseBulkMode,setKey(warehouseUi.warehouseBulkSelected),warehouseUi.warehouseBulkAnchorId,warehouseUi.warehouseOrdersPickedOpen,setKey(warehouseUi.inventoryCategoryOpen),setKey(warehouseUi.inventoryLocationOpen)]);
+  if(view==='customers'||view==='customer-orders')return JSON.stringify([customerUi.customerTab,customerUi.customerFilter,customerUi.customerSearch,customerUi.customerBulkMode,setKey(customerUi.customerBulkSelected),customerUi.customerBulkAnchorId,customerUi.resultPages]);
+  if(view==='service')return JSON.stringify([serviceUi.serviceFilter,serviceUi.serviceSearch,serviceUi.serviceBulkMode,setKey(serviceUi.serviceBulkSelected),serviceUi.serviceBulkAnchorId,serviceUi.resultPages]);
+  if(view==='warehouse')return JSON.stringify([warehouseUi.warehouseTab,warehouseUi.inventoryLocation,warehouseUi.inventoryGrouping,warehouseUi.inventoryFilter,warehouseUi.inventoryHistoryItem,warehouseUi.warehouseSearch,warehouseUi.warehouseBulkMode,setKey(warehouseUi.warehouseBulkSelected),warehouseUi.warehouseBulkAnchorId,warehouseUi.warehouseOrdersPickedOpen,setKey(warehouseUi.inventoryCategoryOpen),setKey(warehouseUi.inventoryLocationOpen),warehouseUi.resultPages]);
   if(view==='checks')return JSON.stringify([ui.checkTab,ui.checkAccount,ui.checkYear,ui.checkSearchValue,ui.checksBulkMode,setKey(ui.checksBulkSelected),ui.checksBulkAnchorId]);
   if(view==='summary')return String(ui.summarySupplierYearView||'');
   return '';

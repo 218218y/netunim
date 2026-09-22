@@ -1,3 +1,4 @@
+import {immutableProjection} from '../../shared/revision-selector.js';
 import {CREDIT_DETAIL_HISTORY_MONTHS} from '../../shared/credit-history.js';
 import {checkAddMonthsISO,checkMonthKey,checkTodayISO} from '../../core/dates.js';
 import {creditCardMappingKey,CREDIT_PROVIDER_LABELS,creditFrameStatus,creditUpcomingCharge,normalizeCreditSync} from './credit-feed.js';
@@ -13,7 +14,14 @@ export function creditFilterAccountModels(models,{account='all',provider='all',c
 
 export function creditAccountAggregate(models){const cards=Array.isArray(models)?models:[],frames=cards.filter(model=>model?.frameStatus?.frame!==null&&model?.frameStatus?.frame!==undefined&&Number.isFinite(Number(model.frameStatus.frame))),available=cards.filter(model=>model?.frameStatus?.available!==null&&model?.frameStatus?.available!==undefined),upcoming=cards.filter(model=>model?.upcomingCharge?.amount!==null&&model?.upcomingCharge?.amount!==undefined&&Number.isFinite(Number(model.upcomingCharge.amount))),incompleteUpcoming=upcoming.filter(model=>model.upcomingCharge.status==='incomplete'||model.upcomingCharge.complete===false);return {count:cards.length,hiddenCount:cards.filter(model=>model?.hidden).length,totalFrame:Math.round(frames.reduce((sum,model)=>sum+Number(model.frameStatus.frame||0),0)*100)/100,totalFrameKnownCount:frames.length,totalFrameUnknownCount:cards.length-frames.length,availableCreditTotal:Math.round(available.reduce((sum,model)=>sum+Number(model.frameStatus.available||0),0)*100)/100,availableCreditKnownCount:available.length,availableCreditUnknownCount:cards.length-available.length,upcomingChargeTotal:Math.round(upcoming.reduce((sum,model)=>sum+Number(model.upcomingCharge.amount||0),0)*100)/100,upcomingChargeKnownCount:upcoming.length,upcomingChargeUnknownCount:cards.length-upcoming.length,upcomingChargeIncompleteCount:incompleteUpcoming.length,upcomingChargeComplete:incompleteUpcoming.length===0}}
 
-function billingState(kupa){return {...(kupa&&typeof kupa==='object'?kupa:{}),creditSync:normalizeCreditSync(kupa?.creditSync)}}
+const immutableBillingStates=new WeakMap();
+function billingState(kupa){
+  const cacheable=kupa&&typeof kupa==='object'&&Object.isFrozen(kupa);
+  if(cacheable&&immutableBillingStates.has(kupa))return immutableBillingStates.get(kupa);
+  const state={...(kupa&&typeof kupa==='object'?kupa:{}),creditSync:normalizeCreditSync(kupa?.creditSync)};
+  if(cacheable){state.creditSync=immutableProjection(state.creditSync);Object.freeze(state);immutableBillingStates.set(kupa,state)}
+  return state;
+}
 export function creditRows(kupa,asOf=checkTodayISO()){return creditBillingRowsData(billingState(kupa),{asOf})}
 
 export function pendingCreditRows(kupa,asOf=checkTodayISO()){return creditRows(kupa,asOf).filter(row=>row.date>=asOf)}

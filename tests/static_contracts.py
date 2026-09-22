@@ -409,7 +409,7 @@ ok('class="kupa-subcontent kupa-subcontent-${currentSection()}"' in orders_finan
    and '.checks-header-activity>.check-bank-activity>.section-body{position:absolute;' in orders_css,
    "orders Kupa compact rhythm: Credit keeps its joined report layout, while embedded Checks use a lower filter row and zero empty spacing from filters to monthly disclosure to the first month")
 kupa_credit_render = section_between(kupa_credit_view, 'function renderCreditContent(){', 'function creditLocalProfileRow')
-ok('function renderCredit(...args){return withFinanceDerivations(()=>renderCreditContent(...args))}' in kupa_credit_view
+ok('function renderCredit(...args){return runFinance(()=>renderCreditContent(...args))}' in kupa_credit_view
    and 'class="credit-report-stack"' in kupa_credit_render
    and 'class="credit-primary-report"' in kupa_credit_render
    and kupa_credit_render.index('class="toolbar credit-filter-toolbar"') < kupa_credit_render.index('${creditTransactionSectionsMarkup()}') < kupa_credit_render.index('class="section credit-forecast-section forecast-disclosure-section"') < kupa_credit_render.index("${summary.hasData?renderSyncedAccounts(summary):''}")
@@ -600,9 +600,11 @@ ok('button data-action="set-page"' in kupa_dashboard_view
    and 'dashboard-go' not in kupa_actions and 'dashboard-keyboard' not in kupa_actions
    and 'dashboardGo' not in kupa_navigation,
    "kupa dashboard events: current quick navigation uses a native button and obsolete clickable-KPI keyboard plumbing is removed")
-ok("const task=controller.refreshBank({interactive});renderKupa();await task;renderKupa()" in orders_finance_view
-   and "const task=controller.refreshCredit({interactive,syncMode});renderKupa();await task;renderKupa()" in orders_finance_view,
-   "orders Kupa sync feedback: Bank/Credit start their controller task before the immediate render so busy state is visible without switching tabs")
+ok("refreshFinanceOperation('bank',()=>controller.refreshBank({interactive}))" in orders_finance_view
+   and "refreshFinanceOperation('credit',()=>controller.refreshCredit({interactive,syncMode}))" in orders_finance_view
+   and 'const task=start();refreshFinanceStatus(section);' in (ROOT/'netunim-orders/site/assets/js/domains/finance/status-view.js').read_text(encoding='utf-8')
+   and 'if(command)replacePanel(command,headerContextMarkup(data)' in (ROOT/'netunim-orders/site/assets/js/domains/finance/status-view.js').read_text(encoding='utf-8'),
+   "orders Kupa sync feedback: controller work starts before the immediate status-region update; busy feedback does not rebuild the business view")
 ok(".filter(month=>Math.round(month.total*100)!==0||month.partial)" in (O / "site/assets/js/domains/finance/reporting.js").read_text(encoding="utf-8")
    and ".filter(month=>Math.round(month.total*100)!==0||month.partial)" in (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8"),
    "credit forecast UI: Orders and Kupa omit empty zero-total months but retain partial cycles whose ILS amount is still unknown")

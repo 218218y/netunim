@@ -1,18 +1,19 @@
+import {createSearchFragmentIndex} from '../shared/search-fragments.js';
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
-import {buildGlobalSearchEntries,searchGlobalEntries} from '../domains/search/model.js';
+import {buildOrderSearchFragment,ORDER_SEARCH_FRAGMENTS,searchGlobalEntries} from '../domains/search/model.js';
 import {checkIsClosedStatus} from '../domains/checks/model.js';
 import {customerDebtProgressData} from '../shared/customer-debt-progress.js';
 import {createSearchScheduler} from '../shared/search-scheduler.js';
 
 // Global search is a UI coordinator: data matching stays in domains/search/model.js,
 // while navigation reuses the existing view renderers and their native state.
-export function createUiGlobalSearch({model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
-  let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null,searchEntries=null;
+export function createUiGlobalSearch({searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
+  let resultByKey=new Map(),highlightTimer=null,backdropPointerId=null;
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose')});
   const scheduledRender=createSearchScheduler(value=>renderResults(value));
-  const indexedEntries=()=>searchEntries||(searchEntries=buildGlobalSearchEntries(model.state));
+  const indexedEntries=createSearchFragmentIndex({fragments:Object.keys(ORDER_SEARCH_FRAGMENTS),revision:name=>name==='notes'&&model.state.notesSheet?null:searchRevision?.(ORDER_SEARCH_FRAGMENTS[name],name),build:name=>buildOrderSearchFragment(model.state,name)});
 
   function scopeIntro(){return `<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>חיפוש בכל מאגר ניהול ההזמנות</b><p>אפשר לחפש שם ספק או לקוח, מספר הזמנה, טלפון, מספר צ'ק, סכום, הערה, מיקום, תוכן שירות ועוד.</p><div class="global-search-scopes"><span>ספקים</span><span>לקוחות</span><span>שירות</span><span>צ'קים</span><span>מחסן ומלאי</span><span>הערות</span></div></div>`}
 
@@ -30,7 +31,7 @@ export function createUiGlobalSearch({model,ui,notesUi={},supplierUi,customerUi,
     }).join('')
   }
 
-  function open(){const {backdrop,input,trigger,results,meta}=refs();if(!backdrop)return;searchEntries=null;scheduledRender.cancel();backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');const value=input?.value||'';if(String(value).trim()){resultByKey=new Map();if(meta)meta.textContent='מעדכן תוצאות…';if(results)results.innerHTML='<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>מעדכן את אינדקס החיפוש…</b></div>';scheduledRender(value)}else renderResults('');requestAnimationFrame(()=>input?.focus())}
+  function open(){const {backdrop,input,trigger,results,meta}=refs();if(!backdrop)return;scheduledRender.cancel();backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');const value=input?.value||'';if(String(value).trim()){resultByKey=new Map();if(meta)meta.textContent='מעדכן תוצאות…';if(results)results.innerHTML='<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>מעדכן את אינדקס החיפוש…</b></div>';scheduledRender(value)}else renderResults('');requestAnimationFrame(()=>input?.focus())}
   function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;scheduledRender.cancel();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
   function toggle(){const {backdrop}=refs();if(!backdrop)return;backdrop.hidden?open():close()}
 
@@ -39,13 +40,13 @@ export function createUiGlobalSearch({model,ui,notesUi={},supplierUi,customerUi,
 
   function navigateSupplier(item){prepareView('supplier');supplierUi.currentSupplierId=item.kind==='supplier'?item.id:item.parentId;supplierUi.filterMode='all';supplierUi.searchText='';supplierUi.supplierYearView=item.kind==='supplier-transaction'?'all':'current';render({supplierScrollMode:item.kind==='supplier-transaction'?'start':'end'});if(item.kind==='supplier-transaction')reveal('data-tx-id',item.id)}
 
-  function navigateCustomer(item){const debts=item.kind==='customer-debt';prepareView(debts?'customers':'customer-orders');customerUi.customerTab=debts?'debts':'orders';customerUi.customerSearch='';if(debts){const debt=model.state.customerDebts.find(x=>x.id===item.id),p=customerDebtProgressData(debt||{});customerUi.customerFilter=p.paymentComplete?(p.invoiceComplete?'closed':'invoice'):'all'}else customerUi.customerFilter='all';render();reveal('data-customer-bulk-id',item.id)}
+  function navigateCustomer(item){customerUi.resultTarget=item.id;const debts=item.kind==='customer-debt';prepareView(debts?'customers':'customer-orders');customerUi.customerTab=debts?'debts':'orders';customerUi.customerSearch='';if(debts){const debt=model.state.customerDebts.find(x=>x.id===item.id),p=customerDebtProgressData(debt||{});customerUi.customerFilter=p.paymentComplete?(p.invoiceComplete?'closed':'invoice'):'all'}else customerUi.customerFilter='all';render();reveal('data-customer-bulk-id',item.id)}
 
-  function navigateService(item){prepareView('service');serviceUi.serviceSearch='';const call=model.state.serviceCalls.find(x=>x.id===item.id);serviceUi.serviceFilter=call?.closed?'closed':'all';render();reveal('data-service-bulk-id',item.id)}
+  function navigateService(item){serviceUi.resultTarget=item.id;prepareView('service');serviceUi.serviceSearch='';const call=model.state.serviceCalls.find(x=>x.id===item.id);serviceUi.serviceFilter=call?.closed?'closed':'all';render();reveal('data-service-bulk-id',item.id)}
 
   function navigateCheck(item){const check=model.state.checks.find(row=>String(row.id)===String(item.id));ui.kupaSubView='checks';prepareView('kupa');ui.checkTab=checkIsClosedStatus(check?.status)?'closed':'open';ui.checkAccount=item.account==='ביתי'?'ביתי':'עסקי';ui.checkYear='all';ui.checkSearchValue='';render();reveal('data-check-id',item.id)}
 
-  function navigateWarehouse(item){prepareView('warehouse');warehouseUi.warehouseSearch='';if(item.kind==='inventory-item'){const inventoryItem=model.state.inventoryItems.find(x=>x.id===item.id);if(inventoryItem?.active===false){warehouseUi.warehouseTab='history';render();openInventoryItemModal(item.id);return}warehouseUi.warehouseTab='stock';render();reveal('data-stock-bulk-id',item.id);return}if(item.kind==='warehouse-order'){warehouseUi.warehouseTab='orders';render();reveal('data-warehouse-order-id',item.id);return}warehouseUi.warehouseTab='history';render();reveal('data-inventory-event-id',item.id)}
+  function navigateWarehouse(item){warehouseUi.resultTarget=item.id;prepareView('warehouse');warehouseUi.warehouseSearch='';if(item.kind==='inventory-item'){const inventoryItem=model.state.inventoryItems.find(x=>x.id===item.id);if(inventoryItem?.active===false){warehouseUi.warehouseTab='history';render();openInventoryItemModal(item.id);return}warehouseUi.warehouseTab='stock';warehouseUi.inventoryLocation='';warehouseUi.inventoryFilter='';render();reveal('data-stock-bulk-id',item.id);return}if(item.kind==='warehouse-order'){warehouseUi.warehouseTab='orders';warehouseUi.warehouseOrdersPickedOpen=model.state.warehouseOrders.find(row=>row.id===item.id)?.status==='picked';render();reveal('data-warehouse-order-id',item.id);return}warehouseUi.warehouseTab='history';render();reveal('data-inventory-event-id',item.id)}
 
   function navigateNote(item){notesUi.notesTab=item.kind==='sheet-row'?'sheet':'notes';if(item.kind==='sheet-row'){notesUi.notesSheetId=item.sheetId;notesUi.notesSheetSearchValue=''}prepareView('notes');render();reveal(item.kind==='sheet-row'?'data-sheet-row-id':'data-note-id',item.id)}
 

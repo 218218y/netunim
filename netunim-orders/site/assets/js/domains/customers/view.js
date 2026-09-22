@@ -1,22 +1,27 @@
+import {createResultPages} from '../../shared/result-pages.js';
 import {esc,uid} from '../../core/values.js';
-import {customerDebtFilteredTotal,customerDebtIsOutstanding,customerDebtNeedsAttention,customerDebtStatus} from './model.js';
+import {customerDebtStatus,createCustomerRenderSelector} from './model.js';
 import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../../shared/customer-debt-progress.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersView({model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>'',rejectDebtRecoveryMutation=()=>false}){
+export function createDomainsCustomersView({customerRevision,model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>'',rejectDebtRecoveryMutation=()=>false}){
+const pages=createResultPages({ui:customerUi,action:'customer-results-page'});
+function pageCustomerResults(name,delta){if(pages.move(name,delta)){renderCustomers({resultsOnly:true,resetScroll:true});pages.focus(name,delta)}}
+function customerPage(rows){const page=pages.page(rows,customerUi.customerTab,`${customerUi.customerFilter}:${customerUi.customerSearch||''}`,{target:customerUi.resultTarget});customerUi.resultTarget='';return page}
+const customerReadModel=createCustomerRenderSelector({state:()=>model.state,revision:customerRevision});
+let preparedRows=new WeakMap(),lastReadModel;
+function debtReadModel(){const next=customerReadModel();if(next!==lastReadModel){preparedRows=new WeakMap(next.rows.map(row=>[row.record,row]));lastReadModel=next}return next}
 function filteredCustomerDebtRows(){
-  const q=(customerUi.customerSearch||'').trim();
-  return (model.state.customerDebts||[]).filter(d=>{
-    const ds=customerDebtStatus(d),progress=customerDebtProgressData(d);
-    if(customerUi.customerFilter==='all'&&!customerDebtNeedsAttention(d))return false;
-    if(customerUi.customerFilter==='open'&&!customerDebtIsOutstanding(d))return false;
+  const q=(customerUi.customerSearch||'').trim().toLocaleLowerCase();
+  return debtReadModel().rows.filter(({record,progress,status,search})=>{
+    if(customerUi.customerFilter==='all'&&progress.paymentComplete&&progress.invoiceComplete)return false;
+    if(customerUi.customerFilter==='open'&&progress.paymentComplete)return false;
     if(customerUi.customerFilter==='invoice'&&!(progress.paymentComplete&&!progress.invoiceComplete))return false;
-    if(customerUi.customerFilter==='closed'&&ds.key!=='closed')return false;
-    if(q&&!`${d.customerName||''} ${d.orderNumber||''} ${d.phone||''} ${d.note||''}`.includes(q))return false;
-    return true;
-  }).sort((a,b)=>Number(b.amount||0)-Number(a.amount||0));
+    if(customerUi.customerFilter==='closed'&&status.key!=='closed')return false;
+    return !q||search.includes(q);
+  }).map(row=>row.record);
 }
 
 function updateCustomerVisibleTotal(total){
@@ -25,19 +30,19 @@ function updateCustomerVisibleTotal(total){
 }
 
 function renderCustomers({resultsOnly=false,resetScroll=false}={}){
-  const st=customerUi.customerTab==='debts'?customerStats():null,q=(customerUi.customerSearch||'').trim(),summary=st?customerBottomSummary(st):'';
-  let table='',visibleDebtTotal=null;
+  const st=customerUi.customerTab==='debts'?debtReadModel().stats:null,q=(customerUi.customerSearch||'').trim(),summary=st?customerBottomSummary(st):'';
+  let table='',visibleDebtTotal=null,page;
   if(customerUi.customerTab==='debts'){
-    const rows=filteredCustomerDebtRows();visibleDebtTotal=customerDebtFilteredTotal(rows,customerUi.customerFilter);
-    table=`<table class="customer-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th class="customer-col-name">לקוח</th><th class="customer-col-amount table-head-center">סכום</th><th class="customer-col-order table-head-center">הזמנה</th><th class="customer-col-paid table-head-center">שולם</th><th class="customer-col-supplied table-head-center">סופק</th><th class="customer-col-invoice table-head-center">חשבונית יצאה</th><th class="customer-col-state table-head-badge-text">מצב</th><th class="customer-col-note table-head-input-text">הערה</th><th class="customer-col-actions"></th></tr></thead><tbody>${rows.map(debtRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?10:9)}" class="empty">אין חובות המתאימים לסינון.</td></tr>`}</tbody></table>`;
+    const rows=filteredCustomerDebtRows();visibleDebtTotal=rows.reduce((sum,row)=>{const progress=preparedRows.get(row).progress;return sum+(['all','open'].includes(customerUi.customerFilter)?progress.paymentComplete?0:progress.remainingPayment:Number(row.amount||0))},0);
+    page=customerPage(rows);table=`<table class="customer-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th class="customer-col-name">לקוח</th><th class="customer-col-amount table-head-center">סכום</th><th class="customer-col-order table-head-center">הזמנה</th><th class="customer-col-paid table-head-center">שולם</th><th class="customer-col-supplied table-head-center">סופק</th><th class="customer-col-invoice table-head-center">חשבונית יצאה</th><th class="customer-col-state table-head-badge-text">מצב</th><th class="customer-col-note table-head-input-text">הערה</th><th class="customer-col-actions"></th></tr></thead><tbody>${page.rows.map(debtRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?10:9)}" class="empty">אין חובות המתאימים לסינון.</td></tr>`}</tbody></table>`;
   }else{
     const rows=(model.state.customerOrders||[]).filter(o=>{
       if(q&&!`${o.orderNumber||''} ${o.customerName||''} ${o.mark1||''} ${o.mark2||''} ${o.mark3||''} ${o.mattresses||''} ${o.note||''}`.includes(q))return false;
       return true;
     }).sort((a,b)=>String(a.orderNumber||'').localeCompare(String(b.orderNumber||''),'he',{numeric:true}));
-    table=`<table class="customer-orders-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th class="customer-order-col-order">הזמנה</th><th class="customer-order-col-customer">לקוח</th><th class="customer-order-col-mark">חובות</th><th class="customer-order-col-mark">סימון 2</th><th class="customer-order-col-mark">סימון 3</th><th class="customer-order-col-mattresses">מזרונים</th><th class="customer-order-col-note">הערה</th><th class="customer-order-actions-head"><button class="btn primary small customer-order-header-add" title="הוסף הזמנת לקוח" data-action="add-customer-order">+ הזמנת לקוח</button></th></tr></thead><tbody>${rows.map(customerOrderRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?9:8)}" class="empty">אין הזמנות להצגה.</td></tr>`}</tbody></table>`;
+    page=customerPage(rows);table=`<table class="customer-orders-table ${esc(customerUi.customerBulkMode?'customer-bulk-table':'')}"><thead><tr>${customerBulkHeader()}<th class="customer-order-col-order">הזמנה</th><th class="customer-order-col-customer">לקוח</th><th class="customer-order-col-mark">חובות</th><th class="customer-order-col-mark">סימון 2</th><th class="customer-order-col-mark">סימון 3</th><th class="customer-order-col-mattresses">מזרונים</th><th class="customer-order-col-note">הערה</th><th class="customer-order-actions-head"><button class="btn primary small customer-order-header-add" title="הוסף הזמנת לקוח" data-action="add-customer-order">+ הזמנת לקוח</button></th></tr></thead><tbody>${page.rows.map(customerOrderRow).join('')||`<tr><td colspan="${esc(customerUi.customerBulkMode?9:8)}" class="empty">אין הזמנות להצגה.</td></tr>`}</tbody></table>`;
   }
-  const body=`<div class="panel customer-work-panel"><div class="table-wrap module-table customer-work-table">${table}${summary}</div></div>`;
+  const body=`<div class="panel customer-work-panel"><div class="table-wrap module-table customer-work-table">${page.controls}${table}${summary}</div></div>`;
   if(resultsOnly){
     const host=$('#customerSearchResults');
     if(host)host.innerHTML=body;
@@ -62,7 +67,7 @@ function debtDetailsIcon(){return `<svg class="debt-details-icon" viewBox="0 0 2
 
 function debtToggle(d,field,label){
   if(field==='paid'||field==='invoiceIssued'){
-    const p=customerDebtProgressData(d),complete=field==='paid'?p.paymentComplete:p.invoiceComplete,partial=field==='paid'?p.paymentPartial:p.invoicePartial;
+    const p=preparedRows.get(d)?.progress||customerDebtProgressData(d),complete=field==='paid'?p.paymentComplete:p.invoiceComplete,partial=field==='paid'?p.paymentPartial:p.invoicePartial;
     if(partial)return `<button type="button" class="debt-partial-chip" title="${esc(label)} חלקית — לחץ לצפייה בפירוט" aria-label="${esc(label)} חלקית — הצג פירוט" data-action="open-debt-progress-details" data-click-arg0="${esc(d.id)}"><span>חלקי</span>${debtDetailsIcon()}</button>`;
     return `<div class="status-toggle binary" title="${esc(label)}"><button class="yes ${esc(complete?'active':'')}" data-action="set-customer-flag" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">כן</button><button class="no ${esc(!complete?'active':'')}" data-action="set-customer-flag-2" data-click-arg0="${esc(d.id)}" data-click-arg1="${esc(field)}">לא</button></div>`;
   }
@@ -70,7 +75,7 @@ function debtToggle(d,field,label){
 }
 
 function debtRow(d){
-  const s=customerDebtStatus(d),p=customerDebtProgressData(d),paymentPartial=p.paymentPartial,amountStateClass=p.paymentComplete?'is-paid':paymentPartial?'is-payment-partial':d.supplied===true?'is-supplied':'',partial=s.key==='partial';
+  const p=preparedRows.get(d)?.progress||customerDebtProgressData(d),s=preparedRows.get(d)?.status||customerDebtStatus(d,p),paymentPartial=p.paymentPartial,amountStateClass=p.paymentComplete?'is-paid':paymentPartial?'is-payment-partial':d.supplied===true?'is-supplied':'',partial=s.key==='partial';
   const displayAmount=paymentPartial?p.remainingPayment:d.amount;
   const amountDetails=paymentPartial?`<small class="customer-debt-progress-line">מתוך ${money(p.targetMagnitude)}</small>`:'';
   const stateBadge=partial?`<button type="button" class="badge ${esc(s.cls)} customer-debt-state-button" title="הצג פירוט חוב" aria-label="${esc(s.text)} — הצג פירוט חוב" data-action="open-debt-progress-details" data-click-arg0="${esc(d.id)}"><span>${esc(s.text)}</span>${debtDetailsIcon()}</button>`:`<span class="badge ${esc(s.cls)}">${esc(s.text)}</span>`;
@@ -105,5 +110,5 @@ function setCustomerFlag(id,field,value){
 
 function saveDebtNote(id,el){const d=model.state.customerDebts.find(x=>x.id===id);if(!d)return;const v=el.value.trim();if((d.note||'')===v)return;d.note=v;d.updatedAt=new Date().toISOString();scheduleSave('הערת הלקוח עודכנה',{domains:['customerDebts']})}
 
-return { renderCustomers, customerOrderRow, debtToggle, debtRow, setCustomerFlag, saveDebtNote };
+return { pageCustomerResults, renderCustomers, customerOrderRow, debtToggle, debtRow, setCustomerFlag, saveDebtNote };
 }

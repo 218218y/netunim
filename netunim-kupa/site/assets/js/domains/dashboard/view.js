@@ -6,7 +6,7 @@ import {cashflowBreachMarkup} from '../../shared/cashflow-breakdown.js';
 import {dashboardNetPositionData} from './model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsDashboardView({model, activeChecks, depositedChecks, bankLongTermPosition, bankAsOfDate, bankHomeAsOfDate, bankCurrentBalance, bankHomeBalance, bankNextCycleCommitments, bankHomeNextCycleCommitments, bankProjectedThisMonth, bankHomeProjectedThisMonth, ordersFinanceSummary=()=>null, refreshOrdersFinanceSummary=async()=>false}){
+export function createDomainsDashboardView({runFinance=withFinanceDerivations, model, activeChecks, depositedChecks, bankLongTermPosition, bankAsOfDate, bankHomeAsOfDate, bankCurrentBalance, bankHomeBalance, bankNextCycleCommitments, bankHomeNextCycleCommitments, bankProjectedThisMonth, bankHomeProjectedThisMonth, ordersFinanceSummary=()=>null, refreshOrdersFinanceSummary=async()=>false}){
 function bankSnapshotLabel(){
   if(!model.state.bank?.updatedAt)return 'היתרה העסקית טרם סונכרנה.';
   const source=model.state.bank.source==='hapoalim'?'בנק הפועלים':'נתון קודם — מומלץ לרענן מהבנק';
@@ -64,7 +64,7 @@ function bankOverviewMarkup(){
   </div>`;
 }
 
-function renderDashboard(...args){return withFinanceDerivations(()=>renderDashboardContent(...args))}
+function renderDashboard(...args){return runFinance(()=>renderDashboardContent(...args))}
 function renderDashboardContent(){
   const due7=activeChecks().filter(c=>{const d=daysFromToday(c.dueDate);return d>=0&&d<=7}).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));
   const overdue=activeChecks().filter(c=>daysFromToday(c.dueDate)<0).sort((a,b)=>(a.dueDate||'').localeCompare(b.dueDate||''));

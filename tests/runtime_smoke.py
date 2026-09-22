@@ -83,6 +83,7 @@ for label, site in apps:
 
                       state.customerDebts[0].paid=true;state.customerDebts[0].invoiceIssued=false;
                       state.customerDebts[1].paid=true;state.customerDebts[1].invoiceIssued=true;
+                      domainRevisions.touch('customerDebts'); // direct fixture edits bypass the normal mutation owner
                       currentView='customers';customerTab='debts';customerFilter='all';customerSearch='';renderCustomers();await frame();
                       const customerVisibleTotal=()=>document.querySelector('[data-customer-visible-total]')?.textContent||'';
                       const debtTotal=rows=>money(rows.reduce((sum,d)=>sum+Number(d.amount||0),0));

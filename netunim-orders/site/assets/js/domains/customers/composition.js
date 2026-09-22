@@ -5,7 +5,7 @@ import {createDomainsCustomersEditor} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 
-export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery}){
+export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery}){
   let view,editor;
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
@@ -38,6 +38,7 @@ export function createDomainsCustomers({model,customerUi,uiLayout,uiModal,uiStat
     applyVerifiedDebtDocument:(...args)=>{if(storagePersistence.rejectSecondaryMutation())return {changed:false,reason:'write-blocked'};return editor?.applyVerifiedMorningDocument(...args)||{changed:false,reason:'editor-unavailable'}},
   });
   view=createDomainsCustomersView({
+    customerRevision,
     model,customerUi,
     rejectDebtRecoveryMutation:(...args)=>documents.rejectDebtRecoveryMutation(...args),
     bindScrollViewport:(...args)=>uiLayout.bindScrollViewport(...args),

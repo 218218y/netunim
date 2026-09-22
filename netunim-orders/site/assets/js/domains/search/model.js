@@ -80,3 +80,6 @@ export function searchGlobalEntries(entries,query,{limitPerGroup=60}={}){
 }
 
 export function searchGlobalData(state,query,options={}){return searchGlobalEntries(buildGlobalSearchEntries(state),query,options)}
+
+export const ORDER_SEARCH_FRAGMENTS=Object.freeze({suppliers:['suppliers','transactions'],customers:['customerDebts','customerOrders'],service:['service'],checks:['checks'],warehouse:['inventory','warehouseOrders'],notes:['notes']});
+export function buildOrderSearchFragment(state,name){const builders={suppliers:supplierEntries,customers:customerEntries,service:serviceEntries,checks:checkEntries,warehouse:warehouseEntries,notes:state=>[...noteEntries(state),...sheetEntries(state)]};return builders[name](state).filter(row=>row.id!==undefined&&row.id!==null&&row.id!=='')}
