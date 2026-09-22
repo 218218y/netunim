@@ -16,7 +16,7 @@
 
 ## 1. עדכון מסד הנתונים
 
-בפרויקט Production שכבר מנוהל על-ידי שרשרת המיגרציות של המאגר, **אין לסמן ידנית שהמיגרציות הוחלו ואין לעדכן ידנית את `production-deployment-receipt.json`**. שש המיגרציות הבאות חייבות להיכנס ל-Production דרך מסלול migration שמעדכן גם את `supabase_migrations.schema_migrations`, לפי הסדר:
+בפרויקט Production שכבר מנוהל על-ידי שרשרת המיגרציות של המאגר, **אין לסמן ידנית שהמיגרציות הוחלו ואין לעדכן ידנית את `production-deployment-receipt.json`**. שבע המיגרציות הבאות חייבות להיכנס ל-Production דרך מסלול migration שמעדכן גם את `supabase_migrations.schema_migrations`, לפי הסדר:
 
 1. `supabase/migrations/20260908190000_morning_verified_creation.sql`
 2. `supabase/migrations/20260908194500_morning_global_idempotency.sql`
@@ -24,6 +24,7 @@
 4. `supabase/migrations/20260908204500_morning_preissue_reservation.sql`
 5. `supabase/migrations/20260922043000_bank_morning_documents.sql`
 6. `supabase/migrations/20260922050000_bank_morning_payments_v2.sql`
+7. `supabase/migrations/20260922101500_bank_handled_rpc_security_fix.sql`
 
 Supabase CLI העדכני משתמש ב-`supabase migration list` כדי להשוות local/remote וב-`supabase db push --dry-run` לפני `supabase db push` כדי להציג ולהחיל רק migrations שטרם נרשמו. השתמש במסלול הזה רק מתוך סביבת CLI שמחוברת **לפרויקט הנכון ושבה תיקיית `supabase/migrations` הזו היא השרשרת הפעילה**. אם סביבת ה-CLI שלך משתמשת בתיקיית עבודה אחרת, אל תעתיק קבצים או תריץ `migration repair` כדי “ליישר” היסטוריה בלי review; השתמש במסלול הפריסה הקיים של המאגר.
 
@@ -31,9 +32,9 @@ Supabase CLI העדכני משתמש ב-`supabase migration list` כדי להש�
 
 להתקנה חדשה/מבודדת שאינה משתמשת בהיסטוריית ה-Production הקיימת אפשר להשתמש ב-`netunim-orders/supabase/morning_documents.sql` כמקור סכמה. אין להשתמש בו כדי לעקוף את שרשרת המיגרציות של Production.
 
-המיגרציות **משמרות את הטבלה והפעולות הקיימות**: הראשונה מוסיפה `verified_at`, ממירה הצלחות ישנות ל־`created_unverified` עד לקריאת אימות ומקשיחה שיוך `document_id`; השנייה מרחיבה את נעילת ניסיונות ההפקה הלא־פתורים ואת ייחודיות `document_id` לכל משתמשי האפליקציה שעובדים מול אותו חשבון Morning בסביבה המוגדרת; השלישית מסירה רק את ה־FK המדורג מ־`owner_id`, כדי שמחיקת משתמש Supabase לא תמחק ראיית idempotency או ניסיון הפקה לא־פתור; הרביעית מפרידה בין `reserved` — רישום DB שבו בוודאות טרם התחיל POST ל־Morning — לבין `pending`, שבו בקשת ההפקה כבר נכנסה לחלון החיצוני הלא־ודאי, ושומרת `issuance_started_at` לצורך reconciliation מדויק; החמישית מוסיפה מקור מפורש למסמך (`standalone` / `debt` / `bank`), סימון `handled_at` לתנועות עסקיות וקישור audit עמיד בין תנועת בנק למסמך Morning מאומת. השישית מאפשרת למסמך מאומת לייצג תת־קבוצה של הפקדת צ׳קים מרובה, בלי לסמן אוטומטית את כל ההפקדה כמטופלת כאשר ייתכן ששאר הצ׳קים שייכים ללקוחות אחרים. אין FK מתנועת הקישור לארכיון הבנק, בכוונה, כדי שמדיניות retention של הבנק לא תמחק ראיית הפקה. המיגרציות אינן מוחקות מסמכי Morning או נתוני חובות. אין להריץ DROP ידני.
+המיגרציות **משמרות את הטבלה והפעולות הקיימות**: הראשונה מוסיפה `verified_at`, ממירה הצלחות ישנות ל־`created_unverified` עד לקריאת אימות ומקשיחה שיוך `document_id`; השנייה מרחיבה את נעילת ניסיונות ההפקה הלא־פתורים ואת ייחודיות `document_id` לכל משתמשי האפליקציה שעובדים מול אותו חשבון Morning בסביבה המוגדרת; השלישית מסירה רק את ה־FK המדורג מ־`owner_id`, כדי שמחיקת משתמש Supabase לא תמחק ראיית idempotency או ניסיון הפקה לא־פתור; הרביעית מפרידה בין `reserved` — רישום DB שבו בוודאות טרם התחיל POST ל־Morning — לבין `pending`, שבו בקשת ההפקה כבר נכנסה לחלון החיצוני הלא־ודאי, ושומרת `issuance_started_at` לצורך reconciliation מדויק; החמישית מוסיפה מקור מפורש למסמך (`standalone` / `debt` / `bank`), סימון `handled_at` לתנועות עסקיות וקישור audit עמיד בין תנועת בנק למסמך Morning מאומת. השישית מאפשרת למסמך מאומת לייצג תת־קבוצה של הפקדת צ׳קים מרובה, בלי לסמן אוטומטית את כל ההפקדה כמטופלת כאשר ייתכן ששאר הצ׳קים שייכים ללקוחות אחרים; השביעית מתקנת את פעולת הסימון הידני “מטופל” כך שתעבוד גם בסכמת Production המוקשחת שבה הדפדפן מקבל `SELECT` בלבד על `bank_transactions`: הפעולה נשארת RPC צרה עם בדיקת `auth.uid()` ובעלות, בלי לפתוח הרשאת `UPDATE` כללית לטבלת הבנק. אין FK מתנועת הקישור לארכיון הבנק, בכוונה, כדי שמדיניות retention של הבנק לא תמחק ראיית הפקה. המיגרציות אינן מוחקות מסמכי Morning או נתוני חובות. אין להריץ DROP ידני.
 
-בסביבה קיימת שמנוהלת ידנית ב־SQL ולא באמצעות שרשרת `supabase/migrations`, קיימים mirrors זהים: `netunim-orders/supabase/bank_morning_documents_v1_upgrade.sql` ולאחריו `netunim-orders/supabase/bank_morning_payments_v2_upgrade.sql`. מריצים **או** את המיגרציות שבשרשרת **או** את קובצי ה־upgrade הידניים לפי הסדר — לא את שני מסלולי הפריסה במקביל.
+בסביבה קיימת שמנוהלת ידנית ב־SQL ולא באמצעות שרשרת `supabase/migrations`, קיימים mirrors זהים: `netunim-orders/supabase/bank_morning_documents_v1_upgrade.sql`, לאחריו `netunim-orders/supabase/bank_morning_payments_v2_upgrade.sql`, ולאחריו `netunim-orders/supabase/bank_morning_handled_rpc_v3_upgrade.sql`. מריצים **או** את המיגרציות שבשרשרת **או** את קובצי ה־upgrade הידניים לפי הסדר — לא את שני מסלולי הפריסה במקביל.
 
 הטבלה `morning_document_operations` היא ledger קטן בלבד לצורכי idempotency, מניעת כפילויות וקישור למסמך. PDF ותוכן המסמך המלא נשארים ב-Morning.
 

@@ -103,6 +103,10 @@
     {
       "version": "20260922050000",
       "name": "bank_morning_payments_v2"
+    },
+    {
+      "version": "20260922101500",
+      "name": "bank_handled_rpc_security_fix"
     }
   ]
 }

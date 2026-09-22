@@ -92,7 +92,7 @@ async function readBankTransactionSnapshot(accountKey,accountRole){
 async function setBankTransactionHandled(transactionId,handled){
   const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');
   const r=await supaFetch('/rest/v1/rpc/set_bank_transaction_handled',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_transaction_id:id,p_handled:handled===true})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'עדכון מצב תנועת הבנק נכשל');return Array.isArray(j)?j[0]:j;
+  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok){if(r.status===403)throw new Error('סימון התנועה דורש את עדכון מסד הנתונים bank_handled_rpc_security_fix. הפעולה לא נשמרה ולא נוצר שינוי ממתין.');throw new Error(j?.message||j?.hint||body||'עדכון מצב תנועת הבנק נכשל')}return Array.isArray(j)?j[0]:j;
 }
 async function acknowledgeBankTransactionMissing(transactionId){
   const id=Number(transactionId);if(!Number.isSafeInteger(id)||id<=0)throw new Error('מזהה תנועת הבנק אינו תקין');

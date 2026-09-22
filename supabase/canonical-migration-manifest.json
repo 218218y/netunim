@@ -128,5 +128,10 @@
     "version": "20260922050000",
     "name": "bank_morning_payments_v2",
     "sha256": "74d38389f483c41f79021b08af9f72eb5f929b6eb9a0d3f58e33e12984f4dea0"
+  },
+  {
+    "version": "20260922101500",
+    "name": "bank_handled_rpc_security_fix",
+    "sha256": "c5257a433e966ff9da60d751c618a88496818013619b5c897313132a70949f6e"
   }
 ]

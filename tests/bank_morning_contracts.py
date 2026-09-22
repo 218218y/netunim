@@ -6,6 +6,9 @@ MIGRATION=ROOT/'supabase/migrations/20260922043000_bank_morning_documents.sql'
 UPGRADE=ROOT/'netunim-orders/supabase/bank_morning_documents_v1_upgrade.sql'
 MIGRATION_V2=ROOT/'supabase/migrations/20260922050000_bank_morning_payments_v2.sql'
 UPGRADE_V2=ROOT/'netunim-orders/supabase/bank_morning_payments_v2_upgrade.sql'
+MIGRATION_V3=ROOT/'supabase/migrations/20260922101500_bank_handled_rpc_security_fix.sql'
+UPGRADE_V3=ROOT/'netunim-orders/supabase/bank_morning_handled_rpc_v3_upgrade.sql'
+BASELINE=ROOT/'supabase/migrations/20260906200304_production_schema_baseline.sql'
 SETUP=ROOT/'netunim-orders/supabase/setup.sql'
 MORNING_SQL=ROOT/'netunim-orders/supabase/morning_documents.sql'
 EDGE=ROOT/'netunim-orders/supabase/functions/morning-documents/index.ts'
@@ -20,6 +23,9 @@ migration=MIGRATION.read_text(encoding='utf-8')
 upgrade=UPGRADE.read_text(encoding='utf-8')
 migration_v2=MIGRATION_V2.read_text(encoding='utf-8')
 upgrade_v2=UPGRADE_V2.read_text(encoding='utf-8')
+migration_v3=MIGRATION_V3.read_text(encoding='utf-8')
+upgrade_v3=UPGRADE_V3.read_text(encoding='utf-8')
+baseline=BASELINE.read_text(encoding='utf-8')
 setup=SETUP.read_text(encoding='utf-8')
 sql=MORNING_SQL.read_text(encoding='utf-8')
 edge=EDGE.read_text(encoding='utf-8')
@@ -46,6 +52,11 @@ docs=DOCS.read_text(encoding='utf-8')
 
 ok(migration==upgrade,'Bank Morning v1 migration and manual upgrade are byte-for-byte identical')
 ok(migration_v2==upgrade_v2,'Bank Morning payment v2 migration and manual upgrade are byte-for-byte identical')
+ok(migration_v3==upgrade_v3,'Bank Morning handled-state v3 migration and manual upgrade are byte-for-byte identical')
+ok('GRANT SELECT ON TABLE "public"."bank_transactions" TO "authenticated";' in baseline and 'GRANT UPDATE ON TABLE "public"."bank_transactions" TO "authenticated";' not in baseline and 'GRANT INSERT, UPDATE ON TABLE "public"."bank_transactions" TO "authenticated";' not in baseline,
+   'Production baseline intentionally keeps authenticated browser access to bank_transactions read-only')
+ok('security definer' in migration_v3.lower() and 'v_owner uuid:=auth.uid()' in migration_v3 and "b.owner_id=v_owner" in migration_v3 and "b.account_role='business'" in migration_v3 and "b.status='completed'" in migration_v3 and 'grant execute on function public.set_bank_transaction_handled(bigint,boolean) to authenticated' in migration_v3.lower() and 'grant update on table public.bank_transactions to authenticated' not in migration_v3.lower(),
+   'Handled-state fix uses one narrow owner-scoped SECURITY DEFINER RPC without reopening bank table UPDATE to the browser')
 ok('add column if not exists handled_at timestamptz' in migration and 'handled_at timestamptz' in setup,
    'Handled state is durable in both upgrade and fresh-install schemas')
 ok("b.account_role='business' and b.status='completed'" in migration and "b.account_role='business' and b.status='completed'" in setup,
@@ -87,6 +98,8 @@ ok('class="morning-bank-debt-row ${selected' in debt_picker and 'data-action="mo
    'Bank debt picker stays collapsed until search focus, uses full-row selection and fits the Morning modal without horizontal scrolling')
 ok('search.value=id?String(debt?.customerName' in debt_picker and 'search.dataset.selectedDebtId=id' in debt_picker,
    'Selecting a bank-linked debt replaces the stale search query with the chosen customer name')
+ok('morningBankDebtSelected' in debt_picker and '<b>חוב שנבחר:</b>' in debt_picker and 'selectedDebtMarkup(debt)' in debt_picker and '.morning-bank-debt-selected[hidden]{display:none}' in app_css,
+   'Selected debt remains explicitly visible above the search field even if the search text is edited or cleared')
 ok('createMorningBankTransactionLinker' in documents and 'linkBankTransaction' in documents and 'clearBankTransactionLink' in documents and 'bankMorningPrefill(row)' in transaction_link and "setActiveSource({...prefill.source,kind:'bank'" in transaction_link and 'activeDebtId' in documents,
    'Debt/standalone Morning issuance can adopt the existing bank source contract without losing the selected debt')
 ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-transaction-search' in transaction_picker and 'bankMorningEligibility' in transaction_picker and 'documentLinks' in transaction_picker and 'already-linked' in transaction_picker,
@@ -109,6 +122,8 @@ ok('hydrateRecoveredSource' in documents and 'activeSource=hydrateRecoveredSourc
    'Recovered bank issuance rehydrates fresh bank amount/row details without persisting them in recovery storage')
 ok('bank_link_pending' in edge and 'record_verified_bank_morning_document' in edge,
    'A verified Morning document remains fail-closed until the durable bank link is saved')
+ok("try{const result=await saveBankTransactionHandled(id,handled===true),at=result?.handled_at||result?.handledAt||null;updateLocalBankTransaction" in finance_controller and 'bank_handled_rpc_security_fix' in transport and 'הפעולה לא נשמרה ולא נוצר שינוי ממתין' in transport,
+   'Manual handled-state UI mutates local state only after server acknowledgement and reports permission failures as non-pending')
 ok('v_multi_check_deposit' in migration_v2 and "jsonb_array_length(v_tx.check_details->'checkItems')>1" in migration_v2 and 'and not v_multi_check_deposit' in migration_v2 and 'if v_multi_check_deposit then' in migration_v2 and 'handled_at:=v_tx.handled_at' in migration_v2,
    'Multi-cheque subset documents may link durably without falsely marking the entire aggregate deposit handled')
 ok('v_multi_check_deposit' in sql and 'and not v_multi_check_deposit' in sql,

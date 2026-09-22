@@ -7,6 +7,10 @@ import {bankMorningDebtCandidates} from '../finance/bank-morning.js';
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
 function debtSearchText(debt){return [debt?.customerName,debt?.orderNumber,debt?.phone,debt?.note].map(value=>cleanText(value,180).toLocaleLowerCase('he').replace(/\s+/g,' ')).filter(Boolean).join(' ')}
 function displayRemaining(progress){return progress.paymentComplete?progress.remainingInvoiceMagnitude:progress.remainingPaymentMagnitude}
+function selectedDebtMarkup(debt){
+  if(!debt)return'';const progress=customerDebtProgressData(debt),status=customerDebtStatus(debt,progress),remaining=displayRemaining(progress);
+  return `<b>חוב שנבחר:</b> ${esc(debt.customerName||'לקוח')} · יתרה ${money(remaining)}${debt.orderNumber?` · הזמנה ${esc(debt.orderNumber)}`:''} · ${esc(status.text)}`;
+}
 
 export function activeMorningBankDebts(rows=[]){
   return (Array.isArray(rows)?rows:[]).filter(row=>{
@@ -38,6 +42,7 @@ export function morningBankDebtPickerMarkup({debts=[],transaction=null,activeDeb
   return `<div class="morning-form-card morning-bank-debt-link"><div class="morning-section-title"><span>קישור לחוב לקוח <small>(רשות)</small></span><small>הקישור מתבצע רק לאחר בחירה מפורשת שלך</small></div>
     ${aggregate?'<div class="morning-source-warning">התנועה נראית כריכוז תקבולים. יש לוודא במיוחד שהחוב הנבחר שייך למסמך הזה.</div>':''}
     ${preferredCard(preferred,preferredDebt,activeDebtId)}
+    <div class="morning-bank-debt-selected" id="morningBankDebtSelected" ${current?'':'hidden'}>${selectedDebtMarkup(current)}</div>
     <div class="morning-bank-debt-search-shell">
       <div class="morning-bank-debt-toolbar"><input id="morningBankDebtSearch" type="search" autocomplete="off" data-focus="select-input" placeholder="חפש לקוח, הזמנה, טלפון או הערה…" aria-controls="morningBankDebtResults" data-input="morning-bank-debt-search"><button type="button" class="btn small morning-bank-debt-clear" data-action="morning-bank-debt-clear" ${activeDebtId?'':'hidden'}>בטל קישור</button></div>
       <div class="morning-bank-debt-results" id="morningBankDebtResults">
@@ -63,5 +68,5 @@ export function syncMorningBankDebtPickerSelection({activeDebtId='',debt=null,ro
   if(!root)return;const id=String(activeDebtId||'');
   root.querySelectorAll('[data-bank-debt-choice]').forEach(button=>{const selected=!!id&&String(button.dataset.bankDebtId)===id;button.disabled=selected;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',selected?'true':'false')});
   root.querySelectorAll('[data-bank-debt-row-id]').forEach(row=>row.classList.toggle('selected',!!id&&String(row.dataset.bankDebtRowId)===id));root.querySelectorAll('[data-bank-debt-card-id]').forEach(card=>card.classList.toggle('selected',!!id&&String(card.dataset.bankDebtCardId)===id));
-  const clear=root.querySelector('.morning-bank-debt-clear'),status=root.getElementById?.('morningBankDebtSelectionStatus'),search=root.getElementById?.('morningBankDebtSearch');if(clear)clear.hidden=!id;if(search){search.value=id?String(debt?.customerName||'הלקוח שנבחר'):'';search.dataset.selectedDebtId=id}if(status)status.textContent=id?`מקושר כעת לחוב של ${debt?.customerName||'הלקוח שנבחר'}`:'לא נבחר חוב. הפקת המסמך לא תשנה חוב מקומי עד שתבחר חוב.';
+  const clear=root.querySelector('.morning-bank-debt-clear'),status=root.getElementById?.('morningBankDebtSelectionStatus'),search=root.getElementById?.('morningBankDebtSearch'),selected=root.getElementById?.('morningBankDebtSelected');if(clear)clear.hidden=!id;if(search){search.value=id?String(debt?.customerName||'הלקוח שנבחר'):'';search.dataset.selectedDebtId=id}if(selected){selected.hidden=!id;selected.innerHTML=id?selectedDebtMarkup(debt):''}if(status)status.textContent=id?`מקושר כעת לחוב של ${debt?.customerName||'הלקוח שנבחר'}`:'לא נבחר חוב. הפקת המסמך לא תשנה חוב מקומי עד שתבחר חוב.';
 }
