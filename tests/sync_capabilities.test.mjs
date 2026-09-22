@@ -14,9 +14,37 @@ for(const app of ['orders','kupa'])test(`${app} real transport blocks write befo
  assert.equal(reads,1);assert.equal(writes,0);
 });
 import {bindActionEvents,floatingMenuPosition} from '../shared/events.js';
-test('capability UI gate prevents action callbacks before mutation',()=>{
+import {createUiActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createUiStatus} from '../netunim-orders/site/assets/js/ui/status.js';
+test('delegated action gate prevents callbacks when a caller rejects an action',()=>{
  const callbacks={},root={addEventListener:(type,fn)=>callbacks[type]=fn};globalThis.Element=class{};const element=new Element();element.getAttribute=()=> 'save';element.matches=()=>false;let writes=0;bindActionEvents(root,{save:()=>writes++},{canRun:()=>false});callbacks.click({composedPath:()=>[element,root],preventDefault(){},stopPropagation(){}});assert.equal(writes,0);
 });
+
+test('orders token refresh can reopen a capability check during normal runtime',async t=>{
+ const oldStorage=globalThis.localStorage,oldFetch=globalThis.fetch;t.after(()=>{globalThis.localStorage=oldStorage;globalThis.fetch=oldFetch});
+ const values=new Map(),storage={getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,String(value)),removeItem:key=>values.delete(key)};globalThis.localStorage=storage;
+ storage.setItem('orders.supabase.session.v1',JSON.stringify({access_token:'before',refresh_token:'refresh-before',expires_at:9999999999}));
+ const session={};let capabilityCalls=0,releaseCapability;
+ globalThis.fetch=async url=>{url=String(url);if(url.includes('/auth/v1/token?grant_type=refresh_token'))return new Response(JSON.stringify({access_token:'after',refresh_token:'refresh-after',expires_in:3600}),{status:200});if(url.endsWith('/rest/v1/rpc/get_netunim_sync_capabilities')){capabilityCalls++;if(capabilityCalls===1)return new Response(JSON.stringify(MIN_SYNC_CAPABILITIES),{status:200});await new Promise(resolve=>{releaseCapability=resolve});return new Response(JSON.stringify(MIN_SYNC_CAPABILITIES),{status:200})}return new Response('{}',{status:200})};
+ const api=ordersAuth({session});await api.ensureSyncCapabilities();await api.refreshSession({force:true});
+ const write=api.supaFetch('/rest/v1/rpc/save_order_management_document_v5',{method:'POST',body:'{}'});await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(session.syncCapabilitiesChecking,true);assert.equal(capabilityCalls,2);releaseCapability();await write;assert.equal(session.syncCapabilitiesChecking,false);
+});
+
+test('orders capability checking blocks mutations but never supplier navigation',t=>{
+ const oldDocument=globalThis.document,oldSetTimeout=globalThis.setTimeout;t.after(()=>{globalThis.document=oldDocument;globalThis.setTimeout=oldSetTimeout});
+ const fakeToast={textContent:'',classList:{add(){},remove(){}}};globalThis.document={querySelector:()=>fakeToast};globalThis.setTimeout=()=>0;
+ const classified=createUiActions({supplierMenu:{chooseSupplier(){},toggleSupplierMenu(){},filterSupplierMenu(){},supplierMenuSearchKeydown(){}},supplierUi:{},customerUi:{},serviceUi:{},warehouseUi:{},ui:{}});
+ assert.equal(classified['choose-supplier'].startupMutationDomain,undefined);assert.equal(classified['open-supplier'].startupMutationDomain,undefined);assert.equal(classified['save-supplier'].startupMutationDomain,'orders');
+ const session={syncCapabilitiesChecking:true,startupSync:{active:false,domains:{orders:{required:false,state:'idle',error:''},checks:{required:false,state:'idle',error:''},finance:{required:false,state:'idle',error:''}}}},checksSession={};
+ const status=createUiStatus({session,checksSession});let supplierSelections=0,writes=0;
+ const chooseSupplier=()=>supplierSelections++,save=()=>writes++;Object.defineProperty(save,'startupMutationDomain',{value:'orders'});
+ const actions=wrapMutationActions({'choose-supplier':chooseSupplier,save},domain=>status.guardStartupMutation(domain));
+ actions['choose-supplier']();actions.save();assert.equal(supplierSelections,1);assert.equal(writes,0);assert.equal(actions.save.startupMutationDomain,'orders');
+ session.syncCapabilitiesChecking=false;actions.save();assert.equal(writes,1);
+ session.syncCapabilitiesError=new Error('DB mismatch');actions['choose-supplier']();actions.save();assert.equal(supplierSelections,2);assert.equal(writes,1);
+});
+
 test('floating menus flip and clamp to the visible viewport in both directions',()=>{
  const anchor={left:360,right:392,top:680,bottom:712},size={width:190,height:300},viewport={left:0,top:0,width:400,height:740};
  const p=floatingMenuPosition(anchor,size,viewport,{rtl:true});

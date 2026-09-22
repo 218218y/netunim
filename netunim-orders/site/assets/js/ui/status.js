@@ -62,8 +62,16 @@ function startupDomainLocked(domain){
   const item=domains[domain];return !!item?.required&&(item.state==='pending'||item.state==='loading');
 }
 function guardStartupMutation(domain='orders'){
-  if(!startupDomainLocked(domain))return true;
   const label=domain==='all'?'הנתונים':STARTUP_DOMAIN_LABELS[domain]||'הנתונים';
+  if(session.syncCapabilitiesError){
+    toast(session.syncCapabilitiesError.message||'מסד הנתונים אינו תואם לגרסת האתר. אפשר לצפות בנתונים, אך העריכה חסומה.');
+    return false;
+  }
+  if(session.syncCapabilitiesChecking){
+    toast(`${label} זמינים לצפייה; העריכה תיפתח מיד לאחר אימות תאימות מסד הנתונים.`);
+    return false;
+  }
+  if(!startupDomainLocked(domain))return true;
   toast(`${label} עדיין מאומתים מול הענן. אפשר לצפות כעת; העריכה תיפתח מיד כשהשלב הבטוח יסתיים.`);
   return false;
 }

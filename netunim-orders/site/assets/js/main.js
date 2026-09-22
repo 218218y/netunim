@@ -69,7 +69,7 @@ import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {bindActionEvents,bindDismissibleDetails} from './shared/events.js';
-import {createUiActions} from './ui/actions.js';
+import {createUiActions,wrapMutationActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
 import {createOrderDomainRevisions,orderViewRevision} from './state/revisions.js';
@@ -852,7 +852,7 @@ const lifecycle=createLifecycle({
   showStartupAlerts:(...args)=>uiAlertCenter.showStartupAlerts(...args),
 });
 
-const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:()=>{if(session.syncCapabilitiesError||session.syncCapabilitiesChecking){return false}return true}})};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions)};
 
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>domainsFinanceController.snapshot().creditSync,saveOrder:(...args)=>domainsFinanceController.saveCreditCardOrder(...args),modal:(...args)=>uiModal.modal(...args),closeModal:()=>uiModal.closeModal(),render:()=>domainsFinanceView.renderKupa(),escapeHtml:esc});
 
@@ -1065,11 +1065,7 @@ supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
 bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard});
-const startupUiActions=Object.fromEntries(Object.entries(uiActions).map(([name,action])=>{
-  const domain=action.startupMutationDomain;
-  if(!domain)return [name,action];
-  return [name,(element,event)=>{if(uiStatus.guardStartupMutation(domain))return action(element,event)}];
-}));
+const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
