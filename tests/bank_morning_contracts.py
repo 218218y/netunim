@@ -27,7 +27,9 @@ bank=(SITE/'domains/finance/bank-morning.js').read_text(encoding='utf-8')
 bank_view=(SITE/'domains/finance/bank-morning-view.js').read_text(encoding='utf-8')
 documents=(SITE/'domains/customers/documents.js').read_text(encoding='utf-8')
 payments=(SITE/'domains/customers/morning-payments.js').read_text(encoding='utf-8')
+debt_picker=(SITE/'domains/customers/morning-bank-debt-picker.js').read_text(encoding='utf-8')
 banks=(SITE/'domains/customers/morning-banks.js').read_text(encoding='utf-8')
+app_css=(ROOT/'netunim-orders/site/assets/app.css').read_text(encoding='utf-8')
 bank_detail=(SITE/'domains/finance/bank-transaction-detail-view.js').read_text(encoding='utf-8')
 bank_table=(SITE/'domains/finance/view.js').read_text(encoding='utf-8')
 finance_controller=(SITE/'domains/finance/controller.js').read_text(encoding='utf-8')
@@ -64,17 +66,17 @@ ok("async function validateBankSource" in edge and ".eq('owner_id',ownerId)" in 
    'Edge Function independently verifies both exact transfer payments and structured cheque subsets against the owned finalized bank transaction')
 ok('const raw=Array.isArray(doc.payment)' in edge and 'raw.length>12' in edge and 'totalCents!==Math.round(amount*100)' in edge and 'payload.payment=lines' in edge,
    'Multi-payment contract is bounded and exact to the agorot on the server')
-ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments,
-   'Client payment editor shows only method-relevant fields, keeps cheque source identity locked and lets transfer bank details be completed manually')
-ok('morningBankDirectory' in payments and 'resolveMorningBank' in banks and 'findMorningBanks' in banks and "code:'12'" in banks and 'בנק הפועלים' in banks and "code:'20'" in banks and 'בנק מזרחי' in banks,
-   'Bank selector supports current code/name lookup and partial autocomplete from the reviewed bank directory')
+ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments and '.morning-payment-row [data-payment-kinds][hidden]{display:none}' in app_css,
+   'Client payment editor actually hides method-irrelevant fields in CSS, keeps cheque source identity locked and lets transfer bank details be completed manually')
+ok('morningBankDirectory' in payments and 'resolveMorningBank' in banks and 'findMorningBanks' in banks and 'const options=BANKS.map' in banks and 'for(const alias of bank.aliases)options.push' not in banks and "code:'12'" in banks and 'בנק הפועלים' in banks and "code:'20'" in banks and 'בנק מזרחי' in banks,
+   'Bank selector supports code/name/alias lookup while rendering only one menu option per bank')
 ok('bankTransferReferenceDetails' in bank_detail and '<b>אסמכתא:</b>' in bank_detail and 'bankTransferReferenceDetails(row)' in bank_table,
    'Ordinary bank transfers visibly surface the archived transfer reference in the transaction table')
 ok("status==='pending'" in bank and "currency!=='ILS'" in bank and "amount<=0" in bank and 'bankMorningDebtCandidates' in bank,
    'Client eligibility rejects provisional/non-credit/non-ILS rows and debt matching remains a suggestion engine')
-ok('ללא קישור לחוב' in documents and 'linkBankDebt' in documents and "activeDebtId=id" in documents,
-   'Debt linkage stays opt-in and requires explicit user selection')
-ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in documents,
+ok('morningBankDebtPickerMarkup' in documents and 'filterBankDebtPicker' in documents and 'morningBankDebtSearch' in debt_picker and 'morning-bank-debt-search' in debt_picker and 'morning-bank-debt-select' in debt_picker and 'preferredCard' in debt_picker and 'pickerRow' in debt_picker and 'linkBankDebt' in documents and "activeDebtId=id" in documents and '<select id="morningBankDebtLink"' not in debt_picker,
+   'Bank debt linkage uses a dedicated searchable debt-view module with one preferred suggestion instead of a separate select list')
+ok('customerDebtProgressData' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in bank and 'remainingPaymentMagnitude' in bank and 'progress.paymentComplete&&progress.invoiceComplete' in debt_picker,
    'Debt suggestions exclude completed debts and compare bank credits to the current payment remainder')
 ok('documentId:String(row.document_id' in edge and 'onBankDocumentVerified(Number(context.bankTransactionId),bankLink)' in documents and 'row.documentLinks=[entry' in controller,
    'Verified bank documents are projected immediately into the local row without waiting for a later bank sync')

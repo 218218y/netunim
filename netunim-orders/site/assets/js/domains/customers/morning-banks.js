@@ -72,11 +72,9 @@ export function inferMorningBankFromText(value){
 }
 
 export function morningBankDatalistMarkup(id='morningBankDirectory'){
-  const options=[];
-  for(const bank of BANKS){
-    options.push(`<option value="${bank.code} · ${bank.name}">${bank.aliases.join(' · ')}</option>`);
-    options.push(`<option value="${bank.name}">${bank.code}</option>`);
-    for(const alias of bank.aliases)options.push(`<option value="${alias}">${bank.code} · ${bank.name}</option>`);
-  }
+  const options=BANKS.map(bank=>{
+    const aliases=bank.aliases.filter(Boolean).join(' · ');
+    return `<option value="${bank.code} · ${bank.name}"${aliases?` label="${aliases}"`:''}></option>`;
+  });
   return `<datalist id="${id}">${options.join('')}</datalist>`;
 }

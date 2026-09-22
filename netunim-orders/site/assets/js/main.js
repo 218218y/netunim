@@ -982,6 +982,7 @@ const uiActions=createUiActions({
   openMorningDocument:(...args)=>domainsCustomers.openMorningDocument(...args),
   openStandaloneMorningDocument:(...args)=>domainsCustomers.openStandaloneMorningDocument(...args),
   linkBankMorningDebt:(...args)=>domainsCustomers.linkBankMorningDebt(...args),
+  filterBankMorningDebts:(...args)=>domainsCustomers.filterBankMorningDebts(...args),
   addMorningPayment:(...args)=>domainsCustomers.addMorningPayment(...args),
   removeMorningPayment:(...args)=>domainsCustomers.removeMorningPayment(...args),
   syncMorningPaymentTotal:(...args)=>domainsCustomers.syncMorningPaymentTotal(...args),

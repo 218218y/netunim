@@ -3,9 +3,10 @@ import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 import {morningDebtImpact} from './morning-debt.js';
 import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
-import {bankMorningDebtCandidates,bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning.js';
+import {bankMorningEligibility,bankMorningPrefill} from '../finance/bank-morning.js';
 import {createMorningDebtRecoveryContext,loadMorningDebtRecoveryContext,saveMorningDebtRecoveryContext,clearMorningDebtRecoveryContext,morningDebtRecoveryMatchesVerified,morningVerifiedApplicationDurable,morningFinancialSnapshot,morningFinancialChanges} from './morning-debt-recovery.js';
 import {createMorningPayments} from './morning-payments.js';
+import {activeMorningBankDebts,filterMorningBankDebtPicker,morningBankDebtPickerMarkup,syncMorningBankDebtPickerSelection} from './morning-bank-debt-picker.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const DOCUMENT_TYPES=Object.freeze({305:'חשבונית מס',320:'חשבונית מס / קבלה',400:'קבלה'});
@@ -69,16 +70,10 @@ function debtUpdatePanel(){
     <div class="morning-debt-update-warning"><b>מניעת רישום כפול:</b> אם התשלום או החשבונית כבר נרשמו ידנית בחוב, או שסכום החוב כבר הוקטן ידנית בעקבותיהם, בטל את הסימון המתאים.${existing.length?`<br><strong>${esc(existing.join(' · '))}</strong>`:''}</div>
   </div>`;
 }
-function bankDebtLinkPanel(){
-  if(activeSource?.kind!=='bank')return'';
-  const debts=(model.state.customerDebts||[]).filter(row=>{if(!String(row?.id||'')||Number(row?.amount)<=0)return false;const progress=customerDebtProgressData(row);return !(progress.paymentComplete&&progress.invoiceComplete)}),candidates=bankMorningDebtCandidates(activeSource.bankTransaction||{},debts),candidateIds=new Set(candidates.map(row=>row.debtId)),rest=debts.filter(row=>!candidateIds.has(String(row.id))).sort((a,b)=>String(a.customerName||'').localeCompare(String(b.customerName||''),'he'));
-  const option=(debt,suffix='')=>{const progress=debt.debtId?null:customerDebtProgressData(debt),paymentRemaining=Number(debt.remainingPayment??progress?.remainingPaymentMagnitude)||0,invoiceRemaining=Number(debt.remainingInvoice??progress?.remainingInvoiceMagnitude)||0,balance=paymentRemaining>0?`יתרת תשלום ${money(paymentRemaining)}`:`התשלום הושלם · יתרת חשבונית ${money(invoiceRemaining)}`;return `<option value="${esc(debt.debtId||debt.id)}" ${(debt.debtId||debt.id)===activeDebtId?'selected':''}>${esc(debt.customerName||'לקוח')} · ${esc(balance)}${suffix?` · ${esc(suffix)}`:''}</option>`};
-  return `<div class="morning-form-card morning-bank-debt-link"><div class="morning-section-title"><span>קישור לחוב לקוח <small>(רשות)</small></span><small>לא מתבצע קישור אוטומטי — הבחירה שלך קובעת</small></div>
-    ${activeSource.aggregate?'<div class="morning-source-warning">התנועה נראית כריכוז תקבולים. לא נבחר חוב אוטומטית ויש לוודא במיוחד שהחוב הנבחר שייך למסמך הזה.</div>':''}
-    <div class="field"><label>חוב לקישור</label><select id="morningBankDebtLink" data-change="morning-bank-debt-link"><option value="">ללא קישור לחוב</option>${candidates.length?`<optgroup label="התאמות מוצעות">${candidates.map(row=>option(row,row.reason)).join('')}</optgroup>`:''}${rest.length?`<optgroup label="כל החובות הפעילים">${rest.map(row=>option(row)).join('')}</optgroup>`:''}</select></div>
-    ${candidates.length?`<small class="morning-bank-match-note">ההתאמות המוצעות מבוססות על שם הלקוח, עם חיזוק בלבד לפי סכום. המערכת לעולם אינה מאשרת התאמה בעצמה.</small>`:''}
-  </div>`;
-}
+function activeBankDebts(){return activeMorningBankDebts(model.state.customerDebts||[])}
+function bankDebtLinkPanel(){return activeSource?.kind==='bank'?morningBankDebtPickerMarkup({debts:model.state.customerDebts||[],transaction:activeSource.bankTransaction||null,activeDebtId,aggregate:activeSource.aggregate===true}):''}
+function filterBankDebtPicker(query=''){return filterMorningBankDebtPicker(query)}
+function syncBankDebtPickerSelection(){return syncMorningBankDebtPickerSelection({activeDebtId,debt:currentDebt()})}
 
 function formBody(d,type,dateEditorMarkup,{source=activeSource}={}){
   const kind=source?.kind||'standalone',standalone=kind==='standalone',bank=kind==='bank',amountValue=Number(d?.amount),amountInput=Number.isFinite(amountValue)&&amountValue>0?amountValue.toFixed(2):'',documentDate=cleanText(d?.date,10)||todayLocal();
@@ -141,7 +136,7 @@ async function openMorningDocumentModal({prefill=null,debtId='',source=null,init
   if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}
   const safeType=activeSource.kind==='bank'&&![320,400].includes(Number(initialType))?320:Number(initialType)||DEFAULT_DOCUMENT_TYPE;
   modal('הפקת מסמך Morning',formBody(prefill||{},safeType,dateEditorMarkup,{source:activeSource}),foot());
-  syncDocumentType();syncPaymentType();syncPaymentTotal();await refreshStatus();
+  syncDocumentType();syncPaymentType();syncPaymentTotal();syncBankDebtPickerSelection();await refreshStatus();
 }
 function isActive(generation){return generation===modalGeneration&&!!document.querySelector(`[data-morning-generation="${generation}"]`)}
 
@@ -157,7 +152,7 @@ function syncDocumentType(){
   if(payment)payment.hidden=!needsPayment;if(linked)linked.hidden=type!==400;if(paymentUpdate)paymentUpdate.hidden=!(type===320||type===400);if(invoiceUpdate)invoiceUpdate.hidden=!(type===305||type===320);if(amount)amount.readOnly=needsPayment;
   document.querySelectorAll('[data-document-kind]').forEach(el=>{el.hidden=Number(el.dataset.documentKind)!==type});if(needsPayment)syncPaymentTotal();
 }
-function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),exists=!id||(model.state.customerDebts||[]).some(row=>String(row.id)===id);if(!exists)return toast('החוב שנבחר אינו קיים');activeDebtId=id;const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType()}
+function linkBankDebt(debtId){if(activeSource.kind!=='bank'||blocked||createBusy)return;const id=String(debtId||''),exists=!id||activeBankDebts().some(row=>String(row.id)===id);if(!exists)return toast('החוב שנבחר אינו קיים או שכבר הושלם');activeDebtId=id;const host=currentField('morningDebtUpdateHost');if(host)host.innerHTML=debtUpdatePanel();syncDocumentType();syncBankDebtPickerSelection()}
 
 function validateTaxId(value){const digits=String(value||'').replace(/\D/g,'');if(!digits)return'';if(digits.length>9)throw new Error('מספר עוסק / ח.פ. יכול להכיל עד 9 ספרות');const padded=digits.padStart(9,'0');let sum=0;for(let i=0;i<9;i++){let product=Number(padded[i])*((i%2)+1);if(product>9)product-=9;sum+=product}if(sum%10!==0)throw new Error('מספר העוסק / ח.פ. אינו תקין');return padded}
 function readForm(){
@@ -415,5 +410,5 @@ async function createMorningDocument(button){
 function openExistingDocument(documentId,button){return documentsBrowser.viewDocument(documentId,button)}
 async function reconcile(button){if(createBusy)return;setBusy(button,true,'בודק…');try{await refreshStatus({reconcile:true})}finally{setBusy(button,false)}}
 
-return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
+return {saveRecoveryChoice,confirmRecoveryChoice,isDebtRecoveryPending,rejectDebtRecoveryMutation,documentButton,openMorningDocumentModal,openMorningDocument,openStandaloneMorningDocument,openBankMorningDocument,linkBankDebt,filterBankDebtPicker,addMorningPayment,removeMorningPayment,syncPaymentTotal,syncDocumentType,syncPaymentType,syncPaymentBank,previewMorningDocument,createMorningDocument,openExistingDocument,reconcile,refreshStatus,recoverPendingMorningOperation};
 }

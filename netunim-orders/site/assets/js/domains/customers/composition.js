@@ -92,6 +92,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     openStandaloneMorningDocument:(...args)=>documents.openStandaloneMorningDocument(...args),
     openBankMorningDocument:(...args)=>documents.openBankMorningDocument(...args),
     linkBankMorningDebt:(...args)=>documents.linkBankDebt(...args),
+    filterBankMorningDebts:(...args)=>documents.filterBankDebtPicker(...args),
     addMorningPayment:(...args)=>documents.addMorningPayment(...args),
     removeMorningPayment:(...args)=>documents.removeMorningPayment(...args),
     syncMorningPaymentTotal:(...args)=>documents.syncPaymentTotal(...args),
