@@ -229,6 +229,12 @@ ok('localStorage' not in browser and 'sessionStorage' not in browser and 'docume
    'Browser keeps PDF viewing transient in a local Blob, requests fresh download links and persists neither documents nor signed URLs')
 ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-Morning…'" in documents and 'mountMorningConnectionStatus()' in documents and 'morning-document-fields' in documents and 'morning-payment-fields' in morning_payments and 'מספר הזמנה <small>(רשות)</small>' in documents,
    'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')
+ok('חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning' not in browser and "modal('הצגה וחיפוש במסמכי Morning',markup()" in browser,
+   'Morning document browser copy: redundant intro is removed and the modal title states its browse/search purpose')
+ok('const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400])' in browser and 'options(SEARCH_TYPES)' in browser and all(label in browser for label in ('קבלה על תרומה','קבלת פיקדון','תעודת חיוב','הזמנת רכש','הצעת רכש')),
+   'Morning document browser types: unnecessary types stay displayable for existing documents but are excluded from the search filter')
+ok('.morning-document-fields .morning-client-name-field,.morning-document-fields .morning-document-amount-field,.morning-document-fields .morning-order-field{grid-column:span 2}' in app_css,
+   'Morning issuance layout: customer, gross amount and optional order number share equal first-row widths for every issuance type')
 
 if errors:
     print('\nERRORS',len(errors))

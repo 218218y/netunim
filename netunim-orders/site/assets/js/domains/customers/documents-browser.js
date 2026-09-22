@@ -4,6 +4,8 @@ import {$} from '../../state/constants.js';
 const BACKEND_PATH='/functions/v1/morning-documents';
 const CACHE_TTL_MS=90_000;
 const TYPES=Object.freeze({10:'הצעת מחיר',20:'הזמנה / אישור הזמנה',100:'הזמנה',200:'תעודת משלוח',210:'תעודת החזרה',300:'חשבון עסקה',305:'חשבונית מס',320:'חשבונית מס / קבלה',330:'חשבונית זיכוי',400:'קבלה',405:'קבלה על תרומה',410:'קבלת פיקדון',500:'תעודת חיוב',600:'הזמנת רכש',610:'הצעת רכש'});
+const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400]);
+const SEARCH_TYPES=Object.freeze(Object.fromEntries(SEARCH_TYPE_CODES.map(type=>[type,TYPES[type]])));
 const STATUSES=Object.freeze({0:'פתוח',1:'סגור',2:'נסגר ידנית',3:'מבוטל',4:'מבטל'});
 function localDate(date){return new Date(date.getTime()-date.getTimezoneOffset()*60_000).toISOString().slice(0,10)}
 export function defaultDocumentSearch(now=new Date()){
@@ -22,12 +24,11 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
   function invalidateCache(){cache.clear()}
   function root(){return $('#morningDocumentsBrowser')}
   function markup(){return `<section id="morningDocumentsBrowser" class="morning-documents-browser" dir="rtl">
-    <p class="morning-browser-intro">חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning</p>
     <div class="morning-browser-filters">
       <label>שם לקוח<input id="morningSearchClient" maxlength="160" data-keydown="morning-search-enter" value="${esc(query.clientName)}" placeholder="שם הלקוח"></label>
       <label>מתאריך${dateEditorMarkup('morningSearchFrom',query.fromDate,{label:'מתאריך',compact:true})}</label>
       <label>עד תאריך${dateEditorMarkup('morningSearchTo',query.toDate,{label:'עד תאריך',compact:true})}</label>
-      <label>סוג מסמך<select id="morningSearchType" ${picker?'disabled':''}>${picker?'<option value="305">חשבונית מס</option>':options(TYPES)}</select></label>
+      <label>סוג מסמך<select id="morningSearchType" ${picker?'disabled':''}>${picker?'<option value="305">חשבונית מס</option>':options(SEARCH_TYPES)}</select></label>
       <label>סטטוס<select id="morningSearchStatus" ${picker?'disabled':''}>${picker?'<option value="0">פתוח</option>':options(STATUSES)}</select></label>
       <div class="morning-browser-filter-actions"><button class="btn primary" data-action="morning-search">חפש</button><button class="btn" data-action="morning-refresh">רענן</button></div>
     </div>
@@ -38,7 +39,7 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
   </section>`}
   function releasePreviewUrl(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
   function clearBrowserPreview(){releasePreviewUrl();const box=$('#morningBrowserPreview'),frame=$('#morningBrowserPreviewFrame');if(frame)frame.removeAttribute('src');if(box)box.hidden=true}
-  async function openDocuments(){releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('מסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
+  async function openDocuments(){releasePreviewUrl();picker=false;sequence++;query=defaultDocumentSearch();invalidateCache();modal('הצגה וחיפוש במסמכי Morning',markup(),'<button class="btn" data-action="close-modal">סגור</button>');return runSearch()}
   async function openInvoicePicker(){
     const panel=$('#morningInvoicePicker');if(!panel)return;
     releasePreviewUrl();picker=true;sequence++;invalidateCache();query={...defaultDocumentSearch(),type:[305],status:[0],clientName:$('#morningClientName')?.value||''};
