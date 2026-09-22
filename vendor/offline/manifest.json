@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "packageLockSha256": "75db255712ab79324cccab6d7c4617595c0976f23380a344c6d1ebd0cf704514",
+  "packageLockSha256": "bd760fa750411e809d72bc93144cc3b0b46fe071efea8ec1657c0df098b6823e",
   "configSha256": "c242a9cf1b121c93e4c0e6eb5166d20acd32b0a63458b0b1bc20b514904e9d76",
   "node": {
     "version": "24.18.0",
@@ -210,10 +210,10 @@
     {
       "lockPath": "node_modules/brace-expansion",
       "name": "brace-expansion",
-      "version": "5.0.9",
-      "url": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.9.tgz",
-      "integrity": "sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==",
-      "file": "npm/brace-expansion-5.0.9.tgz"
+      "version": "5.0.12",
+      "url": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.12.tgz",
+      "integrity": "sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==",
+      "file": "npm/brace-expansion-5.0.12.tgz"
     },
     {
       "lockPath": "node_modules/cacheable",
@@ -258,10 +258,10 @@
     {
       "lockPath": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.10.0",
-      "url": "https://registry.npmjs.org/eslint/-/eslint-10.10.0.tgz",
-      "integrity": "sha512-NPXn6r5zl4uET1DAVPaOwzX3rut4c0wcmw3dWJAfOsTM5+TogXo0DDjz8pwm/hL8cyVNpHqeK4JpN0NjnyFFNw==",
-      "file": "npm/eslint-10.10.0.tgz"
+      "version": "10.11.0",
+      "url": "https://registry.npmjs.org/eslint/-/eslint-10.11.0.tgz",
+      "integrity": "sha512-P7a6UEEqb9G95MYAtqkmsTbVXIYyzIfl6NGOIJk162PaahFxFyeGcrlXYFSiagECg4sEm8IseJdZBKR3rx6MsQ==",
+      "file": "npm/eslint-10.11.0.tgz"
     },
     {
       "lockPath": "node_modules/eslint-scope",
