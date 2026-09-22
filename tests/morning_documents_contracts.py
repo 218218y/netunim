@@ -21,6 +21,7 @@ view=(SITE/'assets/js/domains/customers/view.js').read_text(encoding='utf-8')
 editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8')
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
 morning_debt_recovery=(SITE/'assets/js/domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
+morning_payments=(SITE/'assets/js/domains/customers/morning-payments.js').read_text(encoding='utf-8')
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
@@ -33,9 +34,9 @@ preissue=PREISSUE.read_text(encoding='utf-8')
 
 ok("const DOCUMENT_TYPES=new Set([305,320,400])" in edge and "305:'חשבונית מס'" in documents and "320:'חשבונית מס / קבלה'" in documents and "400:'קבלה'" in documents,
    'Morning document types: tax invoice, invoice/receipt and receipt are explicit and consistent')
-ok("const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400])" in documents and "const DEFAULT_DOCUMENT_TYPE=320" in documents and "DOCUMENT_TYPE_ORDER.map(value=>" in documents and "formBody(prefill||{},DEFAULT_DOCUMENT_TYPE,dateEditorMarkup,{standalone:!prefill})" in documents,
-   'Morning document default: invoice/receipt is selected for debt-prefilled and standalone issuance')
-ok("const PAYMENT_TYPES=new Set([1,2,3,4])" in edge and "1:'מזומן'" in documents and "2:'צ׳ק'" in documents and "3:'כרטיס אשראי'" in documents and "4:'העברה בנקאית'" in documents,
+ok("const DOCUMENT_TYPE_ORDER=Object.freeze([320,305,400])" in documents and "const DEFAULT_DOCUMENT_TYPE=320" in documents and "const allowedTypes=bank?[320,400]:DOCUMENT_TYPE_ORDER" in documents and "initialType=DEFAULT_DOCUMENT_TYPE" in documents,
+   'Morning document default: invoice/receipt remains the default while bank issuance explicitly limits the allowed types')
+ok("const PAYMENT_TYPES=new Set([1,2,3,4])" in edge and "1:'מזומן'" in morning_payments and "2:'צ׳ק'" in morning_payments and "3:'כרטיס אשראי'" in morning_payments and "4:'העברה בנקאית'" in morning_payments,
    'Morning payment enum: cash/check/card/electronic transfer codes are fixed on both client and server')
 ok("https://api.morning.co/idp/v1/oauth/token" in edge and "grant_type:'client_credentials'" in edge and "'Content-Type':'application/json'" in edge and "expiresAt" in edge and "https://api.greeninvoice.co.il/api/v1" in edge,
    'Morning auth: official OAuth 2.0 JSON client-credentials contract and token expiry are handled separately from the resource API')
@@ -73,11 +74,11 @@ ok('on delete cascade' not in sql.lower() and 'drop constraint if exists morning
    'Morning ledger retention: deleting an app user cannot erase issuance/idempotency evidence')
 ok("createDomainsCustomers" in composition and "openMorningDocument" in main and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
    'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
-for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-preview','morning-create','morning-open-document','morning-reconcile'):
+for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-link','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
-ok("openMorningDocumentModal({prefill:null,debtId:''})" in documents and "openStandaloneMorningDocument" in documents and "debt_id" not in documents and "open-morning-standalone" in view,
-   'Morning standalone documents: general document creation shares the form flow but carries no debt scope to the backend')
+ok("openMorningDocumentModal({prefill:null,debtId:'',source:{kind:'standalone'}})" in documents and "openStandaloneMorningDocument" in documents and "source:{kind:activeSource.kind||'standalone'" in documents and "open-morning-standalone" in view,
+   'Morning standalone documents: general document creation shares the form flow with an explicit standalone source context')
 ok('ללא חוב מקושר' not in documents,
    'Morning standalone document UI: redundant unlinked-debt hero copy stays removed')
 ok('customer-morning-actions' in view and 'הצג מסמכים' in view and view.find('open-morning-documents') < view.find('open-morning-standalone') and 'data-action="open-debt-modal-2"' in view and view.find('data-action="open-debt-modal-2"') < view.find('${morningDocumentButton(d)}'),
@@ -153,8 +154,8 @@ recovery_save_pos=documents.find('persistRecoveryContext(recoveryContext(type,am
 create_call_pos=documents.find("backend('create',payload)")
 ok(0 <= reserve_call_pos < recovery_save_pos < create_call_pos and 'orders.morning.pending-issuance.v1' in morning_debt_recovery and 'localStorage' in morning_debt_recovery,
    'Morning reload recovery: a server pre-issue reservation and the exact local debt/type/amount/allocation policy are both durable before any official POST')
-ok("const record={version:1,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time}" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
-   'Morning reload recovery storage stays minimal: no PDF, signed URL, customer payload or permanent document metadata is retained locally')
+ok("const record={version:2,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time,sourceKind:kind}" in morning_debt_recovery and "if(kind==='bank')record.bankTransactionId=bankId" in morning_debt_recovery and all(token not in morning_debt_recovery for token in ('pdfBase64','document_url','allocationNumber','clientName')),
+   'Morning reload recovery storage stays minimal: source identity is durable without PDF, signed URL, customer payload or permanent document metadata')
 ok('record.operationId===clean(operationId,80)' in morning_debt_recovery and 'record.type===Number(type)' in morning_debt_recovery and 'moneyCents(record.amount)===moneyCents(amount)' in morning_debt_recovery,
    'Morning reload recovery verification: operation, document type and exact cent amount must match before a recovered debt can mutate')
 ok("recoverPendingMorningOperation:(...args)=>documents.recoverPendingMorningOperation(...args)" in composition and (main+runtime_events).count('recoverPendingMorningOperation({quiet:')>=3,
@@ -175,7 +176,7 @@ ok("rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(
    and documents.count('if(rejectCurrentIssuance())return;')>=2,
    'Morning official issuance single-writer: standalone documents also require the primary tab, while debt-linked documents retain the stronger local-mutation guard')
 ok("blocked=!!data.unresolved||!!data.retryable_reserved||recoveryStillPending" in documents
-   and "if(blocked&&requestedDebtId!==activeDebtId)" in documents
+   and "if(blocked&&requestedKey!==sourceKey(activeSource))" in documents
    and "if(createBusy){toast(" in documents
    and 'לא שולחים מחדש מתוך הטופס המשוחזר' in documents,
    'Morning recovery fail-closed scope: reserved/in-flight issuance stays locked and cannot be rebound to another debt before explicit recovery')
@@ -199,8 +200,8 @@ ok("documentsBrowser.viewDocument(data.document.id,null,{quiet:true})" in docume
    'Issued-document UI: browser fails closed without server verification and automatically loads the official Morning PDF after verified issuance')
 ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=blocked||completed" in documents and "הופק ואומת" in documents,
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
-ok('id="morningAmount"' in documents and 'step="1"' in documents and 'step="0.01"' not in documents.split('id="morningAmount"',1)[1].split('>',1)[0],
-   'Morning amount UI: native number arrows advance by whole shekels instead of agorot')
+ok('id="morningAmount"' in documents and 'step="1"' in documents.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in documents and 'Math.round' in morning_payments,
+   'Morning amount UI: document and multi-payment amounts support exact agorot')
 ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')
 ok('lock table' in migration and migration.index('raise exception') < migration.index('create table public.morning_document_operations_backup_20260908') < migration.index('drop table public.morning_document_operations;'),

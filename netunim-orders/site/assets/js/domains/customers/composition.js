@@ -5,7 +5,7 @@ import {createDomainsCustomersEditor} from './editor.js';
 import {createDomainsCustomersDocuments} from './documents.js';
 import {createDomainsCustomersDocumentsBrowser} from './documents-browser.js';
 
-export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery}){
+export function createDomainsCustomers({customerRevision,model,customerUi,uiLayout,uiModal,uiStatus,storagePersistence,cloudAuth,uiNavigation,uiDateEditor,refreshForMorningRecovery,onBankDocumentVerified}){
   let view,editor;
   const selectors=createDomainsCustomersSelectors({model});
   const bulk=createDomainsCustomersBulk({
@@ -36,6 +36,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     rejectSecondaryIssuance:(...args)=>storagePersistence.rejectSecondaryAction(...args),
     rejectSecondaryMutation:(...args)=>storagePersistence.rejectSecondaryMutation(...args),
     applyVerifiedDebtDocument:(...args)=>{if(storagePersistence.rejectSecondaryMutation())return {changed:false,reason:'write-blocked'};return editor?.applyVerifiedMorningDocument(...args)||{changed:false,reason:'editor-unavailable'}},
+    onBankDocumentVerified:(...args)=>onBankDocumentVerified?.(...args),
   });
   view=createDomainsCustomersView({
     customerRevision,
@@ -89,6 +90,11 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     deleteDebt:(...args)=>editor.deleteDebt(...args),
     openMorningDocument:(...args)=>documents.openMorningDocument(...args),
     openStandaloneMorningDocument:(...args)=>documents.openStandaloneMorningDocument(...args),
+    openBankMorningDocument:(...args)=>documents.openBankMorningDocument(...args),
+    linkBankMorningDebt:(...args)=>documents.linkBankDebt(...args),
+    addMorningPayment:(...args)=>documents.addMorningPayment(...args),
+    removeMorningPayment:(...args)=>documents.removeMorningPayment(...args),
+    syncMorningPaymentTotal:(...args)=>documents.syncPaymentTotal(...args),
     syncMorningDocumentType:(...args)=>documents.syncDocumentType(...args),
     syncMorningPaymentType:(...args)=>documents.syncPaymentType(...args),
     previewMorningDocument:(...args)=>documents.previewMorningDocument(...args),

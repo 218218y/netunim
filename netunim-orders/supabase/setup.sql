@@ -603,6 +603,7 @@ create table if not exists public.bank_transactions (
   credit_settlement_details jsonb,
   first_seen_at timestamptz not null default now(),
   last_changed_at timestamptz not null default now(),
+  handled_at timestamptz,
   unique(owner_id,account_key,merge_key)
 );
 create index if not exists bank_transactions_owner_account_date_idx on public.bank_transactions(owner_id,account_key,transaction_date desc);
@@ -1111,6 +1112,28 @@ end $$;
 
 revoke all on function public.acknowledge_bank_transaction_missing(bigint) from public,anon;
 grant execute on function public.acknowledge_bank_transaction_missing(bigint) to authenticated;
+
+
+-- Manual business-bank processing state. This archive-only RPC stays SECURITY INVOKER so RLS remains authoritative.
+create or replace function public.set_bank_transaction_handled(p_transaction_id bigint,p_handled boolean)
+returns table(transaction_id bigint,handled_at timestamptz)
+language plpgsql
+security invoker
+set search_path=pg_catalog,public
+as $$
+declare v_owner uuid:=auth.uid();
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501'; end if;
+  if p_transaction_id is null or p_transaction_id<=0 or p_handled is null then raise exception 'invalid_bank_transaction_handled_input' using errcode='22023'; end if;
+  update public.bank_transactions b
+     set handled_at=case when p_handled then coalesce(b.handled_at,now()) else null end
+   where b.id=p_transaction_id and b.owner_id=v_owner and b.account_role='business' and b.status='completed'
+  returning b.id,b.handled_at into transaction_id,handled_at;
+  if transaction_id is null then raise exception 'bank_transaction_not_found' using errcode='P0002'; end if;
+  return next;
+end $$;
+revoke all on function public.set_bank_transaction_handled(bigint,boolean) from public,anon;
+grant execute on function public.set_bank_transaction_handled(bigint,boolean) to authenticated;
 
 notify pgrst,'reload schema';
 

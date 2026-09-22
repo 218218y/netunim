@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-d4a06ab7196f';
+const CACHE='orders-app-shell-esm-acec58dd73d5';
 const SHELL=[
   './',
   './index.html',
@@ -36,6 +36,7 @@ const SHELL=[
   './assets/js/domains/customers/model.js',
   './assets/js/domains/customers/morning-debt-recovery.js',
   './assets/js/domains/customers/morning-debt.js',
+  './assets/js/domains/customers/morning-payments.js',
   './assets/js/domains/customers/selectors.js',
   './assets/js/domains/customers/view.js',
   './assets/js/domains/dashboard/view.js',
@@ -43,8 +44,11 @@ const SHELL=[
   './assets/js/domains/finance/bank-cheque-image-runtime.js',
   './assets/js/domains/finance/bank-connection-view.js',
   './assets/js/domains/finance/bank-feed.js',
+  './assets/js/domains/finance/bank-morning-view.js',
+  './assets/js/domains/finance/bank-morning.js',
   './assets/js/domains/finance/bank-reconciliation-view.js',
   './assets/js/domains/finance/bank-transaction-detail-view.js',
+  './assets/js/domains/finance/bank-view-helpers.js',
   './assets/js/domains/finance/bridge.js',
   './assets/js/domains/finance/controller.js',
   './assets/js/domains/finance/credit-connection-view.js',

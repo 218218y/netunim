@@ -15,6 +15,17 @@ function normalizeCreditSettlementDetails(value){
     cardLast4s,cardIdentitySource:cardLast4s.length&&value.cardIdentitySource==='bank_detail_explicit'?'bank_detail_explicit':'',detailFetched:value.detailFetched===true,warning:cleanText(value.warning,220),
   };
 }
+function normalizeMorningDocumentLinks(value){
+  if(!Array.isArray(value))return [];
+  const seen=new Set(),rows=[];
+  for(const raw of value){
+    const documentId=cleanText(raw?.documentId,80),operationId=cleanText(raw?.operationId,80),verifiedAt=cleanIso(raw?.verifiedAt),type=Number(raw?.documentType),amount=Number(raw?.documentAmount),linkId=Number(raw?.linkId);
+    const key=documentId||operationId;if(!key||seen.has(key)||![320,400].includes(type)||!Number.isFinite(amount)||amount<=0||!verifiedAt)continue;
+    seen.add(key);rows.push({linkId:Number.isSafeInteger(linkId)&&linkId>0?linkId:null,operationId,documentId,documentNumber:cleanText(raw?.documentNumber,80),documentType:type,documentAmount:Math.round(amount*100)/100,verifiedAt});
+  }
+  return rows.sort((a,b)=>String(b.verifiedAt).localeCompare(String(a.verifiedAt)));
+}
+
 function normalizeCheckDetails(value,fallbackKind=''){
   if(!value||typeof value!=='object')return null;
   const kind=['deposit','returned','returned_credit'].includes(value.kind)?value.kind:(fallbackKind==='deposit'?'deposit':'');
@@ -62,6 +73,8 @@ export function normalizeBankFeedTransaction(value){
     missingSince:cleanIso(row.missingSince),
     missingAcknowledgedAt:cleanIso(row.missingAcknowledgedAt),
     alertAcknowledgements:row.alertAcknowledgements&&typeof row.alertAcknowledgements==='object'&&!Array.isArray(row.alertAcknowledgements)?Object.fromEntries(Object.entries(row.alertAcknowledgements).map(([key,value])=>[cleanText(key,80),cleanIso(value)]).filter(([key,value])=>key&&value)): {},
+    handledAt:cleanIso(row.handledAt),
+    documentLinks:normalizeMorningDocumentLinks(row.documentLinks),
   };
 }
 

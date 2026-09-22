@@ -405,6 +405,7 @@ const domainsCustomers=createDomainsCustomers({
   cloudAuth,
   uiNavigation,
   uiDateEditor,
+  onBankDocumentVerified:(...args)=>domainsFinanceController.markBankMorningVerified(...args),
 });
 
 
@@ -658,6 +659,7 @@ const domainsFinanceController=createDomainsFinanceController({
   syncBankTransactionsSnapshot:(...args)=>cloudTransport.syncBankTransactionsSnapshot(...args),
   readBankTransactions:(...args)=>cloudTransport.readBankTransactions(...args),
   readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
+  setBankTransactionHandled:(...args)=>cloudTransport.setBankTransactionHandled(...args),
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
   acknowledgeBankTransactionAlert:(...args)=>cloudTransport.acknowledgeBankTransactionAlert(...args),
   syncBankChequeImages:bankChequeImages.sync,
@@ -676,6 +678,7 @@ const domainsFinanceView=createDomainsFinanceView({
   downloadBankChequeImage:bankChequeImages.download,
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
   dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+  openBankMorningDocument:(...args)=>domainsCustomers.openBankMorningDocument(...args),
 });
 
 const uiAlertCenter=createUiAlertCenter({
@@ -867,6 +870,9 @@ const uiActions=createUiActions({
   openOrdersCashflowBreakdown:(...args)=>domainsFinanceView.openCashflowBreakdown(...args),
   setOrdersBankAccountView:(...args)=>domainsFinanceView.setBankAccountView(...args),
   setOrdersBankDataView:(...args)=>domainsFinanceView.setBankDataView(...args),
+  setOrdersBankTransactionHandled:(...args)=>domainsFinanceView.setBankTransactionHandled(...args),
+  openOrdersBankDocumentChoice:(...args)=>domainsFinanceView.openBankDocumentChoice(...args),
+  createOrdersBankDocument:(...args)=>domainsFinanceView.createBankDocument(...args),
   openOrdersBankChequeImage:(...args)=>domainsFinanceView.openBankChequeImage(...args).catch(error=>uiStatus.toast(error?.message||String(error))),
   acknowledgeOrdersBankMissing:(...args)=>domainsFinanceView.acknowledgeBankMissing(...args),
   setOrdersBankSearch:(...args)=>domainsFinanceView.setBankSearch(...args),
@@ -975,6 +981,10 @@ const uiActions=createUiActions({
   deleteDebt:(...args)=>domainsCustomers.deleteDebt(...args),
   openMorningDocument:(...args)=>domainsCustomers.openMorningDocument(...args),
   openStandaloneMorningDocument:(...args)=>domainsCustomers.openStandaloneMorningDocument(...args),
+  linkBankMorningDebt:(...args)=>domainsCustomers.linkBankMorningDebt(...args),
+  addMorningPayment:(...args)=>domainsCustomers.addMorningPayment(...args),
+  removeMorningPayment:(...args)=>domainsCustomers.removeMorningPayment(...args),
+  syncMorningPaymentTotal:(...args)=>domainsCustomers.syncMorningPaymentTotal(...args),
   syncMorningDocumentType:(...args)=>domainsCustomers.syncMorningDocumentType(...args),
   syncMorningPaymentType:(...args)=>domainsCustomers.syncMorningPaymentType(...args),
   previewMorningDocument:(...args)=>domainsCustomers.previewMorningDocument(...args),

@@ -31,12 +31,21 @@ const CREATED='2026-09-09T10:15:00.000Z';
 test('recovery context persists only the minimal debt binding and independent allocation policy',()=>{
   const storage=new MemoryStorage();
   const context=createMorningDebtRecoveryContext({operationId:OP,debtId:'debt-7',type:320,amount:1250.75,applyPayment:false,applyInvoice:true,createdAt:CREATED});
-  assert.deepEqual(context,{version:1,operationId:OP,debtId:'debt-7',type:320,amount:1250.75,applyPayment:false,applyInvoice:true,createdAt:CREATED});
+  assert.deepEqual(context,{version:2,operationId:OP,debtId:'debt-7',type:320,amount:1250.75,applyPayment:false,applyInvoice:true,createdAt:CREATED,sourceKind:'debt'});
   assert.equal(saveMorningDebtRecoveryContext(context,storage),true);
   assert.deepEqual(loadMorningDebtRecoveryContext(storage),context);
   const raw=JSON.parse(storage.getItem(MORNING_DEBT_RECOVERY_STORAGE_KEY));
-  assert.deepEqual(Object.keys(raw).sort(),['amount','applyInvoice','applyPayment','createdAt','debtId','operationId','type','version'].sort());
+  assert.deepEqual(Object.keys(raw).sort(),['amount','applyInvoice','applyPayment','createdAt','debtId','operationId','sourceKind','type','version'].sort());
   assert.ok(!('documentId' in raw)&&!('pdf' in raw)&&!('url' in raw)&&!('client' in raw));
+});
+
+
+test('v1 recovery remains readable and bank recovery persists only stable source identity',()=>{
+  const legacy={version:1,operationId:OP,debtId:'legacy-debt',type:320,amount:75,applyPayment:true,applyInvoice:true,createdAt:CREATED};
+  assert.deepEqual(normalizeMorningDebtRecoveryContext(legacy),{...legacy,version:2,sourceKind:'debt'});
+  const bank=createMorningDebtRecoveryContext({operationId:OTHER,debtId:'optional-debt',sourceKind:'bank',bankTransactionId:91,type:400,amount:125,applyPayment:true,createdAt:CREATED});
+  assert.equal(bank.version,2);assert.equal(bank.sourceKind,'bank');assert.equal(bank.bankTransactionId,91);assert.equal(bank.debtId,'optional-debt');
+  assert.equal(normalizeMorningDebtRecoveryContext({...bank,bankTransactionId:0}),null);
 });
 
 test('financial snapshot is minimal, cents-normalized and ignores notes/supply metadata',()=>{

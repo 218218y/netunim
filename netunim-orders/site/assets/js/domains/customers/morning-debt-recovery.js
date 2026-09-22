@@ -3,6 +3,7 @@ import {customerDebtProgressData} from '../../shared/customer-debt-progress.js';
 const STORAGE_KEY='orders.morning.pending-issuance.v1';
 const TYPES=new Set([305,320,400]);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SOURCE_KINDS=new Set(['standalone','debt','bank']);
 
 function clean(value,max=160){return String(value??'').trim().slice(0,max)}
 function moneyCents(value){const number=Number(value);return Number.isFinite(number)?Math.round(number*100):NaN}
@@ -33,13 +34,18 @@ export function morningFinancialChanges(before,current){
   return {amount,payment,invoice,changed:payment||invoice};
 }
 
-export function createMorningDebtRecoveryContext({operationId,debtId='',type,amount,applyPayment=false,applyInvoice=false,createdAt=new Date().toISOString(),financialSnapshot,resolution}={}){
-  const operation=clean(operationId,80),debt=clean(debtId,160),documentType=Number(type),amountCents=moneyCents(amount),time=validDateTime(createdAt);
+export function createMorningDebtRecoveryContext({operationId,debtId='',type,amount,applyPayment=false,applyInvoice=false,createdAt=new Date().toISOString(),financialSnapshot,resolution,sourceKind='',bankTransactionId=null}={}){
+  const operation=clean(operationId,80),debt=clean(debtId,160),documentType=Number(type),amountCents=moneyCents(amount),time=validDateTime(createdAt),kind=clean(sourceKind,20)||(debt?'debt':'standalone'),bankId=Number(bankTransactionId);
   if(!UUID.test(operation))throw new Error('morning_recovery_invalid_operation');
   if(!TYPES.has(documentType))throw new Error('morning_recovery_invalid_type');
   if(!Number.isSafeInteger(amountCents)||amountCents<=0)throw new Error('morning_recovery_invalid_amount');
   if(!time)throw new Error('morning_recovery_invalid_time');
-  const record={version:1,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time};
+  if(!SOURCE_KINDS.has(kind))throw new Error('morning_recovery_invalid_source');
+  if(kind==='debt'&&!debt)throw new Error('morning_recovery_missing_debt');
+  if(kind==='standalone'&&debt)throw new Error('morning_recovery_standalone_debt');
+  if(kind==='bank'&&(!Number.isSafeInteger(bankId)||bankId<=0))throw new Error('morning_recovery_invalid_bank_transaction');
+  const record={version:2,operationId:operation,debtId:debt,type:documentType,amount:amountCents/100,applyPayment:applyPayment===true,applyInvoice:applyInvoice===true,createdAt:time,sourceKind:kind};
+  if(kind==='bank')record.bankTransactionId=bankId;
   const snapshot=normalizeMorningFinancialSnapshot(financialSnapshot);if(snapshot)record.financialSnapshot=snapshot;
   const reviewed=normalizeMorningFinancialSnapshot(resolution?.financialSnapshot);
   if(reviewed&&typeof resolution.applyPayment==='boolean'&&typeof resolution.applyInvoice==='boolean')record.resolution={financialSnapshot:reviewed,applyPayment:documentType!==305&&resolution.applyPayment,applyInvoice:documentType!==400&&resolution.applyInvoice,confirmedAt:validDateTime(resolution.confirmedAt)};
@@ -48,8 +54,11 @@ export function createMorningDebtRecoveryContext({operationId,debtId='',type,amo
 }
 
 export function normalizeMorningDebtRecoveryContext(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Number(value.version)!==1)return null;
-  try{return createMorningDebtRecoveryContext(value)}catch{return null}
+  if(!value||typeof value!=='object'||Array.isArray(value)||![1,2].includes(Number(value.version)))return null;
+  try{
+    const legacy=Number(value.version)===1?{...value,sourceKind:value.debtId?'debt':'standalone',bankTransactionId:null}:value;
+    return createMorningDebtRecoveryContext(legacy);
+  }catch{return null}
 }
 
 export function loadMorningDebtRecoveryContext(storage=globalThis.localStorage){

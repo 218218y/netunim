@@ -118,5 +118,10 @@
     "version": "20260920034500",
     "name": "bank_pending_direct_deposit_date_rollover",
     "sha256": "bab2a78e049c00e1840368fd3457b853457a671d85859b2ea162fc909d6ece9b"
+  },
+  {
+    "version": "20260922043000",
+    "name": "bank_morning_documents",
+    "sha256": "df970244b88ade30f62169d1e017ae0f01677f4579766d8ba6fc590a1499f22b"
   }
 ]

@@ -1,0 +1,4 @@
+import {searchMatch} from '../../core/search.js';
+
+export function bankDateLabel(value){if(!value)return '—';const d=new Date(value);if(!Number.isFinite(d.getTime()))return '—';const weekday=['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'][d.getDay()]||'',dd=String(d.getDate()).padStart(2,'0'),mm=String(d.getMonth()+1).padStart(2,'0'),yy=String(d.getFullYear()).slice(-2);return `${weekday} ${dd}/${mm}/${yy}`}
+export function bankRowMatchesSearch(row,query){return searchMatch(query,[row?.date,row?.processedDate,bankDateLabel(row?.date||row?.processedDate),row?.description,row?.memo,row?.amount,row?.balanceAfter,row?.bankReference,row?.status,row?.presenceState,row?.missingSince,row?.lastSeenAt,JSON.stringify(row?.checkDetails||{}),JSON.stringify(row?.creditSettlementDetails||{})],[row?.date,row?.processedDate])}
