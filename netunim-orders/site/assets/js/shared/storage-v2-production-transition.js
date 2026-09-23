@@ -1,6 +1,7 @@
 import {equalSyncJson} from './cloud-sync.js';
 import {storageV2BootstrapStateHash} from './storage-v2-bootstrap.js';
 import {createStorageV2Transition} from './storage-v2-transition.js';
+import {STORAGE_OWNER_UNBOUND} from './storage-owner.js';
 
 function identity(value){const text=String(value||'').trim();if(!text||text==='local')throw new Error('storage_cutover_account_owner_required');return text}
 function revision(row){const value=Number(row?.revision);return Number.isSafeInteger(value)&&value>=0?value:null}
@@ -73,5 +74,23 @@ export function createStorageV2ProductionTransition({
     syncMain:async()=>{guard();const ok=await syncMain();if(ok!==true)throw new Error('storage_cutover_main_sync_incomplete');return {clean:true}},
     syncShared:async()=>{guard();const ok=await syncShared();if(ok!==true)throw new Error('storage_cutover_shared_sync_incomplete');return {clean:true}},
     verifyBootstrap:verifyHeads,verifyHeads,markCutover,verifyCutover});
-  return transition;
+  // Production cutover is account-scoped, while ordinary startup is also valid
+  // for the durable local namespace. Hydrating/resuming with owner=local must be
+  // a strict no-op: there is no account cutover record to recover and requiring
+  // authentication here would make every offline/first-run startup fail before
+  // the application can even render. Explicit begin() remains fail-closed.
+  const accountOwner=()=>{
+    const current=String(ownerBinding.current()||'').trim();
+    return current&&current!=='local'&&current!==STORAGE_OWNER_UNBOUND?current:null;
+  };
+  return {
+    hydrate:()=>accountOwner()?transition.hydrate():Promise.resolve(null),
+    resume:()=>accountOwner()?transition.resume():Promise.resolve(null),
+    begin:()=>{identity(ownerBinding.current());return transition.begin()},
+    executor:transition.executor,cutover:transition.cutover,
+    get ready(){return accountOwner()?transition.ready:true},
+    get preparing(){return accountOwner()?transition.preparing:false},
+    get record(){return accountOwner()?transition.record:null},
+    get bootstrapGroup(){return accountOwner()?transition.bootstrapGroup:null},
+  };
 }

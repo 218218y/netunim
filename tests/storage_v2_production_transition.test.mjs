@@ -63,3 +63,31 @@ test('production first-cloud cutover uses authenticated owner id and uploads a m
   assert.ok(calls.includes('auth:account-A'));assert.ok(calls.includes('main-init:upload-owner'));assert.ok(calls.includes('shared-init:upload-owner'));
   assert.ok(calls.indexOf('freeze')<calls.indexOf('drain'));assert.ok(calls.indexOf('main-sync')<calls.indexOf('mark'));assert.ok(calls.indexOf('shared-sync')<calls.indexOf('mark'));
 });
+
+
+test('production transition treats the durable local namespace as normal startup, not an account cutover',async()=>{
+  const calls=[];
+  const ownerBinding={
+    current:()=> 'local',
+    assertAuthenticatedOwner(){calls.push('auth');throw new Error('auth must not be consulted for local startup')},
+  };
+  const bootstrapCoordinator={
+    get ready(){return false},get hasGroup(){return false},get group(){return null},
+    async load(){calls.push('bootstrap-load');throw new Error('bootstrap must not load for local startup')},
+    async prepare(){throw new Error('unused')},async advance(){throw new Error('unused')},
+  };
+  const transition=createStorageV2ProductionTransition({
+    app:'orders',ownerBinding,primary:()=>true,online:()=>true,authOwner:()=>null,bootstrapCoordinator,cutoverDb:durableDb(),
+    readMainState:()=>({}),projectMainState:value=>value,emptyMainState:()=>({}),readSharedState:()=>({checks:[],bankEvents:[]}),
+    readMainRemote:async()=>null,readSharedRemote:async()=>null,initializeMainHead:async()=>{},initializeSharedHead:async()=>{},syncMain:async()=>true,syncShared:async()=>true,
+    readMainCloudState:async()=>null,readSharedCloudState:async()=>null,freeze:async()=>{},drainLegacy:async()=>{},verifyLegacyClean:async()=>true,markCutover:async()=>{},verifyCutover:async()=>false,
+  });
+  assert.equal(await transition.hydrate(),null);
+  assert.equal(transition.ready,true);
+  assert.equal(transition.preparing,false);
+  assert.equal(transition.record,null);
+  assert.equal(transition.bootstrapGroup,null);
+  assert.equal(await transition.resume(),null);
+  assert.deepEqual(calls,[]);
+  assert.throws(()=>transition.begin(),/storage_cutover_account_owner_required/);
+});
