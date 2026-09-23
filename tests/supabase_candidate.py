@@ -91,13 +91,14 @@ credit_identity_migration_pending = any(row['name'] == 'bank_credit_settlement_i
 cheque_pending_transition_pending = any(row['name'] == 'bank_cheque_deposit_pending_transition' for row in receipt_pending)
 pending_date_rollover_pending = any(row['name'] == 'bank_pending_direct_deposit_date_rollover' for row in receipt_pending)
 pending_batch_completion_pending = any(row['name'] == 'bank_pending_cheque_batch_completion' for row in receipt_pending)
+pending_insert_identity_pending = any(row['name'] == 'bank_merge_inserted_identity' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    def without_pending_upgrade_fragments(definition, *, expect_batch_completion=False):
+    def without_pending_upgrade_fragments(definition, *, expect_batch_completion=False, expect_insert_identity=False):
         for fragment in (
             '      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',
             '        and netunim_internal.check_bank_pending_compatible(b,r)\n',
@@ -184,6 +185,15 @@ else:
             end=definition.find("  end loop;\n  -- Self-verify the statement before returning.",start)
             assert start>=0 and end>start, 'batch-completion migration block was not found in candidate merge definition'
             definition=definition[:start]+definition[end:]
+        if pending_insert_identity_pending:
+            # Production evidence predates the inserted-row identity follow-up. Normalize exactly the
+            # new INSERT ... RETURNING lifecycle token back to the old terminating semicolon. Match
+            # after normalized_sql_text(), so this cannot depend on CRLF or pg_get_functiondef wrappers.
+            returning_line="\n      returning id into v_id;"
+            if expect_insert_identity:
+                assert definition.count(returning_line)==1, \
+                    'inserted-row identity migration RETURNING clause was not found exactly once in candidate merge definition'
+            definition=definition.replace(returning_line,';',1)
         if cheque_pending_transition_pending:
             # Production evidence predates the cheque-deposit presentation transition fix.
             # Normalize only that reviewed body change back to its previous exact-label gate;
@@ -202,7 +212,7 @@ else:
             definition=definition.replace("        or b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)\n",'')
         return definition
     assert without_pending_upgrade_fragments(
-        candidate_definition, expect_batch_completion=pending_batch_completion_pending
+        candidate_definition, expect_batch_completion=pending_batch_completion_pending, expect_insert_identity=pending_insert_identity_pending
     ) == without_pending_upgrade_fragments(reviewed_definition), \
         'authenticated Production bank merge SQL differs semantically from replayed candidate outside reviewed pending migrations'
 assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
@@ -213,6 +223,7 @@ assert "netunim_internal.check_bank_kind(v_description)='deposit'" in candidate_
 assert "v_direct_pending_reference<>'' and v_processed is not null" in candidate_definition
 assert "netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference" in candidate_definition
 assert "if v_stale_pending_candidates=1 then" in candidate_definition
+assert "returning id into v_id;" in candidate_definition, 'bank merge INSERT must expose the generated id to same-iteration reconciliation/healing'
 if credit_identity_migration_pending:
     credit_columns=[row for row in (candidate.get('columns') or []) if row.get('schema')=='public' and row.get('table')=='bank_transactions' and row.get('name')=='credit_settlement_details']
     assert len(credit_columns)==1, 'credit settlement migration did not add exactly one bank_transactions.credit_settlement_details column'

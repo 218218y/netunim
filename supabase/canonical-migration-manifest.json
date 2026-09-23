@@ -138,5 +138,10 @@
     "version": "20260923063000",
     "name": "bank_pending_cheque_batch_completion",
     "sha256": "33907b1d6192a6d153f54f5a25e0ab2cf99c2f9a4f959c7a99ccba6ab5e1a0e7"
+  },
+  {
+    "version": "20260923070000",
+    "name": "bank_merge_inserted_identity",
+    "sha256": "2201ec002c9c6db84464ca5470be3d2d08ec00fcb5bc0405f84d2fdea24ffc54"
   }
 ]

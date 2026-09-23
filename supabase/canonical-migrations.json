@@ -111,6 +111,10 @@
     {
       "version": "20260923063000",
       "name": "bank_pending_cheque_batch_completion"
+    },
+    {
+      "version": "20260923070000",
+      "name": "bank_merge_inserted_identity"
     }
   ]
 }
