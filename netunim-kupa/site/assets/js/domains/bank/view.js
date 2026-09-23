@@ -14,7 +14,7 @@ import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChe
 export function createDomainsBankView({runFinance=withFinanceDerivations, modal,closeModal,model,ui,bankHomeBalance,bankNextCycleCommitments,bankHomeNextCycleCommitments,bankBridgeUiState,refreshBankBridgeStatus,ensureBankDisplayArchive=async()=>false,downloadBankChequeImage=async()=>null,dateEditorMarkup}){
 function accountLabel(branch,account){return branch&&account?`סניף ${branch} · חשבון ${account}`:account?`חשבון ${account}`:''}
 function bridgeStatusText(s){
-  if(s.busy)return s.message||'מתבצע עדכון מול Bank Bridge…';
+  if(s.busy&&!s.resultReady)return s.message||'מתבצע עדכון מול Bank Bridge…';
   if(!s.tokenConfigured)return 'החיבור המקומי עדיין לא הותאם למחשב זה.';
   if(s.upgradeRequired)return s.message||'נדרש לשדרג את Bank Bridge במחשב זה.';
   if(s.available===false)return s.availabilityError||'Bank Bridge המקומי אינו זמין.';
@@ -58,7 +58,7 @@ function currentBankError(s){return s?.lastError&&syncEventCurrent(s.lastErrorAt
 function currentBankWarning(s){return s?.lastWarning&&syncEventCurrent(s.lastScrapeAt,s.sharedLastSyncAt)?s.lastWarning:''}
 function bankSyncHeadlineState(s){
   const lastSync=s?.sharedLastSyncAt,lastFailure=s?.lastErrorAt,error=currentBankError(s),warning=currentBankWarning(s);
-  if(s?.busy)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
+  if(s?.busy&&!s?.resultReady)return {tone:'busy',icon:'↻',title:'מסנכרן',meta:'כעת'};
   if(s?.upgradeRequired)return {tone:'error',icon:'!',title:'נדרש עדכון',meta:`Bridge v${String(s.bridgeVersion||'?')}`};
   if(error)return {tone:'error',icon:'!',title:'נכשל',meta:lastFailure?syncTimeLabel(lastFailure):'זמן הכשל לא זמין'};
   if(warning&&lastSync)return {tone:'warn',icon:'!',title:'הושלם חלקית',meta:syncTimeLabel(lastSync)};
@@ -224,7 +224,7 @@ function renderBankContent(){
   <section class="section bank-sync-section">
     <div class="bank-command-row">
       <div class="bank-view-tools">${bankAccountTabsMarkup()}${localSearchMarkup({value:ui.bankSearchValue||'',placeholder:'חיפוש תנועות…',label:'חיפוש בתנועות הבנק המוצגות',inputAction:'bank-search',className:'bank-search-field'})}${bankHeaderCashflowMarkup()}</div>
-      <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?'מעדכן…':'רענן'}</button></div>
+      <div class="bank-sync-quick-actions"><button id="bankSyncHeadline" type="button" class="bank-sync-toggle ${bankSyncHeadlineState(bridgeUi).tone} ${ui.bankSyncOpen?'open':''}" data-action="toggle-bank-sync-options" aria-expanded="${ui.bankSyncOpen===true}" aria-controls="bankSyncPanel">${bankSyncHeadlineMarkup(bridgeUi)}<span class="bank-sync-chevron" aria-hidden="true">⌄</span></button><button type="button" class="btn primary bank-sync-refresh" data-action="refresh-bank-from-hapoalim" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>${bridgeUi.busy?(bridgeUi.resultReady?'מסיים…':'מעדכן…'):'רענן'}</button></div>
     </div>
     <div id="bankSyncPanel" class="bank-sync-settings-body" ${ui.bankSyncOpen?'':'hidden'}>
       <div class="bank-sync-settings-top"><div><b>אפשרויות סינכרון</b><small>פתח אימות רק כשהבנק דורש הזדהות מחדש; פירוט מלא של כשל מופיע כאן.</small></div><div class="bank-sync-panel-actions"><button type="button" class="btn" data-action="export-bank-cheque-diagnostics" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>ייצוא אבחון בנק (JSON)</button><button type="button" class="btn" data-action="open-bank-auth" ${bridgeUi.busy||!bridgeUi.tokenConfigured||bridgeUi.upgradeRequired?'disabled':''}>פתח אימות בבנק</button></div></div>

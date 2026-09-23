@@ -30,8 +30,8 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 }
 
 
-export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{}}){
-const bridgeState={checked:false,available:null,configured:false,busy:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
+export function createDomainsBankController({model,session,checksSession,sharedChecksHaveLocalWork,saveSharedChecksToCloud,saveState,syncSharedChecksFromCloud,sharedChecksObservedSequence,toast,render,bridge,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,acknowledgeBankTransactionMissing=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDataRevision=()=>{},touchBankDisplayRevision=()=>{}}){
+const bridgeState={checked:false,available:null,configured:false,busy:false,resultReady:false,upgradeRequired:false,bridgeVersion:0,branchNumber:'',accountNumber:'',businessBranchNumber:'',businessAccountNumber:'',homeBranchNumber:'',homeAccountNumber:'',availableAccounts:[],accountSelectionRole:'',lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,availabilityError:'',availabilityErrorAt:null,message:''};
 let autoTimer=null;
 const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
 let bankDisplayArchivePromise=null;
@@ -201,7 +201,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
   if(bridgeState.busy)return false;
   if(!bridge.getBridgeToken()){if(!auto)toast('החיבור לבנק עדיין לא הוגדר');return false}
   if(bridgeState.upgradeRequired){if(!auto)toast('יש להריץ מחדש install_bank_bridge.bat במחשב זה לפני עדכון מול הבנק');return false}
-  bridgeState.busy=true;bridgeState.lastError='';bridgeState.lastErrorAt=null;bridgeState.lastErrorCode='';bridgeState.lastErrorStage='';bridgeState.lastErrorHttpStatus=0;bridgeState.lastWarning='';bridgeState.lastWarningCode='';bridgeState.lastWarningStage='';bridgeState.lastWarningHttpStatus=0;bridgeState.accountSelectionRole='';
+  bridgeState.busy=true;bridgeState.resultReady=false;bridgeState.lastError='';bridgeState.lastErrorAt=null;bridgeState.lastErrorCode='';bridgeState.lastErrorStage='';bridgeState.lastErrorHttpStatus=0;bridgeState.lastWarning='';bridgeState.lastWarningCode='';bridgeState.lastWarningStage='';bridgeState.lastWarningHttpStatus=0;bridgeState.accountSelectionRole='';
   bridgeState.message=interactive?'חלון האימות בבנק פתוח. לאחר האימות ה-Bridge יעדכן באותו סשן את החשבון העסקי ואת החשבון הביתי.':auto?'מעדכן אוטומטית את שני חשבונות בנק הפועלים…':'מעדכן יתרות ותנועות בשני חשבונות בנק הפועלים…';
   render();
   let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
@@ -248,6 +248,7 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     if(session.connectionMode==='supabase'&&typeof saveBankSyncSnapshot==='function'){
       await saveBankSyncSnapshot(financeBankPayload(nextBank),nextBank.snapshotToken,nextBank.snapshotSeq);
       model.state.bank=nextBank;
+      touchBankDataRevision();
       const refreshed=await refreshFinanceCloudSnapshot();
       if(!refreshed?.verified)bridgeState.lastWarning='הנתונים נשמרו בענן בשלמותם, אך הרענון המקומי לאחר השמירה לא אומת. פתיחה מחדש תטען את העותק בענן.';
       toast(historyDays>=365?'ארכיון הבנק אומת ואותחל בכתיבה אטומית':auto?'נתוני הבנק עודכנו':'נתוני הבנק עודכנו ונשמרו בארכיון נפרד');
@@ -260,12 +261,14 @@ async function refreshBankBalance({interactive=false,auto=false}={}){
     applyBridgeAccountFields(bridgeState,{businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home?.branchNumber??bridgeState.homeBranchNumber,homeAccountNumber:home?.accountNumber??bridgeState.homeAccountNumber});
     if(homeFailure&&!auto)toast('החשבון העסקי עודכן. החשבון הביתי לא עודכן; הנתון הביתי הקודם נשמר ופרטי התקלה מוצגים במסך הבנק.');
     else if(warnings.length&&!auto)toast('היתרות עודכנו. חלק מהתנועות לא נטענו במלואן; פרטי האזהרה מוצגים במסך הבנק.');
+    bridgeState.resultReady=true;render();
     return true;
   }catch(e){
     bridgeState.lastError=e.message||String(e);bridgeState.lastErrorAt=new Date().toISOString();bridgeState.lastErrorCode=e.code||'';bridgeState.lastErrorStage=e.stage||'';bridgeState.lastErrorHttpStatus=Number(e.httpStatus)||0;bridgeState.availableAccounts=Array.isArray(e.availableAccounts)?e.availableAccounts:[];bridgeState.accountSelectionRole=e.accountRole||'';bridgeState.message=bridgeState.lastError;
     if(!auto)toast(bridgeState.lastError);
+    bridgeState.resultReady=true;render();
     return false;
-  }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('bank sync lease release',error)}bridgeState.busy=false;render()}
+  }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('bank sync lease release',error)}bridgeState.busy=false;bridgeState.resultReady=false;render()}
 }
 
 async function acknowledgeMissingBankTransaction(transactionId){

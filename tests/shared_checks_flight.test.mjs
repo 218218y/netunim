@@ -106,7 +106,8 @@ test('bank snapshot fails closed if a mutation arrives in the final guard contin
 
 for(const app of ['orders','kupa']){
   for(const blocked of [false,true])test(`${app}: real bank refresh revalidates mutations made during bridge fetch (conflict=${blocked})`,async t=>{
-    const f=fixture(app,t),fetched=gate(),release=gate(),published=[];
+    const f=fixture(app,t),fetched=gate(),release=gate(),leaseRelease=gate(),leaseReleaseStarted=gate(),published=[];
+    let bankRevisionTouches=0,controller=null;const statusStates=[];
     const bankState={bank:{archiveInitialized:true,archiveVersion:2},checks:[]};f.cs.kupaCloudReadState=bankState;
     const bridge={getBridgeToken:()=> 'paired',status:async()=>({bridgeVersion:55,configured:true}),
       bankAutoEnabled:()=>false,creditAutoEnabled:()=>false,creditAutoMode:()=> 'daily',autoEnabled:()=>false,
@@ -119,11 +120,20 @@ for(const app of ['orders','kupa']){
       readFinanceSyncDocument:async()=>({state:bankState}),saveState:async()=>true,
       saveBankSyncSnapshot:async(_state,_token,seq)=>{published.push(seq);return {saved:true}},
       syncBankTransactionsSnapshot:async()=>({sourcePayload:[]}),readBankTransactions:async()=>[],readBankTransactionSnapshot:async()=>null,
-      toast:noop,render:noop};
-    const controller=app==='orders'?createDomainsFinanceController(common):createDomainsBankController(common);
+      claimFinanceSyncLease:async()=>({acquired:true}),releaseFinanceSyncLease:async()=>{leaseReleaseStarted.resolve();await leaseRelease.promise;return true},
+      touchBankDataRevision:()=>{bankRevisionTouches++},toast:noop,render:noop};
+    controller=app==='orders'?createDomainsFinanceController(common):createDomainsBankController(common);
+    const onStatus=()=>{const state=controller.readSnapshot();statusStates.push({bankBusy:state.bankBusy,bankResultReady:state.bankResultReady})};
+    if(app==='orders')controller.setBankStatusListener(onStatus);
     const refresh=app==='orders'?controller.refreshBank():controller.refreshBankBalance();await fetched.promise;
     f.stage(50);if(blocked)f.pending().conflict={kind:'entity-conflict'};release.resolve();
+    await leaseReleaseStarted.promise;
+    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:true}],'Orders exposes the finished outcome before waiting for remote lease cleanup');
+    else{const state=controller.bankBridgeUiState();assert.equal(state.busy,true);assert.equal(state.resultReady,true,'Kupa exposes the finished outcome before waiting for remote lease cleanup')}
+    assert.equal(bankRevisionTouches,app==='kupa'&&!blocked?1:0,'Kupa invalidates bank/bankFeed revisions only after an authoritative successful bank replacement');
+    leaseRelease.resolve();
     assert.equal(await refresh,!blocked);
+    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:true},{bankBusy:false,bankResultReady:false}],'Orders publishes the completed outcome first, then publishes the unlocked idle state after lease cleanup');
     assert.deepEqual(published,blocked?[]:[42]);
     if(!blocked){assert.equal(f.pending(),null);assert.equal(f.head().state.checks[0].amount,50)}
   });

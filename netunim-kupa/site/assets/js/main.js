@@ -638,6 +638,7 @@ const domainsBankController=createDomainsBankController({
   readBankTransactionSnapshot:(...args)=>cloudTransport.readBankTransactionSnapshot(...args),
   acknowledgeBankTransactionMissing:(...args)=>cloudTransport.acknowledgeBankTransactionMissing(...args),
   syncBankChequeImages:(...args)=>bankChequeImageStorage.sync(...args),
+  touchBankDataRevision:()=>domainRevisions.touch(['bank','bankFeed']),
   touchBankDisplayRevision:()=>domainRevisions.touch('bankDisplay'),
 });
 

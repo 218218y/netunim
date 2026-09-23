@@ -5,10 +5,15 @@ import {normalizeBankFeed} from '../netunim-orders/site/assets/js/domains/financ
 import {creditFrameStatus,creditUpcomingCharge,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {createDomainsFinanceController} from '../netunim-orders/site/assets/js/domains/finance/controller.js';
 import {createDomainsFinanceView} from '../netunim-orders/site/assets/js/domains/finance/view.js';
+import {bankHeadlineState} from '../netunim-orders/site/assets/js/domains/finance/bank-connection-view.js';
 import {creditAccountAggregate,creditDetailMonths,creditFilterAccountModels,creditMonthBuckets,creditSummary} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {createUiLayout} from '../netunim-orders/site/assets/js/ui/layout.js';
 
 
+
+const completedBankSync='2026-09-23T09:00:00Z';
+assert.equal(bankHeadlineState({bankBusy:true,bankResultReady:false,bankLastSyncAt:completedBankSync,bankStatus:{lastScrapeAt:completedBankSync},bridgeTokenConfigured:true}).title,'מסנכרן','bank headline remains busy while the user-visible bank result is not ready');
+assert.equal(bankHeadlineState({bankBusy:true,bankResultReady:true,bankLastSyncAt:completedBankSync,bankStatus:{lastScrapeAt:completedBankSync},bridgeTokenConfigured:true}).title,'הצליח','bank headline exposes a completed result while lease cleanup still keeps controls locked');
 
 const ordersSelectionFeed=normalizeCreditSync({version:4,profiles:[{profileId:'selection',provider:'visaCal',accounts:[{accountNumber:'1111'},{accountNumber:'2222'}]}],cardMappings:{'selection:1111':{included:false,hidden:true},'selection:2222':{included:true,hidden:true}}});
 assert.deepEqual(creditSyncScrapeSelection(ordersSelectionFeed),[{profileId:'selection',excludedAccounts:['1111']}],'Orders sends the same explicit excluded-card selection as Kupa');
