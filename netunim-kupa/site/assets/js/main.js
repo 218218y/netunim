@@ -37,6 +37,7 @@ import {createDomainsExpensesView} from './domains/expenses/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
+import {createUiSidebar} from './ui/sidebar.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createDomainsDashboardController} from './domains/dashboard/controller.js';
@@ -485,6 +486,8 @@ const uiNavigation=createUiNavigation({
 const uiGlobalSearch=createUiGlobalSearch({
   searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
   runFinance:financeDerivations.run,model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
+
+const uiSidebar=createUiSidebar({setPage:(...args)=>uiNavigation.setPage(...args)});
 
 const domainsDashboardView=createDomainsDashboardView({
   runFinance:financeDerivations.run,
@@ -972,16 +975,10 @@ const uiActions=createUiActions({
 window.addEventListener('online',()=>{if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 window.addEventListener('offline',()=>{if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
-const sidebar=document.getElementById('sidebar'),sidebarBackdrop=document.getElementById('sidebarBackdrop'),mobileMenu=document.getElementById('mobileMenu'),sidebarMedia=window.matchMedia('(max-width: 820px)');
-function setSidebarOpen(open,{restoreFocus=false}={}){const expanded=sidebarMedia.matches&&!!open;sidebar.classList.toggle('open',expanded);sidebarBackdrop.classList.toggle('open',expanded);document.body.classList.toggle('sidebar-open',expanded);mobileMenu.setAttribute('aria-expanded',String(expanded));mobileMenu.setAttribute('aria-label',expanded?'סגור תפריט':'פתח תפריט');sidebar.setAttribute('aria-hidden',String(sidebarMedia.matches&&!expanded));sidebarBackdrop.tabIndex=expanded?0:-1;if(expanded)requestAnimationFrame(()=>sidebar.querySelector('.nav button.active')?.focus());else if(restoreFocus)mobileMenu.focus()}
-function syncSidebarMode(){if(sidebarMedia.matches)setSidebarOpen(sidebar.classList.contains('open'));else setSidebarOpen(false)}
-document.getElementById('nav').addEventListener('click',e=>{const b=e.target.closest('button[data-page]');if(b){uiNavigation.setPage(b.dataset.page);setSidebarOpen(false)}});
-mobileMenu.addEventListener('click',()=>setSidebarOpen(!sidebar.classList.contains('open'),{restoreFocus:sidebar.classList.contains('open')}));
-sidebarBackdrop.addEventListener('click',()=>setSidebarOpen(false,{restoreFocus:true}));
-sidebarMedia.addEventListener('change',syncSidebarMode);syncSidebarMode();
+uiSidebar.bind();
 document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(sidebar.classList.contains('open'))setSidebarOpen(false,{restoreFocus:true});else uiModal.closeModal()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('pagehide',()=>{
   if(!tab.primaryTab)return;
   const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
