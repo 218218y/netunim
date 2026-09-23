@@ -97,7 +97,7 @@ if bank_migration_pending:
     assert candidate_definition != reviewed_definition, \
         'instant-credit migration did not replace the reviewed merge function body'
 else:
-    def without_pending_upgrade_fragments(definition):
+    def without_pending_upgrade_fragments(definition, *, expect_batch_completion=False):
         for fragment in (
             '      perform netunim_internal.move_check_bank_claim(v_pending_id,v_id);\n',
             '        and netunim_internal.check_bank_pending_compatible(b,r)\n',
@@ -168,13 +168,18 @@ else:
 """,
             ):
                 definition=definition.replace(fragment,'')
-        if pending_batch_completion_pending:
+        if pending_batch_completion_pending and expect_batch_completion:
             # Production evidence predates the N-pending -> one completed structured cheque batch
             # archive cleanup. Strip only this migration's declarations and final per-item cleanup
-            # block before comparing the remaining merge body to authenticated Production.
-            definition=definition.replace(
-                "  v_completed_pack jsonb;\n  v_completed_item jsonb;\n  v_completed_item_number text;\n  v_completed_item_amount numeric;\n  v_batch_pending_id bigint;\n  v_batch_pending_candidates int;\n  v_batch_claim_count int;\n  v_batch_claim_safe boolean;\n",''
+            # block from the replayed candidate before comparing the remaining merge body to
+            # authenticated Production. The reviewed baseline intentionally does not contain this
+            # pending migration, so it must not be required to carry candidate-only fragments.
+            batch_declarations=(
+                "  v_completed_pack jsonb;\n  v_completed_item jsonb;\n  v_completed_item_number text;\n  v_completed_item_amount numeric;\n  v_batch_pending_id bigint;\n  v_batch_pending_candidates int;\n  v_batch_claim_count int;\n  v_batch_claim_safe boolean;\n"
             )
+            assert batch_declarations in definition, \
+                'batch-completion migration declarations were not found in candidate merge definition'
+            definition=definition.replace(batch_declarations,'',1)
             start=definition.find("\n\n    -- Hapoalim finalizes a multi-cheque mobile/machine deposit by replacing N separate\n")
             end=definition.find("  end loop;\n  -- Self-verify the statement before returning.",start)
             assert start>=0 and end>start, 'batch-completion migration block was not found in candidate merge definition'
@@ -196,7 +201,9 @@ else:
             definition=definition.replace("        credit_settlement_details=coalesce(r->'creditSettlementDetails',b.credit_settlement_details),\n",'')
             definition=definition.replace("        or b.credit_settlement_details is distinct from coalesce(r->'creditSettlementDetails',b.credit_settlement_details)\n",'')
         return definition
-    assert without_pending_upgrade_fragments(candidate_definition) == without_pending_upgrade_fragments(reviewed_definition), \
+    assert without_pending_upgrade_fragments(
+        candidate_definition, expect_batch_completion=pending_batch_completion_pending
+    ) == without_pending_upgrade_fragments(reviewed_definition), \
         'authenticated Production bank merge SQL differs semantically from replayed candidate outside reviewed pending migrations'
 assert 'perform netunim_internal.move_check_bank_claim(v_pending_id,v_id)' in candidate_definition
 assert 'and netunim_internal.check_bank_pending_compatible(b,r)' in candidate_definition
