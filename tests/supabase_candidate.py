@@ -190,10 +190,24 @@ else:
             # new INSERT ... RETURNING lifecycle token back to the old terminating semicolon. Match
             # after normalized_sql_text(), so this cannot depend on CRLF or pg_get_functiondef wrappers.
             returning_line="\n      returning id into v_id;"
+            serial_guarded_clause="""        and b.transaction_date::date=v_date::date and b.bank_serial=v_serial and b.amount=v_amount
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);"""
+            serial_baseline_clause="        and b.transaction_date::date=v_date::date and b.bank_serial=v_serial and b.amount=v_amount;"
+            reference_guarded_clause="""        and b.transaction_date::date=v_date::date and b.bank_reference=v_reference and b.amount=v_amount
+        and b.description=v_description and b.memo=v_memo
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);"""
+            reference_baseline_clause="""        and b.transaction_date::date=v_date::date and b.bank_reference=v_reference and b.amount=v_amount
+        and b.description=v_description and b.memo=v_memo;"""
             if expect_insert_identity:
                 assert definition.count(returning_line)==1, \
                     'inserted-row identity migration RETURNING clause was not found exactly once in candidate merge definition'
+                assert definition.count(serial_guarded_clause)==1 and definition.count(reference_guarded_clause)==1, \
+                    'inserted-row identity migration source-presence guards were not found exactly once in candidate merge definition'
             definition=definition.replace(returning_line,';',1)
+            definition=definition.replace(serial_guarded_clause,serial_baseline_clause,1)
+            definition=definition.replace(reference_guarded_clause,reference_baseline_clause,1)
         if cheque_pending_transition_pending:
             # Production evidence predates the cheque-deposit presentation transition fix.
             # Normalize only that reviewed body change back to its previous exact-label gate;
@@ -224,6 +238,8 @@ assert "v_direct_pending_reference<>'' and v_processed is not null" in candidate
 assert "netunim_internal.check_bank_pending_reference_number(b)=v_direct_pending_reference" in candidate_definition
 assert "if v_stale_pending_candidates=1 then" in candidate_definition
 assert "returning id into v_id;" in candidate_definition, 'bank merge INSERT must expose the generated id to same-iteration reconciliation/healing'
+assert candidate_definition.count("and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)\n          where src.value->>'mergeKey'=b.merge_key);") >= 2, \
+    'bank merge stable-field fallback identity must not recycle an archive row that is still a separate row in the current source payload'
 if credit_identity_migration_pending:
     credit_columns=[row for row in (candidate.get('columns') or []) if row.get('schema')=='public' and row.get('table')=='bank_transactions' and row.get('name')=='credit_settlement_details']
     assert len(credit_columns)==1, 'credit settlement migration did not add exactly one bank_transactions.credit_settlement_details column'

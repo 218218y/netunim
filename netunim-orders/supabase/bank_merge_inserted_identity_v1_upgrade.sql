@@ -3,7 +3,7 @@
 -- healing guards) runs in the SAME merge loop iteration; without RETURNING id, a brand-new final
 -- row had v_id=NULL until the next sync and its pending children were falsely marked missing.
 -- This follow-up migration preserves the reviewed batch matching/fail-closed rules unchanged and
--- fixes only the inserted-row identity lifecycle.
+-- fixes the inserted-row identity lifecycle and prevents stable-field fallbacks from stealing a different source row that is still present in the same snapshot.
 
 begin;
 
@@ -105,7 +105,9 @@ begin
       select count(*),min(b.id) into v_candidates,v_candidate
       from public.bank_transactions b
       where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
-        and b.transaction_date::date=v_date::date and b.bank_serial=v_serial and b.amount=v_amount;
+        and b.transaction_date::date=v_date::date and b.bank_serial=v_serial and b.amount=v_amount
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);
       if v_candidates>1 then
         raise exception 'bank_archive_existing_identity_collision'
           using errcode='40001', hint='More than one archived row matches the same bank date/serial/amount identity. No merge was committed.';
@@ -116,7 +118,9 @@ begin
       from public.bank_transactions b
       where b.owner_id=v_owner and b.account_key=p_account_key and b.account_role=p_account_role
         and b.transaction_date::date=v_date::date and b.bank_reference=v_reference and b.amount=v_amount
-        and b.description=v_description and b.memo=v_memo;
+        and b.description=v_description and b.memo=v_memo
+        and not exists(select 1 from jsonb_array_elements(p_transactions) src(value)
+          where src.value->>'mergeKey'=b.merge_key);
       if v_candidates>1 then
         raise exception 'bank_archive_existing_identity_collision'
           using errcode='40001', hint='More than one archived row matches the same bank date/reference/amount/content identity. No merge was committed.';
