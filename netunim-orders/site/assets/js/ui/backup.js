@@ -6,6 +6,7 @@ import {CLOUD_BASE_KEY,$} from '../state/constants.js';
 import {buildBackupCatalog,backupPointKey,backupSourceLabel,summarizeBackupDiff} from '../shared/cloud-backups.js';
 import {createRestoreGroup,executeRestoreGroup,resumeRestoreGroup} from '../shared/restore-groups.js';
 import {applyStorageV2RestoreGroup,captureStorageV2RestoreSource} from '../shared/storage-v2-restore.js';
+import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 const ORDERS_BACKUP_COLLECTIONS=[
   {path:'suppliers',label:'ספקים'},
@@ -46,7 +47,7 @@ function diffRowMarkup(row,entry){const parts=[];if(row.removed)parts.push(`יו
 function settingsDiffMarkup(setting){return `<div class="cloud-backup-field-change"><b>${esc(setting.label)}</b><span class="cloud-backup-now">עכשיו: ${esc(compactBackupValue(setting.current))}</span><span class="cloud-backup-target">אחרי שחזור: ${esc(compactBackupValue(setting.target))}</span></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
+export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,requestCloudSave=async()=>false,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
   function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
   function exportJson(){const payload=prepareState();downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-backup_${stamp()}.json`)}
@@ -102,6 +103,16 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
       const cloudActive=cloudEnabled();if(!restoreChecks)imported.checks=currentChecks;
       const v2Pending=await refreshStorageV2CloudState();if(await getCloudPending()||(v2Pending&&(v2Pending.pending||v2Pending.flight||v2Pending.control))||(restoreChecks&&await getChecksPending()))throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
       const v2Source=sharedChecksV2?.primaryReady?captureStorageV2RestoreSource(v2Pending,await sharedChecksV2.cloudState()):null;
+      if(v2Source){
+        const sharedState={checks:normalizeSharedChecks(imported.checks),bankEvents:normalizeSharedBankEvents(checksSession.checksBankEvents||[])};
+        await applyStorageV2LocalImport({boundary:storageV2Boundary,mainCloud:v2Pending,sharedCloud:await sharedChecksV2.cloudState(),mainState:imported,sharedState});
+        model.state=imported;session.localGeneration++;session.cloudSaveRequested=true;checksSession.checksSaveRequested=true;
+        await refreshStorageV2CloudState();invalidateAllViewDomains();render();
+        if(folderBackupAvailable())try{await writeStateToFolder(true)}catch(error){console.error('folder mirror after durable V2 import',error)}
+        setSave('מקומי: שמור','',folderSaveTitle());toast('הגיבוי יובא ונשמר מקומית; הסנכרון לענן ממתין');
+        if(cloudActive&&navigator.onLine){void requestCloudSave('הייבוא סונכרן').catch(console.error);void sharedChecksV2.sync().catch(console.error)}
+        return true;
+      }
       if(v2Source&&!cloudActive)throw new Error('שחזור מקומי ב־Storage V2 דורש גבול ענן מתואם');
       const mainState=prepareCloudState(imported);let remoteRow=null,checksRow=null;
       if(cloudActive){

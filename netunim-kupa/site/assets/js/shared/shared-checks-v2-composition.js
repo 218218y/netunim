@@ -5,7 +5,7 @@ import {createStorageV2Cutover,storageCutoverKey} from './storage-v2-cutover.js'
 // Application-specific ports are supplied by each composition root. Primary
 // starts only after the existing local V2 namespace and clean V1 head have
 // been verified; no displayed account state is promoted implicitly.
-export function createSharedChecksV2Composition({site,owner,primary,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,main}={}){
+export function createSharedChecksV2Composition({site,owner,primary,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,applyMainState,main}={}){
   let enabled=false;
   const cutover=createStorageV2Cutover({app:site,owner,primary});
   const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2';
@@ -22,7 +22,15 @@ export function createSharedChecksV2Composition({site,owner,primary,model,checks
     enabled=true;
     const recovered=await runtime.recover();
     if(!recovered)throw new Error('shared_checks_primary_checkpoint_missing');
+    const interrupted=await boundary.pending();
     await boundary.resume();
+    if(interrupted){
+      if(typeof applyMainState!=='function')throw new Error('storage_boundary_main_hydration_required');
+      const mainRecovered=await main.recoverForOwner({intent:'load-account'});
+      if(!mainRecovered)throw new Error('storage_boundary_main_recovery_failed');
+      applyMainState(mainRecovered.state);
+      await runtime.recover();
+    }
     return true;
   }
   return {runtime,boundary,recoverPrimary,verifyCutover:cutover.verify,markCutover:cutover.mark};

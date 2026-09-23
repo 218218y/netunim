@@ -86,6 +86,10 @@ async function boot(){
   try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive)throw e;console.error('browser state recovery',e)}
 
   if(!tab.primaryTab){
+    // Main's historical checkpoint may still contain non-authoritative checks.
+    // A secondary tab cannot acquire Shared Checks recovery, so it must not
+    // render business data after V2 cutover.
+    if(cutoverActive){showSecondaryTabGuard();syncFolderAccessButton();return}
     setCloud('ענן: לשונית משנית','offline');render({supplierScrollMode:'end'});startupMark('first-render');showSecondaryTabGuard();syncFolderAccessButton();setSave('מקומי: קריאה בלבד','',folderSaveTitle());
     void initializeLocalServices();
     return;

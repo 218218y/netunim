@@ -30,6 +30,10 @@ export function validateStoredOperation(operation,{collections=[],fields=[]}={})
   assertStorageJson(operation);
   if(operation.version!==2||!identity(operation.owner)||!identity(operation.epoch)||!identity(operation.operationId)||!integer(operation.seq,1)||!integer(operation.generation)||!identity(operation.at)||!Array.isArray(operation.changes)||!operation.changes.length)throw new Error('storage_invalid_operation');
   for(const change of operation.changes){
+    if(change.type==='replace-state'){
+      if(operation.changes.length!==1||operation.mutationType!=='import'||!identity(operation.appMetadata?.boundaryId)||!change.state||typeof change.state!=='object'||Array.isArray(change.state))throw new Error('storage_invalid_local_import');
+      continue;
+    }
     if(change.type==='set'){
       if(!fields.includes(change.field)||forbidden.has(change.field)||!Object.hasOwn(change,'value'))throw new Error('storage_invalid_field');
       continue;
@@ -49,6 +53,11 @@ export function validateStoredOperation(operation,{collections=[],fields=[]}={})
 export function applyStoredOperation(state,operation,schema){
   validateStoredOperation(operation,schema);
   for(const change of operation.changes){
+    if(change.type==='replace-state'){
+      for(const key of Object.keys(state))delete state[key];
+      Object.assign(state,structuredClone(change.state));
+      continue;
+    }
     if(change.type==='set'){state[change.field]=structuredClone(change.value);continue}
     const rows=state[change.collection];if(!Array.isArray(rows))throw new Error('storage_missing_collection');
     const index=rows.findIndex(row=>row.id===change.id);

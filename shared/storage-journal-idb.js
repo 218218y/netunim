@@ -124,6 +124,15 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
+  function appendBoundary(owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}={}){return change(owner,(tx,current,done)=>{
+    assertFence(current,epoch,writer);
+    const base=current.bases&&readStorageRecord(current.bases),operation=readStorageRecord(record);
+    if(!base||base.owner!==owner||base.epoch!==epoch||base.revision!==expectedBaseRevision||base.ackSeq!==expectedSeq||current.metadata.seq!==expectedSeq||current.flights||current.controls)throw new Error('storage_boundary_cloud_changed');
+    if(operation.owner!==owner||operation.epoch!==epoch||operation.seq!==expectedSeq+1||operation.appMetadata?.boundaryId==null)throw new Error('storage_boundary_operation_invalid');
+    tx.objectStore('journal').put(record,[owner,epoch,operation.seq]);
+    tx.objectStore('metadata').put({...current.metadata,seq:operation.seq},owner);
+    done(true);
+  })}
   function boundaryTransaction(work){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['boundaries'],'readwrite'),store=tx.objectStore('boundaries');let result;
     try{work(store,value=>{result=value},error=>{try{tx.abort()}catch{}reject(error)})}catch(error){try{tx.abort()}catch{}reject(error)}
@@ -166,21 +175,23 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim())throw new Error('storage_cutover_scope_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
       const owner=String(identity),scope=`${app}:${owner}`,mainOwner=`${owner}:${app}`,sharedOwner=`${owner}:shared-checks`;
-      const tx=db.transaction(['cutovers','checkpoints','bases','boundaries'],'readwrite');
-      const requests=[tx.objectStore('cutovers').get(scope),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('boundaries').get(owner)];
+      const tx=db.transaction(['cutovers','checkpoints','metadata','bases','flights','controls','boundaries'],'readwrite');
+      const requests=[tx.objectStore('cutovers').get(scope),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get(owner)];
       let remaining=requests.length,result=null;
       const fail=error=>{try{tx.abort()}catch{}reject(error)};
       for(const request of requests)request.onsuccess=()=>{if(--remaining)return;try{
-        const [current,main,shared,mainBase,sharedBase,boundary]=requests.map(row=>row.result);
+        const [current,main,shared,mainMeta,sharedMeta,mainBase,sharedBase,mainFlight,sharedFlight,mainControl,sharedControl,boundary]=requests.map(row=>row.result);
         if(current){result=readStorageRecord(current);if(result.version!==2||result.scope!==scope)throw new Error('storage_cutover_marker_invalid');return}
-        if(!main||!shared||!mainBase||!sharedBase)throw new Error('storage_cutover_head_missing');
-        if(readStorageRecord(main).appMetadata?.storageRole!=='primary'||readStorageRecord(shared).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('storage_cutover_role_invalid');
-        if(readStorageRecord(mainBase).owner!==mainOwner||readStorageRecord(sharedBase).owner!==sharedOwner)throw new Error('storage_cutover_base_invalid');
+        if(!main||!shared||!mainMeta||!sharedMeta||!mainBase||!sharedBase)throw new Error('storage_cutover_head_missing');
+        const mainHead=readStorageRecord(main),sharedHead=readStorageRecord(shared),mainCursor=readStorageRecord(mainBase),sharedCursor=readStorageRecord(sharedBase);
+        if(mainHead.appMetadata?.storageRole!=='primary'||sharedHead.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('storage_cutover_role_invalid');
+        if(mainHead.owner!==mainOwner||sharedHead.owner!==sharedOwner||mainCursor.owner!==mainOwner||sharedCursor.owner!==sharedOwner||mainCursor.epoch!==mainHead.epoch||sharedCursor.epoch!==sharedHead.epoch)throw new Error('storage_cutover_base_invalid');
+        if(mainMeta.epoch!==mainHead.epoch||sharedMeta.epoch!==sharedHead.epoch||mainMeta.seq!==mainCursor.ackSeq||sharedMeta.seq!==sharedCursor.ackSeq||mainFlight||sharedFlight||mainControl||sharedControl)throw new Error('storage_cutover_head_not_clean');
         if(boundary&&readStorageRecord(boundary).phase!=='complete')throw new Error('storage_cutover_boundary_pending');
         result={version:2,scope,app,owner,markedAt:new Date().toISOString()};tx.objectStore('cutovers').put(sealStorageRecord(result),scope);
       }catch(error){fail(error)}};
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,replaceCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readCutover,markCutover};
+  return {load,install,initializeCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readCutover,markCutover};
 }

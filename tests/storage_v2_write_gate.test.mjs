@@ -6,6 +6,8 @@ import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/sit
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
 import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
+import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
+import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
 
@@ -56,7 +58,37 @@ test('durable cutover marker must agree with its synchronous cache and requires 
   await cutover.mark({verifyLegacyClean:async()=>true});
   assert.equal(await cutover.verify(),true);
   storage.removeItem(storageCutoverKey('orders',owner));
+  assert.equal(await cutover.verify(),true);
+  assert.equal(storage.getItem(storageCutoverKey('orders',owner)),'2');
+  records.delete(`orders:${owner}`);
   await assert.rejects(cutover.verify(),/marker_mismatch/);
   owner='account-B';
   assert.equal(await cutover.verify(),false);
+});
+
+test('Orders secondary tab cannot render stale Main checks after V2 cutover',async()=>{
+  const previous=globalThis.localStorage;globalThis.localStorage=localStore();
+  try{
+    const calls=[],model={state:{checks:[{id:'obsolete'}]}};
+    const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>true,
+      acquirePrimaryTabLock:async()=>{},loadSession:()=>null,restoreBrowserStateFallback:async()=>calls.push('main-recovered'),
+      recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks')},
+      render:()=>{throw new Error('stale business state rendered')},showSecondaryTabGuard:()=>calls.push('guard'),
+      syncFolderAccessButton:()=>calls.push('folder')});
+    await lifecycle.boot();
+    assert.deepEqual(calls,['main-recovered','guard','folder']);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Kupa V2 startup holds Main recovery off screen until Shared hydration',async()=>{
+  const calls=[],model={state:{checks:[]}},session={},checksSession={sharedChecksGeneration:0};
+  const recovery=createSyncRecovery({model,session,checksSession,
+    loadBrowserState:async()=>({state:{checks:[{id:'stale'}],cash:[]},revision:2}),
+    getCloudPending:async()=>null,getSharedChecksPending:async()=>null,
+    refreshStorageV2CloudState:async()=>({base:{revision:2,state:{checks:[],cash:[]}}}),
+    normalizeState:value=>value,prepareKupaCloudState:value=>value,applyKupaCloudState:value=>value,
+    hideConnectScreen:()=>{},setSaveStatus:()=>{},setConnectedStatus:()=>{},setCloudHeaderStatus:()=>{},
+    loadSharedChecksBase:()=>[],sharedChecksPendingExists:()=>false,startCloudPolling:()=>{},render:()=>calls.push('render')});
+  assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
+  assert.deepEqual(calls,[]);assert.equal(model.state.checks[0].id,'stale');
 });

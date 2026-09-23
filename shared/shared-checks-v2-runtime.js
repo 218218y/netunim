@@ -20,6 +20,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     if(mode()!=='primary'||!primary())throw new Error('shared_checks_primary_required');
     if(!store||store!==storage||identity!==currentOwner())throw new Error('shared_checks_owner_handoff_required');
   }
+  function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(mode()!=='primary'||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
     if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&mode()==='primary',role:'primary'});active=false;commits=Promise.resolve()}
@@ -124,10 +125,10 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
         if(!Number.isSafeInteger(row.revision)||row.revision<cloud.base.revision)throw new Error('shared_checks_response_revision_invalid');
         // A mutation arriving during the read must be sent/merged normally.
         if(store.seq!==before)continue;
-        try{await store.adoptCloudHead(row.revision,remote)}catch(error){if(error.message==='shared_checks_cloud_pending'||error.message==='storage_cloud_pending'||stale(error))continue;throw error}
+        try{assertSyncAllowed(store);await store.adoptCloudHead(row.revision,remote)}catch(error){if(error.message==='shared_checks_cloud_pending'||error.message==='storage_cloud_pending'||stale(error))continue;throw error}
         assertContext(store);await publish(store);return true;
       }
-      const flight=await store.materializeFlight({operationId:operationId(),prepareAudit:value=>operationAuditMetadata({site,mutationType:value.mutationType,surface:value.surface,baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:['checks'],deleteCount:(value.deleteIntents?.checks||[]).length})});assertContext(store);
+      assertSyncAllowed(store);const flight=await store.materializeFlight({operationId:operationId(),prepareAudit:value=>operationAuditMetadata({site,mutationType:value.mutationType,surface:value.surface,baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:['checks'],deleteCount:(value.deleteIntents?.checks||[]).length})});assertContext(store);
       const deletedIds=flight.deleteIntents?.checks||[];
       const audit=flight.audit;
       const result=await runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(structuredClone(flight.snapshot.checks),flight.baseRevision,flight.operationId,[...deletedIds],audit)});assertContext(store);
@@ -141,12 +142,12 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     cloud=await store.cloudState();assertContext(store);return !cloud.pending&&!cloud.flight&&!cloud.control?.conflict;
   }
   function sync(){
-    assertContext();const store=storage;if(syncing?.store===store)return syncing.promise;
+    assertSyncAllowed();const store=storage;if(syncing?.store===store)return syncing.promise;
     const promise=synchronize(store).catch(async error=>{
       diagnostics.errors++;diagnostics.lastError=error.message;
       // Errors leave the flight intact. An old account's request cannot write
       // retry metadata or update the visible state after a handoff.
-      try{assertContext(store);const cloud=await store.cloudState();assertContext(store);if(!cloud.control?.conflict){const normalized=normalizeCloudError(error);await store.setCloudControl({retry:{attempts:Number(cloud.control?.retry?.attempts||0)+1,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(now()).toISOString(),nextAttemptAt:normalized.retryAfterMs?new Date(now()+normalized.retryAfterMs).toISOString():null}})}}catch{/* The original error remains actionable. */}
+      try{assertSyncAllowed(store);const cloud=await store.cloudState();assertSyncAllowed(store);if(!cloud.control?.conflict){const normalized=normalizeCloudError(error);await store.setCloudControl({retry:{attempts:Number(cloud.control?.retry?.attempts||0)+1,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(now()).toISOString(),nextAttemptAt:normalized.retryAfterMs?new Date(now()+normalized.retryAfterMs).toISOString():null}})}}catch{/* The original error remains actionable. */}
       throw error;
     });
     syncing={store,promise};promise.finally(()=>{if(syncing?.promise===promise)syncing=null}).catch(()=>{});return promise;
@@ -156,13 +157,18 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=storage;await commits;assertContext(store);
     const result=await store.replaceAuthoritativeState(canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
   }
+  async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision}={}){
+    assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
+    const store=storage;await commits;assertContext(store);
+    const result=await store.replaceLocalWithPending(canonical(state),{boundaryId,expectedSeq,expectedBaseRevision});assertContext(store);await publish(store);return result;
+  }
   async function resetCloudHead(revision,state,{boundaryId}={}){
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
   }
   return {recover,initialize,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
-    replaceAuthoritativeState,resetCloudHead,
+    replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,
     observe:shadow.mutation,observeBoundary:shadow.boundary,
     async cloudState(){assertContext();return storage.cloudState()},
     async flush(){await commits;return true},

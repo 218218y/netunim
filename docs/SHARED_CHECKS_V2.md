@@ -1,41 +1,11 @@
 # Shared Checks Storage V2
 
-מצב החיבור החדש ל־Primary והחסמים להפעלת V2-only מפורטים ב־[STORAGE_V2_CUTOVER_STATUS.md](STORAGE_V2_CUTOVER_STATUS.md).
+עדכון: 23 בספטמבר 2026. [מצב המעבר והחסמים להפעלת V2-only](STORAGE_V2_CUTOVER_STATUS.md) הוא מקור האמת לשחרור גרסה.
 
-עודכן ב־23 בספטמבר 2026. המימוש הנוכחי הוא **תשתית ו־shadow בלבד**. מנגנון
-Shared Checks הישן עדיין אחראי לשמירה ולסנכרון בפועל; אין להפעיל cutover רק משום
-שבדיקות היחידה של המנוע החדש עוברות.
+Shared Checks V2 הוא journal נפרד לפי חשבון, בבעלות יחידה על `checks` ו־`bankEvents`. בזמן Primary, שתי האפליקציות שומרות עריכת צ׳ק רק בו; Main V2 אינו מקבל פעולת צ׳ק רגילה. בהפעלה משחזרים את Main ואת Shared ומרכיבים מהם את המודל המוצג. העתק `checks` שנותר ב־Main checkpoint ישן אינו סמכותי ויוסר רק בגרסת cleanup.
 
-`rejectAndRebase` שומר כעת את ה־cloud base החדש וה־checkpoint הממוזג בעסקת IndexedDB אחת. בדיקת restart מוכיחה ש־check ואירוע בנק שהגיעו מרחוק אינם נעלמים אם הדפדפן נסגר לפני יצירת flight חלופי. תיקון זה חל גם על מנוע המסמך הראשי; הוא אינו הופך את Shared Checks למסלול Primary פעיל.
+ל־Shared יש checkpoint, cloud base/revision, cursor, flight ו־control עצמאיים. ה־RPC הקיים מקבל snapshot ומחיקות מפורשות מתוך flight בלתי משתנה. Retry אחרי lost ACK חוזר עם אותו `operationId`; conflict מאומת עובר merge ו־rebase אטומי. אירועי בנק שהשרת מחזיר נכתבים ל־checkpoint באותה transaction של ACK/rebase.
 
-המנוע החדש נמצא ב־`shared/shared-checks-storage-v2.js`. לכל חשבון יש namespace
-נפרד, `account:shared-checks`, עם checkpoint ו־journal של `{checks, bankEvents}`,
-cloud cursor עצמאי ו־flight בלתי משתנה. פעולת מחיקה מחייבת גם operation מפורש
-וגם delete intent תואם. ACK שכותב אירועי בנק מחייב checkpoint של אותם אירועים
-באותה עסקת IndexedDB; ACK עם sequence מיושן נדחה. ל־shadow אין הרשאה לכתוב
-cursor, flight או control של הענן.
+פעולות restore וייבוא מלא שנוגעות ל־Main ול־Shared עוברות דרך `storage-v2-boundary.js`. כל צד רושם אותו boundary ID, ו־restart ממשיך את השלבים החסרים בלי להפעיל צד שכבר הושלם. ייבוא קובץ מקומי משתמש ב־`replace-local-with-pending`: בסיס הענן וה־revision הקיימים נשמרים, נוצר pending V2 לכל domain, וה־`bankEvents` החיים נשמרים. ייבוא איננו ACK מהענן.
 
-אפשר להפעיל השוואת replay מקומית בלבד בעזרת
-`localStorage.setItem('netunim-shared-checks-v2-shadow', '1')` ורענון הדף.
-אחרי פעולה אפשר לקרוא את
-`(await import('/assets/js/main.js')).sharedChecksStorageV2Diagnostics()`
-בכל אחת משתי האפליקציות. `mismatches`, `missingOperations`,
-`unverifiedBaseline`, `errors` ו־`ownerTransitions` חייבים להישאר אפס לאורך
-בדיקת תרחישים מייצגים. בעת החלפת
-חשבון, ה־shadow עוצר במקום לייחס את הנתונים הגלויים לחשבון החדש; יש לפתוח
-מחדש עם מקור סמכותי מפורש.
-
-לפני הפיכת Shared Checks V2 למסלול הפעיל נדרשים עדיין חוזים ובדיקות שלא קיימים
-במימוש הנוכחי:
-
-- commit/recovery אטומי של פעולת צ׳ק שנכתבת גם ל־journal של המסמך הראשי וגם
-  ל־journal העצמאי של Shared Checks. קריסה בין שתי כתיבות נפרדות אינה קבילה.
-- migration מ־V1 pending מאומת, first cloud bootstrap ו־owner handoff מפורשים;
-  אין להעתיק מצב בין חשבונות לפי הנתונים שמוצגים כרגע במסך.
-- חיבור ה־cursor/flight ל־RPC הקיים בשתי האפליקציות עם merge תלת־כיווני,
-  lost ACK, conflict, אירועי בנק ו־mutation שמגיע בזמן RPC.
-- שער CI שמוכיח שב־primary אין כתיבה רגילה למפתחות V1, ולאחריו בדיקות
-  hard restart, offline, restore ושני מחשבים עם נתונים אמיתיים.
-
-עד שכל אלה עוברים, ברירת המחדל של Storage V2 נשארת `off` וה־V1 writer אינו
-מוסר. בדיקות ה־shadow מספקות ראיה לתאימות הפעולות; הן אינן מוכיחות cutover.
+Primary פעיל באפליקציה רק עבור בעלים עם סמן cutover מאומת. מצב Shadow אופציונלי משמש להשוואת replay בתקופת המעבר; הוא אינו כותב cursor או flight ואינו מקור סמכות. קוד Primary והמנוע נבדקו, אך ברירת המחדל של המוצר עדיין אינה V2-only. אין למחוק V1 עד שחיבור first-cloud, מעבר חשבונות, cutover מתוזמר ובדיקות שני המחשבים יושלמו.

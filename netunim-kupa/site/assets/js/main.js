@@ -174,6 +174,7 @@ const sharedChecksV2Composition=createSharedChecksV2Composition({
   rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
   verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
   validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),
+  applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
@@ -222,8 +223,10 @@ const storageBackup=createStorageBackup({
 
 const storagePersistence=createStoragePersistence({
   sharedChecksV2,
+  storageV2Boundary:sharedChecksV2Composition.boundary,
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   storageV2Primary:()=>storageShadow.primaryReady,
+  recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
   storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
   observeSharedChecks:sharedChecksV2Shadow.mutation,
   ...storageV2Cloud,
@@ -766,6 +769,7 @@ const uiBackup=createUiBackup({
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
+  persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
   persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
   persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
@@ -794,6 +798,7 @@ const lifecycle=createLifecycle({
   model,
   recoverSharedChecksV2Primary,
   openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
+  render:(...args)=>uiNavigation.render(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
   ...storageV2Cloud,

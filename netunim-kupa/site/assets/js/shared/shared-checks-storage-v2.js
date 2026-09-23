@@ -128,8 +128,11 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     return journal.adoptCloudHead(revision,authoritative,authoritative);
   }
   async function replaceAuthoritativeState(state,{boundaryId=null}={}){assertTrusted();const canonical=canonicalState(state);validate(canonical);return journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:`shared-checks-${role}`,...boundaryId?{boundaryId}:{}}})}
+  async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision}={}){
+    assertCloudWriter();return journal.replaceLocalWithPending(canonicalState(state),{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections:['checks']});
+  }
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
   return {open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
-    replaceAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
+    replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
 }

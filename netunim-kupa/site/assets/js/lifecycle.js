@@ -7,7 +7,7 @@ import {rawCreditSchedule, creditSchedule, inactiveCreditExpired, creditProgress
 import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({verifyStorageCutover=async()=>false,recoverSharedChecksV2Primary=async()=>false,openBrowserStateFallback=async()=>false,ensureSyncCapabilities=async()=>true,model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
+export function createLifecycle({verifyStorageCutover=async()=>false,recoverSharedChecksV2Primary=async()=>false,openBrowserStateFallback=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
 function runtimeSelfCheck(){
   const required={assertValidCloudState,normalizeSharedChecks,prepareKupaCloudState,saveChecksState,saveSharedChecksToCloud,syncSharedChecksFromCloud,pollSharedChecks,num,money,dateFmt,todayISO,localISO,dObj,daysFromToday,monthKey,monthLabel,addMonthsISO,checkDateParts,checkDateEditorMarkup,checkDateEditorValue,commitCheckDateEditor,setCheckDateValue,normalizeCheckModalDates,uid,activeChecks,depositedChecks,cashBalance,checksBalance,depositedBalance,checkUrgency,rawCreditSchedule,creditSchedule,inactiveCreditExpired,creditProgress,pendingInstallments,allInstallments,monthSumInstallments,expenseOccurrencesForMonth,monthSumExpenses,bankBaseBalance,bankAdjustments,bankAdjustmentsTotal,bankCurrentBalance,bankAsOfDate,sharedChecksObservedSequence,normalizeSharedBankEvents,monthKeysBetween,nextCreditCycle,modalFormSnapshot,armModalDraftGuard,modalHasUnsavedDraft,clearModalDraftGuard,openLastFolder};
   const missing=Object.entries(required).filter(([,fn])=>typeof fn!=='function').map(([name])=>name);
@@ -36,10 +36,13 @@ async function boot(){
 
   const cloudPreferred=localStorage.getItem(STORAGE_PREF_KEY)==='supabase';
   let startupLocalShown=false;
-  if(cloudPreferred){
+  if(cloudPreferred||cutoverActive){
     session.startupCloudHydrating=!!navigator.onLine;
-    try{startupLocalShown=await openBrowserStateFallback({startup:true})}catch(error){if(cutoverActive)throw error;console.error('startup browser state recovery',error)}
+    try{startupLocalShown=await openBrowserStateFallback({startup:true,deferRender:cutoverActive})}catch(error){if(cutoverActive)throw error;console.error('startup browser state recovery',error)}
   }
+
+  let sharedPrimary=false;
+  if(cutoverActive){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
 
   if(supaConfigured())setCloudHeaderStatus('syncing',startupLocalShown&&navigator.onLine?'ענן: מסנכרן…':'ענן: בודק…');else setCloudHeaderStatus('off','ענן: לא מוגדר');
   const persistentStoragePromise=requestPersistentBrowserStorage().catch(error=>console.error('persistent browser storage',error));
@@ -49,7 +52,7 @@ async function boot(){
   if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;return}
   if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
   if(session.syncCapabilitiesError){if(!startupLocalShown)await openBrowserStateFallback();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
-  const sharedPrimary=await recoverSharedChecksV2Primary();
+  if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
   if(!sharedPrimary){checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();const checksOutbox=await getSharedChecksPending();if(checksOutbox?.snapshot)model.state.checks=normalizeSharedChecks(checksOutbox.snapshot);if(checksOutbox||sharedChecksPendingExists()){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(checksOutbox?.generation||1));checksSession.sharedChecksSaveRequested=true}}
   let autoOpened=false;

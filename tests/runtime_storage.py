@@ -208,6 +208,35 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-boundary-crash-matrix')
     assert not browser.drain_serious_errors()
     print('PASS V2 boundary real IDB crash matrix: '+json.dumps(result))
 
+with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-import-idb') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const db=createStorageJournalDb(),schema={collections:['notes'],fields:[]},validate=state=>{if(!Array.isArray(state.notes))throw Error('invalid notes')};
+      const owner='import-account:kupa',make=()=>createStorageJournal({owner,schema,validate,db});
+      let journal=make();await journal.install({notes:[{id:'old'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+      await journal.captureCloudCursor(8);
+      const put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='journal'){this.transaction.abort();throw Error('injected import abort')}return result};
+      let aborted=false;try{await journal.replaceLocalWithPending({notes:[{id:'new'}]},{boundaryId:'import-idb',expectedSeq:0,expectedBaseRevision:8})}catch{aborted=true}
+      IDBObjectStore.prototype.put=put;
+      if(!aborted||(await db.load(owner)).metadata.seq!==0||(await journal.recover()).state.notes[0].id!=='old')throw Error('aborted import changed durable head');
+      await journal.replaceLocalWithPending({notes:[{id:'new'}]},{boundaryId:'import-idb',expectedSeq:0,expectedBaseRevision:8});
+      journal=make();const recovered=await journal.open(),cloud=await journal.cloudState();
+      if(recovered.state.notes[0].id!=='new'||recovered.appMetadata.boundaryId!=='import-idb'||cloud.base.revision!==8||!cloud.pending||cloud.pendingDeleteIntents.notes[0]!=='old')throw Error('import restart lost state or delete intent');
+      const flight=await journal.materializeFlight({operationId:'import-flight',baseRevision:8});
+      if(flight.snapshot.notes[0].id!=='new'||flight.deleteIntents.notes[0]!=='old')throw Error('import flight incorrect');
+      const shared=createStorageJournal({owner:'import-account:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:state=>{if(!Array.isArray(state.checks)||!Array.isArray(state.bankEvents))throw Error('invalid shared')},db});
+      await shared.install({checks:[],bankEvents:[]},{expectedEpoch:null,appMetadata:{storageRole:'shared-checks-primary'}});await shared.captureCloudCursor(3);
+      let cutoverBlocked=false;try{await db.markCutover('kupa','import-account')}catch(error){cutoverBlocked=error.message==='storage_cutover_head_not_clean'}
+      if(!cutoverBlocked)throw Error('pending import permitted cutover marker');
+      await journal.acknowledge(flight.operationId,9,flight.snapshot,{checkpointState:recovered.state,expectedSeq:1});
+      if((await db.markCutover('kupa','import-account')).version!==2)throw Error('clean heads cannot mark cutover');
+      return ['aborted import leaves old state and cursor atomic','restart recovers local pending import','flight carries exact deleted ID','cutover requires both clean heads'];
+    })()""",timeout=60)
+    assert not browser.drain_serious_errors()
+    print('PASS V2 local import real IDB crash matrix: '+json.dumps(result))
+
 with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') as browser:
     assert browser.evaluate("""(async()=>{
       const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');
@@ -340,3 +369,67 @@ for app in ['kupa','orders']:
         })()"""),app+' pagehide rewrote the full V1 snapshot in primary mode'
         errors=browser.drain_serious_errors();assert not errors,errors
         print('PASS '+app+' V2 primary skips full LocalStorage serialization and recovers after hard navigation: '+json.dumps(primary))
+
+# A durable marker must make the real application startup and ordinary edits
+# incapable of creating fresh legacy business state. Preferences are excluded.
+for app in ['kupa', 'orders']:
+    with BrowserSession(ROOT/f'netunim-{app}/site',app+'-v2-zero-write') as browser:
+        seeded=browser.evaluate("""(async()=>{
+          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
+          const {STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-shadow.js');
+          const main=createStorageJournal({owner:'local:APP',schema:STORAGE_SCHEMAS.APP,validate:()=>{}});
+          const initial=PREPARE,cloud=CLOUD;
+          await main.initializeCloudHead(0,initial,{cloudState:cloud,appMetadata:{storageRole:'primary',migrationIntent:'cloud-authoritative',sourceOwner:'local'}});
+          const shared=createSharedChecksStorageV2({owner:()=> 'local',primary:()=>true});
+          await shared.initializeCloudHead(0,{checks:initial.checks||[],bankEvents:[]},{intent:'cloud-authoritative',sourceOwner:'local',legacyPendingClean:true});
+          const db=createStorageJournalDb();await db.markCutover('APP','local');
+          localStorage.setItem('netunim-storage-cutover-version:APP:local','2');
+          return {main:(await db.load('local:APP')).metadata.seq,shared:(await db.load('local:shared-checks')).metadata.seq};
+        })()""".replace('APP',app).replace('PREPARE','stateSelectors.prepareState(state)' if app=='orders' else 'stateNormalization.normalizeState(state)').replace('CLOUD','stateSnapshots.prepareCloudState(initial)' if app=='orders' else 'stateNormalization.prepareKupaCloudState(initial)'))
+        assert seeded['main']==0 and seeded['shared']==0,seeded
+        browser.call('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
+          (()=>{
+            const keys=new Set([
+              'orders.management.state.v1','orders.supabase.base.v1','orders.supabase.pending.v1',
+              'orders.shared.checks.base.v1','orders.shared.checks.bank-events.v1','orders.shared.checks.pending.v1',
+              'orders.kupa.checks.base.v1','orders.kupa.checks.pending.v1',
+              'kupa.browser.state.v1','kupa.cloud.pending.local.v1',
+              'kupa.shared.checks.base.v1','kupa.shared.checks.bank-events.v1','kupa.shared.checks.pending.v1'
+            ]);
+            const idbKeys=new Set(['orders-outbox-v3','browser-state-v1','cloud-pending-v2','cloud-pending-v3','shared-checks-outbox-v3']);
+            window.__legacyWrites=[];
+            const set=Storage.prototype.setItem;
+            Storage.prototype.setItem=function(key,value){
+              if(keys.has(String(key))){window.__legacyWrites.push('localStorage:'+key);throw Error('legacy business write: '+key)}
+              return set.call(this,key,value)
+            };
+            const put=IDBObjectStore.prototype.put;
+            IDBObjectStore.prototype.put=function(value,key){
+              if(this.name==='snapshots'&&key==='main'||this.name==='sync'&&idbKeys.has(String(key))){window.__legacyWrites.push('IndexedDB:'+this.name+':'+key);throw Error('legacy business write: '+key)}
+              return put.call(this,value,key)
+            };
+          })();
+        """})
+        browser._navigate()
+        result=browser.evaluate("""(async()=>{
+          await appReady;
+          if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');
+          const note={id:'v2-gate-note',content:'durable',createdAt:'2026-09-23',updatedAt:'2026-09-23'};
+          state.notes.push(note);
+          const operation={type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note};
+          SAVE;
+          await storageShadow.commitPromise;
+          const check={id:'v2-gate-check',amount:100};state.checks.push(check);
+          const checkWrite=sharedChecksV2.persist([{type:'put',collection:'checks',id:check.id,mode:'insert',index:state.checks.length-1,record:check}],{surface:'test.zero-v1'});
+          await checkWrite.committed;
+          window.dispatchEvent(new Event('pagehide'));
+          return {writes:window.__legacyWrites,notes:state.notes.length,checks:state.checks.length};
+        })()""".replace('SAVE',"await storagePersistence.saveState('test zero V1',{domains:['notes'],operations:[operation],surface:'test.zero-v1'})" if app=='kupa' else "storagePersistence.scheduleSave('test zero V1',{domains:['notes'],operations:[operation],surface:'test.zero-v1'})"))
+        assert not result['writes'],result
+        browser._navigate()
+        recovered=browser.evaluate("""(async()=>{await appReady;return {writes:window.__legacyWrites,note:state.notes.find(row=>row.id==='v2-gate-note')?.content,check:state.checks.find(row=>row.id==='v2-gate-check')?.amount}})()""")
+        assert not recovered['writes'] and recovered['note']=='durable' and recovered['check']==100,recovered
+        errors=[error for error in browser.drain_serious_errors() if "Blocked attempt to show a 'beforeunload' confirmation panel" not in error];assert not errors,errors
+        print('PASS '+app+' V2 marker keeps startup, edits, pagehide and restart free of legacy business writes')

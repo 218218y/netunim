@@ -150,6 +150,7 @@ const sharedChecksV2Composition=createSharedChecksV2Composition({
   rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
   verifyLegacyClean:(...args)=>storageChecks.verifyLegacyChecksClean(...args),
   validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),
+  applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
@@ -534,7 +535,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,

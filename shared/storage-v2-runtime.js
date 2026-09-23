@@ -32,6 +32,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   const shadow=createStorageShadow({app,owner,primary,validate,enabled:()=>mode()==='shadow',createJournal});
   const diagnostics={mode:'off',recoveries:0,migrations:0,operations:0,boundaries:0,fallbacks:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
   let journal=null,identity='',starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,ownerHandoffRequired=false,boundaryGate=()=>false;
+  const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
   function currentOwner(){return String(owner()||'local')}
@@ -159,18 +160,23 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(active!==journal||identity!==scopedIdentity||!readyForCurrentOwner())throw new Error('storage_owner_changed_during_operation');
     return active;
   }
-  async function setCloudBase(revision,state,options={}){return (await settledJournal()).setCloudBase(revision,state,options)}
-  async function captureCloudCursor(revision,options={}){return (await settledJournal()).captureCloudCursor(revision,options)}
+  async function setCloudBase(revision,state,options={}){guardCloudMutation();return (await settledJournal()).setCloudBase(revision,state,options)}
+  async function captureCloudCursor(revision,options={}){guardCloudMutation();return (await settledJournal()).captureCloudCursor(revision,options)}
   async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
-  async function materializeFlight(options={}){return (await settledJournal()).materializeFlight(options)}
-  async function acknowledgeFlight(operationId,revision,state,options={}){const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();return active.acknowledge(operationId,revision,state,next)}
-  async function rejectFlight(operationId,revision,state,options={}){const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();return active.rejectAndRebase(operationId,revision,state,next)}
-  async function setCloudControl(control={}){return (await settledJournal()).setCloudControl(control)}
-  async function clearCloudControl(){if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
+  async function materializeFlight(options={}){guardCloudMutation();return (await settledJournal()).materializeFlight(options)}
+  async function acknowledgeFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,state,next)}
+  async function rejectFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,state,next)}
+  async function setCloudControl(control={}){guardCloudMutation();return (await settledJournal()).setCloudControl(control)}
+  async function clearCloudControl(){guardCloudMutation();if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
   async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function adoptCloudHead(revision,cloudState,currentState,options={}){const active=await settledJournal(),result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate}={}){
+    const active=await settledJournal();
+    const result=await active.replaceLocalWithPending(prepareCheckpoint(business(currentState)),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,deleteCollections:STORAGE_SCHEMAS[app].collections.filter(name=>name!=='checks')});
+    diagnostics.operations++;operationsSinceCheckpoint++;return result;
+  }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverForOwner,initializeCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){return globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${currentOwner()}`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverForOwner,initializeCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){return globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${currentOwner()}`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

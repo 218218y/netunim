@@ -1,23 +1,26 @@
-# Storage V2 — מצב מעבר ובדיקות קבלה
+# Storage V2 — מצב מעבר ושערי שחרור
 
-עודכן ב־23 בספטמבר 2026.
+עודכן ב־23 בספטמבר 2026. ברירת המחדל בשתי האפליקציות עדיין אינה V2-only. הסרת V1 אינה מאושרת לפני cutover מתוזמר ובדיקה של שני מחשבי המשתמש על נתונים אמיתיים.
 
-ברירת המחדל של שתי האפליקציות עדיין אינה V2-only. אין למחוק את מפתחות V1 או את קוראי ה־migration בשלב זה. הסרתם תתבצע בגרסת cleanup נפרדת, לאחר מעבר מוכח של שני המחשבים וללא pending ישן.
+## הושלם בקוד
 
-## מה כבר קיים בקוד
+- Main V2 ו־Shared Checks V2 שומרים journal, checkpoint, cloud cursor ו־flight עצמאיים. ACK/rebase ו־lost ACK מוגנים מקריסה. עריכת צ׳ק רגילה בזמן Shared Primary נכתבת ל־Shared בלבד.
+- שחזור ענן קבוצתי עובר coordinator עמיד בין Main ל־Shared. ייבוא JSON/קובץ מקומי בזמן Shared Primary עובר כעת `replace-local-with-pending`: ה־cloud base וה־revision אינם נמחקים, בשני ה־journals נוצר pending, מחיקות נרשמות במפורש, ו־`bankEvents` חיים נשמרים. Restart ממשיך boundary שנקטע.
+- סימון cutover נשמר ב־IndexedDB. ה־transaction המסמנת בודקת כעת גם רצף נקי ללא pending, flight או control בשני ה־journals. Cache חסר ב־LocalStorage משוחזר רק מסימון IDB תקין; הכיוון ההפוך חסום.
+- Orders אינו מציג נתונים עסקיים בלשונית משנית לאחר cutover לפני Shared hydration סמכותי. מסלולי V1 רבים כבר חוסמים כתיבה תחת marker.
+- בקופה, פתיחת קובץ מקומי מול cloud cursor קיים יוצרת pending import מתואם ב־Main וב־Shared. שמירה נוספת לקובץ מחייבת התאמה ל־journal; שינוי חיצוני בקובץ נעצר לבדיקה, בלי להחליף checkpoint או cloud base בשקט.
+- בדיקת דפדפן עם IndexedDB אמיתי ו־marker עמיד מנטרת כתיבות עסקיות ישנות ב־LocalStorage וב־IndexedDB בזמן startup, עריכת נתונים וצ׳ק, pagehide ו־restart בשתי האפליקציות.
 
-- Main Storage V2 שומר פעולות רגילות ב־journal עם checkpoint, emergency log, cursor ו־flight. ה־rebase מקבע באותה עסקת IndexedDB את ה־checkpoint הממוזג ואת cloud base החדש.
-- Shared Checks V2 מחזיק namespace עצמאי של `checks` ו־`bankEvents`, כולל bootstrap אטומי למסמך ראשון, flight בלתי משתנה, merge, ACK/rebase ואירועי בנק. מתאמי Orders וקופה יודעים לנתב עריכת צ׳ק רגילה ל־Shared V2 בלבד כשהוא Primary.
-- מעבר בעלות חשבון אינו מבצע migration שקט מהמודל המוצג. אתחול מסמך חדש דורש intent ומקור מפורשים.
-- יש coordinator עמיד לפעולות נדירות שנוגעות בשני ה־journals. הוא רושם intent, חוסם עריכות מתחרות בעת ההחלה ויכול להשלים לאחר קריסה בין הפעלת Shared להפעלת Main. שחזור ענן קבוצתי בשתי האפליקציות מחובר אליו כאשר Shared Checks V2 הוא Primary; import ושחזור קובץ מקומי עדיין דורשים חוזה V2 מלא.
-- recovery מבחין בין נתונים פגומים לתקלת IndexedDB זמנית. סמן cutover עמיד וספציפי ליישום ולחשבון קיים, ובדיקת startup חוסמת אי־התאמה בין IndexedDB ל־LocalStorage.
-- לאחר סמן cutover, מסלולי הכתיבה הישנים של Shared Checks, צילום הדפדפן וה־outbox הראשי שנבדקו חוסמים כתיבת V1. השער עדיין אינו מכסה באופן מוכח את כל מסלולי האפליקציה.
+## מה עדיין חוסם V2-only
 
-## חסמי הפעלה
+1. **First-cloud בשתי האפליקציות:** ה־UI עדיין יוצר מסמך ראשון דרך V1. נדרש bootstrap עמיד של Main+Shared, עם המשך בטוח אחרי קריסה בין יצירת שני מסמכי הענן, בלי V1 outbox.
+2. **מעבר זהויות:** ה־runtime דורש intent מפורש, אך login/logout והחלפת חשבון ב־UI עדיין לא משלימים `load-account` מול `upload-local`, חסימת תצוגת חשבון קודם וניקוז pending של בעלים ישן.
+3. **Cutover coordinator בייצור:** `markCutover` הוא primitive מוקשח, אך אין עדיין workflow באפליקציה שמבצע migration, בדיקת parity ו־revisions, ניקוז V1, קידום Shared והפעלת marker כפעולה אחת מבוקרת.
+4. **שער zero-V1-write מלא:** הבדיקות הקיימות ממוקדות. יש להריץ workflows אמיתיים תחת marker ולנטר LocalStorage ואת חנויות IndexedDB הישנות, כולל startup, import, first-cloud, restore, offline, logout והחלפת חשבון.
+5. **אימות שחרור:** נדרש גיבוי ובדיקת A→B ו־B→A בשני המחשבים, כולל offline→restart→online, lost ACK, conflict, צ׳קים ואירוע בנק. רק אחר כך ניתן להפעיל default V2 ולבצע soak.
 
-1. להשלים import ושחזור קובץ מקומי כפעולה מתואמת המשמרת גם cloud base וגם pending חדש, ולבדוק חידוש restore קבוצתי על שני המחשבים. אסור לשחזור לעדכן Main V2 ואז לכתוב בסיס Shared V1.
-2. להשלים את מסלולי first-cloud והחלפת חשבון בשתי האפליקציות עם בחירה מפורשת בין טעינת החשבון להעלאת נתונים מקומיים.
-3. להריץ שער zero-V1-write על כל תרחישי היישום, כולל startup, cloud ACK, אופליין, restore, import, logout ו־account switch. מפתחות preferences/session אינם חלק מהשער.
-4. להריץ A→B ו־B→A בשני המחשבים עם גיבוי מוקדם, lost ACK, conflict, פעולות צ׳ק ואירוע בנק, ואז soak של גרסת cutover. רק לאחר מכן להסיר writers/readers ישנים ואת `checks` מ־Main schema בגרסת cleanup נפרדת.
+## סדר השחרור
 
-הסמן אינו נקבע אוטומטית. עצם קיומם של API ובדיקות אינו אישור להפעיל V2-only על נתוני משתמש אמיתיים.
+אימות מקומי ב־23 בספטמבר 2026: כל 39 חבילות `tests/run_all.py` עברו, כולל בדיקות IndexedDB בדפדפן, סנכרון מדומה של שני מחשבים ו־zero-V1-write תחת marker. בדיקה זו אינה תחליף ל־soak על שני המחשבים עם הנתונים האמיתיים.
+
+להשלים תחילה first-cloud, account handoff ו־cutover coordinator; להריץ שער zero-V1-write ובדיקות דפדפן/שני מחשבים; לשחרר cutover שבו V2 הוא writer יחיד ו־V1 נשאר reader ל־migration/drain בלבד. בגרסת cleanup נפרדת, אחרי שאין legacy pending, להסיר `checks` מ־Main schema/checkpoint, `afterLegacy`, browser snapshots ו־outboxes ישנים, shadow adapters וענפי migration שאינם בני־השגה. מחיקת keys/stores תהיה מרשימה מפורשת, ללא wildcard על `.v1`.

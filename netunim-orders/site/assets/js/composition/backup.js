@@ -1,6 +1,6 @@
 import {createUiBackup} from '../ui/backup.js';
 
-export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
+export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
   return createUiBackup({
     ...storageV2Cloud,
     storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
@@ -31,6 +31,7 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     readCloud:(...args)=>cloudTransport().readCloud(...args),
     cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
     readSharedChecksCloud:(...args)=>cloudTransport().readSharedChecksCloud(...args),
+    requestCloudSave:(...args)=>syncDocument().requestCloudSave(...args),
     restoreGroupStore,
     stageRestoreGroup:(...args)=>cloudTransport().stageRestoreGroup(...args),
     applyRestoreGroup:(...args)=>cloudTransport().applyRestoreGroup(...args),

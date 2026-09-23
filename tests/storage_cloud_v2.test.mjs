@@ -35,6 +35,7 @@ function memoryDb(){
     async install(_owner,checkpoint,writer){const data=readStorageRecord(checkpoint);checkpoints=clone(checkpoint);metadata={epoch:data.epoch,seq:data.seq,writer};journal=[];bases=null;flights=null;controls=null},
     async claim(_owner,epoch,writer){assert.equal(metadata.epoch,epoch);metadata={...metadata,writer}},
     async append(_owner,epoch,writer,record){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);const data=readStorageRecord(record);assert.equal(data.seq,metadata.seq+1);journal.push(clone(record));metadata={...metadata,seq:data.seq}},
+    async appendBoundary(_owner,epoch,writer,record,{expectedSeq,expectedBaseRevision}){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);if(metadata.seq!==expectedSeq||!bases||readStorageRecord(bases).ackSeq!==expectedSeq||readStorageRecord(bases).revision!==expectedBaseRevision||flights||controls)throw new Error('storage_boundary_cloud_changed');const data=readStorageRecord(record);assert.equal(data.seq,expectedSeq+1);journal.push(clone(record));metadata={...metadata,seq:data.seq}},
     async compact(_owner,epoch,writer,checkpoint){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);checkpoints=clone(checkpoint);const seq=readStorageRecord(checkpoint).seq,ack=bases?readStorageRecord(bases).ackSeq:seq;journal=journal.filter(row=>row.data.seq>Math.min(seq,ack))},
     async replaceCheckpoint(_owner,epoch,writer,checkpoint){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(readStorageRecord(checkpoint).seq,metadata.seq);checkpoints=clone(checkpoint)},
     async setBase(_owner,epoch,writer,base){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(flights,null);bases=clone(base)},
@@ -51,6 +52,28 @@ function memoryDb(){
 
 const schema={collections:['notes'],fields:[]};
 const put=(id,text)=>({type:'put',collection:'notes',mode:'replace',id,record:{id,text}});
+
+test('local V2 import keeps cloud revision, survives restart, and sends deleted IDs in one flight',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='orders:local-import',validate=value=>assert.ok(Array.isArray(value.notes));
+  const first=createStorageJournal({owner,schema,validate,db,emergency});
+  await first.install({notes:[{id:'old',text:'old'},{id:'keep',text:'before'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  await first.captureCloudCursor(7);
+  await first.replaceLocalWithPending({notes:[{id:'keep',text:'after'},{id:'new',text:'new'}]},{boundaryId:'import-1',expectedSeq:0,expectedBaseRevision:7});
+  const restarted=createStorageJournal({owner,schema,validate,db,emergency});
+  const recovered=await restarted.open(),cloud=await restarted.cloudState();
+  assert.deepEqual(recovered.state.notes.map(row=>row.id),['keep','new']);assert.equal(recovered.appMetadata.boundaryId,'import-1');
+  assert.equal(cloud.base.revision,7);assert.equal(cloud.base.ackSeq,0);assert.equal(cloud.pending,true);
+  assert.deepEqual(cloud.pendingDeleteIntents,{notes:['old']});
+  const flight=await restarted.materializeFlight({operationId:'import-flight',baseRevision:7});
+  assert.deepEqual(flight.snapshot.notes,recovered.state.notes);assert.deepEqual(flight.deleteIntents,{notes:['old']});
+});
+
+test('local V2 import refuses stale cloud head without changing local state',async()=>{
+  const db=memoryDb(),journal=createStorageJournal({owner:'kupa:stale-import',schema,validate:value=>assert.ok(Array.isArray(value.notes)),db,emergency:emergencyStore()});
+  await journal.install({notes:[{id:'A'}]},{expectedEpoch:null});await journal.captureCloudCursor(4);
+  await assert.rejects(journal.replaceLocalWithPending({notes:[]},{boundaryId:'import-stale',expectedSeq:0,expectedBaseRevision:3}),/cloud_changed/);
+  assert.deepEqual((await journal.recover()).state.notes,[{id:'A'}]);assert.equal((await journal.cloudState()).pending,false);
+});
 
 test('Storage V2 cloud cursor preserves later journal across ACK, supports confirmed reject/rebase, and adopts clean heads atomically',async()=>{
   let ids=0;const journal=createStorageJournal({owner:'orders:test',schema,validate:state=>assert.ok(Array.isArray(state.notes)),db:memoryDb(),emergency:emergencyStore(),operationId:()=>`id-${++ids}`,now:()=>`2026-09-22T00:00:0${ids}Z`});

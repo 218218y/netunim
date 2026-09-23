@@ -5,9 +5,11 @@ import {payloadFromState} from '../state/serialization.js';
 import {assertKupaEntityInvariants} from '../state/validation.js';
 import {jsonEq} from '../sync/merge-records.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
+import {equalSyncJson} from '../shared/cloud-sync.js';
+import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({sharedChecksV2=null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,observeSharedChecks=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,observeSharedChecks=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -32,8 +34,54 @@ function requestCloudSave(snapshot,msg,generation){
   return session.cloudSavePromise;
 }
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
+function mainBusinessState(value){const copy=clone(value);delete copy.checks;delete copy._meta;return copy}
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
-async function loadState(){if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');const p=await readJsonHandle(files.dataFileHandle);await captureLegacyWorkbook(p.notesSheet);const parsed=stateFromPayload(p),removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];if(storageV2Primary()){const installed=await replaceStorageV2AuthoritativeState(parsed.state,Number(parsed.meta.revision||0));if(!installed)throw new Error('storage_v2_local_file_checkpoint_failed')}const previous=model.state;model.state=parsed.state;domainRevisions?.reconcile(previous,model.state,{forceAll:true});session.dbRevision=Number(parsed.meta.revision||0);session.backendReady=true;session.localFileConflictPending=false;session.lastSavedSnapshot=JSON.stringify(model.state);session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-load'});if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');setSaveStatus('נשמר בקובץ','ok');if(removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);return model.state}
+async function loadState(){
+  if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');
+  const payload=await readJsonHandle(files.dataFileHandle);
+  await captureLegacyWorkbook(payload.notesSheet);
+  const parsed=stateFromPayload(payload);
+  const removed=model.lastNormalizeRemovedCredits;
+  const removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];
+  let preservedCloudHead=false;
+  if(storageV2Primary()){
+    const cloud=await refreshStorageV2CloudState();
+    if(cloud?.base){
+      // A local file is never evidence of a cloud ACK. Preserve both cloud
+      // cursors and make the complete file state pending in both journals.
+      if(!sharedChecksV2?.primaryReady||!storageV2Boundary)throw new Error('storage_v2_local_file_shared_head_required');
+      preservedCloudHead=true;
+      if(!equalSyncJson(model.state,parsed.state)){
+        await applyStorageV2LocalImport({
+          boundary:storageV2Boundary,
+          mainCloud:cloud,
+          sharedCloud:await sharedChecksV2.cloudState(),
+          mainState:parsed.state,
+          sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]},
+        });
+        await refreshStorageV2CloudState();
+      }
+    }else{
+      const installed=await replaceStorageV2AuthoritativeState(parsed.state,Number(parsed.meta.revision||0));
+      if(!installed)throw new Error('storage_v2_local_file_checkpoint_failed');
+    }
+  }
+  const previous=model.state;
+  model.state=parsed.state;
+  domainRevisions?.reconcile(previous,model.state,{forceAll:true});
+  session.dbRevision=Number(parsed.meta.revision||0);
+  session.backendReady=true;
+  session.localFileConflictPending=false;
+  session.lastSavedSnapshot=JSON.stringify(model.state);
+  session.serverInfo={schemaVersion:Number(parsed.meta.schemaVersion||6),lastSavedAt:parsed.meta.savedAt||null,databaseFile:files.dataFileHandle.name,backups:await listBackups()};
+  if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-load'});
+  if(files.backupsDirHandle)await backupSnapshotToComputer(model.state,session.dbRevision);
+  setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');
+  setSaveStatus('נשמר בקובץ','ok');
+  // The complete pending import already contains normalization removals.
+  if(removed>0&&!preservedCloudHead)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);
+  return model.state;
+}
 
 function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
@@ -129,9 +177,16 @@ async function persistState(snapshot,msg,generation=session.localGeneration,dele
   if(session.localFileConflictPending){if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-conflict-mirror'});setSaveStatus('התנגשות בקובץ — העותק המקומי שמור','error');return false}
   setSaveStatus(generation===session.localGeneration?'שומר…':'שומר תור שינויים…','saving');
   try{
+    const v2CloudHead=storageV2Primary()?await refreshStorageV2CloudState():null;
+    if(v2CloudHead?.base){
+      const recovered=await recoverStorageV2State();
+      if(!recovered||!equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state)))throw new Error('storage_v2_local_file_unjournaled_state');
+      if(generation===session.localGeneration&&!equalSyncJson(mainBusinessState(snapshot),mainBusinessState(recovered.state)))throw new Error('storage_v2_local_file_unjournaled_normalization');
+    }
     const current=await readJsonHandle(files.dataFileHandle),curMeta=current?._meta||{},curRev=Number(curMeta.revision||0),remote=stateFromPayload(current).state;
     let candidate=clone(snapshot),expected=curRev;
     if(curRev!==session.dbRevision){
+      if(v2CloudHead?.base){session.localFileConflictPending=true;throw new Error('storage_v2_local_file_external_change')}
       const base=lastSavedState();
       if(!base){session.localFileConflictPending=true;if(!storageV2Primary())persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-missing-base'});setSaveStatus('קובץ השתנה — נדרשת בדיקה','error');reportError('קובץ הנתונים השתנה ולא קיימת גרסת בסיס בטוחה למיזוג. השינויים שעל המסך נשמרו בעותק הדפדפן ולא נדרסו. מומלץ לייצא JSON ולפתוח מחדש את הקופה.');return false}
       const merged=mergeState3Way(base,snapshot,remote,{deleteIntents});
@@ -147,7 +202,12 @@ async function persistState(snapshot,msg,generation=session.localGeneration,dele
       if(rebased.conflicts.length){session.localFileConflictPending=true;setSaveStatus('שינוי נוסף התנגש — נשמר בדפדפן','error')}else model.state=rebased.state
     }
     const visibleChanged=!jsonEq(visibleBefore,model.state);if(visibleChanged)domainRevisions?.reconcile(visibleBefore,model.state);
-    if(storageV2Primary()){if(await replaceStorageV2CurrentState(model.state)===false)throw new Error('storage_v2_local_file_checkpoint_failed')}else persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-authoritative-write'});
+    if(storageV2Primary()){
+      if(v2CloudHead?.base){
+        const recovered=await recoverStorageV2State();
+        if(!recovered||!equalSyncJson(mainBusinessState(recovered.state),mainBusinessState(model.state)))throw new Error('storage_v2_local_file_unjournaled_state');
+      }else if(await replaceStorageV2CurrentState(model.state)===false)throw new Error('storage_v2_local_file_checkpoint_failed');
+    }else persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'local-file-authoritative-write'});
     if(visibleChanged)render();
     if(files.backupsDirHandle)await backupSnapshotToComputer(candidate,nextRev);session.serverInfo.backups=await listBackups();
     if(generation===session.localGeneration&&!session.localFileConflictPending){setSaveStatus('נשמר בקובץ','ok');toast(msg)}else if(!session.localFileConflictPending)setSaveStatus('שומר שינוי נוסף…','saving');

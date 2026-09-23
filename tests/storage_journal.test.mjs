@@ -29,6 +29,12 @@ test('unknown operations and implicit deletes are never accepted',()=>{
   assert.throws(()=>applyStoredOperation({notes:[]},operation(1,[{type:'delete',collection:'notes',id:'n'}]),schema));
   assert.throws(()=>sealStorageRecord({value:NaN}));assert.throws(()=>sealStorageRecord({value:undefined}));
 });
+test('full-state replacement is confined to a durable local import boundary',()=>{
+  const replacement={type:'replace-state',state:{notes:[{id:'imported'}],setting:2}};
+  assert.throws(()=>validateStoredOperation(operation(1,[replacement]),schema),/invalid_local_import/);
+  const imported={...operation(1,[replacement]),mutationType:'import',appMetadata:{boundaryId:'import-1'}};
+  assert.deepEqual(replayStorageJournal(checkpoint(),[sealStorageRecord(imported)],schema).state,replacement.state);
+});
 test('inserts preserve user ordering, scalar updates replay and checkpoint duplicates are harmless',()=>{
   const first=operation(1,[{type:'put',collection:'notes',mode:'insert',id:'first',index:0,record:{id:'first',text:'first'}},{type:'set',field:'setting',value:2}]);
   const result=replayStorageJournal(checkpoint(),[sealStorageRecord(first)],schema);assert.deepEqual(result.state.notes.map(row=>row.id),['first','n']);assert.equal(result.state.setting,2);
