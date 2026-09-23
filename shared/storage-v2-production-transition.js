@@ -15,10 +15,10 @@ export function createStorageV2ProductionTransition({
   app,ownerBinding,primary=()=>true,online=()=>true,authOwner=()=>null,bootstrapCoordinator,cutoverDb,
   readMainState,projectMainState,emptyMainState,mainSourceSeq=()=>0,readSharedState,sharedSourceSeq=()=>0,
   readMainRemote,projectMainRemote=row=>row?.state,readSharedRemote,projectSharedRemote=row=>row?.state,
-  initializeMainHead,initializeSharedHead,syncMain,syncShared,readMainCloudState,readSharedCloudState,
+  initializeMainHead,initializeSharedHead,syncMain,syncShared,readMainCloudState,readSharedCloudState,readMainRecoveredState,readSharedRecoveredState,
   freeze,drainLegacy,verifyLegacyClean,markCutover,verifyCutover,
 }={}){
-  const required=[ownerBinding?.current,ownerBinding?.assertAuthenticatedOwner,primary,online,authOwner,readMainState,projectMainState,emptyMainState,readSharedState,readMainRemote,readSharedRemote,initializeMainHead,initializeSharedHead,syncMain,syncShared,readMainCloudState,readSharedCloudState,freeze,drainLegacy,verifyLegacyClean,markCutover,verifyCutover];
+  const required=[ownerBinding?.current,ownerBinding?.assertAuthenticatedOwner,primary,online,authOwner,readMainState,projectMainState,emptyMainState,readSharedState,readMainRemote,readSharedRemote,initializeMainHead,initializeSharedHead,syncMain,syncShared,readMainCloudState,readSharedCloudState,readMainRecoveredState,readSharedRecoveredState,freeze,drainLegacy,verifyLegacyClean,markCutover,verifyCutover];
   if(!bootstrapCoordinator||required.some(value=>typeof value!=='function'))throw new Error('storage_production_transition_configuration');
   const owner=()=>identity(ownerBinding.current());
   function guard(){if(!primary())throw new Error('storage_cutover_primary_required');if(!online())throw new Error('storage_cutover_online_required');const current=owner(),authenticated=String(authOwner()||'').trim();ownerBinding.assertAuthenticatedOwner(authenticated);if(authenticated!==current)throw new Error('storage_cutover_auth_owner_mismatch');return current}
@@ -55,18 +55,21 @@ export function createStorageV2ProductionTransition({
     if(side.intent!=='upload-owner'||row)throw new Error('storage_cutover_shared_upload_target_changed');
     return initializeSharedHead({state:source.shared,revision:0,intent:'upload-owner',sourceOwner:group.sourceOwner,bootstrapOperationId:side.operationId});
   }
-  async function verifySide(role,cloud,row,project){
+  async function verifySide(role,cloud,row,project,recovered){
     if(!cloud?.base||cloud.flight||cloud.control||cloud.pending)throw new Error(`storage_cutover_${role}_local_head_unsettled`);
+    if(!recovered||typeof recovered!=='object'||Array.isArray(recovered))throw new Error(`storage_cutover_${role}_local_recovery_missing`);
     if(!row||revision(row)!==Number(cloud.base.revision))throw new Error(`storage_cutover_${role}_remote_revision_mismatch`);
     const remote=project(row),base=role==='shared'?canonicalShared(cloud.base.state):cloud.base.state,authoritative=role==='shared'?canonicalShared(remote):remote;
     if(!equalSyncJson(base,authoritative))throw new Error(`storage_cutover_${role}_remote_state_mismatch`);
+    const local=role==='shared'?canonicalShared(recovered):projectMainState(recovered);
+    if(!equalSyncJson(local,base))throw new Error(`storage_cutover_${role}_local_state_mismatch`);
     if(Number(cloud.base.ackSeq)!==Number(cloud.seq))throw new Error(`storage_cutover_${role}_ack_mismatch`);
     return Number(row.revision);
   }
   async function verifyHeads(){
     guard();if(await verifyLegacyClean()!==true)throw new Error('storage_cutover_legacy_pending');
-    const [mainCloud,sharedCloud,mainRow,sharedRow]=await Promise.all([readMainCloudState(),readSharedCloudState(),readMainRemote(),readSharedRemote()]);guard();
-    const mainRevision=await verifySide('main',mainCloud,mainRow,projectMainRemote),sharedRevision=await verifySide('shared',sharedCloud,sharedRow,projectSharedRemote);
+    const [mainCloud,sharedCloud,mainRow,sharedRow,mainRecovered,sharedRecovered]=await Promise.all([readMainCloudState(),readSharedCloudState(),readMainRemote(),readSharedRemote(),readMainRecoveredState(),readSharedRecoveredState()]);guard();
+    const mainRevision=await verifySide('main',mainCloud,mainRow,projectMainRemote,mainRecovered),sharedRevision=await verifySide('shared',sharedCloud,sharedRow,projectSharedRemote,sharedRecovered);
     return {clean:true,mainRevision,sharedRevision};
   }
   const transition=createStorageV2Transition({app,owner,primary,bootstrapCoordinator,cutoverDb,freeze,discoverBootstrap,drainLegacy,verifyLegacyClean,

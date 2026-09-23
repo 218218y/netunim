@@ -12,7 +12,7 @@ function fakeDb(){
 function fixture({failBootstrap=false,failAfterMark=false}={}){
   const db=fakeDb(),calls=[];let marker=false,bootstrapFails=failBootstrap,verifyMarkerFails=failAfterMark;
   const bootstrapExecutor={async start(options){calls.push(`bootstrap:${options.token}`);if(bootstrapFails){bootstrapFails=false;throw Error('simulated-bootstrap-crash')}return {phase:'complete',id:'group-1',planHash:'a'.repeat(64)}}};
-  const make=()=>createStorageV2CutoverCoordinator({app:'orders',owner:()=> 'A',primary:()=>true,db,bootstrapExecutor,operationId:()=> 'cutover-1',now:()=> '2026-09-23T14:00:00.000Z',
+  const make=()=>createStorageV2CutoverCoordinator({app:'orders',owner:()=> 'A',primary:()=>true,db,bootstrapExecutor,resumePendingBootstrap:async()=>null,operationId:()=> 'cutover-1',now:()=> '2026-09-23T14:00:00.000Z',
     drainLegacy:async()=>{calls.push('drain');return {cleaned:true}},verifyLegacyClean:async()=>{calls.push('legacy-clean');return true},discoverBootstrap:async()=>{calls.push('discover');return {token:'plan'}},verifyHeads:async()=>{calls.push('verify-heads');return {clean:true,mainRevision:5,sharedRevision:7}},markCutover:async()=>{calls.push('mark');marker=true},verifyCutover:async()=>{calls.push('verify-marker');if(verifyMarkerFails){verifyMarkerFails=false;throw Error('simulated-marker-crash')}return marker}});
   return {make,calls};
 }
@@ -38,7 +38,7 @@ test('cutover marker crash resumes from verified phase and mark is safe to retry
 test('verified phase is never trusted after a crash: heads are re-read immediately before marking',async()=>{
   const db=fakeDb(),calls=[];let marker=false,headReads=0,allowFinal=false;
   const bootstrapExecutor={async start(){return {phase:'complete',id:'group-verified',planHash:'b'.repeat(64)}}};
-  const make=()=>createStorageV2CutoverCoordinator({app:'orders',owner:()=> 'A',primary:()=>true,db,bootstrapExecutor,operationId:()=> 'cutover-verified',now:()=> '2026-09-23T14:10:00.000Z',
+  const make=()=>createStorageV2CutoverCoordinator({app:'orders',owner:()=> 'A',primary:()=>true,db,bootstrapExecutor,resumePendingBootstrap:async()=>null,operationId:()=> 'cutover-verified',now:()=> '2026-09-23T14:10:00.000Z',
     freeze:async()=>calls.push('freeze'),drainLegacy:async()=>({}),verifyLegacyClean:async()=>true,discoverBootstrap:async()=>({}),
     verifyHeads:async()=>{headReads++;calls.push(`heads:${headReads}`);if(headReads>=2&&!allowFinal)throw new Error('remote-changed-after-proof');return {clean:true,mainRevision:3,sharedRevision:4}},
     markCutover:async()=>{marker=true;calls.push('mark')},verifyCutover:async()=>marker});
@@ -53,7 +53,7 @@ test('verified phase is never trusted after a crash: heads are re-read immediate
 
 test('cutover preparation is visible read-only to a secondary tab but cannot be resumed there',async()=>{
   const db=fakeDb(),bootstrapExecutor={async start(){return {phase:'complete',id:'g',planHash:'c'.repeat(64)}}};
-  const common={app:'orders',owner:()=> 'A',db,bootstrapExecutor,operationId:()=> 'cutover-secondary',now:()=> '2026-09-23T15:00:00.000Z',freeze:async()=>{},drainLegacy:async()=>({}),verifyLegacyClean:async()=>true,discoverBootstrap:async()=>({}),verifyHeads:async()=>({clean:true}),markCutover:async()=>{},verifyCutover:async()=>true};
+  const common={app:'orders',owner:()=> 'A',db,bootstrapExecutor,resumePendingBootstrap:async()=>null,operationId:()=> 'cutover-secondary',now:()=> '2026-09-23T15:00:00.000Z',freeze:async()=>{},drainLegacy:async()=>({}),verifyLegacyClean:async()=>true,discoverBootstrap:async()=>({}),verifyHeads:async()=>({clean:true}),markCutover:async()=>{},verifyCutover:async()=>true};
   const primary=createStorageV2CutoverCoordinator({...common,primary:()=>true});
   await primary.begin();
   const secondary=createStorageV2CutoverCoordinator({...common,primary:()=>false});

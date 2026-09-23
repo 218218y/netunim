@@ -48,6 +48,9 @@ async function boot(){
   await restoreRememberedBackupTarget();
   await persistentStoragePromise;
 
+  // Main's checkpoint still carries a legacy checks copy. Hydrate its Shared
+  // owner before any offline or cloud-capability exit can show business data.
+  if(cutoverActive&&!transitionPreparing){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(!navigator.onLine&&startupLocalShown&&!transitionPreparing){session.startupCloudHydrating=false;return}
   if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
   if(session.syncCapabilitiesError){if(!startupLocalShown)await openBrowserStateFallback();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict',session.syncCapabilitiesError.message);return}
@@ -57,7 +60,7 @@ async function boot(){
     try{await resumeStorageTransition();cutoverActive=await verifyStorageCutover();if(!cutoverActive)throw new Error('storage_cutover_marker_verification_failed')}
     catch(error){console.error('Storage V2 cutover resume',error);if(startupLocalShown)render();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'מעבר האחסון נעצר בבטחה',text:error?.message||String(error),showCloud:true});return}
   }
-  if(cutoverActive){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
+  if(cutoverActive&&!sharedPrimary){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
   if(!sharedPrimary){checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();const checksOutbox=await getSharedChecksPending();if(checksOutbox?.snapshot)model.state.checks=normalizeSharedChecks(checksOutbox.snapshot);if(checksOutbox||sharedChecksPendingExists()){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(checksOutbox?.generation||1));checksSession.sharedChecksSaveRequested=true}}

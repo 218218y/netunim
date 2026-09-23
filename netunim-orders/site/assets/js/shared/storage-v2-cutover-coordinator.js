@@ -13,8 +13,8 @@ function assertRecord(record){
 // Durable production cutover gate. The first persisted phase freezes ordinary
 // writers before any legacy drain or cloud discovery. A crash can therefore
 // resume without reopening a V1 mutation window.
-export function createStorageV2CutoverCoordinator({app,owner,primary=()=>true,db=createStorageJournalDb(),bootstrapExecutor,freeze=async()=>{},discoverBootstrap,drainLegacy,verifyLegacyClean,verifyHeads,markCutover,verifyCutover,now=()=>new Date().toISOString(),operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
-  const site=String(app||'').trim();if(!VALID_APPS.has(site)||typeof owner!=='function'||typeof primary!=='function'||!bootstrapExecutor||typeof bootstrapExecutor.start!=='function'||[freeze,discoverBootstrap,drainLegacy,verifyLegacyClean,verifyHeads,markCutover,verifyCutover].some(fn=>typeof fn!=='function'))throw new Error('storage_cutover_coordinator_configuration');
+export function createStorageV2CutoverCoordinator({app,owner,primary=()=>true,db=createStorageJournalDb(),bootstrapExecutor,resumePendingBootstrap,freeze=async()=>{},discoverBootstrap,drainLegacy,verifyLegacyClean,verifyHeads,markCutover,verifyCutover,now=()=>new Date().toISOString(),operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
+  const site=String(app||'').trim();if(!VALID_APPS.has(site)||typeof owner!=='function'||typeof primary!=='function'||!bootstrapExecutor||typeof bootstrapExecutor.start!=='function'||[resumePendingBootstrap,freeze,discoverBootstrap,drainLegacy,verifyLegacyClean,verifyHeads,markCutover,verifyCutover].some(fn=>typeof fn!=='function'))throw new Error('storage_cutover_coordinator_configuration');
   let hydrated=false,cached=null,running=null;
   const scope=()=>`${site}:${identity(owner())}`;
   const sameScope=scoped=>{if(scope()!==scoped)throw new Error('storage_cutover_owner_changed')};
@@ -47,8 +47,18 @@ export function createStorageV2CutoverCoordinator({app,owner,primary=()=>true,db
         current=await advance('freezing-source',{drainProof:clone(drainProof)});continue;
       }
       if(current.phase==='source-settled'){
-        const options=await discoverBootstrap(clone(current));guard(current.scope);
-        const group=await bootstrapExecutor.start(options);guard(current.scope);
+        // Once a bootstrap group is durable, its remote-existence decision is
+        // immutable. A first upload may have created one remote document before
+        // crashing; rediscovery would mistake that side for pre-existing cloud
+        // authority and reject the saved plan. Resume that exact group first.
+        let group=await resumePendingBootstrap(clone(current));guard(current.scope);
+        if(!group){
+          const options=await discoverBootstrap(clone(current));guard(current.scope);
+          // Bind the bootstrap group to this durable preparation before any
+          // cloud side effect. This also identifies a completed group if the
+          // process dies just before advancing source-settled.
+          group=await bootstrapExecutor.start({...options,id:current.id});guard(current.scope);
+        }
         if(group?.phase!=='complete')throw new Error('storage_cutover_bootstrap_incomplete');
         current=await advance('source-settled',{bootstrapId:group.id,bootstrapPlanHash:group.planHash});continue;
       }

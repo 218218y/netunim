@@ -61,6 +61,8 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
       syncShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.sync()},
       readMainCloudState:()=>p.storageBrowser.refreshStorageV2CloudState(),
       readSharedCloudState:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.cloudState()},
+      readMainRecoveredState:async()=> (await p.storageShadow.recoverForOwner({intent:'load-account'}))?.state||null,
+      readSharedRecoveredState:async()=> (await p.sharedChecksV2.recover())?.state||null,
       freeze:async()=>{
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
         if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');
