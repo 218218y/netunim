@@ -55,6 +55,17 @@ export function floatingMenuPosition(anchor,size,viewport,{rtl=false,gap=6,edge=
   return {left:Math.max(left,Math.min(rtl?anchor.right-width:anchor.left,right-width)),top:up?Math.max(top,anchor.top-gap-height):Math.max(top,Math.min(anchor.bottom+gap,bottom-height)),maxHeight:Math.max(0,up?above:below),width,up};
 }
 
+const numberWheelBindings=new WeakSet();
+export function bindNumberInputWheelGuard(root){
+  if(numberWheelBindings.has(root))return;
+  numberWheelBindings.add(root);
+  const doc=root.ownerDocument||root;
+  root.addEventListener('wheel',event=>{
+    const input=event.target instanceof HTMLInputElement?event.target:null;
+    if(input?.type==='number'&&doc.activeElement===input)input.blur();
+  },{capture:true,passive:true});
+}
+
 const menuBindings=new WeakMap();
 export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-outside], [data-floating-menu]'}={}){
   if(menuBindings.has(root))return menuBindings.get(root);

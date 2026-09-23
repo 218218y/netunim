@@ -124,7 +124,7 @@ function activityGroupMarkup(group,imageOptions){
   return `<details class="check-bank-activity-item"><summary>${esc(representative.name)} · ${esc(representative.title)}${representative.time?` · ${esc(representative.time.slice(0,10))}`:''}</summary><div class="check-bank-activity-group"><div class="check-bank-activity-identity">חשבון ${esc(representative.account)} · ${esc(representative.amount)} ₪${representative.checkNumber?` · צ׳ק ${esc(representative.checkNumber)}`:''}</div>${group.items.length>1?`<ol class="check-bank-activity-timeline" aria-label="מהלך המעקב בצ׳ק">${timeline}</ol>`:''}${checkBankReviewCard(representative,{activity:true,current:representative.current,removeEventIds:allIds,...imageOptions})}</div></details>`;
 }
 
-export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}){
+export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}, {floatingMenu=false}={}){
   const groups=[];
   for(const c of Array.isArray(checks)?checks:[]){
     if(account&&(c.account||'עסקי')!==account)continue;
@@ -137,7 +137,8 @@ export function checkBankActivityMarkup(checks,account,page=0,imageOptions={}){
   const pages=Math.max(1,Math.ceil(groups.length/25)),currentPage=Math.max(0,Math.min(pages-1,Math.trunc(Number(page)||0)));
   const navigation=pages>1?`<nav class="row-actions" aria-label="עמודי הודעות הבנק"><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage-1}" ${currentPage===0?'disabled':''}>הקודם</button><span>עמוד ${currentPage+1} מתוך ${pages}</span><button type="button" class="btn" data-action="check-bank-history-page" data-click-arg0="${currentPage+1}" ${currentPage===pages-1?'disabled':''}>הבא</button></nav>`:'';
   const countLabel=groups.length===1?'צ׳ק אחד':`${groups.length} צ׳קים`;
-  return `<details class="section check-bank-activity"><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body">${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details>`;
+  const menuHost=floatingMenu?' data-dismiss-on-outside':'',menuPanel=floatingMenu?' data-menu-panel':'';
+  return `<details class="section check-bank-activity"${menuHost}><summary>הודעות ופעולות אוטומטיות בבנק (${countLabel})</summary><div class="section-body"${menuPanel}>${groups.length?groups.slice(currentPage*25,(currentPage+1)*25).map(group=>activityGroupMarkup(group,imageOptions)).join(''):'<p>פעולות הזיהוי והמעקב יופיעו כאן לאחר סנכרון הבנק. התאמות ודאיות ופירעון תקין מתועדים כאן ללא אזהרה.</p>'}${navigation}</div></details>`;
 }
 
 export function applyCheckBankReview(checks,id,eventId,action){

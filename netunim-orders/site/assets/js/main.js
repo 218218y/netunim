@@ -71,7 +71,7 @@ import {createDomainsCalendarController} from './domains/calendar/controller.js'
 import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents,bindDismissibleDetails} from './shared/events.js';
+import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {createUiActions,wrapMutationActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
 import {createContexts} from './state/contexts.js';
@@ -1019,6 +1019,7 @@ bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAu
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);
+bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 export const appReady=lifecycle.boot().then(()=>{sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});

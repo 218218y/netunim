@@ -162,6 +162,10 @@ for(const create of [ordersEditor,kupaEditor]){
 {
   const checks=Array.from({length:60},(_,i)=>{const c=sample(),event={...c.bankMatch,eventId:`history:${i}`,phase:'cleared',recordedAt:`2026-08-${String(i%28+1).padStart(2,'0')}`};return {...c,id:`c${i}`,name:`Cheque ${i}`,bankMatch:event,bankHistory:[event]}});
   assert.equal((checkBankActivityMarkup(checks).match(/class="check-bank-activity-item"/g)||[]).length,25);
+  const floating=checkBankActivityMarkup(checks,null,0,{}, {floatingMenu:true});
+  assert.match(floating,/<details class="section check-bank-activity" data-dismiss-on-outside>/,'Header activity opts into the shared outside-dismiss controller');
+  assert.match(floating,/<div class="section-body" data-menu-panel>/,'Header activity exposes its popup panel to the shared floating-menu controller');
+  assert.doesNotMatch(checkBankActivityMarkup(checks),/data-dismiss-on-outside|data-menu-panel/,'Inline activity remains an ordinary disclosure section');
   assert.equal((checkBankActivityMarkup(checks,null,2).match(/class="check-bank-activity-item"/g)||[]).length,10);
   assert.match(checkBankActivityMarkup(checks,null,999),/עמוד 3 מתוך 3/);
   assert.equal(checks[0].bankHistory.length,1,'Pagination/groups must not mutate stored history');

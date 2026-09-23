@@ -14,6 +14,14 @@ common = r"""
    while(performance.now()<deadline){if(predicate())return;await frame()}
    if(!predicate())throw new Error(message);
  };
+ const assertNumberWheelGuard=()=>{
+   const input=document.createElement('input');input.type='number';input.value='12';document.body.append(input);input.focus();
+   const wheel=new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:120});input.dispatchEvent(wheel);
+   if(document.activeElement===input)throw new Error('Number input kept focus during wheel');
+   if(wheel.defaultPrevented)throw new Error('Number wheel guard blocked page scrolling');
+   if(input.value!=='12')throw new Error('Number wheel guard changed the value');
+   input.remove();
+ };
  const respondConfirm=async accept=>{
    const backdrop=document.getElementById('confirmBackdrop');
    if(!backdrop?.classList.contains('open'))throw new Error('Expected styled confirmation dialog');
@@ -42,6 +50,7 @@ common = r"""
 # event delegation. Business persistence is covered by the recovery suites.
 expressions = {
  'kupa': r"""
+ assertNumberWheelGuard();
  state=normalizeState({version:4,checks:[],credits:[],cash:[],expenses:[],cards:[{name:'VISA',active:true,chargeDay:10}]});
  backendReady=false;connectionMode='';
  setPage('dashboard');
@@ -77,6 +86,7 @@ expressions = {
  return {dashboardAction:true,series:true,manualOverride:true,draft:true,quotedId:true};
  """,
  'orders': r"""
+ assertNumberWheelGuard();
  state.suppliers=[{id:'S1',name:'Supplier',active:true,sortOrder:0},{id:'S2',name:'Second',active:true,sortOrder:1}];
  state.transactions=[{id:'T1',supplierId:'S1',sequence:1,action:'Action',debit:10,credit:0,invoiceReceived:null,signed:null,supplied:null,note:'',supplyInfo:''}];
  currentSupplierId='S1';switchView('supplier');await frame();

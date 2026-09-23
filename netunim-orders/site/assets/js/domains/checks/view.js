@@ -41,7 +41,7 @@ function checksBulkCell(id){return ui.checksBulkMode?`<td class="checks-bulk-col
 
 function checksHeaderContextMarkup(){
   const bankAccountFilter=ui.checkAccount==='all'?null:ui.checkAccount;
-  return `<div class="kupa-checks-status"><div class="checks-header-activity">${checkBankActivityMarkup(model.state.checks,bankAccountFilter,ui.checkBankHistoryPage,getBankImageContext())}</div>${checksCloudLabel()}</div>`;
+  return `<div class="kupa-checks-status"><div class="checks-header-activity">${checkBankActivityMarkup(model.state.checks,bankAccountFilter,ui.checkBankHistoryPage,getBankImageContext(),{floatingMenu:true})}</div>${checksCloudLabel()}</div>`;
 }
 
 function checksMarkup({embedded=false,showEmbeddedStatus=true,showBankActivity=true}={}){

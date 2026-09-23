@@ -59,7 +59,7 @@ import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
-import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails} from './shared/events.js';
+import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
@@ -1008,6 +1008,7 @@ window.addEventListener('beforeunload',e=>{
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 bindDismissibleDetails(document);
+bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
 export const appReady=lifecycle.boot().then(result=>{sharedChecksV2Shadow.boundary();return result});
