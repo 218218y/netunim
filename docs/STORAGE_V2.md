@@ -8,7 +8,7 @@
 
 לכל מסמך ענן יש base עם `revision` ו־`ackSeq`. שליחה יוצרת flight בלתי משתנה עם snapshot, טווח רצפים, `operationId` ומחיקות מפורשות. Retry אחרי lost ACK משדר אותו payload. ACK מקדם רק את הרצפים שנשלחו ושומר עריכות שהגיעו בזמן ה־RPC. ב־revision conflict, rebase קובע checkpoint ממוזג ו־base חדש באותה transaction, ואז ניתן ליצור flight חלופי. אירועי בנק של Shared נקבעים עם ה־ACK/rebase.
 
-שחזור ענן וייבוא מקומי מלא נוגעים בשני journals ולכן משתמשים ב־boundary coordinator. ה־intent נשמר לפני כתיבת אחד הצדדים, וכל צד רושם אותו boundary ID. Restart משלים שלב חסר באופן idempotent. שחזור ענן מתקין head סמכותי לפי תוצאת השרת; ייבוא מקומי שומר את ה־cloud base/revision ומייצר pending V2. פעולת `replace-state` מלאה מותרת רק ל־boundary ייבוא כזה; היא אינה במסלול העריכות הרגילות.
+שחזור ענן וייבוא מקומי מלא נוגעים בשני journals ולכן משתמשים ב־boundary coordinator. ה־intent נשמר לפני כתיבת אחד הצדדים, וכל צד רושם אותו boundary ID. Restart משלים שלב חסר באופן idempotent. שחזור ענן מתקין head סמכותי לפי תוצאת השרת; ייבוא מקומי שומר את ה־cloud base/revision ומייצר pending V2. פעולת `replace-state` מלאה מותרת רק ל־boundary ייבוא או לנרמול חד־פעמי ומזוהה של נתוני ענן ישנים; היא אינה במסלול העריכות הרגילות.
 
 `storageCutoverVersion=2` הוא סמן עמיד לפי אפליקציה וחשבון ב־IndexedDB, עם cache סינכרוני ב־LocalStorage עבור writers. סמן IDB חסר מול cache קיים חוסם; cache שנמחק ניתן לשחזור רק מסמן IDB תקין. כתיבת הסמן דורשת שני checkpoints בתפקיד Primary, cursors נקיים וללא boundary פתוח. אין כיום orchestration מלא שמפעיל את הסמן במוצר, ולכן עצם קיום ה־API אינו אישור להפוך את ברירת המחדל ל־V2.
 

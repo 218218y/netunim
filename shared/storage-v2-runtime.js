@@ -7,7 +7,7 @@ import {equalSyncJson} from './cloud-sync.js';
 export function storageRecoveryFailure(error){
   if(error?.name==='DataInvariantError'||error instanceof SyntaxError)return 'fatal';
   const message=String(error?.message||'');
-  return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner))$/.test(message)?'fatal':'retryable';
+  return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner))$/.test(message)?'fatal':'retryable';
 }
 
 const LIFECYCLE_BOUNDARIES=new Set(['network-offline-mirror','pagehide-v1-checkpoint','beforeunload-v1-checkpoint','manual-flush']);
@@ -171,9 +171,9 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate}={}){
+  async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate,mutationType='import',surface='backup.local-import'}={}){
     const active=await settledJournal();
-    const result=await active.replaceLocalWithPending(prepareCheckpoint(business(currentState)),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,deleteCollections:STORAGE_SCHEMAS[app].collections.filter(name=>name!=='checks')});
+    const result=await active.replaceLocalWithPending(prepareCheckpoint(business(currentState)),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections.filter(name=>name!=='checks')});
     diagnostics.operations++;operationsSinceCheckpoint++;return result;
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}

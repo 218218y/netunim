@@ -31,7 +31,7 @@ export function validateStoredOperation(operation,{collections=[],fields=[]}={})
   if(operation.version!==2||!identity(operation.owner)||!identity(operation.epoch)||!identity(operation.operationId)||!integer(operation.seq,1)||!integer(operation.generation)||!identity(operation.at)||!Array.isArray(operation.changes)||!operation.changes.length)throw new Error('storage_invalid_operation');
   for(const change of operation.changes){
     if(change.type==='replace-state'){
-      if(operation.changes.length!==1||operation.mutationType!=='import'||!identity(operation.appMetadata?.boundaryId)||!change.state||typeof change.state!=='object'||Array.isArray(change.state))throw new Error('storage_invalid_local_import');
+      if(operation.changes.length!==1||!['import','cloud-normalization'].includes(operation.mutationType)||!identity(operation.appMetadata?.boundaryId)||!change.state||typeof change.state!=='object'||Array.isArray(change.state))throw new Error('storage_invalid_local_import');
       continue;
     }
     if(change.type==='set'){

@@ -10,6 +10,7 @@ export function createStorageV2CloudPorts(browser){
     replaceStorageV2AuthoritativeState:(...args)=>browser.replaceStorageV2AuthoritativeState(...args),
     clearStorageV2CloudControl:(...args)=>browser.clearStorageV2CloudControl(...args),
     replaceStorageV2CurrentState:(...args)=>browser.replaceStorageV2CurrentState(...args),
+    queueStorageV2CloudNormalization:(...args)=>browser.queueStorageV2CloudNormalization(...args),
     adoptStorageV2CloudHead:(...args)=>browser.adoptStorageV2CloudHead(...args),
     resetStorageV2CloudHead:(...args)=>browser.resetStorageV2CloudHead(...args),
     storageV2CommitPromise:()=>browser.storageV2CommitPromise,

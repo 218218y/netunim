@@ -2,8 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageV2Boundary} from '../shared/storage-v2-boundary.js';
 import {createStoragePersistence as createKupaStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const clone=structuredClone;
+
+test('Kupa V2 turns isolated expired-credit cleanup into a typed delete and rejects an unrelated untyped edit',async()=>{
+  const model={state:clone(KUPA_INITIAL_STATE)},normalization=createStateNormalization({model});
+  model.state.creditSync={version:3,profiles:[],cardMappings:{}};
+  model.state=normalization.normalizeState(model.state);
+  const oldCredit={id:'expired',card:'old',account:'עסקי',active:false,firstChargeDate:'2024-01-01',totalAmount:100,installments:1};
+  model.state.credits.push(oldCredit);
+  const recovered=clone(model.state),writes=[],session={connectionMode:'supabase',backendReady:true,dbRevision:3,localGeneration:0,saveQueue:Promise.resolve()};
+  const storage=createKupaStoragePersistence({model,session,files:{},tab:{primaryTab:true},checksSession:{},
+    storageV2Primary:()=>true,storageV2CloudOutboxActive:()=>true,recoverStorageV2State:async()=>({state:clone(recovered)}),
+    normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
+    persistImmediateBrowserSnapshot:(_state,_revision,options)=>{writes.push(clone(options));return true},
+    persistSupabaseState:async()=>true,setSaveStatus:()=>{},lastSavedCloudState:()=>null});
+  assert.equal(await storage.saveState('expired cleanup'),true);
+  assert.equal(writes.length,1);
+  assert.deepEqual(writes[0].operations,[{type:'delete',collection:'credits',id:'expired'}]);
+  assert.equal(!!writes[0].storageBoundary,false);
+  writes.length=0;model.state.notes.push({id:'untyped',content:'not in journal',createdAt:'2026-09-23',updatedAt:'2026-09-23'});
+  const priorError=console.error;console.error=()=>{};
+  try{assert.equal(await storage.saveState('unsafe'),false)}finally{console.error=priorError}
+  assert.equal(writes.length,0,'an unrelated edit cannot be hidden by the normalization delete');
+});
 
 test('Kupa opening a local file preserves both V2 cloud heads as pending import',async()=>{
   const original={notes:[],checks:[]},imported={notes:[{id:'n',content:'file'}],checks:[{id:'c',amount:10}]};

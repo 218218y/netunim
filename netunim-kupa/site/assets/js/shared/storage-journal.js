@@ -1,4 +1,4 @@
-import {createOperationId} from './cloud-sync.js';
+import {createOperationId,equalSyncJson} from './cloud-sync.js';
 import {beginMeasure,recordPerformanceValue} from './runtime-performance.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {sealStorageRecord,readStorageRecord,validateStoredOperation,replayStorageJournal} from './storage-journal-model.js';
@@ -106,12 +106,13 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const committed=enqueue(async()=>{if(!primary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);if(fallbackRecord)cleanEmergency(fallbackRecord);return true}finally{done()}});
     return {seq:operation.seq,operationId:operation.operationId,emergencyDurable,transitionFallbackDurable:fallbackDurable,committed,transitioning:!!activeTransition};
   }
-  async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections=schema.collections,validateBase=validate}={}){
+  async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections=schema.collections,validateBase=validate,mutationType='import',surface='backup.local-import',requireCurrentState=false}={}){
     guard();if(!String(boundaryId||'').trim()||!Number.isSafeInteger(expectedSeq)||!Number.isSafeInteger(expectedBaseRevision))throw new Error('storage_boundary_source_required');
     validate(state);await queue;guard();
     const recovered=await recover(),cloud=cloudSnapshot(recovered.stored,validateBase);
     if(recovered.seq!==seq||recovered.stored.metadata.seq!==seq||seq!==expectedSeq||!cloud.base||cloud.base.revision!==expectedBaseRevision||cloud.base.ackSeq!==seq||cloud.flight||cloud.control)throw new Error('storage_boundary_cloud_changed');
     const target=structuredClone(state),deleteIntents={};
+    if(requireCurrentState&&!equalSyncJson(recovered.state,target))throw new Error('storage_normalization_state_changed');
     for(const collection of deleteCollections){
       if(!schema.collections.includes(collection))throw new Error('storage_boundary_collection_invalid');
       const before=cloud.base.state[collection],after=target[collection];
@@ -120,7 +121,7 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
       const removed=before.map(row=>row.id).filter(id=>!retained.has(id));
       if(removed.length)deleteIntents[collection]=removed;
     }
-    const operation={version:2,owner,epoch,seq:seq+1,generation:1,operationId:operationId(),at:now(),surface:'backup.local-import',mutationType:'import',changes:[{type:'replace-state',state:target}],deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:{boundaryId}};
+    const operation={version:2,owner,epoch,seq:seq+1,generation:1,operationId:operationId(),at:now(),surface,mutationType,changes:[{type:'replace-state',state:target}],deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:{boundaryId}};
     validateStoredOperation(operation,schema);
     await db.appendBoundary(owner,epoch,writer,sealStorageRecord(operation,{kind:'journal'}),{expectedSeq,expectedBaseRevision});
     seq=operation.seq;return {seq,operationId:operation.operationId,deleteIntents:operation.deleteIntents};

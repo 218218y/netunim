@@ -8,8 +8,42 @@ import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pendi
 import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
+import {createUiCloud as createOrdersUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {createUiCloud as createKupaUiCloud} from '../netunim-kupa/site/assets/js/ui/cloud.js';
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
+
+test('V2 owner handoff blocks both first-cloud UI paths before any V1 outbox write',async()=>{
+  const prior=globalThis.localStorage,priorAlert=globalThis.alert;globalThis.localStorage=localStore();globalThis.alert=()=>{};
+  let writes=0;
+  try{
+    const orders=createOrdersUiCloud({tab:{primaryTab:true},session:{},supaConfigured:()=>true,loadSession:()=>({user:{id:'account'}}),
+      setCloud:()=>{},toast:()=>{},getCloudPending:async()=>null,readCloud:async()=>null,refreshStorageV2CloudState:async()=>null,
+      storageV2PrimaryRequested:()=>true,markCloudPending:()=>{writes++},requestCloudSave:async()=>{writes++}});
+    await orders.enableCloud();
+    const kupa=createKupaUiCloud({session:{cloudDocumentName:'main'},tab:{primaryTab:true},supaConfigured:()=>true,
+      restoreSupaSession:async()=>({user:{id:'account'}}),setCloudHeaderStatus:()=>{},getCloudPending:async()=>null,
+      storageV2PrimaryRequested:()=>true,refreshStorageV2CloudState:async()=>null,supaEnsureSession:async()=>{},
+      readSupabaseDocument:async()=>null,persistSupabaseState:async()=>{writes++},friendlySupabaseError:error=>error.message,
+      isSupabaseAuthError:()=>false});
+    await kupa.enableCloudFromCurrentState();
+    assert.equal(writes,0);assert.equal(globalThis.localStorage.length,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorAlert===undefined)delete globalThis.alert;else globalThis.alert=priorAlert}
+});
+
+test('V2 logout does not move visible account data into the local owner',()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage=localStore();
+  try{
+    let ordersSessionWrites=0,kupaSessionWrites=0;
+    const orders=createOrdersUiCloud({storageV2PrimaryRequested:()=>true,saveSession:()=>{ordersSessionWrites++},toast:()=>{}});
+    const kupa=createKupaUiCloud({storageV2PrimaryRequested:()=>true,tab:{primaryTab:true},storeSupaSession:()=>{kupaSessionWrites++},toast:()=>{}});
+    assert.equal(orders.logoutCloud(),false);
+    assert.equal(kupa.logoutSupabase(),false);
+    assert.equal(ordersSessionWrites,0);
+    assert.equal(kupaSessionWrites,0);
+    assert.equal(globalThis.localStorage.length,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
 
 for(const app of ['orders','kupa'])test(`${app}: primary rejects Shared Checks V1 base and outbox writes`,async()=>{
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;

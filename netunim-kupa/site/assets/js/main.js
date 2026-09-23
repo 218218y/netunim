@@ -138,7 +138,7 @@ const storageBrowser=createStorageBrowser({
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
-const storageV2Cloud=createStorageV2CloudPorts(storageBrowser);
+const storageV2Cloud={...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>storageV2Mode('kupa',localStorage,String(cloudAuth.loadSupaSession()?.user?.id||'local'))==='primary'};
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'kupa.restore.group.v1',

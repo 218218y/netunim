@@ -75,6 +75,33 @@ test('local V2 import refuses stale cloud head without changing local state',asy
   assert.deepEqual((await journal.recover()).state.notes,[{id:'A'}]);assert.equal((await journal.cloudState()).pending,false);
 });
 
+test('Kupa cloud normalization is a durable pending V2 boundary across restart',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='kupa:cloud-normalization',validate=value=>{assert.ok(Array.isArray(value.notes));assert.ok(Array.isArray(value.credits))};
+  const normalizationSchema={collections:['notes','credits'],fields:[]};
+  const first=createStorageJournal({owner,schema:normalizationSchema,validate,db,emergency});
+  const normalized={notes:[{id:'N',text:'canonical'}],credits:[]};
+  await first.install(normalized,{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  await first.captureCloudCursor(12);
+  // The cursor reflects the actual server IDs even though the visible
+  // checkpoint has already normalized the expired entry away.
+  await first.setCloudBase(12,{notes:[{id:'N',text:'canonical'}],credits:[{id:'expired',active:false}]},{ackSeq:0});
+  await assert.rejects(first.replaceLocalWithPending({notes:[{id:'N',text:'unrecorded edit'}],credits:[]},{boundaryId:'wrong-state',expectedSeq:0,expectedBaseRevision:12,mutationType:'cloud-normalization',requireCurrentState:true}),/normalization_state_changed/);
+  assert.equal((await first.cloudState()).pending,false);
+  await first.replaceLocalWithPending(normalized,{boundaryId:'kupa-cloud-normalization:12:0',expectedSeq:0,expectedBaseRevision:12,mutationType:'cloud-normalization',surface:'kupa.cloud-normalization',requireCurrentState:true});
+  const restarted=createStorageJournal({owner,schema:normalizationSchema,validate,db,emergency});
+  assert.deepEqual((await restarted.open()).state,normalized);
+  const cloud=await restarted.cloudState();
+  assert.equal(cloud.base.revision,12);assert.equal(cloud.pending,true);
+  assert.deepEqual(cloud.pendingDeleteIntents,{credits:['expired']});
+  const flight=await restarted.materializeFlight({operationId:'normalize-flight',baseRevision:12});
+  assert.deepEqual(flight.snapshot,normalized);assert.equal(flight.mutationType,'cloud-normalization');
+  assert.deepEqual(flight.deleteIntents,{credits:['expired']});
+  await restarted.acknowledge('normalize-flight',13,normalized);
+  const acknowledged=createStorageJournal({owner,schema:normalizationSchema,validate,db,emergency});
+  assert.deepEqual((await acknowledged.open()).state,normalized);
+  assert.equal((await acknowledged.cloudState()).pending,false);
+});
+
 test('Storage V2 cloud cursor preserves later journal across ACK, supports confirmed reject/rebase, and adopts clean heads atomically',async()=>{
   let ids=0;const journal=createStorageJournal({owner:'orders:test',schema,validate:state=>assert.ok(Array.isArray(state.notes)),db:memoryDb(),emergency:emergencyStore(),operationId:()=>`id-${++ids}`,now:()=>`2026-09-22T00:00:0${ids}Z`});
   await journal.install({notes:[{id:'A',text:'base'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});

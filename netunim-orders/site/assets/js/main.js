@@ -118,7 +118,7 @@ const storageBrowser=createStorageBrowser({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });
-const storageV2Cloud=createStorageV2CloudPorts(storageBrowser);
+const storageV2Cloud={...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>storageV2Mode('orders',localStorage,String(cloudAuth.loadSession()?.user?.id||'local'))==='primary'};
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'orders.restore.group.v1',

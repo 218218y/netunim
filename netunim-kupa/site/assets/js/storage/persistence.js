@@ -79,7 +79,7 @@ async function loadState(){
   setConnectedStatus(session.connectionMode==='directory'?'תיקיית קופה מחוברת':'קובץ נתונים מחובר');
   setSaveStatus('נשמר בקובץ','ok');
   // The complete pending import already contains normalization removals.
-  if(removed>0&&!preservedCloudHead)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);
+  if(removed>0&&!preservedCloudHead&&!storageV2Primary())setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);
   return model.state;
 }
 
@@ -112,7 +112,24 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
     });
   }
   const fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),autoCreditDeleteIds=[...(model.lastNormalizeRemovedCreditIds||[])],effectiveDeleteIntents=mergeDeleteIntents(deleteIntents,autoCreditDeleteIds.length?{credits:autoCreditDeleteIds}:{}),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
-  if(Array.isArray(operations)&&autoCreditDeleteIds.length){const described=new Set(operations.filter(operation=>operation.type==='delete'&&operation.collection==='credits').map(operation=>operation.id));operations=[...operations,...autoCreditDeleteIds.filter(id=>!described.has(id)).map(id=>({type:'delete',collection:'credits',id}))]}
+  if(typed&&autoCreditDeleteIds.length){const described=new Set(operations.filter(operation=>operation.type==='delete'&&operation.collection==='credits').map(operation=>operation.id));operations=[...operations,...autoCreditDeleteIds.filter(id=>!described.has(id)).map(id=>({type:'delete',collection:'credits',id}))]}
+  else if(autoCreditDeleteIds.length&&!storageBoundary&&storageV2Primary()){
+    // A caller without a typed mutation may be doing more than normalization.
+    // Read the committed journal and prove that only these credits disappeared
+    // before turning the deletion into typed operations. Never infer a full
+    // snapshot edit from the visible model.
+    const riskToken=`state:${generation}`,visibleBefore=mainBusinessState(model.state),target=mainBusinessState(fullSnapshot);
+    beginLocalRisk(riskToken);localDone();
+    return (async()=>{
+      const recovered=await recoverStorageV2State(),source=mainBusinessState(recovered?.state||{}),removed=new Set(autoCreditDeleteIds);
+      if(!Array.isArray(source.credits)||autoCreditDeleteIds.some(id=>!source.credits.some(row=>row.id===id)))throw new Error('kupa_v2_normalization_source_changed');
+      source.credits=source.credits.filter(row=>!removed.has(row.id));
+      if(generation!==session.localGeneration||!equalSyncJson(visibleBefore,mainBusinessState(model.state))||!equalSyncJson(source,target))throw new Error('kupa_v2_untyped_mutation');
+      const saved=await saveState(msg,{deleteIntents:effectiveDeleteIntents,mutationType,surface,domains,operations:autoCreditDeleteIds.map(id=>({type:'delete',collection:'credits',id}))});
+      if(saved)clearLocalRisk(riskToken);
+      return saved;
+    })().catch(error=>{console.error('Kupa V2 credit normalization',error);setSaveStatus('השינוי לא נשמר — נדרשת בדיקת נתונים','error');return false});
+  }
   else if(autoCreditDeleteIds.length&&!storageBoundary)storageBoundary='normalize-expired-credits';
   const localOk=persistImmediateBrowserSnapshot(fullSnapshot,session.dbRevision,{normalized:true,owned:true,operations,storageBoundary,generation,mutationType,surface,deleteIntents:effectiveDeleteIntents});
   localDone();
@@ -121,9 +138,8 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   if(idbPending)clearLocalRiskAfter(riskToken,storageV2CommitPromise());
   if(!localOk&&!idbPending)setSaveStatus('שגיאת עותק מקומי','error');
   if(idbPending)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
-  // Boundary operations (restore/import/authoritative replacement) intentionally stay on
-  // the legacy compatibility outbox until the replacement-checkpoint migration is fully
-  // drained. A boundary can install a new V2 epoch, so it must never reuse a stale V2 cursor.
+  // Generic boundaries are a pre-cutover compatibility path. V2-only rejects
+  // them; restore/import and cloud normalization have explicit durable APIs.
   const continueSave=()=>{
     const v2Cloud=storageV2CloudOutboxActive()&&!storageBoundary&&(localOk||idbPending);
     if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)try{stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});clearLocalRiskAfter(riskToken,session.cloudOutboxCommitPromise)}catch(error){console.error('cloud outbox staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');return false}
