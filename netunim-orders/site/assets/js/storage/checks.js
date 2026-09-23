@@ -8,17 +8,19 @@ function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?valu
 function migrateChecksOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIds=normalizeDeleteIds(value?.deleteIds);return record}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageChecks({checksSession,model,idbPut,idbGet,idbDelete}){
+export function createStorageChecks({checksSession,model,idbPut,idbGet,idbDelete,legacyWriteAllowed=()=>true}){
+const assertLegacyWriter=()=>{if(!legacyWriteAllowed())throw new Error('legacy_shared_checks_write_forbidden')};
 function loadChecksBase(){try{const raw=localStorage.getItem(CHECKS_BASE_KEY)||localStorage.getItem(LEGACY_CHECKS_BASE_KEY),x=JSON.parse(raw||'null');return Array.isArray(x)?normalizeSharedChecks(x):null}catch(e){console.error('checks base load',e);return null}}
 
 function loadChecksBankEvents(){try{return normalizeSharedBankEvents(JSON.parse(localStorage.getItem(CHECKS_EVENTS_KEY)||'[]'))}catch(e){console.error('checks events load',e);return[]}}
 
-function persistChecksBase(checks,events=checksSession.checksBankEvents){try{localStorage.setItem(CHECKS_BASE_KEY,JSON.stringify(normalizeSharedChecks(checks)));localStorage.setItem(CHECKS_EVENTS_KEY,JSON.stringify(normalizeSharedBankEvents(events)));localStorage.removeItem(LEGACY_CHECKS_BASE_KEY);return true}catch(e){console.error('checks base save',e);return false}}
+function persistChecksBase(checks,events=checksSession.checksBankEvents){assertLegacyWriter();try{localStorage.setItem(CHECKS_BASE_KEY,JSON.stringify(normalizeSharedChecks(checks)));localStorage.setItem(CHECKS_EVENTS_KEY,JSON.stringify(normalizeSharedBankEvents(events)));localStorage.removeItem(LEGACY_CHECKS_BASE_KEY);return true}catch(e){console.error('checks base save',e);return false}}
 
 function readPendingCache(){try{const raw=localStorage.getItem(CHECKS_PENDING_KEY)||localStorage.getItem(LEGACY_CHECKS_PENDING_KEY);return JSON.parse(raw||'null')}catch(e){console.error('checks pending cache load',e);return null}}
-function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(CHECKS_PENDING_KEY,text);if(localStorage.getItem(CHECKS_PENDING_KEY)!==text)throw new Error('checks pending verification failed');return true}catch(e){console.error('checks pending cache',e);return false}}
+function writePendingCache(record){assertLegacyWriter();try{const text=JSON.stringify(record);localStorage.setItem(CHECKS_PENDING_KEY,text);if(localStorage.getItem(CHECKS_PENDING_KEY)!==text)throw new Error('checks pending verification failed');return true}catch(e){console.error('checks pending cache',e);return false}}
 
 function markChecksPending(snapshot=model.state.checks,message='',conflict=undefined,progress=null){
+  assertLegacyWriter();
   const diskCache=readPendingCache(),cached=compareOutboxFreshness(checksSession.checksOutboxCached,diskCache)>0?checksSession.checksOutboxCached:diskCache,canonical=normalizeSharedChecks(snapshot),generation=Math.max(Number(checksSession.checksGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,base=normalizeSharedChecks(progress?.baseState||cached?.baseState||checksSession.checksCloudBase||canonical),record=createOutboxRecord({
     domain:'shared-checks',documentName:SHARED_CHECKS_DOC,operationId:sameGeneration?(cached.operationId||cached.id):undefined,
     generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),
@@ -45,15 +47,22 @@ async function getChecksPending(){
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);
   if(!chosen){checksSession.checksOutboxCached=null;return null}
   chosen.baseState=normalizeSharedChecks(chosen.baseState);chosen.snapshot=normalizeSharedChecks(chosen.snapshot);
-  checksSession.checksOutboxCached=chosen;checksSession.checksGeneration=Math.max(Number(checksSession.checksGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
-  try{await idbPut(CHECKS_OUTBOX_KEY,chosen);checksSession.checksDurabilityDegraded=false}catch(e){checksSession.checksDurabilityDegraded=true;console.error('checks outbox repair',e)}
+  checksSession.checksOutboxCached=chosen;checksSession.checksGeneration=Math.max(Number(checksSession.checksGeneration||0),Number(chosen.generation||0));if(legacyWriteAllowed())writePendingCache(chosen);
+  if(legacyWriteAllowed())try{await idbPut(CHECKS_OUTBOX_KEY,chosen);checksSession.checksDurabilityDegraded=false}catch(e){checksSession.checksDurabilityDegraded=true;console.error('checks outbox repair',e)}
   if(checksSession.checksOutboxCommitPromise!==observedCommit)return getChecksPending();
   return chosen;
 }
 
 function checksPendingExists(){return !!(checksSession.checksOutboxCached||localStorage.getItem(CHECKS_PENDING_KEY)||localStorage.getItem(LEGACY_CHECKS_PENDING_KEY))}
 
+async function verifyLegacyChecksClean(){
+  const commit=checksSession.checksOutboxCommitPromise;await commit;
+  const durable=await idbGet(CHECKS_OUTBOX_KEY);
+  return checksSession.checksOutboxCommitPromise===commit&&durable==null&&!checksPendingExists();
+}
+
 async function clearChecksPending(acknowledgedGeneration){
+  assertLegacyWriter();
   const current=await getChecksPending();if(!current)return true;
   if(!acknowledgedGenerationMatches(current,acknowledgedGeneration)||Number(checksSession.checksOutboxCached?.generation||0)>Number(current.generation)||Number(checksSession.checksOutboxCached?.mutationSeq||0)>Number(current.mutationSeq||0))return false;
   const clearing=(checksSession.checksOutboxCommitPromise||Promise.resolve()).then(async()=>{
@@ -65,5 +74,5 @@ async function clearChecksPending(acknowledgedGeneration){
   checksSession.checksOutboxCached=null;checksSession.checksDurabilityDegraded=false;return true;
 }
 
-return { loadChecksBase, loadChecksBankEvents, persistChecksBase, markChecksPending, getChecksPending, checksPendingExists, clearChecksPending };
+return { loadChecksBase, loadChecksBankEvents, persistChecksBase, markChecksPending, getChecksPending, checksPendingExists, clearChecksPending, verifyLegacyChecksClean };
 }

@@ -1,6 +1,7 @@
 import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
-import {assertKupaEntityInvariants} from './state/validation.js';
+import {createSharedChecksV2Composition} from './shared/shared-checks-v2-composition.js';
+import {assertKupaEntityInvariants,assertValidCloudState} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
@@ -115,6 +116,7 @@ const storageIndexedDb=createStorageIndexedDb({
 
 const storagePending=createStoragePending({
   externalWorkbooks:true,captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  legacyWriteAllowed:()=>!storageShadow.cutoverActive,
   session,
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
@@ -145,6 +147,7 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const syncChecksState=createSyncChecksState({
+  legacyWriteAllowed:()=>localStorage.getItem('netunim-storage-cutover-version:kupa:'+String(cloudAuth.loadSupaSession()?.user?.id||'local'))!=='2',
   session,
   checksSession,
   model,
@@ -158,8 +161,22 @@ const syncChecksState=createSyncChecksState({
 const sharedChecksV2Shadow=createSharedChecksObserver({
   readState:()=>({checks:model.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}),
   owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  enabled:()=>{if(storageV2Mode('kupa')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
+  enabled:()=>{if(storageShadow.cutoverActive)return false;if(storageV2Mode('kupa')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
 });
+
+
+const sharedChecksV2Composition=createSharedChecksV2Composition({
+  site:'kupa',owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
+  model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main:storageShadow,
+  merge:(...args)=>syncChecks.mergeSharedChecks(...args),
+  readRemote:(...args)=>cloudTransport.readSharedChecksDocument(...args),
+  rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
+  verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
+  validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),
+});
+const sharedChecksV2=sharedChecksV2Composition.runtime;
+const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
+const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const storageTabLock=createStorageTabLock({
   tab,
@@ -203,6 +220,7 @@ const storageBackup=createStorageBackup({
 });
 
 const storagePersistence=createStoragePersistence({
+  sharedChecksV2,
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   storageV2Primary:()=>storageShadow.primaryReady,
   storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
@@ -284,6 +302,7 @@ const domainsDashboardController=createDomainsDashboardController({
 });
 
 const syncChecks=createSyncChecks({
+  sharedChecksV2,
   checksSession,
   model,
   session,
@@ -730,6 +749,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 const uiBackup=createUiBackup({
   observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   ...storageV2Cloud,
+  storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
   model,
   session,
   ui,
@@ -766,6 +786,9 @@ const uiBackup=createUiBackup({
 });
 
 const lifecycle=createLifecycle({
+  verifyStorageCutover,
+  model,
+  recoverSharedChecksV2Primary,
   openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
@@ -966,15 +989,15 @@ window.addEventListener('pagehide',()=>{
     const current=stateNormalization.prepareKupaCloudState(model.state);
     if(!jsonEq(current,syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(current,'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);
   }
-  if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending();
+  if(!sharedChecksV2.primaryReady&&session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending();
 });
 
 window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab)return;
-  if(storageShadow.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
+  if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
   const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
   const unsavedKupa=!v2Cloud&&session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState());
-  const unsavedChecks=session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();
+  const unsavedChecks=!sharedChecksV2.primaryReady&&session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();
   const v2Pending=v2Cloud&&!!session.storageV2CloudPending;
   if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync()&&!v2Pending)return;
   if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});

@@ -62,6 +62,16 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     await journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:'shared-checks-primary',migrationIntent:'verified-shadow-promotion',sourceOwner:identity}});
     trusted=true;return journal.recover();
   }
+  async function initializeCloudHead(revision,state,{intent,sourceOwner,legacyPendingClean=false}={}){
+    assertOwner();if(role!=='primary'||!legacyPendingClean)throw new Error('shared_checks_initialization_not_verified');
+    const source=String(sourceOwner||'').trim(),canonical=canonicalState(state);
+    if(!['cloud-authoritative','legacy-upgrade','upload-local'].includes(intent)||(intent==='upload-local'?source!=='local':source!==identity))throw new Error('shared_checks_owner_transfer_intent_required');
+    if(intent==='upload-local'&&(revision!==0||canonical.bankEvents.length))throw new Error('shared_checks_bootstrap_invalid');
+    const bootstrap=intent==='upload-local',initial=bootstrap?{checks:[],bankEvents:[]}:canonical;
+    const changes=bootstrap?[{type:'set',field:'bankEvents',value:[]},...canonical.checks.map((record,index)=>({type:'put',collection:'checks',id:record.id,mode:'insert',index,record}))]:null;
+    const recovered=await journal.initializeCloudHead(revision,initial,{changes,appMetadata:{storageRole:'shared-checks-primary',migrationIntent:intent,sourceOwner:source}});
+    assertOwner();trusted=true;return recovered;
+  }
   function append(operations,currentState,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[]}={}){
     assertTrusted();validate(currentState);
     if(!Array.isArray(operations)||!operations.length)throw new Error('shared_checks_operations_required');
@@ -91,12 +101,12 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     return journal.captureCloudCursor(revision);
   }
   async function cloudState(){assertTrusted();return journal.cloudState()}
-  async function materializeFlight({operationId:flightId,throughSeq,snapshot}={}){
+  async function materializeFlight({operationId:flightId,throughSeq,snapshot,prepareAudit}={}){
     assertCloudWriter();const state=await journal.cloudState();
     if(state.control?.conflict)throw new Error('shared_checks_conflict_blocked');
     if(state.flight)return state.flight;
     if(!state.base)throw new Error('shared_checks_cursor_missing');
-    return journal.materializeFlight({operationId:flightId,baseRevision:state.base.revision,throughSeq,snapshot:snapshot===undefined?undefined:canonicalState(snapshot)});
+    return journal.materializeFlight({operationId:flightId,baseRevision:state.base.revision,throughSeq,prepareAudit,snapshot:snapshot===undefined?undefined:canonicalState(snapshot)});
   }
   async function acknowledge(flightId,revision,authoritativeState,{currentState,expectedSeq,control=null}={}){
     assertCloudWriter();const authoritative=canonicalState(authoritativeState),current=canonicalState(currentState);validate(authoritative);validate(current);
@@ -117,8 +127,9 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     if(!state.base||state.flight||state.pending||state.control?.conflict)throw new Error('shared_checks_cloud_pending');
     return journal.adoptCloudHead(revision,authoritative,authoritative);
   }
-  async function replaceAuthoritativeState(state){assertTrusted();const canonical=canonicalState(state);validate(canonical);return journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:`shared-checks-${role}`}})}
-  return {open,promoteVerifiedShadow,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
-    replaceAuthoritativeState,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
+  async function replaceAuthoritativeState(state,{boundaryId=null}={}){assertTrusted();const canonical=canonicalState(state);validate(canonical);return journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:`shared-checks-${role}`,...boundaryId?{boundaryId}:{}}})}
+  async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
+  return {open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
+    replaceAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
 }

@@ -1,6 +1,7 @@
 import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
-import {assertOrderEntityInvariants} from './state/validation.js';
+import {createSharedChecksV2Composition} from './shared/shared-checks-v2-composition.js';
+import {assertOrderEntityInvariants,assertValidOrderCloudState} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
@@ -29,7 +30,7 @@ import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
 import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
-import {createSyncChecksPersistence} from './sync/checks-persistence.js';
+import {composeChecksPersistence} from './composition/checks-persistence.js';
 import {createDomainsDashboardView} from './domains/dashboard/view.js';
 import {createDomainsSuppliersOrder} from './domains/suppliers/order.js';
 import {createDomainsSuppliersBulk} from './domains/suppliers/bulk.js';
@@ -49,7 +50,7 @@ import {createDomainsWarehouseView} from './domains/warehouse/view.js';
 import {createDomainsInventoryEditor} from './domains/inventory/editor.js';
 import {createDomainsWarehouseEditor} from './domains/warehouse/editor.js';
 import {createWarehouseActionPorts} from './domains/warehouse/action-ports.js';
-import {createUiBackup} from './ui/backup.js';
+import {composeBackup} from './composition/backup.js';
 import {createStateSelectors} from './state/selectors.js';
 import {createStorageFiles} from './storage/files.js';
 import {createStorageBackup} from './storage/backup.js';
@@ -127,6 +128,7 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const storageChecks=createStorageChecks({
+  legacyWriteAllowed:()=>localStorage.getItem('netunim-storage-cutover-version:orders:'+String(cloudAuth.loadSession()?.user?.id||'local'))!=='2',
   checksSession,
   model,
   idbPut:(...args)=>storageBrowser.idbSyncPut(...args),
@@ -136,8 +138,22 @@ const storageChecks=createStorageChecks({
 const sharedChecksV2Shadow=createSharedChecksObserver({
   readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||[]}),
   owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  enabled:()=>{if(storageV2Mode('orders')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
+  enabled:()=>{if(storageShadow.cutoverActive)return false;if(storageV2Mode('orders')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
 });
+
+
+const sharedChecksV2Composition=createSharedChecksV2Composition({
+  site:'orders',owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
+  model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main:storageShadow,
+  merge:(...args)=>syncChecks.mergeSharedChecks(...args),
+  readRemote:(...args)=>cloudTransport.readSharedChecksCloud(...args),
+  rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
+  verifyLegacyClean:(...args)=>storageChecks.verifyLegacyChecksClean(...args),
+  validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),
+});
+const sharedChecksV2=sharedChecksV2Composition.runtime;
+const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
+const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({
   session,
@@ -310,26 +326,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const syncChecksPersistence=createSyncChecksPersistence({
-  model,
-  session,
-  checksSession,
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
-  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  setSave:(...args)=>uiStatus.setSave(...args),
-  syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
-  folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
-  folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
-  rejectSecondaryMutation:(...args)=>storagePersistence.rejectSecondaryMutation(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  loadSession:(...args)=>cloudAuth.loadSession(...args),
-  saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
-  touchChecksRevision:()=>domainRevisions.touch('checks'),
-  observeSharedChecks:sharedChecksV2Shadow.mutation,
-});
+const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2Shadow,sharedChecksV2});
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
@@ -537,51 +534,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=createUiBackup({
-  ...storageV2Cloud,
-  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
-  validateRestoreJson:(...args)=>stateNormalization.validateRestoreJson(...args),
-  tab,
-  ui,
-  model,
-  session,
-  checksSession,
-  prepareState:(...args)=>stateSelectors.prepareState(...args),
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
-  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
-  persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
-  markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
-  setSave:(...args)=>uiStatus.setSave(...args),
-  folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
-  folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
-  prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  writeStateSnapshotToFolder:(...args)=>storageFiles.writeStateSnapshotToFolder(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  loadSession:(...args)=>cloudAuth.loadSession(...args),
-  readCloud:(...args)=>cloudTransport.readCloud(...args),
-  cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  readSharedChecksCloud:(...args)=>cloudTransport.readSharedChecksCloud(...args),
-  restoreGroupStore,
-  stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
-  applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
-  listIncompleteRestoreGroups:(...args)=>cloudTransport.listIncompleteRestoreGroups(...args),
-  listOrdersCloudBackups:(...args)=>cloudTransport.listOrdersCloudBackups(...args),
-  readOrdersCloudBackupPoint:(...args)=>cloudTransport.readOrdersCloudBackupPoint(...args),
-  balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
-  supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-  boolText:(...args)=>domainsSuppliersView.boolText(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  invalidateAllViewDomains:()=>domainRevisions.touchAll(),
-});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,
@@ -630,7 +583,7 @@ const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
-const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow});
+const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow,sharedChecksV2});
 
 const domainsFinanceController=createDomainsFinanceController({
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
@@ -802,6 +755,8 @@ const uiSettings=createUiSettings({
 });
 
 const lifecycle=createLifecycle({
+  verifyStorageCutover,
+  recoverSharedChecksV2Primary,
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   model,
   files,
@@ -1060,7 +1015,7 @@ model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClon
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

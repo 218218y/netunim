@@ -5,7 +5,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({verifyStorageCutover=async()=>false,recoverSharedChecksV2Primary=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState(){
   try{session.lastCloudState=JSON.parse(localStorage.getItem(CLOUD_BASE_KEY)||'null')}catch(e){console.error('orders cloud base load',e)}
   const durablePending=await getCloudPending(),pending=durablePending?.snapshot||loadCloudPendingState();
@@ -81,7 +81,9 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
 async function boot(){
   startupMark('boot-start');
   await acquirePrimaryTabLock();startupMark('primary-tab-ready');
-  try{await restoreBrowserStateFallback()}catch(e){console.error('browser state recovery',e)}
+  loadSession();
+  const cutoverActive=await verifyStorageCutover();
+  try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive)throw e;console.error('browser state recovery',e)}
 
   if(!tab.primaryTab){
     setCloud('ענן: לשונית משנית','offline');render({supplierScrollMode:'end'});startupMark('first-render');showSecondaryTabGuard();syncFolderAccessButton();setSave('מקומי: קריאה בלבד','',folderSaveTitle());
@@ -89,9 +91,11 @@ async function boot(){
     return;
   }
 
+  const sharedPrimary=await recoverSharedChecksV2Primary();
+
   if(navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
 
-  if(session.syncCapabilitiesError){await recoverOrdersLocalState();await recoverChecksLocalState();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
+  if(session.syncCapabilitiesError){await recoverOrdersLocalState();if(!sharedPrimary)await recoverChecksLocalState();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 
@@ -104,7 +108,7 @@ async function boot(){
   setSave(session.cloudDurabilityDegraded?'מקומי: מצב התאוששות':'מקומי: שמור',session.cloudDurabilityDegraded?'error':'',folderSaveTitle());
 
   const localServicesPromise=initializeLocalServices();
-  const checksRecoveryPromise=recoverChecksLocalState();
+  const checksRecoveryPromise=sharedPrimary?Promise.resolve(true):recoverChecksLocalState();
   await nextTurn();
 
   if(cloudEnabled()&&!online)setCloud('ענן: אופליין','offline');

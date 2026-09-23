@@ -148,6 +148,66 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
     (directory/'latest.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print('PASS real IndexedDB crash/restart matrix and constant emergency bytes: '+json.dumps(result))
 
+with BrowserSession(ROOT/'netunim-kupa/site','shared-checks-v2-primary-crash-matrix') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const db=createStorageJournalDb({name:'shared-checks-v2-primary-crash-matrix'}),owner=()=> 'browser-primary-account';
+      const make=()=>createSharedChecksStorageV2({owner,primary:()=>true,db});
+      const initial={checks:[{id:'C',amount:100}],bankEvents:[]};
+      const put=IDBObjectStore.prototype.put,checks=[];
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='bases'){this.transaction.abort();throw Error('injected initialization abort')}return result};
+      let rejected=false;
+      try{await make().initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local',legacyPendingClean:true})}catch{rejected=true}
+      IDBObjectStore.prototype.put=put;
+      if(!rejected)throw Error('bootstrap transaction did not abort');
+      const absent=await db.load('browser-primary-account:shared-checks');
+      if(absent.checkpoints||absent.bases||absent.metadata||absent.journal.length)throw Error('bootstrap left a partial namespace');
+      let store=make();await store.initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local',legacyPendingClean:true});
+      store=make();await store.open();
+      if((await store.recover()).state.checks[0].id!=='C'||!(await store.cloudState()).pending)throw Error('first upload not recovered');
+      const flight=await store.materializeFlight({operationId:'first-upload'});
+      if(flight.snapshot.checks[0].id!=='C'||flight.baseRevision!==0)throw Error('first upload flight changed');
+      store=make();await store.open();const again=await store.materializeFlight({operationId:'must-reuse'});
+      if(again.operationId!==flight.operationId||JSON.stringify(again.snapshot)!==JSON.stringify(flight.snapshot))throw Error('lost ACK changed flight');
+      const remote={checks:[{id:'C',amount:100},{id:'D',amount:200}],bankEvents:[{seq:5,checkId:'D',delta:200}]};
+      const merged={checks:remote.checks,bankEvents:remote.bankEvents};
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='bases'){this.transaction.abort();throw Error('injected rebase abort')}return result};
+      rejected=false;try{await store.rejectAndRebase(flight.operationId,1,remote,{currentState:merged,expectedSeq:1})}catch{rejected=true}
+      IDBObjectStore.prototype.put=put;
+      if(!rejected||(await store.cloudState()).flight.operationId!==flight.operationId)throw Error('aborted rebase lost immutable flight');
+      await store.rejectAndRebase(flight.operationId,1,remote,{currentState:merged,expectedSeq:1});
+      store=make();await store.open();
+      if((await store.recover()).state.bankEvents[0].seq!==5||(await store.cloudState()).base.revision!==1)throw Error('rebase restart lost bank event');
+      checks.push('atomic first document','immutable lost ACK','aborted rebase','bank event after restart');
+      return checks;
+    })()""",timeout=60)
+    assert not browser.drain_serious_errors()
+    print('PASS Shared Checks V2 real IDB crash matrix: '+json.dumps(result))
+
+with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-boundary-crash-matrix') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const name='storage-v2-boundary-crash-matrix';
+      await new Promise((resolve,reject)=>{const request=indexedDB.open(name,2);request.onupgradeneeded=()=>{for(const store of ['checkpoints','journal','metadata','bases','flights','controls'])if(!request.result.objectStoreNames.contains(store))request.result.createObjectStore(store)};request.onsuccess=()=>{request.result.close();resolve()};request.onerror=()=>reject(request.error)});
+      const db=createStorageJournalDb({name}),record={version:2,owner:'A',id:'restore-1',kind:'restore',phase:'prepared',main:{kind:'replace-authoritative',state:{notes:[]}},shared:{kind:'replace-authoritative',state:{checks:[],bankEvents:[]}}};
+      await db.beginBoundary('A',record);
+      if((await db.readBoundary('A')).phase!=='prepared'||await db.readBoundary('B'))throw Error('v2 to v3 boundary upgrade failed');
+      const put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='boundaries'){this.transaction.abort();throw Error('injected boundary phase abort')}return result};
+      let aborted=false;try{await db.advanceBoundary('A','restore-1','prepared','shared-applied')}catch{aborted=true}
+      IDBObjectStore.prototype.put=put;
+      if(!aborted||(await db.readBoundary('A')).phase!=='prepared')throw Error('aborted boundary stage changed durable intent');
+      await db.advanceBoundary('A','restore-1','prepared','shared-applied');
+      await db.advanceBoundary('A','restore-1','shared-applied','main-applied');await db.completeBoundary('A','restore-1');
+      if((await db.readBoundary('A')).phase!=='complete')throw Error('completion marker missing');
+      const duplicate=await db.beginBoundary('A',record);
+      if(duplicate.phase!=='complete')throw Error('restore operation ID not idempotent');
+      return ['v2 schema upgrade','account isolation','aborted phase remains prepared','complete operation ID is idempotent'];
+    })()""",timeout=60)
+    assert not browser.drain_serious_errors()
+    print('PASS V2 boundary real IDB crash matrix: '+json.dumps(result))
+
 with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') as browser:
     assert browser.evaluate("""(async()=>{
       const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');

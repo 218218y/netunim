@@ -10,7 +10,7 @@ const TRANSIENT_CHECK_READ_KINDS=new Set(['network','timeout','service_unavailab
 function recordSharedChecksReadError(state,key,error){const normalized=normalizeCloudError(error);if(!TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))state[key]=error?.message||String(error);return normalized}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecks({model, files, checksSession={}, tab, localSnapshot, refreshStorageV2CloudState=async()=>null, replaceStorageV2CurrentState=async()=>false, observeSharedChecksBoundary=()=>false, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
+export function createSyncChecks({sharedChecksV2=null,model, files, checksSession={}, tab, localSnapshot, refreshStorageV2CloudState=async()=>null, replaceStorageV2CurrentState=async()=>false, observeSharedChecksBoundary=()=>false, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 const flight=createSharedChecksFlight({state:checksSession,pullKey:'checksPullPromise',saveKey:'checksSavePromise',busyKey:'checksCloudBusy'});
 function sharedChecksSyncStatus(){return flight.status({online:!!(loadSession()&&navigator.onLine),pending:checksSession.checksOutboxCached,localWork:!!checksSession.checksSaveRequested})}
@@ -32,8 +32,22 @@ async function mirrorChecksLocally(){
   try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}
 }
 
+async function syncChecksV2({required=false,quiet=false}={}){
+  if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
+  try{
+    const ok=await sharedChecksV2.sync(),cloud=await sharedChecksV2.cloudState();
+    if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
+    checksSession.checksCloudBase=clone(cloud.base.state.checks);checksSession.checksCloudRevision=cloud.base.revision;
+    checksSession.checksBankEvents=clone(cloud.base.state.bankEvents);checksSession.checksSaveRequested=!!cloud.pending&&!cloud.control?.conflict;
+    checksSession.checksCloudLastError=cloud.control?.conflict?'אותו צ׳ק שונה במקביל — נדרשת הכרעה':'';
+    recomputeKupaNetFromCache();refreshCloudTimestamp();
+    if(files.dirHandle)await writeStateToFolder();if(!quiet)renderKupaDependentView();return ok;
+  }catch(error){checksSession.checksCloudLastError=error.message;if(required)throw error;if(!quiet)toast(error.message);return false}
+}
+
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
   return flight.pull(async()=>{
+    if(sharedChecksV2?.requested)return syncChecksV2({quiet,required});
     if(!(loadSession()&&navigator.onLine))return false;
     const deferred=await getChecksPending();if(deferred?.conflict){checksSession.checksSaveRequested=false;return false}if(deferred&&outboxRetryScheduler.schedule(deferred,()=>saveSharedChecksToCloud(checksSession.checksSaveMessage||checksSession.sharedChecksSaveMessage))>0){checksSession.checksSaveRequested=false;checksSession.checksCloudLastError='הצקים ממתינים למועד הסנכרון שהשרת קבע';if(!quiet)renderKupaDependentView();return false}
     try{
@@ -55,6 +69,7 @@ async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
 async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
   if(!tab.primaryTab)return false;checksSession.checksSaveRequested=true;checksSession.checksSaveMessage=message||checksSession.checksSaveMessage;
   return flight.save(async()=>{
+  if(sharedChecksV2?.requested)return syncChecksV2();
   if(!loadSession()||!navigator.onLine){markChecksPending(model.state.checks,message);try{await checksSession.checksOutboxCommitPromise}catch(error){console.error('checks outbox offline commit',error)}if(checksSession.checksDurabilityDegraded)checksSession.checksCloudLastError='IndexedDB אינו זמין; הצקים נשמרו במצב תאימות מקומי';return false}
     if(!tab.primaryTab||!(loadSession()&&navigator.onLine))return false;
     checksSession.checksSaveRequested=true;
@@ -104,6 +119,7 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו'){
 
 async function pollSharedChecks(){
   if(!tab.primaryTab||!loadSession()||!navigator.onLine||checksSession.checksSavePromise||checksSession.checksPullPromise)return;
+  if(sharedChecksV2?.requested){await syncSharedChecksFromCloud({quiet:true});return}
   if(checksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצ\'קים סונכרנו');return}
   try{const meta=await readSharedChecksCloudMeta();if(!meta||Number(meta.revision||0)<=checksSession.checksCloudRevision)return;const before=checksSession.checksCloudRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.checksCloudRevision>before)renderKupaDependentView()}
   catch(error){const normalized=recordSharedChecksReadError(checksSession,'checksCloudLastError',error);if(TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))console.warn('shared checks poll deferred',error?.message||error);else console.error('shared checks poll',error)}

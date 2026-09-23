@@ -1,5 +1,7 @@
 # Shared Checks Storage V2
 
+מצב החיבור החדש ל־Primary והחסמים להפעלת V2-only מפורטים ב־[STORAGE_V2_CUTOVER_STATUS.md](STORAGE_V2_CUTOVER_STATUS.md).
+
 עודכן ב־23 בספטמבר 2026. המימוש הנוכחי הוא **תשתית ו־shadow בלבד**. מנגנון
 Shared Checks הישן עדיין אחראי לשמירה ולסנכרון בפועל; אין להפעיל cutover רק משום
 שבדיקות היחידה של המנוע החדש עוברות.

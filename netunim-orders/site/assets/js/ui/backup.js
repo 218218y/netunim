@@ -5,6 +5,7 @@ import {normalizeSharedBankEvents,normalizeSharedChecks} from '../domains/checks
 import {CLOUD_BASE_KEY,$} from '../state/constants.js';
 import {buildBackupCatalog,backupPointKey,backupSourceLabel,summarizeBackupDiff} from '../shared/cloud-backups.js';
 import {createRestoreGroup,executeRestoreGroup,resumeRestoreGroup} from '../shared/restore-groups.js';
+import {applyStorageV2RestoreGroup,captureStorageV2RestoreSource} from '../shared/storage-v2-restore.js';
 
 const ORDERS_BACKUP_COLLECTIONS=[
   {path:'suppliers',label:'ספקים'},
@@ -45,7 +46,7 @@ function diffRowMarkup(row,entry){const parts=[];if(row.removed)parts.push(`יו
 function settingsDiffMarkup(setting){return `<div class="cloud-backup-field-change"><b>${esc(setting.label)}</b><span class="cloud-backup-now">עכשיו: ${esc(compactBackupValue(setting.current))}</span><span class="cloud-backup-target">אחרי שחזור: ${esc(compactBackupValue(setting.target))}</span></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
+export function createUiBackup({tab,ui,model,session,checksSession,prepareState,normalizeState,validateRestoreJson,toast,showSecondaryTabGuard,modal,localSnapshot,getCloudPending,getChecksPending,persistChecksBase,setSave,folderBackupAvailable,folderSaveTitle,prepareCloudState,render,renderSettings,closeModal,writeStateSnapshotToFolder,writeStateToFolder,loadSession,readCloud,cloudEnabled,readSharedChecksCloud,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listOrdersCloudBackups,readOrdersCloudBackupPoint,balanceRows,supplierYearContext,boolText,confirmDialog,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
   function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)}
 
   function exportJson(){const payload=prepareState();downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`orders-backup_${stamp()}.json`)}
@@ -66,6 +67,14 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
   }
 
   async function applyCompletedGroupLocally(group,result={}){
+    if(sharedChecksV2?.primaryReady){
+      const target=normalizeState(clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]}));
+      const sharedState={checks:clone(target.checks||[]),bankEvents:clone(group.checks?.state?.bankEvents||checksSession.checksBankEvents||[])};
+      const applied=await applyStorageV2RestoreGroup({boundary:storageV2Boundary,group,result,target,sharedState});
+      model.state=target;session.localGeneration++;session.cloudRevision=applied.mainRevision;session.cloudUpdatedAt=new Date().toISOString();session.lastCloudState=clone(group.main.state);
+      if(group.checks){checksSession.checksCloudBase=clone(sharedState.checks);checksSession.checksBankEvents=clone(sharedState.bankEvents);checksSession.checksCloudRevision=applied.sharedRevision}
+      await refreshStorageV2CloudState();invalidateAllViewDomains();render();return true;
+    }
     const v2Before=await refreshStorageV2CloudState();if(v2Before&&(v2Before.pending||v2Before.flight||v2Before.control))throw new Error('נוצר שינוי מקומי בזמן השחזור; השחזור בענן הושלם אך היישום המקומי נעצר כדי לא למחוק את השינוי. יש לפתור את השינוי המקומי ואז לחדש את השחזור');
     const previous=clone(model.state),previousCloudRevision=session.cloudRevision,previousCloudUpdatedAt=session.cloudUpdatedAt,previousLastCloudState=clone(session.lastCloudState),target=normalizeState(clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]})),nextRevision=Number(result.main_revision||session.cloudRevision||group.main.baseRevision);
     model.state=target;session.localGeneration++;session.cloudRevision=nextRevision;session.cloudUpdatedAt=new Date().toISOString();session.lastCloudState=clone(group.main.state);
@@ -92,6 +101,8 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
       if(folderBackupAvailable())await writeStateSnapshotToFolder(current,true);
       const cloudActive=cloudEnabled();if(!restoreChecks)imported.checks=currentChecks;
       const v2Pending=await refreshStorageV2CloudState();if(await getCloudPending()||(v2Pending&&(v2Pending.pending||v2Pending.flight||v2Pending.control))||(restoreChecks&&await getChecksPending()))throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
+      const v2Source=sharedChecksV2?.primaryReady?captureStorageV2RestoreSource(v2Pending,await sharedChecksV2.cloudState()):null;
+      if(v2Source&&!cloudActive)throw new Error('שחזור מקומי ב־Storage V2 דורש גבול ענן מתואם');
       const mainState=prepareCloudState(imported);let remoteRow=null,checksRow=null;
       if(cloudActive){
         if(!navigator.onLine||!loadSession())throw new Error('שחזור ענן דורש חיבור פעיל כדי לקבע את כל היעדים לפני הכתיבה');
@@ -108,6 +119,7 @@ export function createUiBackup({tab,ui,model,session,checksSession,prepareState,
         beforeState:{local:current,main:clone(remoteRow?.state||current),checks:clone(checksRow?.state||{checks:currentChecks,bankEvents:checksSession.checksBankEvents||[]})},
         localTargetState:imported,
       });
+      if(v2Source)group.v2Source=v2Source;
       const applyLocal=cloudActive?applyCompletedGroupLocally:async()=>{const previous=clone(model.state);model.state=normalizeState(clone(imported));session.localGeneration++;try{const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.cloudRevision);if(!v2Applied&&!localSnapshot(undefined,{storageBoundary:'import-checkpoint'}))throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}catch(error){model.state=normalizeState(previous);invalidateAllViewDomains();throw error}observeSharedChecksBoundary();invalidateAllViewDomains();render()};
       if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});
       else{const staged=await restoreGroupStore.stage(group);await applyLocal(staged,{});await restoreGroupStore.complete(staged)}

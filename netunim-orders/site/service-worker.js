@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-b6a70d8c5fe5';
+const CACHE='orders-app-shell-esm-8fdea0f4a5bf';
 const SHELL=[
   './',
   './index.html',
@@ -14,6 +14,8 @@ const SHELL=[
   './assets/js/calendar/view.js',
   './assets/js/cloud/auth.js',
   './assets/js/cloud/transport.js',
+  './assets/js/composition/backup.js',
+  './assets/js/composition/checks-persistence.js',
   './assets/js/composition/checks-sync.js',
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
@@ -135,6 +137,8 @@ const SHELL=[
   './assets/js/shared/search-scheduler.js',
   './assets/js/shared/shared-checks-flight.js',
   './assets/js/shared/shared-checks-storage-v2.js',
+  './assets/js/shared/shared-checks-v2-composition.js',
+  './assets/js/shared/shared-checks-v2-runtime.js',
   './assets/js/shared/shared-checks-v2-shadow.js',
   './assets/js/shared/spreadsheet-cutover.js',
   './assets/js/shared/spreadsheet-model.js',
@@ -146,6 +150,9 @@ const SHELL=[
   './assets/js/shared/storage-journal.js',
   './assets/js/shared/storage-metrics.js',
   './assets/js/shared/storage-shadow.js',
+  './assets/js/shared/storage-v2-boundary.js',
+  './assets/js/shared/storage-v2-cutover.js',
+  './assets/js/shared/storage-v2-restore.js',
   './assets/js/shared/storage-v2-runtime.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-status.js',

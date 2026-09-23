@@ -1,5 +1,7 @@
 # Storage V2 — מצב מימוש וחוזי בטיחות
 
+מצב המעבר העדכני וחסמי V2-only מפורטים ב־[STORAGE_V2_CUTOVER_STATUS.md](STORAGE_V2_CUTOVER_STATUS.md).
+
 עודכן ב־23 בספטמבר 2026.
 
 ## תיקון בטיחות ל־rebase

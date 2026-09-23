@@ -1,8 +1,8 @@
 import {createSyncChecks} from '../sync/checks.js';
 
-export function composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow}){
+export function composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow,sharedChecksV2=null}){
   return createSyncChecks({
-    model,files,checksSession,tab,
+    model,files,checksSession,tab,sharedChecksV2,
     localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
     refreshStorageV2CloudState:(...args)=>storageBrowser.refreshStorageV2CloudState(...args),
     replaceStorageV2CurrentState:(...args)=>storageBrowser.replaceStorageV2CurrentState(...args),

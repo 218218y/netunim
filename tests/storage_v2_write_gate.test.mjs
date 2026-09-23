@@ -1,0 +1,62 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createStorageChecks} from '../netunim-orders/site/assets/js/storage/checks.js';
+import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-state.js';
+import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
+import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
+import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
+import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
+
+function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
+
+for(const app of ['orders','kupa'])test(`${app}: primary rejects Shared Checks V1 base and outbox writes`,async()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;
+  try{
+    const model={state:{checks:[{id:'C',amount:100}]}},checksSession={},idbPut=async()=>{writes++},idbDelete=async()=>{writes++};
+    const storage=app==='orders'
+      ?createStorageChecks({model,checksSession,idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false})
+      :createSyncChecksState({model,checksSession,session:{},idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false});
+    assert.throws(()=>app==='orders'?storage.persistChecksBase(model.state.checks):storage.persistSharedChecksBase(model.state.checks),/write_forbidden/);
+    assert.throws(()=>app==='orders'?storage.markChecksPending(model.state.checks):storage.markSharedChecksPending(model.state.checks),/write_forbidden/);
+    await assert.rejects(app==='orders'?storage.clearChecksPending(1):storage.clearSharedChecksPending(1),/write_forbidden/);
+    assert.equal(app==='orders'?await storage.getChecksPending():await storage.getSharedChecksPending(),null);
+    assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('cutover marker fails closed on missing Main checkpoint and forbids Orders V1 outbox',async()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage=localStore();
+  try{
+    const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
+    await assert.rejects(browser.restoreBrowserStateFallback(),/cutover_recovery_required/);
+    assert.throws(()=>browser.markCloudPending(),/write_forbidden/);
+    assert.equal(globalThis.localStorage.length,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('cutover marker forbids Kupa V1 browser snapshots and cloud outboxes',async()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;
+  try{
+    const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
+    assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/write_forbidden/);
+    await assert.rejects(browser.loadBrowserState(),/cutover_recovery_required/);
+    const pending=createStoragePending({session:{},idbGet:async()=>null,idbPut:async()=>{writes++},idbDelete:async()=>{writes++},legacyWriteAllowed:()=>false});
+    await assert.rejects(pending.putCloudPending({snapshot:{}}),/write_forbidden/);
+    assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('durable cutover marker must agree with its synchronous cache and requires clean legacy heads',async()=>{
+  const storage=localStore(),records=new Map();let marks=0,owner='account-A';
+  const db={readCutover:async scope=>records.get(scope)||null,markCutover:async(app,identity)=>{marks++;const record={version:2,scope:`${app}:${identity}`,app,owner:identity};records.set(record.scope,record);return record}};
+  const cutover=createStorageV2Cutover({app:'orders',owner:()=>owner,primary:()=>true,db,storage});
+  assert.equal(await cutover.verify(),false);
+  await assert.rejects(cutover.mark({verifyLegacyClean:async()=>false}),/legacy_pending/);
+  assert.equal(marks,0);
+  await cutover.mark({verifyLegacyClean:async()=>true});
+  assert.equal(await cutover.verify(),true);
+  storage.removeItem(storageCutoverKey('orders',owner));
+  await assert.rejects(cutover.verify(),/marker_mismatch/);
+  owner='account-B';
+  assert.equal(await cutover.verify(),false);
+});

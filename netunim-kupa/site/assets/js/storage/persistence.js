@@ -7,7 +7,7 @@ import {jsonEq} from '../sync/merge-records.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,observeSharedChecks=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({sharedChecksV2=null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,observeSharedChecks=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -88,6 +88,20 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
 
 function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
+  if(sharedChecksV2?.requested){
+    const generation=Number(checksSession.sharedChecksGeneration||0)+1,riskToken=`checks:${generation}`;let write;
+    domainRevisions?.touch('checks');
+    try{write=sharedChecksV2.persist(operations,{generation,surface,mutationType,deleteIds:deletedIds,storageBoundary})}
+    catch(error){beginLocalRisk(riskToken);setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error');console.error('Shared Checks V2 save',error);return Promise.resolve(false)}
+    checksSession.sharedChecksGeneration=generation;checksSession.sharedChecksSaveRequested=true;
+    if(!write.emergencyDurable){beginLocalRisk(riskToken);clearLocalRiskAfter(riskToken,write.committed)}
+    setSaveStatus(write.emergencyDurable?'הצקים שמורים מקומית':'ממתין לאישור שמירת הצקים ב־IndexedDB','saving');
+    write.committed.catch(()=>setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error'));
+    if(files.backupsDirHandle)write.committed.then(()=>nextTurn(()=>backupSnapshotToComputer(normalizeState(model.state),session.dbRevision))).catch(error=>console.error('checks backup',error));
+    clearTimeout(checksSession.sharedChecksSaveTimer);
+    if(session.connectionMode==='supabase'&&session.backendReady)checksSession.sharedChecksSaveTimer=setTimeout(async()=>{checksSession.sharedChecksSaveTimer=null;try{await write.committed;await saveSharedChecksToCloud(msg)}catch(error){console.error('checks sync',error)}},220);
+    return write.committed.then(()=>true,()=>false);
+  }
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   observeSharedChecks(operations,{generation:checksSession.sharedChecksGeneration+1,surface,mutationType,deleteIds:deletedIds,boundary:!!storageBoundary});
   if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks'],operations,storageBoundary});

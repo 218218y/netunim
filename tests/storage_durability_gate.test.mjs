@@ -13,6 +13,42 @@ const noop=()=>{};
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 
+test('transient IndexedDB recovery failure retries without reload, corruption remains fail-closed',async()=>{
+  for(const message of ['storage_transaction_aborted','storage_checksum_mismatch']){
+    let calls=0;
+    const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'A',primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:()=>({ready:true,
+      open:async()=>{calls++;if(calls===1)throw new Error(message);return {state:{notes:[]},epoch:'E',seq:0,appMetadata:{storageRole:'primary'}}},
+    })});
+    assert.equal(await runtime.recover(),null);
+    const recovered=await runtime.recover();assert.equal(!!recovered,message!=='storage_checksum_mismatch');
+    assert.equal(calls,message==='storage_checksum_mismatch'?1:2);
+  }
+});
+
+test('verified recovery clears only a recovered failed sequence and repairs the rejected commit queue',async()=>{
+  let recoveredSeq=0;
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'A',primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:()=>({ready:true,epoch:'E',
+    open:async()=>({state:{notes:[]},epoch:'E',seq:recoveredSeq,appMetadata:{storageRole:'primary'}}),
+    append:()=>({seq:1,emergencyDurable:false,committed:Promise.reject(new Error('commit response lost'))}),settled:async()=>true,
+  })});
+  await runtime.recover();const write=runtime.persist({notes:[]},{operations:[{type:'set',field:'settings',value:{}}]});
+  await assert.rejects(write.committed);await assert.rejects(runtime.commitPromise);assert.equal(runtime.durabilityAtRisk,true);
+  await runtime.recover();assert.equal(runtime.durabilityAtRisk,true,'a successful open of an older state cannot conceal a lost edit');
+  recoveredSeq=1;await runtime.recover();assert.equal(runtime.durabilityAtRisk,false);assert.equal(await runtime.flush(),true);
+});
+
+test('Main owner handoff never migrates the currently visible account implicitly',async()=>{
+  let owner='A';const installs=[];
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:options=>({ready:false,
+    open:async()=>null,install:async state=>installs.push({owner:options.owner,state}),recover:async()=>({state:{notes:[]},seq:0}),
+  })});
+  await runtime.recover({notes:[{id:'A'}]});assert.equal(installs.length,1);
+  owner='B';assert.equal(await runtime.recover({notes:[{id:'A'}]}),null);assert.equal(installs.length,1);
+  await assert.rejects(runtime.recoverForOwner({intent:'upload-local',sourceOwner:'A',state:{notes:[{id:'A'}]}}),/transfer_intent/);
+  await runtime.recoverForOwner({intent:'legacy-upgrade',sourceOwner:'B',state:{notes:[{id:'B'}]}});
+  assert.equal(installs.length,2);assert.equal(installs[1].owner,'B:orders');assert.equal(installs[1].state.notes[0].id,'B');
+});
+
 test('Orders waits for an IDB-only journal commit even if the cloud cursor becomes unavailable',async()=>{
   const commit=deferred(),sent=[],status=[],model={state:structuredClone(ordersInitial)};
   let cloudCursor=true;

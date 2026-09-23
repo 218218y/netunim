@@ -634,9 +634,9 @@ ok("createDomainsFinanceView" in orders_main and "renderKupa" in orders_main and
 bank_image_runtime_pos=orders_main.find('const bankChequeImages=createOrdersBankChequeImageRuntime')
 checks_editor_pos=orders_main.find('const domainsChecksEditor=createDomainsChecksEditor({')
 finance_view_pos=orders_main.find('const domainsFinanceView=createDomainsFinanceView({')
-checks_editor_end=orders_main.find('const syncChecksPersistence=createSyncChecksPersistence({',checks_editor_pos)
+checks_editor_end=orders_main.find('const syncChecksPersistence=composeChecksPersistence({',checks_editor_pos)
 finance_view_end=orders_main.find('const uiAlertCenter=createUiAlertCenter({',finance_view_pos)
-ok(bank_image_runtime_pos>=0 and bank_image_runtime_pos<checks_editor_pos<finance_view_pos
+ok(bank_image_runtime_pos>=0 and bank_image_runtime_pos<checks_editor_pos<checks_editor_end<finance_view_pos
    and 'downloadBankChequeImage:bankChequeImages.download' not in orders_main[checks_editor_pos:checks_editor_end]
    and 'downloadBankChequeImage:bankChequeImages.download' in orders_main[finance_view_pos:finance_view_end]
    and orders_main.count('const bankChequeImages=createOrdersBankChequeImageRuntime')==1,

@@ -9,17 +9,19 @@ function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?valu
 function migrateChecksOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIds=normalizeDeleteIds(value?.deleteIds);return record}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecksState({session, checksSession, model, normalizeState, prepareKupaCloudState, idbPut, idbGet, idbDelete}){
+export function createSyncChecksState({session, checksSession, model, normalizeState, prepareKupaCloudState, idbPut, idbGet, idbDelete,legacyWriteAllowed=()=>true}){
+const assertLegacyWriter=()=>{if(!legacyWriteAllowed())throw new Error('legacy_shared_checks_write_forbidden')};
 function lastSavedState(){try{return session.lastSavedSnapshot?normalizeState(JSON.parse(session.lastSavedSnapshot)):null}catch(e){return null}}
 function lastSavedCloudState(){try{return session.lastSavedSnapshot?prepareKupaCloudState(JSON.parse(session.lastSavedSnapshot)):null}catch(e){return null}}
 function loadSharedChecksBase(){try{const x=JSON.parse(localStorage.getItem(SHARED_CHECKS_BASE_KEY)||'null');return Array.isArray(x)?normalizeSharedChecks(x):null}catch(e){console.error('shared checks base load',e);return null}}
 function loadSharedChecksBankEvents(){try{return normalizeSharedBankEvents(JSON.parse(localStorage.getItem(SHARED_CHECKS_EVENTS_KEY)||'[]'))}catch(e){console.error('shared checks events load',e);return[]}}
-function persistSharedChecksBase(checks,events=checksSession.sharedChecksBankEvents){try{localStorage.setItem(SHARED_CHECKS_BASE_KEY,JSON.stringify(normalizeSharedChecks(checks)));localStorage.setItem(SHARED_CHECKS_EVENTS_KEY,JSON.stringify(normalizeSharedBankEvents(events)));return true}catch(e){console.error('shared checks base save',e);return false}}
+function persistSharedChecksBase(checks,events=checksSession.sharedChecksBankEvents){assertLegacyWriter();try{localStorage.setItem(SHARED_CHECKS_BASE_KEY,JSON.stringify(normalizeSharedChecks(checks)));localStorage.setItem(SHARED_CHECKS_EVENTS_KEY,JSON.stringify(normalizeSharedBankEvents(events)));return true}catch(e){console.error('shared checks base save',e);return false}}
 
 function readPendingCache(){try{return JSON.parse(localStorage.getItem(SHARED_CHECKS_PENDING_KEY)||'null')}catch(e){console.error('shared checks pending cache load',e);return null}}
-function writePendingCache(record){try{const text=JSON.stringify(record);localStorage.setItem(SHARED_CHECKS_PENDING_KEY,text);if(localStorage.getItem(SHARED_CHECKS_PENDING_KEY)!==text)throw new Error('shared checks pending verification failed');return true}catch(e){console.error('shared checks pending cache',e);return false}}
+function writePendingCache(record){assertLegacyWriter();try{const text=JSON.stringify(record);localStorage.setItem(SHARED_CHECKS_PENDING_KEY,text);if(localStorage.getItem(SHARED_CHECKS_PENDING_KEY)!==text)throw new Error('shared checks pending verification failed');return true}catch(e){console.error('shared checks pending cache',e);return false}}
 
 function markSharedChecksPending(snapshot=model.state.checks,message='',conflict=undefined,progress=null){
+  assertLegacyWriter();
   const diskCache=readPendingCache(),cached=compareOutboxFreshness(checksSession.sharedChecksOutboxCached,diskCache)>0?checksSession.sharedChecksOutboxCached:diskCache,canonical=normalizeSharedChecks(snapshot),generation=Math.max(Number(checksSession.sharedChecksGeneration||0),Number(cached?.generation||0),1),sameGeneration=!!cached&&Number(cached.generation||0)===generation,base=normalizeSharedChecks(progress?.baseState||cached?.baseState||checksSession.sharedChecksBase||canonical),record=createOutboxRecord({
     domain:'shared-checks',documentName:SHARED_CHECKS_DOC,operationId:sameGeneration?(cached.operationId||cached.id):undefined,
     generation,mutationSeq:Math.max(Number(cached?.mutationSeq||cached?.commitSeq||cached?.generation||0)+1,generation),baseRevision:progress?.baseRevision??(cached?.baseRevision??checksSession.sharedChecksRevision??0),baseState:base,snapshot:canonical,
@@ -38,13 +40,19 @@ async function getSharedChecksPending(){
   const local=migrateChecksOutboxRecord(readPendingCache(),migration);let durable=null;try{const raw=await idbGet('sync',SHARED_CHECKS_OUTBOX_KEY);durable=migrateChecksOutboxRecord(raw,migration)}catch(e){console.error('shared checks outbox load',e)}
   if(checksSession.sharedChecksOutboxCommitPromise!==observedCommit)return getSharedChecksPending();
   const chosen=!local?durable:!durable?local:(compareOutboxFreshness(local,durable)>=0?local:durable);if(!chosen){checksSession.sharedChecksOutboxCached=null;return null}
-  chosen.baseState=normalizeSharedChecks(chosen.baseState);chosen.snapshot=normalizeSharedChecks(chosen.snapshot);checksSession.sharedChecksOutboxCached=chosen;checksSession.sharedChecksGeneration=Math.max(Number(checksSession.sharedChecksGeneration||0),Number(chosen.generation||0));writePendingCache(chosen);
-  try{await idbPut('sync',SHARED_CHECKS_OUTBOX_KEY,chosen);checksSession.sharedChecksDurabilityDegraded=false}catch(e){checksSession.sharedChecksDurabilityDegraded=true;console.error('shared checks outbox repair',e)}if(checksSession.sharedChecksOutboxCommitPromise!==observedCommit)return getSharedChecksPending();
+  chosen.baseState=normalizeSharedChecks(chosen.baseState);chosen.snapshot=normalizeSharedChecks(chosen.snapshot);checksSession.sharedChecksOutboxCached=chosen;checksSession.sharedChecksGeneration=Math.max(Number(checksSession.sharedChecksGeneration||0),Number(chosen.generation||0));if(legacyWriteAllowed())writePendingCache(chosen);
+  if(legacyWriteAllowed())try{await idbPut('sync',SHARED_CHECKS_OUTBOX_KEY,chosen);checksSession.sharedChecksDurabilityDegraded=false}catch(e){checksSession.sharedChecksDurabilityDegraded=true;console.error('shared checks outbox repair',e)}if(checksSession.sharedChecksOutboxCommitPromise!==observedCommit)return getSharedChecksPending();
   return chosen;
 }
 
 function sharedChecksPendingExists(){return !!(checksSession.sharedChecksOutboxCached||localStorage.getItem(SHARED_CHECKS_PENDING_KEY))}
+async function verifyLegacyChecksClean(){
+  const commit=checksSession.sharedChecksOutboxCommitPromise;await commit;
+  const durable=await idbGet('sync',SHARED_CHECKS_OUTBOX_KEY);
+  return checksSession.sharedChecksOutboxCommitPromise===commit&&durable==null&&!sharedChecksPendingExists();
+}
 async function clearSharedChecksPending(acknowledgedGeneration){
+  assertLegacyWriter();
   const current=await getSharedChecksPending();if(!current)return true;
   if(!acknowledgedGenerationMatches(current,acknowledgedGeneration)||Number(checksSession.sharedChecksOutboxCached?.generation||0)>Number(current.generation)||Number(checksSession.sharedChecksOutboxCached?.mutationSeq||0)>Number(current.mutationSeq||0))return false;
   const clearing=(checksSession.sharedChecksOutboxCommitPromise||Promise.resolve()).then(async()=>{
@@ -57,5 +65,5 @@ async function clearSharedChecksPending(acknowledgedGeneration){
 }
 function sharedChecksHaveLocalWork(){return checksSession.sharedChecksSaveRequested||sharedChecksPendingExists()||!!(checksSession.sharedChecksBase&&!jsonEq(normalizeSharedChecks(model.state.checks),normalizeSharedChecks(checksSession.sharedChecksBase)))}
 
-return { lastSavedState, lastSavedCloudState, loadSharedChecksBase, loadSharedChecksBankEvents, persistSharedChecksBase, markSharedChecksPending, getSharedChecksPending, sharedChecksPendingExists, clearSharedChecksPending, sharedChecksHaveLocalWork };
+return { lastSavedState, lastSavedCloudState, loadSharedChecksBase, loadSharedChecksBankEvents, persistSharedChecksBase, markSharedChecksPending, getSharedChecksPending, sharedChecksPendingExists, clearSharedChecksPending, sharedChecksHaveLocalWork, verifyLegacyChecksClean };
 }
