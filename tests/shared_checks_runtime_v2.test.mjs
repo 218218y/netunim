@@ -110,6 +110,23 @@ test('an empty first document still has one durable pending operation',async()=>
   assert.equal(await runtime.sync(),true);assert.equal(f.calls.length,1);assert.deepEqual(f.calls[0][0],[]);
 });
 
+test('Shared Checks preparation mode permits bootstrap/sync but freezes user mutations',async()=>{
+  const f=fixture(),runtime=f.create();f.mode='preparing';f.head={revision:0,state:state([])};
+  await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A'});
+  assert.equal(runtime.requested,true);assert.equal(runtime.primaryReady,true);
+  assert.throws(()=>runtime.persist([put('C')],{generation:1}),/preparation_locked/);
+  assert.equal(await runtime.sync(),true);assert.equal((await runtime.cloudState()).pending,false);
+});
+
+test('Shared Checks bootstrap initialization is restart-idempotent for the same operation id only',async()=>{
+  const f=fixture(),runtime=f.create();f.mode='preparing';f.head={revision:0,state:state([])};
+  await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'group:shared'});
+  const restarted=f.create();
+  const recovered=await restarted.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'group:shared'});
+  assert.equal(recovered.seq,1);
+  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'other:shared'}),/existing_head_mismatch/);
+});
+
 for(const site of ['orders','kupa'])test(`${site}: application save and RPC adapters never invoke Main or V1 in primary`,async t=>{
   t.mock.method(globalThis,'setTimeout',()=>0);
   const f=fixture(site),runtime=await f.start(),checksSession={checksGeneration:0,sharedChecksGeneration:0},session={localGeneration:0,connectionMode:'supabase',backendReady:true};
@@ -123,4 +140,30 @@ for(const site of ['orders','kupa'])test(`${site}: application save and RPC adap
   const sync=(site==='orders'?ordersChecks:kupaChecks)({...common,refreshStorageV2CloudState:forbidden,replaceStorageV2CurrentState:forbidden,persistChecksBase:forbidden,persistSharedChecksBase:forbidden,
     getChecksPending:forbidden,getSharedChecksPending:forbidden,render:noop,renderKupaDependentView:noop,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,refreshCloudHeaderTimestamp:noop});
   assert.equal(await sync.saveSharedChecksToCloud(),true);assert.equal(f.calls[0][0][0].note,'app edit');
+});
+
+test('Shared Checks bootstrap atomically promotes an identical shadow namespace',async()=>{
+  const f=fixture(),db=memoryDb(),emergency=emergencyStore();
+  f.databases.set('A',db);
+  const shadow=createSharedChecksStorageV2({owner:()=> 'A',primary:()=>true,role:'shadow',db,emergency});
+  await shadow.open({migrationState:f.visible,migrationIntent:'shadow-observation',sourceOwner:'A'});
+  assert.equal((await db.load('A:shared-checks')).bases,null);
+
+  f.mode='preparing';f.head={revision:0,state:state([])};
+  const runtime=f.create();
+  const recovered=await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-promote:shared'});
+  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,f.visible);
+  const stored=await db.load('A:shared-checks');assert.equal(stored.bases.data.revision,0);assert.equal(stored.metadata.seq,1);assert.equal(stored.journal.length,1);
+  const cloud=await runtime.cloudState();assert.equal(cloud.pending,true);assert.equal(cloud.base.ackSeq,0);
+});
+
+test('Shared Checks bootstrap refuses divergent shadow promotion and preserves the shadow',async()=>{
+  const f=fixture(),db=memoryDb(),emergency=emergencyStore();
+  f.databases.set('A',db);
+  const shadowState=state([{id:'shadow-only',amount:1}]);
+  const shadow=createSharedChecksStorageV2({owner:()=> 'A',primary:()=>true,role:'shadow',db,emergency});
+  await shadow.open({migrationState:shadowState,migrationIntent:'shadow-observation',sourceOwner:'A'});
+  f.mode='preparing';f.head={revision:0,state:state([])};
+  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-mismatch:shared'}),/existing_head_mismatch/);
+  const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,shadowState);
 });

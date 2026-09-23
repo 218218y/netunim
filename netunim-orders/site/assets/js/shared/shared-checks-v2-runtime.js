@@ -15,15 +15,16 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
+  const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
   const shadow=createSharedChecksObserver({owner,primary,readState,createStorage,enabled:()=>mode()==='shadow'&&!active});
   function assertContext(store=storage){
-    if(mode()!=='primary'||!primary())throw new Error('shared_checks_primary_required');
+    if(!primaryMode()||!primary())throw new Error('shared_checks_primary_required');
     if(!store||store!==storage||identity!==currentOwner())throw new Error('shared_checks_owner_handoff_required');
   }
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
-    if(mode()!=='primary'||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&mode()==='primary',role:'primary'});active=false;commits=Promise.resolve()}
+    if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),role:'primary'});active=false;commits=Promise.resolve()}
     return storage;
   }
   async function publish(store){
@@ -48,7 +49,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     })();
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
   }
-  async function initialize({state,revision,intent,sourceOwner}={}){
+  async function initialize({state,revision,intent,sourceOwner,bootstrapOperationId=''}={}){
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
     // The verifier must read the durable V1 outbox as well as memory and the
@@ -56,7 +57,13 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
     assertContext(store);
     if(intent==='legacy-upgrade'&&!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
-    const recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,legacyPendingClean:true});
+    let recovered;
+    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,legacyPendingClean:true,bootstrapOperationId})}
+    catch(error){
+      if(error?.message!=='storage_initialization_exists'||!String(bootstrapOperationId||'').trim())throw error;
+      recovered=await store.open();const cloud=await store.cloudState();
+      if(!recovered||recovered.appMetadata?.bootstrapOperationId!==bootstrapOperationId||recovered.appMetadata?.migrationIntent!==intent||recovered.appMetadata?.sourceOwner!==sourceOwner||cloud?.base?.revision!==revision||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
+    }
     assertContext(store);active=true;diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
   }
   async function promote({state,revision,sourceOwner}={}){
@@ -76,6 +83,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   }
   function persist(operations,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[],storageBoundary=''}={}){
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
+    if(mode()==='preparing')throw new Error('storage_v2_preparation_locked');
     if(mode()!=='primary')return {handled:false};
     // Primary is fail-closed. It must never silently resume either V1 or the
     // main journal when the checks owner is unavailable or the contract is bad.
@@ -172,7 +180,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     observe:shadow.mutation,observeBoundary:shadow.boundary,
     async cloudState(){assertContext();return storage.cloudState()},
     async flush(){await commits;return true},
-    get requested(){return mode()==='primary'},
-    get primaryReady(){return active&&mode()==='primary'&&primary()&&identity===currentOwner()&&storage?.ready},
+    get requested(){return primaryMode()},
+    get primaryReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get durabilityAtRisk(){return risks.size>0},get commitPromise(){return commits}};
 }

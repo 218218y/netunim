@@ -2,6 +2,8 @@ export function createStorageV2CloudPorts(browser){
   return {
     storageV2CloudOutboxActive:(...args)=>browser.storageV2CloudOutboxActive(...args),
     refreshStorageV2CloudState:(...args)=>browser.refreshStorageV2CloudState(...args),
+    initializeStorageV2UploadLocalHead:(...args)=>browser.initializeStorageV2UploadLocalHead(...args),
+    initializeStorageV2BootstrapHead:(...args)=>browser.initializeStorageV2BootstrapHead(...args),
     initializeStorageV2CloudCursor:(...args)=>browser.initializeStorageV2CloudCursor(...args),
     materializeStorageV2CloudFlight:(...args)=>browser.materializeStorageV2CloudFlight(...args),
     acknowledgeStorageV2CloudFlight:(...args)=>browser.acknowledgeStorageV2CloudFlight(...args),

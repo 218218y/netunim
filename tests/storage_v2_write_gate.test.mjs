@@ -31,18 +31,21 @@ test('V2 owner handoff blocks both first-cloud UI paths before any V1 outbox wri
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorAlert===undefined)delete globalThis.alert;else globalThis.alert=priorAlert}
 });
 
-test('V2 logout does not move visible account data into the local owner',()=>{
-  const prior=globalThis.localStorage;globalThis.localStorage=localStore();
+test('V2 logout clears authorization without moving visible account data into the local owner',()=>{
+  const prior=globalThis.localStorage,priorDocument=globalThis.document;globalThis.localStorage=localStore();
+  globalThis.document={getElementById:()=>({style:{}})};
   try{
     let ordersSessionWrites=0,kupaSessionWrites=0;
-    const orders=createOrdersUiCloud({storageV2PrimaryRequested:()=>true,saveSession:()=>{ordersSessionWrites++},toast:()=>{}});
-    const kupa=createKupaUiCloud({storageV2PrimaryRequested:()=>true,tab:{primaryTab:true},storeSupaSession:()=>{kupaSessionWrites++},toast:()=>{}});
-    assert.equal(orders.logoutCloud(),false);
-    assert.equal(kupa.logoutSupabase(),false);
-    assert.equal(ordersSessionWrites,0);
-    assert.equal(kupaSessionWrites,0);
+    const ordersSession={cloudRecoveryTimer:null,cloudPollTimer:null},ordersChecks={};
+    const orders=createOrdersUiCloud({session:ordersSession,checksSession:ordersChecks,storageV2PrimaryRequested:()=>true,saveSession:value=>{assert.equal(value,null);ordersSessionWrites++},toast:()=>{},setCloud:()=>{},renderSettings:()=>{}});
+    const kupaSession={cloudRecoveryTimer:null,cloudPollTimer:null,serverInfo:{}},kupaChecks={};
+    const kupa=createKupaUiCloud({session:kupaSession,checksSession:kupaChecks,storageV2PrimaryRequested:()=>true,tab:{primaryTab:true},storeSupaSession:value=>{assert.equal(value,null);kupaSessionWrites++},toast:()=>{},setCloudHeaderStatus:()=>{},showFirstRun:()=>{}});
+    assert.equal(orders.logoutCloud(),true);
+    assert.equal(kupa.logoutSupabase(),true);
+    assert.equal(ordersSessionWrites,1);
+    assert.equal(kupaSessionWrites,1);
     assert.equal(globalThis.localStorage.length,0);
-  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorDocument===undefined)delete globalThis.document;else globalThis.document=priorDocument}
 });
 
 for(const app of ['orders','kupa'])test(`${app}: primary rejects Shared Checks V1 base and outbox writes`,async()=>{

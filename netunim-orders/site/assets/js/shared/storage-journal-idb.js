@@ -3,10 +3,14 @@ import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
-  const open=createIndexedDbConnection(name,4,db=>{
+  const open=createIndexedDbConnection(name,7,db=>{
     for(const name of stores)if(!db.objectStoreNames.contains(name)){const store=db.createObjectStore(name);if(name==='journal')store.createIndex('owner','data.owner')}
     if(!db.objectStoreNames.contains('boundaries'))db.createObjectStore('boundaries');
     if(!db.objectStoreNames.contains('cutovers'))db.createObjectStore('cutovers');
+    if(!db.objectStoreNames.contains('owner-bindings'))db.createObjectStore('owner-bindings');
+    if(!db.objectStoreNames.contains('owner-handoffs'))db.createObjectStore('owner-handoffs');
+    if(!db.objectStoreNames.contains('bootstrap-groups'))db.createObjectStore('bootstrap-groups');
+    if(!db.objectStoreNames.contains('cutover-preparations'))db.createObjectStore('cutover-preparations');
   });
   async function transact(mode,work){const db=await open();return new Promise((resolve,reject)=>{
     const tx=db.transaction(stores,mode);let result,error;
@@ -39,6 +43,19 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(head.owner!==owner||cursor.owner!==owner||head.epoch!==cursor.epoch||head.seq!==0||cursor.ackSeq!==0||!Number.isSafeInteger(cursor.revision)||cursor.revision<0)throw new Error('storage_initialization_invalid');
     if(entry&&(entry.owner!==owner||entry.epoch!==head.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);
+    if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
+    tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
+  })}
+  function replaceShadowWithCloudHead(owner,expectedEpoch,expectedSeq,checkpoint,base,writer,operation=null){return change(owner,(tx,current,done)=>{
+    if(!current.checkpoints||!current.metadata||current.metadata.epoch!==expectedEpoch||Number(current.metadata.seq)!==Number(expectedSeq))throw new Error('storage_shadow_promotion_race');
+    // A shadow namespace must never own cloud authority. Any existing cursor,
+    // flight or control means this is not a shadow-only promotion and must stop.
+    if(current.bases||current.flights||current.controls)throw new Error('storage_shadow_cloud_state_invalid');
+    const prior=readStorageRecord(current.checkpoints),head=readStorageRecord(checkpoint),cursor=readStorageRecord(base),entry=operation&&readStorageRecord(operation);
+    if(prior.owner!==owner||head.owner!==owner||cursor.owner!==owner||head.epoch!==cursor.epoch||head.seq!==0||cursor.ackSeq!==0||!Number.isSafeInteger(cursor.revision)||cursor.revision<0)throw new Error('storage_initialization_invalid');
+    if(entry&&(entry.owner!==owner||entry.epoch!==head.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');
+    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);
     if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
     tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
   })}
@@ -166,6 +183,140 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       store.put(sealStorageRecord({version:2,id,owner,kind:record.kind,phase:'complete',completedAt:new Date().toISOString()}),owner);done(true);
     }catch(error){fail(error)}};
   })}
+  function ownerRecord(storeName,app){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction([storeName],'readonly'),request=tx.objectStore(storeName).get(app);
+    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
+    request.onerror=()=>reject(request.error);
+  }))}
+  function readOwnerBinding(app){return ownerRecord('owner-bindings',app)}
+  function readOwnerHandoff(app){return ownerRecord('owner-handoffs',app)}
+  function initializeOwnerBinding(app,owner,{source='bootstrap',at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(request.result){result=readStorageRecord(request.result);if(result.version!==1||result.app!==app||result.owner!==owner)throw new Error('storage_owner_binding_conflict');return}
+      result={version:1,app,owner,generation:1,source,createdAt:at,updatedAt:at};store.put(sealStorageRecord(result),app);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_binding_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function reserveLocalOwnerTarget(app,targetOwner,{id,intent,at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings'],'readwrite'),store=tx.objectStore('owner-bindings'),request=store.get(app);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(!request.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(request.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim(),pending=binding.pendingAdoption||null;
+      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
+      if(binding.owner===target&&!pending){result=binding;return}
+      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
+      if(pending){if(pending.targetOwner===target&&pending.intent===kind){result=binding;return}throw new Error('storage_owner_local_adoption_reserved')}
+      result={...binding,pendingAdoption:{id:operation,targetOwner:target,intent:kind,createdAt:at,updatedAt:at},updatedAt:at};store.put(sealStorageRecord(result),app);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_reservation_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function adoptPreparedLocalOwner(app,targetOwner,{id,intent,proof={},at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
+    const finish=()=>{if(--remaining)return;try{
+      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result),target=String(targetOwner||'').trim(),kind=String(intent||'').trim(),operation=String(id||'').trim();
+      if(!target||target==='local'||!operation||!['load-account','upload-local'].includes(kind))throw new Error('storage_owner_local_adoption_invalid');
+      if(binding.owner===target&&(!existing||existing.phase==='complete')){result={binding, handoff:existing||null};return}
+      if(binding.owner!=='local')throw new Error('storage_owner_handoff_required');
+      if(existing&&existing.phase!=='complete')throw new Error('storage_owner_handoff_pending');
+      const reservation=binding.pendingAdoption||null;if(!reservation||reservation.targetOwner!==target||reservation.intent!==kind)throw new Error('storage_owner_local_adoption_not_reserved');
+      const nextBinding={...binding,owner:target,generation:Number(binding.generation||0)+1,source:`prepared-local:${kind}`,pendingAdoption:null,updatedAt:at},complete={version:1,id:operation,app,sourceOwner:'local',targetOwner:target,intent:kind,phase:'complete',preparationProof:structuredClone(proof),reservationId:reservation.id,createdAt:reservation.createdAt||at,activatedAt:at,completedAt:at,updatedAt:at};
+      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(complete),app);result={binding:nextBinding,handoff:complete};
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_local_adoption_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function beginOwnerHandoff(app,record){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
+    const finish=()=>{if(--remaining)return;try{
+      if(!bindingReq.result)throw new Error('storage_owner_binding_missing');const binding=readStorageRecord(bindingReq.result),existing=handoffReq.result&&readStorageRecord(handoffReq.result);
+      if(existing&&existing.phase!=='complete'){if(existing.id===record.id){result=existing;return}throw new Error('storage_owner_handoff_pending')}
+      if(record.version!==1||record.app!==app||record.sourceOwner!==binding.owner||record.targetOwner===binding.owner||record.phase!=='freezing-source')throw new Error('storage_owner_handoff_invalid');
+      result=structuredClone(record);handoffs.put(sealStorageRecord(result),app);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function advanceOwnerHandoff(app,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-handoffs'],'readwrite'),store=tx.objectStore('owner-handoffs'),request=store.get(app);let result=null,error=null;
+    request.onsuccess=()=>{try{if(!request.result)throw new Error('storage_owner_handoff_missing');const current=readStorageRecord(request.result);if(current.id!==id||current.app!==app||current.phase!==fromPhase)throw new Error('storage_owner_handoff_changed');result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),app)}catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function activateOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
+    const finish=()=>{if(--remaining)return;try{
+      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
+      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-recovered'||handoff.sourceOwner!==binding.owner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
+      const nextBinding={...binding,owner:targetOwner,generation:Number(binding.generation||0)+1,source:`handoff:${handoff.intent}`,updatedAt:at},active={...handoff,phase:'target-active',activatedAt:at,updatedAt:at};
+      bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(active),app);result={binding:nextBinding,handoff:active};
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function completeOwnerHandoff(app,id,targetOwner,{at=new Date().toISOString()}={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['owner-bindings','owner-handoffs'],'readwrite'),bindings=tx.objectStore('owner-bindings'),handoffs=tx.objectStore('owner-handoffs'),bindingReq=bindings.get(app),handoffReq=handoffs.get(app);let remaining=2,result=null,error=null;
+    const finish=()=>{if(--remaining)return;try{
+      if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
+      if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-active'||binding.owner!==targetOwner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
+      const complete={...handoff,phase:'complete',completedAt:at,updatedAt:at};
+      handoffs.put(sealStorageRecord(complete),app);result={binding, handoff:complete};
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function bootstrapRecord(scope){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['bootstrap-groups'],'readonly'),request=tx.objectStore('bootstrap-groups').get(scope);
+    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
+    request.onerror=()=>reject(request.error);
+  }))}
+  function readBootstrapGroup(scope){return bootstrapRecord(scope)}
+  function beginBootstrapGroup(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      const existing=request.result&&readStorageRecord(request.result);
+      if(existing&&existing.phase!=='complete'){
+        if(existing.id===record.id&&existing.planHash===record.planHash){result=existing;return}
+        throw new Error('storage_bootstrap_group_pending');
+      }
+      if(record.version!==2||record.scope!==scope||record.phase!=='prepared'||!String(record.id||'').trim()||!String(record.planHash||'').trim())throw new Error('storage_bootstrap_group_invalid');
+      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function advanceBootstrapGroup(scope,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['bootstrap-groups'],'readwrite'),store=tx.objectStore('bootstrap-groups'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(!request.result)throw new Error('storage_bootstrap_group_missing');
+      const current=readStorageRecord(request.result);
+      if(current.id!==id||current.scope!==scope||current.phase!==fromPhase)throw new Error('storage_bootstrap_group_changed');
+      result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function readCutoverPreparation(scope){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['cutover-preparations'],'readonly'),request=tx.objectStore('cutover-preparations').get(scope);
+    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
+    request.onerror=()=>reject(request.error);
+  }))}
+  function beginCutoverPreparation(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['cutover-preparations'],'readwrite'),store=tx.objectStore('cutover-preparations'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      const existing=request.result&&readStorageRecord(request.result);
+      if(existing){
+        if(existing.id===record.id){result=existing;return}
+        if(existing.phase!=='complete')throw new Error('storage_cutover_preparation_pending');
+        result=existing;return;
+      }
+      if(record.version!==1||record.scope!==scope||record.phase!=='freezing-source'||!String(record.id||'').trim())throw new Error('storage_cutover_preparation_invalid');
+      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_cutover_preparation_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function advanceCutoverPreparation(scope,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['cutover-preparations'],'readwrite'),store=tx.objectStore('cutover-preparations'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(!request.result)throw new Error('storage_cutover_preparation_missing');
+      const current=readStorageRecord(request.result);
+      if(current.id!==id||current.scope!==scope||current.phase!==fromPhase)throw new Error('storage_cutover_preparation_changed');
+      result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_cutover_preparation_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
   function readCutover(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['cutovers'],'readonly'),request=tx.objectStore('cutovers').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
@@ -175,12 +326,12 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim())throw new Error('storage_cutover_scope_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
       const owner=String(identity),scope=`${app}:${owner}`,mainOwner=`${owner}:${app}`,sharedOwner=`${owner}:shared-checks`;
-      const tx=db.transaction(['cutovers','checkpoints','metadata','bases','flights','controls','boundaries'],'readwrite');
-      const requests=[tx.objectStore('cutovers').get(scope),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get(owner)];
+      const tx=db.transaction(['cutovers','checkpoints','metadata','bases','flights','controls','boundaries','bootstrap-groups'],'readwrite');
+      const requests=[tx.objectStore('cutovers').get(scope),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get(owner),tx.objectStore('bootstrap-groups').get(scope)];
       let remaining=requests.length,result=null;
       const fail=error=>{try{tx.abort()}catch{}reject(error)};
       for(const request of requests)request.onsuccess=()=>{if(--remaining)return;try{
-        const [current,main,shared,mainMeta,sharedMeta,mainBase,sharedBase,mainFlight,sharedFlight,mainControl,sharedControl,boundary]=requests.map(row=>row.result);
+        const [current,main,shared,mainMeta,sharedMeta,mainBase,sharedBase,mainFlight,sharedFlight,mainControl,sharedControl,boundary,bootstrap]=requests.map(row=>row.result);
         if(current){result=readStorageRecord(current);if(result.version!==2||result.scope!==scope)throw new Error('storage_cutover_marker_invalid');return}
         if(!main||!shared||!mainMeta||!sharedMeta||!mainBase||!sharedBase)throw new Error('storage_cutover_head_missing');
         const mainHead=readStorageRecord(main),sharedHead=readStorageRecord(shared),mainCursor=readStorageRecord(mainBase),sharedCursor=readStorageRecord(sharedBase);
@@ -188,10 +339,11 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         if(mainHead.owner!==mainOwner||sharedHead.owner!==sharedOwner||mainCursor.owner!==mainOwner||sharedCursor.owner!==sharedOwner||mainCursor.epoch!==mainHead.epoch||sharedCursor.epoch!==sharedHead.epoch)throw new Error('storage_cutover_base_invalid');
         if(mainMeta.epoch!==mainHead.epoch||sharedMeta.epoch!==sharedHead.epoch||mainMeta.seq!==mainCursor.ackSeq||sharedMeta.seq!==sharedCursor.ackSeq||mainFlight||sharedFlight||mainControl||sharedControl)throw new Error('storage_cutover_head_not_clean');
         if(boundary&&readStorageRecord(boundary).phase!=='complete')throw new Error('storage_cutover_boundary_pending');
+        if(bootstrap&&readStorageRecord(bootstrap).phase!=='complete')throw new Error('storage_cutover_bootstrap_pending');
         result={version:2,scope,app,owner,markedAt:new Date().toISOString()};tx.objectStore('cutovers').put(sealStorageRecord(result),scope);
       }catch(error){fail(error)}};
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readCutover,markCutover};
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover};
 }

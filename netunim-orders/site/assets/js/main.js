@@ -1,14 +1,12 @@
-import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
+import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
-import {createSharedChecksV2Composition} from './shared/shared-checks-v2-composition.js';
-import {assertOrderEntityInvariants,assertValidOrderCloudState} from './state/validation.js';
+import {assertOrderEntityInvariants} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createStorageV2CloudPorts} from './storage/v2-cloud-ports.js';
 import {createStorageChecks} from './storage/checks.js';
 import {createDomainsSuppliersSelectors} from './domains/suppliers/selectors.js';
 import {createDomainsSuppliersCommands} from './domains/suppliers/commands.js';
@@ -100,14 +98,19 @@ const domainRevisions=createOrderDomainRevisions(session);
 const inventoryRenderStore=createInventoryRenderStore({state:()=>model.state,revision:()=>domainRevisions.stamp(['inventory'])});
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
 
+const storageV2Coordinator=createOrdersStorageV2Coordinator({tab});
+const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
+
 const stateNormalization=createStateNormalization({
   externalWorkbooks:true,
   model,
 });
 
-const storageShadow=createStorageV2Runtime({app:'orders',owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateSelectors.prepareState(state)});
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateSelectors.prepareState(state)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
+  legacyDrainActive:storageV2Coordinator.legacyDrainActive,
+  legacyWriteAllowed:storageV2Coordinator.legacyWriteAllowed,
   externalWorkbooks:true,
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   model,
@@ -118,7 +121,7 @@ const storageBrowser=createStorageBrowser({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });
-const storageV2Cloud={...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>storageV2Mode('orders',localStorage,String(cloudAuth.loadSession()?.user?.id||'local'))==='primary'};
+const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'orders.restore.group.v1',
@@ -128,7 +131,7 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const storageChecks=createStorageChecks({
-  legacyWriteAllowed:()=>localStorage.getItem('netunim-storage-cutover-version:orders:'+String(cloudAuth.loadSession()?.user?.id||'local'))!=='2',
+  legacyWriteAllowed:storageV2Coordinator.legacyChecksWriteAllowed,
   checksSession,
   model,
   idbPut:(...args)=>storageBrowser.idbSyncPut(...args),
@@ -137,20 +140,12 @@ const storageChecks=createStorageChecks({
 });
 const sharedChecksV2Shadow=createSharedChecksObserver({
   readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||[]}),
-  owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  enabled:()=>{if(storageShadow.cutoverActive)return false;if(storageV2Mode('orders')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
+  ...storageV2Coordinator.observerPorts(storageShadow,'netunim-shared-checks-v2-shadow'),
 });
 
 
-const sharedChecksV2Composition=createSharedChecksV2Composition({
-  site:'orders',owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main:storageShadow,
-  merge:(...args)=>syncChecks.mergeSharedChecks(...args),
-  readRemote:(...args)=>cloudTransport.readSharedChecksCloud(...args),
-  rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
-  verifyLegacyClean:(...args)=>storageChecks.verifyLegacyChecksClean(...args),
-  validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),
-  applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
+const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
+  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
@@ -158,6 +153,7 @@ const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({
   session,
+  assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
 const domainsFinanceBridge=createDomainsFinanceBridge();
@@ -682,7 +678,20 @@ const syncDocument=createSyncDocument({
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
   ...storageV2Cloud,
+  storageV2PreparationActive:storagePreparationActive,
 });
+
+
+storageV2Coordinator.configure({
+  storageBrowser,storageChecks,syncDocument,syncChecks,model,session,checksSession,files,
+  stateSnapshots,stateNormalization,sharedChecksV2Composition,sharedChecksV2,
+  cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
+});
+async function beginStorageV2Cutover(){
+  const result=await storageV2Coordinator.beginCutover();
+  if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
+  uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startPolling();uiSettings.renderSettings();return true;
+}
 
 const uiCloud=createUiCloud({
   model,
@@ -717,6 +726,7 @@ const uiCloud=createUiCloud({
   renderSettings:(...args)=>uiSettings.renderSettings(...args),
   resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+  ...storageV2Coordinator.ownerUiPorts(),
   ...storageV2Cloud,
 });
 
@@ -753,9 +763,12 @@ const uiSettings=createUiSettings({
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
+  storageV2Status:()=>storageV2Coordinator.status(storageShadow,cloudAuth.loadSession()),
 });
 
 const lifecycle=createLifecycle({
+  hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:()=>cloudAuth.loadSession()?.user?.id}),
+  ...storageV2Coordinator.transitionLifecyclePorts(),
   verifyStorageCutover,
   recoverSharedChecksV2Primary,
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
@@ -978,6 +991,7 @@ const uiActions=createUiActions({
   backupToFolder:(...args)=>uiFolders.backupToFolder(...args),
   finishCloudLogin:(...args)=>uiCloud.finishCloudLogin(...args),
   enableCloud:(...args)=>uiCloud.enableCloud(...args),
+  beginStorageV2Cutover,
   openCloud:(...args)=>uiCloud.openCloud(...args),
   logoutCloud:(...args)=>uiCloud.logoutCloud(...args),
   addStickyNote:(...args)=>domainsNotesController.addStickyNote(...args),

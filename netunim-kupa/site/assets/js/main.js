@@ -1,7 +1,6 @@
-import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
+import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
-import {createSharedChecksV2Composition} from './shared/shared-checks-v2-composition.js';
-import {assertKupaEntityInvariants,assertValidCloudState} from './state/validation.js';
+import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
@@ -13,7 +12,6 @@ import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
 import {createStoragePending} from './storage/pending.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createStorageV2CloudPorts} from './storage/v2-cloud-ports.js';
 import {createSyncChecksState} from './sync/checks-state.js';
 import {createStorageTabLock} from './storage/tab-lock.js';
 import {createSyncRecovery} from './sync/recovery.js';
@@ -85,6 +83,9 @@ const {model, session, ui, files, tab, checksSession}=createContexts();
 const domainRevisions=createKupaDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS)});
 
+const storageV2Coordinator=createKupaStorageV2Coordinator({tab});
+const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
+
 const uiConnection=createUiConnection({
   session,
   tab,
@@ -117,16 +118,18 @@ const storageIndexedDb=createStorageIndexedDb({
 
 const storagePending=createStoragePending({
   externalWorkbooks:true,captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
-  legacyWriteAllowed:()=>!storageShadow.cutoverActive,
+  legacyWriteAllowed:()=>storageV2Coordinator.pendingLegacyWriteAllowed(storageShadow),
   session,
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
-const storageShadow=createStorageV2Runtime({app:'kupa',owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.normalizeState(state)});
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.normalizeState(state)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
+  legacyDrainActive:storageV2Coordinator.legacyDrainActive,
+  legacyWriteAllowed:storageV2Coordinator.legacyWriteAllowed,
   legacyCloudPendingExists:(...args)=>storagePending.cloudPendingExistsSync(...args),
   legacyCloudHeadVerifiedClean:(...args)=>storagePending.cloudPendingHeadVerifiedCleanSync(...args),
   verifyLegacyCloudPending:(...args)=>storagePending.getCloudPending(...args),
@@ -138,7 +141,7 @@ const storageBrowser=createStorageBrowser({
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
-const storageV2Cloud={...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>storageV2Mode('kupa',localStorage,String(cloudAuth.loadSupaSession()?.user?.id||'local'))==='primary'};
+const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
 
 const restoreGroupStore=createRestoreGroupStore({
   localKey:'kupa.restore.group.v1',
@@ -148,7 +151,7 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const syncChecksState=createSyncChecksState({
-  legacyWriteAllowed:()=>localStorage.getItem('netunim-storage-cutover-version:kupa:'+String(cloudAuth.loadSupaSession()?.user?.id||'local'))!=='2',
+  legacyWriteAllowed:storageV2Coordinator.legacyChecksWriteAllowed,
   session,
   checksSession,
   model,
@@ -161,20 +164,12 @@ const syncChecksState=createSyncChecksState({
 
 const sharedChecksV2Shadow=createSharedChecksObserver({
   readState:()=>({checks:model.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}),
-  owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  enabled:()=>{if(storageShadow.cutoverActive)return false;if(storageV2Mode('kupa')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
+  ...storageV2Coordinator.observerPorts(storageShadow,'netunim-shared-checks-v2-shadow'),
 });
 
 
-const sharedChecksV2Composition=createSharedChecksV2Composition({
-  site:'kupa',owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
-  model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main:storageShadow,
-  merge:(...args)=>syncChecks.mergeSharedChecks(...args),
-  readRemote:(...args)=>cloudTransport.readSharedChecksDocument(...args),
-  rpc:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
-  verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
-  validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),
-  applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
+const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
+  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
@@ -289,6 +284,7 @@ const cloudAuth=createCloudAuth({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
+  assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
 const cloudTransport=createCloudTransport({
@@ -385,8 +381,22 @@ const syncDocument=createSyncDocument({
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
   ...storageV2Cloud,
+  storageV2PreparationActive:storagePreparationActive,
+  ...storageV2Coordinator.adoptionPort(),
   domainRevisions,
 });
+
+
+storageV2Coordinator.configure({
+  storagePending,syncChecksState,storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
+  stateNormalization,sharedChecksV2Composition,sharedChecksV2,
+  cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
+});
+async function beginStorageV2Cutover(){
+  const result=await storageV2Coordinator.beginCutover();
+  if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
+  uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startCloudPolling();uiSettings.renderSettings();return true;
+}
 
 const uiCloud=createUiCloud({
   session,
@@ -428,6 +438,7 @@ const uiCloud=createUiCloud({
   closeModal:(...args)=>uiModal.closeModal(...args),
   showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  ...storageV2Coordinator.ownerUiPorts(),
 });
 
 const uiDateEditor=createUiDateEditor({
@@ -674,6 +685,7 @@ const uiSettings=createUiSettings({
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
+  storageV2Status:()=>storageV2Coordinator.status(storageShadow,cloudAuth.loadSupaSession()),
 });
 
 const uiModal=createUiModal({
@@ -794,6 +806,8 @@ const uiBackup=createUiBackup({
 });
 
 const lifecycle=createLifecycle({
+  hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
+  ...storageV2Coordinator.transitionLifecyclePorts(),
   verifyStorageCutover,
   model,
   recoverSharedChecksV2Primary,
@@ -883,6 +897,7 @@ const uiActions=createUiActions({
   openSupabaseLoginModal:(...args)=>uiCloud.openSupabaseLoginModal(...args),
   enableCloudFromCurrentState:(...args)=>uiCloud.enableCloudFromCurrentState(...args),
   logoutSupabase:(...args)=>uiCloud.logoutSupabase(...args),
+  beginStorageV2Cutover,
   handleCheckDatePartInput:(...args)=>uiDateEditor.handleCheckDatePartInput(...args),
   handleCheckDatePartBlur:(...args)=>uiDateEditor.handleCheckDatePartBlur(...args),
   handleCheckDatePartKeydown:(...args)=>uiDateEditor.handleCheckDatePartKeydown(...args),

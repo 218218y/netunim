@@ -124,6 +124,58 @@ ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.l
    "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
 ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
    "clients: missing shared store fails safe outside greenfield setup")
+
+# Storage V2 cutover must remain dependency-inverted: production transition code may
+# ask the application to drain already-durable V1 work, but it must never regain a
+# direct route to a legacy writer/outbox/mirror. Concrete V1 access belongs behind
+# the explicit legacyDrain application port only.
+v2_transition_paths = [
+    ROOT / "shared/storage-v2-production-transition.js",
+    ROOT / "shared/storage-v2-transition.js",
+    ROOT / "shared/storage-v2-cutover-coordinator.js",
+]
+v2_transition_source = "\n".join(path.read_text(encoding="utf-8") for path in v2_transition_paths)
+legacy_writer_symbols = (
+    "markCloudPending",
+    "markChecksPending",
+    "markSharedChecksPending",
+    "persistImmediateBrowserSnapshot",
+    "queueBrowserStateIdb",
+    "CLOUD_BASE_KEY",
+    "BROWSER_STATE_KEY",
+)
+ok(not any(symbol in v2_transition_source for symbol in legacy_writer_symbols),
+   "storage v2 cutover: production coordinator cannot directly reach concrete V1 writers or mirrors")
+ok("drainLegacy" in v2_transition_source and "legacyDrain" not in (ROOT / "shared/storage-v2-production-transition.js").read_text(encoding="utf-8"),
+   "storage v2 cutover: shared production adapter depends only on the abstract legacy drain port")
+for label, app_root in (("kupa", K), ("orders", O)):
+    drain_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
+    main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
+    ok("legacyDrain:true" in drain_source
+       and "legacyDrain=true" in drain_source
+       and "legacyDrain=false" in drain_source
+       and "owner.writable&&(!preparing()||legacyDrain)" in drain_source
+       and "legacyDrain:true" not in main_source,
+       f"{label}: concrete V1 drain is explicitly fenced inside the storage-v2 composition boundary")
+
+owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
+owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')
+orders_cloud_ui=(O/'site/assets/js/ui/cloud.js').read_text(encoding='utf-8')
+kupa_cloud_ui=(K/'site/assets/js/ui/cloud.js').read_text(encoding='utf-8')
+kupa_sync_document=(K/'site/assets/js/sync/document.js').read_text(encoding='utf-8')
+ok('pendingAdoption' in owner_core and 'reserveLocalAdoption' in owner_core and 'reserveLocalOwnerTarget' in owner_db,
+   'storage owner: local-to-account target is durably reserved before owner activation')
+ok('storage_owner_local_adoption_auth_mismatch' in owner_core and 'requiredOwner' in owner_core,
+   'storage owner: interrupted local adoption rejects authentication to a different account')
+ok("prepareAuthenticatedStorageOwner" in orders_cloud_ui and "reserve:upload-local" not in orders_cloud_ui and "storage_owner_local_pending_requires_upload" in orders_cloud_ui,
+   'orders cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
+ok("prepareAuthenticatedStorageOwner" in kupa_cloud_ui and "storage_owner_local_pending_requires_upload" in kupa_cloud_ui,
+   'kupa cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
+ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),
+   'kupa cloud apply: owner adoption completes before the account state becomes interactive')
+ok(orders_cloud_ui.index("await adoptAuthenticatedStorageOwner(ownerIntent)") < orders_cloud_ui.index("render();if(existing)"),
+   'orders cloud enable: owner adoption completes before rendering the prepared account state')
+
 ok("Array.isArray(state.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
 ok("!Array.isArray(d)" in os, "orders: cloud state rejects arrays")
 

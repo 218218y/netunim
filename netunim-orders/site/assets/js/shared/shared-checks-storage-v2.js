@@ -62,14 +62,27 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     await journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:'shared-checks-primary',migrationIntent:'verified-shadow-promotion',sourceOwner:identity}});
     trusted=true;return journal.recover();
   }
-  async function initializeCloudHead(revision,state,{intent,sourceOwner,legacyPendingClean=false}={}){
+  async function initializeCloudHead(revision,state,{intent,sourceOwner,legacyPendingClean=false,bootstrapOperationId=''}={}){
     assertOwner();if(role!=='primary'||!legacyPendingClean)throw new Error('shared_checks_initialization_not_verified');
     const source=String(sourceOwner||'').trim(),canonical=canonicalState(state);
-    if(!['cloud-authoritative','legacy-upgrade','upload-local'].includes(intent)||(intent==='upload-local'?source!=='local':source!==identity))throw new Error('shared_checks_owner_transfer_intent_required');
-    if(intent==='upload-local'&&(revision!==0||canonical.bankEvents.length))throw new Error('shared_checks_bootstrap_invalid');
-    const bootstrap=intent==='upload-local',initial=bootstrap?{checks:[],bankEvents:[]}:canonical;
+    const validIntent=(intent==='upload-local'&&source==='local')||(intent==='upload-owner'&&source===identity)||(['cloud-authoritative','legacy-upgrade'].includes(intent)&&source===identity);
+    if(!validIntent)throw new Error('shared_checks_owner_transfer_intent_required');
+    const bootstrap=['upload-local','upload-owner'].includes(intent);
+    if(bootstrap&&(revision!==0||canonical.bankEvents.length))throw new Error('shared_checks_bootstrap_invalid');
+    const initial=bootstrap?{checks:[],bankEvents:[]}:canonical;
     const changes=bootstrap?[{type:'set',field:'bankEvents',value:[]},...canonical.checks.map((record,index)=>({type:'put',collection:'checks',id:record.id,mode:'insert',index,record}))]:null;
-    const recovered=await journal.initializeCloudHead(revision,initial,{changes,appMetadata:{storageRole:'shared-checks-primary',migrationIntent:intent,sourceOwner:source}});
+    const metadata={storageRole:'shared-checks-primary',migrationIntent:intent,sourceOwner:source,bootstrapOperationId:String(bootstrapOperationId||'')};let recovered;
+    try{recovered=await journal.initializeCloudHead(revision,initial,{changes,appMetadata:metadata})}
+    catch(error){
+      if(error?.message!=='storage_initialization_exists'||!metadata.bootstrapOperationId)throw error;
+      const existing=await journal.open(),cloud=await journal.cloudState();
+      const idempotent=!!existing&&existing.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&existing.appMetadata?.migrationIntent===intent&&existing.appMetadata?.sourceOwner===source&&cloud?.base?.revision===revision&&equalSyncJson(existing.state,canonical);
+      if(idempotent)recovered=existing;
+      else{
+        if(!existing||existing.appMetadata?.storageRole==='shared-checks-primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(existing.state,canonical))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
+        recovered=await journal.initializeCloudHead(revision,initial,{changes,appMetadata:metadata,replaceExistingState:canonical});
+      }
+    }
     assertOwner();trusted=true;return recovered;
   }
   function append(operations,currentState,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[]}={}){

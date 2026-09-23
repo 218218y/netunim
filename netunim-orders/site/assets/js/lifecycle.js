@@ -5,7 +5,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({verifyStorageCutover=async()=>false,recoverSharedChecksV2Primary=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,verifyStorageCutover=async()=>false,recoverSharedChecksV2Primary=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState(){
   try{session.lastCloudState=JSON.parse(localStorage.getItem(CLOUD_BASE_KEY)||'null')}catch(e){console.error('orders cloud base load',e)}
   const durablePending=await getCloudPending(),pending=durablePending?.snapshot||loadCloudPendingState();
@@ -81,25 +81,31 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
 async function boot(){
   startupMark('boot-start');
   await acquirePrimaryTabLock();startupMark('primary-tab-ready');
-  loadSession();
-  const cutoverActive=await verifyStorageCutover();
+  await hydrateStorageOwner();startupMark('storage-owner-ready');
+  loadSession();await hydrateStorageTransition();
+  let cutoverActive=await verifyStorageCutover(),transitionPreparing=storageTransitionPreparing();
   try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive)throw e;console.error('browser state recovery',e)}
 
   if(!tab.primaryTab){
-    // Main's historical checkpoint may still contain non-authoritative checks.
-    // A secondary tab cannot acquire Shared Checks recovery, so it must not
-    // render business data after V2 cutover.
-    if(cutoverActive){showSecondaryTabGuard();syncFolderAccessButton();return}
+    // A secondary tab cannot resume a durable cutover or acquire Shared Checks
+    // primary ownership. Keep it read-only for both an active and an interrupted cutover.
+    if(cutoverActive||transitionPreparing){showSecondaryTabGuard();syncFolderAccessButton();return}
     setCloud('ענן: לשונית משנית','offline');render({supplierScrollMode:'end'});startupMark('first-render');showSecondaryTabGuard();syncFolderAccessButton();setSave('מקומי: קריאה בלבד','',folderSaveTitle());
     void initializeLocalServices();
     return;
   }
 
-  const sharedPrimary=await recoverSharedChecksV2Primary();
-
   if(navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
+  if(session.syncCapabilitiesError){render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
-  if(session.syncCapabilitiesError){await recoverOrdersLocalState();if(!sharedPrimary)await recoverChecksLocalState();render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
+  transitionPreparing=storageTransitionPreparing();
+  if(transitionPreparing){
+    if(!navigator.onLine||!loadSession()){render();setCloud('ענן: מעבר Storage V2 ממתין להתחברות ולרשת','error');setSave('העריכה נעולה עד השלמת מעבר האחסון','error');return}
+    try{await resumeStorageTransition();cutoverActive=await verifyStorageCutover();if(!cutoverActive)throw new Error('storage_cutover_marker_verification_failed')}
+    catch(error){console.error('Storage V2 cutover resume',error);render();setCloud('ענן: מעבר Storage V2 דורש השלמה','error');setSave('העריכה נעולה עד השלמת מעבר האחסון','error');return}
+  }
+
+  const sharedPrimary=await recoverSharedChecksV2Primary();
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 

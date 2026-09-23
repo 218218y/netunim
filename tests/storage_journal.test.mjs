@@ -36,6 +36,9 @@ test('full-state replacement requires an explicit durable import or cloud normal
   assert.deepEqual(replayStorageJournal(checkpoint(),[sealStorageRecord(imported)],schema).state,replacement.state);
   const normalized={...imported,mutationType:'cloud-normalization'};
   assert.deepEqual(replayStorageJournal(checkpoint(),[sealStorageRecord(normalized)],schema).state,replacement.state);
+  const bootstrap={...operation(1,[replacement]),mutationType:'bootstrap',appMetadata:{storageRole:'primary',migrationIntent:'upload-local',sourceOwner:'local'}};
+  assert.deepEqual(replayStorageJournal(checkpoint(),[sealStorageRecord(bootstrap)],schema).state,replacement.state);
+  assert.throws(()=>validateStoredOperation({...bootstrap,seq:2},schema),/invalid_local_import/);
   assert.throws(()=>validateStoredOperation({...normalized,appMetadata:{}},schema),/invalid_local_import/);
 });
 test('inserts preserve user ordering, scalar updates replay and checkpoint duplicates are harmless',()=>{

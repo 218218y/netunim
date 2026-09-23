@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-ee8a4c5504cf';
+const CACHE='kupa-app-shell-esm-6cd113600626';
 const SHELL=[
   './',
   './index.html',
@@ -8,6 +8,7 @@ const SHELL=[
   './assets/app.js',
   './assets/js/cloud/auth.js',
   './assets/js/cloud/transport.js',
+  './assets/js/composition/storage-v2.js',
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
   './assets/js/core/search.js',
@@ -100,12 +101,17 @@ const SHELL=[
   './assets/js/shared/storage-journal-model.js',
   './assets/js/shared/storage-journal.js',
   './assets/js/shared/storage-metrics.js',
+  './assets/js/shared/storage-owner.js',
   './assets/js/shared/storage-shadow.js',
+  './assets/js/shared/storage-v2-bootstrap.js',
   './assets/js/shared/storage-v2-boundary.js',
+  './assets/js/shared/storage-v2-cutover-coordinator.js',
   './assets/js/shared/storage-v2-cutover.js',
   './assets/js/shared/storage-v2-local-import.js',
+  './assets/js/shared/storage-v2-production-transition.js',
   './assets/js/shared/storage-v2-restore.js',
   './assets/js/shared/storage-v2-runtime.js',
+  './assets/js/shared/storage-v2-transition.js',
   './assets/js/shared/sync-capabilities.js',
   './assets/js/shared/sync-status.js',
   './assets/js/state/constants.js',
