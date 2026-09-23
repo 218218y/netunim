@@ -36,8 +36,7 @@ function refreshForMorningRecovery(){
       // A local edit/save during the GET invalidates this refresh; never apply a stale head.
       if(session.localGeneration!==generation||session.cloudSavePromise||cloudHasLocalWork()||!sameOrderCloudData(model.state,local))return false;
       applyOrderCloudState(row.state);session.cloudRevision=Number(row.revision);session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;session.lastCloudState=prepareCloudState(model.state);
-      localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));
-      if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(session.cloudRevision,model.state);else if(localSnapshot(undefined,{storageBoundary:'morning-cloud-refresh'})===false)return false;
+      if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(session.cloudRevision,model.state);else{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState));if(localSnapshot(undefined,{storageBoundary:'morning-cloud-refresh'})===false)return false}
       render();refreshCloudTimestamp();return true;
     }finally{session.cloudBusy=false}
   })().catch(error=>{console.error('Morning recovery cloud refresh',error);return false}).finally(()=>{morningRefreshPromise=null});
@@ -111,7 +110,6 @@ async function saveStorageV2CloudFlight(initialFlight){
       const conflict=structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});
       await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{control:{conflict}});
       session.lastCloudState=clone(remoteState);session.cloudRevision=remoteRevision;session.cloudUpdatedAt=remote.updated_at||session.cloudUpdatedAt;session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-      try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
       setCloud('ענן: התנגשות','error');toast('יש התנגשות בענן באותה רשומה. הנתונים המקומיים נשמרו ולא נדרסו.');return false
     }
     const throughSeq=Number(flight.endSeq),previousOperationId=flight.operationId;
@@ -135,14 +133,12 @@ async function saveStorageV2CloudFlight(initialFlight){
       const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local,remote:authoritative,generation:state.afterFlightGeneration,baseRevision:flight.baseRevision,currentRemoteRevision:newRevision});
       await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state,control:{conflict}});
       session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
-      try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
       setCloud('ענן: התנגשות','error');return false
     }
     applyOrderCloudState(rebased.state);session.cloudSaveRequested=true
   }else if(!sameOrderCloudData(model.state,authoritative))applyOrderCloudState(authoritative);
   const committedState=await acknowledgeStorageV2CloudFlight(flight.operationId,newRevision,authoritative,{currentState:model.state});
   session.cloudRevision=newRevision;session.cloudUpdatedAt=res.row?.updated_at||session.cloudUpdatedAt;session.lastCloudState=clone(authoritative);session.cloudConflictBlocked=false;
-  try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
   try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
   return {committed:true,state:committedState}
 }
@@ -198,13 +194,11 @@ async function cloudPoll(){
     session.cloudRevision=rowRevision;session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;
     if(!meaningful){
       session.lastCloudState=prepareCloudState(row.state||model.state);
-      try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
-      if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);
+      if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);else try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
       refreshCloudTimestamp();setCloud('ענן: מסונכרן','synced');return
     }
     applyOrderCloudState(row.state);session.lastCloudState=prepareCloudState(model.state);
-    try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
-    if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);else localSnapshot();
+    if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);else{try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}localSnapshot()}
     try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
     setCloud('ענן: מסונכרן','synced');render();toast('התקבל עדכון מהענן')
   }catch(e){const normalized=normalizeCloudError(e);if(['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind))console.warn('orders cloud poll deferred',e?.message||e);else console.error(e)}

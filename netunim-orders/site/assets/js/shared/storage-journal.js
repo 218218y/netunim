@@ -32,8 +32,11 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   function enqueue(work){const result=queue.then(work);queue=result.catch(error=>{failed=error});return result}
   function enqueueEpochTransition(nextEpoch,work){
     if(transition)throw new Error('storage_epoch_transition');
-    const active={epoch:nextEpoch,seq:0};transition=active;
-    const result=queue.then(async()=>{try{return await work(active)}finally{if(transition===active)transition=null}});queue=result.catch(()=>{});return result;
+    const active={epoch:nextEpoch,seq:0,fallbackEpoch:epoch,fallbackSeq:seq};transition=active;
+    const result=queue.then(async()=>{try{return await work(active)}finally{if(transition===active)transition=null}});
+    // A failed reset with edits reserved for its new epoch must stop further
+    // writes. Recovery can replay their old-epoch emergency copies instead.
+    queue=result.catch(error=>{if(active.seq)failed=error});return result;
   }
   function readEmergency(){
     if(!emergency)throw new Error('storage_emergency_unavailable');
@@ -75,6 +78,10 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
       if(record.data.seq>recovered.stored.metadata.seq)await db.append(owner,epoch,writer,record);
       cleanEmergency(record);
     }
+    // A failed epoch transition may leave a sealed copy for the epoch that
+    // never became authoritative. Once the recovered writer is claimed, it is
+    // safe to retire those obsolete copies.
+    for(const record of readEmergency())if(record.data.epoch!==epoch)cleanEmergency(record);
     return recovered;
   }
   async function install(state,{expectedEpoch,appMetadata={}}={}){
@@ -90,9 +97,14 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
   }
   function append(changes,{generation=0,surface='unknown',mutationType='edit',deleteIntents={},appMetadata={}}={}){
     guard();const activeTransition=transition,targetEpoch=activeTransition?.epoch||epoch,targetSeq=activeTransition?activeTransition.seq+1:seq+1,operation={version:2,owner,epoch:targetEpoch,seq:targetSeq,generation,operationId:operationId(),at:now(),surface,mutationType,changes:structuredClone(changes),deleteIntents:normalizeDeleteIntents(deleteIntents),appMetadata:structuredClone(appMetadata)};
-    validateStoredOperation(operation,schema);const record=sealStorageRecord(operation,{kind:'journal'}),emergencyDurable=writeEmergency(record);if(activeTransition)activeTransition.seq=operation.seq;else seq=operation.seq;
-    const committed=enqueue(async()=>{if(!primary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);return true}finally{done()}});
-    return {seq:operation.seq,operationId:operation.operationId,emergencyDurable,committed,transitioning:!!activeTransition};
+    validateStoredOperation(operation,schema);const record=sealStorageRecord(operation,{kind:'journal'});
+    // Until the reset transaction commits, either epoch may be authoritative
+    // after a crash. Keep the same operation in both emergency namespaces.
+    const fallbackRecord=activeTransition?sealStorageRecord({...operation,epoch:activeTransition.fallbackEpoch,seq:activeTransition.fallbackSeq+1},{kind:'journal'}):null;
+    const fallbackDurable=!fallbackRecord||writeEmergency(fallbackRecord),newEpochDurable=writeEmergency(record),emergencyDurable=fallbackDurable&&newEpochDurable;
+    if(activeTransition){activeTransition.seq=operation.seq;activeTransition.fallbackSeq++}else seq=operation.seq;
+    const committed=enqueue(async()=>{if(!primary())throw new Error('storage_secondary_tab');const done=beginMeasure('storage:idb-journal');try{await db.append(owner,operation.epoch,writer,record);cleanEmergency(record);if(fallbackRecord)cleanEmergency(fallbackRecord);return true}finally{done()}});
+    return {seq:operation.seq,operationId:operation.operationId,emergencyDurable,transitionFallbackDurable:fallbackDurable,committed,transitioning:!!activeTransition};
   }
   async function compact(){guard();await queue;if(failed)throw failed;const recovered=await recover();validate(recovered.state);
     const checkpoint=sealStorageRecord({version:2,owner,epoch:recovered.epoch,seq:recovered.seq,state:recovered.state,appMetadata:recovered.appMetadata||{},savedAt:now()},{kind:'checkpoint'}),done=beginMeasure('storage:checkpoint');

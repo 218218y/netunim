@@ -24,6 +24,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   let journal=null,identity='',starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,undurableFailed=false;
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
   function currentOwner(){return String(owner()||'local')}
+  function readyForCurrentOwner(){return mode()==='primary'&&primary()&&identity===currentOwner()&&!!journal?.ready}
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
@@ -75,7 +76,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   function scheduleCompaction(){
     if(compactionScheduled||!journal?.ready)return;compactionScheduled=true;
-    scheduleIdle(async()=>{compactionScheduled=false;if(mode()!=='primary'||!journal?.ready||(!operationsSinceCheckpoint&&Date.now()-lastCheckpointAt<compactAfterMs))return;try{await commits;await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now()}catch(error){diagnostics.errors++;diagnostics.lastError=error.message}});
+    scheduleIdle(async()=>{compactionScheduled=false;if(!readyForCurrentOwner()||(!operationsSinceCheckpoint&&Date.now()-lastCheckpointAt<compactAfterMs))return;try{await commits;await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now()}catch(error){diagnostics.errors++;diagnostics.lastError=error.message}});
   }
   function persist(state,{operations=null,storageBoundary='',generation=0,surface='',mutationType='autosave',deleteIntents={}}={},appMetadata={}){
     if(mode()!=='primary'||!primary())return {handled:false,reason:'inactive'};
@@ -95,7 +96,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       }
       commits=commits.catch(()=>{}).then(()=>write.committed).catch(error=>{diagnostics.commitFailures++;diagnostics.lastError=error.message;throw error});
       if(operationsSinceCheckpoint>=compactEvery||Date.now()-lastCheckpointAt>=compactAfterMs)scheduleCompaction();
-      return {handled:true,emergencyDurable:write.emergencyDurable,committed:write.committed,seq:write.seq,transitioning:!!write.transitioning,reason:write.emergencyDurable?'journal':'idb-commit-pending'};
+      return {handled:true,emergencyDurable:write.emergencyDurable,transitionFallbackDurable:write.transitionFallbackDurable,committed:write.committed,seq:write.seq,transitioning:!!write.transitioning,reason:write.emergencyDurable?'journal':'idb-commit-pending'};
     }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;return {handled:false,reason:'append-failed',error}}
   }
   function afterLegacy(state,options={},appMetadata={}){
@@ -111,20 +112,26 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function flush(){
     if(mode()==='shadow')return shadow.flush();
     if(starting)await starting;
-    try{await commits;await journal?.settled?.();return !journal?.error}catch{return false}
+    try{const active=await settledJournal();await active.settled();return !active.error}catch{return false}
   }
-  async function setCloudBase(revision,state,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;return journal.setCloudBase(revision,state,options)}
-  async function captureCloudCursor(revision,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;return journal.captureCloudCursor(revision,options)}
-  async function cloudState(options={}){if(mode()!=='primary'||!journal?.ready)return null;await commits;return journal.cloudState(options)}
-  async function materializeFlight(options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;return journal.materializeFlight(options)}
-  async function acknowledgeFlight(operationId,revision,state,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}return journal.acknowledge(operationId,revision,state,next)}
-  async function rejectFlight(operationId,revision,state,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;return journal.rejectAndRebase(operationId,revision,state,options)}
-  async function setCloudControl(control={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;return journal.setCloudControl(control)}
-  async function clearCloudControl(){if(mode()!=='primary'||!journal?.ready)return false;await commits;return journal.clearCloudControl()}
-  async function replaceCurrentState(state,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;const result=await journal.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function adoptCloudHead(revision,cloudState,currentState,options={}){if(mode()!=='primary'||!journal?.ready)throw new Error('storage_v2_primary_not_ready');await commits;const result=await journal.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function replaceAuthoritativeState(currentState,options={}){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function resetCloudHead(revision,cloudState,currentState,options={}){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function compact(){if(mode()!=='primary'||!journal?.ready)return false;await commits;const result=await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return mode()==='primary'&&!!journal?.ready},get durabilityAtRisk(){return undurableCount>0||undurableFailed},get commitPromise(){return commits}};
+  async function settledJournal(){
+    if(!readyForCurrentOwner())throw new Error('storage_v2_primary_not_ready');
+    const active=journal,scopedIdentity=identity;await commits;
+    if(active!==journal||identity!==scopedIdentity||!readyForCurrentOwner())throw new Error('storage_owner_changed_during_operation');
+    return active;
+  }
+  async function setCloudBase(revision,state,options={}){return (await settledJournal()).setCloudBase(revision,state,options)}
+  async function captureCloudCursor(revision,options={}){return (await settledJournal()).captureCloudCursor(revision,options)}
+  async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
+  async function materializeFlight(options={}){return (await settledJournal()).materializeFlight(options)}
+  async function acknowledgeFlight(operationId,revision,state,options={}){const active=await settledJournal(),next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}return active.acknowledge(operationId,revision,state,next)}
+  async function rejectFlight(operationId,revision,state,options={}){return (await settledJournal()).rejectAndRebase(operationId,revision,state,options)}
+  async function setCloudControl(control={}){return (await settledJournal()).setCloudControl(control)}
+  async function clearCloudControl(){if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
+  async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function adoptCloudHead(revision,cloudState,currentState,options={}){const active=await settledJournal(),result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  return {recover,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get durabilityAtRisk(){return undurableCount>0||undurableFailed},get commitPromise(){return commits}};
 }

@@ -11,6 +11,7 @@ import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/a
 import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {CLOUD_BASE_KEY as ORDERS_CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createLifecycle as orderLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
@@ -319,4 +320,13 @@ test('Kupa workbook deletion merges unrelated work but conflicts with child addi
  for(const part of ['sheets','columns','rows'])otherDeleted.notesSheet[part]=otherDeleted.notesSheet[part].filter(row=>(part==='sheets'?row.id:row.sheetId)!=='S2');
  const emptied=km.mergeState3Way(base,deleted,otherDeleted,{deleteIntents:intents});
  assert.ok(emptied.conflicts.includes('notesSheet.sheets'));assert.deepEqual(emptied.state.notesSheet.sheets,otherDeleted.notesSheet.sheets);
+});
+
+test('Orders V2 cloud open adopts the remote head without writing a full legacy cloud base',async()=>{
+ const noop=()=>{};
+ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+ const writes=[],store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(key,value)=>{writes.push(key);store.set(key,String(value))},getItem:key=>store.get(key)??null,removeItem:key=>store.delete(key)},configurable:true});
+ const model={state:{checks:[]}},session={cloudRevision:0,cloudConflictBlocked:false},adoptions=[];
+ const api=orderUiCloud({model,files:{},tab:{primaryTab:true},session,checksSession:{},ui:{},modal:noop,supaConfigured:()=>true,toast:noop,closeModal:noop,authPassword:async()=>{},localSnapshot:()=>{throw new Error('V1 snapshot used')},markCloudPending:noop,clearCloudPending:noop,setCloud:noop,showSecondaryTabGuard:noop,prepareCloudState:()=>({suppliers:[]}),render:noop,writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,state:{suppliers:[]}}),applyOrderCloudState:noop,refreshKupaReadout:async()=>true,syncSharedChecksFromCloud:async()=>true,requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:noop,saveSession:noop,renderSettings:noop,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:2},pending:false,flight:null}),adoptStorageV2CloudHead:async(revision)=>adoptions.push(revision)});
+ assert.equal(await api.openCloud({hydrateSecondary:false,startPoll:false}),true);assert.deepEqual(adoptions,[3]);assert.equal(writes.includes(ORDERS_CLOUD_BASE_KEY),false);
 });

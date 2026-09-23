@@ -132,6 +132,18 @@ test('an account change cannot clear an uncommitted IDB-only mutation guard',asy
   assert.deepEqual(installs,['B:orders']);
 });
 
+test('an owner switch immediately fences the old V2 cloud cursor before the new owner recovers',async()=>{
+  let owner='A';const seen=[],commit=deferred();
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:options=>{
+    const journal={ready:false,open:async()=>{journal.ready=true;return {state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:0},seq:0,stored:{checkpoints:{data:{seq:0}}}}},append:()=>({emergencyDurable:true,committed:commit.promise,seq:1}),cloudState:async()=>{seen.push(options.owner);return {base:{revision:1}}},settled:()=>Promise.resolve()};return journal;
+  }});
+  await runtime.recover();assert.equal(runtime.primaryReady,true);assert.equal((await runtime.cloudState()).base.revision,1);
+  runtime.persist({notes:[{id:'N1'}]},{operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]});const inFlightRead=runtime.cloudState();
+  owner='B';assert.equal(runtime.primaryReady,false);assert.equal(await runtime.cloudState(),null);assert.deepEqual(seen,['A:orders']);
+  await runtime.recover();commit.resolve();await assert.rejects(inFlightRead,/storage_owner_changed_during_operation/);
+  assert.equal(runtime.primaryReady,true);assert.equal((await runtime.cloudState()).base.revision,1);assert.deepEqual(seen,['A:orders','B:orders']);
+});
+
 test('overlapping recoveries remain scoped to the account that started them',async()=>{
   const firstOpen=deferred(),record={state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:0},seq:0,stored:{checkpoints:{data:{seq:0}}}};
   let owner='A',bOpens=0;

@@ -15,7 +15,6 @@ async function recoverOrdersLocalState(){
   const v2=await refreshStorageV2CloudState();
   if(v2?.base){
     session.lastCloudState=clone(v2.base.state);session.cloudRevision=Number(v2.base.revision||0);session.storageV2CloudPending=!!(v2.pending||v2.flight);
-    try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('orders V2 cloud base mirror',error)}
     if(v2.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;return}
     if(v2.pending||v2.flight)session.cloudSaveRequested=true;
     return;

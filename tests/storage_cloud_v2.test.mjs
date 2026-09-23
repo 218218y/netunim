@@ -87,19 +87,47 @@ test('Storage V2 routes edits that arrive during an epoch reset into the new epo
   const recovered=await journal.recover(),cloud=await journal.cloudState();assert.notEqual(journal.epoch,oldEpoch);assert.equal(resetResult.seq,1);assert.equal(resetResult.ackSeq,0);assert.equal(recovered.state.notes[0].text,'edited-during-reset');assert.equal(recovered.seq,1);assert.equal(recovered.appMetadata.snapshotSeq,2);assert.equal(cloud.base.revision,41);assert.equal(cloud.base.ackSeq,0);assert.equal(cloud.flight,null);assert.equal(cloud.pending,true);
 });
 
+test('Storage V2 recovers a transition edit from the old epoch when the reset fails',async()=>{
+  let ids=400,releaseReset,startReset;const db=memoryDb(),emergency=emergencyStore(),started=new Promise(resolve=>{startReset=resolve}),released=new Promise(resolve=>{releaseReset=resolve});
+  db.resetCloudHead=async()=>{startReset();await released;throw new Error('injected reset failure')};
+  const options={owner:'orders:failed-transition',schema,validate:state=>assert.ok(Array.isArray(state.notes)),db,emergency,operationId:()=>`failed-transition-${++ids}`};
+  const journal=createStorageJournal(options);await journal.install({notes:[{id:'A',text:'base'}]},{expectedEpoch:null});await journal.captureCloudCursor(40);
+  const reset=journal.resetCloudHead(41,{notes:[{id:'A',text:'remote'}]},{notes:[{id:'A',text:'remote'}]});await started;
+  const during=journal.append([put('A','first-edit')],{generation:1,surface:'orders',mutationType:'edit'});
+  const later=journal.append([put('A','must-survive')],{generation:2,surface:'orders',mutationType:'edit'});
+  assert.equal(during.emergencyDurable,true);assert.equal(during.transitionFallbackDurable,true);
+  assert.equal(later.emergencyDurable,true);assert.equal(later.seq,2);
+  releaseReset();await assert.rejects(reset,/injected reset failure/);await assert.rejects(during.committed);await assert.rejects(later.committed);
+  assert.equal(journal.ready,false,'the failed writer stops accepting edits');
+  const restarted=createStorageJournal(options);const recovered=await restarted.open();assert.equal(recovered.state.notes[0].text,'must-survive');assert.equal(recovered.seq,2);
+  assert.equal(emergency.length,0,'the abandoned new-epoch emergency copy is retired after recovery');
+});
+
+test('Storage V2 recovers a transition edit from the new epoch after reset commits but before its journal append',async()=>{
+  let ids=500,releaseAppend,startAppend;const db=memoryDb(),originalAppend=db.append.bind(db),emergency=emergencyStore(),started=new Promise(resolve=>{startAppend=resolve}),released=new Promise(resolve=>{releaseAppend=resolve});
+  db.append=async(...args)=>{startAppend();await released;return originalAppend(...args)};
+  const options={owner:'orders:committed-transition',schema,validate:state=>assert.ok(Array.isArray(state.notes)),db,emergency,operationId:()=>`committed-transition-${++ids}`};
+  const journal=createStorageJournal(options);await journal.install({notes:[{id:'A',text:'base'}]},{expectedEpoch:null});await journal.captureCloudCursor(40);
+  const reset=journal.resetCloudHead(41,{notes:[{id:'A',text:'remote'}]},{notes:[{id:'A',text:'remote'}]});
+  const during=journal.append([put('A','must-survive')],{generation:1,surface:'orders',mutationType:'edit'});
+  await reset;await started;db.append=originalAppend;const restarted=createStorageJournal(options),recovered=await restarted.open();
+  assert.equal(recovered.state.notes[0].text,'must-survive');assert.equal(recovered.seq,1);
+  releaseAppend();await assert.rejects(during.committed,'the previous writer is fenced after restart');
+});
 
 
-test('browser adapters mirror a compatibility snapshot when an edit is reserved into a new epoch transition',async()=>{
+
+test('browser adapters skip the full V1 compatibility snapshot when a transition edit has V2 emergency durability',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
     for(const kind of ['orders','kupa']){
       let afterLegacyCalls=0;const storageV2={persist:()=>({handled:true,emergencyDurable:true,transitioning:true,committed:Promise.resolve(true),seq:1}),afterLegacy:()=>{afterLegacyCalls++}};
       if(kind==='orders'){
         const state=clone(ORDERS_INITIAL_STATE),files={browserStateWritePromise:Promise.resolve(true)},session={localSnapshotSeq:0,cloudRevision:7,storageV2CloudPending:false};const browser=createOrdersStorageBrowser({storageV2,model:{state},files,session,prepareState:clone,prepareCloudState:clone,normalizeState:clone});
-        assert.equal(browser.localSnapshot(state,{operations:[{type:'set',field:'__unused',value:true}]}),true);const record=JSON.parse(storage.getItem(ORDERS_STORAGE_KEY));assert.equal(record._meta.localSnapshotSeq,1);await files.browserStateWritePromise;
+        assert.equal(browser.localSnapshot(state,{operations:[{type:'set',field:'__unused',value:true}]}),true);assert.equal(storage.getItem(ORDERS_STORAGE_KEY),null);
       }else{
         const state=clone(KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,dbRevision:7,storageV2CloudPending:false};const browser=createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
-        assert.equal(browser.persistImmediateBrowserSnapshot(state,7,{operations:[{type:'set',field:'__unused',value:true}]}),true);const record=JSON.parse(storage.getItem(KUPA_STORAGE_KEY));assert.equal(record.snapshotSeq,1);await files.browserStateWritePromise;
+        assert.equal(browser.persistImmediateBrowserSnapshot(state,7,{operations:[{type:'set',field:'__unused',value:true}]}),true);assert.equal(storage.getItem(KUPA_STORAGE_KEY),null);
       }
       assert.equal(afterLegacyCalls,0);
       while(storage.length)storage.removeItem(storage.key(0));
@@ -142,14 +170,14 @@ test('Orders Cloud V2 refuses cutover when the durable V1 head cannot be verifie
   }finally{if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;if(previousIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=previousIndexedDb}
 });
 
-test('cloud reset keeps the compatibility mirror on the newest visible state when an edit lands during the reset',async()=>{
+test('cloud reset keeps the newest visible state in V2 without a transition compatibility snapshot',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
     let releaseReset,startReset;const started=new Promise(resolve=>{startReset=resolve}),released=new Promise(resolve=>{releaseReset=resolve}),model={state:clone(KUPA_INITIAL_STATE)},files={},session={localSnapshotSeq:0,localGeneration:0,dbRevision:12,storageV2CloudPending:false,cloudConflictPending:true};
     const cloudProject=value=>{const next=clone(value);delete next.checks;return next},remote=cloudProject(model.state),storageV2={primaryReady:true,resetCloudHead:async()=>{startReset();await released;return {epoch:'epoch-new',seq:1,ackSeq:0,revision:12}},persist:()=>({handled:true,emergencyDurable:true,transitioning:true,committed:Promise.resolve(true),seq:1}),cloudState:async()=>({seq:1,base:{version:2,owner:'kupa:test',epoch:'epoch-new',revision:12,state:clone(remote),projection:'cloud',ackSeq:0},flight:null,control:null,pending:true,pendingDeleteIntents:{},pendingGeneration:1,pendingMutationType:'edit',pendingSurface:'kupa',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'})};
     const browser=createKupaStorageBrowser({storageV2,model,files,session,normalizeState:clone,prepareKupaCloudState:cloudProject,idbPut:async()=>true,idbGet:async()=>null});
     const reset=browser.resetStorageV2CloudHead(12,clone(model.state));await started;model.state.notes=[{id:'during-reset',content:'latest-visible-state',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];session.localGeneration=1;assert.equal(browser.persistImmediateBrowserSnapshot(model.state,12,{operations:[{type:'set',field:'__unused',value:true}]}),true);releaseReset();await reset;await files.browserStateWritePromise;
-    const mirrored=JSON.parse(storage.getItem(KUPA_STORAGE_KEY));assert.equal(mirrored.snapshotSeq,2);assert.equal(mirrored.state.notes[0].id,'during-reset');assert.equal(session.storageV2CloudPending,true);assert.equal(session.cloudConflictPending,false);
+    assert.equal(storage.getItem(KUPA_STORAGE_KEY),null,'the durable V2 reset and edit do not write a full V1 snapshot');assert.equal(session.storageV2CloudPending,true);assert.equal(session.cloudConflictPending,false);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 

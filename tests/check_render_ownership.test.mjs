@@ -9,24 +9,40 @@ import {createUiBulk} from '../netunim-kupa/site/assets/js/ui/bulk.js';
 import {createUiNavigation} from '../netunim-kupa/site/assets/js/ui/navigation.js';
 
 const noop=()=>{};
-function fixture(t,{cloud=true}={}){
-  t.mock.method(globalThis,'setTimeout',()=>0);
+function fixture(t,{cloud=true,v2=false,v2InstallFails=false}={}){
+  t.mock.method(globalThis,'setTimeout',(callback,delay)=>{if(v2&&delay===0)queueMicrotask(callback);return 0});
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   const model={},normalizer=createStateNormalization({model});
   model.state=normalizer.normalizeState({checks:[{id:'C',name:'Check',amount:100,dueDate:'2026-10-10',status:'בקופה'}],notes:[{id:'N',content:'base'}]});
   const base=structuredClone(model.state),session={localGeneration:0,dbRevision:1,connectionMode:cloud?'supabase':'file',backendReady:true,saveQueue:Promise.resolve(),serverInfo:{}},checksSession={sharedChecksGeneration:0};
   let renders=0,indicators=0,stages=0,remote=structuredClone(base),revision=1,writeGate=null;
-  const snapshots=[],written=[],ui={currentPage:'checks',bulkCollection:'checks',bulkSelected:new Set(['C'])};
+  const snapshots=[],written=[],replacements=[],ui={currentPage:'checks',bulkCollection:'checks',bulkSelected:new Set(['C'])};
   const nav=createUiNavigation({ui,renderChecks:()=>{renders++},renderDashboard:()=>{renders++},renderBank:()=>{renders++},renderCredit:()=>{renders++},refreshCheckBankIndicator:()=>{indicators++},maybeAutoRefreshBankBalance:noop,maybeAutoRefreshCreditSync:noop});
   const oldDocument=globalThis.document;t.after(()=>{globalThis.document=oldDocument});globalThis.document={getElementById:()=>null};
-  const deps={...normalizer,model,session,checksSession,files:{dataFileHandle:{}},tab:{primaryTab:true},render:()=>{renders++},setSaveStatus:noop,setConnectedStatus:noop,toast:noop,showSecondaryTabGuard:noop,reportError:noop,listBackups:async()=>[],
+  const deps={...normalizer,model,session,checksSession,files:{dataFileHandle:{}},tab:{primaryTab:true},render:()=>{renders++},setSaveStatus:noop,setConnectedStatus:noop,toast:noop,showSecondaryTabGuard:noop,reportError:noop,listBackups:async()=>[],storageV2Primary:()=>v2,replaceStorageV2AuthoritativeState:async(state,revision)=>{replacements.push({kind:'authoritative',state:structuredClone(state),revision});if(v2InstallFails)throw new Error('injected V2 install failure');return {epoch:'new'}},replaceStorageV2CurrentState:async state=>{replacements.push({kind:'current',state:structuredClone(state)});return 1},
     persistImmediateBrowserSnapshot:state=>{snapshots.push(structuredClone(state));return true},markSharedChecksPending:()=>{stages++},saveSharedChecksToCloud:noop,
     stateFromPayload:p=>({state:normalizer.normalizeState(p),meta:p._meta}),lastSavedState:()=>structuredClone(base),
     readJsonHandle:async()=>({...structuredClone(remote),_meta:{revision}}),writeJsonHandleVerified:async(_handle,payload)=>{written.push(structuredClone(payload));if(writeGate)await writeGate()}};
   const api=createStoragePersistence({...deps,...createSyncMerge(deps)});
   const editor=createDomainsChecksEditor({model,saveChecksState:api.saveChecksState,onChecksChanged:nav.checksChanged});
-  return {api,editor,model,session,ui,snapshots,written,checksSession,get renders(){return renders},get indicators(){return indicators},get stages(){return stages},remote:state=>{remote=state;revision++},holdWrite:fn=>{writeGate=fn}};
+  return {api,editor,model,session,ui,snapshots,written,replacements,checksSession,get renders(){return renders},get indicators(){return indicators},get stages(){return stages},remote:state=>{remote=state;revision++},holdWrite:fn=>{writeGate=fn}};
 }
+
+test('V2 Local File load installs an authoritative checkpoint before exposing the file state',async t=>{
+  const f=fixture(t,{cloud:false,v2:true});await f.api.loadState();
+  assert.equal(f.replacements.length,1);assert.equal(f.replacements[0].kind,'authoritative');assert.equal(f.replacements[0].revision,1);assert.equal(f.snapshots.length,0);
+});
+
+test('V2 Local File load fails closed when its checkpoint cannot be installed',async t=>{
+  const f=fixture(t,{cloud:false,v2:true,v2InstallFails:true}),before=structuredClone(f.model.state);
+  await assert.rejects(f.api.loadState(),/injected V2 install failure/);assert.deepEqual(f.model.state,before);assert.equal(f.session.backendReady,true,'the preexisting session remains unchanged');assert.equal(f.snapshots.length,0);
+});
+
+test('V2 Local File ACK checkpoints the current state without a second browser snapshot',async t=>{
+  const f=fixture(t,{cloud:false,v2:true});f.model.state.notes[0].content='local';
+  assert.equal(await f.api.saveState('saved',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N',mode:'replace',record:structuredClone(f.model.state.notes[0])}]}),true);
+  assert.equal(f.snapshots.length,1);assert.equal(f.replacements.at(-1).kind,'current');assert.equal(f.replacements.at(-1).state.notes[0].content,'local');
+});
 
 test('local check persistence remains durable and staged but owns no render',async t=>{
   const f=fixture(t);assert.equal(await f.api.saveChecksState(),true);
