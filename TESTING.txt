@@ -146,6 +146,17 @@ the rest and still returns failure. Ctrl+C and suite timeouts stop owned process
 Windows Job Objects contain the suite's descendants (including Chromium's nested jobs) and wait for their
 termination; POSIX uses separate process groups. Each suite has its own temporary directory, browser profiles,
 loopback ports, and disposable database. Running suites never share a test database or browser profile.
+On Windows, the browser harness keeps a dedicated host-state seed under `.work/browser-host-state/`, keyed to the
+current user, machine and selected Chrome/Edge executable. Its first boot uses a dedicated test profile. Chromium
+does not populate its OS password-check preferences merely by starting, so the harness obtains the OS password
+change time through Windows `NetUserGetInfo` without making a login attempt. It sets the conservative nonblank
+value and writes only `password_manager.os_password_blank` and `password_manager.os_password_last_changed` to each
+new disposable profile's `Local State`. No Default profile, cookies, LocalStorage, IndexedDB, service workers or
+application data are copied or shared. The seed bootstrap is locked across suite processes and is never removed
+by session cleanup. A failed bootstrap is recorded and later browser launches stop with an error; fix the cause
+before removing the affected seed directory to retry. `NETUNIM_BROWSER` remains supported and has its own seed.
+Do not start installed Chrome/Edge with a fresh `--user-data-dir` in ad-hoc tests; use `BrowserSession` so this
+Windows host-state preparation and the disposable profile isolation are both applied.
 Cleanup handles Windows read-only attributes inherited by copytree, including read-only directories: the
 attribute is cleared only on the failing temporary copy, never on the repository's original site files.
 Reports contain diagnostics only and are never accepted as deployment approval or reused as passing results.
@@ -205,6 +216,7 @@ module_contracts.py: deterministic shared copies/cache manifest, normalized cros
 node_models.py: all tests/*.test.mjs files discovered automatically, with two isolated Node workers.
 verification_plan.py: one complete suite inventory for local full verification and the GitHub Actions matrix.
 runtime_sync_postgres.py: real browser/HTTP/PostgreSQL synchronization, lost acknowledgements and merge conflicts.
+runtime_browser_isolation.py: real same-origin LocalStorage/IndexedDB separation and disposable profile cleanup.
 runtime_smoke.py: boot, tabs, lists and scroll restoration in real Chromium.
 runtime_events.py: delegated actions, keyboard, focus/blur dates, series, draft guard, bulk and drag/drop.
 runtime_security.py: hostile business fields and IDs in lists, selectors and modal HTML under production CSP.

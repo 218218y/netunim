@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
+import getpass
+import hashlib
 import http.server
 import json
 import os
@@ -24,6 +27,172 @@ except ImportError as exc:  # pragma: no cover - handled by run_all.py first
     ) from exc
 
 ROOT = Path(__file__).resolve().parents[1]
+HOST_STATE_ROOT = ROOT / ".work" / "browser-host-state"
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _password_check_state(path: Path) -> dict:
+    """Read only Chromium's Windows password-check cache, never profile data."""
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+        prefs = state["password_manager"]
+        blank = prefs["os_password_blank"]
+        changed = prefs["os_password_last_changed"]
+        if isinstance(blank, bool) and isinstance(changed, (str, int)) and not isinstance(changed, bool) and int(changed) > 0:
+            return {"os_password_blank": blank, "os_password_last_changed": changed}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        pass
+    raise RuntimeError(f"Invalid Chromium Windows password-check cache in {path}")
+
+
+def _windows_password_check_state() -> dict:
+    """Mirror Chromium's NetUserGetInfo timestamp without calling LogonUser.
+
+    A false blank-password value is conservative: Chrome will still demand OS
+    authentication if a password-manager action requests it.
+    """
+    from ctypes import wintypes
+
+    class UserInfo1(ctypes.Structure):
+        _fields_ = [("name", wintypes.LPWSTR), ("password", wintypes.LPWSTR),
+                    ("password_age", wintypes.DWORD), ("priv", wintypes.DWORD),
+                    ("home_dir", wintypes.LPWSTR), ("comment", wintypes.LPWSTR),
+                    ("flags", wintypes.DWORD), ("script_path", wintypes.LPWSTR)]
+
+    username = getpass.getuser().split("\\")[-1]
+    buffer = ctypes.c_void_p()
+    netapi = ctypes.WinDLL("Netapi32.dll")
+    netapi.NetUserGetInfo.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR,
+                                      wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p)]
+    netapi.NetUserGetInfo.restype = wintypes.DWORD
+    netapi.NetApiBufferFree.argtypes = [ctypes.c_void_p]
+    status = netapi.NetUserGetInfo(None, username, 1, ctypes.byref(buffer))
+    if status:
+        raise RuntimeError(f"NetUserGetInfo({username!r}) failed with status {status}")
+    try:
+        age = ctypes.cast(buffer, ctypes.POINTER(UserInfo1)).contents.password_age
+    finally:
+        netapi.NetApiBufferFree(buffer)
+    # Chromium stores base::Time microseconds from the Windows epoch and adds
+    # one second for clock skew. Three seconds accommodates Python/API timing.
+    changed = int((time.time() + 11644473600 - age + 3) * 1_000_000)
+    return {"os_password_blank": False, "os_password_last_changed": str(changed)}
+
+
+def _seed_key(browser: str) -> str:
+    identity = "\0".join((str(Path(browser).resolve()).casefold(),
+                           os.environ.get("COMPUTERNAME", ""), getpass.getuser()))
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+
+
+@contextlib.contextmanager
+def _host_state_lock(root: Path):
+    """Serialize seed creation across independent verification suite processes."""
+    import msvcrt
+
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / "seed.lock").open("a+b") as handle:
+        deadline = time.monotonic() + 60
+        while True:
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Timed out waiting for Chromium Windows host-state seed lock")
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
+    return [browser, "--headless=new", "--no-sandbox", "--disable-gpu",
+            f"--remote-debugging-port={port}", f"--user-data-dir={profile}",
+            "--remote-allow-origins=*", "--disable-background-networking",
+            "--no-first-run", "about:blank"]
+
+
+def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
+    """Initialize a dedicated browser profile, then add only host preferences."""
+    seed_profile.mkdir(parents=True, exist_ok=True)
+    log_path = seed_profile.parent / "bootstrap.log"
+    port = _free_port()
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            _browser_args(browser, seed_profile, port),
+            stdout=log, stderr=subprocess.STDOUT,
+        )
+        try:
+            _wait_json(f"http://127.0.0.1:{port}/json/list", timeout=30, process=process)
+        finally:
+            # Browser.close lets Chromium flush Local State; terminate() on
+            # Windows is a hard kill and can lose the preferences we need.
+            if process.poll() is None:
+                try:
+                    version = _wait_json(f"http://127.0.0.1:{port}/json/version", timeout=3, process=process)
+                    with websocket.create_connection(version["webSocketDebuggerUrl"], timeout=3) as ws:
+                        ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
+                except Exception:
+                    process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+    local_state = seed_profile / "Local State"
+    state = json.loads(local_state.read_text(encoding="utf-8"))
+    cache = _windows_password_check_state()
+    state["password_manager"] = cache
+    local_state.write_text(json.dumps(state), encoding="utf-8")
+    return cache
+
+
+def _seed_windows_profile(browser: str, profile: Path) -> None:
+    """Copy exactly two host preferences to a disposable, otherwise empty profile."""
+    if not _is_windows():
+        return
+    root = HOST_STATE_ROOT
+    key = _seed_key(browser)
+    try:
+        with _host_state_lock(root):
+            seed = root / key
+            failed = seed / "bootstrap.failed"
+            if failed.exists():
+                raise RuntimeError("Earlier Chromium host-state bootstrap failed; inspect "
+                                   f"{seed} and remove this seed directory only after fixing the cause")
+            local_state = seed / "profile" / "Local State"
+            if local_state.exists():
+                cache = _password_check_state(local_state)
+            else:
+                seed.mkdir(parents=True, exist_ok=True)
+                try:
+                    cache = _bootstrap_host_state(browser, seed / "profile")
+                except Exception as exc:
+                    failed.write_text(str(exc), encoding="utf-8")
+                    raise
+            # The OS may have changed its password since the seed was made.
+            # Refresh from NetUserGetInfo before each disposable browser starts.
+            current = _windows_password_check_state()
+            if int(current["os_password_last_changed"]) > int(cache["os_password_last_changed"]) + 2_000_000:
+                cache = current
+                state = json.loads(local_state.read_text(encoding="utf-8"))
+                state["password_manager"] = cache
+                local_state.write_text(json.dumps(state), encoding="utf-8")
+            (profile / "Local State").write_text(
+                json.dumps({"password_manager": cache}), encoding="utf-8"
+            )
+    except Exception as exc:
+        raise RuntimeError(
+            "Windows Chromium password-check seed is unavailable; browser launch stopped "
+            "to avoid repeated Windows logon failures. " + str(exc)
+        ) from exc
 
 
 def find_browser() -> str | None:
@@ -222,19 +391,9 @@ class BrowserSession:
         self.url = f"http://127.0.0.1:{port}/index.html"
 
     def _start_browser(self):
+        _seed_windows_profile(self.browser, self.profile)
         devtools_port = _free_port()
-        args = [
-            self.browser,
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            f"--remote-debugging-port={devtools_port}",
-            f"--user-data-dir={self.profile}",
-            "--remote-allow-origins=*",
-            "--disable-background-networking",
-            "--no-first-run",
-            "about:blank",
-        ]
+        args = _browser_args(self.browser, self.profile, devtools_port)
         browser_log = self.tmp / 'browser.log'
         with browser_log.open('w', encoding='utf-8') as log:
             self.proc = subprocess.Popen(args, stdout=log, stderr=subprocess.STDOUT)

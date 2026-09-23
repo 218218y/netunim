@@ -4,14 +4,18 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
 from verification_plan import CORE_SUITES, RUNTIME_SUITES, GROUPS, ci_matrix, validate_plan
 import run_all
+import browser_harness
 from node_models import test_files
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +38,6 @@ class VerificationContracts(unittest.TestCase):
         os.environ.pop("GITHUB_STEP_SUMMARY", None)
 
     def test_browser_startup_fails_immediately_if_chrome_exits(self):
-        import browser_harness
         from unittest.mock import Mock
         process = Mock(returncode=7)
         process.poll.return_value = 7
@@ -42,6 +45,108 @@ class VerificationContracts(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "exit 7"):
                 browser_harness._wait_json("http://127.0.0.1:1/json/list", timeout=30, process=process)
             request.assert_not_called()
+
+    def test_windows_seed_is_shared_without_sharing_browser_profiles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profiles = [root / "A", root / "B"]
+            for profile in profiles:
+                profile.mkdir()
+            calls = []
+            cache = {"os_password_blank": False, "os_password_last_changed": "13409412646932424"}
+
+            def bootstrap(_browser, seed_profile):
+                calls.append(seed_profile)
+                seed_profile.mkdir(parents=True)
+                (seed_profile / "Local State").write_text(
+                    json.dumps({"password_manager": cache}), encoding="utf-8")
+                time.sleep(0.1)
+                return cache
+
+            with patch.object(browser_harness, "HOST_STATE_ROOT", root / "host"), \
+                 patch.object(browser_harness, "_is_windows", return_value=True), \
+                 patch.object(browser_harness, "_windows_password_check_state", return_value=cache), \
+                 patch.object(browser_harness, "_bootstrap_host_state", side_effect=bootstrap):
+                threads = [threading.Thread(target=browser_harness._seed_windows_profile,
+                                            args=("chrome.exe", profile)) for profile in profiles]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(timeout=5)
+                self.assertTrue(all(not thread.is_alive() for thread in threads))
+                self.assertEqual(len(calls), 1)
+                self.assertNotEqual(profiles[0], profiles[1])
+                for profile in profiles:
+                    self.assertEqual(json.loads((profile / "Local State").read_text(encoding="utf-8")),
+                                     {"password_manager": cache})
+                    self.assertFalse((profile / "Default").exists())
+                (profiles[0] / "Default" / "Local Storage").mkdir(parents=True)
+                (profiles[0] / "Default" / "IndexedDB").mkdir()
+                self.assertFalse((profiles[1] / "Default").exists())
+                shutil.rmtree(profiles[0])
+                self.assertTrue((root / "host" / browser_harness._seed_key("chrome.exe") /
+                                 "profile" / "Local State").exists())
+
+    def test_windows_seed_failure_blocks_repeated_browser_bootstrap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            profile = root / "session"
+            profile.mkdir()
+            with patch.object(browser_harness, "HOST_STATE_ROOT", root / "host"), \
+                 patch.object(browser_harness, "_is_windows", return_value=True), \
+                 patch.object(browser_harness, "_bootstrap_host_state", side_effect=RuntimeError("seed failed")) as bootstrap:
+                for _ in range(2):
+                    with self.assertRaisesRegex(RuntimeError, "browser launch stopped"):
+                        browser_harness._seed_windows_profile("chrome.exe", profile)
+                self.assertEqual(bootstrap.call_count, 1)
+                self.assertFalse((profile / "Local State").exists())
+
+    def test_windows_seed_bootstraps_once_across_processes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / "worker.py"
+            script.write_text("""
+import json, os, pathlib, sys, time
+from unittest.mock import patch
+sys.path.insert(0, os.environ['NETUNIM_TESTS_DIR'])
+import browser_harness as h
+root = pathlib.Path(os.environ['NETUNIM_TEST_ROOT'])
+cache = {'os_password_blank': False, 'os_password_last_changed': '13409412646932424'}
+def bootstrap(browser, profile):
+    profile.mkdir(parents=True)
+    with (root / 'bootstrap-count').open('a') as count:
+        count.write('1\\n')
+    time.sleep(0.3)
+    (profile / 'Local State').write_text(json.dumps({'password_manager': cache}))
+    return cache
+with patch.object(h, 'HOST_STATE_ROOT', root / 'host'), \\
+     patch.object(h, '_is_windows', return_value=True), \\
+     patch.object(h, '_windows_password_check_state', return_value=cache), \\
+     patch.object(h, '_bootstrap_host_state', side_effect=bootstrap):
+    h._seed_windows_profile('chrome.exe', root / os.environ['NETUNIM_TEST_PROFILE'])
+""", encoding="utf-8")
+            for name in ("A", "B"):
+                (root / name).mkdir()
+            environment = dict(os.environ, NETUNIM_TESTS_DIR=str(ROOT / "tests"),
+                               NETUNIM_TEST_ROOT=str(root))
+            children = [subprocess.Popen([sys.executable, str(script)],
+                        env=dict(environment, NETUNIM_TEST_PROFILE=name),
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                        for name in ("A", "B")]
+            for child in children:
+                _out, error = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 0, error)
+            self.assertEqual((root / "bootstrap-count").read_text().splitlines(), ["1"])
+            self.assertTrue(all((root / name / "Local State").exists() for name in ("A", "B")))
+
+    def test_non_windows_profile_does_not_use_host_seed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory)
+            with patch.object(browser_harness, "_is_windows", return_value=False), \
+                 patch.object(browser_harness, "_bootstrap_host_state") as bootstrap:
+                browser_harness._seed_windows_profile("chromium", profile)
+                bootstrap.assert_not_called()
+                self.assertFalse((profile / "Local State").exists())
 
     def test_matrix_is_a_complete_disjoint_partition_of_the_full_local_gate(self):
         validate_plan()
