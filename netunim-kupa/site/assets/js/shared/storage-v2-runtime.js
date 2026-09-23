@@ -124,8 +124,8 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function captureCloudCursor(revision,options={}){return (await settledJournal()).captureCloudCursor(revision,options)}
   async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
   async function materializeFlight(options={}){return (await settledJournal()).materializeFlight(options)}
-  async function acknowledgeFlight(operationId,revision,state,options={}){const active=await settledJournal(),next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}return active.acknowledge(operationId,revision,state,next)}
-  async function rejectFlight(operationId,revision,state,options={}){return (await settledJournal()).rejectAndRebase(operationId,revision,state,options)}
+  async function acknowledgeFlight(operationId,revision,state,options={}){const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();return active.acknowledge(operationId,revision,state,next)}
+  async function rejectFlight(operationId,revision,state,options={}){const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();return active.rejectAndRebase(operationId,revision,state,next)}
   async function setCloudControl(control={}){return (await settledJournal()).setCloudControl(control)}
   async function clearCloudControl(){if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
   async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageJournal} from '../shared/storage-journal.js';
+import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {readStorageRecord} from '../shared/storage-journal-model.js';
 import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_STORAGE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
@@ -10,6 +11,21 @@ import {createOutboxRecord} from '../shared/cloud-sync.js';
 import {INITIAL_STATE as KUPA_INITIAL_STATE,BROWSER_STATE_KEY as KUPA_STORAGE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const clone=structuredClone;
+test('Storage V2 captures ACK and rebase checkpoints before waiting for an older journal commit',async()=>{
+  for(const method of ['acknowledgeFlight','rejectFlight']){
+    let releaseCommit,captured=null;const committed=new Promise(resolve=>{releaseCommit=resolve});
+    const initial={notes:[{id:'N',text:'base'}]},record=async(_id,_revision,_state,options)=>{captured=clone(options.checkpointState);return true},active={ready:true,
+      open:async()=>({state:clone(initial),seq:0,appMetadata:{storageRole:'primary',snapshotSeq:0},stored:{checkpoints:{data:{seq:0}}}}),
+      append:()=>({seq:1,operationId:'edit-1',emergencyDurable:true,committed}),
+      acknowledge:record,rejectAndRebase:record};
+    const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,validate:value=>assert.ok(Array.isArray(value.notes)),mode:()=> 'primary',createJournal:()=>active});
+    await runtime.recover(initial);
+    runtime.persist({notes:[{id:'N',text:'queued'}]},{operations:[{type:'set',field:'unused',value:true}]});
+    const mutable={notes:[{id:'N',text:'before-await'}]},commit=runtime[method]('flight',11,initial,{currentState:mutable,expectedSeq:1});
+    mutable.notes[0].text='later-edit';releaseCommit();await commit;
+    assert.equal(captured.notes[0].text,'before-await',method);
+  }
+});
 function emergencyStore(){const rows=new Map();return {get length(){return rows.size},key(index){return [...rows.keys()][index]??null},getItem:key=>rows.get(key)??null,setItem:(key,value)=>rows.set(key,value),removeItem:key=>rows.delete(key)}}
 function memoryDb(){
   let checkpoints=null,metadata=null,journal=[],bases=null,flights=null,controls=null;
@@ -24,7 +40,7 @@ function memoryDb(){
     async setBase(_owner,epoch,writer,base){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(flights,null);bases=clone(base)},
     async beginFlight(_owner,epoch,writer,flight){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);if(flights)return clone(flights);flights=clone(flight);return clone(flight)},
     async acknowledge(_owner,epoch,writer,operationId,base,{checkpoint=null,control=null}={}){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(readStorageRecord(flights).operationId,operationId);bases=clone(base);if(checkpoint)checkpoints=clone(checkpoint);flights=null;controls=control&&clone(control);return true},
-    async rejectFlight(_owner,epoch,writer,operationId,base,control=null){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(readStorageRecord(flights).operationId,operationId);bases=clone(base);flights=null;controls=control&&clone(control);return true},
+    async rejectFlight(_owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(readStorageRecord(flights).operationId,operationId);assert.equal(expectedSeq,metadata.seq);assert.equal(readStorageRecord(checkpoint).seq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);flights=null;controls=control&&clone(control);return true},
     async setControl(_owner,epoch,writer,control){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);controls=clone(control);return true},
     async clearControl(){controls=null;return true},
     async adoptCloudHead(_owner,epoch,writer,checkpoint,base){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(flights,null);assert.equal(readStorageRecord(bases).ackSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);controls=null;return true},
@@ -48,7 +64,7 @@ test('Storage V2 cloud cursor preserves later journal across ACK, supports confi
   assert.equal((await journal.recover()).state.notes[0].text,'later');cloud=await journal.cloudState();assert.equal(cloud.base.ackSeq,1);assert.equal(cloud.pending,true);assert.deepEqual(cloud.pendingDeleteIntents,{notes:['B']});
 
   const flight2=await journal.materializeFlight({operationId:'flight-2',baseRevision:11});assert.equal(flight2.startSeq,2);assert.equal(flight2.endSeq,2);
-  await journal.rejectAndRebase('flight-2',12,{notes:[{id:'A',text:'remote'}]},{control:{conflict:{kind:'entity-conflict'}}});cloud=await journal.cloudState();assert.equal(cloud.flight,null);assert.equal(cloud.base.revision,12);assert.equal(cloud.base.ackSeq,1);assert.equal(cloud.control.conflict.kind,'entity-conflict');
+  await journal.rejectAndRebase('flight-2',12,{notes:[{id:'A',text:'remote'}]},{checkpointState:{notes:[{id:'A',text:'later'}]},expectedSeq:2,control:{conflict:{kind:'entity-conflict'}}});cloud=await journal.cloudState();assert.equal(cloud.flight,null);assert.equal(cloud.base.revision,12);assert.equal(cloud.base.ackSeq,1);assert.equal(cloud.control.conflict.kind,'entity-conflict');
   await journal.clearCloudControl();const flight3=await journal.materializeFlight({operationId:'flight-3',baseRevision:12,snapshot:{notes:[{id:'A',text:'merged'}]}});assert.equal(flight3.endSeq,2);
   await journal.acknowledge('flight-3',13,{notes:[{id:'A',text:'merged'}]},{checkpointState:{notes:[{id:'A',text:'merged'}]}});cloud=await journal.cloudState();assert.equal(cloud.pending,false);assert.equal(cloud.base.ackSeq,2);
   await journal.adoptCloudHead(14,{notes:[{id:'A',text:'remote-head'}]},{notes:[{id:'A',text:'remote-head'}]});cloud=await journal.cloudState();assert.equal(cloud.base.revision,14);assert.equal((await journal.recover()).state.notes[0].text,'remote-head');
@@ -85,6 +101,24 @@ test('Storage V2 routes edits that arrive during an epoch reset into the new epo
   await assert.rejects(journal.install({notes:[{id:'A',text:'overlap'}]}),/storage_epoch_transition/);
   releaseReset();const resetResult=await reset;await during.committed;
   const recovered=await journal.recover(),cloud=await journal.cloudState();assert.notEqual(journal.epoch,oldEpoch);assert.equal(resetResult.seq,1);assert.equal(resetResult.ackSeq,0);assert.equal(recovered.state.notes[0].text,'edited-during-reset');assert.equal(recovered.seq,1);assert.equal(recovered.appMetadata.snapshotSeq,2);assert.equal(cloud.base.revision,41);assert.equal(cloud.base.ackSeq,0);assert.equal(cloud.flight,null);assert.equal(cloud.pending,true);
+});
+
+test('Storage V2 restart after confirmed rebase cannot resend an old remote field',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='orders:rebase-crash',schema={collections:['notes'],fields:[]},validate=value=>assert.ok(Array.isArray(value.notes));
+  const first=createStorageJournal({owner,schema,validate,db,emergency});
+  const base={notes:[{id:'A',text:'a0'},{id:'B',text:'b0'}]},local={notes:[{id:'A',text:'a1'},{id:'B',text:'b0'}]},remote={notes:[{id:'A',text:'a0'},{id:'B',text:'b1'}]},merged={notes:[{id:'A',text:'a1'},{id:'B',text:'b1'}]};
+  await first.install(base,{expectedEpoch:null});await first.captureCloudCursor(10);
+  await first.append([put('A','a1')],{generation:1}).committed;
+  const flight=await first.materializeFlight({operationId:'conflicted-flight',baseRevision:10});
+  await assert.rejects(first.rejectAndRebase(flight.operationId,Number.NaN,remote,{checkpointState:merged,expectedSeq:1}),/revision_invalid/);
+  await assert.rejects(first.rejectAndRebase(flight.operationId,11,remote,{checkpointState:merged,expectedSeq:0}),/checkpoint_stale/);
+  assert.equal((await first.cloudState()).base.revision,10,'a stale reject must leave the old base and flight intact');
+  await first.rejectAndRebase(flight.operationId,11,remote,{checkpointState:merged,expectedSeq:1});
+  const restarted=createStorageJournal({owner,schema,validate,db,emergency});
+  const recovered=await restarted.open();assert.deepEqual(recovered.state,merged);
+  const retry=await restarted.materializeFlight({operationId:'replacement-flight',baseRevision:11});
+  assert.equal(retry.baseRevision,11);assert.deepEqual(retry.snapshot,merged);
+  assert.notDeepEqual(retry.snapshot,local,'the replacement must keep B from the remote revision');
 });
 
 test('Storage V2 recovers a transition edit from the old epoch when the reset fails',async()=>{

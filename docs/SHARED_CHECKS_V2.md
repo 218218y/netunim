@@ -4,6 +4,8 @@
 Shared Checks הישן עדיין אחראי לשמירה ולסנכרון בפועל; אין להפעיל cutover רק משום
 שבדיקות היחידה של המנוע החדש עוברות.
 
+`rejectAndRebase` שומר כעת את ה־cloud base החדש וה־checkpoint הממוזג בעסקת IndexedDB אחת. בדיקת restart מוכיחה ש־check ואירוע בנק שהגיעו מרחוק אינם נעלמים אם הדפדפן נסגר לפני יצירת flight חלופי. תיקון זה חל גם על מנוע המסמך הראשי; הוא אינו הופך את Shared Checks למסלול Primary פעיל.
+
 המנוע החדש נמצא ב־`shared/shared-checks-storage-v2.js`. לכל חשבון יש namespace
 נפרד, `account:shared-checks`, עם checkpoint ו־journal של `{checks, bankEvents}`,
 cloud cursor עצמאי ו־flight בלתי משתנה. פעולת מחיקה מחייבת גם operation מפורש

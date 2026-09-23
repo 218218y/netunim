@@ -6,7 +6,7 @@ import {CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.j
 const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 
-function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false}={}){
+function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,onRejected=()=>{}}={}){
   const base={notes:[{id:'A',content:'base'}]},model={state:{notes:[{id:'A',content:'sent'}]}},session={localGeneration:1,cloudRevision:10,lastCloudState:clone(base),cloudSaveRequested:false,cloudConflictBlocked:false,cloudBusy:false};
   let seq=1,ackSeq=0,revision=10,baseState=clone(base),flight=null,control=null,op=0;
   const sent=[],acks=[],rejects=[],legacyWrites=[];
@@ -20,8 +20,8 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
   const acknowledge=async(operationId,newRevision,cloud,{currentState,control:nextControl=null}={})=>{
     assert.equal(operationId,flight?.operationId);acks.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),control:clone(nextControl)});ackSeq=flight.endSeq;revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);return state()
   };
-  const reject=async(operationId,newRevision,cloud,{control:nextControl=null}={})=>{
-    assert.equal(operationId,flight?.operationId);rejects.push({operationId,newRevision,cloud:clone(cloud),control:clone(nextControl)});revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);return state()
+  const reject=async(operationId,newRevision,cloud,{currentState,expectedSeq,control:nextControl=null}={})=>{
+    assert.equal(operationId,flight?.operationId);assert.equal(expectedSeq,seq);assert.ok(currentState,'rebase must checkpoint the merged local head');rejects.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),expectedSeq,control:clone(nextControl)});revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);onRejected();return state()
   };
   const wrappedRpc=async(...args)=>{sent.push({snapshot:clone(args[0]),expected:args[1],operationId:args[2]});return rpcSave?rpcSave(...args):{r:{ok:true},row:{revision:args[1]+1,state:clone(args[0]),updated_at:'2026-09-22T00:00:00Z'}}};
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
@@ -38,7 +38,23 @@ test('Orders V2 keeps the exact immutable flight across a lost ACK retry',async(
 test('Orders V2 confirmed revision conflict rejects the old flight and rotates operation id after rebase',async()=>{
   let calls=0;const remote={notes:[{id:'A',content:'remote'}]};
   const f=fixture({readCloud:async()=>({revision:11,state:clone(remote)}),merge3:(_base,_local,remoteState)=>({state:{notes:[{id:'A',content:`merged-${remoteState.notes[0].content}`}]},conflicts:[]}),rpcSave:async(snapshot,expected)=>{if(++calls===1)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}}});
-  assert.equal(await f.api.requestCloudSave('sync'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.rejects[0].operationId,f.sent[0].operationId);assert.equal(f.acks[0].operationId,f.sent[1].operationId);assert.equal(f.model.state.notes[0].content,'merged-remote');assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 rebase must keep its cloud base in IndexedDB');
+  assert.equal(await f.api.requestCloudSave('sync'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.rejects[0].operationId,f.sent[0].operationId);assert.equal(f.rejects[0].currentState.notes[0].content,'merged-remote');assert.equal(f.rejects[0].expectedSeq,1);assert.equal(f.acks[0].operationId,f.sent[1].operationId);assert.equal(f.model.state.notes[0].content,'merged-remote');assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 rebase must keep its cloud base in IndexedDB');
+});
+
+test('Orders V2 blocks cloud send when a new edit lands during rebase commit',async()=>{
+  let f;const remote={notes:[{id:'A',content:'remote'}]};
+  f=fixture({readCloud:async()=>({revision:11,state:clone(remote)}),merge3:(_base,_local,remoteState)=>({state:{notes:[{id:'A',content:`merged-${remoteState.notes[0].content}`}]},conflicts:[]}),rpcSave:async()=>({r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}}),onRejected:()=>f.mutate({notes:[{id:'A',content:'later-edit'}]})});
+  assert.equal(await f.api.requestCloudSave('sync'),false);
+  assert.equal(f.sent.length,1);assert.equal(f.rejects.length,1);
+  assert.equal(f.model.state.notes[0].content,'later-edit','the visible edit must not be overwritten');
+  assert.equal(f.getControl().conflict.kind,'concurrent-rebase');
+});
+
+test('Orders V2 also fences an emergency edit whose IndexedDB sequence is not committed yet',async()=>{
+  let f;const remote={notes:[{id:'A',content:'remote'}]};
+  f=fixture({readCloud:async()=>({revision:11,state:clone(remote)}),merge3:(_base,_local,remoteState)=>({state:{notes:[{id:'A',content:`merged-${remoteState.notes[0].content}`}]},conflicts:[]}),rpcSave:async()=>({r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}}),onRejected:()=>{f.model.state.notes[0].content='emergency-edit';f.session.localGeneration++}});
+  assert.equal(await f.api.requestCloudSave('sync'),false);
+  assert.equal(f.model.state.notes[0].content,'emergency-edit');assert.equal(f.getControl().conflict.kind,'concurrent-rebase');assert.equal(f.sent.length,1);
 });
 
 

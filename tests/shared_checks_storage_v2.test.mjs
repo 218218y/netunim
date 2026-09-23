@@ -18,7 +18,7 @@ function memoryDb(){
     async setBase(_owner,epoch,writer,base){scoped(epoch,writer);assert.equal(flights,null);bases=clone(base)},
     async beginFlight(_owner,epoch,writer,flight){scoped(epoch,writer);if(flights)return clone(flights);flights=clone(flight);return clone(flight)},
     async acknowledge(_owner,epoch,writer,id,base,{checkpoint=null,control=null}={}){scoped(epoch,writer);assert.equal(readStorageRecord(flights).operationId,id);bases=clone(base);if(checkpoint)checkpoints=clone(checkpoint);flights=null;controls=control&&clone(control)},
-    async rejectFlight(_owner,epoch,writer,id,base,control=null){scoped(epoch,writer);assert.equal(readStorageRecord(flights).operationId,id);bases=clone(base);flights=null;controls=control&&clone(control)},
+    async rejectFlight(_owner,epoch,writer,id,base,{checkpoint,expectedSeq,control=null}={}){scoped(epoch,writer);assert.equal(readStorageRecord(flights).operationId,id);assert.equal(expectedSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);flights=null;controls=control&&clone(control)},
     async setControl(_owner,epoch,writer,control){scoped(epoch,writer);controls=clone(control)},
     async clearControl(_owner,epoch,writer){scoped(epoch,writer);controls=null},
     async adoptCloudHead(_owner,epoch,writer,checkpoint,base){scoped(epoch,writer);assert.equal(flights,null);assert.equal(readStorageRecord(bases).ackSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);controls=null},
@@ -62,10 +62,27 @@ test('Shared Checks V2 retains explicit deletion through compaction and rotates 
   const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(3,base,{legacyPendingClean:true});
   const afterDelete=state([check('B')]);const write=store.append([del('A')],afterDelete,{generation:1,mutationType:'delete',deleteIds:['A']});await write.committed;
   await store.compact();const first=await store.materializeFlight({operationId:'delete-flight'});assert.deepEqual(first.deleteIntents,{checks:['A']});
-  await store.rejectAndRebase(first.operationId,4,state([check('A','remote'),check('B')]),{control:{conflict:{kind:'same-check'}}});
+  await store.rejectAndRebase(first.operationId,4,state([check('A','remote'),check('B')]),{currentState:afterDelete,expectedSeq:1,control:{conflict:{kind:'same-check'}}});
   await assert.rejects(store.materializeFlight({operationId:'blocked'}),/conflict_blocked/);
   await store.clearCloudControl();const second=await store.materializeFlight({operationId:'delete-flight-after-rebase',snapshot:afterDelete});
   assert.notEqual(second.operationId,first.operationId);assert.deepEqual(second.deleteIntents,{checks:['A']});assert.equal(second.baseRevision,4);
+});
+
+test('Shared Checks V2 restart after rebase retains an unrelated remote check and bank event',async()=>{
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);
+  await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  await store.captureCloudCursor(7,base,{legacyPendingClean:true});
+  const local=state([check('A','deposited'),check('B')]);await store.append([put('A')],local,{generation:1}).committed;
+  const flight=await store.materializeFlight({operationId:'old-check-flight'});
+  const remote=state([check('A'),check('B','cleared')],[{seq:8,checkId:'B',kind:'clear'}]);
+  const merged=state([check('A','deposited'),check('B','cleared')],remote.bankEvents);
+  await assert.rejects(store.rejectAndRebase(flight.operationId,8,remote,{currentState:local,expectedSeq:1}),/bank_events_missing/);
+  await assert.rejects(store.rejectAndRebase(flight.operationId,8,remote,{currentState:merged,expectedSeq:0}),/checkpoint_stale/);
+  assert.equal((await store.cloudState()).flight.operationId,flight.operationId);
+  await store.rejectAndRebase(flight.operationId,8,remote,{currentState:merged,expectedSeq:1});
+  const restarted=f.create(),recovered=await restarted.open();assert.deepEqual(recovered.state,merged);
+  const replacement=await restarted.materializeFlight({operationId:'replacement-check-flight'});
+  assert.deepEqual(replacement.snapshot,merged);assert.equal(replacement.baseRevision,8);
 });
 
 test('Shared Checks V2 rejects deletes without matching explicit intents or with a still-visible check',async()=>{

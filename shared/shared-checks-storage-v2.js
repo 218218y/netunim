@@ -106,9 +106,10 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     if(!equalSyncJson(current.bankEvents,authoritative.bankEvents))throw new Error('shared_checks_ack_bank_events_missing');
     return journal.acknowledge(flightId,revision,authoritative,{checkpointState:current,expectedSeq,control});
   }
-  async function rejectAndRebase(flightId,revision,authoritativeState,{control=null}={}){
-    assertCloudWriter();const authoritative=canonicalState(authoritativeState);validate(authoritative);
-    return journal.rejectAndRebase(flightId,revision,authoritative,{control});
+  async function rejectAndRebase(flightId,revision,authoritativeState,{currentState,expectedSeq,control=null}={}){
+    assertCloudWriter();const authoritative=canonicalState(authoritativeState),current=canonicalState(currentState);validate(authoritative);validate(current);
+    if(!equalSyncJson(current.bankEvents,authoritative.bankEvents))throw new Error('shared_checks_rebase_bank_events_missing');
+    return journal.rejectAndRebase(flightId,revision,authoritative,{checkpointState:current,expectedSeq,control});
   }
   async function adoptCloudHead(revision,authoritativeState){
     assertCloudWriter();const authoritative=canonicalState(authoritativeState);validate(authoritative);

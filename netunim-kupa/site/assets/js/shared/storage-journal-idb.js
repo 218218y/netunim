@@ -75,11 +75,16 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);done(true);
     // ACK never deletes journal entries. Only an atomic checkpoint can compact.
   })}
-  function rejectFlight(owner,epoch,writer,operationId,base,control=null){return change(owner,(tx,current,done)=>{
+  function rejectFlight(owner,epoch,writer,operationId,base,{checkpoint,expectedSeq,control=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);const flight=current.flights&&readStorageRecord(current.flights),prior=current.bases&&readStorageRecord(current.bases),next=readStorageRecord(base);
     if(!flight||flight.operationId!==operationId)throw new Error('storage_reject_mismatch');
-    if(!prior||next.owner!==owner||next.epoch!==epoch||next.ackSeq!==prior.ackSeq||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
-    tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);
+    if(!prior||next.owner!==owner||next.epoch!==epoch||next.ackSeq!==prior.ackSeq||!Number.isSafeInteger(next.revision)||next.revision<=flight.baseRevision)throw new Error('storage_rebase_cursor');
+    if(!checkpoint||!Number.isSafeInteger(expectedSeq)||expectedSeq!==current.metadata.seq)throw new Error('storage_rebase_checkpoint_stale');
+    const nextCheckpoint=readStorageRecord(checkpoint);
+    if(nextCheckpoint.owner!==owner||nextCheckpoint.epoch!==epoch||nextCheckpoint.seq!==expectedSeq)throw new Error('storage_rebase_checkpoint_stale');
+    // The new cloud revision and the local state rebased onto it become
+    // authoritative together. A crash cannot expose only one side.
+    tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);
     if(control){const nextControl=readStorageRecord(control);if(nextControl.owner!==owner||nextControl.epoch!==epoch)throw new Error('storage_control_scope');tx.objectStore('controls').put(control,owner)}else tx.objectStore('controls').delete(owner);done(true);
   })}
   function setControl(owner,epoch,writer,control){return change(owner,(tx,current,done)=>{assertFence(current,epoch,writer);const data=readStorageRecord(control);if(data.owner!==owner||data.epoch!==epoch)throw new Error('storage_control_scope');tx.objectStore('controls').put(control,owner);done(true)})}

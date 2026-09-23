@@ -8,7 +8,7 @@ const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 function response(ok,payload,status=ok?200:409){return {ok,status,headers:{get:()=>null},text:async()=>JSON.stringify(payload)}}
 
-function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapshotToComputer=async()=>{}}={}){
+function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapshotToComputer=async()=>{},onRejected=()=>{}}={}){
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
   const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
@@ -21,7 +21,7 @@ function fixture({write,readRemote,merge,failRefreshAfterAck=false,backupSnapsho
   const state=()=>({seq,base:{revision,state:clone(baseState),ackSeq},flight:flight&&clone(flight),control:control&&clone(control),pending:seq>ackSeq,pendingDeleteIntents:{},pendingGeneration:seq,pendingMutationType:'edit',pendingSurface:'kupa',afterFlightPending:!!flight&&seq>flight.endSeq,afterFlightDeleteIntents:{},afterFlightGeneration:seq,afterFlightMutationType:'edit',afterFlightSurface:'kupa'});
   const materialize=async({throughSeq,snapshot}={})=>{if(flight)return clone(flight);const end=throughSeq??seq;if(end===ackSeq)return null;flight={version:2,operationId:`kupa-op-${++op}`,baseRevision:revision,startSeq:ackSeq+1,endSeq:end,snapshot:clone(snapshot??normalization.prepareKupaCloudState(model.state)),deleteIntents:{},generation:end,mutationType:'edit',surface:'kupa'};return clone(flight)};
   const acknowledge=async(operationId,newRevision,cloud,{currentState,control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);acks.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),control:clone(nextControl)});ackSeq=flight.endSeq;revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);return state()};
-  const reject=async(operationId,newRevision,cloud,{control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);rejects.push({operationId,newRevision,cloud:clone(cloud),control:clone(nextControl)});revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);return state()};
+  const reject=async(operationId,newRevision,cloud,{currentState,expectedSeq,control:nextControl=null}={})=>{assert.equal(operationId,flight?.operationId);assert.equal(expectedSeq,seq);assert.ok(currentState,'rebase must checkpoint the merged local head');rejects.push({operationId,newRevision,cloud:clone(cloud),currentState:clone(currentState),expectedSeq,control:clone(nextControl)});revision=newRevision;baseState=clone(cloud);flight=null;control=nextControl&&clone(nextControl);onRejected();return state()};
   const supaRest=async(_path,options)=>{const body=JSON.parse(options.body);sent.push({snapshot:clone(body.p_state),expected:body.p_expected_revision,operationId:body.p_operation_id});if(write)return write(body);return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state),updated_at:'2026-09-22T00:00:00Z'})};
   const defaultMerge=(_base,local)=>({state:clone(local),conflicts:[]});
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
@@ -38,7 +38,23 @@ test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls
 test('Kupa V2 confirmed revision conflict rebases and rotates operation id before retry',async()=>{
   let calls=0;const remoteModel={state:clone(INITIAL_STATE)},remoteNorm=createStateNormalization({model:remoteModel});remoteModel.state=remoteNorm.normalizeState(remoteModel.state);remoteModel.state.notes=[{id:'N1',content:'remote',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];const remote=remoteNorm.prepareKupaCloudState(remoteModel.state);
   const f=fixture({readRemote:async()=>({revision:11,state:clone(remote),coreUpdatedAt:'2026-09-22T00:00:00Z'}),merge:(_base,_local,remoteState)=>({state:{...clone(remoteState),notes:[{id:'N1',content:'merged',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},conflicts:[]}),write:body=>{if(++calls===1)return response(false,{code:'PT409',message:'revision_conflict'},409);return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state)})}});
-  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.acks.length,1);assert.equal(f.model.state.notes[0].content,'merged');
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.rejects[0].currentState.notes[0].content,'merged');assert.equal(f.rejects[0].expectedSeq,1);assert.equal(f.acks.length,1);assert.equal(f.model.state.notes[0].content,'merged');
+});
+
+test('Kupa V2 blocks cloud send when a new edit lands during rebase commit',async()=>{
+  let f;const remoteModel={state:clone(INITIAL_STATE)},remoteNorm=createStateNormalization({model:remoteModel});remoteModel.state=remoteNorm.normalizeState(remoteModel.state);remoteModel.state.notes=[{id:'N1',content:'remote',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];const remote=remoteNorm.prepareKupaCloudState(remoteModel.state);
+  f=fixture({readRemote:async()=>({revision:11,state:clone(remote)}),merge:(_base,_local,remoteState)=>({state:{...clone(remoteState),notes:[{id:'N1',content:'merged',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},conflicts:[]}),write:async()=>response(false,{code:'PT409',message:'revision_conflict'},409),onRejected:()=>f.mutateNote('later-edit')});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);
+  assert.equal(f.sent.length,1);assert.equal(f.rejects.length,1);
+  assert.equal(f.model.state.notes[0].content,'later-edit');
+  assert.equal(f.getControl().conflict.kind,'concurrent-rebase');
+});
+
+test('Kupa V2 also fences an emergency edit whose IndexedDB sequence is not committed yet',async()=>{
+  let f;const remoteModel={state:clone(INITIAL_STATE)},remoteNorm=createStateNormalization({model:remoteModel});remoteModel.state=remoteNorm.normalizeState(remoteModel.state);remoteModel.state.notes=[{id:'N1',content:'remote',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];const remote=remoteNorm.prepareKupaCloudState(remoteModel.state);
+  f=fixture({readRemote:async()=>({revision:11,state:clone(remote)}),merge:(_base,_local,remoteState)=>({state:{...clone(remoteState),notes:[{id:'N1',content:'merged',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},conflicts:[]}),write:async()=>response(false,{code:'PT409',message:'revision_conflict'},409),onRejected:()=>{f.model.state.notes[0].content='emergency-edit';f.session.localGeneration++}});
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),false);
+  assert.equal(f.model.state.notes[0].content,'emergency-edit');assert.equal(f.getControl().conflict.kind,'concurrent-rebase');assert.equal(f.sent.length,1);
 });
 
 

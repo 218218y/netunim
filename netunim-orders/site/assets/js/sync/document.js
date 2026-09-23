@@ -11,7 +11,7 @@ function collectionRows(state,key){const value=key.split('.').reduce((obj,part)=
 function effectiveDeleteIntents(base,candidate,intents){const out={},declared=normalizeDeleteIntents(intents);for(const [key,ids] of Object.entries(declared)){const before=collectionRows(base,key),after=collectionRows(candidate,key),keyField=key==='cards'?'name':'id',kept=new Set(after.map(x=>String(x?.[keyField]??'')));const removed=before.map(x=>String(x?.[keyField]??'')).filter(id=>id&&ids.includes(id)&&!kept.has(id)).sort();if(removed.length)out[key]=removed}return out}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({model, files, session, ui, tab, normalizeState, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending, clearCloudPending, toast, setCloud, prepareCloudState, writeStateToFolder, readCloud, rpcSave, merge3, applyOrderCloudState, cloudPendingExists, setSave, cloudEnabled, loadCloudPendingState, sameOrderCloudData, cloudHasLocalWork, render, readCloudMeta, refreshKupaReadout, pollSharedChecks, refreshCloudTimestamp, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, adoptStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
+export function createSyncDocument({model, files, session, ui, tab, normalizeState, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending, clearCloudPending, toast, setCloud, prepareCloudState, writeStateToFolder, readCloud, rpcSave, merge3, applyOrderCloudState, composeOrderCloudState=(cloud,current)=>({...clone(cloud),checks:clone(current.checks||[])}), cloudPendingExists, setSave, cloudEnabled, loadCloudPendingState, sameOrderCloudData, cloudHasLocalWork, render, readCloudMeta, refreshKupaReadout, pollSharedChecks, refreshCloudTimestamp, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, adoptStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve()}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 const localSnapshot=(source,options)=>writeLocalSnapshot(source,options||{storageBoundary:'cloud-system-state'});
 let cloudPollPromise=null,morningRefreshPromise=null;
@@ -106,14 +106,39 @@ async function saveStorageV2CloudFlight(initialFlight){
     const remote=await readCloud();if(!remote?.state)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');
     const remoteRevision=Number(remote.revision||0);if(!Number.isSafeInteger(remoteRevision)||remoteRevision<=expected)throw new Error('orders_v2_rebase_revision_invalid');
     const remoteState=prepareCloudState(remote.state),merged=merge3(base,serverSnapshot,remoteState,{deleteIntents});
+    state=await refreshStorageV2CloudState();
+    if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('orders_v2_flight_changed_before_rebase');
+    const expectedSeq=state.seq;
     if(merged.conflicts.length){
       const conflict=structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:serverSnapshot,remote:remoteState,generation:flight.generation,baseRevision:expected,currentRemoteRevision:remoteRevision});
-      await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{control:{conflict}});
+      await rejectStorageV2CloudFlight(flight.operationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});
       session.lastCloudState=clone(remoteState);session.cloudRevision=remoteRevision;session.cloudUpdatedAt=remote.updated_at||session.cloudUpdatedAt;session.cloudConflictBlocked=true;session.cloudSaveRequested=false;
       setCloud('ענן: התנגשות','error');toast('יש התנגשות בענן באותה רשומה. הנתונים המקומיים נשמרו ולא נדרסו.');return false
     }
     const throughSeq=Number(flight.endSeq),previousOperationId=flight.operationId;
-    await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState);
+    let currentCloud=merged.state;
+    if(state.afterFlightPending){
+      const rebased=merge3(serverSnapshot,prepareCloudState(model.state),merged.state,{deleteIntents:state.afterFlightDeleteIntents||{}});
+      if(rebased.conflicts.length){
+        const conflict=structuredSyncConflict({domain:'orders',conflicts:rebased.conflicts,base:serverSnapshot,local:prepareCloudState(model.state),remote:merged.state,generation:state.afterFlightGeneration,baseRevision:expected,currentRemoteRevision:remoteRevision});
+        await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:model.state,expectedSeq,control:{conflict}});
+        session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: התנגשות','error');return false;
+      }
+      currentCloud=rebased.state;
+    }
+    const expectedGeneration=Number(session.localGeneration||0),rebasedCurrent=composeOrderCloudState(currentCloud,model.state);
+    await rejectStorageV2CloudFlight(previousOperationId,remoteRevision,remoteState,{currentState:rebasedCurrent,expectedSeq});
+    // The IDB rebase is atomic, but a new edit may be journaled while its
+    // transaction is committing. Never overwrite that edit with the earlier
+    // merged view or construct a flight from a stale visible model.
+    const postRebase=await refreshStorageV2CloudState();
+    if(postRebase?.seq!==expectedSeq||Number(session.localGeneration||0)!==expectedGeneration){
+      await setStorageV2CloudControl({conflict:{kind:'concurrent-rebase',domain:'orders',baseRevision:expected,currentRemoteRevision:remoteRevision}});
+      session.cloudConflictBlocked=true;session.cloudSaveRequested=false;setCloud('ענן: הסנכרון נעצר לשמירת שינוי מקביל','error');
+      toast('שינוי בוצע בזמן מיזוג הענן. הנתונים נשמרו מקומית; ייצא גיבוי ובדוק את המצב לפני חידוש הסנכרון.');
+      return false;
+    }
+    applyOrderCloudState(currentCloud);
     base=remoteState;serverSnapshot=prepareCloudState(merged.state);expected=remoteRevision;
     flight=await materializeStorageV2CloudFlight({throughSeq,snapshot:serverSnapshot});
     if(!flight||flight.operationId===previousOperationId)throw new Error('orders_v2_rebase_flight_not_rotated');

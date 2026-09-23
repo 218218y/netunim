@@ -715,6 +715,7 @@ const syncDocument=createSyncDocument({
   rpcSave:(...args)=>cloudTransport.rpcSave(...args),
   merge3:(...args)=>syncMerge.merge3(...args),
   applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
+  composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),
   cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
   setSave:(...args)=>uiStatus.setSave(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),

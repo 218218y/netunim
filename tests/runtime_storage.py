@@ -78,6 +78,22 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       check(projected.snapshot.document.value==='projected','cloud base and flight use an explicit projection contract');
       await journal.acknowledge(projected.operationId,3,projected.snapshot,{validateBase:value=>{if(!value?.document)throw Error('bad projection')}});
 
+      journal=make('rebase-crash');await journal.install(initial);await journal.setCloudBase(10,initial,{ackSeq:0});
+      write=journal.append(change('local'));await write.committed;
+      const rejectedFlight=await journal.materializeFlight({operationId:'rebase-old-flight',baseRevision:10});
+      const remoteRebase={notes:[{id:'n',text:'original'}],setting:2},mergedRebase={notes:[{id:'n',text:'local'}],setting:2};
+      const beforeRebase=await db.load('rebase-crash');
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='bases'){this.transaction.abort();throw Error('crash during atomic rebase')}return result};
+      check(await fails(()=>journal.rejectAndRebase(rejectedFlight.operationId,11,remoteRebase,{checkpointState:mergedRebase,expectedSeq:1})),'rebase transaction abort reported');
+      IDBObjectStore.prototype.put=put;
+      check(JSON.stringify(await db.load('rebase-crash'))===JSON.stringify(beforeRebase),'aborted rebase retains old base, checkpoint and flight together');
+      await journal.rejectAndRebase(rejectedFlight.operationId,11,remoteRebase,{checkpointState:mergedRebase,expectedSeq:1});
+      journal=make('rebase-crash');await journal.open();
+      const rebasedState=await journal.recover(),rebasedCloud=await journal.cloudState();
+      check(rebasedState.state.notes[0].text==='local'&&rebasedState.state.setting===2&&rebasedCloud.base.revision===11&&!rebasedCloud.flight,'restart after reject retains remote-only and local changes');
+      const replacement=await journal.materializeFlight({operationId:'rebase-new-flight',baseRevision:11});
+      check(replacement.snapshot.notes[0].text==='local'&&replacement.snapshot.setting===2,'replacement flight cannot revert remote-only change');
+
       const quota={...noCleanup,removeItem:key=>localStorage.removeItem(key),setItem:()=>{throw Error('quota')}};
       journal=make('quota',{emergency:quota});await journal.install(initial);write=journal.append(change('IDB fallback'));
       check(!write.emergencyDurable,'quota failure is not reported durable');await write.committed;check(await text(journal)==='IDB fallback','IDB commit remains durable when LocalStorage fails');

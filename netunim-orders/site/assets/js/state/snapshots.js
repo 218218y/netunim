@@ -19,7 +19,8 @@ function cloudHasLocalWork(){return session.cloudSaveRequested||cloudPendingExis
 
 function checksHaveLocalWork(){return checksSession.checksSaveRequested||checksPendingExists()||!!(checksSession.checksCloudBase&&!eq(normalizeSharedChecks(model.state.checks),normalizeSharedChecks(checksSession.checksCloudBase)))}
 
-function applyOrderCloudState(remoteState){const previous=model.state,sharedChecks=clone(model.state.checks||[]);model.state=normalizeState(remoteState);model.state.checks=sharedChecks;domainRevisions?.reconcile(previous,model.state);return model.state}
+function composeOrderCloudState(remoteState,currentState=model.state){const next=normalizeState(clone(remoteState));next.checks=clone(currentState.checks||[]);return next}
+function applyOrderCloudState(remoteState){const previous=model.state;model.state=composeOrderCloudState(remoteState,previous);domainRevisions?.reconcile(previous,model.state);return model.state}
 
-return { sameBusinessData, prepareCloudState, sameOrderCloudData, hasMeaningfulLocalData, cloudHasLocalWork, checksHaveLocalWork, applyOrderCloudState };
+return { sameBusinessData, prepareCloudState, sameOrderCloudData, hasMeaningfulLocalData, cloudHasLocalWork, checksHaveLocalWork, composeOrderCloudState, applyOrderCloudState };
 }
