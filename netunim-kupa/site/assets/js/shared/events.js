@@ -55,6 +55,11 @@ export function floatingMenuPosition(anchor,size,viewport,{rtl=false,gap=6,edge=
   return {left:Math.max(left,Math.min(rtl?anchor.right-width:anchor.left,right-width)),top:up?Math.max(top,anchor.top-gap-height):Math.max(top,Math.min(anchor.bottom+gap,bottom-height)),maxHeight:Math.max(0,up?above:below),width,up};
 }
 
+export function floatingMenuWidth(rectWidth,cssWidth,scrollWidth,fallback=180){
+  const authoredWidth=Number.parseFloat(cssWidth);
+  return rectWidth||(Number.isFinite(authoredWidth)&&authoredWidth>0?authoredWidth:0)||scrollWidth||fallback;
+}
+
 const numberWheelBindings=new WeakSet();
 export function bindNumberInputWheelGuard(root){
   if(numberWheelBindings.has(root))return;
@@ -118,7 +123,12 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
     setOpen(host,true);
     active={host,panel:popup,trigger:button,style:popup.getAttribute('style'),popover:popup.getAttribute('popover'),width:0};
     // Read the designed width before replacing its layout context with the top layer.
-    active.width=popup.getBoundingClientRect().width||popup.scrollWidth||180;
+    // A <details> panel can report zero geometry for one turn after it was closed
+    // programmatically (outside-dismissal), even though its authored CSS width is
+    // already resolved. Falling straight to 180px makes the next opening depend on
+    // how the previous opening was closed. Preserve the CSS design as the stable
+    // fallback; content width remains the fallback for genuinely auto-sized menus.
+    active.width=floatingMenuWidth(popup.getBoundingClientRect().width,win.getComputedStyle(popup).width,popup.scrollWidth);
     popup.setAttribute('popover','manual');
     for(const [key,value] of Object.entries({position:'fixed',inset:'auto',margin:'0',transform:'none',visibility:'visible',opacity:'1','pointer-events':'auto','box-sizing':'border-box','min-width':'0','max-width':`${Math.max(0,viewport().width-16)}px`,'overflow-y':'auto','overscroll-behavior':'contain'}))popup.style.setProperty(key,value,'important');
     popup.showPopover();position();popupResizeObserver?.observe(popup);

@@ -13,7 +13,7 @@ for(const app of ['orders','kupa'])test(`${app} real transport blocks write befo
  await assert.rejects((app==='orders'?api.supaFetch:api.supaRest)('/rest/v1/rpc/save_kupa_document_v5',{method:'POST',body:'{}'}),/DB/);
  assert.equal(reads,1);assert.equal(writes,0);
 });
-import {bindActionEvents,floatingMenuPosition} from '../shared/events.js';
+import {bindActionEvents,floatingMenuPosition,floatingMenuWidth} from '../shared/events.js';
 import {createUiActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 import {createUiStatus} from '../netunim-orders/site/assets/js/ui/status.js';
 test('delegated action gate prevents callbacks when a caller rejects an action',()=>{
@@ -43,6 +43,13 @@ test('orders capability checking blocks mutations but never supplier navigation'
  actions['choose-supplier']();actions.save();assert.equal(supplierSelections,1);assert.equal(writes,0);assert.equal(actions.save.startupMutationDomain,'orders');
  session.syncCapabilitiesChecking=false;actions.save();assert.equal(writes,1);
  session.syncCapabilitiesError=new Error('DB mismatch');actions['choose-supplier']();actions.save();assert.equal(supplierSelections,2);assert.equal(writes,1);
+});
+
+test('floating menu width preserves authored CSS after zero-geometry details dismissal',()=>{
+ assert.equal(floatingMenuWidth(0,'756px',0),756);
+ assert.equal(floatingMenuWidth(420,'756px',0),420);
+ assert.equal(floatingMenuWidth(0,'auto',214),214);
+ assert.equal(floatingMenuWidth(0,'auto',0),180);
 });
 
 test('floating menus flip and clamp to the visible viewport in both directions',()=>{
