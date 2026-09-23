@@ -62,7 +62,17 @@ def _windows_password_check_state() -> dict:
                     ("home_dir", wintypes.LPWSTR), ("comment", wintypes.LPWSTR),
                     ("flags", wintypes.DWORD), ("script_path", wintypes.LPWSTR)]
 
-    username = getpass.getuser().split("\\")[-1]
+    # Chromium uses NameSamCompatible and strips the domain prefix before
+    # querying NetUserGetInfo. Environment USERNAME can name another account.
+    username_buffer = ctypes.create_unicode_buffer(256)
+    username_length = wintypes.ULONG(len(username_buffer))
+    security = ctypes.WinDLL("Secur32.dll")
+    security.GetUserNameExW.argtypes = [ctypes.c_int, wintypes.LPWSTR,
+                                       ctypes.POINTER(wintypes.ULONG)]
+    security.GetUserNameExW.restype = wintypes.BOOL
+    if not security.GetUserNameExW(2, username_buffer, ctypes.byref(username_length)):
+        raise RuntimeError("GetUserNameExW could not identify the current Windows account")
+    username = username_buffer.value.split("\\")[-1]
     buffer = ctypes.c_void_p()
     netapi = ctypes.WinDLL("Netapi32.dll")
     netapi.NetUserGetInfo.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR,
@@ -91,15 +101,31 @@ def _seed_key(browser: str) -> str:
 @contextlib.contextmanager
 def _host_state_lock(root: Path):
     """Serialize seed creation across independent verification suite processes."""
-    import msvcrt
+    if os.name == "nt":
+        import msvcrt
+
+        def acquire(handle):
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+
+        def release(handle):
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        def acquire(handle):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        def release(handle):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     root.mkdir(parents=True, exist_ok=True)
     with (root / "seed.lock").open("a+b") as handle:
         deadline = time.monotonic() + 60
         while True:
             try:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                acquire(handle)
                 break
             except OSError:
                 if time.monotonic() >= deadline:
@@ -108,8 +134,7 @@ def _host_state_lock(root: Path):
         try:
             yield
         finally:
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            release(handle)
 
 
 def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
