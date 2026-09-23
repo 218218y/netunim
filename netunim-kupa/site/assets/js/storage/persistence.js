@@ -7,7 +7,7 @@ import {jsonEq} from '../sync/merge-records.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,observeSharedChecks=()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -89,6 +89,7 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
 function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='autosave',surface='kupa.checks',operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
+  observeSharedChecks(operations,{generation:checksSession.sharedChecksGeneration+1,surface,mutationType,deleteIds:deletedIds,boundary:!!storageBoundary});
   if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks'],operations,storageBoundary});
   domainRevisions?.touch('checks');
   const deleteIntents={checks:deletedIds},generation=checksSession.sharedChecksGeneration+1,fastLocal=storageV2Primary()&&Array.isArray(operations)&&operations.length>0&&!storageBoundary&&!(model.state.credits||[]).some(inactiveCreditExpired),fullSnapshot=fastLocal?null:measureStorage('normalize',()=>normalizeState(model.state)),localOk=persistImmediateBrowserSnapshot(fastLocal?model.state:fullSnapshot,session.dbRevision,{normalized:!fastLocal,owned:!fastLocal,operations,storageBoundary,generation,mutationType,surface,deleteIntents});

@@ -1,12 +1,13 @@
 
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecksPersistence({model, session, checksSession, localSnapshot, markChecksPending, toast, setSave, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, rejectSecondaryMutation, writeStateToFolder, loadSession, saveSharedChecksToCloud, storageV2=null, refreshAlertCenter=()=>{}, touchChecksRevision=()=>{}}){
+export function createSyncChecksPersistence({model, session, checksSession, localSnapshot, markChecksPending, toast, setSave, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, rejectSecondaryMutation, writeStateToFolder, loadSession, saveSharedChecksToCloud, storageV2=null, refreshAlertCenter=()=>{}, touchChecksRevision=()=>{}, observeSharedChecks=()=>false}){
 function scheduleCheckSave(message,{deletedIds=[],mutationType='autosave',surface='orders.checks',operations=null,storageBoundary=''}={}){
   if(rejectSecondaryMutation())return false;
   touchChecksRevision();refreshAlertCenter();
   const generation=++session.localGeneration,deleteIntents={checks:deletedIds};
   const localOk=localSnapshot(undefined,{operations,storageBoundary,generation,mutationType,surface,deleteIntents});
+  observeSharedChecks(operations,{generation,surface,mutationType,deleteIds:deletedIds,boundary:!!storageBoundary});
   const idbPending=!localOk&&!!storageV2?.durabilityAtRisk;
   const durable=idbPending?storageV2.commitPromise:null;
   const riskToken=`checks:${generation}`;

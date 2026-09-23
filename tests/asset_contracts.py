@@ -77,7 +77,7 @@ for label, project in APPS.items():
 
     ok("assets\\app.css" in deploy and "assets\\app.js" in deploy,
        f"{label}: deploy preflight requires both external assets")
-    ok('for /R "%SITE_DIR%" %%F in (*.js)' in deploy and 'findstr /C:"eval(" "%%F"' in deploy,
+    ok('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\\*.js"' in deploy,
        f"{label}: deploy scans the external JavaScript tree for dynamic-code regressions")
 
 # Orders deliberately keeps its empty portable seed as inert JSON in HTML. It is data,

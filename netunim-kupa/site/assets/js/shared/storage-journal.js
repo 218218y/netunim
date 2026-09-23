@@ -145,8 +145,9 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     const sealed=sealStorageRecord(value,{kind:'flight-payload'}),flightDone=beginMeasure('storage:flight-write');
     try{await db.beginFlight(owner,epoch,writer,sealed);return readStorageRecord(sealed)}finally{flightDone()}
   }
-  async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,appMetadata={},control=null}={}){
+  async function acknowledge(flightId,revision,state,{validateBase=validate,checkpointState=null,expectedSeq=null,appMetadata={},control=null}={}){
     guard();validateBase(state);if(checkpointState!==null)validate(checkpointState);await queue;const recovered=await recover(),flight=recovered.stored.flights&&readStorageRecord(recovered.stored.flights);if(!flight||flight.operationId!==flightId)throw new Error('storage_ack_mismatch');
+    if(expectedSeq!==null&&recovered.seq!==expectedSeq)throw new Error('storage_ack_checkpoint_stale');
     const base=sealStorageRecord({version:2,owner,epoch,revision,state,projection:'cloud',ackSeq:flight.endSeq},{kind:'cloud-base'}),checkpoint=checkpointState===null?null:sealStorageRecord({version:2,owner,epoch,seq:recovered.seq,state:structuredClone(checkpointState),appMetadata:{...(recovered.appMetadata||{}),...structuredClone(appMetadata)},savedAt:now()},{kind:'checkpoint'}),sealedControl=control?sealStorageRecord({version:2,owner,epoch,updatedAt:now(),...structuredClone(control)},{kind:'cloud-control'}):null;
     await db.acknowledge(owner,epoch,writer,flightId,base,{checkpoint,control:sealedControl});return {operationId:flightId,revision,ackSeq:flight.endSeq};
   }

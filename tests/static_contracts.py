@@ -342,7 +342,9 @@ ok('.col-row-actions{width:78px}' in orders_css
 # Orders Kupa UI owns the financial surface; checks and balance are embedded children,
 # while Bank/Credit continue to use the one shared Kupa document rather than copied state.
 orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
-ok("getChecksPending:(...args)=>storageChecks.getChecksPending(...args)" in orders_main[orders_main.find("const syncChecks=createSyncChecks({"):orders_main.find("const domainsFinanceController=createDomainsFinanceController({")],
+orders_checks_composition = (O / "site/assets/js/composition/checks-sync.js").read_text(encoding="utf-8")
+ok("composeChecksSync({" in orders_main
+   and "getChecksPending:(...args)=>storageChecks.getChecksPending(...args)" in orders_checks_composition[orders_checks_composition.find("return createSyncChecks({"):],
    "orders cloud sync composition: shared-checks durable outbox reader is injected into createSyncChecks")
 orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
 orders_bank_connection_view = (O / "site/assets/js/domains/finance/bank-connection-view.js").read_text(encoding="utf-8")

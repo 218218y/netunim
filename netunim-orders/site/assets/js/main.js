@@ -1,4 +1,5 @@
-import {createStorageV2Runtime} from './shared/storage-v2-runtime.js';
+import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
+import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -57,7 +58,7 @@ import {createUiFolders} from './ui/folders.js';
 import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
 import {createSyncMerge} from './sync/merge.js';
-import {createSyncChecks} from './sync/checks.js';
+import {composeChecksSync} from './composition/checks-sync.js';
 import {createSyncDocument} from './sync/document.js';
 import {createUiCloud} from './ui/cloud.js';
 import {createNotesDomain} from './domains/notes/index.js';
@@ -131,6 +132,11 @@ const storageChecks=createStorageChecks({
   idbPut:(...args)=>storageBrowser.idbSyncPut(...args),
   idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
   idbDelete:(...args)=>storageBrowser.idbSyncDelete(...args),
+});
+const sharedChecksV2Shadow=createSharedChecksObserver({
+  readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||[]}),
+  owner:()=>String(cloudAuth.loadSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
+  enabled:()=>{if(storageV2Mode('orders')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
 });
 
 const cloudAuth=createCloudAuth({
@@ -322,6 +328,7 @@ const syncChecksPersistence=createSyncChecksPersistence({
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   refreshAlertCenter:(...args)=>uiAlertCenter.refreshIndicator(...args),
   touchChecksRevision:()=>domainRevisions.touch('checks'),
+  observeSharedChecks:sharedChecksV2Shadow.mutation,
 });
 
 const domainsDashboardView=createDomainsDashboardView({
@@ -532,6 +539,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
 
 const uiBackup=createUiBackup({
   ...storageV2Cloud,
+  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   validateRestoreJson:(...args)=>stateNormalization.validateRestoreJson(...args),
   tab,
   ui,
@@ -622,30 +630,7 @@ const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
-const syncChecks=createSyncChecks({
-  model,
-  files,
-  checksSession,
-  tab,
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
-  markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
-  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
-  clearChecksPending:(...args)=>storageChecks.clearChecksPending(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  recomputeKupaNetFromCache:(...args)=>domainsBankCache.recomputeKupaNetFromCache(...args),
-  renderKupaDependentView:(...args)=>domainsBankCache.renderKupaDependentView(...args),
-  queueSharedChecksSave:(...args)=>syncChecksPersistence.queueSharedChecksSave(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  loadSession:(...args)=>cloudAuth.loadSession(...args),
-  readSharedChecksCloud:(...args)=>cloudTransport.readSharedChecksCloud(...args),
-  checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
-  rpcSaveSharedChecks:(...args)=>cloudTransport.rpcSaveSharedChecks(...args),
-  checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
-  readSharedChecksCloudMeta:(...args)=>cloudTransport.readSharedChecksCloudMeta(...args),
-  refreshCloudTimestamp:(...args)=>uiStatus.refreshCloudTimestamp(...args),
-  touchChecksRevision:()=>domainRevisions.touch('checks'),
-});
+const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow});
 
 const domainsFinanceController=createDomainsFinanceController({
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
@@ -1080,5 +1065,6 @@ uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(()=>{domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
+export const appReady=lifecycle.boot().then(()=>{sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
+export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}
 void appReady.then(()=>uiAlertCenter.startDateWatcher());

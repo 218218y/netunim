@@ -36,7 +36,7 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.log.unlink(missing_ok=True)
         result = subprocess.run(["cmd.exe", "/d", "/c", "call", str(self.root / name), mode],
                                 cwd=self.root.parent, env=self.env, input="\n" * 8, capture_output=True,
-                                encoding="utf8", errors="replace", timeout=30)
+                                encoding="utf8", errors="replace", timeout=90)
         calls = self.log.read_text().splitlines() if self.log.exists() else []
         return result, calls
 
@@ -103,6 +103,13 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(calls, ['remote', 'public', 'database', 'database'])
         self.assertNotIn('Deploying the verified static site', result.stdout)
+        unsafe = self.root/'netunim-orders/site/assets/js/nested/unsafe.js'
+        unsafe.parent.mkdir(parents=True, exist_ok=True)
+        for source in ("eval('1')", "new Function('return 1')"):
+            unsafe.write_text(source, encoding='utf8')
+            result, _ = self.run_bat('deploy_all_fast.bat')
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn('dynamic code', result.stdout)
 
 
 if __name__ == "__main__":

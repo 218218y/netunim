@@ -66,6 +66,34 @@ test('coordinator reserves and shares exact promises, serializes opposite operat
   assert.equal(f.status({pending:{conflict:{}}}),'conflict');assert.equal(f.status({pending:{retry:{nextAttemptAt:'2099-01-01'}}}),'deferred');
 });
 
+test('Orders mirrors a remote shared-check update into V2 without writing a legacy browser snapshot',async()=>{
+  const model={state:{checks:[]}},checksSession={checksCloudBase:[],checksGeneration:0},mirrored=[];
+  const sync=ordersChecks({model,checksSession,files:{},tab:{primaryTab:true},
+    loadSession:()=>true,getChecksPending:async()=>null,readSharedChecksCloud:async()=>({revision:8,state:{checks:[{id:'C',amount:25}],bankEvents:[]}}),
+    refreshStorageV2CloudState:async()=>({seq:0}),replaceStorageV2CurrentState:async state=>{mirrored.push(clone(state));return 0},
+    localSnapshot:()=>assert.fail('V2 remote mirror must not write the V1 snapshot'),persistChecksBase:noop,
+    recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,renderKupaDependentView:noop});
+  assert.equal(await sync.syncSharedChecksFromCloud({quiet:true,required:true}),true);
+  assert.equal(model.state.checks[0].id,'C');
+  assert.equal(mirrored.length,1);
+  assert.equal(mirrored[0].checks[0].amount,25);
+});
+
+test('Kupa mirrors a remote shared-check update into V2 and fails closed if its checkpoint fails',async t=>{
+  t.mock.method(console,'error',()=>{});
+  const model={state:{checks:[]}},checksSession={sharedChecksBase:[],sharedChecksBankEvents:[],sharedChecksGeneration:0},session={dbRevision:1},mirrored=[];
+  let checkpointSucceeds=true;
+  const sync=kupaChecks({model,checksSession,session,files:{},tab:{primaryTab:true},
+    getSharedChecksPending:async()=>null,readSharedChecksDocument:async()=>({revision:8,state:{checks:[{id:'C',amount:25}],bankEvents:[]}}),
+    refreshStorageV2CloudState:async()=>({seq:0}),replaceStorageV2CurrentState:async state=>{mirrored.push(clone(state));return checkpointSucceeds?0:false},
+    persistImmediateBrowserSnapshot:()=>assert.fail('V2 remote mirror must not write the V1 snapshot'),persistSharedChecksBase:noop,
+    setSaveStatus:noop,setCloudHeaderStatus:noop,refreshCloudHeaderTimestamp:noop});
+  assert.equal(await sync.syncSharedChecksFromCloud({quiet:true,required:true}),true);
+  assert.equal(mirrored[0].checks[0].amount,25);
+  checkpointSucceeds=false;
+  await assert.rejects(sync.syncSharedChecksFromCloud({quiet:true,required:true}),/storage_v2_shared_checks_mirror_failed/);
+});
+
 test('bank snapshot fails closed if a mutation arrives in the final guard continuation',async()=>{
   let local=false,observations=0,writes=0;
   const bank=createDomainsBankController({model:{state:{bank:{}}},session:{connectionMode:'supabase'},checksSession:{},

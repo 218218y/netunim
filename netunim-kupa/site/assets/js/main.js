@@ -1,4 +1,5 @@
-import {createStorageV2Runtime} from './shared/storage-v2-runtime.js';
+import {createStorageV2Runtime,storageV2Mode} from './shared/storage-v2-runtime.js';
+import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -154,6 +155,12 @@ const syncChecksState=createSyncChecksState({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
+const sharedChecksV2Shadow=createSharedChecksObserver({
+  readState:()=>({checks:model.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}),
+  owner:()=>String(cloudAuth.loadSupaSession()?.user?.id||'local'),primary:()=>tab.primaryTab,
+  enabled:()=>{if(storageV2Mode('kupa')==='shadow')return true;try{return localStorage.getItem('netunim-shared-checks-v2-shadow')==='1'}catch{return false}},
+});
+
 const storageTabLock=createStorageTabLock({
   tab,
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
@@ -199,6 +206,7 @@ const storagePersistence=createStoragePersistence({
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   storageV2Primary:()=>storageShadow.primaryReady,
   storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
+  observeSharedChecks:sharedChecksV2Shadow.mutation,
   ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
@@ -282,6 +290,7 @@ const syncChecks=createSyncChecks({
   files,
   tab,
   persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
+  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   ...storageV2Cloud,
   persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
   markSharedChecksPending:(...args)=>syncChecksState.markSharedChecksPending(...args),
@@ -719,6 +728,7 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 });
 
 const uiBackup=createUiBackup({
+  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   ...storageV2Cloud,
   model,
   session,
@@ -958,6 +968,7 @@ window.addEventListener('pagehide',()=>{
   }
   if(session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending();
 });
+
 window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab)return;
   if(storageShadow.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
@@ -976,4 +987,5 @@ uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
 bindDismissibleDetails(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot();
+export const appReady=lifecycle.boot().then(result=>{sharedChecksV2Shadow.boundary();return result});
+export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}

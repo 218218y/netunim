@@ -10,7 +10,7 @@ const TRANSIENT_CHECK_READ_KINDS=new Set(['network','timeout','service_unavailab
 function recordSharedChecksReadError(state,key,error){const normalized=normalizeCloudError(error);if(!TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))state[key]=error?.message||String(error);return normalized}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecks({model, files, checksSession={}, tab, localSnapshot, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
+export function createSyncChecks({model, files, checksSession={}, tab, localSnapshot, refreshStorageV2CloudState=async()=>null, replaceStorageV2CurrentState=async()=>false, observeSharedChecksBoundary=()=>false, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 const flight=createSharedChecksFlight({state:checksSession,pullKey:'checksPullPromise',saveKey:'checksSavePromise',busyKey:'checksCloudBusy'});
 function sharedChecksSyncStatus(){return flight.status({online:!!(loadSession()&&navigator.onLine),pending:checksSession.checksOutboxCached,localWork:!!checksSession.checksSaveRequested})}
@@ -22,7 +22,15 @@ function checksAudit(pending,before,after,baseRevision,deletedIds){return operat
 function mergeSharedChecks(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check');return {checks:normalizeSharedChecks(checks),conflicts}}
 function mergeSharedChecksPreferLocal(base,local,remote,{deleteIds=[]}={}){const conflicts=[],b=normalizeSharedChecks(base||[]),r=normalizeSharedChecks(remote||[]),safeLocal=protectImplicitDeletes(b,local,deleteIds),checks=mergeArray(b,safeLocal,r,'id',conflicts,'check',true);return{checks:normalizeSharedChecks(checks),conflicts}}
 
-async function mirrorChecksLocally(){localSnapshot(undefined,{storageBoundary:'shared-checks-remote-mirror'});try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}}
+async function mirrorChecksLocally(){
+  const v2=await refreshStorageV2CloudState();
+  if(v2){
+    const replaced=await replaceStorageV2CurrentState(model.state);
+    if(replaced===false)throw new Error('storage_v2_shared_checks_mirror_failed');
+  }else localSnapshot(undefined,{storageBoundary:'shared-checks-remote-mirror'});
+  observeSharedChecksBoundary();
+  try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}
+}
 
 async function syncSharedChecksFromCloud({quiet=false,required=false}={}){
   return flight.pull(async()=>{

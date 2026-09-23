@@ -90,17 +90,10 @@ rem Executable browser code is kept in explicit JavaScript assets. The CSP does 
 rem allow dynamic code execution, so reject eval/Function-constructor regressions anywhere
 rem in the published JavaScript tree rather than checking index.html only.
 set "FOUND_DYNAMIC_CODE="
-for /R "%SITE_DIR%" %%F in (*.js) do (
-  findstr /C:"eval(" "%%F" >nul 2>&1
-  if not errorlevel 1 (
-    echo ERROR: public JavaScript contains eval^(^): %%F
-    set "FOUND_DYNAMIC_CODE=1"
-  )
-  findstr /C:"new Function(" "%%F" >nul 2>&1
-  if not errorlevel 1 (
-    echo ERROR: public JavaScript contains a Function constructor: %%F
-    set "FOUND_DYNAMIC_CODE=1"
-  )
+rem One recursive scan avoids launching two findstr processes for every JS module.
+for /F "delims=" %%F in ('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\*.js" 2^>nul') do (
+  echo ERROR: public JavaScript contains dynamic code: "%%F"
+  set "FOUND_DYNAMIC_CODE=1"
 )
 if defined FOUND_DYNAMIC_CODE (
   echo Remove dynamic-code execution before deployment.
