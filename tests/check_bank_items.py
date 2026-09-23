@@ -344,10 +344,16 @@ def run(db):
     assert healed['bankMatch']['provisionalReference'] and healed['bankMatch']['matchMethod']=='number' and not healed['bankMatch'].get('warning'),'A legacy amount/date claim is upgraded to the strict provisional number evidence'
     assert db.sql("select count(*) from netunim_internal.check_bank_claims where owner_id="+quote(OWNER)+" and transaction_id="+str(legacy_tx)).strip()=='0','The stale single-member fallback claim must be removed so the final grouped deposit can own identity'
 
-    final_items=[item('4463455',830,'13807'),item('1370002',850,'13807'),item('80000072',1000,'13807')]
-    for i in final_items:i.update(bankNumber='17',branchNumber='725')
-    final_group=dict(mergeKey='final-machine-2680',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=2680,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=83544.41,activityTypeCode=1,bankReference='-1',bankSerial='1',cheque=True,checkDetails=dict(kind='deposit',checkItems=final_items,checkNumbers=['4463455','1370002','80000072'],checkCount=3,hasDocumentReference=True,warning=''))
-    pending_reference_rpc([final_group],pending_value_day+'T10:00:00Z',pending_value_day)
+    # Live 2026-09-23 finalization: Hapoalim removes the three direct pending rows and replaces
+    # them with one completed mobile deposit. The aggregate row has a DIFFERENT reference and amount,
+    # but its validated checkItems is authoritative per-cheque evidence for all three children.
+    final_items=[
+        dict(checkNumber='1370002',amount=850,bankNumber='20',branchNumber='444',accountNumber='62518'),
+        dict(checkNumber='4463455',amount=830,bankNumber='52',branchNumber='183',accountNumber='105012322'),
+        dict(checkNumber='80000072',amount=1000,bankNumber='17',branchNumber='732',accountNumber='105323448'),
+    ]
+    final_group=dict(mergeKey='final-mobile-2680',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=2680,currency='ILS',description='הפק.שיק בסלולר',status='completed',balanceAfter=92444.41,activityTypeCode=1,bankReference='855259628049',bankSerial='3',cheque=True,checkDetails=dict(kind='deposit',checkItems=final_items,checkNumbers=['1370002','4463455','80000072'],checkCount=3,hasDocumentReference=True,warning=''))
+    final_result=json.loads(pending_reference_rpc([final_group],pending_value_day+'T10:00:00Z',pending_value_day))
     rows=checks();transaction_ids={c['bankMatch']['transactionId'] for c in rows}
     assert len(transaction_ids)==1,'The completed grouped deposit becomes the one durable transaction identity for all three checks'
     for c in rows:
@@ -355,10 +361,55 @@ def run(db):
         assert c['status']=='הופקד - במעקב' and c['depositDate']==pending_seen_day,'Final value-date evidence must not rewrite the actual pending deposit day'
         assert m['phase']=='deposited' and not m['provisional'] and not m.get('provisionalReference') and m['autoConfirmed'] and not m.get('warning')
         assert m['matchMethod']=='number' and m['bankItem']['checkNumber']==c['checkNumber']
+    final_archive=json.loads(db.sql("select coalesce(json_agg(json_build_object('id',id,'status',status,'presence',presence_state,'amount',amount,'reference',bank_reference,'details',check_details) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='business'"))
+    assert len(final_archive)==1 and final_archive[0]['status']=='completed' and final_archive[0]['presence']=='present' and float(final_archive[0]['amount'])==2680,'Final structured batch must replace its three pending archive children instead of leaving three false missing incidents'
+    assert final_result['active_missing_count']==0 and final_result['missing_count']==0,'N pending -> one completed batch finalization must not manufacture missing-bank alerts'
     claim_where="owner_id="+quote(OWNER)+" and account_key='item-tests' and account_role='business'"
     claim_row=json.loads(db.sql("select json_build_object('count',(select count(*) from netunim_internal.check_bank_claims where "+claim_where+"),'ids',coalesce((select check_ids from netunim_internal.check_bank_claims where "+claim_where+" limit 1),'[]'::jsonb))"))
     assert claim_row['count']==1 and set(claim_row['ids'])=={c['id'] for c in rows},'Only completed structured evidence creates the grouped durable claim'
+
+    # Heal the exact already-broken Production shape too: the final row is already present, while
+    # three old direct-pending children are already marked missing. Replaying the same complete bank
+    # snapshot must remove those stale representations and clear active missing count without user ACK.
+    for stale in rolled_pending_reference_rows:
+        db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,status,presence_state,missing_since,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details) values("+quote(OWNER)+",'item-tests','business',"+quote('already-missing-'+stale['bankReference'])+","+quote(stale['date'])+","+quote(stale['processedDate'])+","+str(stale['amount'])+",'ILS','הפק שיק-ע.ישיר','pending','missing',"+quote(pending_value_day+'T10:01:00Z')+","+str(stale['balanceAfter'])+","+quote(stale['bankReference'])+",'0',1,true,"+quote(json.dumps(empty_deposit_details))+"::jsonb)")
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='business' and presence_state='missing'").strip()=='3'
+    healed_result=json.loads(pending_reference_rpc([final_group],pending_value_day+'T10:02:00Z',pending_value_day))
+    assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='business'").strip()=='1','A repeated final snapshot heals stale missing pending children created before the upgrade'
+    assert healed_result['missing_count']==0 and healed_result['active_missing_count']==0,'Healing an already-finalized batch clears false missing incidents automatically'
     release_bank_lease('pending-reference-rpc')
+
+    # Fail closed when historical identity is genuinely ambiguous. Two pending rows with the same
+    # strict cheque number+amount+value day are not safe to collapse into one completed item.
+    reset([])
+    lease=claim_bank_lease('batch-ambiguity-rpc')
+    def batch_ambiguity_rpc(payload,at):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-ambiguity-rpc',"+str(lease['fence_epoch'])+") x")
+    ambiguous_pending=[
+        dict(mergeKey='ambiguous-pending-a',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10000,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+        dict(mergeKey='ambiguous-pending-b',date=pending_value_day+'T09:00:01Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10830,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
+    ]
+    batch_ambiguity_rpc(ambiguous_pending,pending_value_day+'T10:50:00Z')
+    one_item=dict(mergeKey='ambiguous-final',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק.שיק בסלולר',status='completed',balanceAfter=12000,activityTypeCode=1,bankReference='batch-ref',bankSerial='4',cheque=True,checkDetails=dict(kind='deposit',checkItems=[final_items[1]],checkNumbers=['4463455'],checkCount=1,hasDocumentReference=True,warning=''))
+    batch_ambiguity_rpc([one_item],pending_value_day+'T11:01:00Z')
+    ambiguity_archive=json.loads(db.sql("select coalesce(json_agg(json_build_object('status',status,'presence',presence_state,'reference',bank_reference) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='business'"))
+    assert len(ambiguity_archive)==3 and sum(1 for r in ambiguity_archive if r['status']=='pending' and r['presence']=='missing')==2,'Ambiguous pending children must remain explicit missing evidence instead of being guessed away'
+    release_bank_lease('batch-ambiguity-rpc')
+
+    # Transitional overlap is also fail-closed: if the bank still returns a strict pending child
+    # in the SAME snapshot as the completed structured row, that child has not disappeared yet.
+    # The batch finalizer may retire it only on a later source payload where the child is absent.
+    reset([])
+    lease=claim_bank_lease('batch-overlap-rpc')
+    def batch_overlap_rpc(payload,at):
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-overlap-rpc',"+str(lease['fence_epoch'])+") x")
+    overlap_pending=dict(mergeKey='overlap-pending-4463455',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10000,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details)
+    overlap_final=dict(mergeKey='overlap-final-4463455',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק.שיק בסלולר',status='completed',balanceAfter=10830,activityTypeCode=1,bankReference='overlap-batch-ref',bankSerial='5',cheque=True,checkDetails=dict(kind='deposit',checkItems=[final_items[1]],checkNumbers=['4463455'],checkCount=1,hasDocumentReference=True,warning=''))
+    overlap_result=json.loads(batch_overlap_rpc([overlap_pending,overlap_final],pending_value_day+'T11:20:00Z'))
+    overlap_archive=json.loads(db.sql("select coalesce(json_agg(json_build_object('status',status,'presence',presence_state,'reference',bank_reference) order by id),'[]'::json) from public.bank_transactions where account_key='item-tests' and account_role='business'"))
+    assert len(overlap_archive)==2 and all(r['presence']=='present' for r in overlap_archive),'A pending child still present in the current source must never be retired merely because a completed row is also visible'
+    assert overlap_result['missing_count']==0 and overlap_result['active_missing_count']==0,'A transitional pending+completed overlap must remain present evidence, not manufacture missing incidents'
+    release_bank_lease('batch-overlap-rpc')
 
     # Archive-only cheque transition: Hapoalim can replace a pending direct-deposit row
     # with a completed machine-deposit row, changing date/reference/serial/description while

@@ -90,6 +90,7 @@ bank_migration_pending = any(row['name'] == 'bank_instant_credit_reconciliation'
 credit_identity_migration_pending = any(row['name'] == 'bank_credit_settlement_identity' for row in receipt_pending)
 cheque_pending_transition_pending = any(row['name'] == 'bank_cheque_deposit_pending_transition' for row in receipt_pending)
 pending_date_rollover_pending = any(row['name'] == 'bank_pending_direct_deposit_date_rollover' for row in receipt_pending)
+pending_batch_completion_pending = any(row['name'] == 'bank_pending_cheque_batch_completion' for row in receipt_pending)
 candidate_definition = normalized_sql_text(bank_merge['definition'])
 reviewed_definition = normalized_sql_text(reviewed_bank_merge['definition'])
 if bank_migration_pending:
@@ -167,6 +168,17 @@ else:
 """,
             ):
                 definition=definition.replace(fragment,'')
+        if pending_batch_completion_pending:
+            # Production evidence predates the N-pending -> one completed structured cheque batch
+            # archive cleanup. Strip only this migration's declarations and final per-item cleanup
+            # block before comparing the remaining merge body to authenticated Production.
+            definition=definition.replace(
+                "  v_completed_pack jsonb;\n  v_completed_item jsonb;\n  v_completed_item_number text;\n  v_completed_item_amount numeric;\n  v_batch_pending_id bigint;\n  v_batch_pending_candidates int;\n  v_batch_claim_count int;\n  v_batch_claim_safe boolean;\n",''
+            )
+            start=definition.find("\n\n    -- Hapoalim finalizes a multi-cheque mobile/machine deposit by replacing N separate\n")
+            end=definition.find("  end loop;\n  -- Self-verify the statement before returning.",start)
+            assert start>=0 and end>start, 'batch-completion migration block was not found in candidate merge definition'
+            definition=definition[:start]+definition[end:]
         if cheque_pending_transition_pending:
             # Production evidence predates the cheque-deposit presentation transition fix.
             # Normalize only that reviewed body change back to its previous exact-label gate;

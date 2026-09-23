@@ -107,6 +107,10 @@
     {
       "version": "20260922101500",
       "name": "bank_handled_rpc_security_fix"
+    },
+    {
+      "version": "20260923063000",
+      "name": "bank_pending_cheque_batch_completion"
     }
   ]
 }
