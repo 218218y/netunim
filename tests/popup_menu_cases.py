@@ -20,7 +20,15 @@ POPUP_CASES = r"""
  assert(first.querySelector('[data-menu-panel]').getBoundingClientRect().bottom<=trigger.getBoundingClientRect().top,'bottom-edge menu opens above');
  first.querySelector('input').click();await wait();assert(first.open,'form interaction keeps menu open');
  await open(second);assert(!first.open&&second.open,'only one popup may remain open');
+ const secondWidth=second.querySelector('[data-menu-panel]').getBoundingClientRect().width;
  document.body.click();await wait();assert(!second.open,'outside click closes menu');
+ await open(second);const outsideReopenWidth=second.querySelector('[data-menu-panel]').getBoundingClientRect().width;
+ assert(Math.abs(outsideReopenWidth-secondWidth)<=1,'outside dismissal must not change popup width');
+ let triggerOwned=false;second.querySelector('summary').addEventListener('click',event=>{triggerOwned=event.defaultPrevented},{once:true});
+ second.querySelector('summary').click();await wait();assert(!second.open,'same trigger closes after outside reopen');assert(triggerOwned,'shared popup controller must own details trigger activation');
+ await open(second);const triggerReopenWidth=second.querySelector('[data-menu-panel]').getBoundingClientRect().width;
+ assert(Math.abs(triggerReopenWidth-secondWidth)<=1,'trigger dismissal and outside dismissal must reopen identically');
+ second.querySelector('summary').click();await wait();
  await open(first);trigger.click();await wait();assert(!first.open,'same trigger closes its menu');
  await open(first);first.querySelector('input').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));await wait();
  assert(!first.open&&document.activeElement===trigger,'Escape closes and restores focus');
