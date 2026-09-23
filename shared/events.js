@@ -129,24 +129,18 @@ export function bindDismissibleDetails(root,{selector='details[data-dismiss-on-o
   root.addEventListener('click',event=>{
     outside(event);
     const target=event.target instanceof Element?event.target:null,host=target?.closest(selector);
-    const button=host?trigger(host):null;
-    // Floating <details> menus have one owner for their lifecycle: this controller.
-    // Preventing the native summary activation avoids two close/open orders
-    // (native toggle first for the trigger, controller first for outside clicks),
-    // which can leave a top-layer panel measured from a different layout state.
-    if(host?.tagName==='DETAILS'&&button?.contains(target)){
-      event.preventDefault();
-      if(active?.host===host)close();
-      else{setOpen(host,true);open(host)}
-      return;
-    }
-    // Button-based floating menus may still have application-owned trigger actions.
-    // Their state is observed after delegated actions have had a chance to run.
+    // Runs after native summary toggling and application actions, including ones
+    // that stop propagation or replace the current screen/modal.
     queueMicrotask(()=>{
       if(host?.isConnected&&isOpen(host))open(host);
       if(active&&!active.host.isConnected)close();
       if(active&&target?.closest('button[data-action],a[href]')&&!target.closest('[data-menu-keep-open]')&&panel(active.host)?.contains(target))close();
     });
+  },true);
+  root.addEventListener('toggle',event=>{
+    const host=event.target instanceof Element&&event.target.matches(selector)?event.target:null;
+    if(!host)return;
+    if(isOpen(host))open(host);else if(active?.host===host)close();
   },true);
   root.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&active){event.preventDefault();event.stopPropagation();close(true);return}
