@@ -381,6 +381,13 @@ orders_supplier_model = (O / "site/assets/js/domains/suppliers/model.js").read_t
 orders_supplier_editor = (O / "site/assets/js/domains/suppliers/editor.js").read_text(encoding="utf-8")
 orders_normalization = (O / "site/assets/js/state/normalization.js").read_text(encoding="utf-8")
 orders_actions = (O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+ok('supplier-data-table' in orders_supplier_view
+   and '@media(min-width:1000px){.supplier-data-table{width:100%;min-width:0!important;table-layout:fixed}' in orders_css
+   and '.supplier-data-table .col-row-actions{width:50px}' in orders_css
+   and '.supplier-data-table .inline-input{min-width:0;padding-inline:4px}' in orders_css
+   and '.supplier-data-table .status-toggle button{min-width:31px;padding-inline:4px}' in orders_css
+   and '.supplier-data-table.supplier-all-table .col-supplier{min-width:0;width:10%}' in orders_css,
+   "orders suppliers: desktop supplier tables opt out of the global 1300px minimum, use a fixed responsive layout, and compact the action/status/input columns instead of requiring a small horizontal scroll")
 ok('data-action="filter-mode-4"' not in orders_supplier_view
    and "filterMode==='hm'" not in orders_supplier_view
    and "'filter-mode-4':" not in orders_actions

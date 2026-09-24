@@ -104,8 +104,8 @@ ok('morningBankDebtSelected' in debt_picker and '<b>חוב שנבחר:</b>' in d
    'Selected debt remains explicitly visible above the search field even if the search text is edited or cleared')
 ok('createMorningBankTransactionLinker' in documents and 'linkBankTransaction' in documents and 'clearBankTransactionLink' in documents and 'bankMorningPrefill(row)' in transaction_link and "setActiveSource({...prefill.source,kind:'bank'" in transaction_link and 'activeDebtId' in documents,
    'Debt/standalone Morning issuance can adopt the existing bank source contract without losing the selected debt')
-ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-transaction-search' in transaction_picker and 'bankMorningEligibility' in transaction_picker and 'documentLinks' in transaction_picker and 'already-linked' in transaction_picker,
-   'Reverse bank picker is searchable, restricted to eligible credits and visibly blocks already-linked transactions')
+ok('morning-bank-transaction-select' in transaction_picker and 'morning-bank-transaction-search' in transaction_picker and 'bankMorningEligibility' in transaction_picker and 'documentLinks' in transaction_picker and 'already-linked' in transaction_picker and 'RECENT_DAYS=45' in transaction_picker and 'transactionDateKey(row)>=cutoff' in transaction_picker and '45 הימים האחרונים' in transaction_picker,
+   'Reverse bank picker is searchable, restricted to eligible credits from the latest 45 calendar days and visibly blocks already-linked transactions')
 ok('.morning-bank-transaction-results{display:none;' in app_css and '.morning-bank-transaction-search-shell:focus-within .morning-bank-transaction-results{display:block}' in app_css and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(62px,.65fr)' in app_css,
    'Reverse bank picker stays collapsed until focus and fits inside the Morning modal without horizontal scrolling')
 ok('getBusinessBankTransactions:()=>domainsFinanceController.snapshot().bank?.feed?.transactions||[]' in main and 'ensureBusinessBankTransactions' in main and 'getBusinessBankTransactions' in composition,
