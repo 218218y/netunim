@@ -145,7 +145,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   function configure(next){
     if(transition)throw new Error('kupa_storage_v2_already_configured');ports=next;
     const p=requirePorts();
-    fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
+    fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
       readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>p.stateNormalization.prepareKupaCloudState(row.state),
       readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>row.state,

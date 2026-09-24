@@ -104,12 +104,13 @@ async function boot(){
   loadSession();
   const transfer=await hydrateStorageV2OwnerTransfer();
   await hydrateStorageTransition();await hydrateLocalBirth();
-  const localOwner=storageOwnerCurrent()==='local';
+  let localOwner=storageOwnerCurrent()==='local';
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
   let protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
       await recoverFencedAccount();
+      localOwner=storageOwnerCurrent()==='local';
       cutoverActive=await verifyStorageCutover();
       if(!cutoverActive)throw new Error('storage_fenced_recovery_marker_missing');
       protocol={allowed:true,reason:'v2-ready'};

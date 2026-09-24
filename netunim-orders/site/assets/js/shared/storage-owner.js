@@ -49,6 +49,10 @@ export function createStorageOwnerBinding({app,primary=()=>true,db=createStorage
     })().finally(()=>{hydrating=null});
     return hydrating;
   }
+  async function refresh(){
+    const durable=await db.readOwnerBinding(scope),pending=await db.readOwnerHandoff(scope);
+    return applyDurable(durable,pending);
+  }
   function current(){return owner}
   function assertReady(){if(!binding||!storageOwnerReady(owner))throw new Error('storage_owner_not_ready');return owner}
   function assertAuthenticatedOwner(authenticatedOwner,{allowMissing=false}={}){
@@ -103,5 +107,5 @@ export function createStorageOwnerBinding({app,primary=()=>true,db=createStorage
     return applyDurable(result.binding,result.handoff);
   }
   function status(){return {ready:!!binding,owner,locked:!!handoff,binding:binding&&structuredClone(binding),handoff:handoff&&structuredClone(handoff)}}
-  return {hydrate,current,assertReady,assertAuthenticatedOwner,assertSessionOwner,sessionMatches,reserveLocalAdoption,adoptPreparedLocalOwner,beginHandoff,advanceHandoff,activateHandoff,completeHandoff,status,get ready(){return !!binding},get writable(){return !!binding&&!handoff},get locked(){return !!handoff}};
+  return {hydrate,refresh,current,assertReady,assertAuthenticatedOwner,assertSessionOwner,sessionMatches,reserveLocalAdoption,adoptPreparedLocalOwner,beginHandoff,advanceHandoff,activateHandoff,completeHandoff,status,get ready(){return !!binding},get writable(){return !!binding&&!handoff},get locked(){return !!handoff}};
 }

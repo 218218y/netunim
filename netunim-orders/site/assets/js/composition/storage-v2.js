@@ -55,7 +55,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   function configure(next){
     if(transition)throw new Error('orders_storage_v2_already_configured');ports=next;
     const p=requirePorts();
-    fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
+    fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
       readMainRemote:()=>p.cloudTransport.readCloud(),projectMainRemote:row=>p.stateSnapshots.prepareCloudState(row.state),
       readSharedRemote:()=>p.cloudTransport.readSharedChecksCloud(),projectSharedRemote:row=>row.state,

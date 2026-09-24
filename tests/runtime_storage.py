@@ -472,7 +472,32 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery')
       await oldShared.install({checks:[],bankEvents:[]},{appMetadata:{storageRole:'shared-checks-shadow'}});
       await shadowDb.adoptFencedAccount('kupa',shadowOwner,{mainState:{...main,checks:shared.checks},mainCloudState:main,mainRevision:17,sharedState:shared,sharedRevision:9});
       if((await oldMain.recover()).state.notes[0].id!=='cloud'||(await oldShared.recover()).state.checks[0].id!=='check')throw Error('legacy shadow remained active');
-      return ['protocol and primary gates','atomic abort leaves neither head nor marker','Main and Shared recover from cloud','legacy keys ignored','idempotent startup','unfinished V2 primary preserved','old shadow superseded atomically'];
+      const localDb=createStorageJournalDb({name:'storage-v2-fenced-legacy-local'}),target='account-from-legacy-local';
+      await localDb.initializeOwnerBinding('kupa','local');let activeOwner='local';
+      const localRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>activeOwner,primary:()=>true,authenticatedOwner:()=>target,
+        refreshOwnerBinding:async()=>{activeOwner=(await localDb.readOwnerBinding('kupa')).owner},
+        readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
+        readMainRemote:async()=>({revision:17,state:structuredClone(main)}),projectMainRemote:row=>row.state,
+        readSharedRemote:async()=>({revision:9,state:structuredClone(shared)}),projectSharedRemote:row=>row.state,
+        composeMainState:(cloud,checks)=>({...cloud,checks:checks.checks}),projectMainState:state=>({notes:state.notes}),
+        validateMainState:state=>{if(!Array.isArray(state.notes)||!Array.isArray(state.checks))throw Error('invalid main')},
+        validateMainCloud:state=>{if(!Array.isArray(state.notes))throw Error('invalid cloud')},db:localDb,storage:localStorage});
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='cutovers'){this.transaction.abort();throw Error('injected local adoption abort')}return result};
+      let localAborted=false;try{await localRecovery.recover()}catch{localAborted=true}finally{IDBObjectStore.prototype.put=put}
+      if(!localAborted||(await localDb.readOwnerBinding('kupa')).owner!=='local'||await localDb.readCutover('kupa:'+target)||
+        (await localDb.load(target+':kupa')).checkpoints||(await localDb.load(target+':shared-checks')).checkpoints)throw Error('aborted local adoption changed the owner or either head');
+      await localRecovery.recover();
+      if(activeOwner!==target||(await localDb.readOwnerBinding('kupa')).owner!==target||
+        !(await localDb.readCutover('kupa:'+target))||
+        (await localDb.load(target+':shared-checks')).checkpoints?.data?.state?.bankEvents?.[0]?.seq!==1)throw Error('legacy local owner was not atomically rebound to cloud');
+      const protectedDb=createStorageJournalDb({name:'storage-v2-fenced-local-protected'});
+      await protectedDb.initializeOwnerBinding('kupa','local');
+      const localV2=createStorageJournal({owner:'local:kupa',schema:{collections:['notes','checks'],fields:[]},validate:()=>{},db:protectedDb});
+      await localV2.install({notes:[{id:'private-local'}],checks:[]},{appMetadata:{storageRole:'primary'}});
+      if(!await fails(()=>protectedDb.adoptFencedAccount('kupa',target,{mainState:{...main,checks:shared.checks},mainCloudState:main,mainRevision:17,sharedState:shared,sharedRevision:9,sourceOwner:'local'}),
+        'storage_fenced_recovery_existing_local_v2'))throw Error('local V2 was silently replaced');
+      if((await protectedDb.readOwnerBinding('kupa')).owner!=='local'||(await localV2.recover()).state.notes[0].id!=='private-local')throw Error('rejected local adoption changed the owner');
+      return ['protocol and primary gates','atomic abort leaves neither head nor marker','Main and Shared recover from cloud','legacy keys ignored','idempotent startup','unfinished V2 primary preserved','old shadow superseded atomically','legacy local binding atomically rebinds','existing local V2 is protected'];
     })()""",timeout=60)
     assert not browser.drain_serious_errors()
     print('PASS fenced stale-device cloud recovery: '+json.dumps(result))
