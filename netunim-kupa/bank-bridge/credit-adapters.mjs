@@ -64,6 +64,12 @@ function errorFetchStatus(error){
   return 'provider_error';
 }
 function diagnostic(onDiagnostic,event){try{onDiagnostic?.(event)}catch{}}
+function diagnosticBrowserProduct(browserPath){
+  const name=String(browserPath||'').replace(/\\/g,'/').split('/').pop().toLowerCase();
+  if(name==='msedge.exe')return 'edge';
+  if(name==='chrome.exe')return 'chrome';
+  return '';
+}
 
 export function creditStartDate(now=new Date()){
   const d=new Date(now);d.setUTCDate(d.getUTCDate()-CREDIT_HISTORY_DAYS);return d;
@@ -247,8 +253,8 @@ export function applyVisaCalLoginNavigationPolicy(scraper){
 }
 
 export class CreditProviderAdapter {
-  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_DAILY}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode);this.connectorVersion=''}
-  event(event){diagnostic(this.onDiagnostic,{correlationId:this.correlationId,provider:this.profile?.provider,profileId:this.profile?.profileId,connectorVersion:this.connectorVersion||undefined,...event})}
+  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_DAILY,interactive=false,browserPath=''}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode);this.browserMode=interactive?'headed':'headless';this.browserProduct=diagnosticBrowserProduct(browserPath);this.connectorVersion=''}
+  event(event){const engine=String(event?.browserEngine||'');diagnostic(this.onDiagnostic,{correlationId:this.correlationId,provider:this.profile?.provider,profileId:this.profile?.profileId,connectorVersion:this.connectorVersion||undefined,syncMode:this.syncMode,browserMode:this.browserMode,browserProduct:engine==='camoufox'?'camoufox':this.browserProduct,...event})}
   async scrape(){throw new Error('CreditProviderAdapter.scrape must be implemented')}
 }
 
@@ -350,7 +356,7 @@ class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
       return this.scrapeCamoufox();
     }
   }
-  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.onDiagnostic({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
+  async scrapeCamoufox(){const scope=creditSyncScope({syncMode:this.syncMode,now:this.now()});return camoufoxProfileResult(this,{provider:this.profile.provider,credentials:this.profile.credentials,startDate:scope.startDate,futureMonthsToScrape:scope.futureMonths,interactive:this.interactive,identityDir:this.identityDir,onDiagnostic:event=>this.event({browserEngine:'camoufox',...event}),correlationId:this.correlationId,now:this.now})}
 }
 
 export class IsracardAdapter extends IsracardGroupDigitalV3Adapter {

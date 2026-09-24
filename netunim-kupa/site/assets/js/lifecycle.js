@@ -39,6 +39,7 @@ async function boot(){
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
   const protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(!protocol.allowed){
+    session.storageProtocolBlocked=true;
     const oldBrowser=protocol.reason==='server-v2';
     setConnectUI({title:oldBrowser?'המכשיר משתמש באחסון ישן':'נדרש אימות אחסון בענן',text:oldBrowser?'החשבון כבר עבר ל־Storage V2. במכשיר משני זה יש למחוק את נתוני האתר, לפתוח מחדש ולטעון את החשבון הקיים מהענן.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
     return;

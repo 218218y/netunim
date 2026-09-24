@@ -101,6 +101,8 @@ assert.equal(camoufoxOptions.fingerprint,undefined,'Bank Bridge does not inject 
 assert.equal(camoufoxOptions.enable_cache,true,'qualified issuer sessions may reuse the browser cache setting without changing fingerprint ownership');
 assert.deepEqual(buildCreditMonths(new Date('2026-05-03T00:00:00Z'),2,new Date('2026-08-31T00:00:00Z')).map(x=>x.toISOString().slice(0,7)),['2026-05','2026-06','2026-07','2026-08','2026-09','2026-10'],'Camoufox adapter requests every billing month from the lookback through the configured future horizon');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_HTML_RESPONSE'}),true,'Isracard native HTML/WAF failures are eligible for one Camoufox fallback');
+assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_AUTOMATION_BLOCKED',stage:'LoginPage',httpStatus:403}),false,'an explicit LoginPage automation block enters cooldown without an immediate second-engine login request');
+assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_AUTOMATION_BLOCKED',stage:'Transactions 2026-09',httpStatus:403}),true,'a later-stage automation failure remains eligible for the existing bounded fallback policy');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_INVALID_PASSWORD'}),false,'invalid credentials never trigger a second browser engine attempt');
 assert.equal(isCamoufoxRetryableNativeFailure({code:'CREDIT_LOGIN_REJECTED'}),false,'an ambiguous Amex issuer rejection never triggers a duplicate credential attempt in another browser engine');
 

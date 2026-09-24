@@ -99,7 +99,7 @@ const domainRevisions=createOrderDomainRevisions(session);
 const inventoryRenderStore=createInventoryRenderStore({state:()=>model.state,revision:()=>domainRevisions.stamp(['inventory'])});
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
 
-const storageV2Coordinator=createOrdersStorageV2Coordinator({tab});
+const storageV2Coordinator=createOrdersStorageV2Coordinator({tab,session});
 const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
 
 const stateNormalization=createStateNormalization({

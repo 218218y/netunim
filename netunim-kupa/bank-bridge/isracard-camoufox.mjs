@@ -47,7 +47,15 @@ function fullBalanceDate(value){const match=String(value??'').trim().match(/^(\d
 function shortBalanceDate(value,now=new Date()){const match=String(value??'').trim().match(/^(\d{2})[/\.\-](\d{2})$/);return match?balanceDate(now.getUTCFullYear(),match[2],match[1]):null}
 
 export function camoufoxCreditSupported(provider){return Object.prototype.hasOwnProperty.call(PROVIDERS,String(provider||''))}
-export function isCamoufoxRetryableNativeFailure(error){return ['CREDIT_LOGIN_HTML_RESPONSE','CREDIT_AUTOMATION_BLOCKED','CREDIT_DATA_HTML_RESPONSE'].includes(String(error?.code||''))}
+export function isCamoufoxRetryableNativeFailure(error){
+  const code=String(error?.code||''),stage=String(error?.stage||'');
+  // An explicit automation block on the anonymous login document is an issuer/WAF
+  // decision before credentials are sent. Switching engines immediately creates a
+  // second login-page request against the same active block and, in live diagnostics,
+  // produced the same 403. Let the existing profile cooldown own this case instead.
+  if(code==='CREDIT_AUTOMATION_BLOCKED'&&stage==='LoginPage')return false;
+  return ['CREDIT_LOGIN_HTML_RESPONSE','CREDIT_AUTOMATION_BLOCKED','CREDIT_DATA_HTML_RESPONSE'].includes(code);
+}
 
 export function parseIsracardDate(value){
   const match=String(value??'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(!match)return null;
