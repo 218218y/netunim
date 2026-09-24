@@ -5,6 +5,7 @@ import os from 'node:os';
 
 import {classifyAmexDigitalV3LogonResult,normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from './amex-digitalv3.mjs';
 import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from './isracard-digitalv3.mjs';
+import {filterExcludedGroupCards,unsettledApprovedTransactions} from './isracard-group-utils.mjs';
 
 const PROVIDERS={
   isracard:{baseUrl:'https://digital.isracard.co.il',webBaseUrl:'https://web.isracard.co.il',companyCode:'11',transactionCompanyCode:11},
@@ -240,7 +241,7 @@ async function fetchDigitalTransactions(page,cfg,provider,card,month,processedDa
   const response=await pageFetchJson(page,{url:`${cfg.webBaseUrl}/ocp/transactions/DigitalV3.Transactions/GetTransactionsList`,method:'POST',stage,headers:DIGITAL_JSON_HEADERS,data:{card4Number:String(card.cardSuffix),isNextBillingDate:true,cardStatus:0,billingMonth:digitalMonthRequestDate(month),companyCode,isPartner:false}});
   if(!response?.isSuccess||!response?.data)throw safeError('חברת האשראי לא החזירה עסקאות חודש תקינות ב-DigitalV3.','CREDIT_PROVIDER_DATA_ERROR',{stage});
   const normalize=digitalNormalizers(provider),pending=[],completed=[],approvedRows=response.data.approvals?.approvedTransactions??[],voucherRows=response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[],immediateGroups=response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[],rawSample=approvedRows.find(row=>row&&typeof row==='object')||voucherRows.find(row=>row&&typeof row==='object')||immediateGroups.flatMap(group=>group?.immediateVouchersCurrencyDate??[]).find(row=>row&&typeof row==='object')||null;
-  for(const raw of approvedRows){const tx=normalize.approved(raw);if(tx?.date)pending.push(tx)}
+  for(const raw of unsettledApprovedTransactions(approvedRows,voucherRows,immediateGroups)){const tx=normalize.approved(raw);if(tx?.date)pending.push(tx)}
   for(const raw of voucherRows){const tx=normalize.voucher(raw,processedDate);if(tx?.date)completed.push(tx)}
   for(const group of immediateGroups){const groupDate=parseIsracardDate(group?.totalVouchersCurrencyDate?.dateImmediateVouchers)||processedDate;for(const raw of group?.immediateVouchersCurrencyDate??[]){const tx=normalize.voucher(raw,groupDate);if(tx?.date)completed.push(tx)}}
   return {completed:completed.map(tx=>tx?.installments&&Number(tx.installments.number)>1?{...tx,date:shiftInstallmentDate(tx.date,tx.installments)}:tx),pending,rawSample};
@@ -429,18 +430,18 @@ export async function doctorCamoufox(){
   return true;
 }
 
-function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-digitalv3-camoufox-v5',lastErrorCode:code,lastErrorAt:at}}
-function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-digitalv3-camoufox-v5',lastErrorCode:'',lastErrorAt:null}}
+function coverageFailure(month,tier,error,at){const code=String(error?.code||'CREDIT_PROVIDER_DATA_ERROR');return {month,tier,fetchStatus:code==='CREDIT_PROVIDER_SCHEMA_ERROR'||code==='CREDIT_PROVIDER_RESPONSE_NOT_JSON'?'schema_error':code==='CREDIT_PROVIDER_NETWORK_ERROR'?'network_error':'provider_error',fetchedAt:null,transactions:[],providerSchemaVersion:'isracard-family-digitalv3-camoufox-v6',lastErrorCode:code,lastErrorAt:at}}
+function coverageSuccess(month,tier,transactions,at){return {month,tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:'isracard-family-digitalv3-camoufox-v6',lastErrorCode:'',lastErrorAt:null}}
 function publicMonthError(error,month,tier,at){return {code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage:String(error?.stage||`Transactions ${month}`).slice(0,80),httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת חודש מחברת האשראי נכשלה',at,retryAfterAt:error?.retryAfterAt||null,month,tier}}
 
-export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,startDate,futureMonthsToScrape=1,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date()}){
+export async function scrapeIsracardFamilyWithCamoufox({provider,credentials,startDate,futureMonthsToScrape=1,interactive=false,identityDir='',excludedAccountNumbers=[],onDiagnostic=()=>{},correlationId='',now=()=>new Date()}){
   provider=String(provider||'');if(!camoufoxCreditSupported(provider))throw safeError('Camoufox credit adapter supports only Isracard/American Express.','CREDIT_CAMOUFOX_UNSUPPORTED');
   let Camoufox;try{({Camoufox}=await import('camoufox-js'))}catch{throw safeError('מנוע Camoufox של Bank Bridge אינו מותקן. הרץ שוב install_bank_bridge.bat.','CREDIT_CAMOUFOX_RUNTIME_MISSING')}
   const cfg=PROVIDERS[provider],servicesUrl=`${cfg.baseUrl}/services/ProxyRequestHandler.ashx`;let browser,page;
   try{
     ({browser,page}=await openQualifiedLoginSession(Camoufox,cfg,{interactive,identityDir,onDiagnostic,correlationId,provider}));
     await login(page,provider,credentials,servicesUrl);await primeDigitalSession(page,cfg);
-    const cards=await fetchDigitalCards(page,cfg),months=buildCreditMonths(startDate,futureMonthsToScrape,now()),states=new Map(cards.map(card=>[String(card.cardSuffix),{card,months:[],pending:new Map(),rawSample:null}])),errors=[];
+    const discoveredCards=await fetchDigitalCards(page,cfg),cards=filterExcludedGroupCards(discoveredCards,excludedAccountNumbers,accountNumber=>onDiagnostic({correlationId,provider,stage:'CardExcluded',accountSuffix:cardSuffix(accountNumber)})),months=buildCreditMonths(startDate,futureMonthsToScrape,now()),states=new Map(cards.map(card=>[String(card.cardSuffix),{card,months:[],pending:new Map(),rawSample:null}])),errors=[];
     const currentMonth=new Date(Date.UTC(now().getUTCFullYear(),now().getUTCMonth(),1)),coreEnd=addUtcMonths(currentMonth,1);
     for(const month of months){const key=monthKey(month),tier=month<=coreEnd?'core':'forecast';for(const state of states.values()){
       const started=Date.now(),at=now().toISOString();try{

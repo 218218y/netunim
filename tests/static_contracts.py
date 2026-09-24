@@ -724,13 +724,15 @@ ok("const BANK_BRIDGE_VERSION=55" in orders_finance_controller,
    "orders Kupa UI: bank controls require the current Bridge v55 contract")
 ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/bank-connection-view.js').exists() and "from './bank-connection-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
    'orders finance UI: bank connection/settings rendering is split from the main finance view responsibility')
+ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/credit-status-view.js').exists() and "from './credit-status-view.js'" in (ROOT / 'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8'),
+   'orders finance UI: credit status/diagnostic rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
 ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics' in orders_main,
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
-ok("const CREDIT_BRIDGE_VERSION=59" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics" in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
-   "orders Kupa UI: credit controls require Bridge v59 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
-ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in orders_finance_view,
+ok("const CREDIT_BRIDGE_VERSION=60" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics" in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
+   "orders Kupa UI: credit controls require Bridge v60 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
+ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in (O/'site/assets/js/domains/finance/credit-status-view.js').read_text(encoding='utf-8'),
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
 ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
    and "toggle-credit-selection" not in orders_finance_view,

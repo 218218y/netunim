@@ -1,10 +1,11 @@
 import {creditDebitAmount} from './lib.mjs';
+import {filterExcludedGroupCards,unsettledApprovedTransactions} from './isracard-group-utils.mjs';
 // Adapted from israeli-bank-scrapers PR #1159 (commit 1aa792b37feec0001f5d182582cfb53b146ed18b),
 // which was verified end-to-end against real Isracard and American Express accounts.
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Isracard can use the current DigitalV3 flow.
 
-export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-2026-09-netunim-v43';
+export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-2026-09-netunim-v44';
 export const ISRACARD_LOGIN_BASE_URL='https://digital.isracard.co.il';
 export const ISRACARD_WEB_BASE_URL='https://web.isracard.co.il';
 export const ISRACARD_LOGIN_COMPANY_CODE='11';
@@ -187,13 +188,13 @@ async function monthTransactions(page,card,month,isNextBillingDate,processedDate
   if(!response?.isSuccess||!response?.data)throw safeError(providerFailureMessage(response,'ישראכרט לא החזירה עסקאות חודש תקינות.'),'CREDIT_PROVIDER_DATA_ERROR',{stage:`Transactions ${key}`});
   const approvedRows=response.data.approvals?.approvedTransactions??[],voucherRows=response.data.israelAbroadVouchers?.vouchers?.israelAbroadVouchersList??[],immediateGroups=response.data.israelAbroadVouchers?.outOfStatementChargeDateVouchers??[],firstRaw=approvedRows.find(row=>row&&typeof row==='object')||voucherRows.find(row=>row&&typeof row==='object')||immediateGroups.flatMap(group=>group?.immediateVouchersCurrencyDate??[]).find(row=>row&&typeof row==='object')||null;if(firstRaw)onRawSample(firstRaw);
   const txns=[];
-  for(const txn of approvedRows)txns.push(normalizeIsracardDigitalV3ApprovedTransaction(txn));
+  for(const txn of unsettledApprovedTransactions(approvedRows,voucherRows,immediateGroups))txns.push(normalizeIsracardDigitalV3ApprovedTransaction(txn));
   for(const voucher of voucherRows)txns.push(normalizeIsracardDigitalV3Voucher(voucher,processedDateIso));
   for(const group of immediateGroups){const groupDate=group?.totalVouchersCurrencyDate?.dateImmediateVouchers,groupIso=groupDate?parseIsraeliDate(groupDate):processedDateIso;for(const voucher of group?.immediateVouchersCurrencyDate??[])txns.push(normalizeIsracardDigitalV3Voucher(voucher,groupIso))}
   return txns;
 }
 
-export async function scrapeIsracardDigitalV3({credentials,browserPath,interactive=false,startDate,futureMonthsToScrape=1,onDiagnostic=()=>{},now=()=>new Date(),puppeteerModule=null}={}){
+export async function scrapeIsracardDigitalV3({credentials,browserPath,interactive=false,startDate,futureMonthsToScrape=1,excludedAccountNumbers=[],onDiagnostic=()=>{},now=()=>new Date(),puppeteerModule=null}={}){
   if(!credentials?.id||!credentials?.card6Digits||!credentials?.password)throw safeError('חסרים פרטי התחברות ל-ישראכרט.','CREDIT_CREDENTIALS',{stage:'Login'});
   let puppeteer=puppeteerModule;
   if(!puppeteer){try{const imported=await import('puppeteer');puppeteer=imported.default||imported}catch{throw safeError('Puppeteer אינו מותקן ב-Bank Bridge. הרץ מחדש install_bank_bridge.bat.','CREDIT_BROWSER_RUNTIME_MISSING',{stage:'BrowserLaunch'})}}
@@ -204,7 +205,7 @@ export async function scrapeIsracardDigitalV3({credentials,browserPath,interacti
     diagnostic(onDiagnostic,{stage:'BrowserLaunch'});
     const identity=await prepareIsracardDigitalV3Page(page);diagnostic(onDiagnostic,{stage:'BrowserIdentity',identityState:`webdriver-${identity.webdriver}`});
     await login(page,credentials,onDiagnostic);diagnostic(onDiagnostic,{stage:'Login'});
-    const cards=await fetchCards(page,onDiagnostic),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]])),rawSampleByCard=new Map();
+    const discoveredCards=await fetchCards(page,onDiagnostic),cards=filterExcludedGroupCards(discoveredCards,excludedAccountNumbers,accountNumber=>diagnostic(onDiagnostic,{stage:'CardExcluded',accountSuffix:String(accountNumber).slice(-4)})),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]])),rawSampleByCard=new Map();
     // Current DigitalV3 traffic keeps isNextBillingDate=true for every billingMonth; billingMonth itself selects the cycle.
     for(const month of months){for(const card of cards){const processed=await effectiveBillingDate(page,card,month,onDiagnostic),txns=await monthTransactions(page,card,month,true,processed,onDiagnostic,raw=>{if(!rawSampleByCard.has(card.cardSuffix))rawSampleByCard.set(card.cardSuffix,raw)});txnsByCard.get(card.cardSuffix).push(...txns)}}
     const accounts=cards.map(card=>({accountNumber:card.cardSuffix,balance:cardBalance(card),balanceDate:cardBalanceDate(card),cardFrame:cardFrame(card),txns:fixInstallments(txnsByCard.get(card.cardSuffix)||[])}));
