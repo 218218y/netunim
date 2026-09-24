@@ -119,6 +119,10 @@
     {
       "version": "20260924120000",
       "name": "storage_writer_protocol_v2"
+    },
+    {
+      "version": "20260924180000",
+      "name": "finance_storage_writer_protocol_v2"
     }
   ]
 }

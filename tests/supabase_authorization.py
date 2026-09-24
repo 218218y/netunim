@@ -89,7 +89,7 @@ def run(db):
         denied(db, '', expression)
         denied(db, '', expression, role='anon')
     capabilities = auth(db, OTHER, 'select public.get_netunim_sync_capabilities()')
-    assert json.loads(capabilities)['financeFencing'] == 1
+    assert json.loads(capabilities)['financeFencing'] == 2
     assert auth(db, OWNER, 'select public.get_netunim_sync_capabilities()') == capabilities
     denied(db, '', 'public.get_netunim_sync_capabilities()', role='anon')
     # Internal implementation and fence helper grants never expose an unfenced path.
