@@ -407,5 +407,75 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     }))
   }
   function readLocalEngine(app){return readCutover(`local-engine:${app}:local`)}
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine};
+  // A browser that missed account cutover may discard its old local copy only
+  // after the server has proved protocol 2 and both remote documents have been
+  // validated. Install both owners and the marker in one transaction: a crash
+  // can never expose Main V2 with an old Shared Checks checkpoint (or vice versa).
+  function adoptFencedAccount(app,identity,{mainState,mainCloudState,mainRevision,sharedState,sharedRevision,sourceOwner=identity}={}){
+    if(!['orders','kupa'].includes(app)||!String(identity||'').trim()||identity==='local'||
+      ![identity,'local'].includes(sourceOwner)||!Number.isSafeInteger(mainRevision)||mainRevision<0||!Number.isSafeInteger(sharedRevision)||sharedRevision<0)throw new Error('storage_fenced_recovery_input_invalid');
+    const scope=`${app}:${identity}`,mainOwner=`${identity}:${app}`,sharedOwner=`${identity}:shared-checks`,stamp=new Date().toISOString();
+    const heads=[
+      {owner:mainOwner,role:'primary',state:mainState,cloud:mainCloudState,revision:mainRevision},
+      {owner:sharedOwner,role:'shared-checks-primary',state:sharedState,cloud:sharedState,revision:sharedRevision},
+    ].map(side=>{
+      const epoch=globalThis.crypto?.randomUUID?.();if(!epoch)throw new Error('storage_fenced_recovery_epoch_unavailable');
+      return {...side,epoch,checkpoint:sealStorageRecord({version:2,owner:side.owner,epoch,seq:0,state:side.state,appMetadata:{storageRole:side.role,migrationIntent:'cloud-authoritative',sourceOwner:identity,targetOwner:identity},savedAt:stamp},{kind:'checkpoint'}),
+        base:sealStorageRecord({version:2,owner:side.owner,epoch,revision:side.revision,state:side.cloud,projection:'cloud',ackSeq:0},{kind:'cloud-base'})};
+    });
+    return open().then(db=>new Promise((resolve,reject)=>{
+      const names=['cutovers','owner-bindings','owner-handoffs','cutover-preparations','bootstrap-groups','local-births','boundaries',...stores];
+      const tx=db.transaction(names,'readwrite');let result=null,error=null;
+      const requests={marker:tx.objectStore('cutovers').get(scope),binding:tx.objectStore('owner-bindings').get(app),handoff:tx.objectStore('owner-handoffs').get(app),
+        preparation:tx.objectStore('cutover-preparations').get(scope),bootstrap:tx.objectStore('bootstrap-groups').get(scope),boundary:tx.objectStore('boundaries').get(identity)};
+      if(sourceOwner==='local'){
+        requests.localMarker=tx.objectStore('cutovers').get(`local-engine:${app}:local`);
+        requests.localBirth=tx.objectStore('local-births').get(`${app}:local`);
+        requests.localBoundary=tx.objectStore('boundaries').get('local');
+        for(const name of stores){
+          requests[`local:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll(`local:${app}`):tx.objectStore(name).get(`local:${app}`);
+          requests[`local-shared:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll('local:shared-checks'):tx.objectStore(name).get('local:shared-checks');
+        }
+      }
+      for(const side of heads){
+        const key=side.role==='primary'?'main':'shared';
+        for(const name of stores)requests[`${key}:${name}`]=name==='journal'?tx.objectStore('journal').index('owner').getAll(side.owner):tx.objectStore(name).get(side.owner);
+      }
+      let remaining=Object.keys(requests).length;
+      const fail=cause=>{error=cause;try{tx.abort()}catch{reject(cause)}};
+      for(const request of Object.values(requests))request.onsuccess=()=>{if(--remaining)return;try{
+        if(requests.marker.result)throw new Error('storage_fenced_recovery_marker_exists');
+        const binding=requests.binding.result&&readStorageRecord(requests.binding.result);
+        if(!binding||binding.owner!==sourceOwner||binding.pendingAdoption)throw new Error('storage_fenced_recovery_owner_changed');
+        if(sourceOwner==='local'){
+          if(requests.localMarker.result||requests.localBirth.result||requests.localBoundary.result||
+            Object.entries(requests).some(([key,request])=>(key.startsWith('local:')||key.startsWith('local-shared:'))&&
+              (Array.isArray(request.result)?request.result.length>0:!!request.result)))throw new Error('storage_fenced_recovery_existing_local_v2');
+        }
+        for(const [name,phase] of [['handoff','complete'],['preparation','complete'],['bootstrap','complete'],['boundary','complete']]){
+          const record=requests[name].result&&readStorageRecord(requests[name].result);
+          if(record&&record.phase!==phase)throw new Error('storage_fenced_recovery_transition_pending');
+        }
+        for(const side of heads){
+          const key=side.role==='primary'?'main':'shared',checkpoint=requests[`${key}:checkpoints`].result;
+          const prior=checkpoint&&readStorageRecord(checkpoint),expected=key==='main'?'shadow':'shared-checks-shadow';
+          // Never replace an unfinished V2 primary, pending flight or control.
+          // Only an old shadow copy (or no V2 data) may be superseded by cloud.
+          const metadata=requests[`${key}:metadata`].result,entries=requests[`${key}:journal`].result||[];
+          if(prior&&(prior.appMetadata?.storageRole!==expected||!metadata||metadata.epoch!==prior.epoch)||
+            !prior&&(metadata||entries.length)||requests[`${key}:bases`].result||requests[`${key}:flights`].result||requests[`${key}:controls`].result)throw new Error('storage_fenced_recovery_existing_v2_head');
+          for(const entry of entries){const operation=readStorageRecord(entry);tx.objectStore('journal').delete([side.owner,operation.epoch,operation.seq])}
+          tx.objectStore('checkpoints').put(side.checkpoint,side.owner);
+          tx.objectStore('bases').put(side.base,side.owner);
+          tx.objectStore('metadata').put({epoch:side.epoch,seq:0,writer:'fenced-recovery'},side.owner);
+        }
+        result={version:2,scope,app,owner:identity,markedAt:stamp};
+        tx.objectStore('cutovers').put(sealStorageRecord(result),scope);
+        if(sourceOwner==='local')tx.objectStore('owner-bindings').put(sealStorageRecord({...binding,owner:identity,generation:Number(binding.generation||0)+1,
+          source:'fenced-cloud-authoritative',updatedAt:stamp}),app);
+      }catch(cause){fail(cause)}};
+      tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
+    }))
+  }
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }

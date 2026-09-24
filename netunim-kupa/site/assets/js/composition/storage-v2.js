@@ -11,6 +11,7 @@ import {migrateLegacySpreadsheet} from '../shared/spreadsheet-model.js';
 import {equalSyncJson} from '../shared/cloud-sync.js';
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
+import {createStorageV2FencedRecovery} from '../shared/storage-v2-fenced-recovery.js';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
 import {createStorageJournalDb} from '../shared/storage-journal-idb.js';
@@ -26,7 +27,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   if(!tab||!session)throw new Error('kupa_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'kupa',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab});
-  let transition=null,localBirth=null,ownerTransfer=null,transferRebinding=false,legacyDrain=false,ports=null;
+  let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('kupa_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
@@ -144,6 +145,14 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   function configure(next){
     if(transition)throw new Error('kupa_storage_v2_already_configured');ports=next;
     const p=requirePorts();
+    fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
+      authenticatedOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
+      readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>p.stateNormalization.prepareKupaCloudState(row.state),
+      readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>row.state,
+      composeMainState:(cloud,shared)=>p.stateNormalization.normalizeState({...cloud,checks:shared.checks}),
+      projectMainState:state=>p.stateNormalization.prepareKupaCloudState(state),
+      validateMainState:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),
+      validateMainCloud:state=>assertValidCloudState(state,'Kupa fenced recovery cloud state'),storage});
     transition=createStorageV2ProductionTransition({
       app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab&&owner.writable,online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,bootstrapCoordinator:bootstrap,
       readMainState:()=>p.model.state,projectMainState:state=>p.stateNormalization.prepareKupaCloudState(state),emptyMainState:()=>p.stateNormalization.normalizeState(INITIAL_STATE),mainSourceSeq:()=>p.session.localSnapshotSeq,
@@ -238,7 +247,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(!recovered)return false;
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),

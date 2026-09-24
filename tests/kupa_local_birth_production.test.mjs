@@ -126,3 +126,25 @@ test('Kupa unmarked browser for a fenced account stops before V1 recovery and re
     await createLifecycle(ports).boot();assert.deepEqual(events,['blocked']);assert.equal(ports.session.storageProtocolBlocked,true);
   }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
 });
+
+test('Kupa fenced stale browser hydrates cloud V2 before opening the screen',async()=>{
+  const previous={navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),localStorage:Object.getOwnPropertyDescriptor(globalThis,'localStorage'),document:Object.getOwnPropertyDescriptor(globalThis,'document')};
+  Object.defineProperties(globalThis,{navigator:{configurable:true,value:{onLine:true}},localStorage:{configurable:true,value:storage()},
+    document:{configurable:true,value:{getElementById:()=>({addEventListener:noop})}}});
+  try{
+    let marker=false;const events=[],ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
+    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
+      acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),
+      storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
+      verifyStorageCutover:async()=>marker,verifyLocalStorageEngine:async()=>false,
+      recoverFencedAccount:async()=>{events.push('cloud-adoption');marker=true},
+      openBrowserStateFallback:async()=>{assert.equal(marker,true);events.push('main-v2');return true},
+      recoverSharedChecksV2Primary:async()=>{events.push('shared-v2');return true},
+      ensureSyncCapabilities:async()=>true,requestPersistentBrowserStorage:async()=>{},restoreRememberedBackupTarget:async()=>{},
+      supaConfigured:()=>true,render:()=>events.push('render'),tryAutoOpenSupabase:async()=>true,setCloudHeaderStatus:noop,setConnectUI:()=>events.push('blocked')});
+    await createLifecycle(ports).boot();
+    assert.ok(events.indexOf('cloud-adoption')<events.indexOf('main-v2'));
+    assert.ok(events.indexOf('main-v2')<events.indexOf('shared-v2'));
+    assert.equal(events.includes('blocked'),false);assert.equal(ports.session.storageProtocolBlocked,false);
+  }finally{for(const [key,descriptor] of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
+});

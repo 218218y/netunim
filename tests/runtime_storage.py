@@ -418,3 +418,86 @@ for app in ['kupa','orders']:
         })()"""),app+' pagehide rewrote the full V1 snapshot in primary mode'
         errors=browser.drain_serious_errors();assert not errors,errors
         print('PASS '+app+' V2 primary skips full LocalStorage serialization and recovers after hard navigation: '+json.dumps(primary))
+
+
+with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
+      const {createStorageV2FencedRecovery}=await import('./assets/js/shared/storage-v2-fenced-recovery.js');
+      const db=createStorageJournalDb({name:'storage-v2-fenced-cloud-recovery'}),owner='stale-account';
+      await db.initializeOwnerBinding('kupa',owner);
+      localStorage.setItem('kupa.browser.state.v1',JSON.stringify({notes:[{id:'legacy'}]}));
+      const main={notes:[{id:'cloud',content:'authoritative'}]},shared={checks:[{id:'check',amount:100}],bankEvents:[{seq:1,checkId:'check',type:'deposit'}]};
+      let primary=true,protocol=2,remoteReads=0;
+      const make=()=>createStorageV2FencedRecovery({app:'kupa',owner:()=>owner,primary:()=>primary,authenticatedOwner:()=>owner,
+        readProtocolState:async()=>({orders:protocol,kupa:protocol,sharedChecks:protocol}),
+        readMainRemote:async()=>{remoteReads++;return {revision:17,state:structuredClone(main)}},projectMainRemote:row=>row.state,
+        readSharedRemote:async()=>({revision:9,state:structuredClone(shared)}),projectSharedRemote:row=>row.state,
+        composeMainState:(cloud,checks)=>({...cloud,checks:checks.checks}),projectMainState:state=>({notes:state.notes}),
+        validateMainState:state=>{if(!Array.isArray(state.notes)||!Array.isArray(state.checks))throw Error('invalid main')},
+        validateMainCloud:state=>{if(!Array.isArray(state.notes))throw Error('invalid cloud')},db,storage:localStorage});
+      const fails=async(work,match)=>{try{await work()}catch(error){return error.message===match}return false};
+      primary=false;if(!await fails(()=>make().recover(),'storage_fenced_recovery_primary_required')||remoteReads)throw Error('secondary recovery read remote');
+      primary=true;protocol=1;if(!await fails(()=>make().recover(),'storage_fenced_recovery_protocol_required')||remoteReads)throw Error('protocol 1 adopted');
+      protocol=2;
+      const put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='cutovers'){this.transaction.abort();throw Error('injected marker abort')}return result};
+      let aborted=false;try{await make().recover()}catch{aborted=true}finally{IDBObjectStore.prototype.put=put}
+      if(!aborted||(await db.load(owner+':kupa')).checkpoints||(await db.load(owner+':shared-checks')).checkpoints||await db.readCutover('kupa:'+owner))throw Error('aborted adoption exposed partial head');
+      const adopted=await make().recover();
+      if(adopted.mainRevision!==17||adopted.sharedRevision!==9||localStorage.getItem('netunim-storage-cutover-version:kupa:'+owner)!=='2')throw Error('atomic adoption did not mark V2');
+      const mainJournal=createStorageJournal({owner:owner+':kupa',schema:{collections:['notes','checks'],fields:[]},validate:()=>{},db});
+      const recoveredMain=await mainJournal.open();
+      const sharedJournal=createSharedChecksStorageV2({owner:()=>owner,primary:()=>true,db});
+      const recoveredShared=await sharedJournal.open();
+      if(recoveredMain.state.notes[0].id!=='cloud'||recoveredMain.state.checks[0].id!=='check'||
+        recoveredShared.state.checks[0].id!=='check'||recoveredShared.state.bankEvents[0].seq!==1||
+        (await mainJournal.cloudState()).base.revision!==17||(await sharedJournal.cloudState()).base.revision!==9)throw Error('restart did not recover matching cloud heads');
+      if(!localStorage.getItem('kupa.browser.state.v1')?.includes('legacy'))throw Error('read-only legacy copy was unexpectedly modified');
+      if(!(await make().recover()).already)throw Error('repeat adoption did not use marker');
+      const interrupted='interrupted-account',incompleteDb=createStorageJournalDb({name:'storage-v2-fenced-incomplete'});
+      await incompleteDb.initializeOwnerBinding('kupa',interrupted);
+      const unfinished=createStorageJournal({owner:interrupted+':kupa',schema:{collections:['notes','checks'],fields:[]},validate:()=>{},db:incompleteDb});
+      await unfinished.install({notes:[{id:'new-v2'}],checks:[]},{appMetadata:{storageRole:'primary'}});
+      if(!await fails(()=>incompleteDb.adoptFencedAccount('kupa',interrupted,{mainState:{...main,checks:shared.checks},mainCloudState:main,mainRevision:17,sharedState:shared,sharedRevision:9}),
+        'storage_fenced_recovery_existing_v2_head'))throw Error('unfinished primary V2 was overwritten');
+      if((await unfinished.recover()).state.notes[0].id!=='new-v2'||await incompleteDb.readCutover('kupa:'+interrupted))throw Error('rejected adoption changed the V2 head');
+      const shadowOwner='shadow-account',shadowDb=createStorageJournalDb({name:'storage-v2-fenced-shadow'});
+      await shadowDb.initializeOwnerBinding('kupa',shadowOwner);
+      const oldMain=createStorageJournal({owner:shadowOwner+':kupa',schema:{collections:['notes','checks'],fields:[]},validate:()=>{},db:shadowDb});
+      const oldShared=createStorageJournal({owner:shadowOwner+':shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db:shadowDb});
+      await oldMain.install({notes:[{id:'shadow'}],checks:[]},{appMetadata:{storageRole:'shadow'}});
+      await oldShared.install({checks:[],bankEvents:[]},{appMetadata:{storageRole:'shared-checks-shadow'}});
+      await shadowDb.adoptFencedAccount('kupa',shadowOwner,{mainState:{...main,checks:shared.checks},mainCloudState:main,mainRevision:17,sharedState:shared,sharedRevision:9});
+      if((await oldMain.recover()).state.notes[0].id!=='cloud'||(await oldShared.recover()).state.checks[0].id!=='check')throw Error('legacy shadow remained active');
+      const localDb=createStorageJournalDb({name:'storage-v2-fenced-legacy-local'}),target='account-from-legacy-local';
+      await localDb.initializeOwnerBinding('kupa','local');let activeOwner='local';
+      const localRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>activeOwner,primary:()=>true,authenticatedOwner:()=>target,
+        refreshOwnerBinding:async()=>{activeOwner=(await localDb.readOwnerBinding('kupa')).owner},
+        readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
+        readMainRemote:async()=>({revision:17,state:structuredClone(main)}),projectMainRemote:row=>row.state,
+        readSharedRemote:async()=>({revision:9,state:structuredClone(shared)}),projectSharedRemote:row=>row.state,
+        composeMainState:(cloud,checks)=>({...cloud,checks:checks.checks}),projectMainState:state=>({notes:state.notes}),
+        validateMainState:state=>{if(!Array.isArray(state.notes)||!Array.isArray(state.checks))throw Error('invalid main')},
+        validateMainCloud:state=>{if(!Array.isArray(state.notes))throw Error('invalid cloud')},db:localDb,storage:localStorage});
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='cutovers'){this.transaction.abort();throw Error('injected local adoption abort')}return result};
+      let localAborted=false;try{await localRecovery.recover()}catch{localAborted=true}finally{IDBObjectStore.prototype.put=put}
+      if(!localAborted||(await localDb.readOwnerBinding('kupa')).owner!=='local'||await localDb.readCutover('kupa:'+target)||
+        (await localDb.load(target+':kupa')).checkpoints||(await localDb.load(target+':shared-checks')).checkpoints)throw Error('aborted local adoption changed the owner or either head');
+      await localRecovery.recover();
+      if(activeOwner!==target||(await localDb.readOwnerBinding('kupa')).owner!==target||
+        !(await localDb.readCutover('kupa:'+target))||
+        (await localDb.load(target+':shared-checks')).checkpoints?.data?.state?.bankEvents?.[0]?.seq!==1)throw Error('legacy local owner was not atomically rebound to cloud');
+      const protectedDb=createStorageJournalDb({name:'storage-v2-fenced-local-protected'});
+      await protectedDb.initializeOwnerBinding('kupa','local');
+      const localV2=createStorageJournal({owner:'local:kupa',schema:{collections:['notes','checks'],fields:[]},validate:()=>{},db:protectedDb});
+      await localV2.install({notes:[{id:'private-local'}],checks:[]},{appMetadata:{storageRole:'primary'}});
+      if(!await fails(()=>protectedDb.adoptFencedAccount('kupa',target,{mainState:{...main,checks:shared.checks},mainCloudState:main,mainRevision:17,sharedState:shared,sharedRevision:9,sourceOwner:'local'}),
+        'storage_fenced_recovery_existing_local_v2'))throw Error('local V2 was silently replaced');
+      if((await protectedDb.readOwnerBinding('kupa')).owner!=='local'||(await localV2.recover()).state.notes[0].id!=='private-local')throw Error('rejected local adoption changed the owner');
+      return ['protocol and primary gates','atomic abort leaves neither head nor marker','Main and Shared recover from cloud','legacy keys ignored','idempotent startup','unfinished V2 primary preserved','old shadow superseded atomically','legacy local binding atomically rebinds','existing local V2 is protected'];
+    })()""",timeout=60)
+    assert not browser.drain_serious_errors()
+    print('PASS fenced stale-device cloud recovery: '+json.dumps(result))

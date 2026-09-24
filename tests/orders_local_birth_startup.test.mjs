@@ -97,6 +97,20 @@ test('Orders unmarked browser for a fenced account stops before V1 recovery and 
   assert.equal(f.session.storageProtocolBlocked,true);
 });
 
+test('Orders fenced stale browser installs cloud V2 before any business render',async()=>{
+  let marker=false;const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
+    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
+    recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');marker=true},
+    restoreBrowserStateFallback:async()=>{assert.equal(marker,true);f.calls.push('main-v2')},
+    refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
+  });
+  await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.ok(f.calls.indexOf('cloud-adoption')<f.calls.indexOf('main-v2'));
+  assert.ok(f.calls.indexOf('main-v2')<f.calls.indexOf('shared-v2'));
+  assert.ok(f.calls.indexOf('shared-v2')<f.calls.indexOf('render'));
+  assert.equal(f.session.storageProtocolBlocked,false);
+});
+
 test('Orders local V1 browser with a saved fenced-account session stops before local birth',async()=>{
   const f=fixture({authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
     ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')}});
@@ -104,6 +118,22 @@ test('Orders local V1 browser with a saved fenced-account session stops before l
   assert.equal(f.calls.includes('birth'),false);
   assert.equal(f.calls.includes('render'),false);
   assert.equal(f.session.storageProtocolBlocked,true);
+});
+
+test('Orders stale local binding adopts a fenced account before local birth or V1 render',async()=>{
+  let owner='local',marker=false;
+  const f=fixture({storageOwnerCurrent:()=>owner,authenticatedOwner:()=> 'account',
+    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
+    recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');owner='account';marker=true},
+    ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')},
+    restoreBrowserStateFallback:async()=>{assert.equal(owner,'account');f.calls.push('main-v2')},
+    refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
+  });
+  await f.lifecycle.boot();await f.session.startupHydrationPromise;
+  assert.ok(f.calls.indexOf('cloud-adoption')<f.calls.indexOf('main-v2'));
+  assert.ok(f.calls.indexOf('main-v2')<f.calls.indexOf('shared-v2'));
+  assert.equal(f.calls.includes('birth'),false);
+  assert.equal(f.session.storageProtocolBlocked,false);
 });
 
 test('Orders with an account cutover hydrates Shared before a DB capability failure renders Main',async()=>{

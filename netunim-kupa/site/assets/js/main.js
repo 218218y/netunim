@@ -796,6 +796,7 @@ const lifecycle=createLifecycle({
   storageOwnerCurrent:()=>storageOwner.current(),
   authenticatedOwner:()=>cloudAuth.loadSupaSession()?.user?.id||null,
   readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
+  recoverFencedAccount:()=>storageV2Coordinator.recoverFencedAccount(),
   model,
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
