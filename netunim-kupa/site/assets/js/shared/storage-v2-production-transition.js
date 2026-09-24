@@ -59,7 +59,12 @@ export function createStorageV2ProductionTransition({
     if(!cloud?.base||cloud.flight||cloud.control||cloud.pending)throw new Error(`storage_cutover_${role}_local_head_unsettled`);
     if(!recovered||typeof recovered!=='object'||Array.isArray(recovered))throw new Error(`storage_cutover_${role}_local_recovery_missing`);
     if(!row||revision(row)!==Number(cloud.base.revision))throw new Error(`storage_cutover_${role}_remote_revision_mismatch`);
-    const remote=project(row),base=role==='shared'?canonicalShared(cloud.base.state):cloud.base.state,authoritative=role==='shared'?canonicalShared(remote):remote;
+    const remote=project(row),base=role==='shared'?canonicalShared(cloud.base.state):projectMainState(cloud.base.state),authoritative=role==='shared'?canonicalShared(remote):remote;
+    // Main bases created by an older transition build can still carry V1-only
+    // metadata (for example localSnapshotSeq). Compare every side through the
+    // current cloud projection so a safe resume can discard transport/local
+    // metadata without weakening business-state parity. A real business delta
+    // still fails the exact same equality check below.
     if(!equalSyncJson(base,authoritative))throw new Error(`storage_cutover_${role}_remote_state_mismatch`);
     const local=role==='shared'?canonicalShared(recovered):projectMainState(recovered);
     if(!equalSyncJson(local,base))throw new Error(`storage_cutover_${role}_local_state_mismatch`);

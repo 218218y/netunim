@@ -16,6 +16,18 @@ test('Orders V2 cloud projection is stable across serializer timestamps',()=>{
   assert.deepEqual(first,second);
   assert.equal(Object.hasOwn(first,'checks'),false);
   assert.equal(Object.hasOwn(first._meta,'savedAt'),false);
-  assert.equal(first._meta.localSnapshotSeq,4);
+  assert.equal(Object.hasOwn(first._meta,'localSnapshotSeq'),false);
   assert.equal(state._meta.savedAt,'2000-01-01T00:00:00Z');
+});
+
+test('Orders cloud projection is stable across the V1-to-V2 checkpoint round-trip',()=>{
+  const state={notes:[],checks:[{id:'shared-only'}],_meta:{localSnapshotSeq:17,savedAt:'2000-01-01T00:00:00Z',browserOnly:'legacy'}};
+  const prepareState=value=>prepareStateData(value);
+  const snapshots=createStateSnapshots({model:{state},prepareState});
+  const before=snapshots.prepareCloudState(state);
+  const checkpointInput=structuredClone(state);delete checkpointInput._meta;
+  const checkpoint=prepareState(checkpointInput);delete checkpoint._meta.savedAt;
+  const after=snapshots.prepareCloudState(checkpoint);
+  assert.deepEqual(after,before);
+  assert.deepEqual(Object.keys(before._meta).sort(),['app','format','schemaVersion']);
 });

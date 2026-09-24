@@ -151,6 +151,29 @@ for(const divergentRole of ['main','shared'])test(`cutover refuses a clean curso
 });
 
 
+
+test('cutover resume ignores historical client-only Main metadata but still verifies business parity',async()=>{
+  const owner='account-A',db=durableDb(),business={orders:[{id:'o1',value:1}]};
+  const oldRemote={...structuredClone(business),_meta:{format:'order-management-portable',schemaVersion:4,app:'orders',localSnapshotSeq:19}};
+  const recovered={...structuredClone(business),_meta:{format:'order-management-portable',schemaVersion:4,app:'orders'}};
+  const shared={checks:[],bankEvents:[]};let marked=false;
+  const projectState=value=>{const x=structuredClone(value);if(x._meta){const {format,schemaVersion,app}=x._meta;x._meta={format,schemaVersion,app}}return x};
+  const transition=createStorageV2ProductionTransition({
+    app:'orders',ownerBinding:{current:()=>owner,assertAuthenticatedOwner:value=>assert.equal(value,owner)},
+    primary:()=>true,online:()=>true,authOwner:()=>owner,
+    bootstrapCoordinator:createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner,primary:()=>true,db,cryptoImpl:webcrypto}),cutoverDb:db,
+    readMainState:()=>structuredClone(oldRemote),projectMainState:projectState,emptyMainState:()=>({orders:[]}),
+    readSharedState:()=>structuredClone(shared),readMainRemote:async()=>({revision:7,state:structuredClone(oldRemote)}),projectMainRemote:row=>projectState(row.state),readSharedRemote:async()=>({revision:4,state:structuredClone(shared)}),projectSharedRemote:row=>structuredClone(row.state),
+    initializeMainHead:async()=>({ok:true}),initializeSharedHead:async()=>({ok:true}),syncMain:async()=>true,syncShared:async()=>true,
+    readMainCloudState:async()=>settled(7,oldRemote),readSharedCloudState:async()=>settled(4,shared),
+    readMainRecoveredState:async()=>structuredClone(recovered),readSharedRecoveredState:async()=>structuredClone(shared),
+    freeze:async()=>{},drainLegacy:async()=>{},verifyLegacyClean:async()=>true,markCutover:async()=>{marked=true},verifyCutover:async()=>marked,
+  });
+  await transition.hydrate();
+  assert.equal((await transition.begin()).phase,'complete');
+  assert.equal(marked,true);
+});
+
 test('production transition treats the durable local namespace as normal startup, not an account cutover',async()=>{
   const calls=[];
   const ownerBinding={

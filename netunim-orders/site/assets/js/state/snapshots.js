@@ -12,10 +12,16 @@ function sameBusinessData(a,b){return comparableBackupData(a)===comparableBackup
 function prepareCloudState(source=model.state){
   const x=externalWorkbooks?withoutEmbeddedWorkbook(prepareState(source)):prepareState(source);
   delete x.checks;
-  // savedAt describes a downloaded backup, not the business document. The
-  // portable serializer refreshes it on every call; retaining it makes V2
-  // flight/remote parity depend on wall-clock timing and breaks crash resume.
-  if(x._meta)delete x._meta.savedAt;
+  // The cloud document may contain only stable document metadata. Browser
+  // durability fields such as localSnapshotSeq (and backup timestamps such as
+  // savedAt) belong to one client, not to the shared business document. Keeping
+  // them here makes a V1 snapshot and the equivalent V2 checkpoint compare as
+  // different after a cutover round-trip even when every business field is
+  // identical.
+  if(x._meta){
+    const {format,schemaVersion,app}=x._meta;
+    x._meta={format,schemaVersion,app};
+  }
   return x;
 }
 
