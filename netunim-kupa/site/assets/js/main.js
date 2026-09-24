@@ -199,6 +199,7 @@ const syncRecovery=createSyncRecovery({
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   loadBrowserState:(...args)=>storageBrowser.loadBrowserState(...args),
   loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
+  loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
   sharedChecksPendingExists:(...args)=>syncChecksState.sharedChecksPendingExists(...args),
   startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
   render:(...args)=>uiNavigation.render(...args),

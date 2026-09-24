@@ -71,7 +71,7 @@ async function boot(){
   if(transitionPreparing){
     if(!navigator.onLine||!restoredAuth){if(startupLocalShown)render();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 ממתין להתחברות ולרשת');setConnectUI({title:'מעבר האחסון ממתין להשלמה',text:'העריכה נעולה עד חידוש החיבור והשלמת מעבר Storage V2.',showCloud:true});return}
     try{await resumeStorageTransition();cutoverActive=await verifyStorageCutover();if(!cutoverActive)throw new Error('storage_cutover_marker_verification_failed')}
-    catch(error){console.error('Storage V2 cutover resume',error);if(startupLocalShown)render();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'מעבר האחסון נעצר בבטחה',text:error?.message||String(error),showCloud:true});return}
+    catch(error){console.error('Storage V2 cutover resume',error);if(startupLocalShown)render();session.startupCloudHydrating=false;setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'מעבר האחסון נעצר בבטחה',text:error?.message||String(error),note:'פתיחת ענן רגילה חסומה בזמן מעבר פעיל כדי למנוע ערבוב בין V1 ל־V2. לאחר תיקון התקלה יש לרענן את הדף כדי לחדש את אותה תוכנית מעבר שמורה.',showCloud:false});return}
   }
   if(cutoverActive&&!sharedPrimary){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();

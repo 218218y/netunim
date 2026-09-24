@@ -5,8 +5,14 @@ const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}}){
+export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageTransitionPreparing=()=>false}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
+function blockOrdinaryCloudDuringCutover({interactive=false}={}){
+  if(!storageTransitionPreparing())return false;
+  clearCloudRecovery();setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');
+  if(interactive)alert('מעבר Storage V2 נמצא באמצע. פתיחת הענן הרגילה חסומה כדי לא לערבב בין V1 ל־V2. יש לרענן את הדף ולאפשר למערכת להשלים את המעבר.');
+  return true
+}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(SUPA_AUTO_KEY)!=='1'||!loadSupaSession()||session.cloudRecoveryTimer)return;
   const index=Math.min(Number(session.cloudRecoveryAttempt||0),CLOUD_RECOVERY_DELAYS_MS.length-1),delay=CLOUD_RECOVERY_DELAYS_MS[index];session.cloudRecoveryAttempt=Math.min(index+1,CLOUD_RECOVERY_DELAYS_MS.length-1);
@@ -52,7 +58,7 @@ function localOwnerPendingError(){const error=new Error('storage_owner_local_pen
 
 async function openCloudUsingSavedSession({interactive=true}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return false}if(!supaConfigured())return false;
-  const saved=await restoreSupaSession();if(!saved){if(interactive)openSupabaseLoginModal('open');return false}
+  const saved=await restoreSupaSession();if(!saved){if(interactive)openSupabaseLoginModal('open');return false}if(blockOrdinaryCloudDuringCutover({interactive}))return false;
   try{
     setCloudHeaderStatus('syncing','ענן: בודק…');let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
     if(!localOwner&&await deferPendingRecovery()){clearCloudRecovery();return true}
@@ -68,7 +74,7 @@ async function openCloudUsingSavedSession({interactive=true}={}){
 
 async function enableCloudFromCurrentState(){
   if(!tab.primaryTab){showSecondaryTabGuard();return}if(!supaConfigured())return alert('קובץ הגדרת Supabase חסר או לא תקין.');
-  const saved=await restoreSupaSession();if(!saved)return openSupabaseLoginModal('upload');
+  const saved=await restoreSupaSession();if(!saved)return openSupabaseLoginModal('upload');if(blockOrdinaryCloudDuringCutover({interactive:true}))return false;
   try{
     setCloudHeaderStatus('syncing','ענן: בודק…');let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();if(!localOwner&&await deferPendingRecovery())return;
     await supaEnsureSession();if(localOwner&&storageV2PrimaryRequested())return await transferLocalV2('upload-local');
@@ -83,7 +89,7 @@ async function enableCloudFromCurrentState(){
 async function connectSupabaseFromLogin(mode){
   const email=document.getElementById('supaEmail')?.value.trim(),password=document.getElementById('supaPassword')?.value||'';if(!email||!password)return toast('יש להזין אימייל וסיסמה');
   try{
-    await supaAuthPassword(email,password);let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
+    await supaAuthPassword(email,password);if(storageTransitionPreparing()){closeModal();clearCloudRecovery();setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'ההתחברות חודשה',text:'מעבר Storage V2 עדיין ממתין להשלמה. רענן את הדף כדי להמשיך מאותה תוכנית מעבר שמורה.',showCloud:false});return}let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
     if(localOwner&&storageV2PrimaryRequested()){await transferLocalV2(mode==='upload'?'upload-local':'load-account');closeModal();return}
     if(!localOwner&&await deferPendingRecovery()){closeModal();return}
     if(mode==='upload'){
@@ -97,7 +103,7 @@ async function connectSupabaseFromLogin(mode){
 }
 
 async function tryAutoOpenSupabase(){
-  if(!tab.primaryTab)return false;if(!supaConfigured())return false;const s=await restoreSupaSession();if(!s)return false;
+  if(!tab.primaryTab)return false;if(!supaConfigured())return false;const s=await restoreSupaSession();if(!s)return false;if(blockOrdinaryCloudDuringCutover())return false;
   try{
     setCloudHeaderStatus('syncing','ענן: בודק…');let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
     if(localOwner&&storageV2PrimaryRequested())return false;
