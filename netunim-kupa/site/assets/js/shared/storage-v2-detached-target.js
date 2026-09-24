@@ -38,7 +38,7 @@ export function createStorageV2DetachedTarget({
   async function alreadyMain(side,cloudState){
     const recovered=await main.recover(null);guard();
     if(!recovered)return false;
-    const cloud=await main.cloudState();guard();
+    const cloud=await main.cloudState({validateBase:validateMainCloud});guard();
     if(!cloud?.base||cloud.flight||cloud.control||cloud.pending||cloud.base.revision!==side.remoteRevision||
       !equalSyncJson(cloud.base.state,cloudState)||!equalSyncJson(projectMainState(recovered.state),cloudState))throw new Error('storage_transfer_main_existing_head_unsettled');
     return true;
@@ -97,7 +97,7 @@ export function createStorageV2DetachedTarget({
       return {revision:0,pending:source.checks.length>0};
     },
     syncMain:async(side)=>{
-      guard();const cloud=await main.cloudState();guard();if(!cloud?.base||cloud.control)throw new Error('storage_transfer_main_head_unavailable');
+      guard();const cloud=await main.cloudState({validateBase:validateMainCloud});guard();if(!cloud?.base||cloud.control)throw new Error('storage_transfer_main_head_unavailable');
       if(!cloud.pending&&!cloud.flight)return {clean:true};
       const flight=await main.materializeFlight({operationId:side.operationId,baseRevision:cloud.base.revision,project:projectMainState,validateCloud:validateMainCloud,
         prepareAudit:value=>operationAuditMetadata({site:app,mutationType:'migration',surface:'owner-transfer',baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:[],deleteCount:0})});
@@ -107,7 +107,7 @@ export function createStorageV2DetachedTarget({
       const row=result.row;if(revision(row)===null||revision(row)<=flight.baseRevision)throw new Error('storage_transfer_main_ack_invalid');
       const authoritative=remoteMain(row);
       if(!equalSyncJson(authoritative,flight.snapshot))throw new Error('storage_transfer_main_rpc_state_changed');
-      await main.acknowledgeFlight(flight.operationId,revision(row),authoritative);
+      await main.acknowledgeFlight(flight.operationId,revision(row),authoritative,{validateBase:validateMainCloud});
       guard();return {clean:true,revision:revision(row),operationId:flight.operationId};
     },
     syncShared:async(side)=>{
@@ -148,7 +148,7 @@ export function createStorageV2DetachedTarget({
   async function resume(ctx){use(ctx);const group=await bootstrap.load();guard();if(!group)return null;if(group.id!==ctx.transferId)throw new Error('storage_transfer_bootstrap_id_mismatch');return executor.resume()}
   async function verify(){
     guard();const [mainRecovered,sharedRecovered]=await Promise.all([main.recover(null),shared.recover()]);guard();
-    const [mainCloud,sharedCloud,mainRow,sharedRow]=await Promise.all([main.cloudState(),shared.cloudState(),readMainRemote(),readSharedRemote()]);guard();
+    const [mainCloud,sharedCloud,mainRow,sharedRow]=await Promise.all([main.cloudState({validateBase:validateMainCloud}),shared.cloudState(),readMainRemote(),readSharedRemote()]);guard();
     if(!mainRecovered||!sharedRecovered||!mainCloud?.base||!sharedCloud?.base||!mainRow||!sharedRow)throw new Error('storage_transfer_target_head_missing');
     const sides=[{role:'main',cloud:mainCloud,row:mainRow,local:projectMainState(mainRecovered.state),remote:remoteMain(mainRow)},
       {role:'shared',cloud:sharedCloud,row:sharedRow,local:sharedState(sharedRecovered.state),remote:remoteShared(sharedRow)}];

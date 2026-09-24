@@ -4,7 +4,7 @@ import {createStorageV2ProductionTransition} from '../shared/storage-v2-producti
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
-import {createStorageV2LocalBirth} from '../shared/storage-v2-local-birth.js';
+import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
 import {createLegacyLocalBirthSource} from '../storage/local-birth-source.js';
 import {createSpreadsheetStore} from '../shared/spreadsheet-store.js';
 import {migrateLegacySpreadsheet} from '../shared/spreadsheet-model.js';
@@ -68,7 +68,13 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
   function detachedNormalization(){return createStateNormalization({model:{state:{},lastNormalizeRemovedCredits:0},externalWorkbooks:true})}
   async function settleTransferSource({sourceOwner}){
     const p=requirePorts();
-    if(sourceOwner!==owner.current()||mode()!=='primary')throw new Error('kupa_transfer_source_not_primary');
+    // beginHandoff intentionally changes the live mode to "preparing". Verify
+    // the durable source marker instead of relying on that transient mode.
+    if(sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
+    const marked=sourceOwner==='local'
+      ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
+      :await p.verifyStorageCutover();
+    if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
     await Promise.all([p.storageShadow.commitPromise,p.sharedChecksV2.commitPromise,p.files.browserStateWritePromise,p.files.storageV2CommitPromise,
       p.session.saveQueue,p.session.cloudSavePromise,p.session.cloudOutboxCommitPromise,p.checksSession.sharedChecksSavePromise,
       p.checksSession.sharedChecksPullPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean));

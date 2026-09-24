@@ -1,7 +1,7 @@
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2ProductionTransition} from '../shared/storage-v2-production-transition.js';
-import {createStorageV2LocalBirth} from '../shared/storage-v2-local-birth.js';
+import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
@@ -113,6 +113,10 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
     };
     async function settleSource({sourceOwner}){
       if(owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_lock_required');
+      const marked=sourceOwner==='local'
+        ?await verifyStorageV2LocalEngine({app:'orders',owner:()=>sourceOwner})
+        :await p.verifyStorageCutover();
+      if(marked!==true||owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_not_primary');
       clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
       await p.syncDocument.quiesceForStorageCutover();
       const pending=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
