@@ -95,6 +95,8 @@ import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
 
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
+// Event handlers are installed before the async owner/protocol preflight finishes.
+session.storageProtocolBlocked=true;
 const domainRevisions=createOrderDomainRevisions(session);
 const inventoryRenderStore=createInventoryRenderStore({state:()=>model.state,revision:()=>domainRevisions.stamp(['inventory'])});
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(['finance','checks'])});
@@ -1019,6 +1021,6 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(()=>{sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
+export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked)return false;sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}
-void appReady.then(()=>uiAlertCenter.startDateWatcher());
+void appReady.then(ready=>{if(ready)uiAlertCenter.startDateWatcher()});

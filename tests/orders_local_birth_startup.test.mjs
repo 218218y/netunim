@@ -32,6 +32,7 @@ function fixture(overrides={}){
 test('Orders fresh local startup commits birth then hydrates both V2 journals before render',async()=>{
   const f=fixture();await f.lifecycle.boot();await f.session.startupHydrationPromise;
   assert.deepEqual(f.calls.slice(0,8),['tab-lock','owner','account-transition','birth-hydrated','birth','main-v2','shared-v2','render']);
+  assert.equal(f.session.storageProtocolBlocked,false);
 });
 
 test('Orders restart with local marker recovers V2 without rereading V1 or rerunning birth',async()=>{
@@ -93,6 +94,7 @@ test('Orders unmarked browser for a fenced account stops before V1 recovery and 
   assert.equal(f.calls.includes('birth'),false);
   assert.equal(f.calls.includes('render'),false);
   assert.equal(f.calls.includes('main-v2'),false);
+  assert.equal(f.session.storageProtocolBlocked,true);
 });
 
 test('Orders local V1 browser with a saved fenced-account session stops before local birth',async()=>{
@@ -101,6 +103,7 @@ test('Orders local V1 browser with a saved fenced-account session stops before l
   await f.lifecycle.boot();
   assert.equal(f.calls.includes('birth'),false);
   assert.equal(f.calls.includes('render'),false);
+  assert.equal(f.session.storageProtocolBlocked,true);
 });
 
 test('Orders with an account cutover hydrates Shared before a DB capability failure renders Main',async()=>{

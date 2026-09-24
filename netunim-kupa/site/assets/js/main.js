@@ -82,6 +82,8 @@ import {jsonEq} from "./sync/merge-records.js";
 
 
 const {model, session, ui, files, tab, checksSession}=createContexts();
+// Event handlers are installed before the async owner/protocol preflight finishes.
+session.storageProtocolBlocked=true;
 const domainRevisions=createKupaDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS)});
 
@@ -1020,5 +1022,5 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(result=>{sharedChecksV2Shadow.boundary();return result});
+export const appReady=lifecycle.boot().then(result=>{if(!session.storageProtocolBlocked)sharedChecksV2Shadow.boundary();return result});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}

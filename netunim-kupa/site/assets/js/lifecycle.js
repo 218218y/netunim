@@ -30,6 +30,7 @@ async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
 }
 
 async function boot(){
+  session.storageProtocolBlocked=true;
   if(!runtimeSelfCheck())return;
   await acquirePrimaryTabLock();
   // Storage ownership is durable and independent from the auth token. Establish
@@ -44,6 +45,7 @@ async function boot(){
     setConnectUI({title:oldBrowser?'המכשיר משתמש באחסון ישן':'נדרש אימות אחסון בענן',text:oldBrowser?'החשבון כבר עבר ל־Storage V2. במכשיר משני זה יש למחוק את נתוני האתר, לפתוח מחדש ולטעון את החשבון הקיים מהענן.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
     return;
   }
+  session.storageProtocolBlocked=false;
   if(!tab.primaryTab){
     const v2Required=storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing();
     let shown=false;

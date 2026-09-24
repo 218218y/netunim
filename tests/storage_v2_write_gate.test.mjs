@@ -112,7 +112,7 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main a
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
-    const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
+    const lifecycle=createOrdersLifecycle({model,session:{},tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       storageOwnerCurrent:()=>marker==='local'?'local':'account',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,
       restoreBrowserStateFallback:async()=>{throw new Error('secondary used legacy Main recovery')},

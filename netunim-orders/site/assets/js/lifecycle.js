@@ -97,6 +97,7 @@ async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
 }
 
 async function boot(){
+  session.storageProtocolBlocked=true;
   startupMark('boot-start');
   await acquirePrimaryTabLock();startupMark('primary-tab-ready');
   await hydrateStorageOwner();startupMark('storage-owner-ready');
@@ -113,6 +114,7 @@ async function boot(){
     setCloud(message,'error');setSave('העריכה נעולה עד השלמת אימות האחסון','error');
     if(!tab.primaryTab)showSecondaryTabGuard();syncFolderAccessButton();return;
   }
+  session.storageProtocolBlocked=false;
 
   if(!tab.primaryTab){
     const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing());
