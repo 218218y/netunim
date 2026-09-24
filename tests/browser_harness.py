@@ -329,6 +329,60 @@ class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
     request_queue_size = 128
 
 
+def _stop_browser_process(process, graceful_close=None) -> None:
+    """Stop Chromium completely before its disposable profile is removed.
+
+    Chrome is multi-process. Closing the browser through CDP gives all child
+    processes a chance to exit together. If CDP is unavailable, keep the
+    fallback bounded but always wait after terminate/kill; deleting a profile
+    while Chrome is still exiting can race with late profile writes.
+    """
+    if process is None or process.poll() is not None:
+        return
+    if graceful_close is not None:
+        try:
+            graceful_close()
+        except Exception:
+            pass
+        else:
+            try:
+                process.wait(timeout=5)
+                return
+            except subprocess.TimeoutExpired:
+                pass
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+        return
+    except subprocess.TimeoutExpired:
+        process.kill()
+    # kill() is asynchronous too. Do not race profile deletion against exit.
+    process.wait(timeout=5)
+
+
+def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
+    """Remove a disposable runtime tree, retrying transient browser locks.
+
+    The old harness used ignore_errors=True, which converted cleanup failures
+    into a later, opaque isolation assertion. Keep cleanup failures local and
+    diagnostic instead.
+    """
+    deadline = time.monotonic() + timeout
+    last_error = None
+    while path.exists():
+        try:
+            shutil.rmtree(path)
+        except OSError as error:
+            last_error = error
+        if not path.exists():
+            return
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            detail = f": {last_error}" if last_error is not None else ""
+            raise RuntimeError(f"Could not remove disposable browser tree {path}{detail}")
+        time.sleep(min(0.1, remaining))
+
+
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
@@ -369,24 +423,35 @@ class BrowserSession:
             raise
 
     def __exit__(self, exc_type, exc, tb):
-        with contextlib.suppress(Exception):
+        cleanup_error = None
+        try:
+            graceful_close = None
             if self.ws:
-                self.ws.close()
-        if self.proc:
+                graceful_close = lambda: self.call("Browser.close", timeout=3)
+            _stop_browser_process(self.proc, graceful_close)
+        except Exception as error:
+            cleanup_error = error
+        finally:
             with contextlib.suppress(Exception):
-                self.proc.terminate()
-                self.proc.wait(timeout=3)
-            if self.proc.poll() is None:
-                with contextlib.suppress(Exception):
-                    self.proc.kill()
+                if self.ws:
+                    self.ws.close()
         if self.httpd:
             with contextlib.suppress(Exception):
                 self.httpd.shutdown()
                 self.httpd.server_close()
         if self.http_thread:
             self.http_thread.join(timeout=2)
-        shutil.rmtree(self.profile, ignore_errors=True)
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        for path in (self.profile, self.tmp):
+            try:
+                _remove_tree_verified(path)
+            except Exception as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+        if cleanup_error is not None:
+            if exc is not None and hasattr(exc, "add_note"):
+                exc.add_note(f"BrowserSession cleanup also failed: {cleanup_error}")
+            elif exc_type is None:
+                raise cleanup_error
 
     def _prepare_site(self):
         shutil.copytree(self.site, self.tmp / "site", dirs_exist_ok=True)

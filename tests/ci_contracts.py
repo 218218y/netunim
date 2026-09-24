@@ -59,6 +59,51 @@ class VerificationContracts(unittest.TestCase):
         self.assertGreater(request.call_args.kwargs["timeout"], 0.5)
         self.assertLessEqual(request.call_args.kwargs["timeout"], 5.0)
 
+    def test_browser_shutdown_prefers_graceful_cdp_close(self):
+        from unittest.mock import Mock
+        process = Mock(returncode=None)
+        process.poll.return_value = None
+        process.wait.return_value = 0
+        graceful = Mock()
+        browser_harness._stop_browser_process(process, graceful)
+        graceful.assert_called_once_with()
+        process.wait.assert_called_once_with(timeout=5)
+        process.terminate.assert_not_called()
+        process.kill.assert_not_called()
+
+    def test_browser_shutdown_waits_after_forced_kill(self):
+        from unittest.mock import Mock
+        process = Mock(returncode=None)
+        process.poll.return_value = None
+        process.wait.side_effect = [subprocess.TimeoutExpired("chrome", 3), 0]
+        graceful = Mock(side_effect=RuntimeError("cdp unavailable"))
+        browser_harness._stop_browser_process(process, graceful)
+        graceful.assert_called_once_with()
+        process.terminate.assert_called_once_with()
+        process.kill.assert_called_once_with()
+        self.assertEqual(process.wait.call_count, 2)
+        self.assertEqual(process.wait.call_args_list[-1].kwargs["timeout"], 5)
+
+    def test_browser_profile_cleanup_retries_transient_lock_and_never_hides_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "profile"
+            root.mkdir()
+            (root / "lock").write_text("x")
+            real_rmtree = shutil.rmtree
+            attempts = 0
+
+            def transient(path):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 1:
+                    raise PermissionError("profile still closing")
+                real_rmtree(path)
+
+            with patch.object(browser_harness.shutil, "rmtree", side_effect=transient):
+                browser_harness._remove_tree_verified(root, timeout=1)
+            self.assertEqual(attempts, 2)
+            self.assertFalse(root.exists())
+
     def test_windows_seed_is_shared_without_sharing_browser_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
