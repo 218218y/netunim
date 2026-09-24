@@ -93,15 +93,15 @@ def run(db):
         assert revision(db, OWNER, table, doc) == 1
         assert write(db, OWNER, domain, 6, 1, 'v2-' + domain, changed=True) == 2
 
-    # Restore is a separate public mutation entrypoint. An old staged group
-    # cannot apply through v5 after activation; v6 preserves the existing
-    # atomic Main/Shared restore implementation and its operation IDs.
+    # Restore is a separate public mutation entrypoint. A stale tab cannot
+    # even stage a group for a newer client to pick up later.
     restore_state = json.loads(document_state('kupa', changed=True))
     restore_state['notes'].append({'id': 'restore-note', 'content': 'restored'})
     stage = ("public.stage_restore_group_v5('" + RESTORE_ID + "','kupa','main',2," +
              quote(json.dumps(restore_state, separators=(',', ':'))) +
              ",'{}','main',null,null,'[]','restore-main','restore-checks','{}')")
-    auth(db, OWNER, 'select * from ' + stage)
+    denied(db, OWNER, stage, 'PT426')
+    auth(db, OWNER, 'select * from ' + stage.replace('stage_restore_group_v5', 'stage_restore_group_v6'))
     denied(db, OWNER, "public.apply_restore_group_v5('" + RESTORE_ID + "')", 'PT426')
     assert revision(db, OWNER, 'kupa_documents', 'main') == 2
     assert '|completed|' in auth(db, OWNER, "select * from public.apply_restore_group_v6('" + RESTORE_ID + "')")

@@ -83,7 +83,7 @@ const rpcSaveSharedChecks=(...args)=>rpcSaveSharedChecksVersion(5,...args);
 const rpcSaveSharedChecksV2=(...args)=>rpcSaveSharedChecksVersion(6,...args);
 
 async function restoreRpc(name,body){const r=await supaFetch(`/rest/v1/rpc/${name}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify(body)}),txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||txt||`restore rpc failed: ${name}`);return Array.isArray(j)?j[0]:j}
-async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v5',restoreGroupRpcPayload(group))}
+async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v6',restoreGroupRpcPayload(group))}
 async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v6',{p_restore_group_id:String(restoreGroupId)})}
 async function listIncompleteRestoreGroups(){const r=await supaFetch('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),txt=await r.text();let j;try{j=txt?JSON.parse(txt):null}catch{j=null}if(!r.ok)throw new Error(j?.message||txt||'restore group status failed');return Array.isArray(j)?j:[]}
 

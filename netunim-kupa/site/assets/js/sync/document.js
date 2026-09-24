@@ -93,8 +93,8 @@ async function rpcSaveCloudVersion(version,snapshot,expectedRevision,operationId
   if(r.ok)ackDone();
   return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
-const rpcSaveCloud=(...args)=>rpcSaveCloudVersion(5,...args);
-const rpcSaveCloudV2=(...args)=>rpcSaveCloudVersion(6,...args);
+async function rpcSaveCloud(...args){return rpcSaveCloudVersion(5,...args)}
+async function rpcSaveCloudV2(...args){return rpcSaveCloudVersion(6,...args)}
 
 // Recheck lineage when a mutation arrives while ACK cleanup is awaiting IndexedDB.
 async function completePendingGeneration(generation,authoritative,revision,snapshot,operationRevision){

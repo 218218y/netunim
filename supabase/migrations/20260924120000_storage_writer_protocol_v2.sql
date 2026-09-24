@@ -47,6 +47,31 @@ create trigger shared_checks_storage_protocol_guard
 before insert or update on public.shared_checks_documents for each row
 execute function netunim_internal.guard_storage_writer_protocol_v2('shared-checks');
 
+-- A legacy tab must not stage a restore after activation. Otherwise a newer
+-- client could discover and apply its stale group through the v6 entrypoint.
+create function netunim_internal.guard_restore_storage_protocol_v2()
+returns trigger language plpgsql security definer
+set search_path to 'pg_catalog', 'netunim_internal'
+as $function$
+begin
+  if auth.role() = 'authenticated'
+     and exists (
+       select 1 from netunim_internal.storage_writer_protocol p
+       where p.owner_id=new.owner_id
+         and p.domain in (new.app_site,'shared-checks')
+         and p.min_writer_protocol>=2
+     )
+     and coalesce(current_setting('app.netunim_storage_writer_protocol',true),'') <> '2' then
+    raise exception 'storage_protocol_upgrade_required' using errcode='PT426';
+  end if;
+  return new;
+end
+$function$;
+revoke all on function netunim_internal.guard_restore_storage_protocol_v2() from public, anon, authenticated;
+create trigger restore_group_storage_protocol_guard
+before insert or update on netunim_internal.restore_operation_groups for each row
+execute function netunim_internal.guard_restore_storage_protocol_v2();
+
 -- SET on the function is scoped to this call and restored before control
 -- returns to the caller. Legacy v5 calls cannot inherit a previous v6 call's
 -- setting in the same transaction. The verified v5 implementation remains the
@@ -113,6 +138,19 @@ set app.netunim_storage_writer_protocol to '2'
 as $function$
   select * from public.apply_restore_group_v5(p_restore_group_id)
 $function$;
+create function public.stage_restore_group_v6(
+  p_restore_group_id uuid,p_app_site text,p_main_document_name text,p_main_base_revision bigint,
+  p_main_state jsonb,p_main_delete_intents jsonb,p_checks_document_name text,p_checks_base_revision bigint,
+  p_checks_state jsonb,p_checks_delete_ids jsonb,p_main_operation_id text,p_checks_operation_id text,p_audit jsonb)
+returns table(restore_group_id uuid,phase text)
+language sql security invoker
+set search_path to 'pg_catalog', 'public', 'netunim_internal'
+set app.netunim_storage_writer_protocol to '2'
+as $function$
+  select * from public.stage_restore_group_v5(p_restore_group_id,p_app_site,p_main_document_name,p_main_base_revision,
+    p_main_state,p_main_delete_intents,p_checks_document_name,p_checks_base_revision,p_checks_state,p_checks_delete_ids,
+    p_main_operation_id,p_checks_operation_id,p_audit)
+$function$;
 
 revoke all on function public.save_order_management_document_v6(text,bigint,jsonb,text,jsonb,jsonb) from public, anon;
 revoke all on function public.bulk_delete_save_order_management_document_v6(text,bigint,jsonb,text,jsonb,jsonb) from public, anon;
@@ -121,6 +159,7 @@ revoke all on function public.bulk_delete_save_kupa_document_v6(text,bigint,json
 revoke all on function public.save_shared_checks_document_v6(text,bigint,jsonb,text,jsonb,jsonb) from public, anon;
 revoke all on function public.bulk_delete_save_shared_checks_document_v6(text,bigint,jsonb,text,jsonb,jsonb) from public, anon;
 revoke all on function public.apply_restore_group_v6(uuid) from public, anon;
+revoke all on function public.stage_restore_group_v6(uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb) from public, anon;
 grant execute on function public.save_order_management_document_v6(text,bigint,jsonb,text,jsonb,jsonb) to authenticated, service_role;
 grant execute on function public.bulk_delete_save_order_management_document_v6(text,bigint,jsonb,text,jsonb,jsonb) to authenticated, service_role;
 grant execute on function public.save_kupa_document_v6(text,bigint,jsonb,text,jsonb,jsonb) to authenticated, service_role;
@@ -128,6 +167,7 @@ grant execute on function public.bulk_delete_save_kupa_document_v6(text,bigint,j
 grant execute on function public.save_shared_checks_document_v6(text,bigint,jsonb,text,jsonb,jsonb) to authenticated, service_role;
 grant execute on function public.bulk_delete_save_shared_checks_document_v6(text,bigint,jsonb,text,jsonb,jsonb) to authenticated, service_role;
 grant execute on function public.apply_restore_group_v6(uuid) to authenticated, service_role;
+grant execute on function public.stage_restore_group_v6(uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb) to authenticated, service_role;
 
 create function public.get_storage_protocol_state()
 returns jsonb language plpgsql stable security definer
@@ -208,7 +248,8 @@ as $function$
    and to_regprocedure('public.save_kupa_document_v6(text,bigint,jsonb,text,jsonb,jsonb)') is not null
    and to_regprocedure('public.save_shared_checks_document_v6(text,bigint,jsonb,text,jsonb,jsonb)') is not null
    and to_regprocedure('public.apply_restore_group_v6(uuid)') is not null
-   and (select count(*) from pg_trigger where tgname in ('order_management_storage_protocol_guard','kupa_storage_protocol_guard','shared_checks_storage_protocol_guard') and tgenabled<>'D')=3
+   and to_regprocedure('public.stage_restore_group_v6(uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb)') is not null
+   and (select count(*) from pg_trigger where tgname in ('order_management_storage_protocol_guard','kupa_storage_protocol_guard','shared_checks_storage_protocol_guard','restore_group_storage_protocol_guard') and tgenabled<>'D')=4
    then 2 else 0 end);
 $function$;
 
