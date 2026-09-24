@@ -1,0 +1,45 @@
+import {createUiCloud} from '../ui/cloud.js';
+
+export function composeCloudUi({
+  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
+  cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings,getCalendarController,domainsFinanceController,storageV2Coordinator,storageV2Cloud,
+}){
+  if(typeof getUiSettings!=='function'||typeof getCalendarController!=='function')throw new Error('orders_cloud_ui_ports_required');
+  return createUiCloud({
+    model,
+    files,
+    tab,
+    session,
+    checksSession,
+    ui,
+    modal:(...args)=>uiModal.modal(...args),
+    supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
+    toast:(...args)=>uiStatus.toast(...args),
+    closeModal:(...args)=>uiModal.closeModal(...args),
+    authPassword:(...args)=>cloudAuth.authPassword(...args),
+    localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
+    markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
+    getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
+    clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
+    setCloud:(...args)=>uiStatus.setCloud(...args),
+    showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
+    prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
+    render:(...args)=>uiNavigation.render(...args),
+    writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
+    loadSession:(...args)=>cloudAuth.loadSession(...args),
+    readCloud:(...args)=>cloudTransport.readCloud(...args),
+    applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
+    refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
+    syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
+    requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
+    restorePendingAgainstCloud:(...args)=>syncDocument.restorePendingAgainstCloud(...args),
+    startPolling:(...args)=>syncDocument.startPolling(...args),
+    saveSession:(...args)=>cloudAuth.saveSession(...args),
+    renderSettings:(...args)=>getUiSettings().renderSettings(...args),
+    resumeCalendarAfterCloudLogin:(...args)=>getCalendarController().resumeAfterCloudLogin(...args),
+    startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
+    ...storageV2Coordinator.ownerUiPorts(),
+    ...storageV2Coordinator.ownerTransferUiPorts(),
+    ...storageV2Cloud,
+  });
+}

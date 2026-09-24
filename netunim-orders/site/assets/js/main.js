@@ -59,7 +59,7 @@ import {createCloudTransport} from './cloud/transport.js';
 import {createSyncMerge} from './sync/merge.js';
 import {composeChecksSync} from './composition/checks-sync.js';
 import {createSyncDocument} from './sync/document.js';
-import {createUiCloud} from './ui/cloud.js';
+import {composeCloudUi} from './composition/cloud.js';
 import {createNotesDomain} from './domains/notes/index.js';
 import {createCalendarStorage} from './calendar/storage.js';
 import {createCalendarAuth} from './calendar/auth.js';
@@ -697,42 +697,10 @@ async function beginStorageV2Cutover(){
   uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startPolling();uiSettings.renderSettings();return true;
 }
 
-const uiCloud=createUiCloud({
-  model,
-  files,
-  tab,
-  session,
-  checksSession,
-  ui,
-  modal:(...args)=>uiModal.modal(...args),
-  supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  authPassword:(...args)=>cloudAuth.authPassword(...args),
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
-  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-  clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
-  setCloud:(...args)=>uiStatus.setCloud(...args),
-  showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
-  prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
-  loadSession:(...args)=>cloudAuth.loadSession(...args),
-  readCloud:(...args)=>cloudTransport.readCloud(...args),
-  applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
-  refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-  requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
-  restorePendingAgainstCloud:(...args)=>syncDocument.restorePendingAgainstCloud(...args),
-  startPolling:(...args)=>syncDocument.startPolling(...args),
-  saveSession:(...args)=>cloudAuth.saveSession(...args),
-  renderSettings:(...args)=>uiSettings.renderSettings(...args),
-  resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
-  startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
-  ...storageV2Coordinator.ownerUiPorts(),
-  ...storageV2Coordinator.ownerTransferUiPorts(),
-  ...storageV2Cloud,
+const uiCloud=composeCloudUi({
+  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
+  cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings:()=>uiSettings,getCalendarController:()=>domainsCalendarController,
+  domainsFinanceController,storageV2Coordinator,storageV2Cloud,
 });
 
 const domainsCalendarController=createDomainsCalendarController({

@@ -25,7 +25,7 @@ import {createSyncChecks} from './sync/checks.js';
 import {createSyncMerge} from './sync/merge.js';
 import {createSyncPending} from './sync/pending.js';
 import {createSyncDocument} from './sync/document.js';
-import {createUiCloud} from './ui/cloud.js';
+import {composeCloudUi} from './composition/cloud.js';
 import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksSelectors} from './domains/checks/selectors.js';
 import {createDomainsCashSelectors} from './domains/cash/selectors.js';
@@ -409,47 +409,9 @@ async function beginStorageV2Cutover(){
   }
 }
 
-const uiCloud=createUiCloud({
-  session,
-  tab,
-  checksSession,
-  model,
-  ...storageV2Cloud,
-  clearCloudPending:(...args)=>storagePending.clearCloudPending(...args),
-  loadSupabaseState:(...args)=>syncDocument.loadSupabaseState(...args),
-  toast:(...args)=>uiStatus.toast(...args),
-  supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  configureCloudConnectButton:(...args)=>uiConnection.configureCloudConnectButton(...args),
-  supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
-  setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
-  setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
-  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
-  loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
-  loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
-  showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-  openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
-  restoreSupaSession:(...args)=>cloudAuth.restoreSupaSession(...args),
-  storeSupaSession:(...args)=>cloudAuth.storeSupaSession(...args),
-  isSupabaseAuthError:(...args)=>cloudAuth.isSupabaseAuthError(...args),
-  friendlySupabaseError:(...args)=>cloudAuth.friendlySupabaseError(...args),
-  supaEnsureSession:(...args)=>cloudAuth.supaEnsureSession(...args),
-  readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
-  syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
-  applyCloudRow:(...args)=>syncDocument.applyCloudRow(...args),
-  reconcileCloudPending:(...args)=>syncDocument.reconcileCloudPending(...args),
-  startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
-  render:(...args)=>uiNavigation.render(...args),
-  setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
-  ensureSharedChecksForNewCloud:(...args)=>syncChecks.ensureSharedChecksForNewCloud(...args),
-  persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
-  supaAuthPassword:(...args)=>cloudAuth.supaAuthPassword(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
-  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
-  ...storageV2Coordinator.ownerUiPorts(),
+const uiCloud=composeCloudUi({
+  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,storagePending,syncDocument,uiStatus,cloudAuth,
+  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,
 });
 
 const uiDateEditor=createUiDateEditor({
