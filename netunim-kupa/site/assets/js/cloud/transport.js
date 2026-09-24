@@ -76,7 +76,7 @@ async function readSupabaseDocument(){
 }
 async function rpcSaveFinanceSync(state,expectedRevision,operationId,audit={},lease=null){
   const expected=Number(expectedRevision||0),op=String(operationId||'').trim();if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision הסינכרון הפיננסי אינו תקין');if(!op)throw new Error('מזהה פעולת הסינכרון הפיננסי חסר');
-  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v5`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
+  const r=await supaRest(`/rest/v1/rpc/${FINANCE_RPC}_v6`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_expected_revision:expected,p_state:state,p_operation_id:op,p_audit:audit,...financeFencePayload(lease)})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
 function financeLeaseName(value){const name=String(value||'').trim();if(name!=='bank'&&name!=='credit')throw new Error('סוג נעילת הסינכרון הפיננסי אינו תקין');return name}
@@ -112,7 +112,7 @@ async function saveFinancePatch(mutator,lease=null){
 async function saveBankSyncSnapshot(bankState,snapshotToken,snapshotSeq,lease=null){
   const seq=Number(snapshotSeq);if(!Number.isSafeInteger(seq)||seq<0)throw new Error('snapshotSeq של הבנק אינו תקין');
   const token=String(snapshotToken||'').trim();if(!token)throw new Error('snapshotToken של הבנק חסר');
-  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
+  const r=await supaRest('/rest/v1/rpc/save_bank_sync_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:FINANCE_DOC,p_bank_state:bankState,p_snapshot_token:token,p_snapshot_seq:seq,...financeFencePayload(lease)})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום הבנק האטומי נכשלה');return Array.isArray(j)?j[0]:j;
 }
 function bankArchivePayload(transactions){
@@ -126,13 +126,13 @@ function bankArchivePayload(transactions){
 }
 async function mergeBankTransactions(accountKey,accountRole,transactions,lease=null){
   const payload=bankArchivePayload(transactions);
-  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,...financeFencePayload(lease)})});
+  const r=await supaRest('/rest/v1/rpc/merge_bank_transactions_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,...financeFencePayload(lease)})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||body||'מיזוג תנועות הבנק נכשל');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload};
 }
 async function syncBankTransactionsSnapshot(accountKey,accountRole,transactions,{snapshotAt,coverage=null,complete=false,lease=null}={}){
   const payload=bankArchivePayload(transactions),when=String(snapshotAt||'').trim(),from=String(coverage?.from||'').slice(0,10),to=String(coverage?.to||'').slice(0,10),isComplete=complete===true&&coverage?.complete===true&&!coverage?.warning&&/^\d{4}-\d{2}-\d{2}$/.test(from)&&/^\d{4}-\d{2}-\d{2}$/.test(to);
   if(!when||!Number.isFinite(Date.parse(when)))throw new Error('זמן צילום תנועות הבנק אינו תקין');
-  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
+  const r=await supaRest('/rest/v1/rpc/sync_bank_transactions_snapshot_v6',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_account_key:String(accountKey||''),p_account_role:accountRole==='home'?'home':'business',p_transactions:payload,p_snapshot_at:new Date(when).toISOString(),p_coverage_from:isComplete?from:null,p_coverage_to:isComplete?to:null,p_complete:isComplete,...financeFencePayload(lease)})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'שמירת צילום תנועות הבנק נכשלה');const result=Array.isArray(j)?j[0]:j;return {result,sourcePayload:payload,complete:isComplete};
 }
 async function readBankTransactions(accountKey,accountRole,{days=370,maxRows=20000}={}){

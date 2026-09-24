@@ -128,6 +128,56 @@ def run(db):
         'orders': 2, 'kupa': 2, 'sharedChecks': 2}
     denied(db, '', 'public.get_storage_protocol_state()')
     denied(db, '', 'public.activate_storage_protocol_v2(1,1,1)')
+    # Financial writes share Kupa business state. The bank snapshot updates
+    # both finance and Kupa in one transaction; credit updates finance only.
+    # Old financial RPCs must not bypass the account's Storage V2 fence.
+    capabilities = json.loads(auth(db, OWNER, 'select public.get_netunim_sync_capabilities()'))
+    assert capabilities['financeFencing'] == 2, capabilities
+    auth(db, OWNER, "select acquired from public.claim_finance_sync_lease('bank','bank-v6-lease',600)")
+    bank_epoch = auth(db, OWNER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
+    archive_args = "'account','business','[]',now(),null,null,false,'bank','bank-v6-lease'," + bank_epoch
+    old_archive = 'public.sync_bank_transactions_snapshot(' + archive_args + ')'
+    new_archive = 'public.sync_bank_transactions_snapshot_v6(' + archive_args + ')'
+    denied(db, OWNER, old_archive, 'PT426')
+    assert int(auth(db, OWNER, 'select total_count from ' + new_archive)) == 0
+    merge_args = "'account','business','[]','bank','bank-v6-lease'," + bank_epoch
+    denied(db, OWNER, 'public.merge_bank_transactions(' + merge_args + ')', 'PT426')
+    assert int(auth(db, OWNER, 'select total_count from public.merge_bank_transactions_v6(' + merge_args + ')')) == 0
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+    bank_args = "'main','{\"currentBalance\":123,\"source\":\"hapoalim\"}','bank-v6-snapshot',0,'bank','bank-v6-lease'," + bank_epoch
+    old_bank = 'public.save_bank_sync_snapshot(' + bank_args + ')'
+    new_bank = 'public.save_bank_sync_snapshot_v6(' + bank_args + ')'
+    denied(db, OWNER, old_bank, 'PT426')
+    assert int(auth(db, OWNER, 'select kupa_revision from ' + new_bank)) == 4
+    assert int(auth(db, OWNER, 'select kupa_revision from ' + new_bank)) == 4  # lost ACK replay
+    denied(db, OWNER, old_bank, 'PT426')  # old replay is rejected too
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+    auth(db, OWNER, "select acquired from public.claim_finance_sync_lease('credit','credit-v6-lease',600)")
+    credit_epoch = auth(db, OWNER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='credit'")
+    credit_state = '{\"bank\":{\"currentBalance\":123},\"creditSync\":{\"syncedAt\":\"v6\"}}'
+    credit_args = "'main',1," + quote(credit_state) + ",'credit-v6-operation','{}','credit','credit-v6-lease'," + credit_epoch
+    old_credit = 'public.save_finance_sync_document_v5(' + credit_args + ')'
+    new_credit = 'public.save_finance_sync_document_v6(' + credit_args + ')'
+    denied(db, OWNER, old_credit, 'PT426')
+    assert int(auth(db, OWNER, 'select revision from ' + new_credit)) == 2
+    assert int(auth(db, OWNER, 'select revision from ' + new_credit)) == 2  # operation replay
+    denied(db, OWNER, old_credit, 'PT426')
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+    # The lease still fences an old worker even through the new V2 entrypoint.
+    denied(db, OWNER, "public.save_bank_sync_snapshot_v6('main','{}','bad-bank-lease',0,'bank','wrong'," + bank_epoch + ')', 'PT409')
+    denied(db, OWNER, "public.save_finance_sync_document_v6('main',2,'{}','bad-credit-lease','{}','credit','wrong'," + credit_epoch + ')', 'PT409')
+    # A direct financial write or a legacy RPC cannot borrow a completed V6
+    # invocation, including another call in the same database transaction.
+    auth(db, OWNER, "DO $test$ BEGIN UPDATE public.finance_sync_documents SET state=state WHERE owner_id=auth.uid(); RAISE EXCEPTION 'direct_finance_write_succeeded'; EXCEPTION WHEN SQLSTATE '42501' THEN NULL; END $test$")
+    later_credit = "public.save_finance_sync_document_v5('main',2," + quote(credit_state) + ",'credit-legacy-later','{}','credit','credit-v6-lease'," + credit_epoch + ')'
+    auth(db, OWNER, 'select revision from ' + new_credit + '; DO $test$ BEGIN PERFORM ' + later_credit + "; RAISE EXCEPTION 'legacy_finance_context_leaked'; EXCEPTION WHEN SQLSTATE 'PT426' THEN NULL; END $test$")
+    assert int(auth(db, OWNER, "select revision from public.finance_sync_documents where owner_id=auth.uid() and document_name='main'")) == 2
+    # Protocol activation is owner-scoped; other owners retain their legacy
+    # finance path until their own cutover.
+    auth(db, OTHER, "select acquired from public.claim_finance_sync_lease('bank','other-bank-lease',600)")
+    other_epoch = auth(db, OTHER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
+    other_before = revision(db, OTHER, 'kupa_documents', 'main')
+    assert int(auth(db, OTHER, "select kupa_revision from public.save_bank_sync_snapshot('main','{}','other-bank',0,'bank','other-bank-lease'," + other_epoch + ')')) == other_before + 1
 
 
 if __name__ == '__main__':

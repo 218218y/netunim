@@ -148,5 +148,10 @@
     "version": "20260924120000",
     "name": "storage_writer_protocol_v2",
     "sha256": "86ce40f153b77d3a19d8690e92365943a04d51c775be8aecfb0f2113c5881fcc"
+  },
+  {
+    "version": "20260924180000",
+    "name": "finance_storage_writer_protocol_v2",
+    "sha256": "036fb58401b393f87fce7217eab4ae97468b5d93f68b1e465f0e8c727d742dcc"
   }
 ]
