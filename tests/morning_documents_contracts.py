@@ -239,8 +239,8 @@ ok('.morning-document-fields .morning-client-name-field,.morning-document-fields
    'Morning issuance layout: customer, gross amount and optional order number share equal first-row widths for every issuance type')
 ok('morningAmountPaymentHint' not in documents and 'חייב להתאים לסה״כ התקבולים' not in documents,
    'Morning issuance amount label stays single-line; payment matching remains visible in the payment summary and enforced by validation')
-ok('export function debtMorningPrefill' in documents and "taxId:customerId" in documents and "orderNumber:''" in documents and 'אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}' in documents and "remarks:clearingApproval?" in documents,
-   'Morning customer-debt prefill: customer ID maps to the client tax field, retired debt order is blank, and clearing approval alone controls the exact document remarks')
+ok('export function debtMorningPrefill' in documents and "taxId:customerId" in documents and "orderNumber:''" in documents and 'אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}' in documents and "remarks:clearingApproval?" in documents and "payment=clearingApproval?{type:3" in documents and "cardNum:'****'" in documents,
+   'Morning customer-debt prefill: customer ID maps to the client tax field, retired debt order is blank, clearing approval controls the exact remarks and defaults receipt entry to credit card with a masked suffix')
 
 if errors:
     print('\nERRORS',len(errors))

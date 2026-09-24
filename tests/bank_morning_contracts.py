@@ -83,6 +83,8 @@ ok('const raw=Array.isArray(doc.payment)' in edge and 'raw.length>12' in edge an
    'Multi-payment contract is bounded and exact to the agorot on the server')
 ok('morning-payment-add' in payments and 'data-payment-field="price"' in payments and 'step="1"' in payments and 'data-payment-kinds="4"' in payments and 'data-payment-kinds="2,4"' in payments and 'data-payment-kinds="3"' in payments and 'bankDetailsLocked=bankLocked&&type===2' in payments and '.morning-payment-row [data-payment-kinds][hidden]{display:none}' in app_css,
    'Client payment editor actually hides method-irrelevant fields in CSS, keeps cheque source identity locked and lets transfer bank details be completed manually')
+ok('inputmode="text" maxlength="4"' in payments and "cardNum=rawCardNum||'****'" in payments and "/^(?:\\d{4}|\\*{4})$/" in payments and "cardNum=rawCardNum||'****'" in edge and "/^(?:\\d{4}|\\*{4})$/" in edge,
+   'Credit-card receipt suffix accepts either four digits or four asterisks, and both client and Edge normalize an empty value to the masked placeholder')
 ok('morningBankDirectory' in payments and 'resolveMorningBank' in banks and 'findMorningBanks' in banks and 'const options=BANKS.map' in banks and 'for(const alias of bank.aliases)options.push' not in banks and "code:'12'" in banks and 'בנק הפועלים' in banks and "code:'20'" in banks and 'בנק מזרחי' in banks and "code:'9'" in banks and 'דואר פיננסים' in banks,
    'Bank selector supports code/name/alias lookup while rendering only one menu option per bank')
 ok('bankTransferReferenceDetails' in bank_detail and '<b>אסמכתא:</b>' in bank_detail and 'bankTransferReferenceDetails(row)' in bank_table,

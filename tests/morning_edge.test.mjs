@@ -70,6 +70,9 @@ const chequePayment=receiptInput({type:2,date:'2026-09-08',price:100,transaction
 assert.deepEqual(JSON.parse(JSON.stringify(chequePayment)),{type:2,date:'2026-09-08',price:100,currency:'ILS',bankName:'Test Bank',bankBranch:'123',bankAccount:'000456',chequeNum:'9001'},'cheque forwards bank-account and cheque-number fields only');
 const cardPayment=receiptInput({type:3,date:'2026-09-08',price:100,transactionId:'DROP',bankName:'DROP',bankBranch:'1',bankAccount:'2',chequeNum:'3',cardType:2,cardNum:'1234'});
 assert.deepEqual(JSON.parse(JSON.stringify(cardPayment)),{type:3,date:'2026-09-08',price:100,currency:'ILS',dealType:1,cardType:2,cardNum:'1234'},'credit card forwards only card fields');
+const maskedCardPayment=receiptInput({type:3,date:'2026-09-08',price:100,cardType:2,cardNum:'****'});assert.equal(maskedCardPayment.cardNum,'****','Morning accepts the explicit four-asterisk card suffix placeholder');
+const blankCardPayment=receiptInput({type:3,date:'2026-09-08',price:100,cardType:2,cardNum:''});assert.equal(blankCardPayment.cardNum,'****','a blank card suffix is normalized server-side to four asterisks');
+assert.throws(()=>receiptInput({type:3,date:'2026-09-08',price:100,cardType:2,cardNum:'12**'}),/invalid_card_payment/,'mixed digits and asterisks are rejected instead of being silently rewritten');
 
 // A successful POST is not success until the same Morning ID is canonically re-read and matched.
 failure='readback';const readbackPending=body(110);const pendingResult=await decode(await api.create(owner,readbackPending));
