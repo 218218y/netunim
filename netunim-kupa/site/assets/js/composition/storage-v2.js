@@ -42,7 +42,7 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,syncChecksState,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
     model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main,
-    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecks(...args),verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
+    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
     validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
   });
 
@@ -104,7 +104,7 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
     const merge=createSyncChecks({checksSession:{sharedChecksBootstrapActive:false},model:{state:{checks:[]}}}).mergeSharedChecks;
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
       readState:()=>detachedSharedState,applyState:value=>{detachedSharedState=structuredClone(value)},merge,
-      readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+      readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
       verifyLegacyClean:()=>p.syncChecksState.verifyLegacyChecksClean()});
     return createStorageV2DetachedTarget({app:'kupa',targetOwner,primary:()=>tab.primaryTab,main:targetMain,shared:targetShared,
       readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>normalization.prepareKupaCloudState(row.state),
@@ -112,7 +112,7 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
       composeMainState:(cloud,shared)=>normalization.normalizeState({...cloud,checks:shared.checks}),
       projectMainState:state=>normalization.prepareKupaCloudState(state),emptyMainState:()=>normalization.normalizeState(INITIAL_STATE),
       validateMainCloud:value=>assertValidCloudState(value,'Kupa detached target'),
-      rpcMain:(...args)=>p.syncDocument.rpcSaveCloud(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+      rpcMain:(...args)=>p.syncDocument.rpcSaveCloudV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
       verifyLegacyClean:()=>verifyLegacyClean()});
   }
   async function installTransferTargetView({mainState,sharedState,mainRevision,sharedRevision}){

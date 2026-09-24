@@ -1,4 +1,4 @@
-﻿export const MIN_SYNC_CAPABILITIES=Object.freeze({documentOperationLedger:3,syncIntegrity:5,deleteIntents:4,massDeleteGuard:5,restoreGroups:5,sharedChecksIntegrity:5,financeFencing:1});
+﻿export const MIN_SYNC_CAPABILITIES=Object.freeze({documentOperationLedger:3,syncIntegrity:5,deleteIntents:4,massDeleteGuard:5,restoreGroups:5,sharedChecksIntegrity:5,financeFencing:1,storageWriterProtocol:2});
 export function createSyncCapabilityGate(read){
   let promise=null,compatible=false;
   return {ready:()=>compatible,reset(){promise=null;compatible=false},async ensure(){

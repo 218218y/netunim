@@ -26,7 +26,7 @@ GROUPS = {
         "bank_bridge_contracts.py",
     ],
     "models": ["module_contracts.py", "node_models.py"],
-    "database": ["spreadsheet_documents.py", "supabase_candidate.py", "supabase_retention.py", "morning_ledger.py"],
+    "database": ["spreadsheet_documents.py", "supabase_candidate.py", "storage_writer_protocol_server.py", "supabase_retention.py", "morning_ledger.py"],
     "browser-ui": ["runtime_browser_isolation.py", "runtime_smoke.py", "runtime_responsive.py", "runtime_calendar.py", "runtime_events.py"],
     "browser-morning": ["runtime_morning.py"],
     "browser-lifecycle": ["runtime_security.py", "runtime_pwa.py", "runtime_performance.py", "runtime_data_integrity.py"],

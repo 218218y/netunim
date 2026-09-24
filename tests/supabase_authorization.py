@@ -10,7 +10,7 @@ MAIN = '{"version":5,"credits":[],"cash":[],"rights":[],"notes":[],"notesSheet":
 
 
 def auth(db, owner, statement, role='authenticated'):
-    return db.sql('BEGIN;SET LOCAL ROLE ' + role + ';SET LOCAL request.jwt.claim.sub=' + quote(owner) + ';' + statement + ';COMMIT;').strip()
+    return db.sql('BEGIN;SET LOCAL ROLE ' + role + ';SET LOCAL request.jwt.claim.sub=' + quote(owner) + ';SET LOCAL request.jwt.claim.role=' + quote(role) + ';' + statement + ';COMMIT;').strip()
 
 
 def denied(db, owner, expression, code='42501', role='authenticated'):

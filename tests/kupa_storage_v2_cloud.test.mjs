@@ -130,7 +130,7 @@ test('Kupa V2 sends exact delete intents for credits removed by cloud normalizat
   }});
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'normalize',1),true);
   assert.deepEqual(f.sent[0].snapshot.credits,[]);
-  assert.match(f.sent[0].path,/bulk_delete_save_kupa_document_v5/);
+ assert.match(f.sent[0].path,/bulk_delete_save_kupa_document_v6/);
 });
 
 test('Kupa normalization keeps server delete IDs through a revision conflict',async()=>{
@@ -143,7 +143,7 @@ test('Kupa normalization keeps server delete IDs through a revision conflict',as
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'normalize',1),true);
   assert.equal(f.sent.length,2);
   assert.deepEqual(f.sent.map(row=>row.expected),[10,11]);
-  assert.ok(f.sent.every(row=>row.path.includes('bulk_delete_save_kupa_document_v5')));
+ assert.ok(f.sent.every(row=>row.path.includes('bulk_delete_save_kupa_document_v6')));
   assert.deepEqual(f.sent.map(row=>row.deleteIntents),[{credits:['expired-credit']},{credits:['expired-credit']}]);
 });
 

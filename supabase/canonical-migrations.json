@@ -115,6 +115,10 @@
     {
       "version": "20260923070000",
       "name": "bank_merge_inserted_identity"
+    },
+    {
+      "version": "20260924120000",
+      "name": "storage_writer_protocol_v2"
     }
   ]
 }

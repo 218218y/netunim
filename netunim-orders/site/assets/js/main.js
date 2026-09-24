@@ -667,6 +667,7 @@ const syncDocument=createSyncDocument({
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   readCloud:(...args)=>cloudTransport.readCloud(...args),
   rpcSave:(...args)=>cloudTransport.rpcSave(...args),
+  rpcSaveV2:(...args)=>cloudTransport.rpcSaveV2(...args),
   merge3:(...args)=>syncMerge.merge3(...args),
   applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
   composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),

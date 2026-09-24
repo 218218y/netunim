@@ -82,17 +82,19 @@ async function loadSupabaseState({discardLocalV2=false}={}){
   return applyCloudRow(row)
 }
 
-async function rpcSaveCloud(snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
+async function rpcSaveCloudVersion(version,snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
   const ackDone=beginMeasure('kupa:cloud-ack');
   assertValidCloudState(snapshot,'הנתונים המקומיים');
   const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
   if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision מקומי אינו תקין. השמירה לענן נעצרה.');
   if(!op)throw new Error('מזהה פעולת הקופה חסר');
-  const rpc=audit?.mutationType==='bulk-delete'?'bulk_delete_save_kupa_document_v5':'save_kupa_document_v5',r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
+  const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_save_kupa_document_v${version}`:`save_kupa_document_v${version}`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}
   if(r.ok)ackDone();
   return {r,j,body,row:Array.isArray(j)?j[0]:j};
 }
+const rpcSaveCloud=(...args)=>rpcSaveCloudVersion(5,...args);
+const rpcSaveCloudV2=(...args)=>rpcSaveCloudVersion(6,...args);
 
 // Recheck lineage when a mutation arrives while ACK cleanup is awaiting IndexedDB.
 async function completePendingGeneration(generation,authoritative,revision,snapshot,operationRevision){
@@ -113,7 +115,7 @@ async function saveStorageV2CloudFlight(initialFlight){
   // the server's delete-intent guard.
   let base=structuredClone(state.base.state),serverSnapshot=prepareKupaCloudState(flight.snapshot),expected=Number(flight.baseRevision),res=null;
   for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
-    const deleteIntents=normalizeDeleteIntents(flight.deleteIntents),exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents);session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(serverSnapshot,expected,flight.operationId,exactIntents,cloudAudit(flight,base,serverSnapshot,expected,exactIntents)));session.cloudWriteBusy=false;
+    const deleteIntents=normalizeDeleteIntents(flight.deleteIntents),exactIntents=effectiveDeleteIntents(base,serverSnapshot,deleteIntents);session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloudV2(serverSnapshot,expected,flight.operationId,exactIntents,cloudAudit(flight,base,serverSnapshot,expected,exactIntents)));session.cloudWriteBusy=false;
     if(saveBusy(res))throw new Error('save_busy');if(!revisionConflict(res))break;
     await contentionBackoff(attempt);const remote=await readSupabaseDocument();if(!remote?.state)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');const remoteRevision=Number(remote.revision||0);if(!Number.isSafeInteger(remoteRevision)||remoteRevision<=expected)throw new Error('kupa_v2_rebase_revision_invalid');const remoteState=canonicalLegacyCloudBase(remote.state,prepareKupaCloudState),merged=mergeKupaCloudState3Way(base,serverSnapshot,remoteState,{deleteIntents});
     state=await refreshStorageV2CloudState();if(!state?.flight||state.flight.operationId!==flight.operationId)throw new Error('kupa_v2_flight_changed_before_rebase');const expectedSeq=state.seq;
@@ -264,5 +266,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { applyCloudRow, loadSupabaseState, rpcSaveCloud, reconcileCloudPending, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, startCloudPolling,quiesceForStorageCutover };
+return { applyCloudRow, loadSupabaseState, rpcSaveCloud, rpcSaveCloudV2, reconcileCloudPending, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, startCloudPolling,quiesceForStorageCutover };
 }

@@ -23,10 +23,12 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
         if(main||expectedRevision!==0)throw Error('unexpected Main overwrite');
         main={revision:1,state:structuredClone(snapshot),operationId};return {r:{ok:true},row:structuredClone(main)};
       };
+      cloudTransport.rpcSaveV2=cloudTransport.rpcSave;
       cloudTransport.rpcSaveSharedChecks=async(rows,expectedRevision,operationId)=>{
         if(checks||expectedRevision!==0)throw Error('unexpected Shared overwrite');
         checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]},operationId};return {r:{ok:true},row:structuredClone(checks)};
       };
+      cloudTransport.rpcSaveSharedChecksV2=cloudTransport.rpcSaveSharedChecks;
       const transfer=await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const marker=await createStorageJournalDb().readCutover('orders:fixture-account');
@@ -71,10 +73,12 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
         if(main||expectedRevision!==0)throw Error('unexpected Main overwrite');
         main={revision:1,state:structuredClone(snapshot),operationId};return {r:{ok:true},row:structuredClone(main)};
       };
+      syncDocument.rpcSaveCloudV2=syncDocument.rpcSaveCloud;
       cloudTransport.rpcSaveSharedChecks=async(rows,expectedRevision,operationId)=>{
         if(checks||expectedRevision!==0)throw Error('unexpected Shared overwrite');
         checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]},operationId};return {r:{ok:true},row:structuredClone(checks)};
       };
+      cloudTransport.rpcSaveSharedChecksV2=cloudTransport.rpcSaveSharedChecks;
       const transfer=await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const marker=await createStorageJournalDb().readCutover('kupa:fixture-account');

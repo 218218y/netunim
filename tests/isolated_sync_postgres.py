@@ -43,7 +43,8 @@ class IsolatedPostgres:
 create role supabase_admin;
 create schema auth;create table auth.users(id uuid primary key);
 create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
-grant usage on schema auth to public;grant execute on function auth.uid() to public;
+create function auth.role() returns text language sql stable as $$select nullif(current_setting('request.jwt.claim.role',true),'')$$;
+grant usage on schema auth to public;grant execute on function auth.uid() to public;grant execute on function auth.role() to public;
 -- Minimal Supabase Storage platform prerequisite. Storage is a platform schema,
 -- not part of Netunim's application-schema baseline, but reviewed migrations may
 -- legitimately create buckets/policies against it. Keep this fixture intentionally
@@ -108,9 +109,12 @@ insert into auth.users values('''+quote(OWNER)+''');''')
         # the live postflight MUST reject this fixture's missing real extension.
         return self.sql(source.replace('create extension if not exists pg_cron;','-- isolated scheduling catalog stub'))
     def auth_sql(self,source):
-        return self.sql("begin;set local role authenticated;set local request.jwt.claim.sub='"+OWNER+"';"+source+';commit;')
+        return self.sql("begin;set local role authenticated;set local request.jwt.claim.sub='"+OWNER+"';set local request.jwt.claim.role='authenticated';"+source+';commit;')
     def rpc(self,name,body):
-        allowed={'save_order_management_document_v5','save_kupa_document_v5','save_shared_checks_document_v5','get_netunim_sync_capabilities'}
+        allowed={'save_order_management_document_v5','save_kupa_document_v5','save_shared_checks_document_v5',
+                 'save_order_management_document_v6','save_kupa_document_v6','save_shared_checks_document_v6',
+                 'bulk_delete_save_order_management_document_v6','bulk_delete_save_kupa_document_v6',
+                 'bulk_delete_save_shared_checks_document_v6','get_netunim_sync_capabilities'}
         if name not in allowed:raise ValueError('unsupported fixture RPC')
         types={'p_document_name':'text','p_expected_revision':'bigint','p_state':'jsonb','p_operation_id':'text','p_delete_intents':'jsonb','p_deleted_check_ids':'jsonb','p_audit':'jsonb'}
         args=[]

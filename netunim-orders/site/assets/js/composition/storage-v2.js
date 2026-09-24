@@ -33,7 +33,7 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,storageChecks,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
     model,checksSession,eventsKey:'checksBankEvents',domainRevisions,main,
-    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecks(...args),verifyLegacyClean:(...args)=>storageChecks.verifyLegacyChecksClean(...args),
+    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksCloud(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),verifyLegacyClean:(...args)=>storageChecks.verifyLegacyChecksClean(...args),
     validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
   });
 
@@ -107,7 +107,7 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
         readState:()=>snapshot,applyState:state=>{snapshot=structuredClone(state)},
         merge:(...args)=>p.syncChecks.mergeSharedChecks(...args),
         readRemote:()=>p.cloudTransport.readSharedChecksCloud(),
-        rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+        rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
         verifyLegacyClean:()=>p.storageChecks.verifyLegacyChecksClean(),
       });
     };
@@ -141,7 +141,7 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
         composeMainState:(mainState,sharedState)=>p.prepareV2Checkpoint(p.stateNormalization.normalizeState({...structuredClone(mainState),checks:structuredClone(sharedState.checks)})),
         projectMainState:state=>p.stateSnapshots.prepareCloudState(state),emptyMainState:()=>p.prepareV2Checkpoint(INITIAL_STATE),
         validateMainCloud:state=>assertValidOrderCloudState(state,'Orders detached target cloud state'),
-        rpcMain:(...args)=>p.cloudTransport.rpcSave(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+        rpcMain:(...args)=>p.cloudTransport.rpcSaveV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
         verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
       });
     }
