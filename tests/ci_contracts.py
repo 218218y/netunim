@@ -46,6 +46,19 @@ class VerificationContracts(unittest.TestCase):
                 browser_harness._wait_json("http://127.0.0.1:1/json/list", timeout=30, process=process)
             request.assert_not_called()
 
+    def test_browser_startup_allows_cold_devtools_response_to_finish(self):
+        from unittest.mock import Mock
+        process = Mock(returncode=None)
+        process.poll.return_value = None
+        response = io.BytesIO(b'[]')
+        with patch.object(browser_harness.urllib.request, "urlopen", return_value=response) as request:
+            self.assertEqual(browser_harness._wait_json("http://127.0.0.1:1/json/list", timeout=30, process=process), [])
+        # Keep the total 30s deadline, but do not repeatedly abort a cold /json/list
+        # response at 0.5s. The browser-sync failure log showed DevTools listening
+        # while every individual request still timed out.
+        self.assertGreater(request.call_args.kwargs["timeout"], 0.5)
+        self.assertLessEqual(request.call_args.kwargs["timeout"], 5.0)
+
     def test_windows_seed_is_shared_without_sharing_browser_profiles(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

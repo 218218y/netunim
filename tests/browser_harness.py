@@ -273,17 +273,28 @@ def _free_port() -> int:
 
 
 def _wait_json(url: str, timeout: float = 10.0, *, process=None):
-    end = time.time() + timeout
+    # A cold Chromium process can publish the DevTools socket before /json/list
+    # finishes its first target enumeration. A 0.5s per-request timeout makes
+    # that state self-perpetuating: every poll aborts the slow first response
+    # and immediately starts another one. Keep the overall deadline strict,
+    # but allow an individual localhost request enough time to complete.
+    end = time.monotonic() + timeout
     last = None
-    while time.time() < end:
+    while True:
         if process is not None and process.poll() is not None:
             raise RuntimeError(f"Chrome exited before DevTools became ready (exit {process.returncode})")
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            with urllib.request.urlopen(url, timeout=0.5) as response:
+            with urllib.request.urlopen(url, timeout=min(5.0, remaining)) as response:
                 return json.load(response)
-        except Exception as exc:  # startup race
+        except Exception as exc:  # startup race / cold target enumeration
             last = exc
-            time.sleep(0.1)
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(0.1, remaining))
     raise RuntimeError(f"Chrome DevTools did not become available: {last}")
 
 
