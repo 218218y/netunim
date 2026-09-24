@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
-import {customerDebtStatus,customerDebtFilteredTotal,customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
+import {customerDebtStatus,customerDebtFilteredTotal,customerDebtMatchesFilter,customerDebtRenderModelData,customerStatsData} from '../netunim-orders/site/assets/js/domains/customers/model.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
 import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
@@ -49,9 +49,27 @@ test('customer summaries and open totals use remaining payment instead of origin
  ];
  const stats=customerStatsData({customerDebts:rows,customerOrders:[]});
  assert.equal(stats.openTotal,450);assert.equal(stats.openSuppliedTotal,600);assert.equal(stats.openUnsuppliedTotal,-150);assert.equal(stats.open,2);
- assert.equal(stats.missingInvoice,1);assert.equal(stats.closed,1);
+ assert.equal(stats.missingInvoice,3);assert.equal(stats.closed,1);
  assert.equal(ordersFinanceSummaryData({customerDebts:rows,suppliers:[],transactions:[]}).customerOpen,450,'the canonical cross-app dashboard summary must use the same remaining balance');
  assert.equal(customerDebtFilteredTotal(rows,'all'),450);assert.equal(customerDebtFilteredTotal(rows.filter(d=>!customerDebtProgressData(d).paymentComplete),'open'),450);
+});
+
+test('invoice follow-up includes unpaid and partly paid debts until the full invoice amount is recorded',()=>{
+ const rows=[
+  {id:'unpaid',amount:1000},
+  {id:'part-paid',amount:1000,debtProgress:[add('P1','payment',250)]},
+  {id:'part-invoiced',amount:1000,paid:true,debtProgress:[add('I1','invoice',400)]},
+  {id:'invoiced-open',amount:1000,invoiceIssued:true,debtProgress:[add('P2','payment',250)]},
+  {id:'closed',amount:1000,paid:true,invoiceIssued:true},
+ ];
+ const selected=filter=>rows.filter(row=>customerDebtMatchesFilter(customerDebtProgressData(row),filter)).map(row=>row.id);
+ assert.deepEqual(selected('open'),['unpaid','part-paid','invoiced-open']);
+ assert.deepEqual(selected('invoice'),['unpaid','part-paid','part-invoiced']);
+ assert.deepEqual(selected('closed'),['closed']);
+ assert.equal(customerDebtFilteredTotal(rows.filter(row=>selected('invoice').includes(row.id)),'invoice'),2600);
+ const state={customerDebts:rows,customerOrders:[]};
+ assert.equal(customerStatsData(state).missingInvoice,3);
+ assert.equal(customerDebtRenderModelData(state).stats.missingInvoice,3);
 });
 
 test('manual editor appends repeated partial additions, rejects overflow and resets without deleting history',()=>{

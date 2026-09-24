@@ -268,18 +268,18 @@ test('pending freshness favors generation before timestamp',()=>{
 
 test('customer debt summary excludes paid rows and treats negative open amounts as reverse debt',()=>{
  const state={customerDebts:[{amount:100,supplied:true},{amount:60,supplied:false},{amount:25},{amount:-40,supplied:false},{amount:70,paid:true,supplied:true},{amount:40,paid:true,invoiceIssued:true}],customerOrders:[{}]};
- assert.deepEqual(customerStatsData(state),{openTotal:145,openSuppliedTotal:100,openUnsuppliedTotal:45,allTotal:255,open:4,openSupplied:1,openUnsupplied:3,missingInvoice:1,closed:1,trackedOrders:1});
+ assert.deepEqual(customerStatsData(state),{openTotal:145,openSuppliedTotal:100,openUnsuppliedTotal:45,allTotal:255,open:4,openSupplied:1,openUnsupplied:3,missingInvoice:5,closed:1,trackedOrders:1});
 });
 test('customer debt attention and outstanding-money semantics stay separate',()=>{
  const open={paid:false,invoiceIssued:false},paidMissingInvoice={paid:true,invoiceIssued:false},closed={paid:true,invoiceIssued:true};
  assert.equal(customerDebtNeedsAttention(open),true);assert.equal(customerDebtNeedsAttention(paidMissingInvoice),true);assert.equal(customerDebtNeedsAttention(closed),false);
  assert.equal(customerDebtIsOutstanding(open),true);assert.equal(customerDebtIsOutstanding(paidMissingInvoice),false);assert.equal(customerDebtIsOutstanding(closed),false);
 });
-test('customer filtered totals keep all/open as debt totals but sum the selected follow-up filter',()=>{
+test('customer filtered totals keep payment and invoice balances independent',()=>{
  const rows=[{amount:100,paid:false,invoiceIssued:false},{amount:-10,paid:false,invoiceIssued:false},{amount:50,paid:true,invoiceIssued:false},{amount:25,paid:true,invoiceIssued:true}];
  assert.equal(customerDebtFilteredTotal(rows,'all'),90);
  assert.equal(customerDebtFilteredTotal(rows,'open'),90);
- assert.equal(customerDebtFilteredTotal(rows.filter(d=>d.paid&&!d.invoiceIssued),'invoice'),50);
+ assert.equal(customerDebtFilteredTotal(rows.filter(d=>!d.invoiceIssued),'invoice'),140);
  assert.equal(customerDebtFilteredTotal(rows.filter(d=>d.paid&&d.invoiceIssued),'closed'),25);
 });
 
@@ -337,7 +337,10 @@ test('customer header total follows each filter while all excludes paid follow-u
   {id:'D1',customerName:'Open',amount:100,paid:false,invoiceIssued:false,note:''},
   {id:'D2',customerName:'Invoice',amount:50,paid:true,invoiceIssued:false,note:''},
   {id:'D3',customerName:'Closed',amount:25,paid:true,invoiceIssued:true,note:''},
-  {id:'D4',customerName:'Reverse',amount:-10,paid:false,invoiceIssued:false,note:''}
+  {id:'D4',customerName:'Reverse',amount:-10,paid:false,invoiceIssued:false,note:''},
+  {id:'D5',customerName:'PartPaidNoInvoice',amount:100,debtProgress:[{id:'P5',kind:'payment',action:'add',amount:40}],note:''},
+  {id:'D6',customerName:'PartInvoice',amount:200,paid:true,debtProgress:[{id:'I6',kind:'invoice',action:'add',amount:80}],note:''},
+  {id:'D7',customerName:'FullyInvoicedOpen',amount:150,invoiceIssued:true,debtProgress:[{id:'P7',kind:'payment',action:'add',amount:50}],note:''}
  ],customerOrders:[]};
  const customerUi={customerTab:'debts',customerFilter:'all',customerSearch:'',customerBulkSelected:new Set(),customerBulkMode:false};
  const headerNode={textContent:'',classList:{toggle:()=>{}}},results={innerHTML:''},main={innerHTML:'',querySelector:selector=>selector==='[data-customer-visible-total]'?headerNode:null};
@@ -346,9 +349,11 @@ test('customer header total follows each filter while all excludes paid follow-u
  try{
   const view=createDomainsCustomersView({model:{state},customerUi,bindScrollViewport:()=>{},mountViewLayout:()=>{},customerStats:()=>customerStatsData(state),customerBulkHeader:()=>'',customerBulkControls:()=>'',syncCustomerBulkUi:()=>{},customerBottomSummary:()=>'',customerBulkCell:()=>'',scheduleSave:()=>{}});
   const renderedTotal=()=>main.innerHTML.match(/data-customer-visible-total[^>]*>([^<]*)<\/b>/)?.[1]||'';
-  const expected={all:90,open:90,invoice:50,closed:25};
+  const expected={all:250,open:250,invoice:360,closed:25};
   for(const mode of Object.keys(expected)){customerUi.customerFilter=mode;customerUi.customerSearch='';view.renderCustomers();assert.equal(renderedTotal(),money(expected[mode]),mode)}
-  customerUi.customerFilter='all';customerUi.customerSearch='';view.renderCustomers();assert.match(main.innerHTML,/>Open</);assert.match(main.innerHTML,/>Reverse</);assert.match(main.innerHTML,/>Invoice</);assert.doesNotMatch(main.innerHTML,/>Closed</);assert.match(main.innerHTML,/customer-add-btn[\s\S]*customer-visible-total/);
+  customerUi.customerFilter='open';view.renderCustomers();assert.match(main.innerHTML,/>PartPaidNoInvoice</);assert.match(main.innerHTML,/>FullyInvoicedOpen</);assert.doesNotMatch(main.innerHTML,/>PartInvoice</);
+  customerUi.customerFilter='invoice';view.renderCustomers();assert.match(main.innerHTML,/>PartPaidNoInvoice</);assert.match(main.innerHTML,/>PartInvoice</);assert.doesNotMatch(main.innerHTML,/>FullyInvoicedOpen</);assert.match(main.innerHTML,/בלי חשבונית מלאה/);assert.match(main.innerHTML,/נותר לחשבונית/);assert.match(main.innerHTML,/customer-debt-amount is-invoice-pending/);
+  customerUi.customerFilter='all';customerUi.customerSearch='';view.renderCustomers();assert.match(main.innerHTML,/>Open</);assert.match(main.innerHTML,/>Reverse</);assert.match(main.innerHTML,/>Invoice</);assert.match(main.innerHTML,/customer-debt-invoice-remaining[^>]*>נותר /);assert.doesNotMatch(main.innerHTML,/>Closed</);assert.match(main.innerHTML,/customer-add-btn[\s\S]*customer-visible-total/);
   customerUi.customerFilter='all';customerUi.customerSearch='Reverse';view.renderCustomers({resultsOnly:true});
   assert.equal(headerNode.textContent,money(-10));assert.match(results.innerHTML,/Reverse/);assert.doesNotMatch(results.innerHTML,/>Open</);
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}

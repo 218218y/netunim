@@ -11,12 +11,14 @@ import re
 import secrets
 from pathlib import Path
 import shutil
+import stat
 import socket
 import subprocess
 import tempfile
 import threading
 import time
 import urllib.request
+import urllib.parse
 
 try:
     import websocket
@@ -277,12 +279,13 @@ def _free_port() -> int:
     raise RuntimeError('No free localhost port in the dynamic range')
 
 
-def _wait_json(url: str, timeout: float = 10.0, *, process=None):
+def _wait_json(url: str | tuple[str, ...], timeout: float = 10.0, *, process=None):
     # A cold Chromium process can publish the DevTools socket before /json/list
     # finishes its first target enumeration. A 0.5s per-request timeout makes
     # that state self-perpetuating: every poll aborts the slow first response
     # and immediately starts another one. Keep the overall deadline strict,
     # but allow an individual localhost request enough time to complete.
+    urls = (url,) if isinstance(url, str) else url
     end = time.monotonic() + timeout
     last = None
     while True:
@@ -291,15 +294,19 @@ def _wait_json(url: str, timeout: float = 10.0, *, process=None):
         remaining = end - time.monotonic()
         if remaining <= 0:
             break
-        try:
-            with urllib.request.urlopen(url, timeout=min(5.0, remaining)) as response:
-                return json.load(response)
-        except Exception as exc:  # startup race / cold target enumeration
-            last = exc
+        for candidate in urls:
             remaining = end - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(0.1, remaining))
+            try:
+                with urllib.request.urlopen(candidate, timeout=min(5.0, remaining)) as response:
+                    return json.load(response)
+            except Exception as exc:  # startup race / cold target enumeration
+                last = exc
+        remaining = end - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(0.1, remaining))
     raise RuntimeError(f"Chrome DevTools did not become available: {last}")
 
 
@@ -374,9 +381,15 @@ def _remove_tree_verified(path: Path, *, timeout: float = 5.0) -> None:
     """
     deadline = time.monotonic() + timeout
     last_error = None
+    def clear_readonly(function, child, error):
+        if os.name != 'nt' or not isinstance(error, PermissionError):
+            raise error
+        # copytree preserves Windows read-only attributes from checked-out site assets.
+        os.chmod(child, stat.S_IWRITE)
+        function(child)
     while path.exists():
         try:
-            shutil.rmtree(path)
+            shutil.rmtree(path, onexc=clear_readonly)
         except OSError as error:
             last_error = error
         if not path.exists():
@@ -510,14 +523,14 @@ class BrowserSession:
             # A fresh CI machine can need more than 10s for its first Chrome boot.
             # Poll readiness, fail immediately on process exit, and leave application
             # assertions/timeouts unchanged. Include stderr before temp cleanup.
-            pages = _wait_json(f"http://127.0.0.1:{devtools_port}/json/list", timeout=30, process=self.proc)
+            pages = _wait_json(_devtools_urls(devtools_port, "/json/list"), timeout=30, process=self.proc)
         except Exception as error:
             diagnostics = browser_log.read_text(encoding='utf-8', errors='replace')[-8000:]
             raise RuntimeError(f"{error}\nChrome startup log:\n{diagnostics}") from error
-        self.devtools_url = f'http://127.0.0.1:{devtools_port}'
         page = next((item for item in pages if item.get("type") == "page"), None)
         if not page:
             raise RuntimeError("Chrome DevTools did not expose a page target")
+        self.devtools_url = f'http://{urllib.parse.urlsplit(page["webSocketDebuggerUrl"]).netloc}'
         self.ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=5)
         self.call("Runtime.enable")
         self.call("Page.enable")

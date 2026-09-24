@@ -327,7 +327,7 @@ ok('.customer-command{position:sticky;top:69px;z-index:10;margin-bottom:0;paddin
    and '.customer-command .filters{overflow:auto}' not in orders_css,
    "orders customers: the command bar wraps naturally when zoom reduces available width, while the desktop filter group remains atomic instead of becoming its own horizontal scroller")
 ok('.customer-work-panel{border-radius:14px}' in orders_css
-   and '.customer-table{width:100%!important;max-width:none;min-width:0!important;table-layout:fixed;margin:0}' in orders_css
+   and '.customer-table{width:100%!important;max-width:none;min-width:980px!important;table-layout:fixed;margin:0}' in orders_css
    and 'width:min(100%,1000px)' not in orders_css
    and '.customer-table th,.customer-table td{padding-inline:6px}' in orders_css
    and '.customer-table .customer-col-name{width:146px;min-width:0;padding-inline-start:10px}' in orders_css
@@ -335,13 +335,13 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table .customer-col-state{width:96px;padding-inline:4px;text-align:center}' in orders_css
    and '.customer-table .customer-col-note{width:auto;min-width:0}' in orders_css
    and '.customer-table .customer-col-clearing{width:72px}' in orders_css
-   and '.customer-table .customer-col-customer-id{width:82px}' in orders_css
+   and '.customer-table .customer-col-customer-id{width:108px}' in orders_css
    and '.customer-table .customer-col-order{' not in orders_css
    and '@media(min-width:1200px){.customer-table .customer-col-name{width:17%}' in orders_css
    and 'width:min(calc(100% - 24px),1500px)' not in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}' in orders_css
-   and '.customer-table .customer-col-note{width:22.5%}' in orders_css
-   and '.customer-table .customer-col-clearing{width:72px}.customer-table .customer-col-customer-id{width:82px}.customer-table .customer-col-actions{width:72px}' in orders_css
+   and '.customer-table .customer-col-note{width:calc(22.5% - 26px)}' in orders_css
+   and '.customer-table .customer-col-clearing{width:72px}.customer-table .customer-col-customer-id{width:108px}.customer-table .customer-col-actions{width:72px}' in orders_css
    and orders_css.count('.customer-table .customer-col-actions{width:72px}') == 4
    and '.customer-table .customer-col-actions{width:5%}' not in orders_css
    and '.customer-table .customer-col-actions{width:44px}' not in orders_css
@@ -349,10 +349,10 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table .customer-col-actions{width:30px}' not in orders_css
    and '@media(max-width:900px)' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}' in orders_css
-   and '.customer-table .customer-col-clearing{width:60px}.customer-table .customer-col-customer-id{width:72px}' in orders_css
+   and '.customer-table .customer-col-clearing{width:60px}.customer-table .customer-col-customer-id{width:104px}' in orders_css
    and '@media(max-width:700px) and (min-width:601px)' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}' in orders_css
-   and '.customer-table .customer-col-clearing{width:52px}.customer-table .customer-col-customer-id{width:64px}' in orders_css
+   and '.customer-table .customer-col-clearing{width:52px}.customer-table .customer-col-customer-id{width:100px}' in orders_css
    and '.status-toggle button{min-width:38px;padding:5px 7px' in orders_css
    and '.customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css

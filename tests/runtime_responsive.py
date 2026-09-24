@@ -83,7 +83,7 @@ const layoutSnapshot=()=>{
 def check_orders(browser: BrowserSession) -> list[dict]:
     browser.evaluate(
         r"""(()=>{
-          state.customerDebts=[{id:'RESP-DEBT',customerName:'לקוח בדיקה',amount:1250,orderNumber:'42',phone:'0500000000',paid:false,supplied:false,invoiceIssued:false,note:'הערה'}];
+          state.customerDebts=[{id:'RESP-DEBT',customerName:'לקוח בדיקה',amount:1250,orderNumber:'42',phone:'0500000000',customerId:'123456789',paid:false,supplied:false,invoiceIssued:false,note:'הערה'}];
           state.customerOrders=[{id:'RESP-ORDER',orderNumber:'42',customerName:'לקוח בדיקה',mark1:'א',mark2:'ב',mark3:'ג',mattresses:'מזרן',note:'הערה'}];
           state.checks=[{id:'RESP-CHECK',name:'לקוח בדיקה',amount:900,dueDate:'2026-09-15',status:'בקופה',checkNumber:'123',note:'הערה'}];
           state.inventoryItems=[{id:'RESP-INV',name:'מזרן בדיקה',category:'מזרונים',defaultLocation:'מחסן גדול'}];
@@ -117,6 +117,13 @@ def check_orders(browser: BrowserSession) -> list[dict]:
                 topbarWidth:document.querySelector('.topbar')?.getBoundingClientRect().width||0,
               };
               document.querySelector('[data-view="customers"]')?.click();await frame();
+              const customerIdInput=document.querySelector('[data-customer-bulk-id="RESP-DEBT"] .customer-col-customer-id input');
+              if(!customerIdInput)throw new Error('Customer ID field is missing');
+              const idStyle=getComputedStyle(customerIdInput),idCanvas=document.createElement('canvas').getContext('2d');
+              idCanvas.font=idStyle.font;
+              const idTextWidth=idCanvas.measureText(customerIdInput.value).width;
+              const idAvailableWidth=customerIdInput.clientWidth-parseFloat(idStyle.paddingLeft)-parseFloat(idStyle.paddingRight);
+              const customerIdFits=idTextWidth<=idAvailableWidth;
               document.querySelector('[data-action="open-debt-modal"]')?.click();await frame();
               const modal=document.querySelector('.modal-backdrop.open .modal');
               const modalVisible=withinViewport(modal);
@@ -131,7 +138,7 @@ def check_orders(browser: BrowserSession) -> list[dict]:
                 filters:document.querySelector('.customer-command > .filters')?.getBoundingClientRect().top,
                 actions:document.querySelector('.customer-command > .customer-add-btn')?.getBoundingClientRect().top,
               }:null;
-              return {width:innerWidth,height:innerHeight,routeResults,header,modalVisible,mobileCards,customerToolbar};
+              return {width:innerWidth,height:innerHeight,routeResults,header,modalVisible,mobileCards,customerToolbar,customerIdFits,idTextWidth,idAvailableWidth};
             })()"""
         )
         assert result["width"] == width and result["height"] == height, result
@@ -140,6 +147,7 @@ def check_orders(browser: BrowserSession) -> list[dict]:
         assert result["header"]["settingsLabel"] == "הגדרות", result
         assert not result["header"]["settingsText"], result
         assert result["modalVisible"], result
+        assert result["customerIdFits"], result
         if width <= 600:
             assert result["mobileCards"] == {"debtRow": "grid", "debtTableMin": "0px"}, result
         if width <= 700:
