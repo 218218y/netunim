@@ -85,3 +85,26 @@ test('Orders missing target authentication keeps a pending transfer locked off s
   assert.equal(f.calls.includes('birth'),false);
   assert.equal(f.calls.includes('render'),false);
 });
+
+test('Orders with an account cutover hydrates Shared before a DB capability failure renders Main',async()=>{
+  const model={state:{checks:[{id:'stale-main-copy'}]}},f=fixture({
+    model,storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
+    loadSession:()=>({access_token:'present'}),cloudEnabled:()=>true,
+    restoreBrowserStateFallback:async()=>f.calls.push('main-v2'),
+    recoverSharedChecksV2Primary:async()=>{f.calls.push('shared-v2');model.state.checks=[{id:'authoritative-shared-copy'}];return true},
+    ensureSyncCapabilities:async()=>{f.calls.push('capability-check');throw new Error('DB upgrade required')},
+    render:()=>f.calls.push(`render:${model.state.checks[0]?.id}`),
+  });
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
+  try{
+    await f.lifecycle.boot();
+    assert.ok(f.calls.indexOf('shared-v2')<f.calls.indexOf('capability-check'));
+    assert.ok(f.calls.includes('render:authoritative-shared-copy'));
+    assert.equal(f.calls.includes('render:stale-main-copy'),false);
+    assert.equal(f.session.syncCapabilitiesError?.message,'DB upgrade required');
+  }finally{
+    if(previous)Object.defineProperty(globalThis,'navigator',previous);
+    else delete globalThis.navigator;
+  }
+});

@@ -58,6 +58,10 @@ def run(db):
     denied(db, OWNER, 'public.activate_storage_protocol_v2(2,1,1)', 'PT409')
     assert json.loads(auth(db, OWNER, 'select public.activate_storage_protocol_v2(1,1,1)')) == {
         'orders': 2, 'kupa': 2, 'sharedChecks': 2}
+    # A browser role cannot mint a trusted v6 invocation, even when it can
+    # supply an arbitrary custom GUC in SQL. No permit survives an RPC call.
+    denied(db, OWNER, "netunim_internal.enter_storage_writer_v2('orders')", '42501')
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
     # The marker belongs to the authenticated owner; an unrelated account can
     # still use the compatibility writer until its own explicit activation.
     assert json.loads(auth(db, OTHER, 'select public.get_storage_protocol_state()')) == {
@@ -76,6 +80,8 @@ def run(db):
         old = ('public.save_' + name + '_document_v5(' + quote(doc) + ',1,' +
                quote(state) + ',' + quote('old-' + domain) + ',' + quote(deleted) + ",'{}')")
         denied(db, OWNER, old, 'PT426')
+        auth(db, OWNER, "DO $test$ BEGIN PERFORM set_config('app.netunim_storage_writer_protocol','2',true); " +
+             'PERFORM ' + old + "; RAISE EXCEPTION 'guc_bypass_succeeded'; EXCEPTION WHEN SQLSTATE 'PT426' THEN NULL; END $test$")
         for legacy in (
             'public.save_' + name + '_document(' + quote(doc) + ',1,' + quote(state) + ')',
             'public.save_' + name + '_document_v3(' + quote(doc) + ',1,' + quote(state) +
@@ -92,6 +98,7 @@ def run(db):
              "'; RAISE EXCEPTION 'direct_write_succeeded'; EXCEPTION WHEN SQLSTATE '42501' THEN NULL; END $test$")
         assert revision(db, OWNER, table, doc) == 1
         assert write(db, OWNER, domain, 6, 1, 'v2-' + domain, changed=True) == 2
+        assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
 
     # Restore is a separate public mutation entrypoint. A stale tab cannot
     # even stage a group for a newer client to pick up later.
@@ -124,6 +131,12 @@ def run(db):
 
 
 if __name__ == '__main__':
-    with IsolatedPostgres(schema_files=sorted((ROOT/'supabase/migrations').glob('*.sql'))) as database:
+    migrations = sorted((ROOT/'supabase/migrations').glob('*.sql'))
+    with IsolatedPostgres(schema_files=migrations[:-1], demotable_postgres=True) as database:
+        # Supabase's migration postgres role is not a superuser. Installing the
+        # new migration after demotion catches privileged function SET clauses.
+        database.sql('grant create on schema public to postgres; grant authenticated to postgres; '
+                     'alter role postgres nosuperuser bypassrls;')
+        database.migrate(migrations[-1].read_text(encoding='utf-8-sig'))
         run(database)
     print('PASS Storage V2 server fence: old RPC/direct write blocked, v6/restore allowed, owner isolation')

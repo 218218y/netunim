@@ -28,6 +28,7 @@ async function syncChecksV2({required=false,quiet=false}={}){
     const ok=await sharedChecksV2.sync(),cloud=await sharedChecksV2.cloudState();
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     checksSession.sharedChecksBase=clone(cloud.base.state.checks);checksSession.sharedChecksRevision=cloud.base.revision;
+    checksSession.sharedChecksUpdatedAt=sharedChecksV2.lastRemoteUpdatedAt||checksSession.sharedChecksUpdatedAt;
     checksSession.sharedChecksBankEvents=clone(cloud.base.state.bankEvents);checksSession.sharedChecksSaveRequested=!!cloud.pending&&!cloud.control?.conflict;
     checksSession.sharedChecksLastError=cloud.control?.conflict?'אותו צק שונה במקביל — נדרשת הכרעה':'';
     setSaveStatus(ok?'מסונכרן לענן':checksSession.sharedChecksLastError||'צקים ממתינים לסנכרון',ok?'ok':'saving');

@@ -38,6 +38,7 @@ async function syncChecksV2({required=false,quiet=false}={}){
     const ok=await sharedChecksV2.sync(),cloud=await sharedChecksV2.cloudState();
     if(!sharedChecksV2.primaryReady)throw new Error('shared_checks_owner_handoff_required');
     checksSession.checksCloudBase=clone(cloud.base.state.checks);checksSession.checksCloudRevision=cloud.base.revision;
+    checksSession.checksCloudUpdatedAt=sharedChecksV2.lastRemoteUpdatedAt||checksSession.checksCloudUpdatedAt;
     checksSession.checksBankEvents=clone(cloud.base.state.bankEvents);checksSession.checksSaveRequested=!!cloud.pending&&!cloud.control?.conflict;
     checksSession.checksCloudLastError=cloud.control?.conflict?'אותו צ׳ק שונה במקביל — נדרשת הכרעה':'';
     recomputeKupaNetFromCache();refreshCloudTimestamp();

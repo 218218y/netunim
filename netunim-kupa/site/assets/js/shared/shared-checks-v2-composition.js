@@ -6,11 +6,13 @@ import {createStorageV2Cutover,storageCutoverKey} from './storage-v2-cutover.js'
 // starts only after the existing local V2 namespace and clean V1 head have
 // been verified; no displayed account state is promoted implicitly.
 export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,applyMainState,main}={}){
-  let enabled=false;
   const cutover=createStorageV2Cutover({app:site,owner,primary});
   const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2'||owner()==='local'&&localStorage.getItem(`netunim-storage-engine-version:${site}:local`)==='2';
   const preparationRequested=()=>!!preparing()&&!cutoverRequested();
-  const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>enabled?(cutoverRequested()?'primary':preparationRequested()?'preparing':'off'):'off',
+  // Routing must switch to V2 as soon as its durable marker/preparation exists.
+  // Recovery may still be in progress (or a DB capability check may fail), but
+  // background polls must never manufacture a legacy outbox in that window.
+  const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>cutoverRequested()?'primary':preparationRequested()?'preparing':'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
     applyState:value=>{model.state.checks=value.checks;checksSession[eventsKey]=value.bankEvents;domainRevisions.touch('checks')},
     merge,readRemote,rpc,verifyLegacyClean});
@@ -19,7 +21,7 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   runtime.setBoundaryGate(()=>boundary.locked);
   function lockPreparation(){
     if(!preparationRequested()||!primary())return false;
-    enabled=true;return true;
+    return true;
   }
   async function enablePreparation(){
     if(!lockPreparation())return false;
@@ -29,7 +31,6 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   async function recoverPrimary(){
     if(!cutoverRequested()&&!preparationRequested())return false;
     if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
-    enabled=true;
     const recovered=await runtime.recover();
     if(!recovered){if(preparationRequested())return false;throw new Error('shared_checks_primary_checkpoint_missing')}
     const interrupted=await boundary.pending();

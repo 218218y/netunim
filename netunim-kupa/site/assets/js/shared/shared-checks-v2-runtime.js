@@ -11,7 +11,7 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,verifyLegacyClean,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
-  let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,boundaryGate=()=>false;
+  let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
@@ -24,7 +24,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),role:'primary'});active=false;cursorReady=false;commits=Promise.resolve()}
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),role:'primary'});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve()}
     return storage;
   }
   async function publish(store){
@@ -131,7 +131,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
         if(rejected)await store.rejectAndRebase(flight.operationId,row.revision,remote,{currentState,expectedSeq:local.seq,control});
         else await store.acknowledge(flight.operationId,row.revision,remote,{currentState,expectedSeq:local.seq,control});
       }catch(error){if(stale(error))continue;throw error}
-      assertContext(store);diagnostics[rejected?'rebases':'acks']++;await publish(store);return !control;
+      assertContext(store);diagnostics[rejected?'rebases':'acks']++;lastRemoteUpdatedAt=row.updated_at||lastRemoteUpdatedAt;await publish(store);return !control;
     }
     throw new Error('shared_checks_concurrent_checkpoint');
   }
@@ -152,7 +152,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
         // A mutation arriving during the read must be sent/merged normally.
         if(store.seq!==before)continue;
         try{assertSyncAllowed(store);await store.adoptCloudHead(row.revision,remote)}catch(error){if(error.message==='shared_checks_cloud_pending'||error.message==='storage_cloud_pending'||stale(error))continue;throw error}
-        assertContext(store);await publish(store);return true;
+        assertContext(store);lastRemoteUpdatedAt=row.updated_at||lastRemoteUpdatedAt;await publish(store);return true;
       }
       assertSyncAllowed(store);const flight=await store.materializeFlight({operationId:operationId(),prepareAudit:value=>operationAuditMetadata({site,mutationType:value.mutationType,surface:value.surface,baseRevision:value.baseRevision,beforeState:cloud.base.state,afterState:value.snapshot,collections:['checks'],deleteCount:(value.deleteIntents?.checks||[]).length})});assertContext(store);
       const deletedIds=flight.deleteIntents?.checks||[];
@@ -208,5 +208,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     get primaryReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get localReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get cloudReady(){return active&&cursorReady&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
+    get lastRemoteUpdatedAt(){return lastRemoteUpdatedAt},
     get durabilityAtRisk(){return risks.size>0},get commitPromise(){return commits}};
 }
