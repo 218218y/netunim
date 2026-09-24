@@ -382,12 +382,16 @@ orders_supplier_editor = (O / "site/assets/js/domains/suppliers/editor.js").read
 orders_normalization = (O / "site/assets/js/state/normalization.js").read_text(encoding="utf-8")
 orders_actions = (O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 ok('supplier-data-table' in orders_supplier_view
-   and '@media(min-width:1000px){.supplier-data-table{width:100%;min-width:0!important;table-layout:fixed}' in orders_css
-   and '.supplier-data-table .col-row-actions{width:50px}' in orders_css
-   and '.supplier-data-table .inline-input{min-width:0;padding-inline:4px}' in orders_css
-   and '.supplier-data-table .status-toggle button{min-width:31px;padding-inline:4px}' in orders_css
-   and '.supplier-data-table.supplier-all-table .col-supplier{min-width:0;width:10%}' in orders_css,
-   "orders suppliers: desktop supplier tables opt out of the global 1300px minimum, use a fixed responsive layout, and compact the action/status/input columns instead of requiring a small horizontal scroll")
+   and '@media(min-width:1000px){.supplier-data-table:not(.supplier-all-table){min-width:0!important;table-layout:auto}' in orders_css
+   and '.supplier-data-table:not(.supplier-all-table) .col-row-actions{width:54px}' in orders_css
+   and '.supplier-data-table:not(.supplier-all-table) .row-actions{gap:0}' in orders_css
+   and '.supplier-data-table:not(.supplier-all-table) .icon-btn{padding-inline:4px}' in orders_css
+   and '.supplier-data-table .col-action{min-width:0;width:20%}' not in orders_css
+   and '.supplier-data-table .col-supply{min-width:0;width:10%}' not in orders_css
+   and '.supplier-data-table .col-note{min-width:0;width:10%}' not in orders_css
+   and '.supplier-data-table .status-toggle button{min-width:31px;padding-inline:4px}' not in orders_css
+   and '.supplier-data-table{width:100%;min-width:0!important;table-layout:fixed}' not in orders_css,
+   "orders suppliers: desktop supplier detail tables drop only the global 1300px minimum, preserve the original automatic column proportions, and compact only the row-action cell")
 ok('data-action="filter-mode-4"' not in orders_supplier_view
    and "filterMode==='hm'" not in orders_supplier_view
    and "'filter-mode-4':" not in orders_actions
