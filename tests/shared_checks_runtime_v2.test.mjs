@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
+import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
@@ -38,6 +39,27 @@ function fixture(site='orders',options={}){
 }
 
 for(const site of ['orders','kupa']){
+  test(`${site}: account cutover routes Shared polling to V2 before recovery`,()=>{
+    const prior=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+    Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>key===`netunim-storage-cutover-version:${site}:A`?'2':null}});
+    try{
+      const composition=createSharedChecksV2Composition({site,owner:()=> 'A',primary:()=>true,
+        model:{state:{checks:[]}},checksSession:{checksBankEvents:[],sharedChecksBankEvents:[]},eventsKey:site==='orders'?'checksBankEvents':'sharedChecksBankEvents',
+        domainRevisions:{touch:noop},merge:noop,readRemote:async()=>null,rpc:async()=>null,
+        verifyLegacyClean:async()=>true,main:{setBoundaryGate:noop}});
+      assert.equal(composition.runtime.requested,true);
+      assert.equal(composition.runtime.primaryReady,false);
+    }finally{
+      if(prior)Object.defineProperty(globalThis,'localStorage',prior);
+      else delete globalThis.localStorage;
+    }
+  });
+  test(`${site}: Shared V2 publishes the server timestamp without another metadata read`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    f.head={...f.head,updated_at:'2026-09-24T10:20:00Z'};
+    assert.equal(await runtime.sync(),true);
+    assert.equal(runtime.lastRemoteUpdatedAt,'2026-09-24T10:20:00Z');
+  });
   test(`${site}: local Shared Checks survives edit and restart without a cloud cursor`,async()=>{
     const f=fixture(site);f.owner='local';
     let runtime=f.create();await runtime.initializeLocal({state:f.visible});

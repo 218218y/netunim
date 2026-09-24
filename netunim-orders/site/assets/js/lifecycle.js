@@ -132,8 +132,16 @@ async function boot(){
     return;
   }
 
+  // The Main checkpoint still contains a non-authoritative checks copy. A
+  // cut-over account must hydrate Shared before any early capability exit can
+  // render business state or allow a background poll to inspect that copy.
+  let sharedPrimary=false;
+  if((cutoverActive||localEngineActive)&&!transitionPreparing){
+    sharedPrimary=await recoverSharedChecksV2Primary();
+    if(!sharedPrimary)throw new Error('orders_shared_v2_recovery_required');
+  }
   if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
-  if(session.syncCapabilitiesError){render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
+  if(session.syncCapabilitiesError){if(!cutoverActive||sharedPrimary)render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
   transitionPreparing=storageTransitionPreparing();
   if(transitionPreparing){
@@ -142,7 +150,7 @@ async function boot(){
     catch(error){console.error('Storage V2 cutover resume',error);render();setCloud('ענן: מעבר Storage V2 דורש השלמה','error');setSave('העריכה נעולה עד השלמת מעבר האחסון','error');return}
   }
 
-  const sharedPrimary=await recoverSharedChecksV2Primary();
+  if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   if(localEngineActive&&!sharedPrimary)throw new Error('orders_local_shared_v2_recovery_required');
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}

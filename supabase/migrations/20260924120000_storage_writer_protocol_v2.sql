@@ -14,6 +14,48 @@ create table netunim_internal.storage_writer_protocol (
 );
 revoke all on netunim_internal.storage_writer_protocol from public, anon, authenticated;
 
+-- A protected, transaction-local invocation record identifies the v6 entrypoint.
+-- Custom GUCs cannot be used for this: Supabase's migration role may not SET
+-- them, and a caller-controlled GUC would not be an authorization boundary.
+create table netunim_internal.storage_writer_invocations (
+  backend_pid integer not null,
+  transaction_id bigint not null,
+  owner_id uuid not null,
+  domain text not null check (domain in ('orders','kupa','shared-checks')),
+  primary key (backend_pid,transaction_id,owner_id,domain)
+);
+revoke all on netunim_internal.storage_writer_invocations from public, anon, authenticated;
+
+create function netunim_internal.enter_storage_writer_v2(p_domain text)
+returns void language plpgsql security definer
+set search_path to 'pg_catalog', 'netunim_internal'
+as $function$
+declare v_owner uuid:=auth.uid();
+begin
+  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;
+  if p_domain not in ('orders','kupa','shared-checks') then
+    raise exception 'storage_protocol_domain_invalid' using errcode='22023';
+  end if;
+  insert into netunim_internal.storage_writer_invocations
+    (backend_pid,transaction_id,owner_id,domain)
+  values (pg_backend_pid(),txid_current(),v_owner,p_domain)
+  on conflict do nothing;
+end
+$function$;
+revoke all on function netunim_internal.enter_storage_writer_v2(text) from public, anon, authenticated;
+
+create function netunim_internal.leave_storage_writer_v2(p_domain text)
+returns void language plpgsql security definer
+set search_path to 'pg_catalog', 'netunim_internal'
+as $function$
+begin
+  delete from netunim_internal.storage_writer_invocations
+  where backend_pid=pg_backend_pid() and transaction_id=txid_current()
+    and owner_id=auth.uid() and domain=p_domain;
+end
+$function$;
+revoke all on function netunim_internal.leave_storage_writer_v2(text) from public, anon, authenticated;
+
 create function netunim_internal.guard_storage_writer_protocol_v2()
 returns trigger language plpgsql security definer
 set search_path to 'pg_catalog', 'netunim_internal'
@@ -27,7 +69,11 @@ begin
        where p.owner_id = new.owner_id and p.domain = tg_argv[0]
          and p.min_writer_protocol >= 2
      )
-     and coalesce(current_setting('app.netunim_storage_writer_protocol',true),'') <> '2' then
+     and not exists (
+       select 1 from netunim_internal.storage_writer_invocations i
+       where i.backend_pid=pg_backend_pid() and i.transaction_id=txid_current()
+         and i.owner_id=new.owner_id and i.domain=tg_argv[0]
+     ) then
     raise exception 'storage_protocol_upgrade_required'
       using errcode = 'PT426',
             hint = 'Reload the current Storage V2 client before editing this account.';
@@ -61,7 +107,11 @@ begin
          and p.domain in (new.app_site,'shared-checks')
          and p.min_writer_protocol>=2
      )
-     and coalesce(current_setting('app.netunim_storage_writer_protocol',true),'') <> '2' then
+     and not exists (
+       select 1 from netunim_internal.storage_writer_invocations i
+       where i.backend_pid=pg_backend_pid() and i.transaction_id=txid_current()
+         and i.owner_id=new.owner_id and i.domain=new.app_site
+     ) then
     raise exception 'storage_protocol_upgrade_required' using errcode='PT426';
   end if;
   return new;
@@ -72,84 +122,117 @@ create trigger restore_group_storage_protocol_guard
 before insert or update on netunim_internal.restore_operation_groups for each row
 execute function netunim_internal.guard_restore_storage_protocol_v2();
 
--- SET on the function is scoped to this call and restored before control
--- returns to the caller. Legacy v5 calls cannot inherit a previous v6 call's
--- setting in the same transaction. The verified v5 implementation remains the
--- single source of revision, delete-intent, audit, backup and ledger behavior.
+-- Only the v6 SECURITY DEFINER entrypoints can install an invocation record.
+-- Each removes it before returning, including when another RPC follows in the
+-- same transaction. An exception rolls the insertion back with the statement.
+-- The verified v5 implementation remains the source of revision, delete-intent,
+-- audit, backup and ledger behavior.
 create function public.save_order_management_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_delete_intents jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.save_order_management_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('orders');
+  return query select * from public.save_order_management_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('orders');
+end
 $function$;
 create function public.bulk_delete_save_order_management_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_delete_intents jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.bulk_delete_save_order_management_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('orders');
+  return query select * from public.bulk_delete_save_order_management_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('orders');
+end
 $function$;
 create function public.save_kupa_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_delete_intents jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.save_kupa_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('kupa');
+  return query select * from public.save_kupa_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('kupa');
+end
 $function$;
 create function public.bulk_delete_save_kupa_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_delete_intents jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.bulk_delete_save_kupa_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('kupa');
+  return query select * from public.bulk_delete_save_kupa_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('kupa');
+end
 $function$;
 create function public.save_shared_checks_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_deleted_check_ids jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.save_shared_checks_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('shared-checks');
+  return query select * from public.save_shared_checks_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('shared-checks');
+end
 $function$;
 create function public.bulk_delete_save_shared_checks_document_v6(
   p_document_name text,p_expected_revision bigint,p_state jsonb,p_operation_id text,p_deleted_check_ids jsonb,p_audit jsonb)
 returns table(revision bigint,updated_at timestamptz,state jsonb,operation_replayed boolean,operation_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.bulk_delete_save_shared_checks_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit)
+begin
+  perform netunim_internal.enter_storage_writer_v2('shared-checks');
+  return query select * from public.bulk_delete_save_shared_checks_document_v5(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit);
+  perform netunim_internal.leave_storage_writer_v2('shared-checks');
+end
 $function$;
 create function public.apply_restore_group_v6(p_restore_group_id uuid)
 returns table(restore_group_id uuid,phase text,main_revision bigint,checks_revision bigint)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.apply_restore_group_v5(p_restore_group_id)
+declare v_app text;
+begin
+  select g.app_site into v_app from netunim_internal.restore_operation_groups g
+    where g.owner_id=auth.uid() and g.restore_group_id=p_restore_group_id;
+  if v_app not in ('orders','kupa') or v_app is null then
+    raise exception 'restore_group_missing' using errcode='P0002';
+  end if;
+  perform netunim_internal.enter_storage_writer_v2(v_app);
+  perform netunim_internal.enter_storage_writer_v2('shared-checks');
+  return query select * from public.apply_restore_group_v5(p_restore_group_id);
+  perform netunim_internal.leave_storage_writer_v2('shared-checks');
+  perform netunim_internal.leave_storage_writer_v2(v_app);
+end
 $function$;
 create function public.stage_restore_group_v6(
   p_restore_group_id uuid,p_app_site text,p_main_document_name text,p_main_base_revision bigint,
   p_main_state jsonb,p_main_delete_intents jsonb,p_checks_document_name text,p_checks_base_revision bigint,
   p_checks_state jsonb,p_checks_delete_ids jsonb,p_main_operation_id text,p_checks_operation_id text,p_audit jsonb)
 returns table(restore_group_id uuid,phase text)
-language sql security invoker
+language plpgsql security definer
 set search_path to 'pg_catalog', 'public', 'netunim_internal'
-set app.netunim_storage_writer_protocol to '2'
 as $function$
-  select * from public.stage_restore_group_v5(p_restore_group_id,p_app_site,p_main_document_name,p_main_base_revision,
+begin
+  perform netunim_internal.enter_storage_writer_v2(p_app_site);
+  return query select * from public.stage_restore_group_v5(p_restore_group_id,p_app_site,p_main_document_name,p_main_base_revision,
     p_main_state,p_main_delete_intents,p_checks_document_name,p_checks_base_revision,p_checks_state,p_checks_delete_ids,
-    p_main_operation_id,p_checks_operation_id,p_audit)
+    p_main_operation_id,p_checks_operation_id,p_audit);
+  perform netunim_internal.leave_storage_writer_v2(p_app_site);
+end
 $function$;
 
 revoke all on function public.save_order_management_document_v6(text,bigint,jsonb,text,jsonb,jsonb) from public, anon;
