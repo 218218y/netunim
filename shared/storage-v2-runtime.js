@@ -97,6 +97,17 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     })();
     starting=request;startingIdentity=activeIdentity;return request;
   }
+  async function recoverReadOnly(){
+    if(!primaryMode())return null;
+    const runtimeMode=mode();diagnostics.mode=runtimeMode;const active=create(),activeIdentity=identity;
+    if(corruptIdentity===activeIdentity)return null;
+    try{
+      const recovered=await active.recover();
+      if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
+      if(!recovered||recovered.appMetadata?.storageRole!=='primary')return null;
+      diagnostics.recoveries++;return {...recovered,source:'v2-readonly'};
+    }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal')corruptIdentity=activeIdentity;return null}
+  }
   async function recoverForOwner({intent,sourceOwner,state=null,appMetadata={}}={}){
     const target=currentOwner();
     if(intent==='load-account')return recover(null,appMetadata);
@@ -238,5 +249,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

@@ -5,7 +5,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,recoverLocalV2State=async()=>null,recoverSharedChecksV2Primary=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave, setCloud, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle, showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState({v2Only=false}={}){
   if(v2Only){
     const v2=await refreshStorageV2CloudState();
@@ -87,14 +87,38 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
   startupMark('background-ready');
 }
 
+async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
+  for(let attempt=0;attempt<attempts;attempt++){
+    try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
+    if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,delay));
+  }
+  return null;
+}
+
 async function boot(){
   startupMark('boot-start');
   await acquirePrimaryTabLock();startupMark('primary-tab-ready');
   await hydrateStorageOwner();startupMark('storage-owner-ready');
   loadSession();
   const transfer=await hydrateStorageV2OwnerTransfer();
+  await hydrateStorageTransition();await hydrateLocalBirth();
+  const localOwner=storageOwnerCurrent()==='local';
+  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
+
+  if(!tab.primaryTab){
+    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing());
+    let shown=false;
+    if(v2Required){
+      const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
+      const sharedRecovered=mainRecovered&&await retryReadOnlyRecovery(()=>recoverSharedChecksV2ReadOnly());
+      shown=!!(mainRecovered&&sharedRecovered);
+    }else shown=await restoreBrowserStateReadOnly();
+    if(shown){render({supplierScrollMode:'end'});startupMark('first-render');setCloud('ענן: קריאה בלבד','offline');setSave('מקומי: קריאה בלבד','',folderSaveTitle())}
+    else{setCloud('ענן: קריאה בלבד — הנתונים טרם זמינים','offline');setSave('קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי','error')}
+    showSecondaryTabGuard();syncFolderAccessButton();return;
+  }
+
   if(transfer||storageV2OwnerTransferPreparing()){
-    if(!tab.primaryTab){showSecondaryTabGuard();syncFolderAccessButton();return}
     try{await resumeStorageV2OwnerTransfer()}
     catch(error){
       console.error('Orders Storage V2 owner transfer resume',error);
@@ -102,14 +126,8 @@ async function boot(){
       setSave('העריכה נעולה עד השלמת מעבר החשבון','error');
       syncFolderAccessButton();return;
     }
+    cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine();transitionPreparing=storageTransitionPreparing();
   }
-  await hydrateStorageTransition();await hydrateLocalBirth();
-  const localOwner=storageOwnerCurrent()==='local';
-  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
-
-  // A secondary tab cannot establish or resume the two-journal local birth.
-  // Nor may it show a stale V1 snapshot while the primary tab is doing so.
-  if(!tab.primaryTab&&localOwner){showSecondaryTabGuard();syncFolderAccessButton();return}
   if(localOwner){
     try{
       if(!localEngineActive){await ensureLocalBirth();localEngineActive=await verifyLocalStorageEngine()}
@@ -122,15 +140,6 @@ async function boot(){
       syncFolderAccessButton();return;
     }
   }else try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive||localEngineActive)throw e;console.error('browser state recovery',e)}
-
-  if(!tab.primaryTab){
-    // A secondary tab cannot resume a durable cutover or acquire Shared Checks
-    // primary ownership. Keep it read-only for both an active and an interrupted cutover.
-    if(cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing()){showSecondaryTabGuard();syncFolderAccessButton();return}
-    setCloud('ענן: לשונית משנית','offline');render({supplierScrollMode:'end'});startupMark('first-render');showSecondaryTabGuard();syncFolderAccessButton();setSave('מקומי: קריאה בלבד','',folderSaveTitle());
-    void initializeLocalServices();
-    return;
-  }
 
   // The Main checkpoint still contains a non-authoritative checks copy. A
   // cut-over account must hydrate Shared before any early capability exit can

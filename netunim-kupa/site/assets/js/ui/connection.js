@@ -19,7 +19,7 @@ async function handleCloudConnectButton(){
   await openCloudUsingSavedSession({interactive:true});
 }
 
-function showSecondaryTabGuard(){if(tab.primaryTab)return;document.getElementById('connectScreen').style.display='flex';setConnectUI({title:'ניהול הקופה פתוח בלשונית אחרת',text:'כדי למנוע שתי כתיבות מקבילות לאותה קופה, רק לשונית אחת יכולה לערוך ולשמור.',note:'סגור את הלשונית האחרת או רענן את העמוד אחרי שסגרת אותה. הלשונית הזו לא תבצע שמירות כל עוד הנעילה תפוסה.'})}
+function showSecondaryTabGuard(){const readOnly=!tab.primaryTab;const banner=document.getElementById('readOnlyTabBanner');if(banner)banner.hidden=!readOnly;document.body.classList.toggle('secondary-readonly',readOnly);if(readOnly){const connect=document.getElementById('connectScreen');if(connect)connect.style.display='none'}}
 
 function setConnectUI({title,text,note,showLast=false,showChoose=false,showFile=false,showCloud=false}){
   document.getElementById('connectScreen').style.display='flex';

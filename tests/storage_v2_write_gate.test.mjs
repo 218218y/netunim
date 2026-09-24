@@ -108,18 +108,22 @@ test('durable cutover marker must agree with its synchronous cache and requires 
   assert.equal(await cutover.verify(),false);
 });
 
-for(const marker of ['cloud','local'])test(`Orders secondary tab cannot render stale Main checks after ${marker} V2 marker`,async()=>{
+for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main and Shared read-only before render after ${marker} V2 marker`,async()=>{
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
     const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       storageOwnerCurrent:()=>marker==='local'?'local':'account',
-      acquirePrimaryTabLock:async()=>{},loadSession:()=>null,restoreBrowserStateFallback:async()=>calls.push('main-recovered'),
-      recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks')},
-      render:()=>{throw new Error('stale business state rendered')},showSecondaryTabGuard:()=>calls.push('guard'),
+      acquirePrimaryTabLock:async()=>{},loadSession:()=>null,
+      restoreBrowserStateFallback:async()=>{throw new Error('secondary used legacy Main recovery')},
+      restoreBrowserStateReadOnly:async()=>{throw new Error('V2 secondary used legacy read-only recovery')},
+      recoverReadOnlyV2State:async()=>{calls.push('main-readonly');return {source:'v2-readonly'}},
+      recoverSharedChecksV2ReadOnly:async()=>{calls.push('shared-readonly');model.state.checks=[];return {seq:1}},
+      recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks writer')},
+      render:()=>{assert.deepEqual(model.state.checks,[]);calls.push('render')},showSecondaryTabGuard:()=>calls.push('guard'),
       syncFolderAccessButton:()=>calls.push('folder')});
     await lifecycle.boot();
-    assert.deepEqual(calls,marker==='local'?['guard','folder']:['main-recovered','guard','folder']);
+    assert.deepEqual(calls,['main-readonly','shared-readonly','render','guard','folder']);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 

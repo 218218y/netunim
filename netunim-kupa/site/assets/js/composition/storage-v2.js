@@ -233,7 +233,12 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
     if(!recovered)throw new Error('storage_local_engine_main_recovery_required');
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverLocalV2State,
+  async function recoverReadOnlyV2State(){
+    const p=requirePorts(),recovered=await p.storageShadow.recoverReadOnly?.();
+    if(!recovered)return false;
+    p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
+  }
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),

@@ -136,6 +136,7 @@ return {
   tab:{
     primaryTab:true,
     primaryTabReady:false,
+    readOnlyTab:false,
     primaryLockRelease:null
   },
   session:{

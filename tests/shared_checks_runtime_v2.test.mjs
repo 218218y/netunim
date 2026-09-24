@@ -202,3 +202,20 @@ test('Shared Checks bootstrap refuses divergent shadow promotion and preserves t
   await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-mismatch:shared'}),/existing_head_mismatch/);
   const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,shadowState);
 });
+
+
+test('Shared Checks read-only recovery uses an isolated non-writer store',async()=>{
+  let applied=null,primaryPredicate=null,openCalls=0;
+  const visible=state([{id:'C',amount:100}]);
+  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=> 'A',primary:()=>false,mode:()=> 'primary',readState:()=>visible,applyState:value=>{applied=clone(value)},merge:noop,readRemote:async()=>null,rpc:async()=>null,verifyLegacyClean:async()=>true,
+    createStorage:options=>{primaryPredicate=options.primary;return {
+      open:async()=>{openCalls++;throw new Error('writer open must not run')},
+      recoverReadOnly:async()=>({state:visible,seq:4,appMetadata:{storageRole:'primary'}}),
+    }},
+  });
+  assert.equal(await runtime.recoverReadOnly()!=null,true);
+  assert.equal(primaryPredicate(),false);
+  assert.equal(openCalls,0);
+  assert.deepEqual(applied,visible);
+  assert.equal(runtime.primaryReady,false);
+});

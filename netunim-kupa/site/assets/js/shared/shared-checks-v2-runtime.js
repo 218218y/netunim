@@ -50,6 +50,16 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     })();
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
   }
+  async function recoverReadOnly(){
+    if(!primaryMode()||!currentOwner())return null;
+    const scopedOwner=currentOwner(),store=createStorage({owner:()=>scopedOwner,primary:()=>false,role:'primary'});
+    try{
+      const recovered=await store.recoverReadOnly();
+      if(scopedOwner!==currentOwner())throw new Error('shared_checks_owner_changed');
+      if(!recovered)return null;
+      applyState(canonical(recovered.state));diagnostics.recoveries++;return recovered;
+    }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;return null}
+  }
   async function initialize({state,revision,intent,sourceOwner,bootstrapOperationId=''}={}){
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
@@ -199,7 +209,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=storage;await commits;assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
   }
-  return {recover,initialize,initializeLocal,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+  return {recover,recoverReadOnly,initialize,initializeLocal,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     observe:shadow.mutation,observeBoundary:shadow.boundary,
     async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;return cloud},

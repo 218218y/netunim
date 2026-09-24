@@ -198,6 +198,7 @@ const syncRecovery=createSyncRecovery({
   getCloudPending:(...args)=>storagePending.getCloudPending(...args),
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   loadBrowserState:(...args)=>storageBrowser.loadBrowserState(...args),
+  loadBrowserStateReadOnly:(...args)=>storageBrowser.loadBrowserStateReadOnly(...args),
   loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
   loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
   sharedChecksPendingExists:(...args)=>syncChecksState.sharedChecksPendingExists(...args),
@@ -786,11 +787,14 @@ const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}),
   recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
+  recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),
   ...storageV2Coordinator.transitionLifecyclePorts(),
   verifyStorageCutover,
   model,
   recoverSharedChecksV2Primary,
+  recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
+  openBrowserStateReadOnly:(...args)=>syncRecovery.openBrowserStateReadOnly(...args),
   render:(...args)=>uiNavigation.render(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   session,
@@ -833,6 +837,8 @@ const lifecycle=createLifecycle({
   configureCloudConnectButton:(...args)=>uiConnection.configureCloudConnectButton(...args),
   handleCloudConnectButton:(...args)=>uiConnection.handleCloudConnectButton(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
+  setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
+  setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   requestPersistentBrowserStorage:(...args)=>storageBrowser.requestPersistentBrowserStorage(...args),
   loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
   loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
@@ -853,14 +859,21 @@ const lifecycle=createLifecycle({
   tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
 });
 
-function canRunInteractiveAction(){
+const SECONDARY_READ_ONLY_ACTIONS=new Set([
+  'cashflow-breakdown','cashflow-breakdown-date','select-input','set-page','check-tab','check-tab-2','check-tab-3','check-account','check-bank-history-page','check-year','toggle-checks-forecast','render-checks-search','clear-check-focus',
+  'expenses-hub-tab','credit-details-page','credit-search','expense-search','cash-search','notes-search','credit-view','toggle-credit-forecast','credit-account-filter','credit-provider-filter','credit-card-filter','credit-date-apply','credit-detail-upcoming','credit-detail-upcoming-day','credit-detail-month','credit-detail-month-day','credit-detail-focus','clear-credit-detail-focus',
+  'notes-workspace-notes','notes-workspace-sheet','set-active-notes-sheet','set-bank-account-view','set-bank-data-view','view-bank-cheque-image','bank-search','bank-date-mode','bank-date-apply','bank-date-from','bank-date-to','toggle-bank-sync-options','toggle-credit-sync-options',
+  'copy-safe-credit-diagnostics','export-bank-cheque-diagnostics','export-credit-data-diagnostics','download-json-backup','refresh-cloud-backups','load-more-cloud-backups','preview-cloud-backup','download-cloud-backup','download-selected-cloud-backup','export-c-s-v','export-c-s-v-2','close-modal','view-check-bank-alerts'
+]);
+function canRunInteractiveAction(name=''){
+  if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){uiStatus.toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
   if(session.syncCapabilitiesError){uiStatus.toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
   if(session.syncCapabilitiesChecking||session.startupCloudHydrating){uiStatus.toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
   return true
 }
 const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:canRunInteractiveAction})};
 
-document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(canRunInteractiveAction())uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
+document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
 
@@ -971,11 +984,11 @@ const uiActions=createUiActions({
 });
 
 
-window.addEventListener('online',()=>{if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
-window.addEventListener('offline',()=>{if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+window.addEventListener('online',()=>{if(!tab.primaryTab)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+window.addEventListener('offline',()=>{if(!tab.primaryTab)return;if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 uiSidebar.bind();
-document.getElementById('backupTop').addEventListener('click',uiBackup.manualBackup);
+document.getElementById('backupTop').addEventListener('click',()=>{if(canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('pagehide',()=>{

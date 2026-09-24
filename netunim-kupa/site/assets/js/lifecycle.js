@@ -7,7 +7,7 @@ import {rawCreditSchedule, creditSchedule, inactiveCreditExpired, creditProgress
 import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,recoverLocalV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,openBrowserStateFallback=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,openBrowserStateFallback=async()=>false,openBrowserStateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
 function runtimeSelfCheck(){
   const required={assertValidCloudState,normalizeSharedChecks,prepareKupaCloudState,saveChecksState,saveSharedChecksToCloud,syncSharedChecksFromCloud,pollSharedChecks,num,money,dateFmt,todayISO,localISO,dObj,daysFromToday,monthKey,monthLabel,addMonthsISO,checkDateParts,checkDateEditorMarkup,checkDateEditorValue,commitCheckDateEditor,setCheckDateValue,normalizeCheckModalDates,uid,activeChecks,depositedChecks,cashBalance,checksBalance,depositedBalance,checkUrgency,rawCreditSchedule,creditSchedule,inactiveCreditExpired,creditProgress,pendingInstallments,allInstallments,monthSumInstallments,expenseOccurrencesForMonth,monthSumExpenses,bankBaseBalance,bankAdjustments,bankAdjustmentsTotal,bankCurrentBalance,bankAsOfDate,sharedChecksObservedSequence,normalizeSharedBankEvents,monthKeysBetween,nextCreditCycle,modalFormSnapshot,armModalDraftGuard,modalHasUnsavedDraft,clearModalDraftGuard,openLastFolder};
   const missing=Object.entries(required).filter(([,fn])=>typeof fn!=='function').map(([name])=>name);
@@ -20,6 +20,14 @@ function runtimeSelfCheck(){
   return true;
 }
 
+async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
+  for(let attempt=0;attempt<attempts;attempt++){
+    try{const result=await fn();if(result)return result}catch(error){if(attempt===attempts-1)console.error('secondary read-only recovery',error)}
+    if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,delay));
+  }
+  return false;
+}
+
 async function boot(){
   if(!runtimeSelfCheck())return;
   await acquirePrimaryTabLock();
@@ -28,7 +36,20 @@ async function boot(){
   await hydrateStorageOwner();
   const restoredAuth=await restoreSupaSession();await hydrateStorageTransition();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
-  if(!tab.primaryTab){showSecondaryTabGuard();return}
+  if(!tab.primaryTab){
+    const v2Required=storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing();
+    let shown=false;
+    if(v2Required){
+      const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
+      const sharedRecovered=mainRecovered&&await retryReadOnlyRecovery(()=>recoverSharedChecksV2ReadOnly());
+      shown=!!(mainRecovered&&sharedRecovered);
+      if(shown)render();
+    }else shown=await openBrowserStateReadOnly();
+    showSecondaryTabGuard();
+    setConnectedStatus('לקריאה בלבד');setSaveStatus(shown?'לקריאה בלבד':'קריאה בלבד — רענן לאחר סיום האתחול בטאב הראשי',shown?'':'error');
+    setCloudHeaderStatus('offline',shown?'ענן: קריאה בלבד':'ענן: קריאה בלבד — הנתונים טרם זמינים');
+    return;
+  }
   if(storageV2OwnerTransferPreparing()){
     if(!navigator.onLine||!restoredAuth){session.backendReady=false;setConnectUI({title:'מעבר החשבון ממתין',text:'העריכה נעולה עד לחיבור מחדש לחשבון היעד ולהשלמת המעבר.',showCloud:true});return}
     try{await resumeStorageV2OwnerTransfer();cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine();transitionPreparing=storageTransitionPreparing()}

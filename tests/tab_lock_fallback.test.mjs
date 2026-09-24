@@ -20,14 +20,16 @@ async function exercise(factory){
   Object.defineProperty(globalThis,'window',{value:{addEventListener(type,callback){if(type==='pagehide')pagehide.push(callback)}},configurable:true});
   try{
     Object.defineProperty(globalThis,'sessionStorage',{value:new StorageMock(),configurable:true});
-    const first={primaryTab:true,primaryTabReady:false},firstLock=factory({tab:first,showSecondaryTabGuard(){}});
+    const first={primaryTab:true,primaryTabReady:false,readOnlyTab:false},firstLock=factory({tab:first,showSecondaryTabGuard(){}});
     assert.equal(await firstLock.acquirePrimaryTabLock(),true);
     Object.defineProperty(globalThis,'sessionStorage',{value:new StorageMock(),configurable:true});
-    const second={primaryTab:true,primaryTabReady:false},secondLock=factory({tab:second,showSecondaryTabGuard(){}});
+    const second={primaryTab:true,primaryTabReady:false,readOnlyTab:false},secondLock=factory({tab:second,showSecondaryTabGuard(){}});
     assert.equal(await secondLock.acquirePrimaryTabLock(),false);
     assert.equal(first.primaryTab,true);
     assert.equal(second.primaryTab,false);
     assert.equal(first.primaryTabReady&&second.primaryTabReady,true);
+    assert.equal(first.readOnlyTab,false);
+    assert.equal(second.readOnlyTab,true);
   }finally{
     for(const callback of pagehide)callback();
     for(const [key,value] of Object.entries(prior))Object.defineProperty(globalThis,key,{value,configurable:true,writable:true});

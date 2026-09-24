@@ -38,6 +38,15 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   const assertTrusted=()=>{assertOwner();if(!trusted)throw new Error('shared_checks_storage_not_open')};
   const assertCloudWriter=()=>{assertTrusted();if(role!=='primary')throw new Error('shared_checks_shadow_cloud_write_forbidden')};
 
+  async function recoverReadOnly(){
+    if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
+    const stored=await database.load(scopedOwner);
+    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
+    const recovered=await journal.recover();
+    if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
+    if(recovered?.appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
+    return recovered;
+  }
   async function open({migrationState=null,migrationIntent=null,sourceOwner=null}={}){
     assertOwner();const stored=await database.load(scopedOwner);
     if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
@@ -149,7 +158,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     return journal.replaceLocalAuthoritativeState(canonicalState(state),{boundaryId,expectedSeq});
   }
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
-  return {open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
+  return {recoverReadOnly,open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
 }

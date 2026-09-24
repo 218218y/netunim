@@ -190,6 +190,7 @@ const domainsSuppliersNavigation=createDomainsSuppliersNavigation({
 const uiStatus=createUiStatus({
   session,
   checksSession,
+  tab,
 });
 
 const uiFolderStatus=createUiFolderStatus({
@@ -748,6 +749,7 @@ const lifecycle=createLifecycle({
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
   verifyStorageCutover,
   recoverSharedChecksV2Primary,
+  recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
   model,
   files,
@@ -759,6 +761,8 @@ const lifecycle=createLifecycle({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
   recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
+  recoverReadOnlyV2State:(...args)=>storageBrowser.recoverReadOnlyV2State(...args),
+  restoreBrowserStateReadOnly:(...args)=>storageBrowser.restoreBrowserStateReadOnly(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
@@ -998,7 +1002,7 @@ const uiGlobalSearch=createUiGlobalSearch({
   warehouseUi,
   prepareView:(...args)=>uiNavigation.prepareView(...args),
   render:(...args)=>uiNavigation.render(...args),
-  openInventoryItemModal:(...args)=>domainsInventoryEditor.openInventoryItemModal(...args),
+  openInventoryItemModal:(...args)=>{if(!tab.primaryTab){uiStatus.toast('לקריאה בלבד — עריכת פריט זמינה בטאב הראשי.');return}return domainsInventoryEditor.openInventoryItemModal(...args)},
 });
 
 const initialOrdersLocal=storageBrowser.loadLocal();

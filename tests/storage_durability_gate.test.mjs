@@ -203,3 +203,19 @@ test('shadow journal writer fencing also follows the journal owner across accoun
   owner='B';shadow.observe({notes:[]},{storageBoundary:'account-change'});await shadow.flush();
   assert.equal(predicates[0](),false);assert.equal(predicates[1](),true);
 });
+
+
+test('Main Storage V2 read-only recovery never opens or claims the writer journal',async()=>{
+  let opened=0,recovered=0;
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'A',primary:()=>false,validate:noop,mode:()=> 'primary',createJournal:()=>({
+    ready:false,
+    open:async()=>{opened++;throw new Error('writer open must not run')},
+    recover:async()=>{recovered++;return {state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:2},seq:3,stored:{checkpoints:{data:{seq:2}}}}},
+  })});
+  assert.equal(await runtime.recover(),null);
+  const result=await runtime.recoverReadOnly();
+  assert.equal(result?.source,'v2-readonly');
+  assert.equal(opened,0);
+  assert.equal(recovered,1);
+  assert.equal(runtime.primaryReady,false);
+});
