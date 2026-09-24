@@ -116,9 +116,10 @@ const uiStatus=createUiStatus({
 const storageIndexedDb=createStorageIndexedDb({
 
 });
+const captureLegacyWorkbook=(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args);
 
 const storagePending=createStoragePending({
-  externalWorkbooks:true,captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  externalWorkbooks:true,captureLegacyWorkbook,
   legacyWriteAllowed:()=>storageV2Coordinator.pendingLegacyWriteAllowed(storageShadow),
   session,
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
@@ -182,7 +183,7 @@ const storageTabLock=createStorageTabLock({
 });
 
 const syncRecovery=createSyncRecovery({
-  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  captureLegacyWorkbook,
   hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
   model,
   session,
@@ -220,7 +221,7 @@ const storageBackup=createStorageBackup({
 const storagePersistence=createStoragePersistence({
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
-  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  captureLegacyWorkbook,
   storageV2Primary:()=>storageShadow.primaryReady,
   recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
   storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
@@ -391,7 +392,7 @@ const syncDocument=createSyncDocument({
 storageV2Coordinator.configure({
   storagePending,syncChecksState,storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   storageIndexedDb,
-  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
