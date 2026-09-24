@@ -65,6 +65,18 @@ export function customerDebtProgressMode(progress,kind){
 export function customerDebtHasPartialProgress(debt){const p=customerDebtProgressData(debt);return p.paymentPartial||p.invoicePartial}
 
 export function validateCustomerDebtProgress(debt,path='customerDebts'){
+  if(debt?.morningDocuments!==undefined){
+    if(!Array.isArray(debt.morningDocuments))throw new Error(`${path}.morningDocuments must be an array`);
+    const operations=new Set();
+    for(const [index,link] of debt.morningDocuments.entries()){
+      const field=`${path}.morningDocuments[${index}]`;
+      if(!link||typeof link!=='object'||Array.isArray(link))throw new Error(`${field} must be an object`);
+      if(typeof link.operationId!=='string'||!link.operationId.trim()||operations.has(link.operationId))throw new Error(`${field} has invalid operationId`);
+      operations.add(link.operationId);
+      if(typeof link.documentId!=='string'||!link.documentId.trim())throw new Error(`${field} has invalid documentId`);
+      if(typeof link.documentNumber!=='string'||!Number.isSafeInteger(link.documentType)||typeof link.verifiedAt!=='string')throw new Error(`${field} has invalid document metadata`);
+    }
+  }
   if(debt?.debtProgress===undefined)return debt;
   if(!Array.isArray(debt.debtProgress))throw new Error(`${path}.debtProgress must be an array`);
   const ids=new Set();

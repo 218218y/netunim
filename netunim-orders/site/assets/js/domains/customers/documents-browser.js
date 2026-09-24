@@ -94,12 +94,14 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     const blob=await response.blob();if(!blob.size)throw new Error('Morning החזירה קובץ PDF ריק');return blob;
   }
   async function viewDocument(id,button,{quiet=false}={}){
-    if(button)button.disabled=true;const element=root();
+    const modalOpen=()=>!$('#modalBackdrop')||$('#modalBackdrop').classList.contains('open');
+    if(button)button.disabled=true;const element=modalOpen()?root():null,issuanceElement=modalOpen()?$('#morningPreviewBox'):null;
     try{
-      const blob=await fetchDocumentPdf(id);if(element&&root()!==element)return false;
+      const blob=await fetchDocumentPdf(id);if(element&&(!modalOpen()||root()!==element))return false;
+      if(issuanceElement&&(!modalOpen()||$('#morningPreviewBox')!==issuanceElement))return false;
       if(button?.isConnected===false)return false;
-      const browserBox=$('#morningBrowserPreview'),browserFrame=$('#morningBrowserPreviewFrame'),issuanceBox=$('#morningPreviewBox'),issuanceFrame=$('#morningPreviewFrame'),issuanceNote=$('#morningPreviewNote');
-      if(!browserBox&&!issuanceBox&&!$('#morningStandalonePreview'))modal('צפייה במסמך Morning',`<div id="morningStandalonePreview" class="morning-preview-box"><div class="morning-preview-head"><b>מסמך Morning</b><span>מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningStandalonePreviewFrame" title="צפייה במסמך Morning"></iframe></div>`,'<button class="btn" data-action="close-modal">סגור</button>');
+      const browserBox=modalOpen()?$('#morningBrowserPreview'):null,browserFrame=modalOpen()?$('#morningBrowserPreviewFrame'):null,issuanceBox=modalOpen()?$('#morningPreviewBox'):null,issuanceFrame=modalOpen()?$('#morningPreviewFrame'):null,issuanceNote=modalOpen()?$('#morningPreviewNote'):null;
+      if(!browserBox&&!issuanceBox&&!(modalOpen()&&$('#morningStandalonePreview')))modal('צפייה במסמך Morning',`<div id="morningStandalonePreview" class="morning-preview-box"><div class="morning-preview-head"><b>מסמך Morning</b><span>מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningStandalonePreviewFrame" title="צפייה במסמך Morning"></iframe></div>`,'<button class="btn" data-action="close-modal">סגור</button>');
       const box=browserBox||issuanceBox||$('#morningStandalonePreview'),frame=browserFrame||issuanceFrame||$('#morningStandalonePreviewFrame');if(!box||!frame)throw new Error('אזור תצוגת המסמך אינו זמין');
       releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
       if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';

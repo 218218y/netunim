@@ -135,3 +135,12 @@ test('historical Morning debt movements expose an operation-backed document link
  assert.match(markup,/מסמך Morning/);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);
  assert.equal(morningDebtLinksMarkup(debt()),'');
 });
+
+test('debt document metadata rejects missing IDs and duplicate operation links',()=>{
+ const normalization=createStateNormalization({});
+ const state=links=>({version:4,businessName:'test',suppliers:[],transactions:[],customerDebts:[debt({morningDocuments:links})],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[],checks:[],notes:[],importAudit:{},stage2Audit:{}});
+ const link={operationId:op(18),documentId:'doc-18',documentNumber:'1018',documentType:320,verifiedAt:'2026-09-09T18:00:00.000Z'};
+ assert.doesNotThrow(()=>normalization.normalizeState(state([link])));
+ assert.throws(()=>normalization.normalizeState(state([{...link,documentId:''}])),/invalid documentId/);
+ assert.throws(()=>normalization.normalizeState(state([link,link])),/invalid operationId/);
+});

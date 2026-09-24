@@ -144,6 +144,11 @@ def _browser_args(browser: str, profile: Path, port: int) -> list[str]:
             "--no-first-run", "about:blank"]
 
 
+def _devtools_urls(port: int, path: str) -> tuple[str, str]:
+    # Chromium may bind only one loopback family when the other port is busy.
+    return (f"http://127.0.0.1:{port}{path}", f"http://[::1]:{port}{path}")
+
+
 def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
     """Initialize a dedicated browser profile, then add only host preferences."""
     seed_profile.mkdir(parents=True, exist_ok=True)
@@ -155,13 +160,13 @@ def _bootstrap_host_state(browser: str, seed_profile: Path) -> dict:
             stdout=log, stderr=subprocess.STDOUT,
         )
         try:
-            _wait_json(f"http://127.0.0.1:{port}/json/list", timeout=30, process=process)
+            _wait_json(_devtools_urls(port, "/json/list"), timeout=30, process=process)
         finally:
             # Browser.close lets Chromium flush Local State; terminate() on
             # Windows is a hard kill and can lose the preferences we need.
             if process.poll() is None:
                 try:
-                    version = _wait_json(f"http://127.0.0.1:{port}/json/version", timeout=3, process=process)
+                    version = _wait_json(_devtools_urls(port, "/json/version"), timeout=3, process=process)
                     with websocket.create_connection(version["webSocketDebuggerUrl"], timeout=3) as ws:
                         ws.send(json.dumps({"id": 1, "method": "Browser.close"}))
                 except Exception:
