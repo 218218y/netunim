@@ -62,8 +62,13 @@ async function loadState(){
         await refreshStorageV2CloudState();
       }
     }else{
-      const installed=await replaceStorageV2AuthoritativeState(parsed.state,Number(parsed.meta.revision||0));
-      if(!installed)throw new Error('storage_v2_local_file_checkpoint_failed');
+      if(!sharedChecksV2?.localReady||!storageV2Boundary)throw new Error('storage_v2_local_file_shared_head_required');
+      if(!equalSyncJson(model.state,parsed.state)){
+        const mainLocal=await recoverStorageV2State(),sharedLocal=await sharedChecksV2.recover();
+        if(!mainLocal||!sharedLocal)throw new Error('storage_v2_local_file_checkpoint_missing');
+        await applyStorageV2LocalImport({boundary:storageV2Boundary,mode:'local-only',mainLocal,sharedLocal,
+          mainState:parsed.state,sharedState:{checks:parsed.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}});
+      }
     }
   }
   const previous=model.state;

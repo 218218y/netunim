@@ -19,6 +19,7 @@ export function memoryDb(){
     async claim(_owner,epoch,writer){assert.equal(metadata.epoch,epoch);metadata={...metadata,writer}},
     async append(_owner,epoch,writer,record){scoped(epoch,writer);const data=readStorageRecord(record);assert.equal(data.seq,metadata.seq+1);journal.push(clone(record));metadata={...metadata,seq:data.seq}},
     async compact(_owner,epoch,writer,checkpoint){scoped(epoch,writer);checkpoints=clone(checkpoint);const seq=readStorageRecord(checkpoint).seq,ack=bases?readStorageRecord(bases).ackSeq:seq;journal=journal.filter(row=>row.data.seq>Math.min(seq,ack))},
+    async replaceLocalCheckpoint(_owner,epoch,writer,checkpoint,expectedSeq){scoped(epoch,writer);assert.equal(metadata.seq,expectedSeq);assert.equal(bases,null);assert.equal(flights,null);assert.equal(controls,null);assert.equal(readStorageRecord(checkpoint).seq,expectedSeq);checkpoints=clone(checkpoint);journal=[]},
     async setBase(_owner,epoch,writer,base){scoped(epoch,writer);assert.equal(flights,null);bases=clone(base)},
     async beginFlight(_owner,epoch,writer,flight){scoped(epoch,writer);if(flights)return clone(flights);flights=clone(flight);return clone(flight)},
     async acknowledge(_owner,epoch,writer,id,base,{checkpoint=null,control=null}={}){scoped(epoch,writer);assert.equal(readStorageRecord(flights).operationId,id);bases=clone(base);if(checkpoint)checkpoints=clone(checkpoint);flights=null;controls=control&&clone(control)},

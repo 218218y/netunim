@@ -5,10 +5,19 @@ function cleanHead(cloud){
   return {expectedSeq:cloud.seq,expectedBaseRevision:cloud.base.revision,requireCleanCloud:true};
 }
 
-// A file import changes the local view and creates two ordinary V2 pending
-// heads. It is not a cloud ACK and must retain both prior cloud revisions.
-export async function applyStorageV2LocalImport({boundary,mainCloud,sharedCloud,mainState,sharedState,id=createOperationId('storage-import')}={}){
+// A file import is never a cloud ACK. Connected owners retain both cloud
+// revisions and create pending heads; a local-only owner replaces both
+// checkpoints without inventing cloud state.
+export async function applyStorageV2LocalImport({boundary,mainCloud,sharedCloud,mainLocal,sharedLocal,mode='cloud',mainState,sharedState,id=createOperationId('storage-import')}={}){
   if(!boundary||!mainState||!sharedState)throw new Error('storage_local_import_configuration');
+  if(mode==='local-only'){
+    if(mainCloud?.base||sharedCloud?.base||!Number.isSafeInteger(mainLocal?.seq)||mainLocal.seq<0||!Number.isSafeInteger(sharedLocal?.seq)||sharedLocal.seq<0)throw new Error('storage_local_import_local_head_invalid');
+    return boundary.run({id,kind:'import',
+      main:{kind:'replace-local-authoritative',state:structuredClone(mainState),expectedSeq:mainLocal.seq},
+      shared:{kind:'replace-local-authoritative',state:structuredClone(sharedState),expectedSeq:sharedLocal.seq},
+    });
+  }
+  if(mode!=='cloud')throw new Error('storage_local_import_mode_invalid');
   return boundary.run({id,kind:'import',
     main:{kind:'replace-local-with-pending',state:structuredClone(mainState),...cleanHead(mainCloud)},
     shared:{kind:'replace-local-with-pending',state:structuredClone(sharedState),...cleanHead(sharedCloud)},

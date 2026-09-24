@@ -46,6 +46,18 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       write=journal.append(change('during compaction'));await write.committed;release();await compacting;
       check((await db.load('matrix')).journal.length===1&&await text(journal)==='during compaction','new operation survives checkpoint boundary');
 
+      let local=make('local-import');await local.install(initial);
+      write=local.append(change('before import'));await write.committed;
+      const beforeImport=await db.load('local-import'),imported={notes:[{id:'n',text:'imported'}],setting:1};
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='checkpoints'){this.transaction.abort();throw Error('injected local import abort')}return result};
+      check(await fails(()=>local.replaceLocalAuthoritativeState(imported,{boundaryId:'local-import-1',expectedSeq:1})),'aborted local import transaction reported');
+      IDBObjectStore.prototype.put=put;
+      check(JSON.stringify(await db.load('local-import'))===JSON.stringify(beforeImport),'aborted local import preserves checkpoint and journal');
+      await local.replaceLocalAuthoritativeState(imported,{boundaryId:'local-import-1',expectedSeq:1});
+      check((await db.load('local-import')).journal.length===0,'local import atomically retires superseded operations');
+      local=make('local-import');await local.open();
+      check(await text(local)==='imported'&&(await local.cloudState()).base===null,'local import survives restart without a cloud cursor');
+
       const cloudBaseState=(await journal.recover()).state;
       check(await fails(()=>journal.setCloudBase(4,cloudBaseState)),'cloud base requires an explicit acknowledged cursor');
       await journal.setCloudBase(4,cloudBaseState,{ackSeq:journal.seq});

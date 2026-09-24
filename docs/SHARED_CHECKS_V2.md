@@ -1,5 +1,7 @@
 # Shared Checks Storage V2
 
+ב־owner המקומי (`local`) ה־journal מסוגל כעת להיוולד, לשחזר ולשמור צ׳קים גם ללא cloud base. `localReady` מתאר סמכות אחסון מקומית; `cloudReady` מחייב cursor אמיתי. סנכרון ללא cursor נכשל במפורש, ללא RPC וללא retry control. ייבוא מקומי טהור מחליף את Main ואת Shared דרך boundary עמיד ואינו מייצר pending ענן. הפעלת המסלול הזה כברירת מחדל להתקנה חדשה עדיין ממתינה ל־local-engine marker ול־startup migration מאומתים; אין להסיר את reader הישן בשלב זה.
+
 עדכון: 23 בספטמבר 2026. [מצב המעבר והחסמים להפעלת V2-only](STORAGE_V2_CUTOVER_STATUS.md) הוא מקור האמת לשחרור גרסה.
 
 Shared Checks V2 הוא journal נפרד לפי חשבון, בבעלות יחידה על `checks` ו־`bankEvents`. בזמן Primary, שתי האפליקציות שומרות עריכת צ׳ק רק בו; Main V2 אינו מקבל פעולת צ׳ק רגילה. בהפעלה משחזרים את Main ואת Shared ומרכיבים מהם את המודל המוצג. העתק `checks` שנותר ב־Main checkpoint ישן אינו סמכותי ויוסר רק בגרסת cleanup.

@@ -56,6 +56,24 @@ test('Kupa opening a local file preserves both V2 cloud heads as pending import'
   assert.deepEqual(model.state,imported,'an unresolved import cannot be replaced by the file');
 });
 
+test('Kupa opening a file under local-only V2 replaces Main and Shared without creating cloud pending',async()=>{
+  const model={state:{notes:[],checks:[{id:'old-check',amount:10}]},lastNormalizeRemovedCredits:0};
+  const imported={notes:[{id:'n',content:'file'}],checks:[{id:'new-check',amount:20}]},calls=[];
+  const storage=createKupaStoragePersistence({model,session:{connectionMode:'file'},files:{dataFileHandle:{name:'local.json'}},checksSession:{sharedChecksBankEvents:[{seq:3,checkId:'old-check'}]},
+    storageV2Primary:()=>true,sharedChecksV2:{localReady:true,recover:async()=>({seq:4})},storageV2Boundary:{run:async action=>{calls.push(action);return {phase:'complete'}}},
+    recoverStorageV2State:async()=>({seq:7}),refreshStorageV2CloudState:async()=>null,
+    readJsonHandle:async()=>({}),captureLegacyWorkbook:async()=>{},stateFromPayload:()=>({state:clone(imported),meta:{revision:1}}),
+    replaceStorageV2AuthoritativeState:async()=>{throw Error('Main-only checkpoint replacement is unsafe')},
+    persistImmediateBrowserSnapshot:()=>{throw Error('V1 snapshot is forbidden')},
+    listBackups:async()=>[],setConnectedStatus:()=>{},setSaveStatus:()=>{}});
+  await storage.loadState();
+  assert.equal(calls.length,1);
+  assert.deepEqual([calls[0].main.kind,calls[0].main.expectedSeq],['replace-local-authoritative',7]);
+  assert.deepEqual([calls[0].shared.kind,calls[0].shared.expectedSeq],['replace-local-authoritative',4]);
+  assert.deepEqual(calls[0].shared.state.bankEvents,[{seq:3,checkId:'old-check'}]);
+  assert.deepEqual(model.state,imported);
+});
+
 test('Kupa file save with a V2 cloud cursor requires a journaled state and preserves its cursor',async()=>{
   const state={notes:[{id:'n',content:'journaled'}],checks:[]},model={state:clone(state)},session={connectionMode:'file',backendReady:true,dbRevision:3,localGeneration:1,serverInfo:{}};
   const calls=[],files={dataFileHandle:{name:'local.json'}};

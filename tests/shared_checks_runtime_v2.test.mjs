@@ -38,6 +38,19 @@ function fixture(site='orders',options={}){
 }
 
 for(const site of ['orders','kupa']){
+  test(`${site}: local Shared Checks survives edit and restart without a cloud cursor`,async()=>{
+    const f=fixture(site);f.owner='local';
+    let runtime=f.create();await runtime.initializeLocal({state:f.visible});
+    assert.equal(runtime.localReady,true);assert.equal(runtime.cloudReady,false);
+    assert.equal((await runtime.cloudState()).base,null);
+    await f.edit(runtime,'C',{note:'local only'}).committed;
+    runtime=f.create();await runtime.recover();
+    assert.equal(f.visible.checks[0].note,'local only');
+    assert.equal(runtime.localReady,true);assert.equal(runtime.cloudReady,false);
+    await assert.rejects(runtime.sync(),/shared_checks_cursor_missing/);
+    assert.equal((await runtime.cloudState()).control,null);
+    assert.equal(f.calls.length,0,'a local journal must not issue an RPC');
+  });
   test(`${site}: single shared journal recovers edit/deposit/return/delete without a Main write`,async()=>{
     const f=fixture(site);let runtime=await f.start();
     for(const status of ['הופקד - במעקב','חזר']){

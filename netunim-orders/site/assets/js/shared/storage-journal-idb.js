@@ -88,6 +88,15 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     // unacknowledged journal stay intact; replay starts from the new current head.
     tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
   })}
+  function replaceLocalCheckpoint(owner,epoch,writer,checkpoint,expectedSeq){return change(owner,(tx,current,done)=>{
+    assertFence(current,epoch,writer);const data=readStorageRecord(checkpoint);
+    if(!Number.isSafeInteger(expectedSeq)||expectedSeq<0||current.metadata.seq!==expectedSeq||data.owner!==owner||data.epoch!==epoch||data.seq!==expectedSeq)throw new Error('storage_boundary_source_changed');
+    if(current.bases||current.flights||current.controls)throw new Error('storage_boundary_local_cloud_head_exists');
+    // A local authoritative import supersedes every prior operation. With no
+    // cloud cursor there are no remote delete intents to retain.
+    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
+    tx.objectStore('checkpoints').put(checkpoint,owner);done(true);
+  })}
   function setBase(owner,epoch,writer,base){return change(owner,(tx,current,done)=>{assertFence(current,epoch,writer);if(current.flights)throw new Error('storage_flight_pending');const data=readStorageRecord(base);if(data.owner!==owner||data.epoch!==epoch||!Number.isSafeInteger(data.revision)||data.revision<0||!Number.isSafeInteger(data.ackSeq)||data.ackSeq<0||data.ackSeq>current.metadata.seq)throw new Error('storage_cloud_base_mismatch');tx.objectStore('bases').put(base,owner);done(true)})}
   function beginFlight(owner,epoch,writer,flight){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);const data=readStorageRecord(flight);
@@ -345,5 +354,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover};
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover};
 }

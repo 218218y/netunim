@@ -37,7 +37,7 @@ function diffRowMarkup(row){const parts=[];if(row.removed)parts.push(`יוסרו
 function settingsDiffMarkup(setting){return `<div class="cloud-backup-field-change"><b>${esc(setting.label)}</b><span class="cloud-backup-now">עכשיו: ${esc(compactBackupValue(setting.current))}</span><span class="cloud-backup-target">אחרי שחזור: ${esc(compactBackupValue(setting.target))}</span></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({model,session,ui,files,checksSession,readJsonHandle,listBackups,createManualBackup,toast,renderSettings,stateFromPayload,persistImmediateBrowserSnapshot,persistSharedChecksBase,saveState,chooseFolder,prepareKupaCloudState,readSupabaseDocument,readSharedChecksDocument,getCloudPending,getSharedChecksPending,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,loadSupaSession,render,modal,closeModal,confirmDialog,persistSupabaseState=async()=>false,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
+export function createUiBackup({model,session,ui,files,checksSession,readJsonHandle,listBackups,createManualBackup,toast,renderSettings,stateFromPayload,persistImmediateBrowserSnapshot,persistSharedChecksBase,saveState,chooseFolder,prepareKupaCloudState,readSupabaseDocument,readSharedChecksDocument,getCloudPending,getSharedChecksPending,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,loadSupaSession,render,modal,closeModal,confirmDialog,persistSupabaseState=async()=>false,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2LocalPrimary=()=>false,recoverStorageV2State=async()=>null,storageOwnerCurrent=()=>'',storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{},observeSharedChecksBoundary=()=>false}){
   async function manualBackup(){
     if(!session.backendReady)return toast('יש לפתוח קודם מקור נתונים');
     try{const payload=session.connectionMode==='supabase'?payloadFromState(clone(model.state),session.dbRevision):await readJsonHandle(files.dataFileHandle);if(files.backupsDirHandle){const name=await createManualBackup(payload);session.serverInfo.backups=await listBackups();toast('נוצר גיבוי: '+name);if(ui.currentPage==='settings')renderSettings()}else downloadJsonBackup()}catch(error){alert('יצירת הגיבוי נכשלה: '+error.message)}
@@ -76,7 +76,16 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
     if(!await confirmDialog(title,`${message} לפני כל כתיבה יישמר צילום בטיחות durable. במצב ענן הקופה והצ׳קים ישוחזרו בפעולה מאוחדת אחת.`,{confirmText:'שחזר גיבוי',cancelText:'ביטול',tone:'danger'}))return false;
     if(files.backupsDirHandle)await createManualBackup(payloadFromState(currentState,session.dbRevision),'before-restore');
     const v2Pending=await refreshStorageV2CloudState();if(await getCloudPending()||(v2Pending&&(v2Pending.pending||v2Pending.flight||v2Pending.control))||await getSharedChecksPending())throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
-    const v2Source=sharedChecksV2?.primaryReady?captureStorageV2RestoreSource(v2Pending,await sharedChecksV2.cloudState()):null;
+    const sharedCloud=sharedChecksV2?.primaryReady?await sharedChecksV2.cloudState():null;
+    if(storageOwnerCurrent()==='local'&&(storageV2LocalPrimary()||sharedChecksV2?.localReady)&&(!storageV2LocalPrimary()||!sharedChecksV2?.localReady))throw new Error('storage_local_import_both_journals_required');
+    if(storageV2LocalPrimary()&&sharedChecksV2?.localReady&&storageOwnerCurrent()==='local'&&!v2Pending?.base&&!sharedCloud?.base){
+      const [mainLocal,sharedLocal]=await Promise.all([recoverStorageV2State(),sharedChecksV2.recover()]);
+      if(!mainLocal||!sharedLocal)throw new Error('storage_local_import_recovery_required');
+      const sharedState={checks:normalizeSharedChecks(state.checks),bankEvents:normalizeSharedBankEvents(checksSession.sharedChecksBankEvents||[])};
+      await applyStorageV2LocalImport({boundary:storageV2Boundary,mode:'local-only',mainCloud:v2Pending,sharedCloud,mainLocal,sharedLocal,mainState:state,sharedState});
+      model.state=clone(state);session.localGeneration++;invalidateAllViewDomains();render();toast('הגיבוי יובא ונשמר ב־Storage V2');return true;
+    }
+    const v2Source=sharedChecksV2?.primaryReady?captureStorageV2RestoreSource(v2Pending,sharedCloud):null;
     if(v2Source){
       const sharedState={checks:normalizeSharedChecks(state.checks),bankEvents:normalizeSharedBankEvents(checksSession.sharedChecksBankEvents||[])};
       await applyStorageV2LocalImport({boundary:storageV2Boundary,mainCloud:v2Pending,sharedCloud:await sharedChecksV2.cloudState(),mainState:state,sharedState});

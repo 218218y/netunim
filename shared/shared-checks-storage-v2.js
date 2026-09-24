@@ -45,7 +45,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     if(recovered){if(recovered.appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');trusted=true;return recovered}
     if(migrationState===null)return null;
     const source=String(sourceOwner||'').trim(),sameOwner=source===identity;
-    if(!sameOwner||(role==='shadow'?migrationIntent!=='shadow-observation':!['legacy-upgrade','cloud-authoritative'].includes(migrationIntent)))throw new Error('shared_checks_owner_transfer_intent_required');
+    if(!sameOwner||(role==='shadow'?migrationIntent!=='shadow-observation':!['legacy-upgrade','cloud-authoritative'].includes(migrationIntent)&&!(identity==='local'&&migrationIntent==='local-birth')))throw new Error('shared_checks_owner_transfer_intent_required');
     validate(migrationState);
     await journal.install(canonicalState(migrationState),{expectedEpoch:null,appMetadata:{storageRole:`shared-checks-${role}`,migrationIntent,sourceOwner:source}});
     trusted=true;return journal.recover();
@@ -144,8 +144,12 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision}={}){
     assertCloudWriter();return journal.replaceLocalWithPending(canonicalState(state),{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections:['checks']});
   }
+  async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
+    assertTrusted();if(identity!=='local'||role!=='primary')throw new Error('shared_checks_local_owner_required');
+    return journal.replaceLocalAuthoritativeState(canonicalState(state),{boundaryId,expectedSeq});
+  }
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
   return {open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
-    replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
+    replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
 }

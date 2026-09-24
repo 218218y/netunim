@@ -103,6 +103,25 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(!['legacy-upgrade','upload-local'].includes(intent)||(intent==='upload-local'?sourceOwner!=='local'||target==='local':sourceOwner!==target))throw new Error('storage_owner_transfer_intent_required');
     return recover(state,{...appMetadata,migrationIntent:intent,sourceOwner},true);
   }
+  async function initializeLocal(state,{appMetadata={}}={}){
+    if(currentOwner()!=='local'||!primaryMode()||!primary())throw new Error('storage_local_birth_owner_required');
+    const canonical=prepareCheckpoint(business(state));validate(canonical);
+    await shadow.flush();
+    const active=create(),scopedIdentity=identity;
+    let recovered=await active.open();
+    if(recovered){
+      if(!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_parity_mismatch');
+      if(recovered.appMetadata?.storageRole&&!['primary','shadow'].includes(recovered.appMetadata.storageRole))throw new Error('storage_local_birth_role_invalid');
+    }
+    const cloud=recovered?await active.cloudState():null;
+    if(cloud?.base||cloud?.flight||cloud?.control)throw new Error('storage_local_birth_cloud_head_exists');
+    if(!recovered||recovered.appMetadata?.storageRole!=='primary'){
+      await active.install(canonical,{expectedEpoch:recovered?.epoch??null,appMetadata:{...appMetadata,storageRole:'primary',migrationIntent:'local-birth',sourceOwner:'local'}});
+      recovered=await active.recover();
+    }
+    if(scopedIdentity!==currentOwner()||identity!==scopedIdentity||!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_owner_changed');
+    ownerHandoffRequired=false;return verifiedRecovery(active,recovered);
+  }
   async function initializeCloudHead(revision,state,{sourceOwner,intent,cloudState=state,changes=null,validateBase=validate,appMetadata={}}={}){
     if(!primaryMode()||!primary())throw new Error('storage_v2_primary_not_ready');
     const active=create(),scopedIdentity=identity;
@@ -205,6 +224,11 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function setCloudControl(control={}){guardCloudMutation();return (await settledJournal()).setCloudControl(control)}
   async function clearCloudControl(){guardCloudMutation();if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
   async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
+    if(currentOwner()!=='local')throw new Error('storage_boundary_local_owner_required');
+    const active=await settledJournal(),result=await active.replaceLocalAuthoritativeState(prepareCheckpoint(business(state)),{boundaryId,expectedSeq});
+    operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
+  }
   async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate,mutationType='import',surface='backup.local-import'}={}){
@@ -214,5 +238,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverForOwner,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,adoptCloudHead,replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,adoptCloudHead,replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

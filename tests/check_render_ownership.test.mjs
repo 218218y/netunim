@@ -19,7 +19,10 @@ function fixture(t,{cloud=true,v2=false,v2InstallFails=false}={}){
   const snapshots=[],written=[],replacements=[],ui={currentPage:'checks',bulkCollection:'checks',bulkSelected:new Set(['C'])};
   const nav=createUiNavigation({ui,renderChecks:()=>{renders++},renderDashboard:()=>{renders++},renderBank:()=>{renders++},renderCredit:()=>{renders++},refreshCheckBankIndicator:()=>{indicators++},maybeAutoRefreshBankBalance:noop,maybeAutoRefreshCreditSync:noop});
   const oldDocument=globalThis.document;t.after(()=>{globalThis.document=oldDocument});globalThis.document={getElementById:()=>null};
-  const deps={...normalizer,model,session,checksSession,files:{dataFileHandle:{}},tab:{primaryTab:true},render:()=>{renders++},setSaveStatus:noop,setConnectedStatus:noop,toast:noop,showSecondaryTabGuard:noop,reportError:noop,listBackups:async()=>[],storageV2Primary:()=>v2,replaceStorageV2AuthoritativeState:async(state,revision)=>{replacements.push({kind:'authoritative',state:structuredClone(state),revision});if(v2InstallFails)throw new Error('injected V2 install failure');return {epoch:'new'}},replaceStorageV2CurrentState:async state=>{replacements.push({kind:'current',state:structuredClone(state)});return 1},
+  const deps={...normalizer,model,session,checksSession,files:{dataFileHandle:{}},tab:{primaryTab:true},render:()=>{renders++},setSaveStatus:noop,setConnectedStatus:noop,toast:noop,showSecondaryTabGuard:noop,reportError:noop,listBackups:async()=>[],storageV2Primary:()=>v2,
+    storageV2Boundary:{run:async record=>{replacements.push({kind:'coordinated-local-import',record:structuredClone(record)});if(v2InstallFails)throw new Error('injected V2 install failure');return {phase:'complete'}}},
+    sharedChecksV2:{localReady:v2,cloudState:async()=>({base:null}),recover:async()=>({seq:0})},recoverStorageV2State:async()=>({seq:0}),refreshStorageV2CloudState:async()=>({base:null}),
+    replaceStorageV2AuthoritativeState:async(state,revision)=>{replacements.push({kind:'authoritative',state:structuredClone(state),revision});if(v2InstallFails)throw new Error('injected V2 install failure');return {epoch:'new'}},replaceStorageV2CurrentState:async state=>{replacements.push({kind:'current',state:structuredClone(state)});return 1},
     persistImmediateBrowserSnapshot:state=>{snapshots.push(structuredClone(state));return true},markSharedChecksPending:()=>{stages++},saveSharedChecksToCloud:noop,
     stateFromPayload:p=>({state:normalizer.normalizeState(p),meta:p._meta}),lastSavedState:()=>structuredClone(base),
     readJsonHandle:async()=>({...structuredClone(remote),_meta:{revision}}),writeJsonHandleVerified:async(_handle,payload)=>{written.push(structuredClone(payload));if(writeGate)await writeGate()}};
@@ -28,13 +31,16 @@ function fixture(t,{cloud=true,v2=false,v2InstallFails=false}={}){
   return {api,editor,model,session,ui,snapshots,written,replacements,checksSession,get renders(){return renders},get indicators(){return indicators},get stages(){return stages},remote:state=>{remote=state;revision++},holdWrite:fn=>{writeGate=fn}};
 }
 
-test('V2 Local File load installs an authoritative checkpoint before exposing the file state',async t=>{
-  const f=fixture(t,{cloud:false,v2:true});await f.api.loadState();
-  assert.equal(f.replacements.length,1);assert.equal(f.replacements[0].kind,'authoritative');assert.equal(f.replacements[0].revision,1);assert.equal(f.snapshots.length,0);
+test('V2 Local File load coordinates Main and Shared before exposing the file state',async t=>{
+  const f=fixture(t,{cloud:false,v2:true}),remote=structuredClone(f.model.state);remote.notes.push({id:'remote',content:'file'});f.remote(remote);await f.api.loadState();
+  assert.equal(f.replacements.length,1);assert.equal(f.replacements[0].kind,'coordinated-local-import');
+  assert.equal(f.replacements[0].record.main.kind,'replace-local-authoritative');
+  assert.equal(f.replacements[0].record.shared.kind,'replace-local-authoritative');
+  assert.equal(f.snapshots.length,0);
 });
 
-test('V2 Local File load fails closed when its checkpoint cannot be installed',async t=>{
-  const f=fixture(t,{cloud:false,v2:true,v2InstallFails:true}),before=structuredClone(f.model.state);
+test('V2 Local File load fails closed when its coordinated import cannot be installed',async t=>{
+  const f=fixture(t,{cloud:false,v2:true,v2InstallFails:true}),before=structuredClone(f.model.state),remote=structuredClone(before);remote.notes.push({id:'remote',content:'file'});f.remote(remote);
   await assert.rejects(f.api.loadState(),/injected V2 install failure/);assert.deepEqual(f.model.state,before);assert.equal(f.session.backendReady,true,'the preexisting session remains unchanged');assert.equal(f.snapshots.length,0);
 });
 

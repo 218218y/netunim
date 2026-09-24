@@ -11,7 +11,7 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,verifyLegacyClean,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
-  let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,boundaryGate=()=>false;
+  let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,boundaryGate=()=>false;
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
@@ -24,7 +24,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),role:'primary'});active=false;commits=Promise.resolve()}
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode(),role:'primary'});active=false;cursorReady=false;commits=Promise.resolve()}
     return storage;
   }
   async function publish(store){
@@ -43,8 +43,9 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
       const recovered=await store.open();assertContext(store);
       if(!recovered)return null;
       const cloud=await store.cloudState();assertContext(store);
-      if(!cloud.base)throw new Error('shared_checks_cursor_missing');
-      active=true;diagnostics.recoveries++;
+      if(!cloud.base&&currentOwner()!=='local')throw new Error('shared_checks_cursor_missing');
+      if(!cloud.base&&(cloud.flight||cloud.control))throw new Error('shared_checks_local_head_invalid');
+      active=true;cursorReady=!!cloud.base;diagnostics.recoveries++;
       return publish(store);
     })();
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
@@ -64,7 +65,23 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
       recovered=await store.open();const cloud=await store.cloudState();
       if(!recovered||recovered.appMetadata?.bootstrapOperationId!==bootstrapOperationId||recovered.appMetadata?.migrationIntent!==intent||recovered.appMetadata?.sourceOwner!==sourceOwner||cloud?.base?.revision!==revision||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
     }
-    assertContext(store);active=true;diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
+    assertContext(store);active=true;cursorReady=true;diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
+  }
+  async function initializeLocal({state}={}){
+    const store=context(),snapshot=canonical(state);
+    if(identity!=='local')throw new Error('shared_checks_local_owner_required');
+    if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
+    await shadow.flush();
+    assertContext(store);
+    let recovered;
+    try{recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'})}
+    catch(error){
+      if(error?.message!=='shared_checks_storage_role_mismatch')throw error;
+      recovered=await store.promoteVerifiedShadow(snapshot,{legacyPendingClean:true});
+    }
+    if(!recovered||!equalSyncJson(canonical(recovered.state),snapshot))throw new Error('shared_checks_local_birth_parity_mismatch');
+    const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
+    assertContext(store);active=true;cursorReady=false;diagnostics.initializations++;applyState(snapshot);return recovered;
   }
   async function promote({state,revision,sourceOwner}={}){
     const store=context(),snapshot=canonical(state);
@@ -79,7 +96,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     if(!recovered||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_shadow_parity_mismatch');
     const cloud=await store.cloudState();assertContext(store);
     if(!cloud.base)await store.captureCloudCursor(revision,snapshot,{legacyPendingClean:true});
-    assertContext(store);active=true;return publish(store);
+    assertContext(store);active=true;cursorReady=true;return publish(store);
   }
   function persist(operations,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[],storageBoundary=''}={}){
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
@@ -121,6 +138,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   async function synchronize(store){
     assertContext(store);if(!active)throw new Error('shared_checks_not_recovered');await commits;assertContext(store);
     let cloud=await store.cloudState();assertContext(store);
+    if(!cloud.base)throw new Error('shared_checks_cursor_missing');
     if(cloud.control?.conflict)return false;
     if(Date.parse(cloud.control?.retry?.nextAttemptAt||'')>now())return false;
     for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
@@ -153,6 +171,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     assertSyncAllowed();const store=storage;if(syncing?.store===store)return syncing.promise;
     const promise=synchronize(store).catch(async error=>{
       diagnostics.errors++;diagnostics.lastError=error.message;
+      if(error?.message==='shared_checks_cursor_missing')throw error;
       // Errors leave the flight intact. An old account's request cannot write
       // retry metadata or update the visible state after a handoff.
       try{assertSyncAllowed(store);const cloud=await store.cloudState();assertSyncAllowed(store);if(!cloud.control?.conflict){const normalized=normalizeCloudError(error);await store.setCloudControl({retry:{attempts:Number(cloud.control?.retry?.attempts||0)+1,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(now()).toISOString(),nextAttemptAt:normalized.retryAfterMs?new Date(now()+normalized.retryAfterMs).toISOString():null}})}}catch{/* The original error remains actionable. */}
@@ -170,17 +189,24 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=storage;await commits;assertContext(store);
     const result=await store.replaceLocalWithPending(canonical(state),{boundaryId,expectedSeq,expectedBaseRevision});assertContext(store);await publish(store);return result;
   }
+  async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
+    assertContext();if(!active||!boundaryId||identity!=='local')throw new Error('shared_checks_coordinated_boundary_required');
+    const store=storage;await commits;assertContext(store);
+    const result=await store.replaceLocalAuthoritativeState(canonical(state),{boundaryId,expectedSeq});assertContext(store);await publish(store);return result;
+  }
   async function resetCloudHead(revision,state,{boundaryId}={}){
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
   }
-  return {recover,initialize,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
-    replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,
+  return {recover,initialize,initializeLocal,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+    replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     observe:shadow.mutation,observeBoundary:shadow.boundary,
-    async cloudState(){assertContext();return storage.cloudState()},
+    async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;return cloud},
     async flush(){await commits;return true},
     get requested(){return primaryMode()},
     get primaryReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
+    get localReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
+    get cloudReady(){return active&&cursorReady&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get durabilityAtRisk(){return risks.size>0},get commitPromise(){return commits}};
 }

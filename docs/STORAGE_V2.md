@@ -1,5 +1,7 @@
 # Storage V2 — ארכיטקטורה וחוזי בטיחות
 
+ה־journal המקומי של Main ושל Shared Checks אינו מחייב עוד cloud base. ב־owner `local` אפשר ליצור checkpoint מקומי ולבצע import מתואם של שני ה־journals ללא pending ענן; sync נותר חסום עד שנוצר cursor אמיתי. זהו חוזה מנוע בלבד בשלב זה: אין עדיין marker ו־startup production שמפעילים local V2 להתקנה חדשה. מצב ה־cutover לחשבון קיים ממשיך להשתמש ב־marker הענן הקיים.
+
 [מצב המעבר ושערי השחרור](STORAGE_V2_CUTOVER_STATUS.md) מתעדכנים בנפרד. ברירת המחדל עדיין אינה V2-only.
 
 לכל אפליקציה ולכל בעלים יש Main journal. ל־Shared Checks יש journal נפרד משותף ל־Orders ולקופה. Main מחזיק נתוני אפליקציה; Shared הוא הסמכות ל־`checks` ול־`bankEvents` כאשר הוא Primary. מודל התצוגה מורכב משחזור שני המקורות. `checks` עדיין מופיעים ב־Main schema ישן לצורכי מעבר בלבד; הם אינם יעד לפעולת צ׳ק רגילה ויוסרו ב־cleanup.
