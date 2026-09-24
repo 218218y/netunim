@@ -82,10 +82,12 @@ import {jsonEq} from "./sync/merge-records.js";
 
 
 const {model, session, ui, files, tab, checksSession}=createContexts();
+// Event handlers are installed before the async owner/protocol preflight finishes.
+session.storageProtocolBlocked=true;
 const domainRevisions=createKupaDomainRevisions(session);
 const financeDerivations=createFinanceDerivationStore({revision:()=>domainRevisions.stamp(KUPA_FINANCE_DOMAINS)});
 
-const storageV2Coordinator=createKupaStorageV2Coordinator({tab});
+const storageV2Coordinator=createKupaStorageV2Coordinator({tab,session});
 const {owner:storageOwner,preparing:storagePreparationActive}=storageV2Coordinator;
 
 const uiConnection=createUiConnection({
@@ -865,6 +867,7 @@ const lifecycle=createLifecycle({
 
 function canRunInteractiveAction(name=''){
   if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){uiStatus.toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
+  if(session.storageProtocolBlocked){uiStatus.toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
   if(session.syncCapabilitiesError){uiStatus.toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
   if(session.syncCapabilitiesChecking||session.startupCloudHydrating){uiStatus.toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
   return true
@@ -982,15 +985,15 @@ const uiActions=createUiActions({
 });
 
 
-window.addEventListener('online',()=>{if(!tab.primaryTab)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
-window.addEventListener('offline',()=>{if(!tab.primaryTab)return;if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
-document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 uiSidebar.bind();
 document.getElementById('backupTop').addEventListener('click',()=>{if(canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('pagehide',()=>{
-  if(!tab.primaryTab)return;
+  if(!tab.primaryTab||session.storageProtocolBlocked)return;
   const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
   if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});
   if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud&&session.lastSavedSnapshot){
@@ -1001,7 +1004,7 @@ window.addEventListener('pagehide',()=>{
 });
 
 window.addEventListener('beforeunload',e=>{
-  if(!tab.primaryTab)return;
+  if(!tab.primaryTab||session.storageProtocolBlocked)return;
   if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
   const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
   const unsavedKupa=!v2Cloud&&session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState());
@@ -1019,5 +1022,5 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(result=>{sharedChecksV2Shadow.boundary();return result});
+export const appReady=lifecycle.boot().then(result=>{if(!session.storageProtocolBlocked)sharedChecksV2Shadow.boundary();return result});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}

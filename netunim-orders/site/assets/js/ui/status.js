@@ -63,6 +63,7 @@ function startupDomainLocked(domain){
 }
 function guardStartupMutation(domain='orders'){
   const label=domain==='all'?'הנתונים':STARTUP_DOMAIN_LABELS[domain]||'הנתונים';
+  if(session.storageProtocolBlocked){toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
   if(tab&&!tab.primaryTab){toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
   if(session.syncCapabilitiesError){
     toast(session.syncCapabilitiesError.message||'מסד הנתונים אינו תואם לגרסת האתר. אפשר לצפות בנתונים, אך העריכה חסומה.');

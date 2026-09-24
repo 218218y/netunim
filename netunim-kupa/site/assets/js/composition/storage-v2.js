@@ -22,15 +22,15 @@ import {INITIAL_STATE} from '../state/constants.js';
 
 // Owns the Kupa storage migration state machines. main.js supplies application
 // ports, but no longer carries drain/bootstrap/owner-adoption orchestration.
-export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStorage}={}){
-  if(!tab)throw new Error('kupa_storage_v2_tab_required');
+export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.localStorage}={}){
+  if(!tab||!session)throw new Error('kupa_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'kupa',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab});
   let transition=null,localBirth=null,ownerTransfer=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('kupa_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
-  const legacyDrainActive=()=>legacyDrain;
-  const legacyWriteAllowed=()=>owner.writable&&(!preparing()||legacyDrain);
+  const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
+  const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&(!preparing()||legacyDrain);
   const legacyChecksWriteAllowed=()=>legacyWriteAllowed()&&storage?.getItem(`netunim-storage-cutover-version:kupa:${owner.current()}`)!=='2'&&(owner.current()!=='local'||storage?.getItem('netunim-storage-engine-version:kupa:local')!=='2');
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});

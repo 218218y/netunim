@@ -97,6 +97,7 @@ async function retryReadOnlyRecovery(fn,{attempts=6,delay=60}={}){
 }
 
 async function boot(){
+  session.storageProtocolBlocked=true;
   startupMark('boot-start');
   await acquirePrimaryTabLock();startupMark('primary-tab-ready');
   await hydrateStorageOwner();startupMark('storage-owner-ready');
@@ -107,11 +108,13 @@ async function boot(){
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
   const protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(!protocol.allowed){
+    session.storageProtocolBlocked=true;
     const oldBrowser=protocol.reason==='server-v2';
     const message=oldBrowser?'החשבון כבר עבר ל־Storage V2. נתוני הדפדפן הישן נחסמו; במכשיר משני יש למחוק את נתוני האתר שלו, לפתוח מחדש ולטעון את החשבון מהענן.':'נדרש חיבור ואימות של מצב האחסון בענן לפני פתיחת נתונים ישנים במכשיר זה.';
     setCloud(message,'error');setSave('העריכה נעולה עד השלמת אימות האחסון','error');
     if(!tab.primaryTab)showSecondaryTabGuard();syncFolderAccessButton();return;
   }
+  session.storageProtocolBlocked=false;
 
   if(!tab.primaryTab){
     const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing());

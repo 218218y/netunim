@@ -97,7 +97,7 @@ function bootFixture({primary=true,failBirth=false}={}){
     requestPersistentBrowserStorage:async()=>{},restoreRememberedBackupTarget:async()=>{},
     tryAutoOpenRemembered:async()=>false,showFirstRun:()=>events.push('first-run'),
   });
-  return {lifecycle:createLifecycle(ports),events};
+  return {lifecycle:createLifecycle(ports),events,session};
 }
 
 test('Kupa production startup finishes local birth and hydrates Shared before presenting data',async()=>{
@@ -106,6 +106,7 @@ test('Kupa production startup finishes local birth and hydrates Shared before pr
   try{
     const ready=bootFixture();await ready.lifecycle.boot();
     assert.deepEqual(ready.events,['lock','owner','transition','birth-hydrated','birth','main','shared','first-run']);
+    assert.equal(ready.session.storageProtocolBlocked,false);
     const blocked=bootFixture({failBirth:true});await blocked.lifecycle.boot();
     assert.deepEqual(blocked.events,['lock','owner','transition','birth-hydrated','birth','blocked']);
     const secondary=bootFixture({primary:false});await secondary.lifecycle.boot();
@@ -122,6 +123,6 @@ test('Kupa unmarked browser for a fenced account stops before V1 recovery and re
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
       readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>false,verifyLocalStorageEngine:async()=>false,
       openBrowserStateFallback:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')},setConnectUI:()=>events.push('blocked')});
-    await createLifecycle(ports).boot();assert.deepEqual(events,['blocked']);
+    await createLifecycle(ports).boot();assert.deepEqual(events,['blocked']);assert.equal(ports.session.storageProtocolBlocked,true);
   }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
 });

@@ -51,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=57;
+const BRIDGE_VERSION=58;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -637,7 +637,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
         // retain that engine-scoped not-before record when Chromium also fails. This
         // prevents a second manual refresh from immediately re-entering Camoufox.
         if(camoufoxDeferred&&browserEngine!=='camoufox')errors.push(camoufoxDeferred);
-        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode});
+        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,syncMode:syncMode==='full'?'full':'daily',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode});
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;
