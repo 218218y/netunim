@@ -38,3 +38,8 @@
 ב־cleanup הבא מסירים קודם writers עסקיים של V1 מ־production, ומשאירים לזמן מוגדר קוראים לקריאת מצב ישן או שחזור. לאחר מכן מפרידים את `checks` מ־Main V2 checkpoint/schema עם migration עמיד ואימות מול Shared. רק אחרי שכל המכשירים הידועים נטענו מהענן ותקופת שימוש תקינה, מסירים את קוראי V1, shadow/outboxes/`afterLegacy` ואת RPC ה־legacy הציבוריים. מחיקה של storage מקומי תהיה לפי מפתחות ידועים ובמכשיר שעבר אימות, ולא לפי wildcard של `.v1`.
 
 אין לחזור על [runbook מעבר שני המחשבים](STORAGE_V2_TWO_COMPUTER_RUNBOOK.md); הוא תיעוד היסטורי. אם client חדש מציג `storage_protocol_upgrade_required`, יש לבדוק את גרסת האתר ו־Service Worker ואת ה־marker המקומי, ולא לכבות את ה־fence.
+# עדכון ניקוי: בידוד נתוני V1 במכשיר ישן
+
+כאשר השרת כבר דורש writer protocol 2 ומכשיר ישן נטען ללא marker מקומי, השחזור הסמכותי מגיע תמיד מ־Main ומ־Shared Checks בענן. לפני אימוץ מצב הענן, הגרסה החדשה קוראת את מפתחות האחסון העסקיים הישנים לקריאה בלבד. עותק שלהם נשמר ברשומת `legacy-recoveries` באותה transaction שכותבת את שני ה־checkpoints, שני ה־cursors וה־cutover marker. הנתונים הישנים אינם נשלחים לענן ואינם מוצגים כמצב הפעיל.
+
+ה־marker כולל `legacyDisposition: quarantined` רק אם עותק השחזור נקלט אטומית. לכן outbox ישן שנשאר במקומו אינו חוסם שוב את Shared Checks V2 לאחר restart. לפני cutover רגיל, ללא disposition כזה, בדיקת ה־pending הישן נשארת מחמירה. ה־record נשמר לעת עתה ב־IndexedDB לצורך חילוץ מפורש; עדיין אין ממשק משתמש לייצואו ואין למחוק את המקורות הישנים לפני שיש מסלול חילוץ או החלטת מחיקה מפורשת.
