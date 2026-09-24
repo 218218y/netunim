@@ -86,6 +86,23 @@ test('Orders missing target authentication keeps a pending transfer locked off s
   assert.equal(f.calls.includes('render'),false);
 });
 
+test('Orders unmarked browser for a fenced account stops before V1 recovery and render',async()=>{
+  const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
+    restoreBrowserStateFallback:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')}});
+  await f.lifecycle.boot();
+  assert.equal(f.calls.includes('birth'),false);
+  assert.equal(f.calls.includes('render'),false);
+  assert.equal(f.calls.includes('main-v2'),false);
+});
+
+test('Orders local V1 browser with a saved fenced-account session stops before local birth',async()=>{
+  const f=fixture({authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
+    ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')}});
+  await f.lifecycle.boot();
+  assert.equal(f.calls.includes('birth'),false);
+  assert.equal(f.calls.includes('render'),false);
+});
+
 test('Orders with an account cutover hydrates Shared before a DB capability failure renders Main',async()=>{
   const model={state:{checks:[{id:'stale-main-copy'}]}},f=fixture({
     model,storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
