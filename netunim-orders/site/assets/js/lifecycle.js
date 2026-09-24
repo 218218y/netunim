@@ -1,11 +1,12 @@
 import {clone} from './core/values.js';
 import {CLOUD_BASE_KEY} from './state/constants.js';
+import {checkLegacyAccountStartup} from './shared/storage-v2-server-protocol.js';
 
 function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState({v2Only=false}={}){
   if(v2Only){
     const v2=await refreshStorageV2CloudState();
@@ -104,6 +105,13 @@ async function boot(){
   await hydrateStorageTransition();await hydrateLocalBirth();
   const localOwner=storageOwnerCurrent()==='local';
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
+  const protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
+  if(!protocol.allowed){
+    const oldBrowser=protocol.reason==='server-v2';
+    const message=oldBrowser?'החשבון כבר עבר ל־Storage V2. נתוני הדפדפן הישן נחסמו; במכשיר משני יש למחוק את נתוני האתר שלו, לפתוח מחדש ולטעון את החשבון מהענן.':'נדרש חיבור ואימות של מצב האחסון בענן לפני פתיחת נתונים ישנים במכשיר זה.';
+    setCloud(message,'error');setSave('העריכה נעולה עד השלמת אימות האחסון','error');
+    if(!tab.primaryTab)showSecondaryTabGuard();syncFolderAccessButton();return;
+  }
 
   if(!tab.primaryTab){
     const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing());

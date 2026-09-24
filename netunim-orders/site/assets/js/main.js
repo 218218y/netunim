@@ -748,6 +748,8 @@ const lifecycle=createLifecycle({
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
   verifyStorageCutover,
+  authenticatedOwner:()=>cloudAuth.loadSession()?.user?.id||null,
+  readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),

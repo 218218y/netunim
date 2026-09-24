@@ -86,7 +86,7 @@ function bootFixture({primary=true,failBirth=false}={}){
   const events=[],model={state:{checks:[]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));let marker=false;
   Object.assign(ports,{model,session,checksSession:{},tab:{primaryTab:primary},normalizeState:value=>value,prepareKupaCloudState:value=>value,
     acquirePrimaryTabLock:async()=>events.push('lock'),hydrateStorageOwner:async()=>events.push('owner'),
-    restoreSupaSession:async()=>null,hydrateStorageTransition:async()=>events.push('transition'),
+    restoreSupaSession:async()=>null,storageOwnerCurrent:()=> 'local',hydrateStorageTransition:async()=>events.push('transition'),
     hydrateLocalBirth:async()=>events.push('birth-hydrated'),verifyStorageCutover:async()=>false,
     verifyLocalStorageEngine:async()=>marker,ensureLocalBirth:async()=>{events.push('birth');if(failBirth)throw Error('birth-failed');marker=true;return true},
     recoverLocalV2State:async()=>{events.push('main');model.state.checks=[{id:'stale'}];return true},
@@ -111,4 +111,17 @@ test('Kupa production startup finishes local birth and hydrates Shared before pr
     const secondary=bootFixture({primary:false});await secondary.lifecycle.boot();
     assert.deepEqual(secondary.events,['lock','owner','transition','birth-hydrated','secondary']);
   }finally{for(const [key,descriptor] of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
+});
+
+test('Kupa unmarked browser for a fenced account stops before V1 recovery and render',async()=>{
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
+  try{
+    const events=[],ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
+    Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
+      acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
+      readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>false,verifyLocalStorageEngine:async()=>false,
+      openBrowserStateFallback:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')},setConnectUI:()=>events.push('blocked')});
+    await createLifecycle(ports).boot();assert.deepEqual(events,['blocked']);
+  }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
 });
