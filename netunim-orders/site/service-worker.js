@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-420e4ff00159';
+const CACHE='orders-app-shell-esm-5de4293b5e6e';
 const SHELL=[
   './',
   './index.html',
@@ -156,6 +156,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-boundary.js',
   './assets/js/shared/storage-v2-cutover-coordinator.js',
   './assets/js/shared/storage-v2-cutover.js',
+  './assets/js/shared/storage-v2-local-birth.js',
   './assets/js/shared/storage-v2-local-import.js',
   './assets/js/shared/storage-v2-production-transition.js',
   './assets/js/shared/storage-v2-restore.js',

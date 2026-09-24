@@ -58,6 +58,7 @@ import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
+import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
@@ -389,7 +390,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storagePending,syncChecksState,storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
-  stateNormalization,sharedChecksV2Composition,sharedChecksV2,
+  stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 async function beginStorageV2Cutover(){
@@ -810,6 +811,8 @@ const uiBackup=createUiBackup({
 
 const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
+  verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}),
+  recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
   ...storageV2Coordinator.transitionLifecyclePorts(),
   verifyStorageCutover,
   model,

@@ -103,11 +103,11 @@ test('durable cutover marker must agree with its synchronous cache and requires 
   assert.equal(await cutover.verify(),false);
 });
 
-test('Orders secondary tab cannot render stale Main checks after V2 cutover',async()=>{
+for(const marker of ['cloud','local'])test(`Orders secondary tab cannot render stale Main checks after ${marker} V2 marker`,async()=>{
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
-    const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>true,
+    const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,restoreBrowserStateFallback:async()=>calls.push('main-recovered'),
       recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks')},
       render:()=>{throw new Error('stale business state rendered')},showSecondaryTabGuard:()=>calls.push('guard'),

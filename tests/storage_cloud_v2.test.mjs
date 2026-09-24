@@ -19,6 +19,8 @@ test('Storage V2 captures ACK and rebase checkpoints before waiting for an older
       append:()=>({seq:1,operationId:'edit-1',emergencyDurable:true,committed}),
       acknowledge:record,rejectAndRebase:record};
     const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,validate:value=>assert.ok(Array.isArray(value.notes)),mode:()=> 'primary',createJournal:()=>active});
+    assert.equal(typeof runtime.adoptCloudHead,'function');
+    assert.equal(typeof runtime.replaceAuthoritativeState,'function');
     await runtime.recover(initial);
     runtime.persist({notes:[{id:'N',text:'queued'}]},{operations:[{type:'set',field:'unused',value:true}]});
     const mutable={notes:[{id:'N',text:'before-await'}]},commit=runtime[method]('flight',11,initial,{currentState:mutable,expectedSeq:1});

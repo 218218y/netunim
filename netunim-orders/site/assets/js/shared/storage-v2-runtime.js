@@ -17,7 +17,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
   try{
     const account=String(owner||'').trim();
     if(!storageOwnerReady(account))return 'off';
-    if(storage?.getItem(`netunim-storage-cutover-version:${app}:${account}`)==='2')return 'primary';
+    if(storage?.getItem(`netunim-storage-cutover-version:${app}:${account}`)==='2'||account==='local'&&storage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2')return 'primary';
     if(preparing)return 'preparing';
     const configured=storage?.getItem(`netunim-storage-v2-mode:${app}`)||storage?.getItem('netunim-storage-v2-mode');
     if(['primary','shadow','off'].includes(configured))return configured;
@@ -67,7 +67,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
         let recovered=await active.open();
         if(commits===observedCommits)commits=Promise.resolve();
         if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
-        if((ownerHandoffRequired&&!migrationAuthorized)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${activeIdentity}`)==='2')fallbackState=null;
+        if((ownerHandoffRequired&&!migrationAuthorized)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${activeIdentity}`)==='2'||activeIdentity==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2')fallbackState=null;
         if(recovered?.appMetadata?.storageRole==='primary'){
           if(runtimeMode==='preparing'){diagnostics.recoveries++;operationsSinceCheckpoint=Math.max(0,recovered.seq-Number(recovered.stored?.checkpoints?.data?.seq||0));return {...verifiedRecovery(active,recovered),source:'v2'}}
           const fallbackSeq=Number(appMetadata?.snapshotSeq||0),v2Seq=Number(recovered.appMetadata?.snapshotSeq||0);
@@ -238,5 +238,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,adoptCloudHead,replaceAuthoritativeState,replaceLocalWithPending,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,afterLegacy,observe:(...args)=>shadow.observe(...args),flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,shadowDiagnostics:shadow.diagnostics,get diagnostics(){return diagnostics.mode==='primary'?diagnostics:shadow.diagnostics.mode!=='disabled'?shadow.diagnostics:diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

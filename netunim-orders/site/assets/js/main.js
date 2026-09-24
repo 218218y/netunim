@@ -69,6 +69,7 @@ import {createDomainsCalendarController} from './domains/calendar/controller.js'
 import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
+import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {createUiActions,wrapMutationActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
@@ -768,6 +769,7 @@ const uiSettings=createUiSettings({
 
 const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:()=>cloudAuth.loadSession()?.user?.id}),
+  verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
   ...storageV2Coordinator.transitionLifecyclePorts(),
   verifyStorageCutover,
   recoverSharedChecksV2Primary,

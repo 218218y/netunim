@@ -249,6 +249,43 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-import-idb') as b
     assert not browser.drain_serious_errors()
     print('PASS V2 local import real IDB crash matrix: '+json.dumps(result))
 
+with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-engine-idb') as browser:
+    result=browser.evaluate(r"""(async()=>{
+      const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
+      const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+      const {verifyStorageV2LocalEngine,storageLocalEngineKey}=await import('./assets/js/shared/storage-v2-local-birth.js');
+      const db=createStorageJournalDb(),scope='kupa:local',mainState={notes:[]},sharedState={checks:[],bankEvents:[]},stamp=new Date().toISOString();
+      await db.initializeOwnerBinding('kupa','local');
+      const plan={version:2,scope,app:'kupa',owner:'local',id:'local-birth-idb',phase:'prepared',mainState,sharedState,createdAt:stamp,updatedAt:stamp};
+      await db.beginLocalBirth(scope,plan);
+      const main=createStorageJournal({owner:'local:kupa',schema:{collections:['notes'],fields:[]},validate:()=>{},db});
+      const shared=createStorageJournal({owner:'local:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db});
+      await main.install(mainState,{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+      let incomplete=false;try{await db.markLocalEngine('kupa')}catch(error){incomplete=error.message==='storage_local_engine_head_missing'}
+      if(!incomplete)throw Error('incomplete local head marked V2');
+      await shared.install(sharedState,{expectedEpoch:null,appMetadata:{storageRole:'shared-checks-primary'}});
+      await db.advanceLocalBirth(scope,plan.id,'prepared','main-initialized');
+      await db.advanceLocalBirth(scope,plan.id,'main-initialized','shared-initialized');
+      await db.advanceLocalBirth(scope,plan.id,'shared-initialized','verified');
+      const put=IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='cutovers'){this.transaction.abort();throw Error('injected local marker abort')}return result};
+      let aborted=false;try{await db.markLocalEngine('kupa')}catch{aborted=true}finally{IDBObjectStore.prototype.put=put}
+      if(!aborted||await db.readLocalEngine('kupa'))throw Error('aborted local marker became visible');
+      await db.markLocalEngine('kupa');
+      const owner=()=> 'local',key=storageLocalEngineKey('kupa');
+      if(!await verifyStorageV2LocalEngine({app:'kupa',owner,db})||localStorage.getItem(key)!=='2')throw Error('IDB marker did not repair cache');
+      localStorage.removeItem(key);if(!await verifyStorageV2LocalEngine({app:'kupa',owner,db})||localStorage.getItem(key)!=='2')throw Error('cache repair failed');
+      await db.advanceLocalBirth(scope,plan.id,'verified','complete');
+      const settled=await db.readLocalBirth(scope);
+      if(settled.mainState||settled.sharedState)throw Error('completed birth retained duplicate full snapshots');
+      await db.reserveLocalOwnerTarget('kupa','another-account',{id:'adoption',intent:'upload-local'});
+      let ownerFenced=false;try{await db.markLocalEngine('kupa')}catch(error){ownerFenced=error.message==='storage_local_engine_owner_changed'}
+      if(!ownerFenced)throw Error('owner reservation did not fence marker retry');
+      return ['two local heads required','marker transaction abort is atomic','IDB repairs cache','completed plan retires duplicate snapshots','owner reservation fences marker retry'];
+    })()""",timeout=60)
+    assert not browser.drain_serious_errors()
+    print('PASS V2 local engine real IDB marker: '+json.dumps(result))
+
 with BrowserSession(ROOT/'netunim-kupa/site','sheet-warm-navigation-freshness') as browser:
     assert browser.evaluate("""(async()=>{
       const {createDefaultNotesSheet}=await import('./assets/js/shared/notes-sheet-model.js');

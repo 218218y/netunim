@@ -1,5 +1,11 @@
 # Storage V2 — מצב מעבר ושערי שחרור
 
+## עדכון 24 בספטמבר 2026: marker מקומי והמשך העבודה
+
+נוסף `storage-v2-local-birth.js`: תוכנית לידה מקומית עמידה שכוללת מקור Main+Shared קפוא, שלבי אתחול ניתנים לחידוש, אימות parity ו־marker נפרד ב־IndexedDB. כתיבת ה־marker בודקת באותה transaction שני checkpoints של owner מקומי ללא cloud base, flight או control. LocalStorage הוא cache בלבד; startup בשתי האפליקציות מאמת marker קיים מול IndexedDB לפני שחזור, ומשחזר cache חסר רק מה־marker העמיד. בדיקות קריסה ל־marker עברו מול IndexedDB אמיתי.
+
+**הלידה המקומית עדיין אינה מופעלת אוטומטית בייצור.** מסלול `local → account` עדיין משתמש ב־V1 בהעלאה הראשונה; הפעלה אוטומטית של local Primary לפני הסבתו הייתה חוסמת העלאה ראשונה לענן. השלב הבא הוא חיבור V2→V2 עמיד ל־owner חדש, ולאחריו חיבור `beginLocalBirth()` ל־startup של Orders וקופה ובדיקות zero-V1 מקצה לקצה. אין לבצע עדיין מעבר יזום בשני המחשבים או למחוק V1.
+
 ## עדכון: אחסון מקומי ללא ענן
 
 ל־Main ול־Shared Checks נוספו מסלולי יצירה ושחזור מקומיים ללא cloud base מזויף. Shared Checks מאפשר עריכה ושחזור מקומיים, אך מסרב לבצע RPC או ליצור flight עד שקיים cloud cursor אמיתי. `initializeLocal` של Main מקדם shadow רק אחרי בדיקת שוויון מלא מול מקור הנתונים, ומסרב להחליף primary שונה. ייבוא מקומי לשני ה־journals משתמש ב־boundary עמיד וב־checkpoint אטומי עם fence על ה־sequence; קריסה בין קיבוע Shared לקיבוע Main מושלמת בחידוש. פתיחת קובץ בקופה ושחזור JSON בשתי האפליקציות משתמשים במסלול הזה כאשר כבר פעיל V2 מקומי ללא cloud head.

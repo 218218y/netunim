@@ -3,7 +3,7 @@ import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
-  const open=createIndexedDbConnection(name,7,db=>{
+  const open=createIndexedDbConnection(name,8,db=>{
     for(const name of stores)if(!db.objectStoreNames.contains(name)){const store=db.createObjectStore(name);if(name==='journal')store.createIndex('owner','data.owner')}
     if(!db.objectStoreNames.contains('boundaries'))db.createObjectStore('boundaries');
     if(!db.objectStoreNames.contains('cutovers'))db.createObjectStore('cutovers');
@@ -11,6 +11,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(!db.objectStoreNames.contains('owner-handoffs'))db.createObjectStore('owner-handoffs');
     if(!db.objectStoreNames.contains('bootstrap-groups'))db.createObjectStore('bootstrap-groups');
     if(!db.objectStoreNames.contains('cutover-preparations'))db.createObjectStore('cutover-preparations');
+    if(!db.objectStoreNames.contains('local-births'))db.createObjectStore('local-births');
   });
   async function transact(mode,work){const db=await open();return new Promise((resolve,reject)=>{
     const tx=db.transaction(stores,mode);let result,error;
@@ -354,5 +355,57 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(tx.error||new Error('storage_cutover_aborted'));
     }))
   }
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover};
+  function readLocalBirth(scope){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['local-births'],'readonly'),request=tx.objectStore('local-births').get(scope);
+    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
+    request.onerror=()=>reject(request.error);
+  }))}
+  function beginLocalBirth(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['local-births'],'readwrite'),store=tx.objectStore('local-births'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(request.result){result=readStorageRecord(request.result);if(result.id!==record.id)throw new Error('storage_local_birth_pending');return}
+      if(record.scope!==scope||record.phase!=='prepared')throw new Error('storage_local_birth_invalid');
+      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_birth_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function advanceLocalBirth(scope,id,fromPhase,toPhase){return open().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(['local-births'],'readwrite'),store=tx.objectStore('local-births'),request=store.get(scope);let result=null,error=null;
+    request.onsuccess=()=>{try{
+      if(!request.result)throw new Error('storage_local_birth_missing');const current=readStorageRecord(request.result);
+      if(current.id!==id||current.phase!==fromPhase||current.scope!==scope)throw new Error('storage_local_birth_changed');
+      result={...current,phase:toPhase,updatedAt:new Date().toISOString()};
+      // The full source is needed only until both journals and the marker are
+      // durable. Retire the duplicate snapshot after completion.
+      if(toPhase==='complete'){delete result.mainState;delete result.sharedState}
+      store.put(sealStorageRecord(result),scope);
+    }catch(cause){error=cause;try{tx.abort()}catch{}}};
+    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_birth_aborted'));tx.onerror=()=>{error??=tx.error};
+  }))}
+  function markLocalEngine(app){
+    if(!['orders','kupa'].includes(app))throw new Error('storage_local_engine_app_invalid');
+    return open().then(db=>new Promise((resolve,reject)=>{
+      const scope=`${app}:local`,mainOwner=`local:${app}`,sharedOwner='local:shared-checks',markerKey=`local-engine:${scope}`;
+      const tx=db.transaction(['cutovers','local-births','owner-bindings','checkpoints','metadata','bases','flights','controls','boundaries'],'readwrite');
+      const requests=[tx.objectStore('cutovers').get(markerKey),tx.objectStore('local-births').get(scope),tx.objectStore('owner-bindings').get(app),tx.objectStore('checkpoints').get(mainOwner),tx.objectStore('checkpoints').get(sharedOwner),tx.objectStore('metadata').get(mainOwner),tx.objectStore('metadata').get(sharedOwner),tx.objectStore('bases').get(mainOwner),tx.objectStore('bases').get(sharedOwner),tx.objectStore('flights').get(mainOwner),tx.objectStore('flights').get(sharedOwner),tx.objectStore('controls').get(mainOwner),tx.objectStore('controls').get(sharedOwner),tx.objectStore('boundaries').get('local')];
+      let remaining=requests.length,result=null,error=null;
+      const fail=cause=>{error=cause;try{tx.abort()}catch{}};
+      for(const request of requests)request.onsuccess=()=>{if(--remaining)return;try{
+        const [existing,birth,binding,main,shared,mainMeta,sharedMeta,mainBase,sharedBase,mainFlight,sharedFlight,mainControl,sharedControl,boundary]=requests.map(row=>row.result);
+        const activeBinding=binding&&readStorageRecord(binding);
+        if(!activeBinding||activeBinding.owner!=='local'||activeBinding.pendingAdoption)throw new Error('storage_local_engine_owner_changed');
+        if(existing){result=readStorageRecord(existing);if(result.version!==2||result.kind!=='local-engine'||result.scope!==scope)throw new Error('storage_local_engine_marker_invalid');return}
+        if(!birth||!main||!shared||!mainMeta||!sharedMeta)throw new Error('storage_local_engine_head_missing');
+        const plan=readStorageRecord(birth),mainHead=readStorageRecord(main),sharedHead=readStorageRecord(shared);
+        if(plan.scope!==scope||plan.phase!=='verified'||mainHead.appMetadata?.storageRole!=='primary'||sharedHead.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('storage_local_engine_role_invalid');
+        if(mainHead.owner!==mainOwner||sharedHead.owner!==sharedOwner||mainMeta.epoch!==mainHead.epoch||sharedMeta.epoch!==sharedHead.epoch||mainMeta.seq!==mainHead.seq||sharedMeta.seq!==sharedHead.seq)throw new Error('storage_local_engine_head_changed');
+        if(mainBase||sharedBase||mainFlight||sharedFlight||mainControl||sharedControl)throw new Error('storage_local_engine_cloud_head_exists');
+        if(boundary&&readStorageRecord(boundary).phase!=='complete')throw new Error('storage_local_engine_boundary_pending');
+        result={version:2,kind:'local-engine',scope,app,owner:'local',birthId:plan.id,markedAt:new Date().toISOString()};tx.objectStore('cutovers').put(sealStorageRecord(result),markerKey);
+      }catch(cause){fail(cause)}};
+      tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_engine_aborted'));tx.onerror=()=>{error??=tx.error};
+    }))
+  }
+  function readLocalEngine(app){return readCutover(`local-engine:${app}:local`)}
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine};
 }

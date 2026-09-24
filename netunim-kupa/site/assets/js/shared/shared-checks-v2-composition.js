@@ -8,7 +8,7 @@ import {createStorageV2Cutover,storageCutoverKey} from './storage-v2-cutover.js'
 export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,applyMainState,main}={}){
   let enabled=false;
   const cutover=createStorageV2Cutover({app:site,owner,primary});
-  const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2';
+  const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2'||owner()==='local'&&localStorage.getItem(`netunim-storage-engine-version:${site}:local`)==='2';
   const preparationRequested=()=>!!preparing()&&!cutoverRequested();
   const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>enabled?(cutoverRequested()?'primary':preparationRequested()?'preparing':'off'):'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
