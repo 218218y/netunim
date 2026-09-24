@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-6f6fe0639c68';
+const CACHE='kupa-app-shell-esm-986f8dbeae77';
 const SHELL=[
   './',
   './index.html',
@@ -111,6 +111,7 @@ const SHELL=[
   './assets/js/shared/storage-v2-cutover.js',
   './assets/js/shared/storage-v2-detached-target.js',
   './assets/js/shared/storage-v2-fenced-recovery.js',
+  './assets/js/shared/storage-v2-legacy-recovery.js',
   './assets/js/shared/storage-v2-local-birth.js',
   './assets/js/shared/storage-v2-local-import.js',
   './assets/js/shared/storage-v2-owner-transfer.js',
