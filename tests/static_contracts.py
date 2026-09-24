@@ -339,8 +339,11 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table .customer-col-order{' not in orders_css
    and '@media(min-width:1200px){.customer-table .customer-col-name{width:17%}' in orders_css
    and 'width:min(calc(100% - 24px),1500px)' not in orders_css
+   and '.customer-table .customer-col-amount{width:96px}' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}' in orders_css
-   and '.customer-table .customer-col-note{width:calc(22.5% - 26px)}' in orders_css
+   and '.customer-table .customer-col-note{width:calc(32.5% - 122px)}' in orders_css
+   and 'customer-col-amount{width:clamp(' not in orders_css
+   and 'customer-col-note{width:calc(32.5% - clamp(' not in orders_css
    and '.customer-table .customer-col-clearing{width:72px}.customer-table .customer-col-customer-id{width:108px}.customer-table .customer-col-actions{width:72px}' in orders_css
    and orders_css.count('.customer-table .customer-col-actions{width:72px}') == 4
    and '.customer-table .customer-col-actions{width:5%}' not in orders_css
