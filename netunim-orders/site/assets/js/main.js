@@ -752,6 +752,7 @@ const lifecycle=createLifecycle({
   verifyStorageCutover,
   authenticatedOwner:()=>cloudAuth.loadSession()?.user?.id||null,
   readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
+  recoverFencedAccount:()=>storageV2Coordinator.recoverFencedAccount(),
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),

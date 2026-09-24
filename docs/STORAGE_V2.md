@@ -1,8 +1,8 @@
 # Storage V2 — ארכיטקטורה וחוזי בטיחות
 
-ה־journal המקומי של Main ושל Shared Checks אינו מחייב עוד cloud base. ב־owner `local` אפשר ליצור checkpoint מקומי ולבצע import מתואם של שני ה־journals ללא pending ענן; sync נותר חסום עד שנוצר cursor אמיתי. זהו חוזה מנוע בלבד בשלב זה: אין עדיין marker ו־startup production שמפעילים local V2 להתקנה חדשה. מצב ה־cutover לחשבון קיים ממשיך להשתמש ב־marker הענן הקיים.
+ה־journal המקומי של Main ושל Shared Checks אינו מחייב cloud base. התקנה חדשה נולדת אוטומטית כ־Local V2 עם marker מקומי עמיד. אפשר לבצע import מתואם של שני ה־journals ללא pending ענן; sync נותר חסום עד שנוצר cursor אמיתי. לחשבון ענן יש marker נפרד, ורק אחרי אימות שני ה־heads הוא הופך ל־V2 Primary.
 
-[מצב המעבר ושערי השחרור](STORAGE_V2_CUTOVER_STATUS.md) מתעדכנים בנפרד. ברירת המחדל עדיין אינה V2-only.
+[המצב התפעולי לאחר מעבר שני המחשבים](STORAGE_V2_POST_CUTOVER.md) הוא מקור האמת ל־cleanup. חשבון שה־server fence שלו פעיל כותב בענן רק דרך v6; מסלולי V1 לחשבונות שטרם עברו עדיין קיימים עד לשלב הניקוי הבא.
 
 לכל אפליקציה ולכל בעלים יש Main journal. ל־Shared Checks יש journal נפרד משותף ל־Orders ולקופה. Main מחזיק נתוני אפליקציה; Shared הוא הסמכות ל־`checks` ול־`bankEvents` כאשר הוא Primary. מודל התצוגה מורכב משחזור שני המקורות. `checks` עדיין מופיעים ב־Main schema ישן לצורכי מעבר בלבד; הם אינם יעד לפעולת צ׳ק רגילה ויוסרו ב־cleanup.
 
@@ -12,7 +12,7 @@
 
 שחזור ענן וייבוא מקומי מלא נוגעים בשני journals ולכן משתמשים ב־boundary coordinator. ה־intent נשמר לפני כתיבת אחד הצדדים, וכל צד רושם אותו boundary ID. Restart משלים שלב חסר באופן idempotent. שחזור ענן מתקין head סמכותי לפי תוצאת השרת; ייבוא מקומי שומר את ה־cloud base/revision ומייצר pending V2. פעולת `replace-state` מלאה מותרת רק ל־boundary ייבוא או לנרמול חד־פעמי ומזוהה של נתוני ענן ישנים; היא אינה במסלול העריכות הרגילות.
 
-`storageCutoverVersion=2` הוא סמן עמיד לפי אפליקציה וחשבון ב־IndexedDB, עם cache סינכרוני ב־LocalStorage עבור writers. סמן IDB חסר מול cache קיים חוסם; cache שנמחק ניתן לשחזור רק מסמן IDB תקין. כתיבת הסמן דורשת שני checkpoints בתפקיד Primary, cursors נקיים וללא boundary פתוח. מסלול production ב־Settings מפעיל הכנה עמידה, ניקוז V1, bootstrap של שני המסמכים, השוואה של כל base למסמך הענן ולמצב המשוחזר מה־journal, ורק אז כתיבת הסמן. קבוצת bootstrap קשורה למזהה הכנת ה־cutover כדי שחידוש לאחר קריסה לא יגלה מחדש מסמך שנוצר במהלך אותו מעבר. המסלול הזה חל כיום על חשבון קיים; `local` והתקנה חדשה עדיין דורשים מסלול V2 נפרד לפני הסרת V1.
+`storageCutoverVersion=2` הוא סמן עמיד לפי אפליקציה וחשבון ב־IndexedDB, עם cache סינכרוני ב־LocalStorage עבור writers. סמן IDB חסר מול cache קיים חוסם; cache שנמחק ניתן לשחזור רק מסמן IDB תקין. כתיבת הסמן דורשת שני checkpoints בתפקיד Primary, cursors נקיים וללא boundary פתוח. מסלול production ב־Settings מפעיל הכנה עמידה, ניקוז V1, bootstrap של שני המסמכים, השוואה של כל base למסמך הענן ולמצב המשוחזר מה־journal, ורק אז כתיבת הסמן. קבוצת bootstrap קשורה למזהה הכנת ה־cutover כדי שחידוש לאחר קריסה לא יגלה מחדש מסמך שנוצר במהלך אותו מעבר. Local birth ו־owner transfer הם מסלולי production נפרדים, עמידים ופעילים.
 
 ## חוזה שינוי וכשל
 
@@ -30,4 +30,4 @@ python tests/runtime_storage.py
 python tests/run_all.py --keep-going
 ```
 
-בדיקות הדפדפן משתמשות ב־IndexedDB אמיתי ובודקות abort/restart, איבוד ACK, rebase, ייבוא מקומי ו־writer fencing. שחרור cutover עדיין מחייב גם בדיקת שני לקוחות אמיתיים ושער zero-V1-write על workflows מלאים.
+בדיקות הדפדפן משתמשות ב־IndexedDB אמיתי ובודקות abort/restart, איבוד ACK, rebase, ייבוא מקומי ו־writer fencing. מעבר שני המחשבים והפעלת ה־server fence כבר בוצעו; ניקוי V1 נשאר תהליך release נפרד.

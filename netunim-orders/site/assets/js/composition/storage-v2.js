@@ -4,6 +4,7 @@ import {createStorageV2ProductionTransition} from '../shared/storage-v2-producti
 import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
+import {createStorageV2FencedRecovery} from '../shared/storage-v2-fenced-recovery.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
@@ -17,7 +18,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   if(!tab||!session)throw new Error('orders_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'orders',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab});
-  let transition=null,localBirth=null,ownerTransfer=null,transferRebinding=false,legacyDrain=false,ports=null;
+  let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
@@ -54,6 +55,13 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   function configure(next){
     if(transition)throw new Error('orders_storage_v2_already_configured');ports=next;
     const p=requirePorts();
+    fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
+      authenticatedOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
+      readMainRemote:()=>p.cloudTransport.readCloud(),projectMainRemote:row=>p.stateSnapshots.prepareCloudState(row.state),
+      readSharedRemote:()=>p.cloudTransport.readSharedChecksCloud(),projectSharedRemote:row=>row.state,
+      composeMainState:(cloud,shared)=>p.prepareV2Checkpoint(p.stateNormalization.normalizeState({...cloud,checks:shared.checks})),
+      projectMainState:state=>p.stateSnapshots.prepareCloudState(state),validateMainState:state=>p.validateMainState(state),
+      validateMainCloud:state=>assertValidOrderCloudState(state,'Orders fenced recovery cloud state'),storage});
     localBirth=createStorageV2LocalBirth({
       app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
       main:p.storageShadow,shared:p.sharedChecksV2,
@@ -207,7 +215,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
     return {already:false};
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing}),
