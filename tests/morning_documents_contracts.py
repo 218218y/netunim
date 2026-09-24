@@ -166,8 +166,8 @@ ok("action==='reserve'" in edge and 'reserveOperation(ownerId,input,fingerprint)
    'Morning reload preflight: the dedicated server reserve action creates durable ledger evidence without ever entering the Morning document POST window')
 ok("action==='abandon_reservation'" in edge and "eq('state','reserved')" in edge and 'abandoned:false' in edge and 'claimReservedOperation' in edge,
    'Morning reload pre-POST recovery: only a still-reserved operation can be atomically abandoned; pending/external issuance is never canceled and must reconcile')
-ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||result.reason==='already-applied'" in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
-   'Morning local durability handshake: scheduleSave reports durability and an idempotent replay re-persists an in-memory Morning event before recovery state may clear')
+ok('return localOk' in persistence and 'if(rejectSecondaryMutation())return false' in persistence and "result.changed||linkChanged||linked||result.reason==='already-applied'" in editor and 'persistedMorningDebts.get(d)===JSON.stringify(d)' in editor and "reason:alreadyApplied?'already-applied':'no-balance'" in morning_debt,
+   'Morning local durability handshake: progress and document links are durably saved, and replay re-persists an in-memory event before recovery clears')
 ok('morningVerifiedApplicationDurable' in morning_debt_recovery and 'DURABLE_NO_MUTATION_REASONS' in morning_debt_recovery and 'function settleVerifiedRecovery' in documents and 'blocked:!durable||serverLinkPending||!recoveryCleared' in documents and documents.count('settleVerifiedRecovery(')>=4,
    'Morning recovery cleanup: verified outcomes use an explicit durability allowlist and every verified path stays fail-closed until local recovery storage is actually cleared')
 ok("activeDebtId?rejectSecondaryMutation?.()===true:rejectSecondaryIssuance?.()===true" in documents and documents.count('if(rejectCurrentIssuance())return;')>=2 and "reason:'write-blocked'" in composition,
