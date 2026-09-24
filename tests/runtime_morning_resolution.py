@@ -1,6 +1,6 @@
 """A/B handover: production cloud refresh, durable Recovery and explicit UI decisions."""
 import json
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 from runtime_morning_audit import seed, js, reload, SETUP
 
 
