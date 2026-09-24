@@ -93,7 +93,7 @@ ok('morningBankDebtPickerMarkup' in documents and 'filterBankDebtPicker' in docu
    'Bank debt linkage uses a dedicated searchable debt-view module with one preferred suggestion instead of a separate select list')
 ok('class="morning-bank-debt-row ${selected' in debt_picker and 'data-action="morning-bank-debt-select"' in debt_picker and 'morning-bank-debt-action' not in debt_picker
    and '.morning-bank-debt-results{display:none;' in app_css and '.morning-bank-debt-search-shell:focus-within .morning-bank-debt-results{display:block}' in app_css
-   and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(0,1.45fr)' in app_css
+   and 'overflow-y:auto;overflow-x:hidden' in app_css and 'grid-template-columns:minmax(0,1.6fr) minmax(82px,.8fr) minmax(72px,.7fr)' in app_css
    and 'collapseMorningBankDebtPicker' in debt_picker and 'collapseMorningBankDebtPicker()' in documents,
    'Bank debt picker stays collapsed until search focus, uses full-row selection and fits the Morning modal without horizontal scrolling')
 ok('search.value=id?String(debt?.customerName' in debt_picker and 'search.dataset.selectedDebtId=id' in debt_picker,

@@ -24,7 +24,7 @@ export function customerDebtRenderModelData(state){
       if(record.supplied===true){stats.openSupplied++;stats.openSuppliedTotal+=progress.remainingPayment}
       else{stats.openUnsupplied++;stats.openUnsuppliedTotal+=progress.remainingPayment}
     }else if(progress.invoiceComplete)stats.closed++;else stats.missingInvoice++;
-    return {record,progress,status,search:`${record.customerName||''} ${record.orderNumber||''} ${record.phone||''} ${record.note||''}`.toLocaleLowerCase()};
+    return {record,progress,status,search:`${record.customerName||''} ${record.phone||''} ${record.note||''} ${record.clearingApproval||''} ${record.customerId||''}`.toLocaleLowerCase()};
   }).sort((a,b)=>Number(b.record.amount||0)-Number(a.record.amount||0));
   return {rows,stats};
 }

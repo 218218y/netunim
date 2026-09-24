@@ -7,6 +7,7 @@ import {expenseOccurrencesForMonthData} from '../netunim-kupa/site/assets/js/dom
 import {bankCurrentBalanceData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {computeKupaNetReadoutData, kupaAllInstallments, kupaBusinessInstallments} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {mergeRecordArray, comparePendingFreshness} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
+import {mergeCustomerDebtArray} from '../netunim-orders/site/assets/js/sync/merge-records.js';
 import {ALL_SUPPLIERS_ID, balanceRowsData, orderedSuppliersData, supplierBalanceData, supplierYearContextData, supplierFinancialStatsData, supplierArchiveYearsData, supplierViewRowsData, transactionFinancialStatsData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 import {createDomainsSuppliersNavigation} from '../netunim-orders/site/assets/js/domains/suppliers/navigation.js';
 import {createDomainsSuppliersView} from '../netunim-orders/site/assets/js/domains/suppliers/view.js';
@@ -145,6 +146,12 @@ test('merge preserves independent changes and detects deletion versus edit',()=>
  const deleted=[];mergeRecordArray(base,[base[1]],[{id:'A',value:8},base[1]],'id','rows',deleted);
  assert.ok(deleted.length);
 });
+test('customer debt sync merge preserves clearing approval and customer ID fields',()=>{
+ const base=[{id:'D1',customerName:'לקוח',amount:100,customerId:'',clearingApproval:'',paid:false,supplied:false,invoiceIssued:false,note:''}];
+ const local=[{...base[0],customerId:'123456782',clearingApproval:'4321'}],conflicts=[];
+ const merged=mergeCustomerDebtArray(base,local,base,conflicts);
+ assert.deepEqual(conflicts,[]);assert.equal(merged[0].customerId,'123456782');assert.equal(merged[0].clearingApproval,'4321');
+});
 test('Kupa restore rejects future schemas and foreign backup formats',()=>{
  const api=createKupaNormalization({model:{}});
  const valid={version:4,checks:[],credits:[],cash:[],expenses:[],cards:[]};
@@ -214,10 +221,10 @@ test('all-suppliers navigation accepts archive years without pretending they bel
 });
 test('supplier header balance follows the active workflow filter while all keeps the full balance',()=>{
  const state={suppliers:[{id:'S',name:'ספק',sortOrder:0}],transactions:[
-  {id:'A',supplierId:'S',sequence:1,debit:100,credit:0,invoiceReceived:true,signed:true,supplied:true,hmIssued:false},
-  {id:'B',supplierId:'S',sequence:2,debit:0,credit:30,invoiceReceived:false,signed:true,supplied:false,hmIssued:false},
-  {id:'C',supplierId:'S',sequence:3,debit:0,credit:20,invoiceReceived:true,signed:true,supplied:true,hmIssued:true},
-  {id:'D',supplierId:'S',sequence:4,debit:5,credit:0,invoiceReceived:true,signed:true,supplied:false,hmIssued:true}
+  {id:'A',supplierId:'S',sequence:1,debit:100,credit:0,invoiceReceived:true,signed:true,supplied:true},
+  {id:'B',supplierId:'S',sequence:2,debit:0,credit:30,invoiceReceived:false,signed:true,supplied:false},
+  {id:'C',supplierId:'S',sequence:3,debit:0,credit:20,invoiceReceived:true,signed:true,supplied:true},
+  {id:'D',supplierId:'S',sequence:4,debit:5,credit:0,invoiceReceived:true,signed:true,supplied:false}
  ]};
  const supplierUi={currentSupplierId:'S',filterMode:'all',searchText:'',supplierYearView:'current',supplierBulkMode:false,supplierBulkSelected:new Set(),supplierMoveTargetId:null};
  const main={dataset:{},innerHTML:'',querySelector:()=>null};
@@ -228,6 +235,7 @@ test('supplier header balance follows the active workflow filter while all keeps
   const header=()=>main.innerHTML.match(/data-supplier-header-balance[^>]*>([^<]*)<\/b>/)?.[1]||'';
   const expected={all:-55,pending:25,invoice:30};
   for(const mode of Object.keys(expected)){supplierUi.filterMode=mode;view.renderSupplier();assert.equal(header(),money(expected[mode]),mode)}
+  assert.doesNotMatch(main.innerHTML,/ח״מ|set-inline-bool/,'supplier view no longer renders the retired hm field');
  }finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument}
 });
 
@@ -283,7 +291,8 @@ test('customer debt editor treats blank as zero and accepts negative reverse deb
  assert.match(body,/id="dAmount"/);
  assert.doesNotMatch(body,/id="dAmount"[^>]*\bmin="0"/);
  assert.match(body,/id="dSupplied"/);
- const before=globalThis.document,fields={'#dName':{value:'Reverse'},'#dAmount':{value:''},'#dOrder':{value:''},'#dPhone':{value:''},'#dPaid':{value:'false'},'#dSupplied':{value:'true'},'#dInvoice':{value:'false'},'#dNote':{value:''}};
+ assert.doesNotMatch(body,/id="dOrder"|id="dTaxId"/);assert.match(body,/id="dClearingApproval"/);assert.match(body,/id="dCustomerId"/);
+ const before=globalThis.document,fields={'#dName':{value:'Reverse'},'#dAmount':{value:''},'#dPhone':{value:''},'#dEmail':{value:''},'#dPaid':{value:'false'},'#dSupplied':{value:'true'},'#dInvoice':{value:'false'},'#dNote':{value:''},'#dClearingApproval':{value:'12-34'},'#dCustomerId':{value:'123-456-782'}};
  globalThis.document={querySelector:selector=>fields[selector]||null};
  try{
    editor.saveDebt();
@@ -291,7 +300,7 @@ test('customer debt editor treats blank as zero and accepts negative reverse deb
    fields['#dAmount'].value='-125';editor.saveDebt(model.state.customerDebts[0].id);
  }finally{if(before===undefined)delete globalThis.document;else globalThis.document=before}
  const debt=model.state.customerDebts[0];
- assert.equal(debt.amount,-125);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(saved,2);assert.equal(closed,2);assert.equal(rendered,2);
+ assert.equal(debt.amount,-125);assert.equal(debt.supplied,true);assert.ok(debt.suppliedAt);assert.equal(debt.clearingApproval,'1234');assert.equal(debt.customerId,'123456782');assert.equal('orderNumber' in debt,false);assert.equal('taxId' in debt,false);assert.equal(saved,2);assert.equal(closed,2);assert.equal(rendered,2);
  editor.openDebtModal(debt.id);assert.match(body,/id="dAmount"[^>]*value="-125"/);
 });
 
@@ -366,9 +375,11 @@ test('service status has explicit precedence when several flags are set',()=>{
  assert.equal(serviceStatus(flags).key,'follow');
  assert.equal(serviceStatus({}).key,'open');
 });
-test('normalization keeps the Orders legacy invoice marker and category order',()=>{
+test('normalization keeps the Orders invoice marker while retiring obsolete supplier/debt fields',()=>{
  const {normalizeState}=createOrderNormalization({});
- const value=normalizeState({customerDebts:[{id:'D1',source:{sheet:'חובות_וזכויות',row:32},note:'יצאה ח״מ'}],inventoryItems:[{id:'I1',category:'אביזרים'},{id:'I2',category:'מיטות'}]});
+ const value=normalizeState({transactions:[{id:'T1',hmIssued:true}],customerDebts:[{id:'D1',source:{sheet:'חובות_וזכויות',row:32},note:'יצאה ח״מ',orderNumber:'OLD-77',taxId:'123-456-782',clearingApproval:'55-66'}],inventoryItems:[{id:'I1',category:'אביזרים'},{id:'I2',category:'מיטות'}]});
  assert.equal(value.customerDebts[0].invoiceIssued,true);
+ assert.equal(value.customerDebts[0].customerId,'123456782');assert.equal(value.customerDebts[0].clearingApproval,'5566');assert.equal('orderNumber' in value.customerDebts[0],false);assert.equal('taxId' in value.customerDebts[0],false);
+ assert.equal('hmIssued' in value.transactions[0],false);
  assert.deepEqual(value.inventoryCategoryOrder,['מיטות','אביזרים']);
 });

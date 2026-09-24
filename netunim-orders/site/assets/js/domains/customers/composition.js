@@ -86,7 +86,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     saveCustomerOrderField:(...args)=>editor.saveCustomerOrderField(...args),
     deleteCustomerOrder:(...args)=>editor.deleteCustomerOrder(...args),
     setCustomerFlag:(...args)=>view.setCustomerFlag(...args),
-    saveDebtNote:(...args)=>view.saveDebtNote(...args),
+    saveDebtField:(...args)=>view.saveDebtField(...args),
     openDebtModal:(...args)=>editor.openDebtModal(...args),
     openDebtProgressDetails:(...args)=>editor.openDebtProgressDetails(...args),
     saveDebt:(...args)=>editor.saveDebt(...args),

@@ -5,11 +5,11 @@ import {customerDebtStatus} from './model.js';
 import {bankMorningDebtCandidates} from '../finance/bank-morning.js';
 
 function cleanText(value,max=250){return String(value??'').trim().slice(0,max)}
-function debtSearchText(debt){return [debt?.customerName,debt?.orderNumber,debt?.phone,debt?.note].map(value=>cleanText(value,180).toLocaleLowerCase('he').replace(/\s+/g,' ')).filter(Boolean).join(' ')}
+function debtSearchText(debt){return [debt?.customerName,debt?.phone,debt?.note,debt?.clearingApproval,debt?.customerId].map(value=>cleanText(value,180).toLocaleLowerCase('he').replace(/\s+/g,' ')).filter(Boolean).join(' ')}
 function displayRemaining(progress){return progress.paymentComplete?progress.remainingInvoiceMagnitude:progress.remainingPaymentMagnitude}
 function selectedDebtMarkup(debt){
   if(!debt)return'';const progress=customerDebtProgressData(debt),status=customerDebtStatus(debt,progress),remaining=displayRemaining(progress);
-  return `<b>חוב שנבחר:</b> ${esc(debt.customerName||'לקוח')} · יתרה ${money(remaining)}${debt.orderNumber?` · הזמנה ${esc(debt.orderNumber)}`:''} · ${esc(status.text)}`;
+  return `<b>חוב שנבחר:</b> ${esc(debt.customerName||'לקוח')} · יתרה ${money(remaining)} · ${esc(status.text)}`;
 }
 
 export function activeMorningBankDebts(rows=[]){
@@ -24,7 +24,6 @@ function pickerRow(debt,activeDebtId){
   return `<button type="button" class="morning-bank-debt-row ${selected?'selected':''}" data-bank-debt-row data-bank-debt-row-id="${esc(debt.id)}" data-bank-debt-search="${esc(debtSearchText(debt))}" data-bank-debt-choice data-bank-debt-id="${esc(debt.id)}" data-action="morning-bank-debt-select" data-click-arg0="${esc(debt.id)}" aria-pressed="${selected?'true':'false'}" ${selected?'disabled':''}>
     <span class="morning-bank-debt-cell morning-bank-debt-customer" data-label="לקוח"><b>${esc(debt.customerName||'לקוח')}</b>${debt.phone?`<small>${esc(debt.phone)}</small>`:''}</span>
     <span class="morning-bank-debt-cell money" data-label="יתרה"><b>${money(remaining)}</b><small>מתוך ${money(progress.targetMagnitude)}</small></span>
-    <span class="morning-bank-debt-cell" data-label="הזמנה">${esc(debt.orderNumber||'—')}</span>
     <span class="morning-bank-debt-cell" data-label="מצב"><span class="badge ${esc(status.cls)}">${esc(status.text)}</span></span>
   </button>`;
 }
@@ -33,7 +32,7 @@ function preferredCard(candidate,debt,activeDebtId){
   if(!candidate||!debt)return'';
   const progress=customerDebtProgressData(debt),status=customerDebtStatus(debt,progress),selected=String(debt.id)===String(activeDebtId),remaining=displayRemaining(progress);
   return `<button type="button" class="morning-bank-debt-preferred ${selected?'selected':''}" data-bank-debt-card-id="${esc(debt.id)}" data-bank-debt-choice data-bank-debt-id="${esc(debt.id)}" data-action="morning-bank-debt-select" data-click-arg0="${esc(debt.id)}" aria-pressed="${selected?'true':'false'}" ${selected?'disabled':''}>
-    <small>התאמה מועדפת</small><b>${esc(debt.customerName||'לקוח')}</b><span>${esc(candidate.reason||'התאמה לפי שם')} · יתרה ${money(remaining)}${debt.orderNumber?` · הזמנה ${esc(debt.orderNumber)}`:''}</span><span class="badge ${esc(status.cls)}">${esc(status.text)}</span>
+    <small>התאמה מועדפת</small><b>${esc(debt.customerName||'לקוח')}</b><span>${esc(candidate.reason||'התאמה לפי שם')} · יתרה ${money(remaining)}</span><span class="badge ${esc(status.cls)}">${esc(status.text)}</span>
   </button>`;
 }
 
@@ -44,9 +43,9 @@ export function morningBankDebtPickerMarkup({debts=[],transaction=null,activeDeb
     ${preferredCard(preferred,preferredDebt,activeDebtId)}
     <div class="morning-bank-debt-selected" id="morningBankDebtSelected" ${current?'':'hidden'}>${selectedDebtMarkup(current)}</div>
     <div class="morning-bank-debt-search-shell">
-      <div class="morning-bank-debt-toolbar"><input id="morningBankDebtSearch" type="search" autocomplete="off" data-focus="select-input" placeholder="חפש לקוח, הזמנה, טלפון או הערה…" aria-controls="morningBankDebtResults" data-input="morning-bank-debt-search"><button type="button" class="btn small morning-bank-debt-clear" data-action="morning-bank-debt-clear" ${activeDebtId?'':'hidden'}>בטל קישור</button></div>
+      <div class="morning-bank-debt-toolbar"><input id="morningBankDebtSearch" type="search" autocomplete="off" data-focus="select-input" placeholder="חפש לקוח, טלפון, הערה, סליקה או ת.ז…" aria-controls="morningBankDebtResults" data-input="morning-bank-debt-search"><button type="button" class="btn small morning-bank-debt-clear" data-action="morning-bank-debt-clear" ${activeDebtId?'':'hidden'}>בטל קישור</button></div>
       <div class="morning-bank-debt-results" id="morningBankDebtResults">
-        <div class="morning-bank-debt-table-wrap"><div class="morning-bank-debt-table" aria-label="חובות פעילים"><div class="morning-bank-debt-table-head" aria-hidden="true"><span>לקוח</span><span>יתרה</span><span>הזמנה</span><span>מצב</span></div><div class="morning-bank-debt-table-body">${list.map(row=>pickerRow(row,activeDebtId)).join('')}</div></div><div id="morningBankDebtEmpty" class="morning-bank-debt-empty" ${list.length?'hidden':''}>אין חובות פעילים המתאימים לחיפוש.</div></div>
+        <div class="morning-bank-debt-table-wrap"><div class="morning-bank-debt-table" aria-label="חובות פעילים"><div class="morning-bank-debt-table-head" aria-hidden="true"><span>לקוח</span><span>יתרה</span><span>מצב</span></div><div class="morning-bank-debt-table-body">${list.map(row=>pickerRow(row,activeDebtId)).join('')}</div></div><div id="morningBankDebtEmpty" class="morning-bank-debt-empty" ${list.length?'hidden':''}>אין חובות פעילים המתאימים לחיפוש.</div></div>
         <small id="morningBankDebtCount" class="morning-bank-match-note">${list.length?`מציג ${list.length} חובות פעילים${preferredDebt?' נוספים':''}`:'אין חובות פעילים נוספים להצגה'}${preferredDebt?' · ההתאמה המועדפת מוצגת בנפרד למעלה':''}</small>
       </div>
     </div>

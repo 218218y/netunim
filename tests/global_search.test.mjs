@@ -5,7 +5,7 @@ import {buildGlobalSearchEntries,normalizeGlobalSearchText,searchGlobalData,sear
 const state={
  suppliers:[{id:'S1',name:'אלפא רהיטים',note:'ספק ראשי'}],
  transactions:[{id:'T1',supplierId:'S1',sequence:7,action:'הזמנת ארון',debit:1500,credit:0,supplyInfo:'אספקה ירושלים',note:'דחוף',source:{sheet:'ספקים',row:42}}],
- customerDebts:[{id:'D1',customerName:'משה כהן',orderNumber:'8123',phone:'050-123-4567',amount:900,note:'יתרה אחרונה',paid:false,supplied:true,invoiceIssued:false}],
+ customerDebts:[{id:'D1',customerName:'משה כהן',orderNumber:'DEBT-LEGACY-ONLY',phone:'050-123-4567',customerId:'123456782',clearingApproval:'778899',amount:900,note:'יתרה אחרונה',paid:false,supplied:true,invoiceIssued:false}],
  customerOrders:[{id:'O1',customerName:'משה כהן',orderNumber:'8123',mark3:'VVV-מיוחד',mattresses:'זוגי',note:'מזרן זוגי'}],
  serviceCalls:[{id:'SV1',customerName:'משה כהן',orderNumber:'8123',phone:'050-123-4567',description:'תיקון דלת',address:'ירושלים',closed:false}],
  checks:[{id:'C1',name:'משה כהן',amount:900,dueDate:'2026-09-10',status:'בקופה',account:'ביתי',checkNumber:'00177',note:'עבור 8123'}],
@@ -51,6 +51,11 @@ test('global search normalizes punctuation, phone separators and money formattin
 test('global search includes the editable third customer-order marker',()=>{
  const group=searchGlobalData(state,'VVV מיוחד').groups.find(x=>x.key==='customers');
  assert.ok(group.items.some(x=>x.kind==='customer-order'&&x.id==='O1'));
+});
+
+test('customer debt search uses clearing approval and customer ID but ignores retired debt order numbers',()=>{
+ for(const query of ['778899','123456782']){const group=searchGlobalData(state,query).groups.find(x=>x.key==='customers');assert.ok(group.items.some(x=>x.kind==='customer-debt'&&x.id==='D1'),query)}
+ const legacy=searchGlobalData(state,'DEBT LEGACY ONLY').groups.find(x=>x.key==='customers');assert.ok(!legacy.items.some(x=>x.kind==='customer-debt'&&x.id==='D1'));
 });
 
 test('supplier name ranks the supplier card ahead of its matching transactions',()=>{

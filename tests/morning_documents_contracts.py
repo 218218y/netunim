@@ -119,7 +119,7 @@ ok('const domainsCustomers=createDomainsCustomers({' in main and 'const renderCu
    'Customer composition: deferred navigation uses the public domain API without a test-only lexical facade')
 customer_actions=(
   'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
-  'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtNote','openDebtModal','saveDebt','deleteDebt',
+  'addCustomerOrder','saveCustomerOrderField','deleteCustomerOrder','setCustomerFlag','saveDebtField','openDebtModal','saveDebt','deleteDebt',
   'openMorningDocument','openStandaloneMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
 )
 composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
@@ -239,6 +239,8 @@ ok('.morning-document-fields .morning-client-name-field,.morning-document-fields
    'Morning issuance layout: customer, gross amount and optional order number share equal first-row widths for every issuance type')
 ok('morningAmountPaymentHint' not in documents and 'חייב להתאים לסה״כ התקבולים' not in documents,
    'Morning issuance amount label stays single-line; payment matching remains visible in the payment summary and enforced by validation')
+ok('export function debtMorningPrefill' in documents and "taxId:customerId" in documents and "orderNumber:''" in documents and 'אשראי נסלק באתר ת.ב.י רהיטים. אישור סליקה באתר - ${clearingApproval}' in documents and "remarks:clearingApproval?" in documents,
+   'Morning customer-debt prefill: customer ID maps to the client tax field, retired debt order is blank, and clearing approval alone controls the exact document remarks')
 
 if errors:
     print('\nERRORS',len(errors))

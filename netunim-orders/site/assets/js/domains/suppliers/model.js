@@ -66,7 +66,7 @@ export function supplierViewRowsData(state,supplierIds=[],yearView='current',fil
   return rows;
 }
 
-export function totalStatsData(state){const financial=ordersSupplierBalanceSummaryData(state);let pending=0,missing=0,hm=0;for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++;if(t.hmIssued)hm++}return{debt:financial.debt,credit:financial.credit,pending,missing,hm,net:financial.net}}
+export function totalStatsData(state){const financial=ordersSupplierBalanceSummaryData(state);let pending=0,missing=0;for(const t of state.transactions){if(t.supplied===false)pending++;if(t.invoiceReceived===false)missing++}return{debt:financial.debt,credit:financial.credit,pending,missing,net:financial.net}}
 
 export function supplierSortValue(s){return Number.isFinite(Number(s?.sortOrder))?Number(s.sortOrder):999999}
 

@@ -82,7 +82,7 @@ export function bankMorningDebtCandidates(row,debts=[]){
     if(!score)continue;
     const paymentRemaining=Number(progress.remainingPaymentMagnitude)||0,invoiceRemaining=Number(progress.remainingInvoiceMagnitude)||0;
     if(Number.isSafeInteger(amount)&&amount>0&&paymentRemaining>0&&amountCents(paymentRemaining)===amount){score+=8;reason+=reason?' · יתרת התשלום תואמת':'יתרת התשלום תואמת'}
-    candidates.push({debtId:String(debt?.id||''),customerName:debtName,amount:Number(debt?.amount)||0,remainingPayment:paymentRemaining,remainingInvoice:invoiceRemaining,orderNumber:clean(debt?.orderNumber,80),score,reason});
+    candidates.push({debtId:String(debt?.id||''),customerName:debtName,amount:Number(debt?.amount)||0,remainingPayment:paymentRemaining,remainingInvoice:invoiceRemaining,score,reason});
   }
   return candidates.filter(row=>row.debtId).sort((a,b)=>b.score-a.score||a.customerName.localeCompare(b.customerName,'he')).slice(0,12);
 }

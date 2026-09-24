@@ -334,10 +334,14 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:98px;padding-inline:4px}' in orders_css
    and '.customer-table .customer-col-state{width:96px;padding-inline:4px;text-align:center}' in orders_css
    and '.customer-table .customer-col-note{width:auto;min-width:0}' in orders_css
+   and '.customer-table .customer-col-clearing{width:72px}' in orders_css
+   and '.customer-table .customer-col-customer-id{width:82px}' in orders_css
+   and '.customer-table .customer-col-order{' not in orders_css
    and '@media(min-width:1200px){.customer-table .customer-col-name{width:17%}' in orders_css
    and 'width:min(calc(100% - 24px),1500px)' not in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:8.5%;padding-inline:4px}' in orders_css
    and '.customer-table .customer-col-note{width:22.5%}' in orders_css
+   and '.customer-table .customer-col-clearing{width:72px}.customer-table .customer-col-customer-id{width:82px}.customer-table .customer-col-actions{width:72px}' in orders_css
    and orders_css.count('.customer-table .customer-col-actions{width:72px}') == 4
    and '.customer-table .customer-col-actions{width:5%}' not in orders_css
    and '.customer-table .customer-col-actions{width:44px}' not in orders_css
@@ -345,14 +349,16 @@ ok('.customer-work-panel{border-radius:14px}' in orders_css
    and '.customer-table .customer-col-actions{width:30px}' not in orders_css
    and '@media(max-width:900px)' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:94px;padding-inline:3px}' in orders_css
+   and '.customer-table .customer-col-clearing{width:60px}.customer-table .customer-col-customer-id{width:72px}' in orders_css
    and '@media(max-width:700px) and (min-width:601px)' in orders_css
    and '.customer-table .customer-col-paid,.customer-table .customer-col-supplied,.customer-table .customer-col-invoice{width:90px;padding-inline:1px}' in orders_css
+   and '.customer-table .customer-col-clearing{width:52px}.customer-table .customer-col-customer-id{width:64px}' in orders_css
    and '.status-toggle button{min-width:38px;padding:5px 7px' in orders_css
    and '.customers-view .view-scroll{overflow:hidden;scrollbar-gutter:auto;display:flex;flex-direction:column}' in orders_css
    and '.customers-view .customer-work-table{flex:1 1 auto;min-height:0;max-height:none;scrollbar-gutter:auto}' in orders_css
    and 'customer-work-panel{border-radius:14px;margin' not in orders_css
    and '.customer-table .status-toggle button{min-width:26px' not in orders_css,
-   "orders customers: debt table keeps a continuous full available width with no desktop cap, reserves the real action-button width at every desktop breakpoint, preserves normal yes/no controls, and avoids intrinsic-content horizontal overflow")
+   "orders customers: debt table keeps full width, retires the debt order column, adds compact clearing/customer-ID columns, and preserves normal yes/no controls and action width")
 ok('.supplier-view-shell .view-scroll{overflow:hidden;scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll{scrollbar-gutter:auto}' in orders_css
    and '.warehouse-view-shell .view-scroll::-webkit-scrollbar{width:8px;height:8px}' in orders_css,
@@ -372,12 +378,19 @@ ok('--scroll-track:#eee7e1;--scroll-thumb:#b8a69a;--scroll-thumb-hover:#9f8b7d' 
    "orders scrollbars: table and view scroll tracks/thumbs use opaque shared colors in Firefox and WebKit")
 orders_supplier_view = (O / "site/assets/js/domains/suppliers/view.js").read_text(encoding="utf-8")
 orders_supplier_model = (O / "site/assets/js/domains/suppliers/model.js").read_text(encoding="utf-8")
+orders_supplier_editor = (O / "site/assets/js/domains/suppliers/editor.js").read_text(encoding="utf-8")
+orders_normalization = (O / "site/assets/js/state/normalization.js").read_text(encoding="utf-8")
 orders_actions = (O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 ok('data-action="filter-mode-4"' not in orders_supplier_view
    and "filterMode==='hm'" not in orders_supplier_view
    and "'filter-mode-4':" not in orders_actions
-   and "filterMode==='hm'" not in orders_supplier_model,
-   "orders suppliers: obsolete H.M. workflow filter is removed from UI, action routing, and row filtering while the H.M. transaction field remains available")
+   and "filterMode==='hm'" not in orders_supplier_model
+   and 'hmIssued' not in orders_supplier_view
+   and 'hmIssued' not in orders_supplier_model
+   and 'hmIssued' not in orders_actions
+   and orders_supplier_editor.count('hmIssued') == 1 and 'delete row.hmIssued' in orders_supplier_editor
+   and orders_normalization.count('hmIssued') == 1 and 'delete transaction.hmIssued' in orders_normalization,
+   "orders suppliers: H.M. transaction data is retired from UI/model/actions and stale saved values are scrubbed on edit/load")
 ok('@media(min-width:621px){.customer-orders-table .customer-order-actions .row-actions{justify-content:flex-end;padding-inline-end:6px}}' in orders_css,
    "orders tracking: desktop urgent/delete row controls align near the visual left table edge without shrinking the action header column")
 
