@@ -5,7 +5,7 @@ import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({model, files, tab, session, checksSession, ui, modal, supaConfigured, toast, closeModal, authPassword, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, adoptStorageV2CloudHead=async()=>null}){
+export function createUiCloud({model, files, tab, session, checksSession, ui, modal, supaConfigured, toast, closeModal, authPassword, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, adoptStorageV2CloudHead=async()=>null}){
 const localSnapshot=(source,options)=>writeLocalSnapshot(source,options||{storageBoundary:'cloud-ui-state'});
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
@@ -43,11 +43,24 @@ async function effectiveOwnerIntent(requested){
   const reserved=await prepareAuthenticatedStorageOwner(requested);return reserved?.intent||requested
 }
 
+async function transferLocalV2(intent,{renderAfter=true,startPoll=true}={}){
+  const targetOwner=String(loadSession()?.user?.id||'').trim();
+  if(!targetOwner)throw new Error('storage_transfer_target_reauth_required');
+  const result=await startStorageV2OwnerTransfer({targetOwner,intent});
+  if(storageOwnerCurrent()!==targetOwner)throw new Error('storage_transfer_activation_unverified');
+  session.cloudRevision=Number(result.mainRevision);checksSession.checksCloudRevision=Number(result.sharedRevision);
+  session.lastCloudState=prepareCloudState(model.state);session.cloudConflictBlocked=false;
+  localStorage.setItem(CLOUD_AUTO_KEY,'1');setCloud('ענן: מסונכרן','synced');
+  if(renderAfter)render();if(startPoll){startPolling();startFinanceAutoSync()}
+  clearCloudRecovery();return true;
+}
+
 async function enableCloud(afterLogin=false){
   if(!tab.primaryTab)return showSecondaryTabGuard();if(!supaConfigured())return alert('הגדרת Supabase חסרה');if(!loadSession()&&!afterLogin)return loginModal('upload');
   try{
     setCloud('ענן: בודק…');
     const localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
+    if(localOwner&&storageV2PrimaryRequested())return await transferLocalV2('upload-local');
     if(!localOwner&&await deferPendingRecovery())return;
     const existing=await readCloud(),v2Head=await refreshStorageV2CloudState();
     let ownerIntent=reserved?.intent||null;if(!ownerIntent)ownerIntent=await effectiveOwnerIntent(existing?'load-account':'upload-local');
@@ -81,6 +94,7 @@ async function openCloud({renderAfter=true,quiet=false,hydrateSecondary=true,man
   try{
     if(manageStatus)setCloud('ענן: מאמת נתוני הזמנות…');
     let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
+    if(localOwner&&storageV2PrimaryRequested())return await transferLocalV2('load-account',{renderAfter,startPoll});
     if(reserved?.intent==='upload-local')return enableCloud(false);
     if(!localOwner&&await deferPendingRecovery({manageStatus,startPoll}))return true;
     const row=await readCloud(),v2Head=await refreshStorageV2CloudState();

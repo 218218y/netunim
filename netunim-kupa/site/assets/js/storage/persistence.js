@@ -36,11 +36,15 @@ function requestCloudSave(snapshot,msg,generation){
 function mergeDeleteIntents(...values){const out={};for(const value of values){if(!value||typeof value!=='object'||Array.isArray(value))continue;for(const [key,ids] of Object.entries(value)){const clean=[...new Set((Array.isArray(ids)?ids:[]).map(x=>String(x||'').trim()).filter(Boolean))];if(clean.length)out[key]=[...new Set([...(out[key]||[]),...clean])].sort()}}return out}
 function mainBusinessState(value){const copy=clone(value);delete copy.checks;delete copy._meta;return copy}
 const nextTurn=work=>new Promise(resolve=>setTimeout(resolve,0)).then(work);
-async function loadState(){
+async function loadState({automatic=false}={}){
   if(!files.dataFileHandle)throw new Error('לא נבחר קובץ נתונים');
   const payload=await readJsonHandle(files.dataFileHandle);
-  await captureLegacyWorkbook(payload.notesSheet);
   const parsed=stateFromPayload(payload);
+  if(automatic&&storageV2Primary()){
+    const recovered=await recoverStorageV2State();
+    if(!recovered||!equalSyncJson(recovered.state,parsed.state))throw new Error('storage_v2_local_file_requires_confirmation');
+  }
+  await captureLegacyWorkbook(payload.notesSheet);
   const removed=model.lastNormalizeRemovedCredits;
   const removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])];
   let preservedCloudHead=false;

@@ -107,7 +107,10 @@ const stateNormalization=createStateNormalization({
   model,
 });
 
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateSelectors.prepareState(state)});
+// Journal checkpoints must be deterministic: a new savedAt on every replay
+// would make a frozen local-birth source fail parity after a crash.
+const prepareV2Checkpoint=state=>{const business=structuredClone(state);delete business._meta;const snapshot=stateSelectors.prepareState(business);delete snapshot._meta.savedAt;return snapshot};
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:prepareV2Checkpoint});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
   legacyDrainActive:storageV2Coordinator.legacyDrainActive,
@@ -685,7 +688,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,storageChecks,syncDocument,syncChecks,model,session,checksSession,files,
-  stateSnapshots,stateNormalization,sharedChecksV2Composition,sharedChecksV2,
+  stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 async function beginStorageV2Cutover(){
@@ -728,6 +731,7 @@ const uiCloud=createUiCloud({
   resumeCalendarAfterCloudLogin:(...args)=>domainsCalendarController.resumeAfterCloudLogin(...args),
   startFinanceAutoSync:(...args)=>domainsFinanceController.startAutoSync(...args),
   ...storageV2Coordinator.ownerUiPorts(),
+  ...storageV2Coordinator.ownerTransferUiPorts(),
   ...storageV2Cloud,
 });
 
@@ -771,6 +775,8 @@ const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:()=>cloudAuth.loadSession()?.user?.id}),
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
   ...storageV2Coordinator.transitionLifecyclePorts(),
+  ...storageV2Coordinator.localBirthLifecyclePorts(),
+  ...storageV2Coordinator.ownerTransferLifecyclePorts(),
   verifyStorageCutover,
   recoverSharedChecksV2Primary,
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
@@ -783,6 +789,7 @@ const lifecycle=createLifecycle({
   domainRevisions,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
+  recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
   markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
@@ -1027,7 +1034,6 @@ const uiGlobalSearch=createUiGlobalSearch({
 });
 
 const initialOrdersLocal=storageBrowser.loadLocal();
-await spreadsheetWorkspace.sync.captureLegacy(initialOrdersLocal?.notesSheet);
 model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClone(INITIAL_STATE));
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);

@@ -419,25 +419,12 @@ for app in ['kupa','orders']:
         errors=browser.drain_serious_errors();assert not errors,errors
         print('PASS '+app+' V2 primary skips full LocalStorage serialization and recovers after hard navigation: '+json.dumps(primary))
 
-# A durable marker must make the real application startup and ordinary edits
-# incapable of creating fresh legacy business state. Preferences are excluded.
+# Instrument before the very first navigation: fresh production startup must
+# create local Main + Shared V2 directly, without any business V1 write. The
+# local engine has no cloud cursor; a synthetic account-style cutover marker
+# would miss the birth path we need to protect before removing V1.
 for app in ['kupa', 'orders']:
-    with BrowserSession(ROOT/f'netunim-{app}/site',app+'-v2-zero-write') as browser:
-        seeded=browser.evaluate("""(async()=>{
-          const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
-          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-          const {createSharedChecksStorageV2}=await import('./assets/js/shared/shared-checks-storage-v2.js');
-          const {STORAGE_SCHEMAS}=await import('./assets/js/shared/storage-shadow.js');
-          const main=createStorageJournal({owner:'local:APP',schema:STORAGE_SCHEMAS.APP,validate:()=>{}});
-          const initial=PREPARE,cloud=CLOUD;
-          await main.initializeCloudHead(0,initial,{cloudState:cloud,appMetadata:{storageRole:'primary',migrationIntent:'cloud-authoritative',sourceOwner:'local'}});
-          const shared=createSharedChecksStorageV2({owner:()=> 'local',primary:()=>true});
-          await shared.initializeCloudHead(0,{checks:initial.checks||[],bankEvents:[]},{intent:'cloud-authoritative',sourceOwner:'local',legacyPendingClean:true});
-          const db=createStorageJournalDb();await db.markCutover('APP','local');
-          localStorage.setItem('netunim-storage-cutover-version:APP:local','2');
-          return {main:(await db.load('local:APP')).metadata.seq,shared:(await db.load('local:shared-checks')).metadata.seq};
-        })()""".replace('APP',app).replace('PREPARE','stateSelectors.prepareState(state)' if app=='orders' else 'stateNormalization.normalizeState(state)').replace('CLOUD','stateSnapshots.prepareCloudState(initial)' if app=='orders' else 'stateNormalization.prepareKupaCloudState(initial)'))
-        assert seeded['main']==0 and seeded['shared']==0,seeded
+    with BrowserSession(ROOT/f'netunim-{app}/site',app+'-v2-zero-write',auto_navigate=False) as browser:
         browser.call('Page.addScriptToEvaluateOnNewDocument',{'source':r"""
           (()=>{
             const keys=new Set([
@@ -462,6 +449,15 @@ for app in ['kupa', 'orders']:
           })();
         """})
         browser._navigate()
+        born=browser.evaluate("""(async()=>{
+          await appReady;
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const marker=await createStorageJournalDb().readLocalEngine('APP');
+          const main=await storageShadow.cloudState(),shared=await sharedChecksV2.cloudState();
+          return {marker:marker?.version,mainBase:main?.base??null,sharedBase:shared?.base??null,
+            mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,writes:window.__legacyWrites};
+        })()""".replace('APP',app))
+        assert born['marker']==2 and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['writes'],born
         result=browser.evaluate("""(async()=>{
           await appReady;
           if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');
@@ -481,4 +477,4 @@ for app in ['kupa', 'orders']:
         recovered=browser.evaluate("""(async()=>{await appReady;return {writes:window.__legacyWrites,note:state.notes.find(row=>row.id==='v2-gate-note')?.content,check:state.checks.find(row=>row.id==='v2-gate-check')?.amount}})()""")
         assert not recovered['writes'] and recovered['note']=='durable' and recovered['check']==100,recovered
         errors=[error for error in browser.drain_serious_errors() if "Blocked attempt to show a 'beforeunload' confirmation panel" not in error];assert not errors,errors
-        print('PASS '+app+' V2 marker keeps startup, edits, pagehide and restart free of legacy business writes')
+        print('PASS '+app+' fresh local V2 birth, edits, pagehide and restart avoid legacy business writes')

@@ -14,6 +14,17 @@ function loadChecksBase(){try{const raw=localStorage.getItem(CHECKS_BASE_KEY)||l
 
 function loadChecksBankEvents(){try{return normalizeSharedBankEvents(JSON.parse(localStorage.getItem(CHECKS_EVENTS_KEY)||'[]'))}catch(e){console.error('checks events load',e);return[]}}
 
+// Local birth takes checks from the selected Main snapshot. A stale cloud base
+// must not silently replace them; bank events have their own legacy key.
+function readLegacyLocalMigrationSource(mainState,{sourceFound=true}={}){
+  const raw=localStorage.getItem(CHECKS_EVENTS_KEY),events=raw===null?[]:JSON.parse(raw),checks=normalizeSharedChecks(mainState?.checks);
+  if(!sourceFound){
+    const base=loadChecksBase();
+    if(base?.length)throw new Error('shared_checks_local_birth_main_source_missing');
+  }
+  return {checks,bankEvents:normalizeSharedBankEvents(events)};
+}
+
 function persistChecksBase(checks,events=checksSession.checksBankEvents){assertLegacyWriter();try{localStorage.setItem(CHECKS_BASE_KEY,JSON.stringify(normalizeSharedChecks(checks)));localStorage.setItem(CHECKS_EVENTS_KEY,JSON.stringify(normalizeSharedBankEvents(events)));localStorage.removeItem(LEGACY_CHECKS_BASE_KEY);return true}catch(e){console.error('checks base save',e);return false}}
 
 function readPendingCache(){try{const raw=localStorage.getItem(CHECKS_PENDING_KEY)||localStorage.getItem(LEGACY_CHECKS_PENDING_KEY);return JSON.parse(raw||'null')}catch(e){console.error('checks pending cache load',e);return null}}
@@ -74,5 +85,5 @@ async function clearChecksPending(acknowledgedGeneration){
   checksSession.checksOutboxCached=null;checksSession.checksDurabilityDegraded=false;return true;
 }
 
-return { loadChecksBase, loadChecksBankEvents, persistChecksBase, markChecksPending, getChecksPending, checksPendingExists, clearChecksPending, verifyLegacyChecksClean };
+return { loadChecksBase, loadChecksBankEvents, readLegacyLocalMigrationSource, persistChecksBase, markChecksPending, getChecksPending, checksPendingExists, clearChecksPending, verifyLegacyChecksClean };
 }

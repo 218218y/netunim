@@ -14,7 +14,7 @@ function installGlobals(){
   return ()=>{for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}};
 }
 
-function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false}={}){
+function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false,v2=false}={}){
   const events=[];let owner='local',reservation=null;const model={state:{rows:['local']}},session={localGeneration:0},checksSession={};
   const ui=createOrdersUiCloud({
     model,files:{},tab:{primaryTab:true},session,checksSession,ui:{},modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>events.push('close'),authPassword:async()=>{},
@@ -24,7 +24,9 @@ function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t
     syncSharedChecksFromCloud:async()=>{events.push('sync-shared');if(sharedFails)throw new Error('shared-failed')},requestCloudSave:async()=>{events.push('save-main');return true},restorePendingAgainstCloud:async()=>false,
     startPolling:()=>events.push('poll'),saveSession:()=>{},renderSettings:()=>{},resumeCalendarAfterCloudLogin:async()=>{},startFinanceAutoSync:()=>{},
     prepareAuthenticatedStorageOwner:async intent=>{events.push(`reserve:${intent}`);reservation??={targetOwner:'B',intent};return reservation},storageOwnerCurrent:()=>owner,storageOwnerAdoption:()=>reservation,
-    adoptAuthenticatedStorageOwner:async intent=>{events.push(`adopt:${intent}`);owner='B';reservation=null;return true},storageV2CloudOutboxActive:()=>false,storageV2PrimaryRequested:()=>false,refreshStorageV2CloudState:async()=>null,initializeStorageV2CloudCursor:async()=>true,adoptStorageV2CloudHead:async()=>true,
+    adoptAuthenticatedStorageOwner:async intent=>{events.push(`adopt:${intent}`);owner='B';reservation=null;return true},
+    startStorageV2OwnerTransfer:async({targetOwner,intent})=>{events.push(`transfer:${intent}`);assert.equal(targetOwner,'B');if(sharedFails)throw new Error('shared-failed');owner='B';return {mainRevision:5,sharedRevision:6}},
+    storageV2CloudOutboxActive:()=>false,storageV2PrimaryRequested:()=>v2,refreshStorageV2CloudState:async()=>null,initializeStorageV2CloudCursor:async()=>true,adoptStorageV2CloudHead:async()=>true,
   });
   return {ui,events,model,session,get owner(){return owner}};
 }
@@ -45,24 +47,34 @@ test('Orders local owner is not adopted or rendered when Shared preparation fail
   }finally{cleanup()}
 });
 
-test('Orders first upload reserves upload-local and adopts only after Main and Shared sync',async()=>{
+test('Orders V2 first upload transfers without a V1 pending write or visible pre-activation state',async()=>{
   const cleanup=installGlobals();try{
-    const h=ordersHarness({remote:null});await h.ui.enableCloud(true);assert.equal(h.owner,'B');
-    assert.ok(h.events.indexOf('reserve:upload-local')<h.events.indexOf('pending'));
-    assert.ok(h.events.indexOf('save-main')<h.events.indexOf('sync-shared'));
-    assert.ok(h.events.indexOf('sync-shared')<h.events.indexOf('adopt:upload-local'));
+    const h=ordersHarness({remote:null,v2:true});await h.ui.enableCloud(true);assert.equal(h.owner,'B');
+    assert.ok(h.events.includes('transfer:upload-local'));
+    assert.equal(h.events.some(event=>['pending','save-main','sync-shared','checkpoint'].includes(event)),false);
+    assert.ok(h.events.indexOf('transfer:upload-local')<h.events.indexOf('render'));
   }finally{cleanup()}
 });
 
-test('Kupa first upload reserves target before writes and adopts only after Shared creation',async()=>{
+test('Orders V2 account load leaves the local view and owner intact on detached failure',async()=>{
+  const cleanup=installGlobals();try{
+    const h=ordersHarness({v2:true,sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
+    assert.equal(h.owner,'local');assert.equal(h.events.includes('apply-main'),false);assert.equal(h.events.includes('render'),false);
+    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+  }finally{cleanup()}
+});
+
+test('Kupa V2 first upload transfers without its V1 main or Shared writers',async()=>{
   const cleanup=installGlobals();try{
     const events=[];let owner='local',reservation=null;const session={serverInfo:{}},checksSession={},model={state:{checks:[],cash:[{id:'x'}]}};
     const ui=createKupaUiCloud({
       session,tab:{primaryTab:true},checksSession,model,clearCloudPending:async()=>true,loadSupabaseState:async()=>{},toast:()=>{},supaConfigured:()=>true,modal:()=>{},configureCloudConnectButton:()=>{},supaProjectRef:()=>'',setCloudHeaderStatus:()=>{},loadSupaSession:()=>({user:{id:'B'}}),setConnectUI:()=>{},
-      prepareKupaCloudState:state=>structuredClone(state||model.state),getCloudPending:async()=>null,storageV2CloudOutboxActive:()=>false,storageV2PrimaryRequested:()=>false,refreshStorageV2CloudState:async()=>null,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],showSecondaryTabGuard:()=>{},openBrowserStateFallback:async()=>false,restoreSupaSession:async()=>({user:{id:'B'}}),storeSupaSession:()=>{},isSupabaseAuthError:()=>false,friendlySupabaseError:e=>String(e?.message||e),supaEnsureSession:async()=>{},readSupabaseDocument:async()=>null,syncSharedChecksFromCloud:async()=>{},applyCloudRow:async()=>{},reconcileCloudPending:async()=>true,startCloudPolling:()=>{},render:()=>events.push('render'),setConnectedStatus:()=>{},
+      prepareKupaCloudState:state=>structuredClone(state||model.state),getCloudPending:async()=>null,storageV2CloudOutboxActive:()=>false,storageV2PrimaryRequested:()=>true,refreshStorageV2CloudState:async()=>null,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],showSecondaryTabGuard:()=>{},openBrowserStateFallback:async()=>false,restoreSupaSession:async()=>({user:{id:'B'}}),loadSupaSession:()=>({user:{id:'B'}}),storeSupaSession:()=>{},isSupabaseAuthError:()=>false,friendlySupabaseError:e=>String(e?.message||e),supaEnsureSession:async()=>{},readSupabaseDocument:async()=>null,syncSharedChecksFromCloud:async()=>{},applyCloudRow:async()=>{},reconcileCloudPending:async()=>true,startCloudPolling:()=>{},render:()=>events.push('render'),setConnectedStatus:()=>{},
       ensureSharedChecksForNewCloud:async()=>events.push('shared-created'),persistSupabaseState:async()=>{events.push('main-upload');return true},supaAuthPassword:async()=>{},closeModal:()=>{},showFirstRun:()=>{},confirmDialog:async()=>true,
       prepareAuthenticatedStorageOwner:async intent=>{events.push(`reserve:${intent}`);reservation??={targetOwner:'B',intent};return reservation},storageOwnerCurrent:()=>owner,storageOwnerAdoption:()=>reservation,adoptAuthenticatedStorageOwner:async intent=>{events.push(`adopt:${intent}`);owner='B';reservation=null;return true},
+      startStorageV2OwnerTransfer:async({targetOwner,intent})=>{assert.equal(targetOwner,'B');events.push(`transfer:${intent}`);owner='B';return {mainRevision:1,sharedRevision:1}},
     });
-    await ui.enableCloudFromCurrentState();assert.equal(owner,'B');assert.ok(events.indexOf('reserve:upload-local')<events.indexOf('main-upload'));assert.ok(events.indexOf('shared-created')<events.indexOf('adopt:upload-local'));
+    await ui.enableCloudFromCurrentState();assert.equal(owner,'B');assert.ok(events.includes('transfer:upload-local'));
+    assert.equal(events.includes('main-upload'),false);assert.equal(events.includes('shared-created'),false);
   }finally{cleanup()}
 });

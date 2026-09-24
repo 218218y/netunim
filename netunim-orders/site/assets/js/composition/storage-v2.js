@@ -1,7 +1,11 @@
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
 import {createStorageV2ProductionTransition} from '../shared/storage-v2-production-transition.js';
+import {createStorageV2LocalBirth} from '../shared/storage-v2-local-birth.js';
+import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
+import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
+import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
 import {assertValidOrderCloudState} from '../state/validation.js';
@@ -13,12 +17,12 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
   if(!tab)throw new Error('orders_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'orders',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab});
-  let transition=null,legacyDrain=false,ports=null;
+  let transition=null,localBirth=null,ownerTransfer=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
-  const preparing=()=>owner.locked||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
+  const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const legacyDrainActive=()=>legacyDrain;
   const legacyWriteAllowed=()=>owner.writable&&(!preparing()||legacyDrain);
-  const legacyChecksWriteAllowed=()=>legacyWriteAllowed()&&storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)!=='2';
+  const legacyChecksWriteAllowed=()=>legacyWriteAllowed()&&storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)!=='2'&&!(owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:orders:local')==='2');
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});
@@ -50,6 +54,26 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
   function configure(next){
     if(transition)throw new Error('orders_storage_v2_already_configured');ports=next;
     const p=requirePorts();
+    localBirth=createStorageV2LocalBirth({
+      app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
+      main:p.storageShadow,shared:p.sharedChecksV2,
+      enableShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('orders_local_birth_shared_lock_required')},
+      readSource:async()=>{
+        const source=await p.storageBrowser.readLegacyLocalMigrationSource();
+        const sharedState=p.storageChecks.readLegacyLocalMigrationSource(source.mainState,{sourceFound:source.sourceFound});
+        // The spreadsheet journal is independent of Main; preserve a legacy
+        // sheet before the frozen source is committed, including after retry.
+        await p.storageBrowser.captureLegacyWorkbookForMigration(source.legacyWorkbook);
+        return {mainState:p.prepareV2Checkpoint(source.mainState),sharedState};
+      },
+      quiesce:async()=>{
+        clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
+        await p.syncDocument.quiesceForStorageCutover();
+        const pending=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
+        if(pending.length)await Promise.all(pending);
+      },
+      verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
+    });
     transition=createStorageV2ProductionTransition({
       app:'orders',ownerBinding:owner,primary:()=>tab.primaryTab&&owner.writable,online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,bootstrapCoordinator:bootstrap,
       readMainState:()=>p.model.state,projectMainState:state=>p.stateSnapshots.prepareCloudState(state),emptyMainState:()=>p.stateNormalization.normalizeState(INITIAL_STATE),mainSourceSeq:()=>p.session.localSnapshotSeq,
@@ -72,8 +96,90 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
       },
       drainLegacy,verifyLegacyClean,markCutover:options=>p.sharedChecksV2Composition.markCutover(options),verifyCutover:()=>p.verifyStorageCutover(),
     });
+    const fixedMain=identity=>createStorageV2Runtime({
+      app:'orders',owner:()=>identity,primary:()=>tab.primaryTab,mode:()=> 'preparing',
+      validate:state=>p.validateMainState(state),prepareCheckpoint:p.prepareV2Checkpoint,
+    });
+    const fixedShared=identity=>{
+      let snapshot={checks:[],bankEvents:[]};
+      return createSharedChecksV2Runtime({
+        site:'orders',owner:()=>identity,primary:()=>tab.primaryTab,mode:()=> 'preparing',
+        readState:()=>snapshot,applyState:state=>{snapshot=structuredClone(state)},
+        merge:(...args)=>p.syncChecks.mergeSharedChecks(...args),
+        readRemote:()=>p.cloudTransport.readSharedChecksCloud(),
+        rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+        verifyLegacyClean:()=>p.storageChecks.verifyLegacyChecksClean(),
+      });
+    };
+    async function settleSource({sourceOwner}){
+      if(owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_lock_required');
+      clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
+      await p.syncDocument.quiesceForStorageCutover();
+      const pending=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
+      if(pending.length)await Promise.all(pending);
+      if(await p.storageBrowser.verifyLegacyCloudCleanReadOnly()!==true||await p.storageChecks.verifyLegacyChecksClean()!==true)throw new Error('orders_transfer_legacy_pending');
+      const main=fixedMain(sourceOwner),shared=fixedShared(sourceOwner),mainRecovered=await main.recover(null),sharedRecovered=await shared.recover();
+      if(!mainRecovered?.state||!sharedRecovered?.state)throw new Error('orders_transfer_source_checkpoint_missing');
+      const mainCloud=await main.cloudState({validateBase:state=>assertValidOrderCloudState(state,'Orders transfer source cloud base')}),sharedCloud=await shared.cloudState();
+      if(mainCloud.flight||mainCloud.control||sharedCloud.flight||sharedCloud.control)throw new Error('orders_transfer_source_flight_unsettled');
+      if(sourceOwner==='local'){
+        if(mainCloud.base||sharedCloud.base)throw new Error('orders_transfer_local_cloud_head_unexpected');
+      }else if(!mainCloud.base||!sharedCloud.base||mainCloud.pending||sharedCloud.pending||mainCloud.base.ackSeq!==mainCloud.seq||sharedCloud.base.ackSeq!==sharedCloud.seq)throw new Error('orders_transfer_source_pending');
+      const sharedState={checks:structuredClone(sharedRecovered.state.checks),bankEvents:structuredClone(sharedRecovered.state.bankEvents)},fullState=p.prepareV2Checkpoint({...mainRecovered.state,checks:sharedState.checks}),cloudState=p.stateSnapshots.prepareCloudState(fullState);
+      return {main:{state:cloudState,fullState,seq:mainRecovered.seq},shared:{state:sharedState,seq:sharedRecovered.seq}};
+    }
+    function detachedTarget(targetOwner){
+      const main=fixedMain(targetOwner),shared=fixedShared(targetOwner);
+      return createStorageV2DetachedTarget({
+        app:'orders',targetOwner,primary:()=>tab.primaryTab,main,shared,
+        readMainRemote:()=>p.cloudTransport.readCloud(),projectMainRemote:row=>p.stateSnapshots.prepareCloudState(row.state),
+        readSharedRemote:()=>p.cloudTransport.readSharedChecksCloud(),projectSharedRemote:row=>({checks:row.state.checks,bankEvents:row.state.bankEvents}),
+        composeMainState:(mainState,sharedState)=>p.prepareV2Checkpoint(p.stateNormalization.normalizeState({...structuredClone(mainState),checks:structuredClone(sharedState.checks)})),
+        projectMainState:state=>p.stateSnapshots.prepareCloudState(state),emptyMainState:()=>p.prepareV2Checkpoint(INITIAL_STATE),
+        validateMainCloud:state=>assertValidOrderCloudState(state,'Orders detached target cloud state'),
+        rpcMain:(...args)=>p.cloudTransport.rpcSave(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecks(...args),
+        verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
+      });
+    }
+    ownerTransfer=createStorageV2OwnerTransfer({
+      app:'orders',ownerBinding:owner,primary:()=>tab.primaryTab,online:()=>globalThis.navigator?.onLine!==false,
+      authOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,settleSource,createDetachedTarget:detachedTarget,
+      installTargetView:async({mainState,sharedState,mainRevision,sharedRevision})=>{
+        const previous=p.model.state;
+        p.model.state=p.stateNormalization.normalizeState({...structuredClone(mainState),checks:structuredClone(sharedState.checks)});
+        p.domainRevisions.reconcile(previous,p.model.state,{forceAll:true});
+        p.session.cloudRevision=mainRevision;p.session.lastCloudState=p.stateSnapshots.prepareCloudState(p.model.state);
+        p.session.cloudSaveRequested=false;p.session.storageV2CloudPending=false;p.session.cloudConflictBlocked=false;p.session.cloudUpdatedAt=null;
+        p.checksSession.checksCloudRevision=sharedRevision;p.checksSession.checksCloudBase=structuredClone(sharedState.checks);
+        p.checksSession.checksBankEvents=structuredClone(sharedState.bankEvents);p.checksSession.checksSaveRequested=false;
+      },
+    });
     return transition;
   }
+  async function rebindTransferredOwner(){
+    const p=requirePorts();
+    const main=await p.storageShadow.recoverForOwner({intent:'load-account'});
+    if(!main?.state||await p.sharedChecksV2Composition.recoverPrimary()!==true)throw new Error('orders_transfer_active_recovery_failed');
+    const previous=p.model.state;
+    p.model.state=p.stateNormalization.normalizeState({...structuredClone(main.state),checks:structuredClone(p.model.state.checks)});
+    p.domainRevisions.reconcile(previous,p.model.state,{forceAll:true});
+  }
+  async function finishOwnerTransfer(action){
+    const initialOwner=owner.current();transferRebinding=true;
+    try{
+      const result=await action();
+      if(result)await rebindTransferredOwner();
+      transferRebinding=false;
+      return result;
+    }catch(error){
+      // After activation, failed active-runtime hydration cannot expose a
+      // writable target with an old source model in the same tab.
+      if(owner.locked||owner.current()===initialOwner)transferRebinding=false;
+      throw error;
+    }
+  }
+  async function startStorageV2OwnerTransfer(options){return finishOwnerTransfer(()=>ownerTransfer.start(options))}
+  async function resumeStorageV2OwnerTransfer(){return finishOwnerTransfer(()=>ownerTransfer.resume())}
   function ownerAdoption(){return owner.status().binding?.pendingAdoption||null}
   async function prepareAuthenticatedOwner(intent){
     const p=requirePorts(),auth=p.cloudAuth.loadSession(),target=String(auth?.user?.id||'').trim(),current=owner.current();
@@ -97,9 +203,12 @@ export function createOrdersStorageV2Coordinator({tab,storage=globalThis.localSt
     await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
     return {already:false};
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,shadowEnabled,status,observerPorts,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing}),
+    localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),resumeLocalBirth:()=>localBirth.resume(),localBirthPreparing:()=>!!localBirth?.preparing,storageOwnerCurrent:()=>owner.current()}),
+    ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
+    ownerTransferUiPorts:()=>({startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     hydrateTransition:()=>{if(!transition)throw new Error('orders_storage_v2_not_configured');return transition.hydrate()},resumeTransition:()=>{if(!transition)throw new Error('orders_storage_v2_not_configured');return transition.resume()},get transitionPreparing(){return !!transition?.preparing}};
 }

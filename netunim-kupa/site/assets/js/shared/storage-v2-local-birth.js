@@ -20,8 +20,8 @@ export async function verifyStorageV2LocalEngine({app,owner,db=createStorageJour
 
 // This marker describes the local storage engine only. It never fabricates a
 // cloud cursor, and a browser cache alone can never authorize a V2 writer.
-export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableShared=()=>{},readSource,quiesce=async()=>{},verifyLegacyClean,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
-  if(!['orders','kupa'].includes(app)||[owner,primary,main?.initializeLocal,main?.recover,shared?.initializeLocal,shared?.recover,readSource,quiesce,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('storage_local_birth_configuration');
+export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableShared=()=>{},readSource,quiesce=async()=>{},verifyLegacyClean,applyAuxiliary=async()=>{},verifyAuxiliary=async()=>true,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
+  if(!['orders','kupa'].includes(app)||[owner,primary,main?.initializeLocal,main?.recover,shared?.initializeLocal,shared?.recover,readSource,quiesce,verifyLegacyClean,applyAuxiliary,verifyAuxiliary].some(value=>typeof value!=='function'))throw new Error('storage_local_birth_configuration');
   const scope=`${app}:local`,key=storageLocalEngineKey(app);
   let plan=null,running=null,freezing=false;
   const guard=()=>{if(owner()!=='local'||!primary())throw new Error('storage_local_birth_owner_changed')};
@@ -54,12 +54,14 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
         current=await db.advanceLocalBirth(scope,current.id,'main-initialized','shared-initialized');plan=current;continue;
       }
       if(current.phase==='shared-initialized'){
+        if(current.auxiliaryState!=null){await applyAuxiliary(current.auxiliaryState);if(await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified')}
         const mainState=(await main.recover(null))?.state,sharedState=(await shared.recover())?.state;
         if(!mainState||!sharedState||!equalSyncJson(mainState,current.mainState)||!equalSyncJson(sharedState,current.sharedState))throw new Error('storage_local_birth_parity_mismatch');
         await settledLegacy();
         current=await db.advanceLocalBirth(scope,current.id,'shared-initialized','verified');plan=current;continue;
       }
       if(current.phase==='verified'){
+        if(current.auxiliaryState!=null&&await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified');
         await settledLegacy();guard();await db.markLocalEngine(app);guard();cacheMarker();
         current=await db.advanceLocalBirth(scope,current.id,'verified','complete');plan=current;continue;
       }
@@ -71,16 +73,25 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
   async function begin(){
     guard();if(running)return running;
     running=(async()=>{
-      if(await verify())return {already:true};
-      const existing=await hydrate();if(existing){if(existing.phase==='complete')throw new Error('storage_local_birth_marker_missing');return execute()}
+      const existing=await hydrate(),marked=await verify();
+      if(marked){
+        // The marker is committed before the plan moves to complete. A crash in
+        // that window must retire the plan instead of freezing startup forever.
+        if(existing&&existing.phase!=='complete'){
+          if(existing.phase!=='verified')throw new Error('storage_local_birth_marker_phase_mismatch');
+          return execute();
+        }
+        return {already:true};
+      }
+      if(existing){if(existing.phase==='complete')throw new Error('storage_local_birth_marker_missing');return execute()}
       freezing=true;
       try{
         await quiesce();guard();await settledLegacy();
         const source=await readSource();guard();
         if(!source?.mainState||!source?.sharedState)throw new Error('storage_local_birth_source_missing');
-        assertStorageJson(source.mainState);assertStorageJson(source.sharedState);
+        assertStorageJson(source.mainState);assertStorageJson(source.sharedState);if(source.auxiliaryState!=null)assertStorageJson(source.auxiliaryState);
         const id=String(operationId()||'').trim();if(!id)throw new Error('storage_local_birth_id_unavailable');
-        const now=new Date().toISOString(),record={version:2,scope,app,owner:'local',id,phase:'prepared',mainState:structuredClone(source.mainState),sharedState:structuredClone(source.sharedState),createdAt:now,updatedAt:now};
+        const now=new Date().toISOString(),record={version:2,scope,app,owner:'local',id,phase:'prepared',mainState:structuredClone(source.mainState),sharedState:structuredClone(source.sharedState),auxiliaryState:source.auxiliaryState==null?null:structuredClone(source.auxiliaryState),createdAt:now,updatedAt:now};
         plan=await db.beginLocalBirth(scope,record);guard();return execute();
       }finally{freezing=false}
     })().finally(()=>{running=null});return running;

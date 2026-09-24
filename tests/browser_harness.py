@@ -321,7 +321,7 @@ class _RuntimeHTTPServer(http.server.ThreadingHTTPServer):
 class BrowserSession:
     """Real localhost + headless Chromium session with a small CDP client."""
 
-    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False):
+    def __init__(self, site: Path, label: str, *, instrument=True, service_worker=False, auto_navigate=True):
         self.site = Path(site)
         self.label = label
         self.browser = find_browser()
@@ -340,16 +340,18 @@ class BrowserSession:
         self.mode = "localhost"
         self.instrument = instrument
         self.service_worker = service_worker
+        self.auto_navigate = auto_navigate
 
     def __enter__(self):
         try:
             self._prepare_site()
             self._start_server()
             self._start_browser()
-            self._navigate()
-            # HTML completion does not imply completion of asynchronous recovery.
-            if self.instrument:
-                self.evaluate("appReady.then(()=>true)")
+            if self.auto_navigate:
+                self._navigate()
+                # HTML completion does not imply completion of asynchronous recovery.
+                if self.instrument:
+                    self.evaluate("appReady.then(()=>true)")
             return self
         except BaseException:
             self.__exit__(None, None, None)

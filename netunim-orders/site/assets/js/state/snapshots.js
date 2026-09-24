@@ -9,7 +9,15 @@ import {clone} from '../core/values.js';
 export function createStateSnapshots({externalWorkbooks=false,model, ui, session, checksSession, prepareState, cloudPendingExists, checksPendingExists, normalizeState, domainRevisions}){
 function sameBusinessData(a,b){return comparableBackupData(a)===comparableBackupData(b)}
 
-function prepareCloudState(source=model.state){const x=externalWorkbooks?withoutEmbeddedWorkbook(prepareState(source)):prepareState(source);delete x.checks;return x}
+function prepareCloudState(source=model.state){
+  const x=externalWorkbooks?withoutEmbeddedWorkbook(prepareState(source)):prepareState(source);
+  delete x.checks;
+  // savedAt describes a downloaded backup, not the business document. The
+  // portable serializer refreshes it on every call; retaining it makes V2
+  // flight/remote parity depend on wall-clock timing and breaks crash resume.
+  if(x._meta)delete x._meta.savedAt;
+  return x;
+}
 
 function sameOrderCloudData(a,b){return comparableBackupData(prepareCloudState(a))===comparableBackupData(prepareCloudState(b))}
 

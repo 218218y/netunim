@@ -13,22 +13,27 @@ import {createUiCloud as createKupaUiCloud} from '../netunim-kupa/site/assets/js
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
 
-test('V2 owner handoff blocks both first-cloud UI paths before any V1 outbox write',async()=>{
-  const prior=globalThis.localStorage,priorAlert=globalThis.alert;globalThis.localStorage=localStore();globalThis.alert=()=>{};
-  let writes=0;
+test('V2 owner handoff routes first-cloud UI through V2 and never stages a V1 outbox',async()=>{
+  const prior=globalThis.localStorage,priorAlert=globalThis.alert,priorDocument=globalThis.document;
+  globalThis.localStorage=localStore();globalThis.alert=()=>{};globalThis.document={getElementById:()=>({style:{display:'flex'}})};
+  let writes=0,transfers=0,ordersOwner='local',kupaOwner='local';
   try{
     const orders=createOrdersUiCloud({tab:{primaryTab:true},session:{},supaConfigured:()=>true,loadSession:()=>({user:{id:'account'}}),
       setCloud:()=>{},toast:()=>{},getCloudPending:async()=>null,readCloud:async()=>null,refreshStorageV2CloudState:async()=>null,
-      storageV2PrimaryRequested:()=>true,markCloudPending:()=>{writes++},requestCloudSave:async()=>{writes++}});
+      storageOwnerCurrent:()=>ordersOwner,storageV2PrimaryRequested:()=>true,markCloudPending:()=>{writes++},requestCloudSave:async()=>{writes++},
+      startStorageV2OwnerTransfer:async({targetOwner,intent})=>{assert.equal(targetOwner,'account');assert.equal(intent,'upload-local');transfers++;ordersOwner='account';return {mainRevision:1,sharedRevision:1}},
+      prepareCloudState:()=>({}),model:{state:{}},checksSession:{},render:()=>{},startPolling:()=>{},startFinanceAutoSync:()=>{}});
     await orders.enableCloud();
     const kupa=createKupaUiCloud({session:{cloudDocumentName:'main'},tab:{primaryTab:true},supaConfigured:()=>true,
-      restoreSupaSession:async()=>({user:{id:'account'}}),setCloudHeaderStatus:()=>{},getCloudPending:async()=>null,
+      restoreSupaSession:async()=>({user:{id:'account'}}),loadSupaSession:()=>({user:{id:'account'}}),setCloudHeaderStatus:()=>{},getCloudPending:async()=>null,
       storageV2PrimaryRequested:()=>true,refreshStorageV2CloudState:async()=>null,supaEnsureSession:async()=>{},
       readSupabaseDocument:async()=>null,persistSupabaseState:async()=>{writes++},friendlySupabaseError:error=>error.message,
-      isSupabaseAuthError:()=>false});
+      isSupabaseAuthError:()=>false,storageOwnerCurrent:()=>kupaOwner,
+      startStorageV2OwnerTransfer:async({targetOwner,intent})=>{assert.equal(targetOwner,'account');assert.equal(intent,'upload-local');transfers++;kupaOwner='account';return {mainRevision:1,sharedRevision:1}},
+      model:{state:{}},checksSession:{},prepareKupaCloudState:()=>({}),setConnectedStatus:()=>{},render:()=>{},startCloudPolling:()=>{}});
     await kupa.enableCloudFromCurrentState();
-    assert.equal(writes,0);assert.equal(globalThis.localStorage.length,0);
-  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorAlert===undefined)delete globalThis.alert;else globalThis.alert=priorAlert}
+    assert.equal(writes,0);assert.equal(transfers,2);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorAlert===undefined)delete globalThis.alert;else globalThis.alert=priorAlert;if(priorDocument===undefined)delete globalThis.document;else globalThis.document=priorDocument}
 });
 
 test('V2 logout clears authorization without moving visible account data into the local owner',()=>{
@@ -108,12 +113,13 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab cannot render s
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
     const lifecycle=createOrdersLifecycle({model,tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
+      storageOwnerCurrent:()=>marker==='local'?'local':'account',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,restoreBrowserStateFallback:async()=>calls.push('main-recovered'),
       recoverSharedChecksV2Primary:async()=>{throw new Error('secondary acquired Shared Checks')},
       render:()=>{throw new Error('stale business state rendered')},showSecondaryTabGuard:()=>calls.push('guard'),
       syncFolderAccessButton:()=>calls.push('folder')});
     await lifecycle.boot();
-    assert.deepEqual(calls,['main-recovered','guard','folder']);
+    assert.deepEqual(calls,marker==='local'?['guard','folder']:['main-recovered','guard','folder']);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 

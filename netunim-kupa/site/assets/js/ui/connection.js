@@ -50,11 +50,11 @@ async function tryAutoOpenRemembered(){
   try{
     const permission=await last.queryPermission?.({mode:'readwrite'});
     if(permission==='granted'){
-      files.rootDirHandle=last;session.connectionMode='directory';files.dataFileHandle=await ensureDirectoryFile(last);await loadState();document.getElementById('connectScreen').style.display='none';render();return true;
+      files.rootDirHandle=last;session.connectionMode='directory';files.dataFileHandle=await ensureDirectoryFile(last);await loadState({automatic:true});document.getElementById('connectScreen').style.display='none';render();return true;
     }
     showRememberedFolderPrompt();
     return true;
-  }catch(e){console.error(e);showRememberedFolderPrompt('נמצאה תיקייה שמורה, אך לא ניתן היה להתחבר אליה אוטומטית. נסה לפתוח אותה מחדש.');return true}
+  }catch(e){console.error(e);showRememberedFolderPrompt(e?.message==='storage_v2_local_file_requires_confirmation'?'הקובץ והתמונה השמורה בדפדפן שונים. כדי למנוע החלפה אוטומטית של נתונים, יש לפתוח את התיקייה במפורש לאחר בדיקת הגיבוי.':'נמצאה תיקייה שמורה, אך לא ניתן היה להתחבר אליה אוטומטית. נסה לפתוח אותה מחדש.');return true}
 }
 
 return { configureCloudConnectButton, handleCloudConnectButton, showSecondaryTabGuard, setConnectUI, showFirstRun, showRememberedFolderPrompt, tryAutoOpenRemembered };
