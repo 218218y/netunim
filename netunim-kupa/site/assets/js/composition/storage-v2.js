@@ -82,7 +82,7 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
     const normalization=detachedNormalization(),sourceMain=createStorageV2Runtime({app:'kupa',owner:()=>sourceOwner,primary:()=>tab.primaryTab,mode:()=> 'preparing',
-      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.normalizeState(state)});
+      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
     const mainRecovered=await sourceMain.recoverForOwner({intent:'load-account'}),mainCloud=mainRecovered?await sourceMain.cloudState({validateBase:value=>assertValidCloudState(value,'Kupa transfer source')}):null;
     const sourceShared=createSharedChecksStorageV2({owner:()=>sourceOwner,primary:()=>tab.primaryTab,role:'primary'}),sharedRecovered=await sourceShared.open(),sharedCloud=sharedRecovered?await sourceShared.cloudState():null;
     if(!mainRecovered||!sharedRecovered||!mainCloud||!sharedCloud)throw new Error('kupa_transfer_source_checkpoint_missing');
@@ -99,7 +99,7 @@ export function createKupaStorageV2Coordinator({tab,storage=globalThis.localStor
   function createDetachedTarget(targetOwner){
     const p=requirePorts(),normalization=detachedNormalization(),target=()=>targetOwner;
     const targetMain=createStorageV2Runtime({app:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
-      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.normalizeState(state)});
+      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
     let detachedSharedState={checks:[],bankEvents:[]};
     const merge=createSyncChecks({checksSession:{sharedChecksBootstrapActive:false},model:{state:{checks:[]}}}).mergeSharedChecks;
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',

@@ -15,6 +15,16 @@ function prepareKupaCloudState(source=model.state,{normalized=false}={}){const x
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}
 
+
+function prepareKupaStorageState(source=model.state,{normalized=false}={}){
+  const normalizedState=normalized?source:normalizeState(source);
+  const x=clone(normalizedState);
+  assertKupaEntityInvariants(x,{includeChecks:true,required:true});
+  return x;
+}
+
+function prepareKupaStorageOperation(operation){return clone(operation)}
+
 function normalizeState(d){
   assertKupaEntityInvariants(d||{},{includeChecks:true,required:false,allowLegacyCards:true});
   const n=clone(d||{});
@@ -58,5 +68,5 @@ function normalizeState(d){
 
 function stateFromPayload(p){assertPortablePayload(p);const {_meta,...raw}=p;return {state:normalizeState(raw),meta:_meta||{}}}
 
-return { prepareKupaCloudState, applyKupaCloudState, normalizeState, stateFromPayload };
+return { prepareKupaCloudState, prepareKupaStorageState, prepareKupaStorageOperation, applyKupaCloudState, normalizeState, stateFromPayload };
 }

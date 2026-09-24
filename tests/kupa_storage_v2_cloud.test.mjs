@@ -3,8 +3,47 @@ import assert from 'node:assert/strict';
 import {createSyncDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
+import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
+import {createStorageJournal} from '../shared/storage-journal.js';
+import {assertKupaEntityInvariants,assertValidCloudState} from '../netunim-kupa/site/assets/js/state/validation.js';
+import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 
 const clone=structuredClone,noop=()=>{};
+
+
+test('Kupa V2 canonicalizes runtime-only credit fields at the storage boundary',async()=>{
+  globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
+  const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model,externalWorkbooks:true});
+  model.state.creditSync={version:4,profiles:[{profileId:'amex-main',provider:'amex',accounts:[{accountNumber:'6774',txns:[{id:'t-no-category',processedDate:'2026-09-24T00:00:00Z',chargedAmount:-125,description:'עסקה ללא קטגוריה'}]}]}]};
+  model.state=normalization.normalizeState(model.state);
+  const runtimeAccount=model.state.creditSync.profiles[0].accounts[0];
+  assert.equal(Object.prototype.propertyIsEnumerable.call(runtimeAccount,'txns'),true,'the live credit model still exposes its derived transaction list as before');
+  assert.equal(runtimeAccount.txns[0].category,undefined,'the fixture reproduces the optional undefined value rejected by strict V2 JSON storage');
+
+  const db=memoryDb(),emergency=emergencyStore(),owner=()=> 'account-kupa';let mode='preparing';
+  const runtime=createStorageV2Runtime({app:'kupa',owner,primary:()=>true,mode:()=>mode,
+    validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),
+    prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),
+    prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation),
+    createJournal:options=>createStorageJournal({...options,db,emergency})});
+  const cloud=normalization.prepareKupaCloudState(model.state);
+  await assert.doesNotReject(()=>runtime.initializeCloudHead(7,model.state,{sourceOwner:'account-kupa',intent:'cloud-authoritative',cloudState:cloud,validateBase:value=>assertValidCloudState(value,'Kupa V2 credit checkpoint test')}));
+  let recovered=await runtime.recoverForOwner({intent:'load-account'});
+  let durableAccount=recovered.state.creditSync.profiles[0].accounts[0];
+  assert.equal(Object.hasOwn(durableAccount,'txns'),false,'derived credit txns are excluded from the durable checkpoint');
+  assert.equal(Object.hasOwn(durableAccount.months[0]?.transactions?.[0]||{},'category'),false,'undefined optional fields are omitted from the durable checkpoint');
+  const rehydrated=normalization.normalizeState(recovered.state);
+  assert.equal(rehydrated.creditSync.profiles[0].accounts[0].txns.some(tx=>tx.id==='t-no-category'),true,'runtime derived credit transactions are reconstructed from the durable monthly slices');
+
+  mode='primary';
+  model.state.creditSync=normalization.normalizeState(model.state).creditSync;
+  const write=runtime.persist(model.state,{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}],mutationType:'credit-sync',surface:'credit'});
+  assert.equal(write.handled,true);await write.committed;
+  recovered=await runtime.recoverForOwner({intent:'load-account'});
+  durableAccount=recovered.state.creditSync.profiles[0].accounts[0];
+  assert.equal(Object.hasOwn(durableAccount,'txns'),false,'typed V2 operations use the same durable credit projection as checkpoints');
+});
+
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 function response(ok,payload,status=ok?200:409){return {ok,status,headers:{get:()=>null},text:async()=>JSON.stringify(payload)}}
 

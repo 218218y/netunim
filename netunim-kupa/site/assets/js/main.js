@@ -127,7 +127,7 @@ const storagePending=createStoragePending({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.normalizeState(state)});
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
   legacyDrainActive:storageV2Coordinator.legacyDrainActive,
@@ -397,9 +397,16 @@ storageV2Coordinator.configure({
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 async function beginStorageV2Cutover(){
-  const result=await storageV2Coordinator.beginCutover();
-  if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
-  uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startCloudPolling();uiSettings.renderSettings();return true;
+  try{
+    const result=await storageV2Coordinator.beginCutover();
+    if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
+    uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startCloudPolling();uiSettings.renderSettings();return true;
+  }catch(error){
+    console.error(error);
+    uiStatus.toast('המעבר ל־Storage V2 נעצר בבדיקת בטיחות. לא בוצע מעבר.');
+    uiSettings.renderSettings();
+    return false;
+  }
 }
 
 const uiCloud=createUiCloud({

@@ -30,7 +30,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 // mutation is synchronously durable in the bounded emergency journal and then
 // committed to IndexedDB. Boundaries keep the verified V1 checkpoint as a
 // fallback while V2 atomically installs the same canonical state.
-export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
+export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const shadow=createStorageShadow({app,owner,primary,validate,enabled:()=>mode()==='shadow',createJournal});
   const diagnostics={mode:'off',recoveries:0,migrations:0,operations:0,boundaries:0,fallbacks:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
@@ -158,11 +158,11 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   function canonicalOperations(state,operations){
     const source=state||{},byCollection=new Map();
     return operations.map(operation=>{
-      if(operation.type!=='put')return structuredClone(operation);
+      if(operation.type!=='put')return prepareOperation(operation);
       if(!byCollection.has(operation.collection))byCollection.set(operation.collection,new Map((source[operation.collection]||[]).map(row=>[row?.id,row])));
       const record=byCollection.get(operation.collection).get(operation.id);
       if(!record)throw new Error('storage_operation_record_missing');
-      return {...structuredClone(operation),record:structuredClone(record)};
+      return prepareOperation({...operation,record});
     });
   }
   function scheduleCompaction(){
