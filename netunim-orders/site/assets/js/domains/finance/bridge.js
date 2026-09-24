@@ -1,3 +1,4 @@
+import {normalizeCreditAutoMode,normalizeCreditFetchMode} from '../../shared/credit-sync-policy.js';
 const BRIDGE_URL='http://127.0.0.1:8765';
 const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1';
 const BANK_AUTO_KEY='netunim_orders_bank_auto_daily_v1';
@@ -31,10 +32,10 @@ async function fetchChequeImage(imageKey){const key=String(imageKey||'').trim().
 
 function bankAutoEnabled(){return enabled(BANK_AUTO_KEY)}
 function creditAutoEnabled(){return enabled(CREDIT_AUTO_KEY)}
-function creditAutoMode(){return localStorage.getItem(CREDIT_AUTO_MODE_KEY)==='full'?'full':'daily'}
+function creditAutoMode(){return normalizeCreditAutoMode(localStorage.getItem(CREDIT_AUTO_MODE_KEY))}
 function setBankAutoEnabled(value){setEnabled(BANK_AUTO_KEY,!!value)}
 function setCreditAutoEnabled(value){setEnabled(CREDIT_AUTO_KEY,!!value)}
-function setCreditAutoMode(value){localStorage.setItem(CREDIT_AUTO_MODE_KEY,value==='full'?'full':'daily')}
+function setCreditAutoMode(value){localStorage.setItem(CREDIT_AUTO_MODE_KEY,normalizeCreditAutoMode(value))}
 function markBankAttempt(){markAttempt(BANK_ATTEMPT_KEY)}
 function markCreditAttempt(){markAttempt(CREDIT_ATTEMPT_KEY)}
 function bankAttemptDelayMs(){return attemptDelayMs(BANK_ATTEMPT_KEY)}
@@ -54,6 +55,6 @@ function deleteCreditProfile(profileId){return creditRequest('/profiles',{method
 function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
 function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 function creditDataDiagnostics(){return creditRequest('/data-diagnostics',{timeoutMs:10000})}
-function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
+function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
 return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
 }

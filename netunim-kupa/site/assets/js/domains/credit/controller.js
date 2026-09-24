@@ -1,11 +1,12 @@
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {startFinanceLeaseHeartbeat} from '../../shared/finance-fence.js';
+import {normalizeCreditAutoMode,normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {esc,uid} from '../../core/values.js';
 import {creditCardMappingKey,creditSyncScrapeSelection,mergeCreditSyncResult,normalizeCreditSync,CREDIT_PROVIDER_LABELS,CREDIT_CONNECTOR_CONTRACT_VERSION} from './sync-feed.js';
 
 const CREDIT_AUTO_KEY='netunim_kupa_credit_auto_daily_v1';
 const CREDIT_AUTO_MODE_KEY='netunim_kupa_credit_auto_mode_v1';
-const CREDIT_BRIDGE_VERSION=58;
+const CREDIT_BRIDGE_VERSION=59;
 const CREDIT_AUTO_ATTEMPT_KEY='netunim_kupa_credit_auto_attempt_v1';
 const CREDIT_AUTO_INTERVAL_MS=24*60*60*1000;
 const CREDIT_AUTO_RETRY_MS=24*60*60*1000;
@@ -17,7 +18,7 @@ function providerFields(provider){return provider==='isracard'||provider==='amex
 export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
   const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
-  function autoMode(){return localStorage.getItem(CREDIT_AUTO_MODE_KEY)==='full'?'full':'daily'}
+  function autoMode(){return normalizeCreditAutoMode(localStorage.getItem(CREDIT_AUTO_MODE_KEY))}
   function markAutoAttempt(){localStorage.setItem(CREDIT_AUTO_ATTEMPT_KEY,String(Date.now()))}
   function autoAttemptDelayMs(){const n=Number(localStorage.getItem(CREDIT_AUTO_ATTEMPT_KEY)||0);return n?Math.max(0,n+CREDIT_AUTO_RETRY_MS-Date.now()):0}
   function autoAttemptReady(){return autoAttemptDelayMs()===0}
@@ -93,7 +94,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');
       await bridge.resetCreditProfiles();
-      localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.setItem(CREDIT_AUTO_MODE_KEY,'daily');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
+      localStorage.setItem(CREDIT_AUTO_KEY,'0');localStorage.setItem(CREDIT_AUTO_MODE_KEY,'smart');localStorage.removeItem(CREDIT_AUTO_ATTEMPT_KEY);
       model.state.creditSync=normalizeCreditSync({});
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}));
       await saveState('סנכרון האשראי אופס והופרד מגיבויי הקופה',{operations:[{type:'set',field:'creditSync',value:model.state.creditSync}]});
@@ -103,27 +104,30 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
     finally{local.busy=false;render();scheduleAuto()}
   }
 
-  async function refreshCreditSync({interactive=false,auto=false,syncMode='full'}={}){
+  async function refreshCreditSync({interactive=false,auto=false,syncMode='forecast'}={}){
     if(local.busy)return;
     local.busy=true;local.error='';local.errorAt=null;if(!auto)render();
-    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
+    let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync;
     try{
       if(auto){
         const latest=await refreshFinanceCloudSnapshot();
         if(!latest?.verified){markAutoAttempt();throw new Error('לא ניתן לאמת את זמן סנכרון האשראי המשותף בענן');}
-        if(!due(latest.state?.creditSync?.syncedAt)){markAutoAttempt();return true}
+        autoCreditSync=latest.state?.creditSync||autoCreditSync;
+        if(!due(autoCreditSync?.syncedAt)){markAutoAttempt();return true}
         markAutoAttempt();
       }
       leaseToken=uid('FINLEASE');
       lease=await claimFinanceSyncLease('credit',leaseToken);leaseHeld=lease?.acquired===true;
       if(!leaseHeld){if(!auto)toast('סינכרון אשראי כבר מתבצע ממחשב או חלון אחר. לא נפתחה כניסה נוספת לחברות האשראי.');return false}
       heartbeat=startFinanceLeaseHeartbeat(lease,claimFinanceSyncLease);
-      if(auto){const latest=await refreshFinanceCloudSnapshot();if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');if(!due(latest.state?.creditSync?.syncedAt))return true}
+      if(auto){const latest=await refreshFinanceCloudSnapshot();if(!latest?.verified)throw new Error('לא ניתן לאמת מחדש את זמן סנכרון האשראי לאחר תפיסת הנעילה');autoCreditSync=latest.state?.creditSync||autoCreditSync;if(!due(autoCreditSync?.syncedAt))return true}
       const status=local.status||await refreshCreditBridgeStatus();
       if(!status)throw new Error(local.bridgeError||'Bank Bridge אינו זמין');
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון אשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
-      const result=await bridge.syncCreditCards({interactive,syncMode:auto?autoMode():syncMode==='full'?'full':'daily',selection:creditSyncScrapeSelection(model.state.creditSync)});
+      const requestedMode=auto?resolveCreditAutoSyncMode(autoMode(),autoCreditSync,{profileIds:(status.profiles||[]).map(profile=>profile.profileId)}):normalizeCreditFetchMode(syncMode,'forecast');
+      const selectionSource=auto?autoCreditSync:model.state.creditSync;
+      const result=await bridge.syncCreditCards({interactive,syncMode:requestedMode,selection:creditSyncScrapeSelection(selectionSource)});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus();local.error='';local.errorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       model.state.creditSync=mergeCreditSyncResult(model.state.creditSync,result);
       await saveFinancePatch(state=>({...state,creditSync:model.state.creditSync}),lease);
@@ -168,7 +172,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
   }
 
   function setCreditAutoRefresh(enabled){localStorage.setItem(CREDIT_AUTO_KEY,enabled?'1':'0');scheduleAuto();render()}
-  function setCreditAutoMode(mode){localStorage.setItem(CREDIT_AUTO_MODE_KEY,mode==='full'?'full':'daily');scheduleAuto();render()}
+  function setCreditAutoMode(mode){localStorage.setItem(CREDIT_AUTO_MODE_KEY,normalizeCreditAutoMode(mode));scheduleAuto();render()}
   function scheduleAuto(){
     if(local.autoTimer){clearTimeout(local.autoTimer);local.autoTimer=null}
     if(!autoEnabled())return;

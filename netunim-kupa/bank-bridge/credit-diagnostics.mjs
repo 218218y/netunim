@@ -39,7 +39,7 @@ export function sanitizeCreditDiagnosticEvent(value={}){
   const event={
     timestamp:iso(value.timestamp),correlationId:text(value.correlationId,80),provider:text(value.provider,30),profileId:text(value.profileId,80),
     bridgeVersion:Math.max(0,Math.trunc(Number(value.bridgeVersion)||0)),contractVersion:Math.max(0,Math.trunc(Number(value.contractVersion)||0)),connectorVersion:text(value.connectorVersion,80),browserEngine:text(value.browserEngine,40),
-    syncMode:['daily','full'].includes(String(value.syncMode||''))?String(value.syncMode):'',browserMode:['headless','headed'].includes(String(value.browserMode||''))?String(value.browserMode):'',browserProduct:['chrome','edge','camoufox'].includes(String(value.browserProduct||''))?String(value.browserProduct):'',
+    syncMode:['quick','forecast','recovery'].includes(String(value.syncMode||''))?String(value.syncMode):'',browserMode:['headless','headed'].includes(String(value.browserMode||''))?String(value.browserMode):'',browserProduct:['chrome','edge','camoufox'].includes(String(value.browserProduct||''))?String(value.browserProduct):'',
     stage:text(value.stage,80),accountSuffix:suffix(value.accountSuffix||value.accountNumber),month:safeMonth(value.month),durationMs:Math.max(0,Math.trunc(Number(value.durationMs)||0)),
     errorClass:text(value.errorClass||value.code,80),httpStatus:Math.max(0,Math.trunc(Number(value.httpStatus)||0)),retryAfterAt:value.retryAfterAt?iso(value.retryAfterAt):null,
     providerStatus:text(value.providerStatus,24),providerReturnCode:text(value.providerReturnCode,24),

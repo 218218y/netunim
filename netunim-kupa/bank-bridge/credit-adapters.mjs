@@ -23,8 +23,10 @@ export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v4+upstream-6.12.1-balance';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
-export const CREDIT_SYNC_MODE_DAILY='daily';
-export const CREDIT_SYNC_MODE_FULL='full';
+export const CREDIT_RECENT_HISTORY_DAYS=30;
+export const CREDIT_SYNC_MODE_QUICK='quick';
+export const CREDIT_SYNC_MODE_FORECAST='forecast';
+export const CREDIT_SYNC_MODE_RECOVERY='recovery';
 
 const CAL_ENDPOINTS={
   frames:'https://api.cal-online.co.il/Frames/api/Frames/GetFrameStatus',
@@ -71,9 +73,15 @@ function diagnosticBrowserProduct(browserPath){
   return '';
 }
 
-export function creditStartDate(now=new Date()){
+export function creditRecoveryStartDate(now=new Date()){
   const d=new Date(now);d.setUTCDate(d.getUTCDate()-CREDIT_HISTORY_DAYS);return d;
 }
+export function creditRecentStartDate(now=new Date()){
+  const d=new Date(now);d.setUTCDate(d.getUTCDate()-CREDIT_RECENT_HISTORY_DAYS);return d;
+}
+// Legacy exported name retained for tests/tools that used the old full horizon helper.
+export const creditStartDate=creditRecoveryStartDate;
+
 
 export function buildCreditMonthPlan({startDate=creditStartDate(),futureMonths=CREDIT_FUTURE_MONTHS,now=new Date()}={}){
   const start=monthStart(startDate),current=monthStart(now),coreEnd=addMonths(current,CREDIT_CORE_FUTURE_MONTHS),end=addMonths(current,Math.max(CREDIT_CORE_FUTURE_MONTHS,Math.trunc(Number(futureMonths)||0))),months=[];
@@ -81,12 +89,17 @@ export function buildCreditMonthPlan({startDate=creditStartDate(),futureMonths=C
   return months;
 }
 
-export function normalizeCreditSyncMode(value){return value===CREDIT_SYNC_MODE_FULL?CREDIT_SYNC_MODE_FULL:CREDIT_SYNC_MODE_DAILY}
-export function creditSyncScope({syncMode=CREDIT_SYNC_MODE_DAILY,now=new Date()}={}){
+export function normalizeCreditSyncMode(value){
+  if(value===CREDIT_SYNC_MODE_FORECAST)return CREDIT_SYNC_MODE_FORECAST;
+  if(value===CREDIT_SYNC_MODE_RECOVERY||value==='full')return CREDIT_SYNC_MODE_RECOVERY;
+  if(value===CREDIT_SYNC_MODE_QUICK||value==='daily')return CREDIT_SYNC_MODE_QUICK;
+  return CREDIT_SYNC_MODE_QUICK;
+}
+export function creditSyncScope({syncMode=CREDIT_SYNC_MODE_QUICK,now=new Date()}={}){
   const mode=normalizeCreditSyncMode(syncMode);
-  return mode===CREDIT_SYNC_MODE_FULL
-    ?{syncMode:mode,startDate:creditStartDate(now),futureMonths:CREDIT_FUTURE_MONTHS}
-    :{syncMode:mode,startDate:monthStart(now),futureMonths:CREDIT_CORE_FUTURE_MONTHS};
+  if(mode===CREDIT_SYNC_MODE_RECOVERY)return {syncMode:mode,startDate:creditRecoveryStartDate(now),futureMonths:CREDIT_FUTURE_MONTHS};
+  if(mode===CREDIT_SYNC_MODE_FORECAST)return {syncMode:mode,startDate:creditRecentStartDate(now),futureMonths:CREDIT_FUTURE_MONTHS};
+  return {syncMode:mode,startDate:creditRecentStartDate(now),futureMonths:CREDIT_CORE_FUTURE_MONTHS};
 }
 
 export function parseRetryAfter(value,now=Date.now()){
@@ -253,7 +266,7 @@ export function applyVisaCalLoginNavigationPolicy(scraper){
 }
 
 export class CreditProviderAdapter {
-  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_DAILY,interactive=false,browserPath=''}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode);this.browserMode=interactive?'headed':'headless';this.browserProduct=diagnosticBrowserProduct(browserPath);this.connectorVersion=''}
+  constructor({profile,onDiagnostic=()=>{},correlationId='',now=()=>new Date(),syncMode=CREDIT_SYNC_MODE_QUICK,interactive=false,browserPath=''}={}){this.profile=profile;this.onDiagnostic=onDiagnostic;this.correlationId=correlationId;this.now=now;this.syncMode=normalizeCreditSyncMode(syncMode);this.browserMode=interactive?'headed':'headless';this.browserProduct=diagnosticBrowserProduct(browserPath);this.connectorVersion=''}
   event(event){const engine=String(event?.browserEngine||'');diagnostic(this.onDiagnostic,{correlationId:this.correlationId,provider:this.profile?.provider,profileId:this.profile?.profileId,connectorVersion:this.connectorVersion||undefined,syncMode:this.syncMode,browserMode:this.browserMode,browserProduct:engine==='camoufox'?'camoufox':this.browserProduct,...event})}
   async scrape(){throw new Error('CreditProviderAdapter.scrape must be implemented')}
 }
@@ -371,7 +384,7 @@ async function camoufoxProfileResult(adapter,options){
   try{const result=await scrapeIsracardFamilyWithCamoufox(options),profile=adapter.profile,syncedAt=result.coreComplete===false?null:adapter.now().toISOString(),dataDiagnostics=(Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[]).map(row=>({...row,profileId:profile.profileId}));return {...creditProfilePublic(profile),syncedAt,attemptedAt:adapter.now().toISOString(),coreComplete:result.coreComplete!==false,accounts:(Array.isArray(result.accounts)?result.accounts:[]).map(account=>normalizeCreditScrapeAccount(account,profile.provider)),errors:(Array.isArray(result.errors)?result.errors:[]).map(error=>({...error,profileId:profile.profileId,provider:profile.provider,label:profile.label,browserEngine:'camoufox'})),_dataDiagnostics:dataDiagnostics}}catch(error){const failure=creditThrownScrapeFailure(error,adapter.profile);if(!failure.browserEngine)failure.browserEngine='camoufox';throw failure}
 }
 
-export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_DAILY,excludedAccountNumbers=[],allowCamoufoxFallback=true,isracardScrapeImpl=null,amexScrapeImpl=null}={}){
+export function createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive=false,identityDir='',onDiagnostic=()=>{},correlationId='',now=()=>new Date(),fetchImpl=globalThis.fetch,requestDelayMs,syncMode=CREDIT_SYNC_MODE_QUICK,excludedAccountNumbers=[],allowCamoufoxFallback=true,isracardScrapeImpl=null,amexScrapeImpl=null}={}){
   const common={profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,onDiagnostic,correlationId,now,fetchImpl,requestDelayMs,syncMode,excludedAccountNumbers,allowCamoufoxFallback,isracardScrapeImpl,amexScrapeImpl};
   if(profile.provider==='visaCal')return new VisaCalAdapter(common);
   if(profile.provider==='max')return new MaxAdapter({...common,companyId:CompanyTypes.max});

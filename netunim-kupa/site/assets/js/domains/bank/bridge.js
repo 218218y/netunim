@@ -1,3 +1,4 @@
+import {normalizeCreditFetchMode} from '../../shared/credit-sync-policy.js';
 const BRIDGE_URL='http://127.0.0.1:8765';
 const TOKEN_KEY='netunim_kupa_bank_bridge_token_v1';
 const AUTO_KEY='netunim_kupa_bank_auto_daily_v1';
@@ -75,7 +76,7 @@ async function deleteCreditProfile(profileId){return creditRequest('/profiles',{
 async function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body:{},timeoutMs:15000})}
 async function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 async function creditDataDiagnostics(){return creditRequest('/data-diagnostics',{timeoutMs:10000})}
-async function syncCreditCards({interactive=false,syncMode='daily',selection=[]}={}){const mode=syncMode==='full'?'full':'daily';return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
+async function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
 return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
 }

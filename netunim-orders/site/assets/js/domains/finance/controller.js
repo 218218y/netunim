@@ -2,6 +2,7 @@ import {createRevisionSelector} from '../../shared/revision-selector.js';
 import {applyCreditCardOrderData} from '../../shared/credit-card-order.js';
 import {bankRecurringDebitHistoryData} from '../../shared/bank-recurring-debits.js';
 import {startFinanceLeaseHeartbeat,createFinanceManualQueue} from '../../shared/finance-fence.js';
+import {normalizeCreditFetchMode,resolveCreditAutoSyncMode} from '../../shared/credit-sync-policy.js';
 import {clone,uid} from '../../core/values.js';
 import {checkTodayISO} from '../../core/dates.js';
 import {kupaWholeMoney} from '../../core/money.js';
@@ -13,7 +14,7 @@ import {normalizeCashflowSettings} from '../../shared/cashflow.js';
 import {CLOUD_WRITE_POLICY,contentionDelay,createOperationId,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy} from '../../shared/cloud-sync.js';
 
 const BANK_BRIDGE_VERSION=55;
-const CREDIT_BRIDGE_VERSION=58;
+const CREDIT_BRIDGE_VERSION=59;
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 
 function accountIdOf(snapshot){return snapshot?.accountId||[snapshot?.branchNumber,snapshot?.accountNumber].filter(Boolean).join('-')||snapshot?.accountNumber||''}
@@ -273,7 +274,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     try{const result=await acknowledgeBankTransactionAlert(id,kind),at=String(result?.acknowledged_at||result?.acknowledgedAt||new Date().toISOString());updateLocalBankTransaction(id,row=>{row.alertAcknowledgements={...(row.alertAcknowledgements&&typeof row.alertAcknowledgements==='object'?row.alertAcknowledgements:{}),[kind]:at}});toast('ההתראה הוסרה ולא תוצג שוב עבור אירוע הבנק הזה.');return true}catch(error){toast(error?.message||'הסרת התראת הבנק נכשלה');return false}
   }
 
-  async function refreshCredit({interactive=false,auto=false,syncMode='full'}={}){
+  async function refreshCredit({interactive=false,auto=false,syncMode='forecast'}={}){
     if(local.creditBusy||local.bankBusy)return false;
     if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
     if(!bridge.getBridgeToken()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
@@ -290,7 +291,8 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       const status=await bridge.creditStatus();local.creditStatus=status;local.creditStatusChecked=true;local.creditBridgeError='';
       if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני סנכרון האשראי');
       if(!(status.profiles||[]).length)throw new Error('לא הוגדר עדיין חיבור לחברת אשראי במחשב זה');
-      const result=await bridge.syncCreditCards({interactive,syncMode:auto?bridge.creditAutoMode():syncMode==='full'?'full':'daily',selection:creditSyncScrapeSelection(checksSession.kupaCloudReadState?.creditSync)});
+      const requestedMode=auto?resolveCreditAutoSyncMode(bridge.creditAutoMode(),checksSession.kupaCloudReadState?.creditSync,{profileIds:(status.profiles||[]).map(profile=>profile.profileId)}):normalizeCreditFetchMode(syncMode,'forecast');
+      const result=await bridge.syncCreditCards({interactive,syncMode:requestedMode,selection:creditSyncScrapeSelection(checksSession.kupaCloudReadState?.creditSync)});
       if(Number(result.attemptedCount)===0&&Number(result.deferredCount)>0){await refreshCreditBridgeStatus({quiet:true});local.creditError='';local.creditErrorAt=null;if(!auto)toast('לא נשלחה בקשה חדשה: החיבור מושהה עד מועד ה־403/429 הקודם. גם רענון עם חלון אבחון מכבד את ההשהיה.');return true}
       const saved=await mutateFinanceCloud(finance=>{if(auto&&!creditRefreshDue(creditLastSyncAt({creditSync:finance.creditSync})))return null;finance.creditSync=mergeCreditSyncResult(finance.creditSync,result);return finance},lease);
       await refreshCreditBridgeStatus({quiet:true});
@@ -305,7 +307,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
 
   async function saveCreditProfile(profile){if(local.creditBusy)return false;local.creditBusy=true;local.creditError='';local.creditErrorAt=null;try{await bridge.saveCreditProfile(profile);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי נשמר במחשב זה');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}
   async function deleteCreditProfile(profileId){if(local.creditBusy)return false;local.creditBusy=true;try{await bridge.deleteCreditProfile(profileId);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי המקומי נמחק');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}
-  async function resetCreditSync(){if(local.creditBusy)return false;local.creditBusy=true;try{const status=local.creditStatus||await refreshCreditBridgeStatus({quiet:true});if(!status)throw new Error(local.creditBridgeError||'Bank Bridge אינו זמין');if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');await bridge.resetCreditProfiles();await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance});bridge.setCreditAutoEnabled(false);bridge.setCreditAutoMode('daily');local.creditStatus={...status,profiles:[],lastErrors:[]};local.creditError='';local.creditErrorAt=null;toast('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false;scheduleCreditAuto()}}
+  async function resetCreditSync(){if(local.creditBusy)return false;local.creditBusy=true;try{const status=local.creditStatus||await refreshCreditBridgeStatus({quiet:true});if(!status)throw new Error(local.creditBridgeError||'Bank Bridge אינו זמין');if(!supportedCreditBridge(status))throw new Error('יש לשדרג את Bank Bridge לפני איפוס מלא של סנכרון האשראי');await bridge.resetCreditProfiles();await mutateFinanceCloud(finance=>{finance.creditSync=normalizeCreditSync({});return finance});bridge.setCreditAutoEnabled(false);bridge.setCreditAutoMode('smart');local.creditStatus={...status,profiles:[],lastErrors:[]};local.creditError='';local.creditErrorAt=null;toast('סנכרון האשראי אופס והחיבורים המקומיים נמחקו');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false;scheduleCreditAuto()}}
 
   async function saveCreditCardOrder(keys){await mutateFinanceCloud(finance=>({...finance,creditSync:applyCreditCardOrderData(normalizeCreditSync(finance.creditSync),keys)}));if(local.creditError==='finance_sync_lease_busy'){local.creditError='';local.creditErrorAt=null}toast('סדר הכרטיסים נשמר');return true}
 

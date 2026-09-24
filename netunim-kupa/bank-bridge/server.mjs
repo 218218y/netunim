@@ -43,7 +43,7 @@ import {
   creditErrorComponent,
 } from './lib.mjs';
 import {doctorCamoufox} from './isracard-camoufox.mjs';
-import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter} from './credit-adapters.mjs';
+import {CREDIT_CONNECTOR_CONTRACT_VERSION,createCreditProviderAdapter,normalizeCreditSyncMode} from './credit-adapters.mjs';
 import {createCreditDiagnosticLog,diagnosticFingerprint} from './credit-diagnostics.mjs';
 import {buildCreditDataDiagnosticPayload,creditDataDiagnosticFilename} from './credit-data-diagnostics.mjs';
 import {creditIdentityDirectory,deleteCreditIdentity,resetCreditIdentities} from './credit-identity.mjs';
@@ -51,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=58;
+const BRIDGE_VERSION=59;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -602,12 +602,12 @@ async function scrapeHapoalimSnapshot(credentials,{interactive=false,historyDays
 function normalizeCreditSyncSelection(value){return (Array.isArray(value)?value:[]).slice(0,100).map(row=>({profileId:String(row?.profileId||'').trim().slice(0,80),excludedAccounts:[...new Set((Array.isArray(row?.excludedAccounts)?row.excludedAccounts:[]).slice(0,100).map(account=>String(account||'').trim().slice(0,80)).filter(Boolean))]})).filter(row=>row.profileId&&row.excludedAccounts.length)}
 function excludedAccountsForProfile(selection,profileId){return selection.find(row=>row.profileId===profileId)?.excludedAccounts||[]}
 
-async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='daily',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
+async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='quick',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
   const browserPath=await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile);
   const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,allowCamoufoxFallback,onDiagnostic:event=>creditDiagnostics.record({browserEngine:'chromium',...event})});
   return adapter.scrape();
 }
-async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[],syncMode='daily',selection=[]}={}){
+async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[],syncMode='quick',selection=[]}={}){
   if(scrapeBusy)throw Object.assign(new Error('כבר מתבצע עדכון פיננסי ב-Bank Bridge'),{code:'SCRAPE_BUSY'});
   scrapeBusy=true;
   try{
@@ -637,7 +637,7 @@ async function scrapeAllCreditProfiles(profiles,{interactive=false,previousError
         // retain that engine-scoped not-before record when Chromium also fails. This
         // prevents a second manual refresh from immediately re-entering Camoufox.
         if(camoufoxDeferred&&browserEngine!=='camoufox')errors.push(camoufoxDeferred);
-        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,syncMode:syncMode==='full'?'full':'daily',stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode});
+        creditDiagnostics.record({correlationId,provider:profile.provider,profileId:profile.profileId,browserEngine,syncMode:normalizeCreditSyncMode(syncMode),stage:base.stage||'Profile',errorClass:base.code,httpStatus:base.httpStatus,retryAfterAt,startupFailureReason:error?.startupFailureReason,providerStatus:base.providerStatus,providerReturnCode:base.providerReturnCode});
       }
     }
     const syncedAt=coreSuccessCount?new Date().toISOString():null;
@@ -696,7 +696,7 @@ async function handler(req,res,token){
       const removed=profiles.find(p=>p.profileId===profileId),next=profiles.filter(p=>p.profileId!==profileId);await writeCreditProfiles(next);await deleteCreditDataDiagnostic();if(removed)await deleteCreditIdentity(CREDIT_IDENTITIES_DIR,removed);sendJson(req,res,200,{ok:true,contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(next)});return;
     }
     if(req.method==='POST'&&route==='/credit/sync'){
-      const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta(),syncMode=body.syncMode==='full'?'full':'daily',selection=normalizeCreditSyncSelection(body.selection);
+      const body=await readJson(req),profiles=await readCreditProfiles(),meta=await readCreditMeta(),syncMode=normalizeCreditSyncMode(body.syncMode),selection=normalizeCreditSyncSelection(body.selection);
       const result=await scrapeAllCreditProfiles(profiles,{interactive:!!body.interactive,previousErrors:meta.lastErrors,syncMode,selection}),rawSamples=Array.isArray(result?._dataDiagnostics)?result._dataDiagnostics:[],publicResult={...result};delete publicResult._dataDiagnostics;
       if(publicResult.profiles.length)await writeCreditDataDiagnostic(buildCreditDataDiagnosticPayload({correlationId:publicResult.correlationId,profiles:publicResult.profiles,rawSamples}));
       await writeCreditMeta({...(publicResult.syncedAt?{lastSyncAt:publicResult.syncedAt}:{}),lastErrors:publicResult.errors,lastCorrelationId:publicResult.correlationId,lastAttemptedCount:publicResult.attemptedCount,lastDeferredCount:publicResult.deferredCount});
