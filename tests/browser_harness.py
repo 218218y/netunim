@@ -649,7 +649,7 @@ class LegacyBrowserSession(BrowserSession):
         source = prepared.read_text(encoding='utf-8')
         if 'netunim-orders' in str(self.site):
             start = source.index('  if(localOwner){\n    try{\n      if(!localEngineActive)')
-            end = source.index('\n\n  if(!tab.primaryTab){', start)
+            end = source.index('\n\n  // The Main checkpoint', start)
             source = (source[:start] +
                 "  try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive||localEngineActive)throw e;console.error('browser state recovery',e)}" +
                 source[end:])

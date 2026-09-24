@@ -46,6 +46,32 @@ try{
   assert.deepEqual(revoked,[firstUrl],'Replacing the preview must still release the previous Blob URL');
   assert.equal(revoked.includes(frame.src),false,'The replacement PDF must remain backed by a live Blob URL');
 
+  elements.delete('#morningDocumentsBrowser');elements.delete('#morningBrowserPreview');elements.delete('#morningBrowserPreviewFrame');
+  const standaloneBox={hidden:true,scrollIntoView(){}},standaloneFrame={src:''};let opened=0;
+  const linkedBrowser=createDomainsCustomersDocumentsBrowser({
+    modal(_title,body){opened++;assert.match(body,/morningStandalonePreviewFrame/);elements.set('#morningStandalonePreview',standaloneBox);elements.set('#morningStandalonePreviewFrame',standaloneFrame)},
+    toast(message){throw new Error(`Unexpected toast: ${message}`)},
+    dateEditorMarkup(){return''},
+    supaFetch:async()=>new Response(new Blob(['%PDF-1.4\nlinked'],{type:'application/pdf'}),{status:200,headers:{'Content-Type':'application/pdf'}}),
+  });
+  assert.equal(await linkedBrowser.viewDocument('linked-from-bank-or-debt'),true);
+  assert.equal(opened,1,'a linked document opens its own viewer outside Morning dialogs');
+  assert.match(standaloneFrame.src,/^blob:morning-test-/);
+
+  let statusReads=0;
+  const legacyBrowser=createDomainsCustomersDocumentsBrowser({
+    modal(){throw new Error('Existing standalone viewer should be reused')},
+    toast(message){throw new Error(`Unexpected toast: ${message}`)},
+    dateEditorMarkup(){return''},
+    supaFetch:async(_path,options)=>{
+      const body=JSON.parse(options.body);
+      if(body.action==='status'){statusReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'legacy-doc'}}),{status:200,headers:{'Content-Type':'application/json'}})}
+      assert.equal(body.document_id,'legacy-doc');return new Response(new Blob(['%PDF-1.4\nlegacy'],{type:'application/pdf'}),{status:200,headers:{'Content-Type':'application/pdf'}});
+    },
+  });
+  assert.equal(await legacyBrowser.viewVerifiedOperation('legacy-operation'),true);
+  assert.equal(statusReads,1,'a historical debt movement resolves its document through the verified operation ledger');
+
   console.log('PASS Morning embedded PDF keeps its Blob URL alive until the preview is replaced');
 } finally {
   URL.createObjectURL=originalCreateObjectURL;

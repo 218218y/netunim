@@ -6,9 +6,11 @@ export function eq(a,b){return equalSyncJson(a,b)}
 
 export function mergeArray(base,local,remote,key,conflicts,label,preferLocalConflicts=false){const bm=new Map((base||[]).map(x=>[String(x?.[key]),x])),lm=new Map((local||[]).map(x=>[String(x?.[key]),x])),rm=new Map((remote||[]).map(x=>[String(x?.[key]),x])),keys=new Set([...bm.keys(),...lm.keys(),...rm.keys()]),out=[];for(const k of keys){const b=bm.get(k),l=lm.get(k),r=rm.get(k),lc=!eq(l,b),rc=!eq(r,b);if(lc&&rc&&!eq(l,r)){conflicts.push(`${label}:${k}`);if(preferLocalConflicts&&l!==undefined)out.push(clone(l));continue}const v=lc?l:r;if(v!==undefined)out.push(clone(v))}return out}
 
-function withoutDebtProgress(row){if(row===undefined)return undefined;const value=clone(row);delete value.debtProgress;return value}
+function withoutDebtProgress(row){if(row===undefined)return undefined;const value=clone(row);delete value.debtProgress;delete value.morningDocuments;return value}
 function comparableDebtRow(row){const value=withoutDebtProgress(row);if(value===undefined)return undefined;delete value.updatedAt;delete value.paidAt;delete value.invoiceIssuedAt;delete value.closedAt;return value}
 function progressRows(row){return Array.isArray(row?.debtProgress)?row.debtProgress:[]}
+function mergeDebtDocuments(base,local,remote,conflicts,id){return mergeArray(base?.morningDocuments,local?.morningDocuments,remote?.morningDocuments,'operationId',conflicts,`customerDebtDocument:${id}`)}
+function attachDebtDocuments(row,base,local,remote,conflicts,id){const links=mergeDebtDocuments(base,local,remote,conflicts,id);if(links.length)row.morningDocuments=links;return row}
 function timestampValue(value){if(typeof value!=='string'||!value)return null;const time=Date.parse(value);return Number.isFinite(time)?{value,time}:null}
 function earliestTimestamp(values){const rows=values.map(timestampValue).filter(Boolean).sort((a,b)=>a.time-b.time||a.value.localeCompare(b.value));return rows[0]?.value||null}
 function latestTimestamp(values){const rows=values.map(timestampValue).filter(Boolean).sort((a,b)=>b.time-a.time||b.value.localeCompare(a.value));return rows[0]?.value||null}
@@ -58,11 +60,11 @@ export function mergeCustomerDebtArray(base,local,remote,conflicts,preferLocalCo
     }
     if(b===undefined){
       if(!eq(comparableDebtRow(l),comparableDebtRow(r))){conflicts.push(`customerDebt:${id}`);if(preferLocalConflicts)out.push(clone(l));continue}
-      const row=withoutDebtProgress(l);const progress=mergeDebtProgress(undefined,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;out.push(reconcileDebtMetadata(row,l,r));continue;
+      const row=withoutDebtProgress(l);const progress=mergeDebtProgress(undefined,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;out.push(reconcileDebtMetadata(attachDebtDocuments(row,undefined,l,r,conflicts,id),l,r));continue;
     }
     const br=comparableDebtRow(b),lr=comparableDebtRow(l),rr=comparableDebtRow(r),lrc=!eq(lr,br),rrc=!eq(rr,br);
-    if(lrc&&rrc&&!eq(lr,rr)){conflicts.push(`customerDebt:${id}`);if(preferLocalConflicts){const row=withoutDebtProgress(l),progress=mergeDebtProgress(b,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;out.push(reconcileDebtMetadata(row,b,l,r))}continue}
-    const source=lrc?l:r,row=withoutDebtProgress(source),progress=mergeDebtProgress(b,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;else delete row.debtProgress;out.push(reconcileDebtMetadata(row,b,l,r));
+    if(lrc&&rrc&&!eq(lr,rr)){conflicts.push(`customerDebt:${id}`);if(preferLocalConflicts){const row=withoutDebtProgress(l),progress=mergeDebtProgress(b,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;out.push(reconcileDebtMetadata(attachDebtDocuments(row,b,l,r,conflicts,id),b,l,r))}continue}
+    const source=lrc?l:r,row=withoutDebtProgress(source),progress=mergeDebtProgress(b,l,r,conflicts,id);if(progress.length)row.debtProgress=progress;else delete row.debtProgress;out.push(reconcileDebtMetadata(attachDebtDocuments(row,b,l,r,conflicts,id),b,l,r));
   }
   return out;
 }

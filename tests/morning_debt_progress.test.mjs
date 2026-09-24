@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
 import {morningDebtImpact,applyVerifiedMorningDocumentToDebt,morningDebtProgressEntryId} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
+import {morningDebtLinksMarkup} from '../netunim-orders/site/assets/js/domains/customers/view.js';
+import {createSyncMerge} from '../netunim-orders/site/assets/js/sync/merge.js';
+import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 
 const op=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const add=(id,kind,amount)=>({id,kind,action:'add',amount,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'});
@@ -92,13 +95,43 @@ test('customer editor renders a verified Morning mutation once but re-persists a
 });
 
 test('a debt may be deleted after a verified Morning application once no recovery lock remains',async()=>{
- const row=debt(),model={state:{customerDebts:[row]}},saves=[];
+ const row=debt(),model={state:{customerDebts:[row]}},saves=[];let details='';
  const editor=createDomainsCustomersEditor({
-  model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true,
+  model,customerUi:{},modal:(_title,body)=>{details=body},toast:()=>{},scheduleSave:(message,meta)=>{saves.push({message,meta});return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true,
   rejectDebtRecoveryMutation:()=>false,
  });
- const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
+ const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),documentId:'morning-doc-13',documentNumber:'1013',type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
+ assert.match(morningDebtLinksMarkup(row),/morning-doc-13/);
+ editor.openDebtProgressDetails(row.id);assert.match(details,/debt-progress-linked-row/);assert.match(details,/data-click-arg0="morning-doc-13"/);
  await editor.deleteDebt(row.id);
  assert.equal(model.state.customerDebts.length,0,'verified Morning progress does not create a permanent local reference that prevents later debt deletion');
+ assert.equal(model.state.customerDebts.some(debt=>morningDebtLinksMarkup(debt).includes('morning-doc-13')),false,'deleting a debt removes its row and embedded document link');
  const deletion=saves.at(-1);assert.equal(deletion.meta.mutationType,'delete');assert.deepEqual(deletion.meta.deleteIntents,{customerDebts:[row.id]});
+});
+
+test('a verified document is visible on its debt even when automatic balance allocation was declined',()=>{
+ const row=debt(),model={state:{customerDebts:[row]}},saves=[];
+ const editor=createDomainsCustomersEditor({model,customerUi:{},modal:()=>{},toast:()=>{},scheduleSave:(_message,meta)=>{saves.push(meta);return true},closeModal:()=>{},renderCustomers:()=>{},confirmDialog:async()=>true});
+ const input={debtId:row.id,operationId:op(14),documentId:'morning-doc-14',documentNumber:'1014',type:400,amount:200,verifiedAt:'2026-09-09T17:00:00.000Z',applyPayment:false};
+ const first=editor.applyVerifiedMorningDocument(input);assert.equal(first.changed,true);assert.equal(first.persisted,true);
+ assert.equal(row.debtProgress.length,0);assert.equal(row.morningDocuments.length,1);
+ assert.match(morningDebtLinksMarkup(row),/morning-open-document/);
+ assert.equal(editor.applyVerifiedMorningDocument(input).persisted,true);assert.equal(saves.length,1,'recovery replay does not duplicate a verified link');
+});
+
+test('concurrent verified document links merge independently on the same debt',()=>{
+ const normalization=createStateNormalization({}),merge=createSyncMerge({normalizeState:normalization.normalizeState});
+ const state=()=>({version:4,businessName:'test',suppliers:[],transactions:[],customerDebts:[debt()],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[],checks:[],notes:[],importAudit:{},stage2Audit:{}});
+ const base=normalization.normalizeState(state()),local=structuredClone(base),remote=structuredClone(base);
+ local.customerDebts[0].morningDocuments=[{operationId:op(15),documentId:'doc-15',documentNumber:'1015',documentType:305,verifiedAt:'2026-09-09T18:00:00.000Z'}];
+ remote.customerDebts[0].morningDocuments=[{operationId:op(16),documentId:'doc-16',documentNumber:'1016',documentType:400,verifiedAt:'2026-09-09T18:01:00.000Z'}];
+ const result=merge.merge3(base,local,remote);assert.deepEqual(result.conflicts,[]);
+ assert.deepEqual(result.state.customerDebts[0].morningDocuments.map(link=>link.documentId),['doc-15','doc-16']);
+});
+
+test('historical Morning debt movements expose an operation-backed document link',()=>{
+ const row=debt({debtProgress:[{id:`MORNING:${op(17)}:payment`,kind:'payment',action:'add',amount:100,source:'morning',createdAt:'2026-09-09T10:00:00.000Z'}]});
+ const markup=morningDebtLinksMarkup(row);
+ assert.match(markup,/מסמך Morning/);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);
+ assert.equal(morningDebtLinksMarkup(debt()),'');
 });

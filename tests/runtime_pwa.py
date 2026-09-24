@@ -1,4 +1,4 @@
-"""Uninstrumented production ESM, actual SW/offline reload and Web Locks.
+﻿"""Uninstrumented production ESM, actual SW/offline reload and Web Locks.
 
 Only public DOM, browser storage and the small exported appReady lifecycle API
 are used. All data and cloud endpoints live in a disposable local test origin.
@@ -77,7 +77,7 @@ for label, fixture in fixtures.items():
         with browser.second_tab():
             blocked=browser.evaluate("""(()=>{
               const guard=document.querySelector('#tabWriterGuard');
-              return guard?!guard.hidden:document.querySelector('#connectTitle').textContent.includes('בלשונית אחרת');
+              return guard?!guard.hidden:!!document.querySelector("#readOnlyTabBanner")&&!document.querySelector("#readOnlyTabBanner").hidden;
             })()""")
             assert blocked, label+' second tab must be read-only'
         assert browser.evaluate('JSON.stringify({...localStorage})')==before, label+' secondary tab changed storage'

@@ -97,15 +97,27 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     if(button)button.disabled=true;const element=root();
     try{
       const blob=await fetchDocumentPdf(id);if(element&&root()!==element)return false;
-      releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
+      if(button?.isConnected===false)return false;
       const browserBox=$('#morningBrowserPreview'),browserFrame=$('#morningBrowserPreviewFrame'),issuanceBox=$('#morningPreviewBox'),issuanceFrame=$('#morningPreviewFrame'),issuanceNote=$('#morningPreviewNote');
-      const box=browserBox||issuanceBox,frame=browserFrame||issuanceFrame;if(!box||!frame){releasePreviewUrl();throw new Error('אזור תצוגת המסמך אינו זמין')}
+      if(!browserBox&&!issuanceBox&&!$('#morningStandalonePreview'))modal('צפייה במסמך Morning',`<div id="morningStandalonePreview" class="morning-preview-box"><div class="morning-preview-head"><b>מסמך Morning</b><span>מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר</span></div><iframe id="morningStandalonePreviewFrame" title="צפייה במסמך Morning"></iframe></div>`,'<button class="btn" data-action="close-modal">סגור</button>');
+      const box=browserBox||issuanceBox||$('#morningStandalonePreview'),frame=browserFrame||issuanceFrame||$('#morningStandalonePreviewFrame');if(!box||!frame)throw new Error('אזור תצוגת המסמך אינו זמין');
+      releasePreviewUrl();const url=URL.createObjectURL(blob);previewObjectUrl=url;
       if(issuanceNote&&!browserBox)issuanceNote.textContent='מסמך רשמי שנשלף מ-Morning ואינו נשמר באתר';
       // Keep the Blob URL alive for the full embedded-viewer lifetime. Chrome's PDF toolbar
       // re-reads the iframe source when its built-in Download action is used; revoking on
       // iframe load leaves the PDF visible/printable but makes that later download fail.
       frame.src=url;box.hidden=false;box.scrollIntoView({block:'nearest',behavior:'smooth'});return true;
     }catch(error){if(!quiet)toast(error.message||'טעינת המסמך נכשלה');return false}finally{if(button)button.disabled=false}
+  }
+  async function viewVerifiedOperation(operationId,button){
+    if(button)button.disabled=true;
+    try{
+      const data=await backend('status',{operation_id:String(operationId||'')});
+      const operation=data.operation;
+      if(operation?.state!=='created'||!operation.verified_at||!operation.document_id)throw new Error('לא נמצא מסמך Morning מאומת לתנועה זו');
+      return await viewDocument(operation.document_id,button);
+    }catch(error){toast(error.message||'טעינת מסמך Morning נכשלה');return false}
+    finally{if(button)button.disabled=false}
   }
   async function downloadDocument(id,button){
     if(button)button.disabled=true;
@@ -114,5 +126,5 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
       const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);anchor.click();setTimeout(()=>anchor.remove(),60_000);
     }catch(error){toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
   }
-  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,downloadDocument};
+  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument};
 }
