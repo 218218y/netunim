@@ -1,6 +1,6 @@
 import json
 
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 
 
 def run(label, site, expression, expected):

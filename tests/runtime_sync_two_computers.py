@@ -2,7 +2,7 @@
 The remote CAS head is relayed by this harness; no production/staging service is contacted.
 """
 import json
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 
 
 def run(app, same):

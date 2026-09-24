@@ -1,5 +1,5 @@
 """Morning UI workflows with deterministic transport; never issues real documents."""
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 import json
 from runtime_morning_cloud import LOCAL_CLOUD
 

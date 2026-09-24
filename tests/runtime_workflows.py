@@ -1,5 +1,5 @@
 """Representative workflows through real controls, with actual offline persistence."""
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 import json
 import time
 from notes_workbook_workflow import run as notes_workbook_workflow

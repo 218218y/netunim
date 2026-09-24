@@ -1,6 +1,6 @@
 """Morning debt safety regressions in disposable Chromium; no external services."""
 import json
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 from runtime_morning_cloud import LOCAL_CLOUD
 
 SETUP = LOCAL_CLOUD + r"""

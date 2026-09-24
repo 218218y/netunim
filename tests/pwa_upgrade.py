@@ -10,7 +10,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 
 
 class _DropConnection(socketserver.BaseRequestHandler):

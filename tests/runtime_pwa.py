@@ -3,7 +3,7 @@
 Only public DOM, browser storage and the small exported appReady lifecycle API
 are used. All data and cloud endpoints live in a disposable local test origin.
 """
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 import json
 from pwa_upgrade import test_worker_upgrade
 

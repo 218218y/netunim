@@ -1,5 +1,5 @@
 """Representative large-list measurements and side-effect/listener regressions."""
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 import json
 import os
 from pathlib import Path

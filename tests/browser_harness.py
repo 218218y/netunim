@@ -400,6 +400,7 @@ class BrowserSession:
                 js_path.write_text(source.replace(needle, replacement), encoding="utf-8")
         self.probe_names = self._module_probe({'mode':'instrument','site':str(prepared)}) if self.instrument else []
 
+
     def _module_probe(self, payload):
         result = subprocess.run(
             ['node', str(ROOT / 'tests/module_probe.cjs')],
@@ -556,3 +557,30 @@ class BrowserSession:
                 if "Failed to load resource" not in text and "ERR_" not in text:
                     errors.append(text)
         return errors
+
+class LegacyBrowserSession(BrowserSession):
+    """Exercise the retained V1 drain/compatibility path in a disposable site.
+
+    Production fresh installs now commit local V2 birth before any business
+    write. Older fault-injection suites deliberately call V1 writers directly;
+    keep those tests meaningful without teaching production to downgrade. The
+    separate runtime_local_birth_gate suite runs the unmodified production site.
+    """
+
+    def _prepare_site(self):
+        super()._prepare_site()
+        prepared = self.tmp / 'site/assets/js/lifecycle.js'
+        source = prepared.read_text(encoding='utf-8')
+        if 'netunim-orders' in str(self.site):
+            start = source.index('  if(localOwner){\n    try{\n      if(!localEngineActive)')
+            end = source.index('\n\n  if(!tab.primaryTab){', start)
+            source = (source[:start] +
+                "  try{await restoreBrowserStateFallback()}catch(e){if(cutoverActive||localEngineActive)throw e;console.error('browser state recovery',e)}" +
+                source[end:])
+        elif 'netunim-kupa' in str(self.site):
+            start = source.index('  // Birth is a durable transition, and its Main checkpoint')
+            end = source.index("  document.getElementById('chooseFolder')", start)
+            source = source[:start] + source[end:]
+        else:
+            raise ValueError('LegacyBrowserSession requires a supported site')
+        prepared.write_text(source, encoding='utf-8')
