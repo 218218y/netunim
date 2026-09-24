@@ -92,12 +92,12 @@ class VerificationContracts(unittest.TestCase):
             real_rmtree = shutil.rmtree
             attempts = 0
 
-            def transient(path):
+            def transient(path, *, onexc):
                 nonlocal attempts
                 attempts += 1
                 if attempts == 1:
                     raise PermissionError("profile still closing")
-                real_rmtree(path)
+                real_rmtree(path, onexc=onexc)
 
             with patch.object(browser_harness.shutil, "rmtree", side_effect=transient):
                 browser_harness._remove_tree_verified(root, timeout=1)
