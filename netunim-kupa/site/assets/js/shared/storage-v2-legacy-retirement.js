@@ -40,3 +40,18 @@ export async function retireLegacyBusinessStorage({app,owner,ownerNow,primaryRea
   if(storage.getItem(marker)!=='2')throw new Error('storage_legacy_retirement_marker_failed');
   return true;
 }
+
+export function createLegacyRetirementScheduler({ready,settle=async()=>{},retire,report=error=>console.warn('Legacy business storage retirement deferred',error),scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:10000}):setTimeout(callback,1000)}={}){
+  if(typeof ready!=='function'||typeof retire!=='function')throw new Error('storage_legacy_retirement_scheduler_configuration');
+  let scheduled=false;
+  return ()=>{
+    if(scheduled||!ready())return false;
+    scheduled=true;
+    scheduleIdle(async()=>{
+      try{await settle();if(ready())await retire()}
+      catch(error){report(error)}
+      finally{scheduled=false}
+    });
+    return true;
+  };
+}

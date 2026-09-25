@@ -5,6 +5,7 @@ import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/st
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
 import {createStorageV2FencedRecovery} from '../shared/storage-v2-fenced-recovery.js';
+import {createLegacyRetirementScheduler,retireLegacyBusinessStorage} from '../shared/storage-v2-legacy-retirement.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
@@ -21,6 +22,15 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
+  const scheduleLegacyRetirement=createLegacyRetirementScheduler({
+    ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
+    settle:async()=>{const p=requirePorts(),pending=[p.files.browserStateWritePromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
+    retire:async()=>{const p=requirePorts();await retireLegacyBusinessStorage({app:'orders',owner:owner.current(),ownerNow:()=>owner.current(),
+      primaryReady:()=>tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&p.storageShadow.primaryReady&&p.sharedChecksV2.primaryReady,
+      verifyV2:()=>owner.current()==='local'?verifyStorageV2LocalEngine({app:'orders',owner:()=>owner.current()}):p.verifyStorageCutover(),
+      readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
+      deleteRecords:()=>p.storageBrowser.deleteLegacyBusinessRecords()})},
+  });
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
   const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:orders:local')==='2';
   // Retained only for a verified pre-cutover outbox drain. An unmarked browser
@@ -216,7 +226,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
     return {already:false};
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing}),

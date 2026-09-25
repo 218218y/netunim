@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {LEGACY_BUSINESS_KEYS,legacyRetirementKey,retireLegacyBusinessStorage} from '../shared/storage-v2-legacy-retirement.js';
+import {LEGACY_BUSINESS_KEYS,createLegacyRetirementScheduler,legacyRetirementKey,retireLegacyBusinessStorage} from '../shared/storage-v2-legacy-retirement.js';
 
 function fixture(app='orders'){
   const values=new Map([...LEGACY_BUSINESS_KEYS[app].map(key=>[key,'old']),['orders.supabase.session.v1','session'],['kupa.storage.preferred.v1','preference']]);
@@ -40,4 +40,12 @@ test('local V2 needs no cloud protocol but still requires a durable marker',asyn
   assert.equal(await retireLegacyBusinessStorage(f.options),true);
   f.values.delete(legacyRetirementKey('kupa','local'));
   f.setVerified(false);assert.equal(await retireLegacyBusinessStorage(f.options),false);
+});
+
+test('scheduled retirement is cancelled when the V2 owner loses its writer lease before idle work',async()=>{
+  let ready=true,callback,retired=0,settled=0;
+  const schedule=createLegacyRetirementScheduler({ready:()=>ready,settle:async()=>{settled++},retire:async()=>{retired++},scheduleIdle:work=>{callback=work}});
+  assert.equal(schedule(),true);assert.equal(schedule(),false);
+  ready=false;await callback();assert.equal(settled,1);assert.equal(retired,0);
+  ready=true;assert.equal(schedule(),true);await callback();assert.equal(retired,1);
 });
