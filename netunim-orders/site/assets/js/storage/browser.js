@@ -26,7 +26,7 @@ function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'n
 function localSnapshot(source=model.state,options){const done=beginMeasure('orders:local-snapshot');try{
   if(session.storageProtocolBlocked)throw new Error('storage_protocol_verification_required');
   measureStorage('validate',()=>assertOrderEntityInvariants(source,{includeChecks:true,required:true}));nextSnapshotSequence();const appMetadata={snapshotSeq:session.localSnapshotSeq,revision:Number(session.cloudRevision||0)};
-  const drain=legacyDrainActive(),fast=drain?null:storageV2?.persist?.(source,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;const mirrorOk=!fast.transitioning||fast.emergencyDurable||storageV2?.cutoverActive||persistStorageV2CompatibilitySnapshot(source,session.cloudRevision);if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return mirrorOk&&(fast.emergencyDurable||fast.transitioning)}
+  const drain=legacyDrainActive(),fast=drain?null:storageV2?.persist?.(source,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return fast.emergencyDurable}
   if(storageV2?.cutoverActive||!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');
   const payload=measureStorage('checkpoint-clone',()=>prepareState(source));payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);return localStorageOk
 }finally{done()}}
@@ -42,7 +42,7 @@ async function legacyLocalDbExists(){
   return entries.some(entry=>entry?.name===LOCAL_DB);
 }
 
-async function idbSyncPut(key,value){if(storageV2?.cutoverActive&&key===ORDERS_OUTBOX_KEY)throw new Error('storage_v1_write_forbidden');const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
+async function idbSyncPut(key,value){if(key===ORDERS_OUTBOX_KEY&&(storageV2?.cutoverActive||!legacyWriteAllowed()))throw new Error('storage_v1_write_forbidden');const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
 async function idbSyncGet(key){if(!await legacyLocalDbExists())return null;const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
 async function idbSyncDelete(key){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
 
@@ -59,9 +59,9 @@ async function deleteLegacyBusinessRecords(){
   });
 }
 
-async function persistBrowserStateSnapshot(payload){if(storageV2?.cutoverActive)throw new Error('storage_v1_write_forbidden');const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_STORE,'readwrite');tx.objectStore(LOCAL_STORE).put({payload,savedAt:Date.parse(payload?._meta?.savedAt||'')||Date.now()},LOCAL_STATE_KEY);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'))})}
+async function persistBrowserStateSnapshot(payload){if(storageV2?.cutoverActive||!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_STORE,'readwrite');tx.objectStore(LOCAL_STORE).put({payload,savedAt:Date.parse(payload?._meta?.savedAt||'')||Date.now()},LOCAL_STATE_KEY);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'))})}
 
-function queueBrowserStateSnapshot(payload){if(storageV2?.cutoverActive)throw new Error('storage_v1_write_forbidden');files.browserStatePendingPayload=clone(payload);if(files.browserStateWritePromise)return files.browserStateWritePromise;files.browserStateWritePromise=(async()=>{while(files.browserStatePendingPayload){const next=files.browserStatePendingPayload;files.browserStatePendingPayload=null;await persistBrowserStateSnapshot(next)}})().catch(e=>{console.error('browser state mirror',e)}).finally(()=>{files.browserStateWritePromise=null;if(files.browserStatePendingPayload)queueBrowserStateSnapshot(files.browserStatePendingPayload)});return files.browserStateWritePromise}
+function queueBrowserStateSnapshot(payload){if(storageV2?.cutoverActive||!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');files.browserStatePendingPayload=clone(payload);if(files.browserStateWritePromise)return files.browserStateWritePromise;files.browserStateWritePromise=(async()=>{while(files.browserStatePendingPayload){const next=files.browserStatePendingPayload;files.browserStatePendingPayload=null;await persistBrowserStateSnapshot(next)}})().catch(e=>{console.error('browser state mirror',e)}).finally(()=>{files.browserStateWritePromise=null;if(files.browserStatePendingPayload)queueBrowserStateSnapshot(files.browserStatePendingPayload)});return files.browserStateWritePromise}
 
 async function readBrowserStateSnapshotStrict(){
   if(!await legacyLocalDbExists())return null;
@@ -160,8 +160,8 @@ function markCloudPending(snapshot=prepareCloudState(),message='',progress=null)
 
 function legacyCloudPendingExists(){return outboxHeadVerified?!!session.ordersOutboxCached:!!(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY))}
 function legacyCloudOutboxVerifiedClean(){return outboxHeadVerified&&!session.ordersOutboxCached}
-function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&legacyCloudOutboxVerifiedClean())}
-function cloudPendingExists(){return legacyCloudPendingExists()||!!(storageV2CloudOutboxActive()&&(session.storageV2CloudPending||v2CloudStateCache?.pending||v2CloudStateCache?.flight))}
+function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base&&(storageV2.cutoverActive||legacyCloudOutboxVerifiedClean()))}
+function cloudPendingExists(){return (!storageV2?.cutoverActive&&legacyCloudPendingExists())||!!(storageV2CloudOutboxActive()&&(session.storageV2CloudPending||v2CloudStateCache?.pending||v2CloudStateCache?.flight))}
 
 async function getCloudPending(){
   const observedCommit=session.ordersOutboxCommitPromise;await observedCommit;
@@ -208,7 +208,7 @@ function acknowledgedStorageV2CloudState(prior,operationId,receipt,revision,stat
 }
 async function refreshStorageV2CloudState(){
   if(!storageV2?.primaryReady){cacheStorageV2CloudState(null);return null}
-  await getCloudPending();
+  if(!storageV2.cutoverActive)await getCloudPending();
   const state=await storageV2.cloudState({validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});cacheStorageV2CloudState(state);if(state?.control?.conflict)session.cloudConflictBlocked=true;return state
 }
 async function refreshStorageV2CloudStateAfterCommit(label,committedState){
@@ -264,7 +264,6 @@ async function rejectStorageV2CloudFlight(operationId,revision,state,{currentSta
 
 async function setStorageV2CloudControl(control={}){const result=await storageV2.setCloudControl(control),fallback=v2CloudStateCache?{...v2CloudStateCache,control:clone(result||control)}:v2CloudStateCache;await refreshStorageV2CloudStateAfterCommit('control update',fallback);return result}
 async function clearStorageV2CloudControl(){const result=await storageV2.clearCloudControl(),fallback=v2CloudStateCache?{...v2CloudStateCache,control:null}:v2CloudStateCache;await refreshStorageV2CloudStateAfterCommit('control clear',fallback);return result}
-function persistStorageV2CompatibilitySnapshot(state,revision){const payload=measureStorage('checkpoint-clone',()=>prepareState(state));payload._meta={...payload._meta,localSnapshotSeq:Number(session.localSnapshotSeq||0)};let ok=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);ok=true}catch(error){console.error('V2 compatibility snapshot',error)}queueBrowserStateSnapshot(payload);return ok}
 async function replaceStorageV2AuthoritativeState(state=model.state,revision=session.cloudRevision){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const result=await storageV2.replaceAuthoritativeState(state,{appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});await refreshStorageV2CloudStateAfterCommit('authoritative replacement',settledStorageV2CloudState(Number(result?.seq||0),null));return result}
 async function replaceStorageV2CurrentState(state=model.state){const result=await storageV2.replaceCurrentState(state,{appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(session.cloudRevision||0),storageRole:'primary'}});await refreshStorageV2CloudStateAfterCommit('checkpoint replacement',v2CloudStateCache);return result}
 async function adoptStorageV2CloudHead(revision,state=model.state){const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
