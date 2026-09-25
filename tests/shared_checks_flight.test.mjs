@@ -113,7 +113,7 @@ test('Orders finance controller publishes automatic credit busy transitions with
   const started=gate(),release=gate(),states=[];
   const controller=createDomainsFinanceController({tab:{primaryTab:true},checksSession:{kupaCloudReadState:{}},
     bridge:{getBridgeToken:()=> 'paired',markCreditAttempt:noop,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',creditAttemptReady:()=>true,bankAutoEnabled:()=>false,
-      async creditStatus(){return {bridgeVersion:60,contractVersion:3,profiles:[{profileId:'p'}]}},async syncCreditCards(){return {profiles:[],errors:[]}}},
+      async creditStatus(){return {bridgeVersion:61,contractVersion:3,profiles:[{profileId:'p'}]}},async syncCreditCards(){return {profiles:[],errors:[]}}},
     loadSession:()=>true,refreshKupaReadout:async()=>{started.resolve();await release.promise;return false},syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,toast:noop});
   controller.setFinanceStatusListener(section=>states.push({section,creditBusy:controller.readSnapshot().creditBusy}));
   const refresh=controller.refreshCredit({auto:true});await started.promise;

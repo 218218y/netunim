@@ -403,3 +403,8 @@ v60 makes the persisted card `included=false` selection authoritative at the con
 The local Isracard/American Express DigitalV3 adapters now also carry the later upstream PR #1159 settlement de-duplication fix: an approval is removed when a settled voucher in the same provider response has the same purchase date, original amount, original currency and normalized merchant name. Statement vouchers and immediate-debit vouchers both participate in that match, and the richer settled row wins. This prevents one charge from appearing once as pending and again as completed during the issuer's transition window. A second conservative guard removes only byte-equivalent normalized transactions with the same non-empty issuer identifier inside one month/pending collection; identifier-less look-alike purchases remain distinct. Successful month slices continue to replace the same billing month instead of appending, and billing ownership remains based on the issuer processed/billing date.
 
 v60 also splits Orders credit status/diagnostic markup out of the oversized finance view module, satisfying the module-responsibility gate without relaxing its 60 KB limit. No Supabase migration or SQL change is required. Re-run install_bank_bridge.bat after deploying v60.
+Bridge v61 browser identity hardening:
+- Isracard/American Express keep Chrome/Edge's native User-Agent Client Hints when masking only the HeadlessChrome token.
+- The bridge never invents Sec-CH-UA brands or versions; if the installed browser does not expose a branded native Client Hints identity, the sync stops before issuer navigation.
+- Credit diagnostics record only the safe Client Hints state and browser major version (not raw headers).
+
