@@ -28,19 +28,18 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 // committed to IndexedDB. Durable boundaries install coordinated checkpoints.
 export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
-  const diagnostics={mode:'off',recoveries:0,migrations:0,operations:0,boundaries:0,fallbacks:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
-  let journal=null,identity='',starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,ownerHandoffRequired=false,boundaryGate=()=>false;
+  const diagnostics={mode:'off',recoveries:0,operations:0,boundaries:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
+  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
   const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
   const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
   function currentOwner(){return String(owner()||'').trim()||'local'}
-  function readyForCurrentOwner(){return primaryMode()&&primary()&&identity===currentOwner()&&!!journal?.ready}
+  function readyForCurrentOwner(){return primaryMode()&&primary()&&authoritative&&identity===currentOwner()&&!!journal?.ready}
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    if(identity&&identity!==next)ownerHandoffRequired=true;
-    identity=next;commits=Promise.resolve();const scopedOwner=next;
+    identity=next;authoritative=false;commits=Promise.resolve();const scopedOwner=next;
     journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   function verifiedRecovery(active,recovered){
@@ -50,43 +49,23 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(failure&&failure.epoch===recovered.epoch&&recovered.seq>=failure.seq)undurableFailures.delete(active);
     return recovered;
   }
-  async function recover(fallbackState=null,appMetadata={},migrationAuthorized=false){
+  async function recover(){
     if(!primaryMode()||!primary())return null;
-    const runtimeMode=mode();diagnostics.mode=runtimeMode;const active=create(),activeIdentity=identity;
+    diagnostics.mode=mode();const active=create(),activeIdentity=identity;
     if(corruptIdentity===activeIdentity)return null;
     if(starting&&startingIdentity===activeIdentity)return starting;
     const request=(async()=>{
       try{
         const observedCommits=commits;
         await observedCommits.catch(()=>{});
-        let recovered=await active.open();
+        const recovered=await active.open();
         if(commits===observedCommits)commits=Promise.resolve();
         if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
-        if((ownerHandoffRequired&&!migrationAuthorized)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${activeIdentity}`)==='2'||activeIdentity==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2')fallbackState=null;
-        if(recovered?.appMetadata?.storageRole==='primary'){
-          if(runtimeMode==='preparing'){diagnostics.recoveries++;operationsSinceCheckpoint=Math.max(0,recovered.seq-Number(recovered.stored?.checkpoints?.data?.seq||0));return {...verifiedRecovery(active,recovered),source:'v2'}}
-          const fallbackSeq=Number(appMetadata?.snapshotSeq||0),v2Seq=Number(recovered.appMetadata?.snapshotSeq||0);
-          if(!fallbackState||fallbackSeq<=v2Seq){diagnostics.recoveries++;operationsSinceCheckpoint=Math.max(0,recovered.seq-Number(recovered.stored?.checkpoints?.data?.seq||0));return {...verifiedRecovery(active,recovered),source:'v2'}}
-          const canonical=prepareCheckpoint(business(fallbackState));validate(canonical);await active.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.migrations++;
-          recovered=await active.recover();return {...recovered,source:'v1-newer-fallback'};
-        }
-        // During a production bootstrap the legacy state may be shown as a
-        // read-only source, but it must never be implicitly installed as the
-        // V2 authority. The bootstrap group owns the first atomic head.
-        if(runtimeMode==='preparing')return null;
-        // A shadow checkpoint is evidence, not authority. Promotion requires a
-        // current verified V1 state and establishes a new fenced primary epoch.
-        if(recovered){
-          if(!fallbackState)return null;
-          const canonical=prepareCheckpoint(business(fallbackState));validate(canonical);
-          if(!equalSyncJson(recovered.state,canonical))diagnostics.fallbacks++;
-          await active.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.migrations++;
-          recovered=await active.recover();return {...recovered,source:'v1-promotion'};
-        }
-        if(!fallbackState)return null;
-        const canonical=prepareCheckpoint(business(fallbackState));validate(canonical);
-        await active.install(canonical,{appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.migrations++;
-        recovered=await active.recover();return {...recovered,source:'v1-migration'};
+        if(recovered?.appMetadata?.storageRole!=='primary'){authoritative=false;return null}
+        authoritative=true;
+        diagnostics.recoveries++;
+        operationsSinceCheckpoint=Math.max(0,recovered.seq-Number(recovered.stored?.checkpoints?.data?.seq||0));
+        return {...verifiedRecovery(active,recovered),source:'v2'};
       }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal')corruptIdentity=activeIdentity;return null}
       finally{if(starting===request){starting=null;startingIdentity=''}}
     })();
@@ -103,11 +82,9 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       diagnostics.recoveries++;return {...recovered,source:'v2-readonly'};
     }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal')corruptIdentity=activeIdentity;return null}
   }
-  async function recoverForOwner({intent,sourceOwner,state=null,appMetadata={}}={}){
-    const target=currentOwner();
-    if(intent==='load-account')return recover(null,appMetadata);
-    if(!['legacy-upgrade','upload-local'].includes(intent)||(intent==='upload-local'?sourceOwner!=='local'||target==='local':sourceOwner!==target))throw new Error('storage_owner_transfer_intent_required');
-    return recover(state,{...appMetadata,migrationIntent:intent,sourceOwner},true);
+  async function recoverForOwner({intent}={}){
+    if(intent!=='load-account')throw new Error('storage_owner_transfer_intent_required');
+    return recover();
   }
   async function initializeLocal(state,{appMetadata={}}={}){
     if(currentOwner()!=='local'||!primaryMode()||!primary())throw new Error('storage_local_birth_owner_required');
@@ -125,7 +102,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       recovered=await active.recover();
     }
     if(scopedIdentity!==currentOwner()||identity!==scopedIdentity||!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_owner_changed');
-    ownerHandoffRequired=false;return verifiedRecovery(active,recovered);
+    authoritative=true;return verifiedRecovery(active,recovered);
   }
   async function initializeCloudHead(revision,state,{sourceOwner,intent,cloudState=state,changes=null,validateBase=validate,appMetadata={}}={}){
     if(!primaryMode()||!primary())throw new Error('storage_v2_primary_not_ready');
@@ -147,7 +124,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       }
     }
     if(identity!==scopedIdentity||currentOwner()!==scopedIdentity)throw new Error('storage_owner_changed_during_recovery');
-    ownerHandoffRequired=false;return result;
+    authoritative=true;return result;
   }
   async function initializeFirstCloudHead(emptyState,currentState,{sourceOwner=currentOwner(),cloudState,validateBase=validate,appMetadata={}}={}){
     const scopedIdentity=currentOwner(),source=String(sourceOwner||'').trim();
@@ -179,11 +156,11 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     const runtimeMode=mode();if(runtimeMode==='preparing')throw new Error('storage_v2_preparation_locked');
     if(runtimeMode!=='primary'||!primary())return {handled:false,reason:'inactive'};
     diagnostics.mode='primary';const active=create(),boundary=String(storageBoundary||'').trim(),typed=Array.isArray(operations)&&operations.length>0;
+    if(!authoritative||!active.ready)return {handled:false,reason:'not-ready'};
     if(boundary&&typed){diagnostics.errors++;diagnostics.lastError='storage_mutation_contract_ambiguous';return {handled:false,reason:'ambiguous'} }
     if(boundary&&LIFECYCLE_BOUNDARIES.has(boundary)&&active.ready)return {handled:true,emergencyDurable:true,committed:active.settled(),reason:'already-durable'};
     if(boundary){diagnostics.boundaries++;return {handled:false,reason:'boundary'} }
     if(!typed){diagnostics.errors++;diagnostics.lastError='storage_mutation_contract_required';return {handled:false,reason:'contract'} }
-    if(!active.ready){diagnostics.fallbacks++;return {handled:false,reason:'not-ready'} }
     try{
       const write=active.append(canonicalOperations(state,operations),{generation,surface,mutationType,deleteIntents,appMetadata:{...appMetadata,storageRole:'primary'}});diagnostics.operations++;operationsSinceCheckpoint++;
       if(!write.emergencyDurable){

@@ -12,8 +12,21 @@ import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/a
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
 import {createUiCloud as createOrdersUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
 import {createUiCloud as createKupaUiCloud} from '../netunim-kupa/site/assets/js/ui/cloud.js';
+import {createOrdersStorageV2Coordinator} from '../netunim-orders/site/assets/js/composition/storage-v2.js';
+import {createKupaStorageV2Coordinator} from '../netunim-kupa/site/assets/js/composition/storage-v2.js';
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
+
+test('an unmarked browser cannot use ordinary V1 writers before local birth or account verification',()=>{
+  for(const create of [createOrdersStorageV2Coordinator,createKupaStorageV2Coordinator]){
+    const coordinator=create({tab:{primaryTab:true},session:{storageProtocolBlocked:false},storage:localStore()});
+    coordinator.owner.current=()=> 'local';
+    Object.defineProperty(coordinator.owner,'writable',{get:()=>true});
+    assert.equal(coordinator.legacyWriteAllowed(),false);
+    assert.equal(coordinator.legacyChecksWriteAllowed(),false);
+    assert.equal(coordinator.pendingLegacyWriteAllowed({cutoverActive:false}),false);
+  }
+});
 
 test('V2 owner handoff routes first-cloud UI through V2 and never stages a V1 outbox',async()=>{
   const prior=globalThis.localStorage,priorAlert=globalThis.alert,priorDocument=globalThis.document;

@@ -32,7 +32,9 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
   const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:kupa:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:kupa:local')==='2';
-  const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()&&(!preparing()||legacyDrain);
+  // Legacy writers exist only to drain a verified pre-cutover outbox. Startup,
+  // autosave and an unmarked browser must never create new V1 business data.
+  const legacyWriteAllowed=()=>legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active();
   const legacyChecksWriteAllowed=legacyWriteAllowed;
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
