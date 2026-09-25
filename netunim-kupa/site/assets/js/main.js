@@ -59,6 +59,7 @@ import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
+import {retireLegacyBusinessStorage} from './shared/storage-v2-legacy-retirement.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {createUiActions} from './ui/actions.js';
@@ -172,7 +173,32 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
+let legacyRetirementScheduled=false;
+function scheduleLegacyRetirement(){
+  if(legacyRetirementScheduled||storageV2Coordinator.preparing()||!storageShadow.primaryReady||!sharedChecksV2.primaryReady||(storageOwner.current()!=='local'&&navigator.onLine===false))return;
+  legacyRetirementScheduled=true;
+  const run=async()=>{
+    try{
+      const pending=[files.browserStateWritePromise,session.cloudOutboxCommitPromise,checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);
+      if(pending.length)await Promise.allSettled(pending);
+      await retireLegacyBusinessStorage({app:'kupa',owner:storageOwner.current(),ownerNow:()=>storageOwner.current(),
+        primaryReady:()=>tab.primaryTab&&storageOwner.writable&&!session.storageProtocolBlocked&&!storageV2Coordinator.preparing()&&storageShadow.primaryReady&&sharedChecksV2.primaryReady,
+        verifyV2:()=>storageOwner.current()==='local'?verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}):sharedChecksV2Composition.verifyCutover(),
+        readProtocolState:()=>cloudTransport.readStorageProtocolState(),storage:localStorage,
+        deleteRecords:async()=>{
+          for(const key of ['browser-state-v1','cloud-pending-v2','cloud-pending-v3','shared-checks-outbox-v3'])await storageIndexedDb.idbDelete('sync',key);
+        }});
+    }catch(error){console.warn('Kupa legacy business storage retirement deferred',error)}
+    finally{legacyRetirementScheduled=false}
+  };
+  if(globalThis.requestIdleCallback)requestIdleCallback(()=>{void run()},{timeout:10000});
+  else setTimeout(()=>{void run()},1000);
+}
+const recoverSharedChecksV2Primary=async()=>{
+  const recovered=await sharedChecksV2Composition.recoverPrimary();
+  if(recovered)scheduleLegacyRetirement();
+  return recovered;
+};
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const storageTabLock=createStorageTabLock({

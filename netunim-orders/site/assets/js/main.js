@@ -70,6 +70,7 @@ import {createCalendarActionPorts} from './domains/calendar/action-ports.js';
 import {createUiSettings} from './ui/settings.js';
 import {createLifecycle} from './lifecycle.js';
 import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
+import {retireLegacyBusinessStorage} from './shared/storage-v2-legacy-retirement.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {createUiActions,wrapMutationActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
@@ -150,7 +151,30 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
+let legacyRetirementScheduled=false;
+function scheduleLegacyRetirement(){
+  if(legacyRetirementScheduled||storageV2Coordinator.preparing()||!storageShadow.primaryReady||!sharedChecksV2.primaryReady||(storageOwner.current()!=='local'&&navigator.onLine===false))return;
+  legacyRetirementScheduled=true;
+  const run=async()=>{
+    try{
+      const pending=[files.browserStateWritePromise,session.ordersOutboxCommitPromise,checksSession.checksOutboxCommitPromise].filter(Boolean);
+      if(pending.length)await Promise.allSettled(pending);
+      await retireLegacyBusinessStorage({app:'orders',owner:storageOwner.current(),ownerNow:()=>storageOwner.current(),
+        primaryReady:()=>tab.primaryTab&&storageOwner.writable&&!session.storageProtocolBlocked&&!storageV2Coordinator.preparing()&&storageShadow.primaryReady&&sharedChecksV2.primaryReady,
+        verifyV2:()=>storageOwner.current()==='local'?verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}):sharedChecksV2Composition.verifyCutover(),
+        readProtocolState:()=>cloudTransport.readStorageProtocolState(),storage:localStorage,
+        deleteRecords:()=>storageBrowser.deleteLegacyBusinessRecords()});
+    }catch(error){console.warn('Orders legacy business storage retirement deferred',error)}
+    finally{legacyRetirementScheduled=false}
+  };
+  if(globalThis.requestIdleCallback)requestIdleCallback(()=>{void run()},{timeout:10000});
+  else setTimeout(()=>{void run()},1000);
+}
+const recoverSharedChecksV2Primary=async()=>{
+  const recovered=await sharedChecksV2Composition.recoverPrimary();
+  if(recovered)scheduleLegacyRetirement();
+  return recovered;
+};
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({
