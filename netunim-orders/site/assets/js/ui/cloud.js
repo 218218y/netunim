@@ -1,11 +1,12 @@
 import {esc, clone} from '../core/values.js';
 import {CLOUD_EMAIL_KEY, $, CLOUD_AUTO_KEY, CLOUD_BASE_KEY} from '../state/constants.js';
 import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
+import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({model, files, tab, session, checksSession, ui, modal, supaConfigured, toast, closeModal, authPassword, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, adoptStorageV2CloudHead=async()=>null}){
+export function createUiCloud({model, files, tab, session, checksSession, ui, modal, confirmDialog, supaConfigured, toast, closeModal, authPassword, authPasswordForLocalReset, localSnapshot:writeLocalSnapshot, markCloudPending, getCloudPending=async()=>null, clearCloudPending, setCloud, showSecondaryTabGuard, prepareCloudState, render, writeStateToFolder, loadSession, readCloud, readSharedChecksCloud, verifyLocalResetCloud, applyOrderCloudState, refreshKupaReadout, syncSharedChecksFromCloud, requestCloudSave, restorePendingAgainstCloud, startPolling, saveSession, renderSettings, resumeCalendarAfterCloudLogin, startFinanceAutoSync=()=>{}, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=>null, storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, adoptStorageV2CloudHead=async()=>null}){
 const localSnapshot=(source,options)=>writeLocalSnapshot(source,options||{storageBoundary:'cloud-ui-state'});
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
@@ -19,7 +20,7 @@ async function persistAuthoritativeCloudHead(){
   try{await initializeStorageV2CloudCursor(session.cloudRevision)}catch(error){console.error('orders V2 cloud cursor initialization',error)}
   return true
 }
-function loginModal(mode='open'){if(!supaConfigured())return alert('הגדרת Supabase חסרה. בדוק supabase/config.js');const email=localStorage.getItem(CLOUD_EMAIL_KEY)||'',calendarMode=mode==='calendar',title=calendarMode?'התחברות לענן לצורך Google Calendar':mode==='upload'?'הפעלת ענן נפרד לניהול הזמנות':'פתיחת ניהול הזמנות מהענן',notice=calendarMode?'השרת המקומי הוא כתובת נפרדת מהאתר שברשת, ולכן הדפדפן דורש כאן התחברות חד-פעמית ל-Supabase. ההתחברות מזהה את המשתמש לצורך Google Calendar בלבד ואינה מפעילה מעצמה את סנכרון מסמך ניהול ההזמנות.':`ניהול ההזמנות נשמר בטבלאות <b>order_management_*</b>. טאב הצ'קים קורא וכותב ישירות למאגר הצ'קים המשותף <b>shared_checks_documents/main</b>. בנוסף, נתוני העו״ש והאשראי נקראים מאותו מסמך קופה <b>kupa_documents/main</b>, וסנכרון בנק/אשראי מניהול ההזמנות מעדכן בו רק את התחומים הפיננסיים המתאימים דרך מנגנון ה-revision של הקופה. הוצאות ומזומן נשארים בבעלות ניהול הקופה, ואין עותק פיננסי נוסף בניהול ההזמנות.`;modal(title,`<div class="form-grid"><div class="field full"><div class="notice">${notice}</div></div><div class="field full"><label>אימייל Supabase Auth</label><input id="cEmail" type="email" value="${esc(email)}"></div><div class="field full"><label>סיסמה</label><input id="cPassword" type="password"></div></div>`,`<button class="btn primary" data-action="finish-cloud-login" data-click-arg0="${esc(mode)}">התחבר</button><button class="btn" data-action="close-modal">ביטול</button>`)}
+function loginModal(mode='open'){if(!supaConfigured())return alert('הגדרת Supabase חסרה. בדוק supabase/config.js');const email=localStorage.getItem(CLOUD_EMAIL_KEY)||'',calendarMode=mode==='calendar',resetMode=mode==='reset',title=resetMode?'אימות ענן לפני איפוס מקומי':calendarMode?'התחברות לענן לצורך Google Calendar':mode==='upload'?'הפעלת ענן נפרד לניהול הזמנות':'פתיחת ניהול הזמנות מהענן',notice=resetMode?'ההתחברות כאן משמשת רק לאימות שמסמך ניהול ההזמנות ומסמך הצ׳קים קיימים ונגישים בענן לפני מחיקת האחסון המקומי. היא אינה פותחת, ממזגת או מעלה נתונים.':calendarMode?'השרת המקומי הוא כתובת נפרדת מהאתר שברשת, ולכן הדפדפן דורש כאן התחברות חד-פעמית ל-Supabase. ההתחברות מזהה את המשתמש לצורך Google Calendar בלבד ואינה מפעילה מעצמה את סנכרון מסמך ניהול ההזמנות.':`ניהול ההזמנות נשמר בטבלאות <b>order_management_*</b>. טאב הצ'קים קורא וכותב ישירות למאגר הצ'קים המשותף <b>shared_checks_documents/main</b>. בנוסף, נתוני העו״ש והאשראי נקראים מאותו מסמך קופה <b>kupa_documents/main</b>, וסנכרון בנק/אשראי מניהול ההזמנות מעדכן בו רק את התחומים הפיננסיים המתאימים דרך מנגנון ה-revision של הקופה. הוצאות ומזומן נשארים בבעלות ניהול הקופה, ואין עותק פיננסי נוסף בניהול ההזמנות.`;const action=resetMode?'finish-local-reset-login':'finish-cloud-login';modal(title,`<div class="form-grid"><div class="field full"><div class="notice">${notice}</div></div><div class="field full"><label>אימייל Supabase Auth</label><input id="cEmail" type="email" value="${esc(email)}"></div><div class="field full"><label>סיסמה</label><input id="cPassword" type="password"></div></div>`,`<button class="btn primary" data-action="${action}" data-click-arg0="${esc(mode)}">${resetMode?'אמת והמשך לאיפוס':'התחבר'}</button><button class="btn" data-action="close-modal">ביטול</button>`)}
 
 async function deferPendingRecovery({manageStatus=true,startPoll=true}={}){
   if(storageV2CloudOutboxActive()){
@@ -36,6 +37,8 @@ async function deferPendingRecovery({manageStatus=true,startPoll=true}={}){
 }
 
 async function finishCloudLogin(mode){const email=$('#cEmail').value.trim(),pass=$('#cPassword').value;if(!email||!pass)return toast('יש להזין אימייל וסיסמה');try{await authPassword(email,pass)}catch(e){console.error(e);toast('התחברות נכשלה: '+e.message);return}closeModal();try{if(mode==='calendar'){if(typeof resumeCalendarAfterCloudLogin!=='function')throw new Error('המשך החיבור ליומן אינו זמין');await resumeCalendarAfterCloudLogin();return}if(mode==='upload')await enableCloud(true);else await openCloud()}catch(e){console.error(e);toast((mode==='calendar'?'חיבור Google Calendar נכשל: ':'פתיחת הענן נכשלה: ')+e.message)} }
+
+async function finishLocalResetLogin(){const email=$('#cEmail').value.trim(),pass=$('#cPassword').value;if(!email||!pass)return toast('יש להזין אימייל וסיסמה');let resetSession;try{resetSession=await authPasswordForLocalReset(email,pass)}catch(e){console.error(e);toast('אימות הענן נכשל: '+e.message);return false}closeModal();return resetLocalSiteStorage({allowAuthPrompt:false,resetSession})}
 
 async function effectiveOwnerIntent(requested){
   const pending=storageOwnerAdoption();
@@ -128,5 +131,30 @@ function logoutCloud(){
   clearCloudRecovery();saveSession(null);localStorage.removeItem(CLOUD_AUTO_KEY);session.cloudRevision=0;session.cloudUpdatedAt=null;checksSession.checksCloudRevision=0;checksSession.checksCloudUpdatedAt=null;session.cloudConflictBlocked=false;session.cloudSaveRequested=false;session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer);setCloud('ענן: לא פעיל');renderSettings();toast('נותקת מהענן; בעלות האחסון והנתונים המקומיים נשמרו עד להתחברות מחדש');return true
 }
 
-return { loginModal, finishCloudLogin, enableCloud, openCloud, logoutCloud };
+async function resetLocalSiteStorage({allowAuthPrompt=true,resetSession=null}={}){
+  if(!tab.primaryTab)return showSecondaryTabGuard();
+  if(!navigator.onLine){toast('איפוס אחסון מקומי דורש חיבור לרשת כדי לוודא קודם שהענן זמין.');return false}
+  const cloudSession=resetSession||loadSession();
+  if(!cloudSession){if(allowAuthPrompt)loginModal('reset');else toast('נדרש אימות Supabase מחדש לצורך האיפוס.');return false}
+  try{
+    const {main,shared}=await verifyLocalResetCloud(cloudSession);
+    const mainRevision=Number(main?.revision),sharedRevision=Number(shared?.revision);
+    if(!main||!Number.isSafeInteger(mainRevision)||mainRevision<1)throw new Error('מסמך ניהול ההזמנות בענן אינו זמין או אינו תקין');
+    if(!shared||!Number.isSafeInteger(sharedRevision)||sharedRevision<1)throw new Error('מסמך הצ׳קים המשותף בענן אינו זמין או אינו תקין');
+    const account=String(cloudSession?.user?.email||'').trim(),accountLine=account?`חשבון שאומת: ${account}.
+`:'';
+    const approved=await confirmDialog('איפוס אחסון מקומי',`${accountLine}הענן אומת: ניהול הזמנות r${mainRevision}, צ׳קים r${sharedRevision}.
+
+הפעולה תמחק מהמחשב הזה את כל נתוני האתר של הכתובת הנוכחית בדפדפן — Storage V2, נתוני מעבר ישנים, תורי סנכרון, owner binding, IndexedDB, LocalStorage, Cache ו־Service Worker. כל שינוי מקומי שלא הגיע לענן יימחק.
+
+Supabase, קובצי data וגיבויים מחוץ לדפדפן לא ישתנו. לאחר האיפוס יהיה צורך להתחבר שוב ולפתוח מהענן.`,{confirmText:'אפס אחסון מקומי',cancelText:'ביטול',tone:'danger'});
+    if(!approved)return false;
+    await beginLocalSiteResetNavigation();return true;
+  }catch(error){
+    if(allowAuthPrompt&&String(error?.code||'')==='local_reset_auth_required'){loginModal('reset');return false}
+    console.error('orders local site reset preflight',error);toast('האיפוס לא התחיל: '+(error?.message||String(error)));return false
+  }
+}
+
+return { loginModal, finishCloudLogin, finishLocalResetLogin, enableCloud, openCloud, logoutCloud, resetLocalSiteStorage };
 }

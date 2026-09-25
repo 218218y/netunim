@@ -1,9 +1,10 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-7817438a36f0';
+const CACHE='orders-app-shell-esm-0333db16628f';
 const SHELL=[
   './',
   './index.html',
+  './reset-local.html',
   './assets/app.css',
   './assets/app.js',
   './assets/js/calendar/api.js',
@@ -130,6 +131,8 @@ const SHELL=[
   './assets/js/shared/html.js',
   './assets/js/shared/indexed-db-connection.js',
   './assets/js/shared/kupa-cashflow.js',
+  './assets/js/shared/local-site-reset-page.js',
+  './assets/js/shared/local-site-reset.js',
   './assets/js/shared/notes-sheet-model.js',
   './assets/js/shared/notes-workbook-merge.js',
   './assets/js/shared/notes-workbook.css',

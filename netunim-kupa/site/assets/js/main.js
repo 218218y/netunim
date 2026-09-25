@@ -1,4 +1,5 @@
 import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
+import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
@@ -82,6 +83,7 @@ import {jsonEq} from "./sync/merge-records.js";
 
 
 const {model, session, ui, files, tab, checksSession}=createContexts();
+installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
 session.storageProtocolBlocked=true;
 const domainRevisions=createKupaDomainRevisions(session);
@@ -297,6 +299,7 @@ const cloudAuth=createCloudAuth({
 const cloudTransport=createCloudTransport({
   session,
   supaRest:(...args)=>cloudAuth.supaRest(...args),
+  localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
 });
 
 const domainsDashboardController=createDomainsDashboardController({
@@ -868,6 +871,10 @@ const lifecycle=createLifecycle({
 
 function canRunInteractiveAction(name=''){
   if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){uiStatus.toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
+  // Recovery must stay reachable when an interrupted storage transition has
+  // intentionally blocked every ordinary mutation. It still runs only in the
+  // primary tab and performs its own authenticated cloud preflight.
+  if(name==='reset-local-site-storage')return true;
   if(session.storageProtocolBlocked){uiStatus.toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
   if(session.syncCapabilitiesError){uiStatus.toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
   if(session.syncCapabilitiesChecking||session.startupCloudHydrating){uiStatus.toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
@@ -891,6 +898,7 @@ const uiActions=createUiActions({
   openSupabaseLoginModal:(...args)=>uiCloud.openSupabaseLoginModal(...args),
   enableCloudFromCurrentState:(...args)=>uiCloud.enableCloudFromCurrentState(...args),
   logoutSupabase:(...args)=>uiCloud.logoutSupabase(...args),
+  resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args),
   beginStorageV2Cutover,
   handleCheckDatePartInput:(...args)=>uiDateEditor.handleCheckDatePartInput(...args),
   handleCheckDatePartBlur:(...args)=>uiDateEditor.handleCheckDatePartBlur(...args),

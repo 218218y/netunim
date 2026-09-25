@@ -126,7 +126,7 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
         path for path in snapshot.files
         if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css'))
     )
-    shell = ['./', './index.html', './assets/app.css']
+    shell = ['./', './index.html', './reset-local.html', './assets/app.css']
     shell += ['./' + PurePosixPath(path).relative_to(site).as_posix() for path in assets]
     shell += [
         './manifest.webmanifest', './supabase/config.js', './favicon.ico',

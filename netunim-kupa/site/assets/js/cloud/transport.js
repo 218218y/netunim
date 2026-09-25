@@ -23,8 +23,20 @@ function resolveKupaCoreUpdatedAt(row,financeUpdatedAt,financeAvailable=true){
 function contentionBackoff(attempt=0){return new Promise(resolve=>setTimeout(resolve,contentionDelay(attempt)))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createCloudTransport({session, supaRest}){
+export function createCloudTransport({session, supaRest, localResetReadOnlyFetch}){
 const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
+
+async function verifyLocalResetCloud(resetSession){
+  if(typeof localResetReadOnlyFetch!=='function')throw new Error('local_reset_read_only_transport_unavailable');
+  const mainPath=`/rest/v1/kupa_documents?document_name=eq.${encodeURIComponent(session.cloudDocumentName)}&select=document_name,revision,state,updated_at`,sharedPath=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
+  const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),[mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
+  if(!mainResponse.ok)throw new Error(mainJson?.message||mainJson?.hint||'קריאת הקופה מהענן נכשלה');
+  if(!sharedResponse.ok)throw new Error(sharedJson?.message||sharedJson?.hint||'קריאת מאגר הצקים המשותף נכשלה');
+  const main=Array.isArray(mainJson)&&mainJson.length?mainJson[0]:null,shared=Array.isArray(sharedJson)&&sharedJson.length?sharedJson[0]:null;
+  if(main){assertReadableCloudState(main.state,'מסמך הקופה בענן');const rev=Number(main.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הקופה בענן אינו תקין')}
+  if(shared){if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error('מסמך הצקים המשותף בענן במבנה לא תקין');const rev=Number(shared.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error('Revision הצקים המשותף אינו תקין')}
+  return {main,shared};
+}
 async function readOrdersReadOnlyMeta(){
   const q=`/rest/v1/${ORDERS_TABLE}?document_name=eq.${encodeURIComponent(ORDERS_DOC)}&select=document_name,revision,updated_at`;
   const r=await supaRest(q,{method:'GET'}),j=await r.json().catch(()=>null);
@@ -205,5 +217,5 @@ async function stageRestoreGroup(group){return restoreRpc('stage_restore_group_v
 async function applyRestoreGroup(restoreGroupId){return restoreRpc('apply_restore_group_v6',{p_restore_group_id:String(restoreGroupId)})}
 async function listIncompleteRestoreGroups(){const r=await supaRest('/rest/v1/rpc/list_incomplete_restore_groups_v5',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),raw=await r.text();let j;try{j=raw?JSON.parse(raw):null}catch{j=null}if(!r.ok)throw new Error(j?.message||raw||'restore group status failed');return Array.isArray(j)?j:[]}
   async function readStorageProtocolState(){const r=await supaRest('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'}),state=await r.json().catch(()=>null);if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');return state}
-  return {readSupabaseDocument,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecks,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
+  return {readSupabaseDocument,verifyLocalResetCloud,readOrdersReadOnlyMeta,readOrdersReadOnlyCloud,readSharedChecksDocument,readSharedChecksMeta,readStorageProtocolState,rpcSaveSharedChecks,rpcSaveSharedChecksV2,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,readFinanceSyncDocument,rpcSaveFinanceSync,saveFinancePatch,claimFinanceSyncLease,releaseFinanceSyncLease,saveBankSyncSnapshot,mergeBankTransactions,syncBankTransactionsSnapshot,readBankTransactions,readBankTransactionSnapshot,acknowledgeBankTransactionMissing,acknowledgeBankTransactionAlert};
 }

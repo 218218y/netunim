@@ -77,6 +77,23 @@ async function supaAuthPassword(email,password){
   j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);storeSupaSession(j);localStorage.setItem(SUPA_EMAIL_KEY,email);localStorage.setItem(SUPA_AUTO_KEY,'1');session.cloudAuthNoDocument=false;setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j
 }
 
+async function supaAuthPasswordForLocalReset(email,password){
+  if(!supaConfigured())throw new Error('הגדרת Supabase חסרה');
+  const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=password`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({email,password})});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j?.error_description||j?.msg||j?.message||'התחברות Supabase נכשלה');
+  if(!String(j?.access_token||'').trim())throw new Error('Supabase לא החזיר token תקין לאימות האיפוס');
+  j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);return j
+}
+
+async function localResetReadOnlyFetch(resetSession,path){
+  const token=String(resetSession?.access_token||'').trim(),safePath=String(path||'');
+  if(!token)throw Object.assign(new Error('נדרשת התחברות מחדש לענן לצורך האיפוס'),{code:'local_reset_auth_required'});
+  if(!safePath.startsWith('/rest/v1/')||safePath.includes('/rpc/'))throw new Error('local_reset_read_only_path_rejected');
+  const r=await fetchSupaNetwork(`${SUPA_CONFIG.url}${safePath}`,{method:'GET',headers:supaBaseHeaders(token)},{retry:true,timeoutMs:SUPA_NETWORK_TIMEOUT_MS});
+  if(r.status===401)throw Object.assign(new Error('פג תוקף אימות הענן לצורך האיפוס'),{code:'local_reset_auth_required'});
+  return r
+}
+
 async function supaRefresh({force=true,observedAccessToken=''}={}){if(refreshPromise)return refreshPromise;refreshPromise=(async()=>{const refresh=async()=>{const s=loadSupaSession();if(!s?.refresh_token)throw new Error('נדרשת התחברות מחדש לענן');assertSessionOwner(s);if(observedAccessToken&&s.access_token&&s.access_token!==observedAccessToken)return s;if(!force&&Number(s.expires_at||0)>Math.floor(Date.now()/1000)+60)return s;const r=await fetch(`${SUPA_CONFIG.url}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:supaBaseHeaders(),body:JSON.stringify({refresh_token:s.refresh_token})});const j=await r.json().catch(()=>({}));if(!r.ok){storeSupaSession(null);setCloudHeaderStatus('off','ענן: נדרשת התחברות');throw new Error('פג תוקף ההתחברות לענן')};j.expires_at=Math.floor(Date.now()/1000)+Number(j.expires_in||3600);assertSessionOwner(j);storeSupaSession(j);setCloudHeaderStatus('auth','ענן: מחובר לחשבון');return j};return globalThis.navigator?.locks?.request?navigator.locks.request('netunim-kupa-auth-refresh',{mode:'exclusive'},refresh):refresh()})().finally(()=>{refreshPromise=null});return refreshPromise}
 
 async function supaEnsureSession(){let s=loadSupaSession();if(!s)throw new Error('נדרשת התחברות לענן');assertSessionOwner(s);if(Number(s.expires_at||0)<=Math.floor(Date.now()/1000)+60)s=await supaRefresh({force:false,observedAccessToken:s.access_token});return s}
@@ -91,5 +108,5 @@ async function supaRest(path,options={}){if(syncRequestNeedsCapabilities(path,op
   return withSupaDataApiSlot(path,request,{priority,coalesceKey:coalesceKey||(priority==='low'&&safeRead?`${method}:${path}`:'')})
 }
 
-return { ensureSyncCapabilities, supaConfigured, loadSupaSession, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaBaseHeaders, supaAuthPassword, supaRefresh, supaEnsureSession, supaRest };
+return { ensureSyncCapabilities, supaConfigured, loadSupaSession, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaBaseHeaders, supaAuthPassword, supaAuthPasswordForLocalReset, localResetReadOnlyFetch, supaRefresh, supaEnsureSession, supaRest };
 }

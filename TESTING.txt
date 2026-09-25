@@ -7,6 +7,8 @@ npm run offline:update
 
 python tools/sync-assets.py
 
+מחיקת אחסון אתר-לבדוק שהאתר או השרת לא פעיל ואז לאפס נתונים לגמרי
+chrome://settings/content/all
 
 העלאת qsl cli
 ```powershell

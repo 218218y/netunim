@@ -1,11 +1,13 @@
+import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
+
 import {esc, clone} from '../core/values.js';
 import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
-
-const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 
+const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
+
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageTransitionPreparing=()=>false}){
+export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, readSharedChecksDocument, verifyLocalResetCloud, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, supaAuthPasswordForLocalReset, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}, storageTransitionPreparing=()=>false}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function blockOrdinaryCloudDuringCutover({interactive=false}={}){
   if(!storageTransitionPreparing())return false;
@@ -27,8 +29,8 @@ async function discardCloudPendingAndLoadRemote(){if(!session.cloudConflictPendi
 
 function openSupabaseLoginModal(mode='open'){
   if(!supaConfigured())return alert('קובץ הגדרת Supabase חסר או לא תקין.');
-  const email=localStorage.getItem(SUPA_EMAIL_KEY)||'';
-  modal(mode==='upload'?'הפעלת סנכרון Supabase':'פתיחת קופה מהענן',`<div class="form-grid"><div class="form-group full"><div class="notice">הנתונים העסקיים נשמרים ב־Supabase ולא בזיכרון הדפדפן. בדפדפן נשמרים רק פרטי התחברות/Session כדי שלא תצטרך להתחבר בכל פתיחה.</div></div><div class="form-group full"><label>אימייל משתמש Supabase Auth</label><input id="supaEmail" type="email" value="${esc(email)}" autocomplete="username"></div><div class="form-group full"><label>סיסמה</label><input id="supaPassword" type="password" autocomplete="current-password"></div><div class="form-group full"><div id="supaLoginError" class="notice warn" style="display:none"></div></div><div class="form-group full"><div class="soft-note">${mode==='upload'?'אם עדיין אין קופה בענן, הנתונים הפתוחים כרגע יועלו כעותק הראשי. אם כבר קיימת קופה בענן, המערכת לא תדרוס אותה.':'המערכת תפתח את הקופה הקיימת בענן. אם עוד לא הועלתה קופה, פתח קודם את התיקייה המקומית והפעל ענן מתוך ההגדרות.'}</div></div></div>`,mode==='upload'?'התחבר והפעל ענן':'התחבר ופתח',()=>connectSupabaseFromLogin(mode))
+  const email=localStorage.getItem(SUPA_EMAIL_KEY)||'',resetMode=mode==='reset';
+  modal(resetMode?'אימות ענן לפני איפוס מקומי':mode==='upload'?'הפעלת סנכרון Supabase':'פתיחת קופה מהענן',`<div class="form-grid"><div class="form-group full"><div class="notice">${resetMode?'ההתחברות כאן משמשת רק לאימות שהקופה והצ׳קים קיימים ונגישים בענן לפני מחיקת האחסון המקומי. היא אינה פותחת, ממזגת או מעלה נתונים.':'הנתונים העסקיים נשמרים ב־Supabase ולא בזיכרון הדפדפן. בדפדפן נשמרים רק פרטי התחברות/Session כדי שלא תצטרך להתחבר בכל פתיחה.'}</div></div><div class="form-group full"><label>אימייל משתמש Supabase Auth</label><input id="supaEmail" type="email" value="${esc(email)}" autocomplete="username"></div><div class="form-group full"><label>סיסמה</label><input id="supaPassword" type="password" autocomplete="current-password"></div><div class="form-group full"><div id="supaLoginError" class="notice warn" style="display:none"></div></div>${resetMode?'':`<div class="form-group full"><div class="soft-note">${mode==='upload'?'אם עדיין אין קופה בענן, הנתונים הפתוחים כרגע יועלו כעותק הראשי. אם כבר קיימת קופה בענן, המערכת לא תדרוס אותה.':'המערכת תפתח את הקופה הקיימת בענן. אם עוד לא הועלתה קופה, פתח קודם את התיקייה המקומית והפעל ענן מתוך ההגדרות.'}</div></div>`}</div>`,resetMode?'אמת והמשך לאיפוס':mode==='upload'?'התחבר והפעל ענן':'התחבר ופתח',()=>connectSupabaseFromLogin(mode))
 }
 
 async function showCloudNoDocument(){
@@ -89,7 +91,7 @@ async function enableCloudFromCurrentState(){
 async function connectSupabaseFromLogin(mode){
   const email=document.getElementById('supaEmail')?.value.trim(),password=document.getElementById('supaPassword')?.value||'';if(!email||!password)return toast('יש להזין אימייל וסיסמה');
   try{
-    await supaAuthPassword(email,password);if(storageTransitionPreparing()){closeModal();clearCloudRecovery();setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'ההתחברות חודשה',text:'מעבר Storage V2 עדיין ממתין להשלמה. רענן את הדף כדי להמשיך מאותה תוכנית מעבר שמורה.',showCloud:false});return}let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
+    if(mode==='reset'){const resetSession=await supaAuthPasswordForLocalReset(email,password);closeModal();return resetLocalSiteStorage({allowAuthPrompt:false,resetSession})}await supaAuthPassword(email,password);if(storageTransitionPreparing()){closeModal();clearCloudRecovery();setCloudHeaderStatus('conflict','ענן: מעבר Storage V2 דורש השלמה');setConnectUI({title:'ההתחברות חודשה',text:'מעבר Storage V2 עדיין ממתין להשלמה. רענן את הדף כדי להמשיך מאותה תוכנית מעבר שמורה.',showCloud:false});return}let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
     if(localOwner&&storageV2PrimaryRequested()){await transferLocalV2(mode==='upload'?'upload-local':'load-account');closeModal();return}
     if(!localOwner&&await deferPendingRecovery()){closeModal();return}
     if(mode==='upload'){
@@ -121,5 +123,30 @@ function logoutSupabase(){
   clearCloudRecovery();session.cloudPollingEnabled=false;if(session.cloudPollTimer){clearTimeout(session.cloudPollTimer);session.cloudPollTimer=null}storeSupaSession(null);localStorage.removeItem(STORAGE_PREF_KEY);localStorage.removeItem(SUPA_AUTO_KEY);session.cloudAuthNoDocument=false;session.dbRevision=0;session.financeRevision=0;session.financeUpdatedAt=null;session.serverInfo.lastSavedAt=null;checksSession.sharedChecksRevision=0;checksSession.sharedChecksUpdatedAt=null;setCloudHeaderStatus('off','ענן: לא מחובר');if(session.connectionMode==='supabase'){session.backendReady=false;document.getElementById('connectScreen').style.display='flex';showFirstRun()}toast('ההתחברות לענן נמחקה מהמחשב הזה. בעלות האחסון והשינויים המקומיים נשמרו עד להתחברות מחדש.');return true
 }
 
-return { discardCloudPendingAndLoadRemote, openSupabaseLoginModal, showCloudNoDocument, openCloudUsingSavedSession, enableCloudFromCurrentState, connectSupabaseFromLogin, tryAutoOpenSupabase, logoutSupabase };
+async function resetLocalSiteStorage({allowAuthPrompt=true,resetSession=null}={}){
+  if(!tab.primaryTab){showSecondaryTabGuard();return false}
+  if(!navigator.onLine){toast('איפוס אחסון מקומי דורש חיבור לרשת כדי לוודא קודם שהענן זמין.');return false}
+  const cloudSession=resetSession||loadSupaSession();
+  if(!cloudSession){if(allowAuthPrompt)openSupabaseLoginModal('reset');else toast('נדרש אימות Supabase מחדש לצורך האיפוס.');return false}
+  try{
+    const {main,shared}=await verifyLocalResetCloud(cloudSession);
+    const mainRevision=Number(main?.revision),sharedRevision=Number(shared?.revision);
+    if(!main||!Number.isSafeInteger(mainRevision)||mainRevision<1)throw new Error('מסמך הקופה בענן אינו זמין או אינו תקין');
+    if(!shared||!Number.isSafeInteger(sharedRevision)||sharedRevision<1)throw new Error('מסמך הצ׳קים המשותף בענן אינו זמין או אינו תקין');
+    const account=String(cloudSession?.user?.email||'').trim(),accountLine=account?`חשבון שאומת: ${account}.
+`:'';
+    const approved=await confirmDialog('איפוס אחסון מקומי',`${accountLine}הענן אומת: קופה r${mainRevision}, צ׳קים r${sharedRevision}.
+
+הפעולה תמחק מהמחשב הזה את כל נתוני האתר של הכתובת הנוכחית בדפדפן — Storage V2, נתוני מעבר ישנים, תורי סנכרון, owner binding, IndexedDB, LocalStorage, Cache ו־Service Worker. כל שינוי מקומי שלא הגיע לענן יימחק.
+
+Supabase, קובצי data וגיבויים מחוץ לדפדפן לא ישתנו. לאחר האיפוס יהיה צורך להתחבר שוב ולפתוח מהענן.`,{confirmText:'אפס אחסון מקומי',cancelText:'ביטול',tone:'danger'});
+    if(!approved)return false;
+    await beginLocalSiteResetNavigation();return true;
+  }catch(error){
+    if(allowAuthPrompt&&String(error?.code||'')==='local_reset_auth_required'){openSupabaseLoginModal('reset');return false}
+    console.error('kupa local site reset preflight',error);toast('האיפוס לא התחיל: '+friendlySupabaseError(error));return false
+  }
+}
+
+return { discardCloudPendingAndLoadRemote, openSupabaseLoginModal, showCloudNoDocument, openCloudUsingSavedSession, enableCloudFromCurrentState, connectSupabaseFromLogin, tryAutoOpenSupabase, logoutSupabase, resetLocalSiteStorage };
 }

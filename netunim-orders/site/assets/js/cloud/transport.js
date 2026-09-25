@@ -9,8 +9,20 @@ import {assertEntityCollections} from '../shared/data-invariants.js';
 const FINANCE_DOC='main',FINANCE_TABLE='finance_sync_documents',FINANCE_RPC='save_finance_sync_document',FINANCE_LEASE_TTL_SECONDS=20*60;
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createCloudTransport({supaFetch}){
+export function createCloudTransport({supaFetch,localResetReadOnlyFetch}){
 async function readCloud(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,state,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת הענן נכשלה');const row=Array.isArray(j)&&j.length?j[0]:null;if(row&&!validOrderCloudState(row.state))throw new Error('מסמך ניהול ההזמנות בענן עדיין אינו במבנה ה-cutover החדש. הסנכרון נעצר כדי למנוע מצב מפוצל.');return row}
+
+async function verifyLocalResetCloud(resetSession){
+  if(typeof localResetReadOnlyFetch!=='function')throw new Error('local_reset_read_only_transport_unavailable');
+  const mainPath=`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,state,updated_at`,sharedPath=`/rest/v1/${SHARED_CHECKS_TABLE}?document_name=eq.${encodeURIComponent(SHARED_CHECKS_DOC)}&select=document_name,revision,state,updated_at`;
+  const [mainResponse,sharedResponse]=await Promise.all([localResetReadOnlyFetch(resetSession,mainPath),localResetReadOnlyFetch(resetSession,sharedPath)]),[mainJson,sharedJson]=await Promise.all([mainResponse.json().catch(()=>null),sharedResponse.json().catch(()=>null)]);
+  if(!mainResponse.ok)throw new Error(mainJson?.message||'קריאת הענן נכשלה');
+  if(!sharedResponse.ok)throw new Error(sharedJson?.message||"קריאת הצ'קים המשותפים מהענן נכשלה");
+  const main=Array.isArray(mainJson)&&mainJson.length?mainJson[0]:null,shared=Array.isArray(sharedJson)&&sharedJson.length?sharedJson[0]:null;
+  if(main&&!validOrderCloudState(main.state))throw new Error('מסמך ניהול ההזמנות בענן עדיין אינו במבנה ה-cutover החדש.');
+  if(shared){if(!shared.state||!Array.isArray(shared.state.checks)||!Array.isArray(shared.state.bankEvents))throw new Error("מסמך הצ'קים המשותף בענן במבנה לא תקין");const rev=Number(shared.revision);if(!Number.isSafeInteger(rev)||rev<1)throw new Error("Revision הצ'קים המשותף אינו תקין")}
+  return {main,shared};
+}
 async function readStorageProtocolState(){const r=await supaFetch('/rest/v1/rpc/get_storage_protocol_state',{method:'POST',networkRetry:true,dataPriority:'high',body:'{}'});const state=await r.json().catch(()=>null);if(!r.ok)throw new Error(state?.message||'בדיקת פרוטוקול האחסון בענן נכשלה');return state}
 
 async function readCloudMeta(){const r=await supaFetch(`/rest/v1/${CLOUD_TABLE}?document_name=eq.${encodeURIComponent(CLOUD_DOC)}&select=document_name,revision,updated_at`,{method:'GET'});const j=await r.json().catch(()=>null);if(!r.ok)throw new Error(j?.message||'קריאת סטטוס הענן נכשלה');return Array.isArray(j)&&j.length?j[0]:null}
@@ -109,5 +121,5 @@ async function acknowledgeBankTransactionAlert(transactionId,alertKind){
   const r=await supaFetch('/rest/v1/rpc/acknowledge_bank_transaction_alert',{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_transaction_id:id,p_alert_kind:kind})});
   const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}if(!r.ok)throw new Error(j?.message||j?.hint||body||'הסרת התראת הבנק נכשלה');return Array.isArray(j)?j[0]:j;
 }
-  return { readCloud, readCloudMeta, readStorageProtocolState, rpcSave, rpcSaveV2, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveKupaDocument, rpcSaveSharedChecks, rpcSaveSharedChecksV2, stageRestoreGroup, applyRestoreGroup, listIncompleteRestoreGroups, listOrdersCloudBackups, readOrdersCloudBackupPoint, readFinanceSyncDocument, rpcSaveFinanceSync, claimFinanceSyncLease, releaseFinanceSyncLease, saveBankSyncSnapshot, mergeBankTransactions, syncBankTransactionsSnapshot, readBankTransactions, readBankTransactionSnapshot, setBankTransactionHandled, acknowledgeBankTransactionMissing, acknowledgeBankTransactionAlert };
+  return { readCloud, readCloudMeta, verifyLocalResetCloud, readStorageProtocolState, rpcSave, rpcSaveV2, readSharedChecksCloud, readSharedChecksCloudMeta, readKupaReadOnlyCloud, readKupaReadOnlyMeta, rpcSaveKupaDocument, rpcSaveSharedChecks, rpcSaveSharedChecksV2, stageRestoreGroup, applyRestoreGroup, listIncompleteRestoreGroups, listOrdersCloudBackups, readOrdersCloudBackupPoint, readFinanceSyncDocument, rpcSaveFinanceSync, claimFinanceSyncLease, releaseFinanceSyncLease, saveBankSyncSnapshot, mergeBankTransactions, syncBankTransactionsSnapshot, readBankTransactions, readBankTransactionSnapshot, setBankTransactionHandled, acknowledgeBankTransactionMissing, acknowledgeBankTransactionAlert };
 }

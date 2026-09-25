@@ -111,6 +111,7 @@ for label, site in APPS.items():
     required = {
         "./",
         "./index.html",
+        "./reset-local.html",
         "./assets/app.css",
         "./assets/app.js",
         "./manifest.webmanifest",

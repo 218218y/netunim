@@ -1,4 +1,5 @@
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
+import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
 import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
@@ -95,6 +96,7 @@ import {bindOrdersRuntimeEvents} from './runtime-events.js';
 
 
 const {model, ui, supplierUi, customerUi, serviceUi, warehouseUi, notesUi, calendarUi, calendarSession, files, tab, session, checksSession}=createContexts();
+installLocalSiteResetPeerListener();
 // Event handlers are installed before the async owner/protocol preflight finishes.
 session.storageProtocolBlocked=true;
 const domainRevisions=createOrderDomainRevisions(session);
@@ -580,6 +582,7 @@ const uiFolders=createUiFolders({
 
 const cloudTransport=createCloudTransport({
   supaFetch:(...args)=>cloudAuth.supaFetch(...args),
+  localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
 });
 
 
@@ -976,10 +979,12 @@ const uiActions=createUiActions({
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
   backupToFolder:(...args)=>uiFolders.backupToFolder(...args),
   finishCloudLogin:(...args)=>uiCloud.finishCloudLogin(...args),
+  finishLocalResetLogin:(...args)=>uiCloud.finishLocalResetLogin(...args),
   enableCloud:(...args)=>uiCloud.enableCloud(...args),
   beginStorageV2Cutover,
   openCloud:(...args)=>uiCloud.openCloud(...args),
   logoutCloud:(...args)=>uiCloud.logoutCloud(...args),
+  resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args),
   addStickyNote:(...args)=>domainsNotesController.addStickyNote(...args),
   updateStickyNote:(...args)=>domainsNotesController.updateStickyNote(...args),
   deleteStickyNote:(...args)=>domainsNotesController.deleteStickyNote(...args),
