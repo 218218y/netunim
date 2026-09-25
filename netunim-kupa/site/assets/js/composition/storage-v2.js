@@ -12,6 +12,7 @@ import {equalSyncJson} from '../shared/cloud-sync.js';
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
 import {createStorageV2FencedRecovery} from '../shared/storage-v2-fenced-recovery.js';
+import {createLegacyRetirementScheduler,retireLegacyBusinessStorage} from '../shared/storage-v2-legacy-retirement.js';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
 import {createStorageJournalDb} from '../shared/storage-journal-idb.js';
@@ -30,6 +31,15 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('kupa_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
+  const scheduleLegacyRetirement=createLegacyRetirementScheduler({
+    ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
+    settle:async()=>{const p=requirePorts(),pending=[p.files.browserStateWritePromise,p.session.cloudOutboxCommitPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
+    retire:async()=>{const p=requirePorts();await retireLegacyBusinessStorage({app:'kupa',owner:owner.current(),ownerNow:()=>owner.current(),
+      primaryReady:()=>tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&p.storageShadow.primaryReady&&p.sharedChecksV2.primaryReady,
+      verifyV2:()=>owner.current()==='local'?verifyStorageV2LocalEngine({app:'kupa',owner:()=>owner.current()}):p.verifyStorageCutover(),
+      readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
+      deleteRecords:async()=>{for(const key of ['browser-state-v1','cloud-pending-v2','cloud-pending-v3','shared-checks-outbox-v3'])await p.storageIndexedDb.idbDelete('sync',key)}})},
+  });
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
   const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:kupa:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:kupa:local')==='2';
   // Retained only for a verified pre-cutover outbox drain. An unmarked browser
@@ -248,7 +258,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(!recovered)return false;
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),

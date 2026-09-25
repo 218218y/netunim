@@ -172,7 +172,11 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=sharedChecksV2Composition.recoverPrimary;
+const recoverSharedChecksV2Primary=async()=>{
+  const recovered=await sharedChecksV2Composition.recoverPrimary();
+  if(recovered)storageV2Coordinator.scheduleLegacyRetirement();
+  return recovered;
+};
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const storageTabLock=createStorageTabLock({
