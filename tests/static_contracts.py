@@ -154,9 +154,10 @@ for label, app_root in (("kupa", K), ("orders", O)):
     ok("legacyDrain:true" in drain_source
        and "legacyDrain=true" in drain_source
        and "legacyDrain=false" in drain_source
-       and "owner.writable&&(!preparing()||legacyDrain)" in drain_source
+       and "const durableV2Active=" in drain_source
+       and "owner.writable&&!durableV2Active()&&(!preparing()||legacyDrain)" in drain_source
        and "legacyDrain:true" not in main_source,
-       f"{label}: concrete V1 drain is explicitly fenced inside the storage-v2 composition boundary")
+       f"{label}: concrete V1 drain is fenced before a durable V2 marker inside the storage-v2 composition boundary")
 
 owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
 owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')
