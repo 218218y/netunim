@@ -127,6 +127,10 @@
     {
       "version": "20260925120000",
       "name": "storage_writer_internalization"
+    },
+    {
+      "version": "20260925123000",
+      "name": "revoke_legacy_storage_writers"
     }
   ]
 }

@@ -8,7 +8,7 @@ from isolated_sync_postgres import IsolatedPostgres, ROOT, quote
 def run(db, domain="kupa"):
     orders=domain=="orders"
     table="order_management_documents" if orders else "kupa_documents"
-    rpc_name="save_order_management_document_v5" if orders else "save_kupa_document_v5"
+    rpc_name="save_order_management_document_v6" if orders else "save_kupa_document_v6"
     migration="20260917150000_orders_notes_workbook.sql" if orders else "20260917120000_notes_workbook_delete.sql"
     if orders:db.migrate((ROOT/"supabase/migrations"/migration).read_text(encoding="utf8"))
     state = dict(credits=[], cash=[], rights=[], notes=[], expenses=[], cards=[], bank={'adjustments': []})
@@ -70,8 +70,8 @@ def run(db, domain="kupa"):
     args = [quote(group_id)+'::uuid', quote(domain), "'workbook-delete'", '2',
             quote(json.dumps(restored))+'::jsonb', quote(json.dumps(restore_intents))+'::jsonb',
             'null', 'null', 'null', "'[]'::jsonb", "'restore-sheet'", 'null', "'{}'::jsonb"]
-    db.auth_sql('select public.stage_restore_group_v5('+','.join(args)+')')
-    db.auth_sql('select public.apply_restore_group_v5('+quote(group_id)+'::uuid)')
+    db.auth_sql('select public.stage_restore_group_v6('+','.join(args)+')')
+    db.auth_sql('select public.apply_restore_group_v6('+quote(group_id)+'::uuid)')
     restore = db.head(table, 'workbook-delete')
     assert restore['revision'] == 3 and restore['state']['notesSheet'] == restored['notesSheet']
     db.migrate((ROOT/'supabase/migrations'/migration).read_text(encoding='utf8'))

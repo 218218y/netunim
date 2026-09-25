@@ -131,6 +131,6 @@ insert into auth.users values('''+quote(OWNER)+''');''')
 def quote(value):return "'"+str(value).replace("'","''")+"'"
 
 if __name__=='__main__':
-    with IsolatedPostgres() as db:
+    with IsolatedPostgres(schema_files=sorted((ROOT/'supabase/migrations').glob('*.sql'))) as db:
         db.sql((ROOT/'tests/finance_fencing_server.sql').read_text(encoding='utf8'))
         print('PASS isolated PostgreSQL migration, capability postflight, bank/credit fencing under authenticated role')

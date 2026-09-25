@@ -121,7 +121,7 @@ def verify_v6_without_public_legacy(db):
     auth(db, OWNER, "select kupa_revision from public.save_bank_sync_snapshot_v6('main','{\"currentBalance\":123}','detached-bank',0,'bank','bank-v6-lease'," + bank_epoch + ')')
 
 
-def run(db):
+def run(db, verify_without_legacy=True):
     db.sql('insert into auth.users values(' + quote(OTHER) + ')')
     for owner in (OWNER, OTHER):
         for domain in ('orders', 'kupa', 'shared-checks'):
@@ -253,16 +253,64 @@ def run(db):
     other_epoch = auth(db, OTHER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
     other_before = revision(db, OTHER, 'kupa_documents', 'main')
     assert int(auth(db, OTHER, "select kupa_revision from public.save_bank_sync_snapshot('main','{}','other-bank',0,'bank','other-bank-lease'," + other_epoch + ')')) == other_before + 1
+    if verify_without_legacy:
+        verify_v6_without_public_legacy(db)
+
+
+def verify_legacy_revoke(db):
+    # An unfenced owner cannot use the old RPCs after retirement either.
+    # Checking effective privileges also catches EXECUTE inherited from PUBLIC.
+    legacy = (
+        'save_order_management_document(text,bigint,jsonb)',
+        'save_order_management_document_v3(text,bigint,jsonb,text)',
+        'save_order_management_document_v4(text,bigint,jsonb,text,jsonb)',
+        'save_order_management_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'bulk_delete_save_order_management_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'save_kupa_document(text,bigint,jsonb)',
+        'save_kupa_document_v3(text,bigint,jsonb,text)',
+        'save_kupa_document_v4(text,bigint,jsonb,text,jsonb)',
+        'save_kupa_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'bulk_delete_save_kupa_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'save_shared_checks_document(text,bigint,jsonb)',
+        'save_shared_checks_document_v3(text,bigint,jsonb,text)',
+        'save_shared_checks_document_v4(text,bigint,jsonb,text,jsonb)',
+        'save_shared_checks_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'bulk_delete_save_shared_checks_document_v5(text,bigint,jsonb,text,jsonb,jsonb)',
+        'stage_restore_group_v5(uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb)',
+        'apply_restore_group_v5(uuid)',
+        'save_finance_sync_document(text,bigint,jsonb)',
+        'save_finance_sync_document_v3(text,bigint,jsonb,text)',
+        'save_finance_sync_document_v5(text,bigint,jsonb,text,jsonb,text,text,bigint)',
+        'merge_bank_transactions(text,text,jsonb,text,text,bigint)',
+        'sync_bank_transactions_snapshot(text,text,jsonb,timestamptz,date,date,boolean,text,text,bigint)',
+        'save_bank_sync_snapshot(text,jsonb,text,bigint,text,text,bigint)',
+    )
+    for signature in legacy:
+        for role in ('anon', 'authenticated'):
+            privilege = db.sql("select has_function_privilege('" + role + "','public." +
+                               signature + "','EXECUTE')").strip()
+            assert privilege == 'f', (role, signature, privilege)
+    for table in ('order_management_documents', 'kupa_documents',
+                  'shared_checks_documents', 'finance_sync_documents'):
+        for privilege in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'):
+            allowed = db.sql("select has_table_privilege('authenticated','public." +
+                             table + "','" + privilege + "')").strip()
+            assert allowed == 'f', (table, privilege, allowed)
+    denied(db, OTHER, "public.save_order_management_document_v5('suppliers',2,'{}','retired','{}','{}')", '42501')
+    capabilities = json.loads(auth(db, OWNER, 'select public.get_netunim_sync_capabilities()'))
+    assert capabilities['storageWriterProtocol'] == 2 and capabilities['financeFencing'] == 2
     verify_v6_without_public_legacy(db)
 
 
 if __name__ == '__main__':
     migrations = sorted((ROOT/'supabase/migrations').glob('*.sql'))
-    with IsolatedPostgres(schema_files=migrations[:-1], demotable_postgres=True) as database:
+    with IsolatedPostgres(schema_files=migrations[:-2], demotable_postgres=True) as database:
         # Supabase's migration postgres role is not a superuser. Installing the
         # new migration after demotion catches privileged function SET clauses.
         database.sql('grant create on schema public to postgres; grant authenticated to postgres; '
                      'alter role postgres nosuperuser bypassrls;')
+        database.migrate(migrations[-2].read_text(encoding='utf-8-sig'))
+        run(database, verify_without_legacy=False)
         database.migrate(migrations[-1].read_text(encoding='utf-8-sig'))
-        run(database)
-    print('PASS Storage V2 server fence: old RPC/direct write blocked, v6/restore allowed, owner isolation')
+        verify_legacy_revoke(database)
+    print('PASS Storage V2 server fence: legacy grants revoked, v6/restore/finance allowed, owner isolation')

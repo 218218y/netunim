@@ -17,8 +17,8 @@
 ## מה עדיין נותר לנקות בקוד
 
 - V1 writers, outboxes ו־readers היסטוריים עדיין קיימים בחלק ממודולי compatibility. כתיבת V1 רגילה חסומה גם בדפדפן ללא marker; רק ניקוז migration מפורש יכול להגיע לכותב ישן. המימושים וה־call-sites הישנים טרם נמחקו פיזית.
-- Main V2 עדיין מחזיק עותק לא־סמכותי של `checks`. הסרתו דורשת migration עמיד של checkpoints קיימים, התאמת schema ו־startup שמרכיב Main עם Shared. אין לשנות schema לפני migration.
-- פונקציות SQL v6 עדיין קוראות לחלק ממימושי v5. אין לבצע `REVOKE` או `DROP` ל־v5 לפני העברת המימוש הקנוני ל־internal, עדכון capabilities ואימות PostgreSQL. ה־server fence עצמו נשאר גם בארכיטקטורה הסופית.
+- Main V2 מסיר את עותק `checks` דרך migration עמיד לאחר שחזור Shared, ושומר `mainProjectionVersion=2`. פעולות Main חדשות על `checks` נדחות. `legacyCollections` עדיין מאפשר קריאת checkpoints ישנים בזמן השדרוג, ולכן קוד התאימות טרם נמחק פיזית.
+- מיגרציית `20260925120000_storage_writer_internalization.sql` נפרסה: פונקציות v6 קוראות למימושים קנוניים ב־`netunim_internal`, כולל שחזור, בנק ואשראי. פונקציות v5 הציבוריות נשארות זמנית כ־wrappers. המיגרציה הבאה שוללת מהדפדפן EXECUTE על writers ישנים וכתיבה ישירה למסמכי הליבה; `DROP` ייעשה רק לאחר בדיקת תלויות נוספת. ה־server fence נשאר גם בארכיטקטורה הסופית.
 - לאחר שחזור Main ו־Shared V2 בטאב הראשי, אימות marker עמיד ובחשבון גם אימות protocol 2 בשלושת התחומים, ניקוי רקע מוחק מפתחות business V1 ידועים וארבע רשומות IndexedDB ישנות לכל היותר. מחיקת IndexedDB קודמת למחיקת LocalStorage; כשל גורם לניסיון חוזר בהפעלה הבאה. marker קטן מונע בדיקות חוזרות אחרי הצלחה. Session, העדפות, גיבויים, handles ונתוני V2 נשארים. אין מחיקת wildcard של `.v1`.
 
 ## סנכרון בנק ואשראי

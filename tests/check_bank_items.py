@@ -5,16 +5,18 @@ from isolated_sync_postgres import OWNER, quote
 
 def run(db):
     serial = 0
+    save_serial = 0
     def auth(sql):
         return db.sql("begin;set local request.jwt.claim.sub="+quote(OWNER)+";"+sql+";commit").strip()
     def checks():
         return json.loads(db.sql("select state->'checks' from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'"))
     def save(rows,deleted=None):
+        nonlocal save_serial
+        save_serial+=1
         rev=db.sql("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip() or '0'
-        if deleted:
-            auth("set local role authenticated;select revision from public.save_shared_checks_document_v4('main',"+rev+","+quote(json.dumps({'checks':rows}))+"::jsonb,'item-delete-operation',"+quote(json.dumps(deleted))+"::jsonb)")
-        else:
-            auth("set local role authenticated;select revision from public.save_shared_checks_document('main',"+rev+","+quote(json.dumps({'checks':rows}))+"::jsonb)")
+        current=db.sql("select state from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip()
+        state={'version':1,'checks':rows,'bankEvents':json.loads(current).get('bankEvents',[]) if current else []}
+        auth("set local role authenticated;select revision from public.save_shared_checks_document_v6('main',"+rev+","+quote(json.dumps(state))+"::jsonb,"+quote('check-items-'+str(save_serial))+","+quote(json.dumps(deleted or []))+"::jsonb,'{}')")
     def check(id, amount, number='', **extra):
         return dict(id=id,name=id,amount=amount,checkNumber=number,dueDate='2026-08-02',account='עסקי',status='בקופה',**extra)
     def item(number, amount, account='12345'):
@@ -293,7 +295,7 @@ def run(db):
         dict(mergeKey='pending-reference-80000072',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=1000,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=82694.41,activityTypeCode=1,bankReference='80000072',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
     ]
     def pending_reference_rpc(payload,at,coverage_to):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+","+quote('2026-07-20')+","+quote(coverage_to)+",true,'bank','pending-reference-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+","+quote('2026-07-20')+","+quote(coverage_to)+",true,'bank','pending-reference-rpc',"+str(lease['fence_epoch'])+") x")
     pending_reference_rpc(pending_reference_rows,pending_seen_day+'T10:30:00Z',pending_seen_day)
     rows=checks();assert len(rows)==3
     for c in rows:
@@ -384,7 +386,7 @@ def run(db):
     reset([])
     lease=claim_bank_lease('batch-ambiguity-rpc')
     def batch_ambiguity_rpc(payload,at):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-ambiguity-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-ambiguity-rpc',"+str(lease['fence_epoch'])+") x")
     ambiguous_pending=[
         dict(mergeKey='ambiguous-pending-a',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10000,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
         dict(mergeKey='ambiguous-pending-b',date=pending_value_day+'T09:00:01Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10830,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details),
@@ -402,7 +404,7 @@ def run(db):
     reset([])
     lease=claim_bank_lease('batch-overlap-rpc')
     def batch_overlap_rpc(payload,at):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-overlap-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','business',"+quote(json.dumps(payload))+"::jsonb,"+quote(at)+",'2026-07-20',"+quote(pending_value_day)+",true,'bank','batch-overlap-rpc',"+str(lease['fence_epoch'])+") x")
     overlap_pending=dict(mergeKey='overlap-pending-4463455',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק שיק-ע.ישיר',status='pending',balanceAfter=10000,activityTypeCode=1,bankReference='4463455',bankSerial='0',cheque=True,checkDetails=empty_deposit_details)
     overlap_final=dict(mergeKey='overlap-final-4463455',date=pending_value_day+'T09:00:00Z',processedDate=pending_value_day+'T09:00:00Z',amount=830,currency='ILS',description='הפק.שיק בסלולר',status='completed',balanceAfter=10830,activityTypeCode=1,bankReference='overlap-batch-ref',bankSerial='5',cheque=True,checkDetails=dict(kind='deposit',checkItems=[final_items[1]],checkNumbers=['4463455'],checkCount=1,hasDocumentReference=True,warning=''))
     overlap_result=json.loads(batch_overlap_rpc([overlap_pending,overlap_final],pending_value_day+'T11:20:00Z'))
@@ -421,7 +423,7 @@ def run(db):
     completed_items=[dict(checkNumber=n,amount=570,bankNumber='17',branchNumber='725',accountNumber='13807') for n in ('80020179','80020012','80020099')]
     completed=dict(mergeKey='serial:2026-09-18:1:1710',date='2026-09-18T09:00:00Z',processedDate='2026-09-18T09:00:00Z',amount=1710,currency='ILS',description='הפק.שיק במכונה',status='completed',balanceAfter=20611.29,activityTypeCode=1,bankReference='-1',bankSerial='1',checkDetails=dict(kind='deposit',checkItems=completed_items,checkNumbers=['80020179','80020012','80020099'],checkCount=3))
     def archive_rpc(payload,second,complete=True):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',"+str(complete).lower()+",'bank','archive-transition-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',"+str(complete).lower()+",'bank','archive-transition-rpc',"+str(lease['fence_epoch'])+") x")
     archive_rpc([pending],1)
     pending_id=db.sql("select id from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()
     archive_rpc([completed],2)
@@ -436,7 +438,7 @@ def run(db):
     reset([])
     lease=claim_bank_lease('archive-heal-rpc')
     def heal_rpc(payload,second):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:30:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-heal-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T12:30:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-heal-rpc',"+str(lease['fence_epoch'])+") x")
     heal_rpc([pending],1)
     pending_id=db.sql("select id from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()
     db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,transaction_date,processed_date,amount,currency,description,status,presence_state,balance_after,bank_reference,bank_serial,activity_type_code,cheque,check_details) values("+quote(OWNER)+",'item-tests','home',"+quote(completed['mergeKey'])+","+quote(completed['date'])+","+quote(completed['processedDate'])+",1710,'ILS',"+quote(completed['description'])+",'completed','present',20611.29,'-1','1',1,true,"+quote(json.dumps(completed['checkDetails']))+")")
@@ -453,7 +455,7 @@ def run(db):
     a=dict(pending,mergeKey='pending-ambiguous-a',bankReference='pending-a')
     b=dict(pending,mergeKey='pending-ambiguous-b',bankReference='pending-b')
     def ambiguous_rpc(payload,second):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T13:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-ambiguous-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','home',"+quote(json.dumps(payload))+"::jsonb,'2026-09-19T13:00:"+str(second).zfill(2)+"Z','2026-08-21','2026-09-19',true,'bank','archive-ambiguous-rpc',"+str(lease['fence_epoch'])+") x")
     ambiguous_rpc([a,b],1)
     ambiguous_rpc([completed],2)
     assert db.sql("select count(*) from public.bank_transactions where account_key='item-tests' and account_role='home'").strip()=='3','Ambiguous same-fact cheque deposits must stay separate; reconciliation must never guess'
@@ -469,7 +471,7 @@ def run(db):
         details=dict(checkItems=[item('111',830),item('222',1000)],checkNumbers=['111','222'],checkCount=2)
         if pending_items:source['checkDetails']=details
         def rpc(complete,second,payload=None):
-            return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('item-tests','business',"+quote(json.dumps([source] if payload is None else payload))+"::jsonb,'2026-08-02T12:00:"+str(second).zfill(2)+"Z','2026-07-01','2026-08-02',"+str(complete).lower()+",'bank','item-rpc',"+str(lease['fence_epoch'])+") x")
+            return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('item-tests','business',"+quote(json.dumps([source] if payload is None else payload))+"::jsonb,'2026-08-02T12:00:"+str(second).zfill(2)+"Z','2026-07-01','2026-08-02',"+str(complete).lower()+",'bank','item-rpc',"+str(lease['fence_epoch'])+") x")
         rpc(False,1);assert all(c['status']=='בקופה' and 'bankMatch' not in c for c in checks())
         rpc(True,2)
         oldid=checks()[0]['bankMatch']['transactionId']

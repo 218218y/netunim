@@ -175,7 +175,11 @@ class SupabaseContracts(unittest.TestCase):
         relevant = [w for w in warnings if w['name'] == 'authenticated_security_definer_function_executable']
         self.assertEqual({w['metadata']['name'] for w in relevant}, expected)
         inventory = read(read('postflight-target.json')['schema_snapshot'])
-        tests = (ROOT / 'tests/supabase_authorization.py').read_text(encoding='utf8')
+        # The authenticated receipt predates V6. Current owner-isolation tests
+        # exercise V6, while the dedicated protocol test proves these historical
+        # entrypoints reject fenced owners and are revoked from browser roles.
+        tests = ((ROOT / 'tests/supabase_authorization.py').read_text(encoding='utf8') +
+                 (ROOT / 'tests/storage_writer_protocol_server.py').read_text(encoding='utf8'))
         review = (ROOT / 'supabase/REVIEW.md').read_text(encoding='utf8')
         for rpc in expected:
             function = next(f for f in inventory['functions'] if f['schema'] == 'public' and f['name'] == rpc)

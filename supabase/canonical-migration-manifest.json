@@ -158,5 +158,10 @@
     "version": "20260925120000",
     "name": "storage_writer_internalization",
     "sha256": "1c3141d651456da53df1e44a21a92b937d0e8b514724b96a23062cbc21bdaca3"
+  },
+  {
+    "version": "20260925123000",
+    "name": "revoke_legacy_storage_writers",
+    "sha256": "b2fc88d266829d6149e6a33f3a4f863d4cc23def683bf9648e4450b013ef51be"
   }
 ]
