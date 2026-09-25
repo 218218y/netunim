@@ -46,6 +46,81 @@ def write(db, owner, domain, version, expected, operation, changed=False):
     return int(auth(db, owner, statement))
 
 
+def verify_v6_without_public_legacy(db):
+    # The V2 graph must still work when old public RPC names are absent. This
+    # catches indirect V6 -> V5 -> V4 (and finance V5 -> V3) dependencies.
+    legacy = (
+        ('save_order_management_document_v4', 'text,bigint,jsonb,text,jsonb'),
+        ('save_order_management_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('bulk_delete_save_order_management_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('save_kupa_document_v4', 'text,bigint,jsonb,text,jsonb'),
+        ('save_kupa_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('bulk_delete_save_kupa_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('save_shared_checks_document_v4', 'text,bigint,jsonb,text,jsonb'),
+        ('save_shared_checks_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('bulk_delete_save_shared_checks_document_v5', 'text,bigint,jsonb,text,jsonb,jsonb'),
+        ('stage_restore_group_v5', 'uuid,text,text,bigint,jsonb,jsonb,text,bigint,jsonb,jsonb,text,text,jsonb'),
+        ('apply_restore_group_v5', 'uuid'),
+        ('save_finance_sync_document_v3', 'text,bigint,jsonb,text'),
+        ('save_finance_sync_document_v5', 'text,bigint,jsonb,text,jsonb,text,text,bigint'),
+        ('merge_bank_transactions', 'text,text,jsonb,text,text,bigint'),
+        ('sync_bank_transactions_snapshot', 'text,text,jsonb,timestamptz,date,date,boolean,text,text,bigint'),
+        ('save_bank_sync_snapshot', 'text,jsonb,text,bigint,text,text,bigint'),
+    )
+    for index, (name, signature) in enumerate(legacy):
+        db.sql('alter function public.' + name + '(' + signature + ') rename to disabled_legacy_' + str(index))
+    capabilities = json.loads(auth(db, OWNER, 'select public.get_netunim_sync_capabilities()'))
+    assert capabilities['storageWriterProtocol'] == 2 and capabilities['restoreGroups'] == 5
+    assert capabilities['sharedChecksIntegrity'] == 5 and capabilities['financeFencing'] == 2
+
+    for domain, table, document, rpc in (
+        ('orders', 'order_management_documents', 'suppliers', 'order_management'),
+        ('kupa', 'kupa_documents', 'main', 'kupa'),
+        ('shared-checks', 'shared_checks_documents', 'main', 'shared_checks'),
+    ):
+        current = json.loads(auth(db, OWNER, 'select state::text from public.' + table +
+                                  ' where owner_id=auth.uid() and document_name=' + quote(document)))
+        if domain == 'shared-checks':
+            assert current['checks']
+            current['checks'][0]['amount'] += 1
+        else:
+            current['notes'].append({'id': 'detached-note-' + domain, 'content': 'first'})
+        before = revision(db, OWNER, table, document)
+        intents = '[]' if domain == 'shared-checks' else '{}'
+        args = ('(' + quote(document) + ',' + str(before) + ',' + quote(json.dumps(current)) + ',' +
+                quote('detached-v6-' + domain) + ',' + quote(intents) + ",'{}')")
+        saved = int(auth(db, OWNER, 'select revision from public.save_' + rpc + '_document_v6' + args))
+        assert saved == before + 1, (domain, before, saved)
+        if domain == 'shared-checks':
+            current['checks'][0]['amount'] += 1
+        else:
+            current['notes'][-1]['content'] = 'second'
+        bulk = 'public.bulk_delete_save_' + rpc + '_document_v6'
+        bulk_args = ('(' + quote(document) + ',' + str(before + 1) + ',' + quote(json.dumps(current)) + ',' +
+                     quote('detached-bulk-' + domain) + ',' + quote(intents) + ",'{}')")
+        assert int(auth(db, OWNER, 'select revision from ' + bulk + bulk_args)) == before + 2
+
+    restore_id = '55555555-5555-4555-8555-555555555556'
+    orders_state = auth(db, OWNER, "select state::text from public.order_management_documents where owner_id=auth.uid() and document_name='suppliers'")
+    orders_revision = revision(db, OWNER, 'order_management_documents', 'suppliers')
+    auth(db, OWNER, "select * from public.stage_restore_group_v6('" + restore_id + "','orders','suppliers'," +
+         str(orders_revision) + ',' + quote(orders_state) + ",'{}','main',null,null,'[]','detached-restore-main','detached-restore-checks','{}')")
+    assert '|completed|' in auth(db, OWNER, "select * from public.apply_restore_group_v6('" + restore_id + "')")
+
+    auth(db, OWNER, "select acquired from public.claim_finance_sync_lease('credit','credit-v6-lease',600)")
+    credit_epoch = auth(db, OWNER, 'select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name=\'credit\'')
+    finance_state = json.loads(auth(db, OWNER, "select state::text from public.finance_sync_documents where owner_id=auth.uid() and document_name='main'"))
+    finance_state.setdefault('creditSync', {})['syncedAt'] = 'detached-v6'
+    finance_revision = revision(db, OWNER, 'finance_sync_documents', 'main')
+    assert int(auth(db, OWNER, "select revision from public.save_finance_sync_document_v6('main'," +
+                    str(finance_revision) + ',' + quote(json.dumps(finance_state)) + ",'detached-credit','{}','credit','credit-v6-lease'," + credit_epoch + ')')) == finance_revision + 1
+    auth(db, OWNER, "select acquired from public.claim_finance_sync_lease('bank','bank-v6-lease',600)")
+    bank_epoch = auth(db, OWNER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
+    assert int(auth(db, OWNER, "select total_count from public.merge_bank_transactions_v6('account','business','[]','bank','bank-v6-lease'," + bank_epoch + ')')) == 0
+    assert int(auth(db, OWNER, "select total_count from public.sync_bank_transactions_snapshot_v6('account','business','[]',now(),null,null,false,'bank','bank-v6-lease'," + bank_epoch + ')')) == 0
+    auth(db, OWNER, "select kupa_revision from public.save_bank_sync_snapshot_v6('main','{\"currentBalance\":123}','detached-bank',0,'bank','bank-v6-lease'," + bank_epoch + ')')
+
+
 def run(db):
     db.sql('insert into auth.users values(' + quote(OTHER) + ')')
     for owner in (OWNER, OTHER):
@@ -178,6 +253,7 @@ def run(db):
     other_epoch = auth(db, OTHER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
     other_before = revision(db, OTHER, 'kupa_documents', 'main')
     assert int(auth(db, OTHER, "select kupa_revision from public.save_bank_sync_snapshot('main','{}','other-bank',0,'bank','other-bank-lease'," + other_epoch + ')')) == other_before + 1
+    verify_v6_without_public_legacy(db)
 
 
 if __name__ == '__main__':
