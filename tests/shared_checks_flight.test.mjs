@@ -106,7 +106,10 @@ for(const app of ['orders','kupa'])test(`${app}: Storage V2 background check pol
   await sync.pollSharedChecks();assert.equal(renders,1,'an unchanged V2 poll does not cause a disruptive repaint');
 });
 
-test('Orders finance controller publishes automatic credit busy transitions without a manual view wrapper',async()=>{
+test('Orders finance controller publishes automatic credit busy transitions without a manual view wrapper',async t=>{
+  // refreshCredit() deliberately rearms the production auto-sync timer in finally.
+  // Keep that long-lived scheduler out of this unit test's process lifecycle.
+  t.mock.method(globalThis,'setTimeout',()=>0);
   const started=gate(),release=gate(),states=[];
   const controller=createDomainsFinanceController({tab:{primaryTab:true},checksSession:{kupaCloudReadState:{}},
     bridge:{getBridgeToken:()=> 'paired',markCreditAttempt:noop,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',creditAttemptReady:()=>true,bankAutoEnabled:()=>false,
