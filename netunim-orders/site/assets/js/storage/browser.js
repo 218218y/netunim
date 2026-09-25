@@ -82,7 +82,7 @@ async function verifyLegacyCloudCleanReadOnly(){
 
 async function recoverLocalV2State(){
   const recovered=await storageV2?.recover?.(null);
-  if(!recovered?.state)throw new Error('orders_local_v2_recovery_required');
+  if(!recovered?.state)throw new Error('orders_v2_main_recovery_required');
   session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));
   const previous=model.state;model.state=normalizeState(clone(recovered.state));domainRevisions?.reconcile(previous,model.state);
   return recovered;
@@ -97,17 +97,18 @@ async function recoverReadOnlyV2State(){
 }
 
 async function restoreBrowserStateReadOnly(){
+  if(storageV2?.cutoverActive){if(!await recoverReadOnlyV2State())throw new Error('storage_v2_cutover_readonly_recovery_required');return true}
   const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0),legacy=!local||idbSeq>localSeq?record?.payload:local;
   const recovered=await storageV2?.recoverReadOnly?.(),selected=recovered?.state||legacy;
-  if(storageV2?.cutoverActive&&!recovered)throw new Error('storage_v2_cutover_readonly_recovery_required');
   if(!selected)return false;
   session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq,Number(recovered?.appMetadata?.snapshotSeq||0));
   const previous=model.state;model.state=normalizeState(clone(selected));domainRevisions?.reconcile(previous,model.state);return true;
 }
 
 async function restoreBrowserStateFallback(){
+  if(storageV2?.cutoverActive){const recovered=await recoverLocalV2State();await captureLegacyWorkbook(recovered.state.notesSheet);return true}
   const record=await loadBrowserStateSnapshot(),local=loadLocal(),localSeq=Number(local?._meta?.localSnapshotSeq||0),idbSeq=Number(record?.payload?._meta?.localSnapshotSeq||0),legacy=!local||idbSeq>localSeq?record?.payload:local;
-  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);const recovered=await storageV2?.recover?.(legacy,{snapshotSeq:Math.max(localSeq,idbSeq),revision:Number(session.cloudRevision||0)});if(storageV2?.cutoverActive&&!recovered)throw new Error('storage_v2_cutover_recovery_required');const selected=recovered?.state||legacy;
+  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),localSeq,idbSeq);const recovered=await storageV2?.recover?.(legacy,{snapshotSeq:Math.max(localSeq,idbSeq),revision:Number(session.cloudRevision||0)}),selected=recovered?.state||legacy;
   if(!selected)return false;session.localSnapshotSeq=Math.max(session.localSnapshotSeq,Number(recovered?.appMetadata?.snapshotSeq||0));await captureLegacyWorkbook(selected.notesSheet);const previous=model.state;model.state=normalizeState(clone(selected));domainRevisions?.reconcile(previous,model.state);
   if(!recovered&&record?.payload&&(!local||idbSeq>localSeq))try{localStorage.setItem(STORAGE_KEY,JSON.stringify(record.payload))}catch(e){console.error('restore localStorage from IndexedDB',e)}
   return !!recovered||!!(record?.payload&&(!local||idbSeq>localSeq));
