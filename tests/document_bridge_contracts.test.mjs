@@ -17,16 +17,24 @@ test('orders site exposes a dedicated local-document scope and connects only to 
   assert.match(headers,/connect-src[^\n]*http:\/\/127\.0\.0\.1:8766/);
 });
 
-test('document bridge installer is per-computer, pinned, signed and preserves config outside the app runtime',()=>{
+test('document bridge installer is per-computer, pinned, bounded and supports verified offline ES install',()=>{
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const esInstaller=read('netunim-orders/document-bridge/install_es.ps1');
   const server=read('netunim-orders/document-bridge/server.mjs');
   assert.match(installer,/NetunimDocumentBridge/);
   assert.match(installer,/--configure/);
   assert.match(installer,/--doctor/);
+  assert.match(installer,/install-es\.log/);
   assert.match(esInstaller,/1\.1\.0\.38/);
+  assert.match(esInstaller,/5e0c70cbf4f694080c34aa7c6c745e606c16fe76a4b5423b93ebf9dc34274c99/);
+  assert.match(esInstaller,/Get-FileHash[^\n]*SHA256/);
   assert.match(esInstaller,/Get-AuthenticodeSignature/);
-  assert.match(esInstaller,/voidtools/);
+  assert.match(esInstaller,/github\.com\/voidtools\/ES\/releases\/download/);
+  assert.match(esInstaller,/www\.voidtools\.com/);
+  assert.match(esInstaller,/ftp\.voidtools\.com/);
+  assert.match(esInstaller,/TimeoutSec/);
+  assert.match(esInstaller,/PSScriptRoot/);
+  assert.match(esInstaller,/Downloads/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
   assert.match(server,/CONFIG_PATH=path\.join\(APP_ROOT,'config\.json'\)/);
   assert.match(server,/TOKEN_PATH=path\.join\(APP_ROOT,'bridge-token\.txt'\)/);

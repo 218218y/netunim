@@ -30,7 +30,12 @@ for %%F in (server.mjs lib.mjs start_document_bridge.bat) do (
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_es.ps1" -AppRoot "%APPROOT%"
 if errorlevel 1 (
+  echo.
   echo ERROR: Could not install/verify the official Everything ES command-line client.
+  echo The installer no longer waits indefinitely on a blocked download host.
+  echo If your filter blocks the automatic download, download the exact ES ZIP shown above,
+  echo leave it next to this installer or in your Downloads folder, and run this file again.
+  echo Detailed log: %APPROOT%\install-es.log
   rmdir /S /Q "%STAGING%" >nul 2>nul
   pause
   exit /b 1

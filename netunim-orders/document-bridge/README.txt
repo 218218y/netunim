@@ -36,10 +36,28 @@ roots separated by semicolons, for example:
 or a UNC path:
   \\server\share\PDF
 
-The installer downloads the pinned official voidtools ES, verifies its Windows
-Authenticode signature and version, installs the bridge under LocalAppData, and
-adds an autostart launcher. The private bridge key is copied to the clipboard.
-Paste that key into the website once on that PC/browser profile.
+The installer installs the pinned official voidtools ES 1.1.0.38. It first looks
+for the exact architecture ZIP next to the installer, in the current user's
+Downloads folder, and under LocalAppData. If it is not present, the installer
+tries the official GitHub release, voidtools.com, and ftp.voidtools.com in that
+order. Every network attempt has a hard timeout, so a blocked/filtering host can
+no longer freeze the install screen indefinitely.
+
+The release archive is verified against the SHA-256 pinned from the official GitHub release metadata before
+extraction, and the es.exe version is verified again after installation. An
+Authenticode signature is also checked when Windows reports a valid signature,
+but certificate-chain availability is not required for an offline install.
+
+If automatic download is blocked, manually download the matching file from the
+official ES 1.1.0.38 release and leave it next to install_document_bridge.bat
+(or in Downloads), then rerun the installer:
+  x64:   ES-1.1.0.38.x64.zip
+  ARM64: ES-1.1.0.38.ARM64.zip
+The installer still verifies the exact SHA-256 before it trusts the local file.
+
+The bridge is installed under LocalAppData and an autostart launcher is added.
+The private bridge key is copied to the clipboard. Paste that key into the
+website once on that PC/browser profile.
 
 Reconfigure
 -----------
@@ -58,6 +76,7 @@ Security model
 Troubleshooting
 ---------------
 Log: %LOCALAPPDATA%\NetunimDocumentBridge\bridge.log
+Installer download log: %LOCALAPPDATA%\NetunimDocumentBridge\install-es.log
 Config: %LOCALAPPDATA%\NetunimDocumentBridge\config.json
 Token: %LOCALAPPDATA%\NetunimDocumentBridge\bridge-token.txt
 If Everything uses an older named 1.5a alpha instance the bridge probes it after
