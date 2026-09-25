@@ -37,6 +37,15 @@ test('local engine cache is repaired only from its durable marker',async()=>{
   const orphan=fixture();orphan.cache.set(storageLocalEngineKey('orders'),'2');await assert.rejects(orphan.make().verify(),/storage_local_engine_marker_mismatch/);
 });
 
+test('legacy development mode keys cannot activate or downgrade Storage V2',()=>{
+  const keys=new Map([['netunim-storage-v2-mode:orders','primary'],['netunim-storage-v2-shadow','1']]);
+  const storage={getItem:key=>keys.get(key)??null};
+  assert.equal(storageV2Mode('orders',storage,'local'),'off');
+  keys.set(storageLocalEngineKey('orders'),'2');
+  keys.set('netunim-storage-v2-mode:orders','off');
+  assert.equal(storageV2Mode('orders',storage,'local'),'primary');
+});
+
 test('legacy pending blocks birth before marking the engine',async()=>{
   const f=fixture();f.legacyClean=false;
   await assert.rejects(f.make().begin(),/storage_local_birth_legacy_pending/);

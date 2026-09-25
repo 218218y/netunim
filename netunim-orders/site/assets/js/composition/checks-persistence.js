@@ -1,6 +1,6 @@
 import {createSyncChecksPersistence} from '../sync/checks-persistence.js';
 
-export function composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles,cloudAuth,syncChecks,uiAlertCenter,domainRevisions,sharedChecksV2Shadow,sharedChecksV2}){
+export function composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles,cloudAuth,syncChecks,uiAlertCenter,domainRevisions,sharedChecksV2}){
   return createSyncChecksPersistence({
     model,session,checksSession,sharedChecksV2,
     localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
@@ -17,6 +17,5 @@ export function composeChecksPersistence({model,session,checksSession,storageBro
     saveSharedChecksToCloud:(...args)=>syncChecks().saveSharedChecksToCloud(...args),
     refreshAlertCenter:(...args)=>uiAlertCenter().refreshIndicator(...args),
     touchChecksRevision:()=>domainRevisions.touch('checks'),
-    observeSharedChecks:sharedChecksV2Shadow.mutation,
   });
 }

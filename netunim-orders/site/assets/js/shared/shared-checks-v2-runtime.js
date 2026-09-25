@@ -1,5 +1,4 @@
 import {createSharedChecksStorageV2,validateSharedChecksState} from './shared-checks-storage-v2.js';
-import {createSharedChecksObserver} from './shared-checks-v2-shadow.js';
 import {CLOUD_WRITE_POLICY,cloudWriteError,createOperationId,equalSyncJson,normalizeCloudError,operationAuditMetadata,runBusyCloudWriteWithPolicy,structuredSyncConflict} from './cloud-sync.js';
 
 const canonical=state=>{validateSharedChecksState(state);return structuredClone({checks:state.checks,bankEvents:state.bankEvents})};
@@ -16,7 +15,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
   const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
-  const shadow=createSharedChecksObserver({owner,primary,readState,createStorage,enabled:()=>mode()==='shadow'&&!active});
   function assertContext(store=storage){
     if(!primaryMode()||!primary())throw new Error('shared_checks_primary_required');
     if(!store||store!==storage||identity!==currentOwner())throw new Error('shared_checks_owner_handoff_required');
@@ -81,7 +79,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=context(),snapshot=canonical(state);
     if(identity!=='local')throw new Error('shared_checks_local_owner_required');
     if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
-    await shadow.flush();
     assertContext(store);
     let recovered;
     try{recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'})}
@@ -97,9 +94,9 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=context(),snapshot=canonical(state);
     if(sourceOwner!==identity||await verifyLegacyClean()!==true)throw new Error('shared_checks_promotion_not_verified');
     assertContext(store);if(!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
-    // Drain queued shadow work before touching its namespace. The stored role
-    // also prevents a different shadow instance from reopening a primary head.
-    await shadow.flush();assertContext(store);
+    // The stored role prevents an older shadow checkpoint from being opened
+    // as a primary head without verified parity.
+    assertContext(store);
     let recovered;
     try{recovered=await store.open()}catch(error){if(error.message!=='shared_checks_storage_role_mismatch')throw error;recovered=await store.promoteVerifiedShadow(snapshot,{legacyPendingClean:true})}
     assertContext(store);
@@ -211,7 +208,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   }
   return {recover,recoverReadOnly,initialize,initializeLocal,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
-    observe:shadow.mutation,observeBoundary:shadow.boundary,
     async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;return cloud},
     async flush(){await commits;return true},
     get requested(){return primaryMode()},

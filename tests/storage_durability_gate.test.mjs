@@ -4,7 +4,6 @@ import {createStoragePersistence as createOrdersPersistence} from '../netunim-or
 import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
-import {createStorageShadow} from '../shared/storage-shadow.js';
 import {INITIAL_STATE as ordersInitial} from '../netunim-orders/site/assets/js/state/constants.js';
 import {INITIAL_STATE as kupaInitial} from '../netunim-kupa/site/assets/js/state/constants.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
@@ -149,10 +148,10 @@ test('Kupa reports a failed legacy rescue outbox without an unhandled cloud-save
 });
 
 test('an account change cannot clear an uncommitted IDB-only mutation guard',async()=>{
-  const commit=deferred(),predicates=[],installs=[];let owner='A';
+  const commit=deferred(),predicates=[],replacements=[];let owner='A';
   const runtime=createStorageV2Runtime({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:options=>{predicates.push(options.primary);return ({
     ready:true,open:async()=>({state:{notes:[]},appMetadata:{storageRole:'primary',snapshotSeq:0},seq:0,stored:{checkpoints:{data:{seq:0}}}}),
-    append:()=>({emergencyDurable:false,committed:commit.promise,seq:1}),settled:()=>Promise.resolve(),install:async()=>{installs.push(options.owner)},
+    append:()=>({emergencyDurable:false,committed:commit.promise,seq:1}),settled:()=>Promise.resolve(),replaceCurrentState:async()=>{replacements.push(options.owner)},
   })}});
   await runtime.recover();
   runtime.persist({notes:[{id:'N1'}]},{operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]});
@@ -163,9 +162,8 @@ test('an account change cannot clear an uncommitted IDB-only mutation guard',asy
   assert.equal(predicates[1](),true);
   commit.resolve();await tick();
   assert.equal(runtime.durabilityAtRisk,false);
-  runtime.afterLegacy({notes:[]},{storageBoundary:'remote-authoritative-load'});
-  await runtime.commitPromise;
-  assert.deepEqual(installs,['B:orders']);
+  await runtime.replaceCurrentState({notes:[]});
+  assert.deepEqual(replacements,['B:orders']);
 });
 
 test('an owner switch immediately fences the old V2 cloud cursor before the new owner recovers',async()=>{
@@ -192,16 +190,6 @@ test('overlapping recoveries remain scoped to the account that started them',asy
   assert.equal(await oldRecovery,null);
   assert.equal((await runtime.recover())?.source,'v2');
   assert.equal(bOpens,2);
-});
-
-test('shadow journal writer fencing also follows the journal owner across account changes',async()=>{
-  let owner='A';const predicates=[];
-  const shadow=createStorageShadow({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,enabled:()=>true,schedule:noop,createJournal:options=>{
-    predicates.push(options.primary);return {ready:false,open:async()=>null,install:async()=>{}};
-  }});
-  shadow.observe({notes:[]},{storageBoundary:'initial'});await shadow.flush();
-  owner='B';shadow.observe({notes:[]},{storageBoundary:'account-change'});await shadow.flush();
-  assert.equal(predicates[0](),false);assert.equal(predicates[1](),true);
 });
 
 

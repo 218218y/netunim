@@ -10,7 +10,7 @@ const TRANSIENT_CHECK_READ_KINDS=new Set(['network','timeout','service_unavailab
 function recordSharedChecksReadError(state,key,error){const normalized=normalizeCloudError(error);if(!TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))state[key]=error?.message||String(error);return normalized}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecks({sharedChecksV2=null,model, files, checksSession={}, tab, localSnapshot, refreshStorageV2CloudState=async()=>null, replaceStorageV2CurrentState=async()=>false, observeSharedChecksBoundary=()=>false, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
+export function createSyncChecks({sharedChecksV2=null,model, files, checksSession={}, tab, localSnapshot, refreshStorageV2CloudState=async()=>null, replaceStorageV2CurrentState=async()=>false, persistChecksBase, markChecksPending, getChecksPending, clearChecksPending, toast, recomputeKupaNetFromCache, renderKupaDependentView, queueSharedChecksSave, writeStateToFolder, loadSession, readSharedChecksCloud, checksPendingExists, rpcSaveSharedChecks, checksHaveLocalWork, readSharedChecksCloudMeta, refreshCloudTimestamp, touchChecksRevision=()=>{}}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 const flight=createSharedChecksFlight({state:checksSession,pullKey:'checksPullPromise',saveKey:'checksSavePromise',busyKey:'checksCloudBusy'});
 function sharedChecksSyncStatus(){return flight.status({online:!!(loadSession()&&navigator.onLine),pending:checksSession.checksOutboxCached,localWork:!!checksSession.checksSaveRequested})}
@@ -28,7 +28,6 @@ async function mirrorChecksLocally(){
     const replaced=await replaceStorageV2CurrentState(model.state);
     if(replaced===false)throw new Error('storage_v2_shared_checks_mirror_failed');
   }else localSnapshot(undefined,{storageBoundary:'shared-checks-remote-mirror'});
-  observeSharedChecksBoundary();
   try{if(files.dirHandle)await writeStateToFolder()}catch(error){console.error('checks local mirror',error)}
 }
 

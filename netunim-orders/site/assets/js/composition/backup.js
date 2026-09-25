@@ -1,13 +1,12 @@
 import {createUiBackup} from '../ui/backup.js';
 
-export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
+export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
   return createUiBackup({
     ...storageV2Cloud,
     storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
     storageV2LocalPrimary:()=>storageV2Runtime.primaryReady,
     recoverStorageV2State:()=>storageV2Runtime.recoverForOwner({intent:'load-account'}),
     storageOwnerCurrent:()=>storageOwner.current(),
-    observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
     validateRestoreJson:(...args)=>stateNormalization.validateRestoreJson(...args),
     tab,ui,model,session,checksSession,
     prepareState:(...args)=>stateSelectors().prepareState(...args),
