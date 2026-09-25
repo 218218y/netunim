@@ -74,7 +74,7 @@ test('cutover marker fails closed on missing Main checkpoint and forbids Orders 
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
-    await assert.rejects(browser.restoreBrowserStateFallback(),/cutover_recovery_required/);
+    await assert.rejects(browser.restoreBrowserStateFallback(),/v2_main_recovery_required/);
     assert.throws(()=>browser.markCloudPending(),/write_forbidden/);
     assert.equal(globalThis.localStorage.length,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
@@ -103,6 +103,59 @@ test('Kupa V2 save bypasses the retired V1 writer while protocol verification st
     session.storageProtocolBlocked=true;
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_protocol_verification_required/);
     assert.equal(v2Writes,1);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('Orders cutover startup restores Main V2 without opening a legacy browser snapshot',async()=>{
+  const previous=globalThis.localStorage;
+  globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
+  try{
+    const state=structuredClone(ORDERS_INITIAL_STATE),model={state:{}};
+    const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>({state,appMetadata:{snapshotSeq:11}})},
+      model,files:{},session:{localSnapshotSeq:0,cloudRevision:3},normalizeState:value=>structuredClone(value),
+      domainRevisions:{reconcile:()=>{}},captureLegacyWorkbook:async()=>{}});
+    assert.equal(await browser.restoreBrowserStateFallback(),true);
+    assert.deepEqual(model.state,state);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Kupa cutover startup reads only V2 Main and cloud cursor before Shared hydration',async()=>{
+  const priorStorage=globalThis.localStorage,priorNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
+  globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:false}});
+  try{
+    const model={state:{}},session={localSnapshotSeq:0},checksSession={sharedChecksGeneration:0};
+    const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:9,revision:4}})},
+      model,session,files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
+    const recovery=createSyncRecovery({model,session,checksSession,loadBrowserState:browser.loadBrowserState,
+      getCloudPending:async()=>{throw new Error('legacy_main_pending_read')},getSharedChecksPending:async()=>{throw new Error('legacy_shared_pending_read')},
+      loadSharedChecksBase:()=>{throw new Error('legacy_checks_base_read')},loadSharedChecksBankEvents:()=>{throw new Error('legacy_events_read')},
+      sharedChecksPendingExists:()=>{throw new Error('legacy_checks_pending_read')},
+      refreshStorageV2CloudState:async()=>({base:{revision:4,state:{cash:[{id:'v2'}]}},pending:false,flight:null}),
+      normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),
+      hideConnectScreen:()=>{},setConnectedStatus:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},render:()=>{},startCloudPolling:()=>{}});
+    assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
+    assert.deepEqual(model.state.cash,[{id:'v2'}]);assert.equal(session.dbRevision,4);assert.equal(session.localSnapshotSeq,9);
+  }finally{if(priorStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=priorStorage;if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator}
+});
+
+test('secondary V2 recovery does not consult legacy snapshots or pending state',async()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
+  try{
+    const ordersModel={state:{}};
+    const orders=createOrdersBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:structuredClone(ORDERS_INITIAL_STATE),appMetadata:{snapshotSeq:5}})},
+      model:ordersModel,files:{},session:{localSnapshotSeq:0},normalizeState:value=>structuredClone(value)});
+    assert.equal(await orders.restoreBrowserStateReadOnly(),true);
+    assert.deepEqual(ordersModel.state.checks,[]);
+    const model={state:{}},session={},checksSession={};
+    const kupa=createKupaBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:6,revision:7}})},
+      model,session,files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
+    const recovery=createSyncRecovery({model,session,checksSession,loadBrowserStateReadOnly:kupa.loadBrowserStateReadOnly,
+      getCloudPending:async()=>{throw new Error('legacy_main_pending_read')},getSharedChecksPending:async()=>{throw new Error('legacy_shared_pending_read')},
+      loadSharedChecksBase:()=>{throw new Error('legacy_checks_base_read')},loadSharedChecksBankEvents:()=>{throw new Error('legacy_events_read')},
+      normalizeState:value=>structuredClone(value),hideConnectScreen:()=>{},setConnectedStatus:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},render:()=>{}});
+    assert.equal(await recovery.openBrowserStateReadOnly(),true);
+    assert.deepEqual(model.state.cash,[{id:'v2'}]);assert.equal(session.dbRevision,7);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
