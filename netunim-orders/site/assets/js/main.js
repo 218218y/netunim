@@ -114,7 +114,7 @@ const stateNormalization=createStateNormalization({
 // Journal checkpoints must be deterministic: a new savedAt on every replay
 // would make a frozen local-birth source fail parity after a crash.
 const prepareV2Checkpoint=state=>{const business=structuredClone(state);delete business._meta;const snapshot=stateSelectors.prepareState(business);delete snapshot._meta.savedAt;return snapshot};
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:prepareV2Checkpoint});
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:prepareV2Checkpoint});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
   legacyDrainActive:storageV2Coordinator.legacyDrainActive,
@@ -150,11 +150,7 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=async()=>{
-  const recovered=await sharedChecksV2Composition.recoverPrimary();
-  if(recovered)storageV2Coordinator.scheduleLegacyRetirement();
-  return recovered;
-};
+const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverSharedAndMigrate();
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({
@@ -693,7 +689,7 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,storageChecks,syncDocument,syncChecks,model,session,checksSession,files,
-  stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:true,required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
+  stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 async function beginStorageV2Cutover(){

@@ -8,7 +8,7 @@ import {storageOwnerReady} from './storage-owner.js';
 export function storageRecoveryFailure(error){
   if(error?.name==='DataInvariantError'||error instanceof SyntaxError)return 'fatal';
   const message=String(error?.message||'');
-  return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner))$/.test(message)?'fatal':'retryable';
+  return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner|main_projection_invalid))$/.test(message)?'fatal':'retryable';
 }
 
 const LIFECYCLE_BOUNDARIES=new Set(['network-offline-mirror','pagehide-v1-checkpoint','beforeunload-v1-checkpoint','manual-flush']);
@@ -29,20 +29,22 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const diagnostics={mode:'off',recoveries:0,operations:0,boundaries:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
-  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
-  const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
+  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false,mainProjectionVersion=1,projectionMigration=false;
+  const guardCloudMutation=()=>{if(boundaryGate()||projectionMigration)throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
+  const checkpointState=(state,{projectionVersion=mainProjectionVersion}={})=>{const copy=prepareCheckpoint(business(state));if(projectionVersion===2)delete copy.checks;return copy};
   const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
   function currentOwner(){return String(owner()||'').trim()||'local'}
   function readyForCurrentOwner(){return primaryMode()&&primary()&&authoritative&&identity===currentOwner()&&!!journal?.ready}
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    identity=next;authoritative=false;commits=Promise.resolve();const scopedOwner=next;
+    identity=next;authoritative=false;commits=Promise.resolve();mainProjectionVersion=1;const scopedOwner=next;
     journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   function verifiedRecovery(active,recovered){
+    mainProjectionVersion=recovered.appMetadata?.mainProjectionVersion===2?2:1;
     // An open alone cannot prove that an IDB-only edit survived. Keep its risk
     // until the same epoch and sequence have actually been recovered.
     const failure=undurableFailures.get(active);
@@ -79,7 +81,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       const recovered=await active.recover();
       if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
       if(!recovered||recovered.appMetadata?.storageRole!=='primary')return null;
-      diagnostics.recoveries++;return {...recovered,source:'v2-readonly'};
+      diagnostics.recoveries++;mainProjectionVersion=recovered.appMetadata?.mainProjectionVersion===2?2:1;return {...recovered,source:'v2-readonly'};
     }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal')corruptIdentity=activeIdentity;return null}
   }
   async function recoverForOwner({intent}={}){
@@ -88,7 +90,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function initializeLocal(state,{appMetadata={}}={}){
     if(currentOwner()!=='local'||!primaryMode()||!primary())throw new Error('storage_local_birth_owner_required');
-    const canonical=prepareCheckpoint(business(state));validate(canonical);
+    const canonical=checkpointState(state);validate(canonical);
     const active=create(),scopedIdentity=identity;
     let recovered=await active.open();
     if(recovered){
@@ -109,13 +111,13 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     const active=create(),scopedIdentity=identity;
     const validIntent=intent==='cloud-authoritative'&&sourceOwner===scopedIdentity||intent==='upload-local'&&sourceOwner==='local'&&revision===0||intent==='upload-owner'&&sourceOwner===scopedIdentity&&revision===0;
     if(!validIntent)throw new Error('storage_owner_transfer_intent_required');
-    const prepared=prepareCheckpoint(business(state)),metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent};
+    const prepared=checkpointState(state),metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent};
     let result;
     try{result=await active.initializeCloudHead(revision,prepared,{cloudState,changes,validateBase,appMetadata:metadata})}
     catch(error){
       if(error?.message!=='storage_initialization_exists'||!String(metadata.bootstrapOperationId||'').trim())throw error;
       const recovered=await active.open(),cloud=await active.cloudState({validateBase});
-      const finalState=changes?.length===1&&changes[0]?.type==='replace-state'?prepareCheckpoint(business(changes[0].state)):prepared;
+      const finalState=changes?.length===1&&changes[0]?.type==='replace-state'?checkpointState(changes[0].state):prepared;
       const idempotent=!!recovered&&recovered.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&recovered.appMetadata?.migrationIntent===intent&&recovered.appMetadata?.sourceOwner===sourceOwner&&recovered.appMetadata?.targetOwner===scopedIdentity&&cloud?.base?.revision===revision&&equalSyncJson(cloud.base.state,cloudState)&&equalSyncJson(recovered.state,finalState);
       if(idempotent)result=recovered;
       else{
@@ -130,7 +132,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     const scopedIdentity=currentOwner(),source=String(sourceOwner||'').trim();
     const intent=source==='local'?'upload-local':source===scopedIdentity?'upload-owner':'';
     if(!intent||scopedIdentity==='local')throw new Error('storage_owner_transfer_target_required');
-    const initial=prepareCheckpoint(business(emptyState)),target=prepareCheckpoint(business(currentState));
+    const initial=checkpointState(emptyState),target=checkpointState(currentState);
     validate(initial);validate(target);if(cloudState===undefined)throw new Error('storage_bootstrap_cloud_base_required');validateBase(cloudState);
     const recovered=await initializeCloudHead(0,initial,{sourceOwner:source,intent,cloudState,validateBase,changes:[{type:'replace-state',state:target}],appMetadata});
     if(!equalSyncJson(recovered.state,target)||recovered.seq!==1)throw new Error('storage_bootstrap_replay_mismatch');
@@ -152,7 +154,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     scheduleIdle(async()=>{compactionScheduled=false;if(!readyForCurrentOwner()||(!operationsSinceCheckpoint&&Date.now()-lastCheckpointAt<compactAfterMs))return;try{await commits;await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now()}catch(error){diagnostics.errors++;diagnostics.lastError=error.message}});
   }
   function persist(state,{operations=null,storageBoundary='',generation=0,surface='',mutationType='autosave',deleteIntents={}}={},appMetadata={}){
-    if(boundaryGate())throw new Error('storage_boundary_in_progress');
+    if(boundaryGate()||projectionMigration)throw new Error('storage_boundary_in_progress');
     const runtimeMode=mode();if(runtimeMode==='preparing')throw new Error('storage_v2_preparation_locked');
     if(runtimeMode!=='primary'||!primary())return {handled:false,reason:'inactive'};
     diagnostics.mode='primary';const active=create(),boundary=String(storageBoundary||'').trim(),typed=Array.isArray(operations)&&operations.length>0;
@@ -189,24 +191,46 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function captureCloudCursor(revision,options={}){guardCloudMutation();return (await settledJournal()).captureCloudCursor(revision,options)}
   async function cloudState(options={}){if(!readyForCurrentOwner())return null;return (await settledJournal()).cloudState(options)}
   async function materializeFlight(options={}){guardCloudMutation();return (await settledJournal()).materializeFlight(options)}
-  async function acknowledgeFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,state,next)}
-  async function rejectFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=prepareCheckpoint(business(next.currentState));delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,state,next)}
+  async function acknowledgeFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.acknowledge(operationId,revision,state,next)}
+  async function rejectFlight(operationId,revision,state,options={}){guardCloudMutation();const next={...options};if(Object.hasOwn(next,'currentState')){next.checkpointState=checkpointState(next.currentState);delete next.currentState}const active=await settledJournal();guardCloudMutation();return active.rejectAndRebase(operationId,revision,state,next)}
   async function setCloudControl(control={}){guardCloudMutation();return (await settledJournal()).setCloudControl(control)}
   async function clearCloudControl(){guardCloudMutation();if(!readyForCurrentOwner())return false;return (await settledJournal()).clearCloudControl()}
-  async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(prepareCheckpoint(business(state)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceCurrentState(state,options={}){const active=await settledJournal(),result=await active.replaceCurrentState(checkpointState(state),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
     if(currentOwner()!=='local')throw new Error('storage_boundary_local_owner_required');
-    const active=await settledJournal(),result=await active.replaceLocalAuthoritativeState(prepareCheckpoint(business(state)),{boundaryId,expectedSeq});
+    const active=await settledJournal(),result=await active.replaceLocalAuthoritativeState(checkpointState(state),{boundaryId,expectedSeq});
     operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
   }
-  async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.replaceAuthoritativeState(prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,checkpointState(currentState),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata};if(mainProjectionVersion===2)metadata.mainProjectionVersion=2;const result=await active.replaceAuthoritativeState(checkpointState(currentState,{projectionVersion:metadata.mainProjectionVersion}),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate,mutationType='import',surface='backup.local-import'}={}){
     const active=await settledJournal();
-    const result=await active.replaceLocalWithPending(prepareCheckpoint(business(currentState)),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections});
+    const result=await active.replaceLocalWithPending(checkpointState(currentState),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections});
     diagnostics.operations++;operationsSinceCheckpoint++;return result;
   }
-  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.resetCloudHead(revision,cloudState,prepareCheckpoint(business(currentState)),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata};if(mainProjectionVersion===2)metadata.mainProjectionVersion=2;const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState,{projectionVersion:metadata.mainProjectionVersion}),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function migrateMainProjection(sharedState){
+    if(!readyForCurrentOwner())return false;
+    if(!Array.isArray(sharedState?.checks))throw new Error('storage_main_projection_shared_required');
+    if(projectionMigration||boundaryGate())throw new Error('storage_boundary_in_progress');
+    projectionMigration=true;
+    try{
+      const active=await settledJournal(),recovered=await active.recover();
+      if(!recovered||recovered.appMetadata?.storageRole!=='primary')throw new Error('storage_main_projection_head_missing');
+      if(recovered.appMetadata?.mainProjectionVersion===2){if(Object.hasOwn(recovered.state,'checks'))throw new Error('storage_main_projection_invalid');mainProjectionVersion=2;return true}
+      if(recovered.seq!==recovered.stored.metadata?.seq)return false;
+      const cloud=await active.cloudState();
+      if(cloud.flight||cloud.control||cloud.pending||cloud.base&&cloud.base.ackSeq!==cloud.seq)return false;
+      const projected=structuredClone(recovered.state),oldChecks=projected.checks;
+      delete projected.checks;validate(projected);
+      const metadata={...recovered.appMetadata,mainProjectionVersion:2,mainChecksCount:Array.isArray(oldChecks)?oldChecks.length:0,sharedChecksCount:sharedState.checks.length,mainChecksDiverged:!equalSyncJson(oldChecks||[],sharedState.checks)};
+      if(cloud.base)await active.resetCloudHead(cloud.base.revision,cloud.base.state,projected,{appMetadata:metadata,expectedCleanHead:{epoch:recovered.epoch,seq:recovered.seq,revision:cloud.base.revision,checkpointChecksum:recovered.stored.checkpoints.checksum}});
+      else await active.replaceAuthoritativeState(projected,{appMetadata:metadata,expectedLocalHead:{epoch:recovered.epoch,seq:recovered.seq,checkpointChecksum:recovered.stored.checkpoints.checksum}});
+      const verified=await active.recover();
+      if(verified?.appMetadata?.mainProjectionVersion!==2||Object.hasOwn(verified.state,'checks'))throw new Error('storage_main_projection_verification_failed');
+      mainProjectionVersion=2;operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return true;
+    }finally{projectionMigration=false}
+  }
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,migrateMainProjection,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }
