@@ -1,4 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
-node server.mjs
+set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
+node server.mjs >> "%APPROOT%\bridge-console.log" 2>&1

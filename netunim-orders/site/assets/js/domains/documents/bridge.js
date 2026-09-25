@@ -23,7 +23,7 @@ export function createDomainsDocumentBridge(){
   }
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
-  const search=(query,{limit=40,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
+  const search=(query,{mode='content',limit=40,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='name'?'name':'content',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:5000});
   return {getToken,setToken,health,status,search,openDocument};
 }

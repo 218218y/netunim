@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=1;
+export const BRIDGE_VERSION=2;
 export const MAX_QUERY_CHARS=160;
 export const MAX_QUERY_TERMS=12;
 export const MAX_RESULTS=80;
@@ -58,20 +58,37 @@ export function normalizeRoots(input){
   return rows;
 }
 
-function everythingLiteral(value){
-  return String(value??'').replaceAll('"','&quot:');
-}
+function everythingLiteral(value){return String(value??'').replaceAll('"','&quot:')}
+function quotedLiteral(value){return `"${everythingLiteral(value)}"`}
 
 export function normalizeSearchText(value){
   return String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,MAX_QUERY_CHARS);
 }
 
-export function buildContentQuery(value){
+export function normalizeDocumentSearchMode(value){return value==='name'?'name':'content'}
+
+function searchTerms(value){
   const normalized=normalizeSearchText(value);
-  if(normalized.length<2)return '';
-  const terms=normalized.split(' ').filter(Boolean).slice(0,MAX_QUERY_TERMS);
+  if(normalized.length<2)return [];
+  return normalized.split(' ').filter(Boolean).slice(0,MAX_QUERY_TERMS);
+}
+
+export function buildContentQuery(value){
+  const terms=searchTerms(value);
   if(!terms.length)return '';
-  return `ext:pdf ${terms.map(term=>`content:"${everythingLiteral(term)}"`).join(' ')}`;
+  // is-indexed-property keeps this search on Everything's existing content index.
+  // no-background-search prevents ES from returning before a content search completes.
+  return `ext:pdf is-indexed-property:content no-background-search: ${terms.map(term=>`content:${quotedLiteral(term)}`).join(' ')}`;
+}
+
+export function buildNameQuery(value){
+  const terms=searchTerms(value);
+  if(!terms.length)return '';
+  return `ext:pdf ${terms.map(quotedLiteral).join(' ')}`;
+}
+
+export function buildDocumentQuery(value,mode='content'){
+  return normalizeDocumentSearchMode(mode)==='name'?buildNameQuery(value):buildContentQuery(value);
 }
 
 function normalizedKey(value){return String(value??'').toLowerCase().replace(/[\s_-]+/g,'')}
@@ -89,14 +106,38 @@ function jsonRows(parsed){
   return Array.isArray(firstArray)?firstArray:[];
 }
 
-export function buildEsSearchArgs({root,query,limit=DEFAULT_RESULT_LIMIT,timeoutMs=6000,instance=''}){
-  const rootPath=normalizeWindowsPath(root?.path||root);
-  const search=buildContentQuery(query);
-  if(!rootPath)throw new TypeError('Document root is required');
-  if(!search)throw new TypeError('Search query must contain at least two characters');
-  const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
+function commonEsPrefix({timeoutMs=6000,instance=''}){
   const timeout=Math.max(1500,Math.min(15000,Number(timeoutMs)||6000));
-  return ['-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout),'-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count),'-path',rootPath,'/a-d',search];
+  return ['-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
+}
+
+export function buildEsRawSearchArgs({root,search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=6000,instance=''}){
+  const rootPath=normalizeWindowsPath(root?.path||root);
+  if(!rootPath)throw new TypeError('Document root is required');
+  if(!String(search??'').trim())throw new TypeError('Search expression is required');
+  const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
+  return [...commonEsPrefix({timeoutMs,instance}),'-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count),'-path',rootPath,'/a-d',String(search)];
+}
+
+export function buildEsSearchArgs({root,query,mode='content',limit=DEFAULT_RESULT_LIMIT,timeoutMs=6000,instance=''}){
+  const search=buildDocumentQuery(query,mode);
+  if(!search)throw new TypeError('Search query must contain at least two characters');
+  return buildEsRawSearchArgs({root,search,limit,timeoutMs,instance});
+}
+
+export function buildEsCountArgs({root,search,timeoutMs=6000,instance=''}){
+  const rootPath=normalizeWindowsPath(root?.path||root);
+  if(!rootPath)throw new TypeError('Document root is required');
+  if(!text(search))throw new TypeError('Search expression is required');
+  return [...commonEsPrefix({timeoutMs,instance}),'-no-digit-grouping','-path',rootPath,'/a-d','-get-result-count',String(search)];
+}
+
+export function parseEsCount(stdout){
+  const raw=String(stdout??'').trim();
+  const match=raw.match(/-?\d+/);
+  const value=match?Number(match[0]):NaN;
+  if(!Number.isSafeInteger(value)||value<0){const error=new Error(`ES returned an invalid result count: ${raw||'(empty)'}`);error.code='ES_INVALID_COUNT';throw error}
+  return value;
 }
 
 export function parseEsJson(stdout,{root}={}){
@@ -114,7 +155,7 @@ export function parseEsJson(stdout,{root}={}){
     if(rootPath&&!pathInsideRoot(fullPath,rootPath))return null;
     const relative=rootPath?path.win32.relative(rootPath,fullPath):name;
     const relativeDir=path.win32.dirname(relative)==='.'?'':path.win32.dirname(relative);
-    const modified=text(field(row,['date modified','date-modified','datemodified','dm']));
+    const modified=text(field(row,['date modified','date-modified','datemodified','date_modified','dm']));
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
     return {name,fullPath,relativePath:relativeDir,modified,size:Number.isFinite(size)?size:null,rootId:root?.id||'',rootLabel:root?.label||''};

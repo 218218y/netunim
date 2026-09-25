@@ -22,8 +22,11 @@ test('document bridge installer is per-computer, pinned, bounded and supports ve
   const esInstaller=read('netunim-orders/document-bridge/install_es.ps1');
   const server=read('netunim-orders/document-bridge/server.mjs');
   assert.match(installer,/NetunimDocumentBridge/);
-  assert.match(installer,/--configure/);
+  assert.match(installer,/configure_document_bridge\.ps1/);
   assert.match(installer,/--doctor/);
+  assert.match(installer,/--check-running/);
+  assert.match(installer,/--write-install-summary/);
+  assert.match(installer,/notepad\.exe "%SUMMARY%"/);
   assert.match(installer,/install-es\.log/);
   assert.match(esInstaller,/1\.1\.0\.38/);
   assert.match(esInstaller,/5e0c70cbf4f694080c34aa7c6c745e606c16fe76a4b5423b93ebf9dc34274c99/);
@@ -38,14 +41,20 @@ test('document bridge installer is per-computer, pinned, bounded and supports ve
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
   assert.match(server,/CONFIG_PATH=path\.join\(APP_ROOT,'config\.json'\)/);
   assert.match(server,/TOKEN_PATH=path\.join\(APP_ROOT,'bridge-token\.txt'\)/);
+  assert.doesNotMatch(server,/\bfetch\s*\(/);
+  assert.doesNotMatch(server,/process\.exit\(0\)/);
+  assert.match(server,/is-indexed-property:content/);
+  assert.match(server,/INSTALLATION-LOG\.txt/);
 });
 
-test('document search uses content-only ES queries and browser open calls cannot submit arbitrary paths',()=>{
+test('document search uses bounded content/name ES queries and browser open calls cannot submit arbitrary paths',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   assert.match(lib,/ext:pdf/);
   assert.match(lib,/content:/);
-  assert.match(lib,/'-path',rootPath,'\/a-d',search/);
+  assert.match(lib,/is-indexed-property:content/);
+  assert.match(lib,/buildNameQuery/);
+  assert.match(lib,/'-path',rootPath,'\/a-d',String\(search\)/);
   assert.match(server,/body\.id/);
   assert.doesNotMatch(server,/body\.path/);
   assert.match(server,/pathInsideRoot\(row\.fullPath,root\.path\)/);

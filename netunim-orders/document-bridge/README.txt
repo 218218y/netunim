@@ -1,83 +1,86 @@
-NETUNIM Document Bridge - local Everything content search
-========================================================
+NETUNIM Document Bridge v2 - חיפוש PDF מקומי עם Everything
+===========================================================
 
-Purpose
--------
-The website calls only http://127.0.0.1:8766. The bridge queries the Everything
-index on THIS Windows computer through the official ES command-line interface.
-PDF files and OCR text are never uploaded to the website/Supabase.
+מה זה עושה
+----------
+האתר מדבר רק עם http://127.0.0.1:8766 במחשב שבו פתוח האתר.
+ה-Bridge שואל את אינדקס Everything המקומי דרך ES הרשמי של voidtools.
+קבצי PDF וטקסט OCR אינם מועלים לאתר או ל-Supabase.
 
-Per-computer model
+כל מחשב עצמאי
+-------------
+מתקינים את ה-Bridge בכל מחשב בנפרד. לכל מחשב יש:
+- מפתח פרטי משלו;
+- רשימת תיקיות משלו;
+- אינדקס Everything משלו.
+אפשר שבמחשב אחד המסמכים יהיו ב-Y:\ ובמחשב אחר בתיקיית Drive אחרת.
+
+לפני התקנה
+----------
+1. Everything 1.5 צריך להיות מותקן ופועל.
+2. בתוך Everything צריך לוודא שה-PDFים בתיקייה מופיעים בחיפוש רגיל.
+3. עבור חיפוש בתוכן צריך להפעיל Content Indexing ל-PDFים ולתיקיות הרצויות.
+4. אם זו תיקיית רשת/כונן ממופה, היא צריכה להיות מאונדקסת ב-Everything של אותו מחשב.
+
+התקנה
+-----
+1. הפעל install_document_bridge.bat.
+2. ייפתח חלון Windows רגיל לבחירת תיקיות. אין צורך להקליד נתיב עברי במסך CMD.
+3. בחר תיקייה אחת או יותר ולחץ "שמור והמשך".
+4. המתקין בודק בפועל לכל תיקייה:
+   - האם התיקייה נגישה;
+   - כמה PDFים Everything רואה;
+   - לכמה PDFים יש Content מאונדקס;
+   - האם פלט ES ניתן לפענוח תקין.
+5. רק אחרי שה-Bridge החדש באמת עולה ועונה, ההתקנה מסומנת כהצלחה.
+6. בסיום נפתח אוטומטית:
+   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
+   בשורות הראשונות שלו נמצא המפתח שצריך להדביק באתר.
+
+באתר
+-----
+Ctrl+K -> מסמכים במחשב.
+בפעם הראשונה הדבק את המפתח מתוך INSTALLATION-LOG.txt.
+יש שתי אפשרויות:
+- תוכן PDF - ברירת המחדל; מחפש רק בתוכן שכבר מאונדקס ב-Everything.
+- שם קובץ - חיפוש מהיר בשם PDF.
+
+פירוש בדיקת ההתקנה
 ------------------
-Install this bridge separately on every PC that uses document search. Each PC has:
-- its own bridge token;
-- its own list of allowed document roots;
-- its own Everything index and update timing.
-A shared network folder may be configured on several PCs; results still come from
-each PC's local Everything index.
-If the network folder and the local Drive folder are two mirrors of the same corpus,
-prefer the local Drive root on each PC for lower latency and fewer duplicate results.
-Add the network root only for documents that are not reliably mirrored locally.
+PDFs visible in Everything = 0
+  Everything לא רואה PDFים בתוך התיקייה שנבחרה. צריך לבדוק את ה-root/Folder Indexing.
 
-Before install
---------------
-1. Install/run Everything 1.5 on Windows.
-2. In Everything, configure Content Indexing for PDF documents in the desired roots.
-3. For a network/mapped folder, add it to Everything Folder Indexing. Enable
-   "Rescan on full buffer" and a reasonable scheduled rescan because network change
-   notifications can overflow/be missed. Keep Everything running in the background.
-4. Confirm a manual Everything content: search finds text from the OCR PDFs.
+PDFs visible in Everything > 0
+PDFs with indexed content = 0
+  הקבצים עצמם קיימים באינדקס אבל Content Indexing אינו מכיל את תוכנם.
+  חיפוש בשם יעבוד; חיפוש תוכן לא יעבוד עד שאינדוקס התוכן יוגדר/יושלם.
 
-Install
--------
-Run install_document_bridge.bat on each PC. On first install enter one or more
-roots separated by semicolons, for example:
-  G:\My Drive\Documents; Z:\Shared PDFs
-or a UNC path:
-  \\server\share\PDF
+ES JSON result parsing = FAILED
+  זו תקלה טכנית בין ES ל-Bridge; ההתקנה נעצרת ולא מדווחת הצלחה שגויה.
 
-The installer installs the pinned official voidtools ES 1.1.0.38. It first looks
-for the exact architecture ZIP next to the installer, in the current user's
-Downloads folder, and under LocalAppData. If it is not present, the installer
-tries the official GitHub release, voidtools.com, and ftp.voidtools.com in that
-order. Every network attempt has a hard timeout, so a blocked/filtering host can
-no longer freeze the install screen indefinitely.
-
-The release archive is verified against the SHA-256 pinned from the official GitHub release metadata before
-extraction, and the es.exe version is verified again after installation. An
-Authenticode signature is also checked when Windows reports a valid signature,
-but certificate-chain availability is not required for an offline install.
-
-If automatic download is blocked, manually download the matching file from the
-official ES 1.1.0.38 release and leave it next to install_document_bridge.bat
-(or in Downloads), then rerun the installer:
-  x64:   ES-1.1.0.38.x64.zip
-  ARM64: ES-1.1.0.38.ARM64.zip
-The installer still verifies the exact SHA-256 before it trusts the local file.
-
-The bridge is installed under LocalAppData and an autostart launcher is added.
-The private bridge key is copied to the clipboard. Paste that key into the
-website once on that PC/browser profile.
-
-Reconfigure
------------
-Run:
+שינוי תיקיות אחר כך
+-------------------
+הפעל:
   %LOCALAPPDATA%\NetunimDocumentBridge\configure_document_bridge.bat
+ייפתח שוב חלון בחירת התיקיות.
 
-Security model
---------------
-- Bridge binds to 127.0.0.1 only.
-- Search endpoint accepts plain user text, never raw Everything syntax.
-- Bridge enforces ext:pdf + content: and configured roots itself.
-- Browser never sends a file path to the open endpoint; it sends an expiring ID
-  created by a recent search.
-- CORS is restricted to configured site origins and localhost development origins.
+לוגים
+-----
+מידע התקנה + המפתח לאתר:
+  %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
 
-Troubleshooting
----------------
-Log: %LOCALAPPDATA%\NetunimDocumentBridge\bridge.log
-Installer download log: %LOCALAPPDATA%\NetunimDocumentBridge\install-es.log
-Config: %LOCALAPPDATA%\NetunimDocumentBridge\config.json
-Token: %LOCALAPPDATA%\NetunimDocumentBridge\bridge-token.txt
-If Everything uses an older named 1.5a alpha instance the bridge probes it after
-the current unnamed Everything 1.5 instance automatically.
+לוג Bridge:
+  %LOCALAPPDATA%\NetunimDocumentBridge\bridge.log
+
+פלט הקונסולה של Bridge:
+  %LOCALAPPDATA%\NetunimDocumentBridge\bridge-console.log
+
+לוג התקנת ES:
+  %LOCALAPPDATA%\NetunimDocumentBridge\install-es.log
+
+אבטחה
+-----
+- ה-Bridge מאזין ל-127.0.0.1 בלבד.
+- האתר שולח טקסט רגיל; הוא אינו יכול לשלוח תחביר Everything חופשי.
+- ה-Bridge כופה PDF + roots שהוגדרו מקומית.
+- פתיחת קובץ נעשית לפי מזהה זמני מתוצאת חיפוש, לא לפי path שהדפדפן שולח.

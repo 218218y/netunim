@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentQuery,buildEsSearchArgs,mergeDocumentResults,normalizeRoots,normalizeSearchText,originAllowed,parseEsJson,pathInsideRoot,
+  buildContentQuery,buildNameQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,normalizeRoots,normalizeSearchText,originAllowed,parseEsCount,parseEsJson,pathInsideRoot,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
 test('document bridge turns browser text into bounded PDF content terms instead of raw Everything syntax',()=>{
-  assert.equal(buildContentQuery('  משה   כהן  '),'ext:pdf content:"משה" content:"כהן"');
+  assert.equal(buildContentQuery('  משה   כהן  '),'ext:pdf is-indexed-property:content no-background-search: content:"משה" content:"כהן"');
   const hostile=buildContentQuery('invoice" | ext:exe');
-  assert.equal(hostile,'ext:pdf content:"invoice&quot:" content:"|" content:"ext:exe"');
+  assert.equal(hostile,'ext:pdf is-indexed-property:content no-background-search: content:"invoice&quot:" content:"|" content:"ext:exe"');
   assert.ok(hostile.startsWith('ext:pdf '));
   assert.equal(buildContentQuery('a'),'');
+  assert.equal(buildNameQuery('חשבונית 123'),'ext:pdf "חשבונית" "123"');
   assert.equal(normalizeSearchText('a\n b'),'a b');
 });
 
@@ -59,5 +60,11 @@ test('ES invocation is fixed to IPC3, PDF content, files-only and the configured
   assert.ok(args.includes('/a-d'));
   assert.equal(args[args.indexOf('-path')+1],'Z:\\Shared PDFs');
   assert.equal(args[args.indexOf('-n')+1],'80');
-  assert.equal(args[args.length-1],'ext:pdf content:"משה" content:"|" content:"ext:exe"');
+  assert.equal(args[args.length-1],'ext:pdf is-indexed-property:content no-background-search: content:"משה" content:"|" content:"ext:exe"');
+  const nameArgs=buildEsSearchArgs({root:{path:'Z:\\Shared PDFs'},query:'חשבונית 123',mode:'name'});
+  assert.equal(nameArgs[nameArgs.length-1],'ext:pdf "חשבונית" "123"');
+  const countArgs=buildEsCountArgs({root:{path:'Z:\\Shared PDFs'},search:'ext:pdf is-indexed-property:content'});
+  assert.ok(countArgs.includes('-get-result-count'));
+  assert.equal(parseEsCount('123\r\n'),123);
+  assert.throws(()=>parseEsCount('oops'),/invalid result count/i);
 });
