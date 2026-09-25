@@ -678,3 +678,13 @@ class LegacyBrowserSession(BrowserSession):
         else:
             raise ValueError('LegacyBrowserSession requires a supported site')
         prepared.write_text(source, encoding='utf-8')
+        # These historical fault-injection suites intentionally bypass local
+        # birth and exercise the retired V1 path in a disposable copy only.
+        # Production must keep the drain-only writer gate above.
+        coordinator = self.tmp / 'site/assets/js/composition/storage-v2.js'
+        source = coordinator.read_text(encoding='utf-8')
+        drain_only = 'const legacyWriteAllowed=()=>legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active();'
+        legacy_fixture = 'const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()&&(!preparing()||legacyDrain);'
+        if source.count(drain_only) != 1:
+            raise AssertionError('Legacy test fixture must locate the reviewed production V1 writer gate')
+        coordinator.write_text(source.replace(drain_only, legacy_fixture), encoding='utf-8')
