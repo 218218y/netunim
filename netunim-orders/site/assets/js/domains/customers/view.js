@@ -10,7 +10,7 @@ import {$} from '../../state/constants.js';
 export function morningDebtLinksMarkup(debt){
   const links=morningDebtDocuments(debt).slice(-3).reverse();
   if(!links.length)return'';
-  return `<div class="customer-debt-documents" aria-label="מסמכי Morning של החוב">${links.map(link=>{const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link);return `<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button>`}).join('')}</div>`;
+  return `<div class="customer-debt-documents" aria-label="מסמכי Morning של החוב">${links.map(link=>{const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning');return `<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button>`}).join('')}</div>`;
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.

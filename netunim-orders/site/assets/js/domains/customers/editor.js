@@ -130,7 +130,7 @@ function progressHistoryMarkup(debt,rows){
     const operation=/^MORNING:([^:]+):(payment|invoice)$/.exec(String(row.id||''))?.[1],link=links.get(operation);
     if(!link||shown.has(operation))return progressEntryMarkup(row);
     shown.add(operation);
-    const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link);
+    const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link,unresolved?'טוען פרטי מסמך…':'מסמך Morning');
     return `<div class="debt-progress-linked-row">${progressEntryMarkup(row)}<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button></div>`;
   }).join('');
 }

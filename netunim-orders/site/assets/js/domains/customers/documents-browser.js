@@ -16,7 +16,7 @@ export function defaultDocumentSearch(now=new Date()){
 function options(values){return '<option value="">הכל</option>'+Object.entries(values).map(([value,label])=>`<option value="${value}">${esc(label)}</option>`).join('')}
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
-export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,dateEditorMarkup}){
+export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,dateEditorMarkup,onDebtDocumentMetadataResolved=()=>false}){
   const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
   async function backend(action,payload={}){
     const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,body:JSON.stringify({action,...payload})});
@@ -27,10 +27,12 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
     if(operationMetadataCache.has(operation))return operationMetadataCache.get(operation);
     const pending=backend('status',{operation_id:operation}).then(async data=>{
       const row=data?.operation;if(row?.state!=='created'||!row.verified_at||!row.document_id)return null;
-      const metadata={documentId:String(row.document_id),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0};
+      const metadata={documentId:String(row.document_id),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0,verifiedAt:String(row.verified_at||'')};
       if(!metadata.documentNumber||!metadata.documentType){
-        try{const detail=await backend('get_document',{document_id:metadata.documentId}),document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}catch{}
+        try{const detail=await backend('get_document',{document_id:metadata.documentId}),document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}
+        catch{operationMetadataCache.delete(operation);return null}
       }
+      if(!metadata.documentNumber||!metadata.documentType){operationMetadataCache.delete(operation);return null}
       return metadata;
     }).catch(()=>{operationMetadataCache.delete(operation);return null});
     operationMetadataCache.set(operation,pending);return pending;
@@ -38,10 +40,11 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
   async function hydrateDebtDocumentLinks(root=globalThis.document){
     const buttons=Array.from(root?.querySelectorAll?.('[data-morning-debt-operation]')||[]);
     await Promise.all(buttons.map(async button=>{
-      const metadata=await verifiedOperationMetadata(button?.dataset?.morningDebtOperation);if(!metadata)return;
+      const operationId=String(button?.dataset?.morningDebtOperation||'').trim(),metadata=await verifiedOperationMetadata(operationId);if(!metadata)return;
       if(button?.isConnected===false&&globalThis.document?.contains?.(button)===false)return;
       button.dataset.clickArg0=metadata.documentId;button.title=`צפה במסמך Morning ${metadata.documentNumber}`;
       const label=button.querySelector?.('[data-morning-debt-label]');if(label)label.textContent=morningDocumentLabel(metadata);
+      try{onDebtDocumentMetadataResolved({operationId,...metadata})}catch(error){console.error('morning debt metadata persistence',error)}
       delete button.dataset.morningDebtOperation;
     }));
     return buttons.length;

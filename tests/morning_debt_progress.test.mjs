@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {customerDebtProgressData} from '../netunim-orders/site/assets/js/shared/customer-debt-progress.js';
 import {morningDebtImpact,applyVerifiedMorningDocumentToDebt,morningDebtProgressEntryId} from '../netunim-orders/site/assets/js/domains/customers/morning-debt.js';
+import {upsertVerifiedMorningDebtDocument} from '../netunim-orders/site/assets/js/domains/customers/morning-debt-documents.js';
 import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/domains/customers/editor.js';
 import {morningDebtLinksMarkup} from '../netunim-orders/site/assets/js/domains/customers/view.js';
 import {createSyncMerge} from '../netunim-orders/site/assets/js/sync/merge.js';
@@ -132,8 +133,16 @@ test('concurrent verified document links merge independently on the same debt',(
 test('historical Morning debt movements expose an operation-backed document link',()=>{
  const row=debt({debtProgress:[{id:`MORNING:${op(17)}:payment`,kind:'payment',action:'add',amount:100,source:'morning',createdAt:'2026-09-09T10:00:00.000Z'}]});
  const markup=morningDebtLinksMarkup(row);
- assert.match(markup,/מסמך Morning/);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);assert.match(markup,/data-morning-debt-operation="00000000-0000-4000-8000-000000000017"/);
+ assert.match(markup,/טוען פרטי מסמך…/);assert.doesNotMatch(markup,/>מסמך Morning</);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);assert.match(markup,/data-morning-debt-operation="00000000-0000-4000-8000-000000000017"/);
  assert.equal(morningDebtLinksMarkup(debt()),'');
+});
+
+test('historical Morning document metadata can be durably backfilled into the debt',()=>{
+ const operation=op(19),row=debt({debtProgress:[{id:`MORNING:${operation}:payment`,kind:'payment',action:'add',amount:100,source:'morning',createdAt:'2026-09-09T10:00:00.000Z'}]});
+ const changed=upsertVerifiedMorningDebtDocument(row,{operationId:operation,documentId:'doc-19',documentNumber:'3889',documentType:320,verifiedAt:'2026-09-09T10:00:01.000Z'});
+ assert.equal(changed,true);assert.equal(row.morningDocuments.length,1);assert.deepEqual(row.morningDocuments[0],{operationId:operation,documentId:'doc-19',documentNumber:'3889',documentType:320,verifiedAt:'2026-09-09T10:00:01.000Z'});
+ const markup=morningDebtLinksMarkup(row);assert.match(markup,/חשבונית מס \/ קבלה 3889/);assert.doesNotMatch(markup,/data-morning-debt-operation/);
+ assert.equal(upsertVerifiedMorningDebtDocument(row,{operationId:operation,documentId:'doc-19',documentNumber:'3889',documentType:320,verifiedAt:'2026-09-09T10:00:01.000Z'}),false,'replaying identical authoritative metadata does not create another write');
 });
 
 test('debt document metadata rejects missing IDs and duplicate operation links',()=>{
