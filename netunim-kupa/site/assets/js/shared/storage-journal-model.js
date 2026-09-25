@@ -78,6 +78,7 @@ export function replayStorageJournal(checkpoint,records,schema){
   // projection migration compacts them. New appends always use the strict
   // schema; a migrated checkpoint must never replay an old check operation.
   const replaySchema=base.appMetadata?.mainProjectionVersion===2||!schema.legacyCollections?schema:{...schema,collections:schema.legacyCollections};
+  if(base.appMetadata?.mainProjectionVersion===2&&Object.hasOwn(base.state,'checks'))throw new Error('storage_main_projection_invalid');
   const state=structuredClone(base.state),bySeq=new Map(),ids=new Set();let seq=base.seq,appMetadata=structuredClone(base.appMetadata||{});
   for(const sealed of records){
     const operation=readStorageRecord(sealed);validateStoredOperation(operation,replaySchema);
@@ -91,5 +92,6 @@ export function replayStorageJournal(checkpoint,records,schema){
     if(operation.seq!==seq+1||ids.has(operation.operationId))throw new Error('storage_journal_gap_or_duplicate');
     applyStoredOperation(state,operation,replaySchema);seq=operation.seq;ids.add(operation.operationId);if(Object.hasOwn(operation,'appMetadata'))appMetadata={...appMetadata,...structuredClone(operation.appMetadata||{})};
   }
+  if(appMetadata.mainProjectionVersion===2&&Object.hasOwn(state,'checks'))throw new Error('storage_main_projection_invalid');
   return {state,seq,epoch:base.epoch,owner:base.owner,appMetadata};
 }

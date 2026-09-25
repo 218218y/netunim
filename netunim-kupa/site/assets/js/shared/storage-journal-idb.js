@@ -138,15 +138,17 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(nextBase.owner!==owner||nextBase.epoch!==epoch||nextBase.ackSeq!==current.metadata.seq||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<prior.revision)throw new Error('storage_cloud_base_mismatch');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  function resetState(owner,epoch,writer,checkpoint){return change(owner,(tx,current,done)=>{
+  function resetState(owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);const nextCheckpoint=readStorageRecord(checkpoint);
+    if(expectedLocalHead&&(current.metadata.seq!==expectedLocalHead.seq||current.metadata.epoch!==expectedLocalHead.epoch||current.checkpoints?.checksum!==expectedLocalHead.checkpointChecksum||current.bases||current.flights||current.controls))throw new Error('storage_main_projection_head_changed');
     if(nextCheckpoint.owner!==owner||nextCheckpoint.seq!==0||!String(nextCheckpoint.epoch||'').trim())throw new Error('storage_state_reset_invalid');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
     for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
     tx.objectStore('bases').delete(owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);done(true);
   })}
-  function resetCloudHead(owner,epoch,writer,checkpoint,base){return change(owner,(tx,current,done)=>{
+  function resetCloudHead(owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){return change(owner,(tx,current,done)=>{
     assertFence(current,epoch,writer);const nextCheckpoint=readStorageRecord(checkpoint),nextBase=readStorageRecord(base);
+    if(expectedCleanHead){const prior=current.bases&&readStorageRecord(current.bases);if(current.metadata.seq!==expectedCleanHead.seq||current.metadata.epoch!==expectedCleanHead.epoch||current.checkpoints?.checksum!==expectedCleanHead.checkpointChecksum||!prior||prior.revision!==expectedCleanHead.revision||prior.ackSeq!==expectedCleanHead.seq||current.flights||current.controls)throw new Error('storage_main_projection_head_changed')}
     if(nextCheckpoint.owner!==owner||nextBase.owner!==owner||nextCheckpoint.epoch!==nextBase.epoch||nextCheckpoint.seq!==0||nextBase.ackSeq!==0||!Number.isSafeInteger(nextBase.revision)||nextBase.revision<0)throw new Error('storage_cloud_reset_invalid');
     tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('metadata').put({epoch:nextCheckpoint.epoch,seq:0,writer},owner);
     for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);

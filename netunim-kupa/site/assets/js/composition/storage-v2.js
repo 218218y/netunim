@@ -94,7 +94,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
     const normalization=detachedNormalization(),sourceMain=createStorageV2Runtime({app:'kupa',owner:()=>sourceOwner,primary:()=>tab.primaryTab,mode:()=> 'preparing',
-      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
+      validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
     const mainRecovered=await sourceMain.recoverForOwner({intent:'load-account'}),mainCloud=mainRecovered?await sourceMain.cloudState({validateBase:value=>assertValidCloudState(value,'Kupa transfer source')}):null;
     const sourceShared=createSharedChecksStorageV2({owner:()=>sourceOwner,primary:()=>tab.primaryTab,role:'primary'}),sharedRecovered=await sourceShared.open(),sharedCloud=sharedRecovered?await sourceShared.cloudState():null;
     if(!mainRecovered||!sharedRecovered||!mainCloud||!sharedCloud)throw new Error('kupa_transfer_source_checkpoint_missing');
@@ -111,7 +111,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   function createDetachedTarget(targetOwner){
     const p=requirePorts(),normalization=detachedNormalization(),target=()=>targetOwner;
     const targetMain=createStorageV2Runtime({app:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
-      validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
+      validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation)});
     let detachedSharedState={checks:[],bankEvents:[]};
     const merge=createSyncChecks({checksSession:{sharedChecksBootstrapActive:false},model:{state:{checks:[]}}}).mergeSharedChecks;
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
@@ -162,7 +162,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>row.state,
       composeMainState:(cloud,shared)=>p.stateNormalization.normalizeState({...cloud,checks:shared.checks}),
       projectMainState:state=>p.stateNormalization.prepareKupaCloudState(state),
-      validateMainState:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),
+      validateMainState:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),
       validateMainCloud:state=>assertValidCloudState(state,'Kupa fenced recovery cloud state'),storage});
     transition=createStorageV2ProductionTransition({
       app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab&&owner.writable,online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,bootstrapCoordinator:bootstrap,
@@ -258,7 +258,15 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(!recovered)return false;
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  async function recoverSharedAndMigrate(){
+    const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
+    if(recovered){
+      if(p.storageShadow.primaryReady&&p.storageShadow.cutoverActive)await p.storageShadow.migrateMainProjection({checks:p.model.state.checks});
+      scheduleLegacyRetirement();
+    }
+    return recovered;
+  }
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),

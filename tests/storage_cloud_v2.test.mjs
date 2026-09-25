@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageJournal} from '../shared/storage-journal.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
-import {readStorageRecord} from '../shared/storage-journal-model.js';
+import {readStorageRecord,sealStorageRecord} from '../shared/storage-journal-model.js';
 import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_STORAGE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createStorageBrowser as createKupaStorageBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
@@ -47,13 +47,109 @@ function memoryDb(){
     async setControl(_owner,epoch,writer,control){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);controls=clone(control);return true},
     async clearControl(){controls=null;return true},
     async adoptCloudHead(_owner,epoch,writer,checkpoint,base){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);assert.equal(flights,null);assert.equal(readStorageRecord(bases).ackSeq,metadata.seq);checkpoints=clone(checkpoint);bases=clone(base);controls=null;return true},
-    async resetState(_owner,epoch,writer,checkpoint){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);const cp=readStorageRecord(checkpoint);assert.equal(cp.seq,0);checkpoints=clone(checkpoint);metadata={epoch:cp.epoch,seq:0,writer};journal=[];bases=null;flights=null;controls=null;return true},
-    async resetCloudHead(_owner,epoch,writer,checkpoint,base){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);const cp=readStorageRecord(checkpoint),nextBase=readStorageRecord(base);assert.equal(cp.epoch,nextBase.epoch);assert.equal(cp.seq,0);assert.equal(nextBase.ackSeq,0);checkpoints=clone(checkpoint);metadata={epoch:cp.epoch,seq:0,writer};journal=[];bases=clone(base);flights=null;controls=null;return true},
+    async resetState(_owner,epoch,writer,checkpoint,{expectedLocalHead=null}={}){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);if(expectedLocalHead&&(metadata.seq!==expectedLocalHead.seq||metadata.epoch!==expectedLocalHead.epoch||checkpoints?.checksum!==expectedLocalHead.checkpointChecksum||bases||flights||controls))throw new Error('storage_main_projection_head_changed');const cp=readStorageRecord(checkpoint);assert.equal(cp.seq,0);checkpoints=clone(checkpoint);metadata={epoch:cp.epoch,seq:0,writer};journal=[];bases=null;flights=null;controls=null;return true},
+    async resetCloudHead(_owner,epoch,writer,checkpoint,base,{expectedCleanHead=null}={}){assert.equal(metadata.epoch,epoch);assert.equal(metadata.writer,writer);if(expectedCleanHead&&(metadata.seq!==expectedCleanHead.seq||metadata.epoch!==expectedCleanHead.epoch||checkpoints?.checksum!==expectedCleanHead.checkpointChecksum||!bases||readStorageRecord(bases).revision!==expectedCleanHead.revision||readStorageRecord(bases).ackSeq!==expectedCleanHead.seq||flights||controls))throw new Error('storage_main_projection_head_changed');const cp=readStorageRecord(checkpoint),nextBase=readStorageRecord(base);assert.equal(cp.epoch,nextBase.epoch);assert.equal(cp.seq,0);assert.equal(nextBase.ackSeq,0);checkpoints=clone(checkpoint);metadata={epoch:cp.epoch,seq:0,writer};journal=[];bases=clone(base);flights=null;controls=null;return true},
   }
 }
 
 const schema={collections:['notes'],fields:[]};
 const put=(id,text)=>({type:'put',collection:'notes',mode:'replace',id,record:{id,text}});
+
+test('Main projection atomically drops its old check copy while preserving the cloud revision',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:kupa';
+  const validate=value=>{assert.ok(Array.isArray(value.notes));if(Object.hasOwn(value,'checks'))assert.ok(Array.isArray(value.checks))};
+  const makeJournal=options=>createStorageJournal({...options,db,emergency});
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'N1'}],checks:[{id:'old-copy'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  await old.captureCloudCursor(17,{project:state=>({notes:state.notes})});
+  const makeRuntime=()=>createStorageV2Runtime({app:'kupa',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,prepareCheckpoint:state=>({...clone(state),checks:clone(state.checks||[])}),createJournal:makeJournal});
+  const runtime=makeRuntime();assert.ok(await runtime.recover());
+  assert.equal(await runtime.migrateMainProjection({checks:[{id:'authoritative'}]}),true);
+  const recovered=await runtime.recover(),cloud=await runtime.cloudState();
+  assert.equal(Object.hasOwn(recovered.state,'checks'),false);
+  assert.equal(recovered.appMetadata.mainProjectionVersion,2);
+  assert.equal(recovered.appMetadata.mainChecksDiverged,true);
+  assert.equal(cloud.base.revision,17);assert.equal(cloud.pending,false);assert.equal(cloud.base.ackSeq,cloud.seq);
+  await runtime.replaceCurrentState({notes:[{id:'N1'}],checks:[{id:'never-copy'}]});
+  const restarted=makeRuntime(),afterRestart=await restarted.recover();
+  assert.equal(Object.hasOwn(afterRestart.state,'checks'),false);
+  assert.equal(await restarted.migrateMainProjection({checks:[{id:'authoritative'}]}),true);
+});
+
+test('Main projection waits for an unacknowledged journal instead of discarding local edits',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(3,{project:state=>({notes:state.notes})});
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();const written=runtime.persist({notes:[{id:'new'}],checks:[]},{operations:[{type:'put',collection:'notes',id:'new',mode:'insert',index:0}]});await written.committed;
+  assert.equal(await runtime.migrateMainProjection({checks:[]}),false);
+  assert.equal((await runtime.recover()).state.notes[0].id,'new');
+  assert.equal((await runtime.cloudState()).pending,true);
+});
+
+test('Main projection does not erase an edit committed after its clean-head preflight',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(5,{project:state=>({notes:state.notes})});
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();
+  const reset=db.resetCloudHead;
+  db.resetCloudHead=async(...args)=>{
+    const head=await db.load(owner),epoch=head.metadata.epoch,writer=head.metadata.writer;
+    const edit=sealStorageRecord({version:2,owner,epoch,seq:head.metadata.seq+1,generation:1,operationId:'concurrent-edit',at:new Date().toISOString(),surface:'test',mutationType:'edit',changes:[{type:'put',collection:'notes',id:'new',mode:'insert',index:0,record:{id:'new'}}],deleteIntents:{}},{kind:'journal'});
+    await db.append(owner,epoch,writer,edit);
+    return reset(...args);
+  };
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/storage_main_projection_head_changed/);
+  const retained=await db.load(owner);
+  assert.equal(retained.metadata.seq,1);
+  assert.equal(readStorageRecord(retained.journal[0]).operationId,'concurrent-edit');
+  const restarted=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  assert.equal((await restarted.recover()).state.notes[0].id,'new');
+});
+
+test('Main projection does not erase a same-sequence checkpoint replacement',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(5,{project:state=>({notes:state.notes})});
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();
+  const reset=db.resetCloudHead;
+  db.resetCloudHead=async(...args)=>{
+    const head=await db.load(owner),checkpoint=readStorageRecord(head.checkpoints);
+    checkpoint.state.notes=[{id:'replacement'}];
+    await db.replaceCheckpoint(owner,head.metadata.epoch,head.metadata.writer,sealStorageRecord(checkpoint,{kind:'checkpoint'}));
+    return reset(...args);
+  };
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/storage_main_projection_head_changed/);
+  const restarted=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  assert.equal((await restarted.recover()).state.notes[0].id,'replacement');
+});
+
+test('Main projection recovers a committed migration after a post-commit crash',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'N1'}],checks:[{id:'stale'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(9,{project:state=>({notes:state.notes})});
+  const makeRuntime=()=>createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  const runtime=makeRuntime();await runtime.recover();
+  const reset=db.resetCloudHead;db.resetCloudHead=async(...args)=>{await reset(...args);throw new Error('process-terminated-after-commit')};
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/process-terminated-after-commit/);
+  db.resetCloudHead=reset;
+  const restarted=makeRuntime(),recovered=await restarted.recover();
+  assert.equal(recovered.appMetadata.mainProjectionVersion,2);
+  assert.equal(Object.hasOwn(recovered.state,'checks'),false);
+  assert.equal((await restarted.cloudState()).base.revision,9);
+});
+
+test('local Main projection uses an atomic local epoch without inventing a cloud cursor',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='local:kupa',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'local'}],checks:[{id:'old'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  const runtime=createStorageV2Runtime({app:'kupa',owner:()=> 'local',primary:()=>true,mode:()=> 'primary',validate,prepareCheckpoint:state=>({...clone(state),checks:clone(state.checks||[])}),createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();assert.equal(await runtime.migrateMainProjection({checks:[{id:'shared'}]}),true);
+  assert.equal(Object.hasOwn((await runtime.recover()).state,'checks'),false);
+  assert.equal((await runtime.cloudState()).base,null);
+});
 
 test('local V2 import keeps cloud revision, survives restart, and sends deleted IDs in one flight',async()=>{
   const db=memoryDb(),emergency=emergencyStore(),owner='orders:local-import',validate=value=>assert.ok(Array.isArray(value.notes));

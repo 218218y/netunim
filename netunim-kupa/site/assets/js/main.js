@@ -131,7 +131,7 @@ const storagePending=createStoragePending({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
+const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
   legacyDrainActive:storageV2Coordinator.legacyDrainActive,
@@ -172,11 +172,7 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=async()=>{
-  const recovered=await sharedChecksV2Composition.recoverPrimary();
-  if(recovered)storageV2Coordinator.scheduleLegacyRetirement();
-  return recovered;
-};
+const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverSharedAndMigrate();
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const storageTabLock=createStorageTabLock({

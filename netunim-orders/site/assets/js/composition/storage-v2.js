@@ -226,7 +226,15 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
     return {already:false};
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  async function recoverSharedAndMigrate(){
+    const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
+    if(recovered){
+      if(p.storageShadow.primaryReady&&p.storageShadow.cutoverActive)await p.storageShadow.migrateMainProjection({checks:p.model.state.checks});
+      scheduleLegacyRetirement();
+    }
+    return recovered;
+  }
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyDrainActive,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing}),
