@@ -52,7 +52,7 @@ test('account protocol preflight permits local V2 and an existing account marker
 test('unmarked account requires authenticated online server proof before legacy recovery',async()=>{
   const base={owner:'account',cutoverActive:false,online:true,authenticatedOwner:'account'};
   const readProtocolState=async()=>({orders:1,kupa:1,sharedChecks:1});
-  assert.deepEqual(await checkLegacyAccountStartup({...base,readProtocolState}),{allowed:true,reason:'legacy-account'});
+  assert.deepEqual(await checkLegacyAccountStartup({...base,readProtocolState}),{allowed:false,reason:'upgrade-required'});
   assert.deepEqual(await checkLegacyAccountStartup({...base,readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});
   assert.equal((await checkLegacyAccountStartup({...base,online:false,readProtocolState})).allowed,false);
   assert.equal((await checkLegacyAccountStartup({...base,authenticatedOwner:'other',readProtocolState})).allowed,false);

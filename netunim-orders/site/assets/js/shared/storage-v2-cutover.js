@@ -33,11 +33,11 @@ export function createStorageV2Cutover({app,owner,primary,db=createStorageJourna
     if(storage.getItem(storageCutoverKey(app,identity))!=='2')throw new Error('storage_cutover_cache_failed');
     return record;
   }
-  async function legacyQuarantined(){
+  async function legacyInactive(){
     const identity=scope();
-    const result=await db.fencedLegacyQuarantined(app,identity);
+    const result=await db.fencedLegacyInactive(app,identity);
     if(identity!==scope())throw new Error('storage_cutover_owner_changed');
     return result;
   }
-  return {verify,mark,legacyQuarantined};
+  return {verify,mark,legacyInactive};
 }

@@ -49,8 +49,8 @@ async function boot(){
   }
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
-    const oldBrowser=protocol.reason==='server-v2';
-    setConnectUI({title:oldBrowser?'ממתין לשחזור Storage V2 מהענן':'נדרש אימות אחסון בענן',text:oldBrowser?'יש לפתוח טאב ראשי עם חיבור תקין כדי לטעון את נתוני החשבון מהענן. אם נמצא מעבר V2 שלא הושלם, העריכה תישאר נעולה לבדיקה.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
+    const oldBrowser=protocol.reason==='server-v2',upgradeRequired=protocol.reason==='upgrade-required';
+    setConnectUI({title:upgradeRequired?'נדרש שדרוג החשבון ל־Storage V2':oldBrowser?'ממתין לשחזור Storage V2 מהענן':'נדרש אימות אחסון בענן',text:upgradeRequired?'החשבון בענן עדיין בפרוטוקול אחסון ישן. העריכה בגרסה זו חסומה עד לשדרוג החשבון ל־Storage V2.':oldBrowser?'יש לפתוח טאב ראשי עם חיבור תקין כדי לטעון את נתוני החשבון מהענן. אם נמצא מעבר V2 שלא הושלם, העריכה תישאר נעולה לבדיקה.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
     return;
   }
   session.storageProtocolBlocked=false;

@@ -118,8 +118,8 @@ async function boot(){
   }
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
-    const oldBrowser=protocol.reason==='server-v2';
-    const message=oldBrowser?'החשבון כבר עבר ל־Storage V2. הטעינה מחדש מהענן ממתינה לטאב הראשי ולחיבור תקין; העריכה תישאר נעולה אם נמצא מעבר V2 שלא הושלם.':'נדרש חיבור ואימות של מצב האחסון בענן לפני פתיחת נתונים ישנים במכשיר זה.';
+    const oldBrowser=protocol.reason==='server-v2',upgradeRequired=protocol.reason==='upgrade-required';
+    const message=upgradeRequired?'החשבון בענן עדיין בפרוטוקול אחסון ישן. העריכה בגרסה זו חסומה עד לשדרוג החשבון ל־Storage V2.':oldBrowser?'החשבון כבר עבר ל־Storage V2. הטעינה מחדש מהענן ממתינה לטאב הראשי ולחיבור תקין; העריכה תישאר נעולה אם נמצא מעבר V2 שלא הושלם.':'נדרש חיבור ואימות של מצב האחסון בענן לפני פתיחת נתונים ישנים במכשיר זה.';
     setCloud(message,'error');setSave('העריכה נעולה עד השלמת אימות האחסון','error');
     if(!tab.primaryTab)showSecondaryTabGuard();syncFolderAccessButton();return;
   }
