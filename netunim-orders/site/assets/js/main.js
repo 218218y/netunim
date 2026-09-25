@@ -24,6 +24,7 @@ import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
 import {createUiAlertCenter} from './ui/alert-center.js';
 import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
+import {createDomainsDocumentBridge} from './domains/documents/bridge.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
 import {createUiDateEditor} from './ui/date-editor.js';
@@ -157,6 +158,7 @@ const cloudAuth=createCloudAuth({
 });
 
 const domainsFinanceBridge=createDomainsFinanceBridge();
+const domainsDocumentBridge=createDomainsDocumentBridge();
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
 
 const calendarStorage=createCalendarStorage();
@@ -998,6 +1000,7 @@ const uiKeyboardNavigation=createUiKeyboardNavigation({
 });
 
 const uiGlobalSearch=createUiGlobalSearch({
+  documentBridge:domainsDocumentBridge,
   searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
   model,
   notesUi,
