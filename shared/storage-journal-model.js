@@ -74,9 +74,13 @@ export function applyStoredOperation(state,operation,schema){
 export function replayStorageJournal(checkpoint,records,schema){
   const base=readStorageRecord(checkpoint);
   if(base.version!==2||!identity(base.owner)||!identity(base.epoch)||!integer(base.seq)||!base.state)throw new Error('storage_invalid_checkpoint');
+  // Older Main checkpoints can retain acknowledged check operations until the
+  // projection migration compacts them. New appends always use the strict
+  // schema; a migrated checkpoint must never replay an old check operation.
+  const replaySchema=base.appMetadata?.mainProjectionVersion===2||!schema.legacyCollections?schema:{...schema,collections:schema.legacyCollections};
   const state=structuredClone(base.state),bySeq=new Map(),ids=new Set();let seq=base.seq,appMetadata=structuredClone(base.appMetadata||{});
   for(const sealed of records){
-    const operation=readStorageRecord(sealed);validateStoredOperation(operation,schema);
+    const operation=readStorageRecord(sealed);validateStoredOperation(operation,replaySchema);
     if(operation.owner!==base.owner||operation.epoch!==base.epoch)throw new Error('storage_foreign_operation');
     const prior=bySeq.get(operation.seq);
     if(prior&&JSON.stringify(prior)!==JSON.stringify(operation))throw new Error('storage_duplicate_sequence');
@@ -85,7 +89,7 @@ export function replayStorageJournal(checkpoint,records,schema){
   for(const operation of [...bySeq.values()].sort((a,b)=>a.seq-b.seq)){
     if(operation.seq<=base.seq)continue;
     if(operation.seq!==seq+1||ids.has(operation.operationId))throw new Error('storage_journal_gap_or_duplicate');
-    applyStoredOperation(state,operation,schema);seq=operation.seq;ids.add(operation.operationId);if(Object.hasOwn(operation,'appMetadata'))appMetadata={...appMetadata,...structuredClone(operation.appMetadata||{})};
+    applyStoredOperation(state,operation,replaySchema);seq=operation.seq;ids.add(operation.operationId);if(Object.hasOwn(operation,'appMetadata'))appMetadata={...appMetadata,...structuredClone(operation.appMetadata||{})};
   }
   return {state,seq,epoch:base.epoch,owner:base.owner,appMetadata};
 }
