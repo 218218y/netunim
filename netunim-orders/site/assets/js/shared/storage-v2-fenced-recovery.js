@@ -2,6 +2,7 @@ import {createStorageJournalDb} from './storage-journal-idb.js';
 import {createStorageV2Cutover} from './storage-v2-cutover.js';
 import {equalSyncJson} from './cloud-sync.js';
 import {validateSharedChecksState} from './shared-checks-storage-v2.js';
+import {captureFencedLegacyRecovery} from './storage-v2-legacy-recovery.js';
 
 const revision=row=>Number.isSafeInteger(Number(row?.revision))&&Number(row.revision)>=0?Number(row.revision):null;
 const protocol2=state=>[state?.orders,state?.kupa,state?.sharedChecks].every(value=>value===2);
@@ -12,9 +13,10 @@ const protocol2=state=>[state?.orders,state?.kupa,state?.sharedChecks].every(val
 // for a later, explicit recovery/export tool.
 export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOwner,readProtocolState,
   readMainRemote,projectMainRemote,readSharedRemote,projectSharedRemote,composeMainState,
-  projectMainState,validateMainState,validateMainCloud,refreshOwnerBinding,db=createStorageJournalDb(),storage=globalThis.localStorage}={}){
+  projectMainState,validateMainState,validateMainCloud,refreshOwnerBinding,
+  captureLegacyRecovery=()=>captureFencedLegacyRecovery(app,{storage}),db=createStorageJournalDb(),storage=globalThis.localStorage}={}){
   if(!['orders','kupa'].includes(app)||[owner,primary,authenticatedOwner,readProtocolState,readMainRemote,projectMainRemote,
-    readSharedRemote,projectSharedRemote,composeMainState,projectMainState,validateMainState,validateMainCloud].some(fn=>typeof fn!=='function'))throw new Error('storage_fenced_recovery_configuration');
+    readSharedRemote,projectSharedRemote,composeMainState,projectMainState,validateMainState,validateMainCloud,captureLegacyRecovery].some(fn=>typeof fn!=='function'))throw new Error('storage_fenced_recovery_configuration');
   const cutover=createStorageV2Cutover({app,owner,primary,db,storage});
   function guard(identity,sourceOwner){
     if(!primary())throw new Error('storage_fenced_recovery_primary_required');
@@ -34,11 +36,12 @@ export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOw
     validateSharedChecksState(sharedState);validateMainCloud(mainCloud);
     const mainState=composeMainState(mainCloud,sharedState);validateMainState(mainState);
     if(!equalSyncJson(projectMainState(mainState),mainCloud))throw new Error('storage_fenced_recovery_main_projection_changed');
+    const legacyRecovery=await captureLegacyRecovery();guard(identity,sourceOwner);
     // Recheck authorization and the server fence immediately before the local
     // transaction. A remote revision may advance later; ordinary V2 sync then
     // reads it. It can never upload the discarded legacy state.
     if(!protocol2(await readProtocolState()))throw new Error('storage_fenced_recovery_protocol_changed');guard(identity,sourceOwner);
-    await db.adoptFencedAccount(app,identity,{mainState,mainCloudState:mainCloud,mainRevision:revision(mainRow),sharedState,sharedRevision:revision(sharedRow),sourceOwner});
+    await db.adoptFencedAccount(app,identity,{mainState,mainCloudState:mainCloud,mainRevision:revision(mainRow),sharedState,sharedRevision:revision(sharedRow),sourceOwner,legacyRecovery});
     if(sourceOwner==='local')await refreshOwnerBinding();
     guard(identity,identity);if(!await cutover.verify())throw new Error('storage_fenced_recovery_marker_missing');
     return {already:false,mainRevision:revision(mainRow),sharedRevision:revision(sharedRow)};

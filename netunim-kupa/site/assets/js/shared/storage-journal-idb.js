@@ -3,7 +3,7 @@ import {readStorageRecord,sealStorageRecord} from './storage-journal-model.js';
 
 export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   const stores=['checkpoints','journal','metadata','bases','flights','controls'];
-  const open=createIndexedDbConnection(name,8,db=>{
+  const open=createIndexedDbConnection(name,9,db=>{
     for(const name of stores)if(!db.objectStoreNames.contains(name)){const store=db.createObjectStore(name);if(name==='journal')store.createIndex('owner','data.owner')}
     if(!db.objectStoreNames.contains('boundaries'))db.createObjectStore('boundaries');
     if(!db.objectStoreNames.contains('cutovers'))db.createObjectStore('cutovers');
@@ -12,6 +12,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(!db.objectStoreNames.contains('bootstrap-groups'))db.createObjectStore('bootstrap-groups');
     if(!db.objectStoreNames.contains('cutover-preparations'))db.createObjectStore('cutover-preparations');
     if(!db.objectStoreNames.contains('local-births'))db.createObjectStore('local-births');
+    if(!db.objectStoreNames.contains('legacy-recoveries'))db.createObjectStore('legacy-recoveries');
   });
   async function transact(mode,work){const db=await open();return new Promise((resolve,reject)=>{
     const tx=db.transaction(stores,mode);let result,error;
@@ -411,10 +412,19 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   // after the server has proved protocol 2 and both remote documents have been
   // validated. Install both owners and the marker in one transaction: a crash
   // can never expose Main V2 with an old Shared Checks checkpoint (or vice versa).
-  function adoptFencedAccount(app,identity,{mainState,mainCloudState,mainRevision,sharedState,sharedRevision,sourceOwner=identity}={}){
+  function readLegacyRecovery(scope){return ownerRecord('legacy-recoveries',scope)}
+  async function fencedLegacyQuarantined(app,identity){
+    const scope=`${app}:${identity}`,marker=await readCutover(scope);
+    // The marker and recovery payload are written in the same transaction.
+    // Checking the small marker avoids cloning a full V1 snapshot on startup.
+    return marker?.version===2&&marker.scope===scope&&marker.legacyDisposition==='quarantined';
+  }
+  function adoptFencedAccount(app,identity,{mainState,mainCloudState,mainRevision,sharedState,sharedRevision,sourceOwner=identity,legacyRecovery}={}){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim()||identity==='local'||
-      ![identity,'local'].includes(sourceOwner)||!Number.isSafeInteger(mainRevision)||mainRevision<0||!Number.isSafeInteger(sharedRevision)||sharedRevision<0)throw new Error('storage_fenced_recovery_input_invalid');
+      ![identity,'local'].includes(sourceOwner)||!Number.isSafeInteger(mainRevision)||mainRevision<0||!Number.isSafeInteger(sharedRevision)||sharedRevision<0||
+      !legacyRecovery||legacyRecovery.format!=='business-storage-v1')throw new Error('storage_fenced_recovery_input_invalid');
     const scope=`${app}:${identity}`,mainOwner=`${identity}:${app}`,sharedOwner=`${identity}:shared-checks`,stamp=new Date().toISOString();
+    const recoveryRecord=sealStorageRecord({version:1,app,owner:identity,disposition:'quarantined',capturedAt:stamp,source:legacyRecovery},{kind:'legacy-recovery'});
     const heads=[
       {owner:mainOwner,role:'primary',state:mainState,cloud:mainCloudState,revision:mainRevision},
       {owner:sharedOwner,role:'shared-checks-primary',state:sharedState,cloud:sharedState,revision:sharedRevision},
@@ -424,9 +434,9 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         base:sealStorageRecord({version:2,owner:side.owner,epoch,revision:side.revision,state:side.cloud,projection:'cloud',ackSeq:0},{kind:'cloud-base'})};
     });
     return open().then(db=>new Promise((resolve,reject)=>{
-      const names=['cutovers','owner-bindings','owner-handoffs','cutover-preparations','bootstrap-groups','local-births','boundaries',...stores];
+      const names=['cutovers','legacy-recoveries','owner-bindings','owner-handoffs','cutover-preparations','bootstrap-groups','local-births','boundaries',...stores];
       const tx=db.transaction(names,'readwrite');let result=null,error=null;
-      const requests={marker:tx.objectStore('cutovers').get(scope),binding:tx.objectStore('owner-bindings').get(app),handoff:tx.objectStore('owner-handoffs').get(app),
+      const requests={marker:tx.objectStore('cutovers').get(scope),recovery:tx.objectStore('legacy-recoveries').get(scope),binding:tx.objectStore('owner-bindings').get(app),handoff:tx.objectStore('owner-handoffs').get(app),
         preparation:tx.objectStore('cutover-preparations').get(scope),bootstrap:tx.objectStore('bootstrap-groups').get(scope),boundary:tx.objectStore('boundaries').get(identity)};
       if(sourceOwner==='local'){
         requests.localMarker=tx.objectStore('cutovers').get(`local-engine:${app}:local`);
@@ -445,6 +455,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       const fail=cause=>{error=cause;try{tx.abort()}catch{reject(cause)}};
       for(const request of Object.values(requests))request.onsuccess=()=>{if(--remaining)return;try{
         if(requests.marker.result)throw new Error('storage_fenced_recovery_marker_exists');
+        if(requests.recovery.result)throw new Error('storage_fenced_recovery_record_exists');
         const binding=requests.binding.result&&readStorageRecord(requests.binding.result);
         if(!binding||binding.owner!==sourceOwner||binding.pendingAdoption)throw new Error('storage_fenced_recovery_owner_changed');
         if(sourceOwner==='local'){
@@ -469,7 +480,8 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
           tx.objectStore('bases').put(side.base,side.owner);
           tx.objectStore('metadata').put({epoch:side.epoch,seq:0,writer:'fenced-recovery'},side.owner);
         }
-        result={version:2,scope,app,owner:identity,markedAt:stamp};
+        result={version:2,scope,app,owner:identity,markedAt:stamp,legacyDisposition:'quarantined'};
+        tx.objectStore('legacy-recoveries').put(recoveryRecord,scope);
         tx.objectStore('cutovers').put(sealStorageRecord(result),scope);
         if(sourceOwner==='local')tx.objectStore('owner-bindings').put(sealStorageRecord({...binding,owner:identity,generation:Number(binding.generation||0)+1,
           source:'fenced-cloud-authoritative',updatedAt:stamp}),app);
@@ -477,5 +489,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,appendBoundary,compact,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,readLegacyRecovery,fencedLegacyQuarantined};
 }
