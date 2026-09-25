@@ -10,7 +10,9 @@ export async function checkLegacyAccountStartup({owner,cutoverActive,localEngine
   let state;
   try{state=await readProtocolState()}catch{return {allowed:false,reason:'verification-required'}}
   const values=[state?.orders,state?.kupa,state?.sharedChecks];
-  if(values.every(value=>value===1))return {allowed:true,reason:'legacy-account'};
+  // A new build never resumes V1 as an ordinary account writer. Existing
+  // protocol-1 accounts must be upgraded through an explicit V2 transition.
+  if(values.every(value=>value===1))return {allowed:false,reason:'upgrade-required'};
   if(values.every(value=>value===2))return {allowed:false,reason:'server-v2'};
   return {allowed:false,reason:'protocol-inconsistent'};
 }

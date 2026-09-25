@@ -32,9 +32,9 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   }
   async function recoverPrimary(){
     if(!cutoverRequested()&&!preparationRequested())return false;
-    // A fenced stale device keeps V1 keys for explicit recovery. Only the
-    // matching durable quarantine record makes that old outbox inactive.
-    if(!(cutoverRequested()&&await cutover.legacyQuarantined())&&await verifyLegacyClean()!==true)
+    // Fenced cloud adoption marks obsolete V1 pending inactive atomically with
+    // both V2 heads. Ordinary cutover still requires a clean legacy source.
+    if(!(cutoverRequested()&&await cutover.legacyInactive())&&await verifyLegacyClean()!==true)
       throw new Error('shared_checks_legacy_pending_unverified');
     const recovered=await runtime.recover();
     if(!recovered){if(preparationRequested())return false;throw new Error('shared_checks_primary_checkpoint_missing')}
