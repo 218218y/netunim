@@ -816,3 +816,10 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 @media(max-width:760px){.morning-bank-transaction-toolbar{align-items:stretch;flex-direction:column}.morning-bank-transaction-clear{width:100%}.morning-bank-transaction-table-head{display:none}.morning-bank-transaction-row{grid-template-columns:repeat(2,minmax(0,1fr));padding:7px}.morning-bank-transaction-cell{padding:5px}.morning-bank-transaction-cell:before{content:attr(data-label);display:block;margin-bottom:2px;color:var(--muted);font-size:8px;font-weight:800}.morning-bank-transaction-description{grid-column:1/-1}}
 .customer-debt-documents{display:flex;flex-wrap:wrap;align-items:center;gap:4px;max-width:100%;margin-top:5px}.customer-debt-documents .bank-row-morning-doc{max-width:min(100%,190px);font-size:9px}.customer-col-name{min-width:0}.customer-col-name>b{overflow-wrap:anywhere}
 .debt-progress-linked-row{display:flex;align-items:center;gap:6px;min-width:0}.debt-progress-linked-row>.debt-progress-history-row{flex:1;min-width:0}.debt-progress-linked-row>.bank-row-morning-doc{flex:none;max-width:150px}@media(max-width:620px){.debt-progress-linked-row{flex-wrap:wrap}.debt-progress-linked-row>.debt-progress-history-row{flex-basis:100%}}
+
+/* Primary navigation keyboard KeyTips (Alt, then 1-8). */
+.nav button[data-nav-keytip]{position:relative}
+.nav button[data-nav-keytip]::before{content:attr(data-nav-keytip);display:none;align-items:center;justify-content:center;position:absolute;inset-block-start:50%;inset-inline-start:5px;transform:translateY(-50%);width:16px;height:16px;border:1px solid #c8a96d;border-radius:5px;background:#fff4c9;color:#624a1f;box-shadow:0 2px 6px rgba(72,52,24,.16);font-size:10px;font-weight:900;line-height:1;pointer-events:none}
+.nav.keytips-active button[data-nav-keytip]{padding-inline-start:29px}
+.nav.keytips-active button[data-nav-keytip]::before{display:inline-flex}
+.nav.keytips-active button[data-nav-keytip]:hover::before,.nav.keytips-active button[data-nav-keytip].active::before{background:#ffedaa;border-color:#b88d3d;color:#49330d}

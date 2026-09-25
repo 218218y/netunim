@@ -74,6 +74,7 @@ import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {createUiActions,wrapMutationActions} from './ui/actions.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
+import {createUiKeyboardNavigation} from './ui/keyboard-navigation.js';
 import {createContexts} from './state/contexts.js';
 import {createOrderDomainRevisions,orderViewRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -1001,6 +1002,10 @@ const uiActions=createUiActions({
   ...createCalendarActionPorts(domainsCalendarController),
 });
 
+const uiKeyboardNavigation=createUiKeyboardNavigation({
+  switchView:(...args)=>uiNavigation.switchView(...args),
+});
+
 const uiGlobalSearch=createUiGlobalSearch({
   searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
   model,
@@ -1027,6 +1032,7 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
+uiKeyboardNavigation.bind();
 export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked)return false;sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
 export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}
 void appReady.then(ready=>{if(ready)uiAlertCenter.startDateWatcher()});
