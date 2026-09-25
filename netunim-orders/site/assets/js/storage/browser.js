@@ -17,15 +17,16 @@ let sequenceLoaded=false,outboxHeadVerified=false,pendingCacheReadOk=true,v2Clou
 function invalidateCloudPendingHead(){outboxHeadVerified=false}
 globalThis.addEventListener?.('storage',event=>{if(event.key===STORAGE_KEY||event.key===null)sequenceLoaded=false;if(event.key===CLOUD_PENDING_KEY||event.key===null)invalidateCloudPendingHead()});
 function nextSnapshotSequence(){
-  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadLocal()?._meta?.localSnapshotSeq||0));sequenceLoaded=true}
+  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),storageV2?.cutoverActive?0:Number(loadLocal()?._meta?.localSnapshotSeq||0));sequenceLoaded=true}
   return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
 }
 
 function loadLocal(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null')}catch(e){console.error('local load',e);return null}}
 
 function localSnapshot(source=model.state,options){const done=beginMeasure('orders:local-snapshot');try{
+  if(session.storageProtocolBlocked)throw new Error('storage_protocol_verification_required');
   measureStorage('validate',()=>assertOrderEntityInvariants(source,{includeChecks:true,required:true}));nextSnapshotSequence();const appMetadata={snapshotSeq:session.localSnapshotSeq,revision:Number(session.cloudRevision||0)};
-  const drain=legacyDrainActive();if(!drain&&!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');const fast=drain?null:storageV2?.persist?.(source,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;const mirrorOk=!fast.transitioning||fast.emergencyDurable||storageV2?.cutoverActive||persistStorageV2CompatibilitySnapshot(source,session.cloudRevision);if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return mirrorOk&&(fast.emergencyDurable||fast.transitioning)}
+  const drain=legacyDrainActive(),fast=drain?null:storageV2?.persist?.(source,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;const mirrorOk=!fast.transitioning||fast.emergencyDurable||storageV2?.cutoverActive||persistStorageV2CompatibilitySnapshot(source,session.cloudRevision);if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return mirrorOk&&(fast.emergencyDurable||fast.transitioning)}
   if(storageV2?.cutoverActive||!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');
   const payload=measureStorage('checkpoint-clone',()=>prepareState(source));payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};let localStorageOk=false;try{const text=stringifyStorage('browser-snapshot',payload);writeVerifiedStorage(localStorage,STORAGE_KEY,text);localStorageOk=true}catch(e){console.error('local snapshot',e)}queueBrowserStateSnapshot(payload);if(!drain&&!fast?.transitioning)try{if(storageV2)storageV2.afterLegacy(payload,options,appMetadata);else observeStorage(payload,options)}catch(error){console.error('storage V2 observation',error)}return localStorageOk
 }finally{done()}}
