@@ -120,7 +120,7 @@ async function saveSharedChecksToCloud(message='הצ\'קים סונכרנו',{le
 
 async function pollSharedChecks(){
   if(!tab.primaryTab||!loadSession()||!navigator.onLine||checksSession.checksSavePromise||checksSession.checksPullPromise)return;
-  if(sharedChecksV2?.requested){await syncSharedChecksFromCloud({quiet:true});return}
+  if(sharedChecksV2?.requested){const visibleBefore=clone(model.state.checks),synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&!eq(visibleBefore,model.state.checks))renderKupaDependentView();return}
   if(checksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצ\'קים סונכרנו');return}
   try{const meta=await readSharedChecksCloudMeta();if(!meta||Number(meta.revision||0)<=checksSession.checksCloudRevision)return;const before=checksSession.checksCloudRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.checksCloudRevision>before)renderKupaDependentView()}
   catch(error){const normalized=recordSharedChecksReadError(checksSession,'checksCloudLastError',error);if(TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))console.warn('shared checks poll deferred',error?.message||error);else console.error('shared checks poll',error)}

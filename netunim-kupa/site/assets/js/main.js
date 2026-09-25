@@ -602,6 +602,7 @@ const domainsCreditController=createDomainsCreditController({
   saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['creditSync']}),
   toast:(...args)=>uiStatus.toast(...args),
   render:(...args)=>uiNavigation.render(...args),
+  renderStatus:()=>{if(ui.currentPage==='credit')uiNavigation.render()},
   bridge:domainsBankBridge,
   modal:(...args)=>uiModal.modal(...args),
   armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),

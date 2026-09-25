@@ -108,7 +108,7 @@ async function saveSharedChecksToCloud(message='הצקים סונכרנו',{lega
 
 async function pollSharedChecks(){
   if(!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine||checksSession.sharedChecksSavePromise||checksSession.sharedChecksPullPromise)return;
-  if(sharedChecksV2?.requested){await syncSharedChecksFromCloud({quiet:true});return}
+  if(sharedChecksV2?.requested){const visibleBefore=clone(model.state.checks),synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&!jsonEq(visibleBefore,model.state.checks)){render();refreshCloudHeaderTimestamp();toast('התקבל עדכון צקים ממקור אחר')}return}
   if(sharedChecksHaveLocalWork()){await saveSharedChecksToCloud('שינויי הצקים סונכרנו');return}
   try{const meta=await readSharedChecksMeta();if(!meta||Number(meta.revision||0)<=checksSession.sharedChecksRevision)return;const visibleBefore=clone(model.state.checks),before=checksSession.sharedChecksRevision,synced=await syncSharedChecksFromCloud({quiet:true});if(synced&&checksSession.sharedChecksRevision>before){if(!jsonEq(visibleBefore,model.state.checks))render();refreshCloudHeaderTimestamp();toast('התקבל עדכון צקים ממקור אחר')}}
   catch(error){const normalized=recordSharedChecksReadError(checksSession,'sharedChecksLastError',error);if(TRANSIENT_CHECK_READ_KINDS.has(normalized.kind))console.warn('shared checks poll deferred',error?.message||error);else console.error('shared checks poll',error)}

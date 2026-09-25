@@ -94,6 +94,31 @@ test('Kupa mirrors a remote shared-check update into V2 and fails closed if its 
   await assert.rejects(sync.syncSharedChecksFromCloud({quiet:true,required:true}),/storage_v2_shared_checks_mirror_failed/);
 });
 
+for(const app of ['orders','kupa'])test(`${app}: Storage V2 background check poll repaints only after a visible remote change`,async()=>{
+  const model={state:{checks:[{id:'C',amount:10}]}},checksSession=app==='orders'?{checksCloudRevision:7,checksBankEvents:[]}:{sharedChecksRevision:7,sharedChecksBankEvents:[]},session={backendReady:true,connectionMode:'supabase'},tab={primaryTab:true};
+  let renders=0,nextAmount=25;
+  const sharedChecksV2={requested:true,primaryReady:true,lastRemoteUpdatedAt:'2026-09-25T03:00:00Z',
+    async sync(){model.state.checks=[{id:'C',amount:nextAmount}];return true},
+    async cloudState(){return {base:{revision:8,state:{checks:clone(model.state.checks),bankEvents:[]}},pending:false,control:null}}};
+  const common={model,checksSession,session,tab,files:{},sharedChecksV2,toast:noop,refreshCloudTimestamp:noop,refreshCloudHeaderTimestamp:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,recomputeKupaNetFromCache:noop};
+  const sync=app==='orders'?ordersChecks({...common,loadSession:()=>true,renderKupaDependentView:()=>{renders++}}):kupaChecks({...common,render:()=>{renders++}});
+  await sync.pollSharedChecks();assert.equal(renders,1,'the active checks-dependent view is repainted after V2 applies remote data');
+  await sync.pollSharedChecks();assert.equal(renders,1,'an unchanged V2 poll does not cause a disruptive repaint');
+});
+
+test('Orders finance controller publishes automatic credit busy transitions without a manual view wrapper',async()=>{
+  const started=gate(),release=gate(),states=[];
+  const controller=createDomainsFinanceController({tab:{primaryTab:true},checksSession:{kupaCloudReadState:{}},
+    bridge:{getBridgeToken:()=> 'paired',markCreditAttempt:noop,creditAutoEnabled:()=>true,creditAutoMode:()=> 'smart',creditAttemptReady:()=>true,bankAutoEnabled:()=>false,
+      async creditStatus(){return {bridgeVersion:60,contractVersion:3,profiles:[{profileId:'p'}]}},async syncCreditCards(){return {profiles:[],errors:[]}}},
+    loadSession:()=>true,refreshKupaReadout:async()=>{started.resolve();await release.promise;return false},syncSharedChecksFromCloud:async()=>true,saveSharedChecksToCloud:async()=>true,checksHaveLocalWork:()=>false,toast:noop});
+  controller.setFinanceStatusListener(section=>states.push({section,creditBusy:controller.readSnapshot().creditBusy}));
+  const refresh=controller.refreshCredit({auto:true});await started.promise;
+  assert.deepEqual(states,[{section:'credit',creditBusy:true}],'auto credit sync publishes its busy state before the first await');
+  release.resolve();assert.equal(await refresh,false);
+  assert.deepEqual(states,[{section:'credit',creditBusy:true},{section:'credit',creditBusy:false}],'auto credit sync publishes its idle/error completion state too');
+});
+
 test('bank snapshot fails closed if a mutation arrives in the final guard continuation',async()=>{
   let local=false,observations=0,writes=0;
   const bank=createDomainsBankController({model:{state:{bank:{}}},session:{connectionMode:'supabase'},checksSession:{},
@@ -124,16 +149,16 @@ for(const app of ['orders','kupa']){
       touchBankDataRevision:()=>{bankRevisionTouches++},toast:noop,render:noop};
     controller=app==='orders'?createDomainsFinanceController(common):createDomainsBankController(common);
     const onStatus=()=>{const state=controller.readSnapshot();statusStates.push({bankBusy:state.bankBusy,bankResultReady:state.bankResultReady})};
-    if(app==='orders')controller.setBankStatusListener(onStatus);
+    if(app==='orders')controller.setFinanceStatusListener(section=>{assert.equal(section,'bank');onStatus()});
     const refresh=app==='orders'?controller.refreshBank():controller.refreshBankBalance();await fetched.promise;
     f.stage(50);if(blocked)f.pending().conflict={kind:'entity-conflict'};release.resolve();
     await leaseReleaseStarted.promise;
-    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:true}],'Orders exposes the finished outcome before waiting for remote lease cleanup');
+    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:false},{bankBusy:true,bankResultReady:true}],'Orders publishes the busy transition immediately and exposes the finished outcome before waiting for remote lease cleanup');
     else{const state=controller.bankBridgeUiState();assert.equal(state.busy,true);assert.equal(state.resultReady,true,'Kupa exposes the finished outcome before waiting for remote lease cleanup')}
     assert.equal(bankRevisionTouches,app==='kupa'&&!blocked?1:0,'Kupa invalidates bank/bankFeed revisions only after an authoritative successful bank replacement');
     leaseRelease.resolve();
     assert.equal(await refresh,!blocked);
-    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:true},{bankBusy:false,bankResultReady:false}],'Orders publishes the completed outcome first, then publishes the unlocked idle state after lease cleanup');
+    if(app==='orders')assert.deepEqual(statusStates,[{bankBusy:true,bankResultReady:false},{bankBusy:true,bankResultReady:true},{bankBusy:false,bankResultReady:false}],'Orders publishes start, completed outcome, and unlocked idle state in order');
     assert.deepEqual(published,blocked?[]:[42]);
     if(!blocked){assert.equal(f.pending(),null);assert.equal(f.head().state.checks[0].amount,50)}
   });

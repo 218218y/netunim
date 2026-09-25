@@ -52,7 +52,7 @@ function assertBankArchiveCoverage(mergeResult,archive,{role,requireExactCount=f
 
 export function createDomainsFinanceController({tab,checksSession,bridge,loadSession,refreshKupaReadout,readKupaReadOnlyCloud,rpcSaveKupaDocument,acceptKupaCloudRow,syncSharedChecksFromCloud,saveSharedChecksToCloud,checksHaveLocalWork,getSharedChecks=()=>[],toast,readFinanceSyncDocument=null,rpcSaveFinanceSync=null,claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true,saveBankSyncSnapshot:publishBankSyncSnapshot=null,mergeBankTransactions=async()=>null,syncBankTransactionsSnapshot=async()=>null,readBankTransactions=async()=>[],readBankTransactionSnapshot=async()=>null,setBankTransactionHandled:saveBankTransactionHandled=async()=>null,acknowledgeBankTransactionMissing=async()=>null,acknowledgeBankTransactionAlert=async()=>null,syncBankChequeImages=async()=>({ok:true,warnings:[]}),touchBankDisplayRevision=()=>{},readRevision} ){
   const local={bankBusy:false,bankResultReady:false,creditBusy:false,bankTimer:null,creditTimer:null,bankError:'',creditError:'',bankErrorAt:null,creditErrorAt:null,bankStatus:null,creditStatus:null,bankStatusChecked:false,creditStatusChecked:false,bankBridgeError:'',creditBridgeError:''};
-  let bankStatusListener=()=>{};
+  let financeStatusListener=()=>{};
   const manualFinanceQueue=createFinanceManualQueue({claim:claimFinanceSyncLease,release:releaseFinanceSyncLease,createToken:()=>createOperationId('finance-manual')});
   const bankDisplayArchive={business:{accountKey:'',syncKey:'',rows:null,directSnapshot:null},home:{accountKey:'',syncKey:'',rows:null,directSnapshot:null}};
   let bankDisplayArchivePromise=null,bankDisplayArchiveRequestVersion=0;
@@ -190,14 +190,14 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     if(checksHaveLocalWork()){const saved=await saveSharedChecksToCloud('הצ׳קים סונכרנו לפני צילום יתרת הבנק');if(!saved||checksHaveLocalWork())throw new Error('יש להמתין לסנכרון הצ׳קים לפני צילום יתרת עו״ש חדש')}
   }
 
-  function setBankStatusListener(listener){bankStatusListener=typeof listener==='function'?listener:()=>{}}
-  function notifyBankStatus(){try{bankStatusListener()}catch(error){console.error('orders bank status listener',error)}}
+  function setFinanceStatusListener(listener){financeStatusListener=typeof listener==='function'?listener:()=>{}}
+  function notifyFinanceStatus(section){try{financeStatusListener(section)}catch(error){console.error('orders finance status listener',error)}}
 
   async function refreshBank({interactive=false,auto=false}={}){
     if(local.bankBusy||local.creditBusy)return false;
     if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
     if(!bridge.getBridgeToken()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
-    local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;if(auto)bridge.markBankAttempt();
+    local.bankBusy=true;local.bankResultReady=false;local.bankError='';local.bankErrorAt=null;if(auto)bridge.markBankAttempt();notifyFinanceStatus('bank');
     let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
     const saveBankSyncSnapshot=typeof publishBankSyncSnapshot==='function'?(...args)=>{heartbeat?.assertCurrent();return publishBankSyncSnapshot(...args,lease)}:null;
     try{
@@ -241,10 +241,10 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       }
       local.bankStatus={...status,lastScrapeAt:fetchedAt,lastError:'',lastErrorAt:null,lastWarning:[business?.transactionWarning?`עסקי: ${business.transactionWarning}`:'',home?.transactionWarning?`ביתי: ${home.transactionWarning}`:'',homeFailure?.message?`ביתי: ${homeFailure.message}`:'',imageSyncWarning].filter(Boolean).join(' | '),availableAccounts:Array.isArray(homeFailure?.availableAccounts)?homeFailure.availableAccounts:[],accountRole:homeFailure?'home':''};
       if(!auto&&!saved.skipped)toast(homeFailure?'החשבון העסקי עודכן; החשבון הביתי נשאר בנתון האחרון':'נתוני הבנק העסקי והביתי עודכנו וזמינים בשתי המערכות');
-      local.bankResultReady=true;notifyBankStatus();
+      local.bankResultReady=true;notifyFinanceStatus('bank');
       return true;
-    }catch(error){local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.bankBridgeError=local.bankError;if(error?.availableAccounts?.length)local.bankStatus={...(local.bankStatus||{}),availableAccounts:error.availableAccounts,accountRole:error.accountRole||''};if(!auto)toast(local.bankError);local.bankResultReady=true;notifyBankStatus();return false}
-    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('orders bank sync lease release',error)}local.bankBusy=false;local.bankResultReady=false;notifyBankStatus();scheduleBankAuto()}
+    }catch(error){local.bankError=error?.message||String(error);local.bankErrorAt=new Date().toISOString();if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.bankBridgeError=local.bankError;if(error?.availableAccounts?.length)local.bankStatus={...(local.bankStatus||{}),availableAccounts:error.availableAccounts,accountRole:error.accountRole||''};if(!auto)toast(local.bankError);local.bankResultReady=true;notifyFinanceStatus('bank');return false}
+    finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('bank',leaseToken)}catch(error){console.error('orders bank sync lease release',error)}local.bankBusy=false;local.bankResultReady=false;notifyFinanceStatus('bank');scheduleBankAuto()}
   }
 
   function updateLocalBankTransaction(transactionId,mutator){
@@ -278,7 +278,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
     if(local.creditBusy||local.bankBusy)return false;
     if(!tab.primaryTab||!loadSession()||!navigator.onLine)return false;
     if(!bridge.getBridgeToken()){if(!auto)toast('יש לצמד את ניהול ההזמנות ל-Bank Bridge במחשב זה');return false}
-    local.creditBusy=true;local.creditError='';local.creditErrorAt=null;if(auto)bridge.markCreditAttempt();
+    local.creditBusy=true;local.creditError='';local.creditErrorAt=null;if(auto)bridge.markCreditAttempt();notifyFinanceStatus('credit');
     let leaseToken='',leaseHeld=false,lease=null,heartbeat=null;
     try{
       const cloudFresh=await refreshKupaReadout({force:true,renderIfChanged:true});
@@ -302,7 +302,7 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
       const deferredOnly=Array.isArray(error?.creditErrors)&&error.creditErrors.length>0&&error.creditErrors.every(item=>item?.severity==='deferred'||item?.deferred===true);local.creditError=deferredOnly?'':error?.message||String(error);local.creditErrorAt=deferredOnly?null:new Date().toISOString();if(error?.code==='BRIDGE_UNAVAILABLE'||error?.code==='BRIDGE_TIMEOUT')local.creditBridgeError=local.creditError;
       if(Array.isArray(error?.creditErrors)&&error.creditErrors.length){try{await mutateFinanceCloud(finance=>{finance.creditSync=mergeCreditSyncResult(finance.creditSync,{profiles:[],errors:error.creditErrors});return finance},lease)}catch(persistError){console.error('credit diagnostics save',persistError)}}
       if(!auto)toast(deferredOnly?'החיבור מושהה עד תום ה־cooldown; לא יישלח ניסיון חדש לפני המועד.':local.creditError);return deferredOnly;
-    }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('orders credit sync lease release',error)}local.creditBusy=false;scheduleCreditAuto()}
+    }finally{heartbeat?.stop();if(leaseHeld)try{await releaseFinanceSyncLease('credit',leaseToken)}catch(error){console.error('orders credit sync lease release',error)}local.creditBusy=false;notifyFinanceStatus('credit');scheduleCreditAuto()}
   }
 
   async function saveCreditProfile(profile){if(local.creditBusy)return false;local.creditBusy=true;local.creditError='';local.creditErrorAt=null;try{await bridge.saveCreditProfile(profile);await refreshCreditBridgeStatus({quiet:true});toast('חיבור האשראי נשמר במחשב זה');return true}catch(error){local.creditError=error?.message||String(error);local.creditErrorAt=new Date().toISOString();toast(local.creditError);return false}finally{local.creditBusy=false}}
@@ -334,5 +334,5 @@ export function createDomainsFinanceController({tab,checksSession,bridge,loadSes
   function setCreditAutoEnabled(value){bridge.setCreditAutoEnabled(value);scheduleCreditAuto()}
   function setCreditAutoMode(value){bridge.setCreditAutoMode(value);scheduleCreditAuto()}
 
-  return {snapshot,readSnapshot,setBankStatusListener,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,saveCreditCardOrder,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
+  return {snapshot,readSnapshot,setFinanceStatusListener,ensureBankDisplayArchive,refreshFinanceData,refreshBankBridgeStatus,refreshCreditBridgeStatus,copySafeCreditDiagnostics,exportCreditDataDiagnostics,saveBridgeToken,configureBankBridge,selectBankBridgeAccount,deleteBankBridgeCredentials,exportBankChequeDiagnostics,refreshBank,toggleBankTransactionHandled,markBankMorningVerified,acknowledgeMissingBankTransaction,acknowledgePersistentBankAlert,refreshCredit,saveCreditProfile,deleteCreditProfile,resetCreditSync,saveCreditCardOrder,setCreditCardMapping,acknowledgeCreditSettlementWarning,maybeAutoRefreshBank,maybeAutoRefreshCredit,startAutoSync,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,saveCashflowMinimum,saveCashflowCheckCutoff,mutateKupaCloud};
 }

@@ -15,7 +15,7 @@ function due(value,now=Date.now()){const t=value?Date.parse(value):NaN;return !N
 function supportedCreditBridge(status){const version=Number(status?.bridgeVersion||0),contract=Number(status?.contractVersion||0);return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION}
 function providerFields(provider){return provider==='isracard'||provider==='amex'?['id','card6Digits','password']:['username','password']}
 
-export function createDomainsCreditController({model,saveState,toast,render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
+export function createDomainsCreditController({model,saveState,toast,render,renderStatus=render,bridge,modal,armModalDraftGuard,closeModal,confirmDialog,refreshFinanceCloudSnapshot=async()=>({verified:true,state:model.state}),saveFinancePatch=async()=>({saved:false}),claimFinanceSyncLease=async()=>({acquired:true}),releaseFinanceSyncLease=async()=>true}){
   const local={busy:false,status:null,error:'',errorAt:null,bridgeError:'',bridgeErrorAt:null,autoTimer:null};
   function autoEnabled(){return localStorage.getItem(CREDIT_AUTO_KEY)!=='0'}
   function autoMode(){return normalizeCreditAutoMode(localStorage.getItem(CREDIT_AUTO_MODE_KEY))}
@@ -106,7 +106,7 @@ export function createDomainsCreditController({model,saveState,toast,render,brid
 
   async function refreshCreditSync({interactive=false,auto=false,syncMode='forecast'}={}){
     if(local.busy)return;
-    local.busy=true;local.error='';local.errorAt=null;if(!auto)render();
+    local.busy=true;local.error='';local.errorAt=null;if(auto)renderStatus();else render();
     let leaseToken='',leaseHeld=false,lease=null,heartbeat=null,autoCreditSync=model.state.creditSync;
     try{
       if(auto){

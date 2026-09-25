@@ -137,7 +137,7 @@ function bankDateFilterMarkup(){const range=bankDateFilterActive(),label=range?'
   async function deleteBankCredentials(){if(!await confirmDialog('מחיקת חיבור לבנק','למחוק מהמחשב את פרטי ההתחברות המוצפנים לבנק הפועלים? נתוני הבנק שכבר נשמרו בענן לא יימחקו.',{confirmText:'מחק חיבור'}))return;await controller.deleteBankBridgeCredentials();renderKupa()}
   async function exportBankChequeDiagnostics(){await controller.exportBankChequeDiagnostics()}
   const {refreshFinanceStatus,refreshFinanceOperation}=createFinanceStatusView({ui,currentSection,snapshot,headerContextMarkup,bankSyncPanelMarkup,creditSyncPanelMarkup,controller,renderKupa,renderedData:()=>lastRenderedData});
-  controller.setBankStatusListener?.(()=>refreshFinanceStatus('bank'));
+  controller.setFinanceStatusListener?.(section=>refreshFinanceStatus(section));
   async function refreshBank(interactive=false){return refreshFinanceOperation('bank',()=>controller.refreshBank({interactive}))}
   function setBankAuto(enabled){controller.setBankAutoEnabled(enabled);renderKupa()}
   async function refreshCredit(interactive=false,syncMode='quick'){return refreshFinanceOperation('credit',()=>controller.refreshCredit({interactive,syncMode}))}
