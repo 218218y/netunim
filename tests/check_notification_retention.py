@@ -37,9 +37,14 @@ def run(db):
     # The client cannot edit protected history or its hidden pointer. Only the
     # explicit request survives server validation through the normal CAS writer.
     db.sql('delete from public.shared_checks_documents;delete from netunim_internal.check_bank_claims')
+    save_number=0
     def save(rows):
+        nonlocal save_number
+        save_number+=1
         revision=db.sql("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip() or '0'
-        db.sql("begin;set local request.jwt.claim.sub="+quote(OWNER)+";set local role authenticated;select revision from public.save_shared_checks_document('main',"+revision+','+quote(json.dumps({'checks':rows}))+"::jsonb);commit")
+        current=db.sql("select state from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip()
+        state={'version':1,'checks':rows,'bankEvents':json.loads(current).get('bankEvents',[]) if current else []}
+        db.sql("begin;set local request.jwt.claim.sub="+quote(OWNER)+";set local role authenticated;select revision from public.save_shared_checks_document_v6('main',"+revision+','+quote(json.dumps(state))+"::jsonb,"+quote('check-retention-'+str(save_number)) + ",'[]','{}');commit")
     def read():return json.loads(db.sql("select state->'checks'->0 from public.shared_checks_documents where owner_id="+quote(OWNER)))
     save([{k:v for k,v in check.items() if not k.startswith('bank')}])
     recent=event('recent');recent['recordedAt']='2099-01-01T12:00:00Z'

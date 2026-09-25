@@ -26,10 +26,10 @@ def protected_rows(db, owner):
 def run(db):
     db.sql('INSERT INTO auth.users VALUES(' + quote(OTHER) + ');')
     for owner in (OWNER, OTHER):
-        auth(db, owner, "select * from public.save_kupa_document_v5('main',0," + quote(MAIN) + ",'seed','{}','{}')")
-        auth(db, owner, "select * from public.save_shared_checks_document_v5('main',0,'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','seed-checks','[]','{}')")
+        auth(db, owner, "select * from public.save_kupa_document_v6('main',0," + quote(MAIN) + ",'seed','{}','{}')")
+        auth(db, owner, "select * from public.save_shared_checks_document_v6('main',0,'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','seed-checks','[]','{}')")
     tx = db.sql("insert into public.bank_transactions(owner_id,account_key,account_role,merge_key,amount,presence_state) values(" + quote(OWNER) + ",'same-account','business','same-merge-key',10,'missing') returning id").strip()
-    stage = "public.stage_restore_group_v5('" + GROUP + "','kupa','main',1," + quote(MAIN) + ",'{}','main',null,null,'[]','restore-main','restore-checks','{}')"
+    stage = "public.stage_restore_group_v6('" + GROUP + "','kupa','main',1," + quote(MAIN) + ",'{}','main',null,null,'[]','restore-main','restore-checks','{}')"
     auth(db, OWNER, 'select * from ' + stage)
     for kind in ('bank', 'credit'):
         auth(db, OWNER, "select * from public.claim_finance_sync_lease('" + kind + "','A-" + kind + "',60)")
@@ -37,15 +37,15 @@ def run(db):
     # Guessing another user's IDs, restore UUID or lease token grants no authority.
     denied(db, OTHER, "public.acknowledge_bank_transaction_alert(" + tx + ",'returned_cheque')", 'P0002')
     denied(db, OTHER, 'public.acknowledge_bank_transaction_missing(' + tx + ')', 'P0002')
-    denied(db, OTHER, "public.apply_restore_group_v5('" + GROUP + "')", 'P0002')
+    denied(db, OTHER, "public.apply_restore_group_v6('" + GROUP + "')", 'P0002')
     assert auth(db, OTHER, "select public.release_finance_sync_lease('bank','A-bank')") == 'f'
     denied(db, OTHER, "netunim_internal.capture_safety_snapshot(" + quote(OWNER) + ",'kupa','main','attack','restore',null)")
     denied(db, OTHER, "netunim_internal.record_operation_audit(" + quote(OWNER) + ",'kupa','main','seed','{}','{}','{}','{}',null)")
     writes = [
-        "public.merge_bank_transactions('same-account','business','[]','bank','A-bank',1)",
-        "public.sync_bank_transactions_snapshot('same-account','business','[]',now(),null,null,false,'bank','A-bank',1)",
-        "public.save_bank_sync_snapshot('main','{}','snapshot',0,'bank','A-bank',1)",
-        "public.save_finance_sync_document_v5('main',0,'{}','credit-write','{}','credit','A-credit',1)",
+        "public.merge_bank_transactions_v6('same-account','business','[]','bank','A-bank',1)",
+        "public.sync_bank_transactions_snapshot_v6('same-account','business','[]',now(),null,null,false,'bank','A-bank',1)",
+        "public.save_bank_sync_snapshot_v6('main','{}','snapshot',0,'bank','A-bank',1)",
+        "public.save_finance_sync_document_v6('main',0,'{}','credit-write','{}','credit','A-credit',1)",
     ]
     for expression in writes:
         denied(db, OTHER, expression, 'PT409')
@@ -53,21 +53,21 @@ def run(db):
     for kind in ('bank', 'credit'):
         auth(db, OTHER, "select * from public.claim_finance_sync_lease('" + kind + "','B-" + kind + "',60)")
     auth(db, OTHER, 'select * from ' + stage)
-    auth(db, OTHER, "select * from public.apply_restore_group_v5('" + GROUP + "')")
+    auth(db, OTHER, "select * from public.apply_restore_group_v6('" + GROUP + "')")
     # Both optional-check branches and the completed/idempotent branch must work.
-    replay = auth(db, OTHER, "select * from public.apply_restore_group_v5('" + GROUP + "')")
+    replay = auth(db, OTHER, "select * from public.apply_restore_group_v6('" + GROUP + "')")
     assert '|completed|' in replay
     with_checks = '44444444-4444-4444-8444-444444444444'
     main_revision = auth(db, OTHER, "select revision from public.kupa_documents where document_name='main'")
-    auth(db, OTHER, "select * from public.stage_restore_group_v5('" + with_checks + "','kupa','main'," + main_revision + ',' + quote(MAIN) + ",'{}','main',1,'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','[]','restore-both-main','restore-both-checks','{}')")
-    auth(db, OTHER, "select * from public.apply_restore_group_v5('" + with_checks + "')")
-    assert '|completed|' in auth(db, OTHER, "select * from public.apply_restore_group_v5('" + with_checks + "')")
+    auth(db, OTHER, "select * from public.stage_restore_group_v6('" + with_checks + "','kupa','main'," + main_revision + ',' + quote(MAIN) + ",'{}','main',1,'{\"version\":1,\"checks\":[],\"bankEvents\":[]}','[]','restore-both-main','restore-both-checks','{}')")
+    auth(db, OTHER, "select * from public.apply_restore_group_v6('" + with_checks + "')")
+    assert '|completed|' in auth(db, OTHER, "select * from public.apply_restore_group_v6('" + with_checks + "')")
     transaction = '[{"mergeKey":"same-merge-key","amount":25,"description":"B","status":"completed"}]'
-    auth(db, OTHER, "select * from public.merge_bank_transactions('same-account','business'," + quote(transaction) + ",'bank','B-bank',1)")
-    auth(db, OTHER, "select * from public.sync_bank_transactions_snapshot('same-account','business'," + quote(transaction) + ",now(),null,null,false,'bank','B-bank',1)")
-    auth(db, OTHER, "select * from public.save_bank_sync_snapshot('main','{\"currentBalance\":25}','B-snapshot',0,'bank','B-bank',1)")
+    auth(db, OTHER, "select * from public.merge_bank_transactions_v6('same-account','business'," + quote(transaction) + ",'bank','B-bank',1)")
+    auth(db, OTHER, "select * from public.sync_bank_transactions_snapshot_v6('same-account','business'," + quote(transaction) + ",now(),null,null,false,'bank','B-bank',1)")
+    auth(db, OTHER, "select * from public.save_bank_sync_snapshot_v6('main','{\"currentBalance\":25}','B-snapshot',0,'bank','B-bank',1)")
     revision = auth(db, OTHER, "select revision from public.finance_sync_documents where document_name='main'")
-    auth(db, OTHER, "select * from public.save_finance_sync_document_v5('main'," + revision + ",'{}','B-credit','{}','credit','B-credit',1)")
+    auth(db, OTHER, "select * from public.save_finance_sync_document_v6('main'," + revision + ",'{}','B-credit','{}','credit','B-credit',1)")
     btx = auth(db, OTHER, "select id from public.bank_transactions where account_key='same-account'")
     auth(db, OTHER, "select * from public.acknowledge_bank_transaction_alert(" + btx + ",'returned_cheque')")
     db.sql("update public.bank_transactions set presence_state='missing' where owner_id=" + quote(OTHER))
@@ -79,14 +79,15 @@ def run(db):
     assert auth(db, OTHER, 'select count(*) from public.bank_transactions where id=' + tx) == '0', 'cross-user RLS read'
     # All exposed privileged entrypoints deny a nullable JWT identity, including
     # wrappers whose UID guard resides in assert_finance_sync_fence.
-    calls = [stage, "public.apply_restore_group_v5('" + GROUP + "')",
+    calls = [stage, "public.apply_restore_group_v6('" + GROUP + "')",
              "public.claim_finance_sync_lease('bank','x',60)", "public.release_finance_sync_lease('bank','x')",
              'public.acknowledge_bank_transaction_missing(' + tx + ')',
              "public.acknowledge_bank_transaction_alert(" + tx + ",'returned_cheque')",
              "netunim_internal.capture_safety_snapshot(" + quote(OWNER) + ",'kupa','main','x','restore',null)",
              "netunim_internal.record_operation_audit(" + quote(OWNER) + ",'kupa','main','seed','{}','{}','{}','{}',null)", *writes]
     for expression in calls:
-        denied(db, '', expression)
+        code = 'P0002' if expression.startswith('public.apply_restore_group_v6(') else '42501'
+        denied(db, '', expression, code)
         denied(db, '', expression, role='anon')
     capabilities = auth(db, OTHER, 'select public.get_netunim_sync_capabilities()')
     assert json.loads(capabilities)['financeFencing'] == 2

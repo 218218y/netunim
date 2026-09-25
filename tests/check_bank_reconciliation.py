@@ -5,6 +5,7 @@ from isolated_sync_postgres import OWNER, quote
 
 def run(db):
     snapshot_number=0
+    save_number=0
     def auth(sql):
         return db.sql("begin;set local request.jwt.claim.sub="+quote(OWNER)+";"+sql+";commit;").strip()
 
@@ -12,8 +13,12 @@ def run(db):
         return json.loads(db.sql("select state->'checks' from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'"))
 
     def save(rows):
+        nonlocal save_number
+        save_number+=1
         revision=db.sql("select revision from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip() or '0'
-        return auth("set local role authenticated;select revision from public.save_shared_checks_document('main',"+revision+","+quote(json.dumps({'checks':rows}))+"::jsonb)")
+        current=db.sql("select state from public.shared_checks_documents where owner_id="+quote(OWNER)+" and document_name='main'").strip()
+        state={'version':1,'checks':rows,'bankEvents':json.loads(current).get('bankEvents',[]) if current else []}
+        return auth("set local role authenticated;select revision from public.save_shared_checks_document_v6('main',"+revision+","+quote(json.dumps(state))+"::jsonb,"+quote('check-reconcile-'+str(save_number))+",'[]','{}')")
 
     def tx(key,amount,description='הפק.שיק בסלולר',role='business',day='2026-08-02',status='completed',numbers=None):
         details=json.dumps({'checkNumbers':numbers}) if numbers else '{}'
@@ -135,7 +140,7 @@ def run(db):
     lease=json.loads(auth("set local role authenticated;select to_jsonb(x) from public.claim_finance_sync_lease('bank','check-rpc',60) x"))
     source={'mergeKey':'rpc-pending','date':'2026-08-02T09:00:00Z','processedDate':'2026-08-02T09:00:00Z','amount':777,'currency':'ILS','description':'הפקדת שיק','status':'pending','bankReference':'777777','bankSerial':'0','activityTypeCode':1}
     def rpc_snapshot(complete,second):
-        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot('check-test','business',"+quote(json.dumps([source]))+"::jsonb,'2026-08-02T12:00:"+str(second).zfill(2)+"Z','2026-07-01','2026-08-02',"+str(complete).lower()+",'bank','check-rpc',"+str(lease['fence_epoch'])+") x")
+        return auth("set local role authenticated;select to_jsonb(x) from public.sync_bank_transactions_snapshot_v6('check-test','business',"+quote(json.dumps([source]))+"::jsonb,'2026-08-02T12:00:"+str(second).zfill(2)+"Z','2026-07-01','2026-08-02',"+str(complete).lower()+",'bank','check-rpc',"+str(lease['fence_epoch'])+") x")
     rpc_snapshot(False,1);assert checks()[0]['status']=='בקופה','Partial snapshots never authorize check transitions'
     rpc_snapshot(True,2);assert checks()[0]['status']=='הופקד - במעקב'
     oldid=checks()[0]['bankMatch']['transactionId']
