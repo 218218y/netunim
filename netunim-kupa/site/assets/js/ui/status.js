@@ -1,8 +1,9 @@
 import {supabaseConfig as SUPA_CONFIG} from '../../../supabase/config.js';
 import {formatCloudSyncTime, latestCloudUpdatedAt} from '../core/dates.js';
+import {SECONDARY_READ_ONLY_ACTIONS} from './secondary-read-only-actions.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiStatus({session, checksSession}){
+export function createUiStatus({session, checksSession, tab}){
 function setSaveStatus(text,cls=''){
   const el=document.getElementById('saveIndicator');if(!el)return;
   const cloud=session.connectionMode==='supabase';
@@ -30,8 +31,18 @@ function refreshCloudHeaderTimestamp(){const el=document.getElementById('cloudHe
 
 function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),1800)}
 
+
+function canRunInteractiveAction(name=''){
+  if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
+  if(name==='reset-local-site-storage')return true;
+  if(session.storageProtocolBlocked){toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
+  if(session.syncCapabilitiesError){toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
+  if(session.syncCapabilitiesChecking||session.startupCloudHydrating){toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
+  return true
+}
+
 function reportError(message){alert(message)}
 function hideConnectScreen(){document.getElementById('connectScreen').style.display='none'}
 
-return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast };
+return { reportError, hideConnectScreen, setSaveStatus, setConnectedStatus, supaProjectRef, setCloudHeaderStatus, refreshCloudHeaderTimestamp, toast, canRunInteractiveAction };
 }

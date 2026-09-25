@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import {parse} from 'acorn';
+import {createRequire} from 'node:module';
+
+const require=createRequire(import.meta.url);
+const {parse}=require('acorn');
 
 const ROOT=path.resolve(import.meta.dirname,'..');
 const SAVE_CALLS=new Set(['saveState','saveChecksState','scheduleSave','scheduleCheckSave']);

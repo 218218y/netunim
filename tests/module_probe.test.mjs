@@ -62,3 +62,24 @@ export const direct={setTimeout:()=>123,child:{weight:2,weigh(n){return this.wei
     assert.ok(readFileSync(join(site,'assets/js/factory.js'),'utf8').includes('test-probe-runtime.js'));
   }finally{rmSync(site,{recursive:true,force:true})}
 });
+
+
+test('real-site instrumentation follows index.html and excludes controllers owned by other pages',()=>{
+  const site=mkdtempSync(join(tmpdir(),'netunim-page-probe-'));
+  try{
+    mkdirSync(join(site,'assets/js'),{recursive:true});
+    writeFileSync(join(site,'package.json'),' {"type":"module"}');
+    writeFileSync(join(site,'index.html'),'<script type="module" src="./assets/app.js"></script>');
+    writeFileSync(join(site,'reset-local.html'),'<button id="retry"></button><script type="module" src="./assets/js/reset-page.js"></script>');
+    writeFileSync(join(site,'assets/app.js'),"import './js/main.js';");
+    writeFileSync(join(site,'assets/js/main.js'),"export function appOnly(){return 1}");
+    writeFileSync(join(site,'assets/js/reset-page.js'),"document.getElementById('retry').addEventListener('click',()=>{}); export function resetOnly(){return 2}");
+    const inventory=run({mode:'instrument',site});
+    assert.ok(inventory.includes('appOnly'));
+    assert.ok(!inventory.includes('resetOnly'));
+    const access=readFileSync(join(site,'test-access.js'),'utf8');
+    assert.match(access,/assets\/js\/main\.js/);
+    assert.doesNotMatch(access,/reset-page\.js/);
+    assert.doesNotMatch(readFileSync(join(site,'assets/js/reset-page.js'),'utf8'),/__testBindings/,'page-only controller is not rewritten by the main-page probe');
+  }finally{rmSync(site,{recursive:true,force:true})}
+});

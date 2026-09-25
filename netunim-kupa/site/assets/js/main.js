@@ -8,7 +8,6 @@ import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
-import {SECONDARY_READ_ONLY_ACTIONS} from './ui/secondary-read-only-actions.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
@@ -116,6 +115,7 @@ const stateNormalization=createStateNormalization({
 const uiStatus=createUiStatus({
   session,
   checksSession,
+  tab,
 });
 
 const storageIndexedDb=createStorageIndexedDb({
@@ -869,20 +869,9 @@ const lifecycle=createLifecycle({
   tryAutoOpenRemembered:(...args)=>uiConnection.tryAutoOpenRemembered(...args),
 });
 
-function canRunInteractiveAction(name=''){
-  if(!tab.primaryTab&&!SECONDARY_READ_ONLY_ACTIONS.has(name)){uiStatus.toast('לקריאה בלבד — העריכה זמינה בטאב הראשי.');return false}
-  // Recovery must stay reachable when an interrupted storage transition has
-  // intentionally blocked every ordinary mutation. It still runs only in the
-  // primary tab and performs its own authenticated cloud preflight.
-  if(name==='reset-local-site-storage')return true;
-  if(session.storageProtocolBlocked){uiStatus.toast('העריכה חסומה עד לאימות שדרוג האחסון. יש לרענן לאחר התחברות וחיבור לרשת.');return false}
-  if(session.syncCapabilitiesError){uiStatus.toast('העריכה חסומה עד להשלמת התאמת מסד הנתונים לגרסת האתר.');return false}
-  if(session.syncCapabilitiesChecking||session.startupCloudHydrating){uiStatus.toast('הנתונים המקומיים כבר מוצגים; העריכה תיפתח מיד לאחר אימות הענן.');return false}
-  return true
-}
-const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:canRunInteractiveAction})};
+const uiEvents={bindActionEvents:(root,actions)=>bindActionEvents(root,actions,{canRun:(...args)=>uiStatus.canRunInteractiveAction(...args)})};
 
-document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
+document.getElementById('checkBankAlerts').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('view-check-bank-alerts'))uiModal.modal('התאמות צ׳קים בבנק',checkBankReviewMarkup(model.state.checks),'סגור',()=>uiModal.closeModal(true))});
 
 const creditCardOrderView=createCreditCardOrderView({getSync:()=>model.state.creditSync,saveOrder:(...args)=>domainsCreditController.saveCreditCardOrder(...args),modal:(title,body,footer)=>{uiModal.modal(title,body,'',()=>{});document.querySelector('#modal .modal-foot').innerHTML=footer},closeModal:()=>uiModal.closeModal(),render:()=>domainsCreditView.renderCredit(),escapeHtml:esc});
 
@@ -998,7 +987,7 @@ window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtoco
 window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 uiSidebar.bind();
-document.getElementById('backupTop').addEventListener('click',()=>{if(canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
+document.getElementById('backupTop').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('pagehide',()=>{

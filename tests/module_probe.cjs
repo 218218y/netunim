@@ -16,13 +16,48 @@ function names(pattern) {
 }
 if (input.mode==='instrument') {
   const inventory = new Set(), modules=[];
+  const htmlAttr=(tag,name)=>tag.match(new RegExp(`\\b${name}\\s*=\\s*[\"']([^\"']+)[\"']`,'i'))?.[1]||null;
+  function indexModuleClosure(){
+    const indexPath=path.join(input.site,'index.html');
+    if(!fs.existsSync(indexPath))return null; // Preserve the generic probe fixture contract.
+    const entrypoints=[];
+    const html=fs.readFileSync(indexPath,'utf8');
+    for(const match of html.matchAll(/<script\b[^>]*>/gi)){
+      const type=htmlAttr(match[0],'type'),src=htmlAttr(match[0],'src');
+      if(type?.toLowerCase()!=='module'||!src||!src.startsWith('.'))continue;
+      const target=path.resolve(path.dirname(indexPath),src.split(/[?#]/)[0]);
+      if(target.startsWith(path.resolve(input.site)+path.sep)&&fs.existsSync(target))entrypoints.push(target);
+    }
+    if(!entrypoints.length)return null;
+    const reachable=new Set();
+    function collect(file){
+      if(reachable.has(file)||!file.endsWith('.js'))return;
+      reachable.add(file);
+      const ast=parse(fs.readFileSync(file,'utf8'));
+      function scan(node){
+        if(!node||typeof node!=='object')return;
+        if(node.type==='ImportDeclaration'||node.type==='ExportAllDeclaration'||node.type==='ExportNamedDeclaration'&&node.source||node.type==='ImportExpression'){
+          const spec=node.source?.value;
+          if(typeof spec==='string'&&spec.startsWith('.')){
+            const target=path.resolve(path.dirname(file),spec.split(/[?#]/)[0]);
+            if(target.startsWith(path.resolve(input.site)+path.sep)&&fs.existsSync(target))collect(target);
+          }
+        }
+        for(const value of Object.values(node))for(const child of Array.isArray(value)?value:[value])if(child?.type)scan(child);
+      }
+      scan(ast);
+    }
+    for(const entrypoint of entrypoints)collect(entrypoint);
+    return reachable;
+  }
+  const indexModules=indexModuleClosure();
   const contextPath=path.join(input.site,'assets/js/state/contexts.js');
   const contextFields=fs.existsSync(contextPath)?parse(fs.readFileSync(contextPath,'utf8')).body[0].declaration.body.body.find(n=>n.type==='ReturnStatement').argument.properties.flatMap(p=>p.value.properties.map(f=>[f.key.name,p.key.name])):[];
   function visit(dir) {
     for (const entry of fs.readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name,'en'))) {
       const file=path.join(dir,entry.name);
       if(entry.isDirectory())visit(file);
-      else if(file.endsWith('.js')) {
+      else if(file.endsWith('.js')&&(!indexModules||indexModules.has(file))) {
         let source=fs.readFileSync(file,'utf8');const bindings=[], factoryEdits=[];
         const functionNode=n=>n&&['FunctionDeclaration','FunctionExpression','ArrowFunctionExpression'].includes(n.type);
         const keyName=p=>p.computed?(p.key.type==='Literal'?String(p.key.value):null):(p.key.name??String(p.key.value));

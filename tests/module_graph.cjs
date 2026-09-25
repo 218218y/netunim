@@ -4,8 +4,8 @@ const assert=require('node:assert/strict');
 const acorn=require('acorn');
 function walk(n,visit){if(!n?.type)return;visit(n);for(const x of Object.values(n))for(const v of Array.isArray(x)?x:[x])if(v?.type)walk(v,visit)}
 for(const app of ['kupa','orders']){
-  const site=path.resolve(`netunim-${app}/site`), files=[];
-  function list(dir){for(const d of fs.readdirSync(dir,{withFileTypes:true})){const f=path.join(dir,d.name);if(d.isDirectory())list(f);else if(f.endsWith('.js'))files.push(f)}}
+  const site=path.resolve(`netunim-${app}/site`), files=[], htmlFiles=[];
+  function list(dir){for(const d of fs.readdirSync(dir,{withFileTypes:true})){const f=path.join(dir,d.name);if(d.isDirectory())list(f);else if(f.endsWith('.js'))files.push(f);else if(f.endsWith('.html'))htmlFiles.push(f)}}
   list(site);const graph=new Map();
   for(const file of files){
     const code=fs.readFileSync(file,'utf8'),relative=path.relative(site,file).split(path.sep).join('/');
@@ -29,7 +29,20 @@ for(const app of ['kupa','orders']){
   }
   const visited=new Set(),active=new Set();
   function visit(file){assert.ok(!active.has(file),'Circular imports: '+path.relative(site,file));if(visited.has(file))return;active.add(file);for(const dep of graph.get(file)||[])visit(dep);active.delete(file);visited.add(file)}
-  visit(path.join(site,'assets/app.js'));
+  const entrypoints=new Set([path.join(site,'assets/app.js')]);
+  const attr=(tag,name)=>tag.match(new RegExp(`\\b${name}\\s*=\\s*[\"']([^\"']+)[\"']`,'i'))?.[1]||null;
+  for(const html of htmlFiles){
+    const source=fs.readFileSync(html,'utf8');
+    for(const match of source.matchAll(/<script\b[^>]*>/gi)){
+      const type=attr(match[0],'type'),src=attr(match[0],'src');
+      if(type?.toLowerCase()!=='module'||!src)continue;
+      assert.ok(src.startsWith('.'),path.relative(site,html)+': module entrypoint must be local and relative');
+      const target=path.resolve(path.dirname(html),src.split(/[?#]/)[0]);
+      assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),path.relative(site,html)+': missing or cross-site module entrypoint '+src);
+      entrypoints.add(target);
+    }
+  }
+  for(const entrypoint of entrypoints)visit(entrypoint);
   const unreachable=files.filter(f=>f.includes(path.join('assets','js'))&&!visited.has(f));
   assert.deepEqual(unreachable,[],app+': unused module files');
   assert.ok(fs.statSync(path.join(site,'assets/app.js')).size<2048,app+': entrypoint must remain small');

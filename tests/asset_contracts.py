@@ -127,6 +127,7 @@ for label, project in APPS.items():
     settings = (site / "assets/js/ui/settings.js").read_text(encoding="utf-8")
     actions = (site / "assets/js/ui/actions.js").read_text(encoding="utf-8")
     main = (site / "assets/js/main.js").read_text(encoding="utf-8")
+    status = (site / "assets/js/ui/status.js").read_text(encoding="utf-8")
     cloud = (site / "assets/js/ui/cloud.js").read_text(encoding="utf-8")
     composition = (site / "assets/js/composition/cloud.js").read_text(encoding="utf-8")
     cloud_auth = (site / "assets/js/cloud/auth.js").read_text(encoding="utf-8")
@@ -153,7 +154,7 @@ for label, project in APPS.items():
         ok("assertSessionOwner" not in reset_auth_body and "saveSession" not in reset_auth_body and "localStorage" not in reset_auth_body,
            "orders: reset-only authentication neither asserts nor persists the stale local owner")
     else:
-        ok("if(name==='reset-local-site-storage')return true;" in main,
+        ok("if(name==='reset-local-site-storage')return true;" in status,
            "kupa: reset recovery remains reachable while an interrupted storage protocol blocks ordinary edits")
         reset_auth_branch="if(mode==='reset'){const resetSession=await supaAuthPasswordForLocalReset(email,password);closeModal();return resetLocalSiteStorage({allowAuthPrompt:false,resetSession})}"
         connect_start=cloud.index("async function connectSupabaseFromLogin(mode)")
