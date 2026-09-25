@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageJournal} from '../shared/storage-journal.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
-import {STORAGE_SCHEMAS} from '../shared/storage-shadow.js';
+import {STORAGE_SCHEMAS} from '../shared/storage-v2-schema.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 
 const clone=structuredClone;

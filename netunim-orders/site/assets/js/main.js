@@ -1,6 +1,5 @@
 import {createOrdersStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
-import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertOrderEntityInvariants} from './state/validation.js';
 import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -147,12 +146,6 @@ const storageChecks=createStorageChecks({
   idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
   idbDelete:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
-const sharedChecksV2Shadow=createSharedChecksObserver({
-  readState:()=>({checks:model.state.checks,bankEvents:checksSession.checksBankEvents||[]}),
-  ...storageV2Coordinator.observerPorts(storageShadow,'netunim-shared-checks-v2-shadow'),
-});
-
-
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
@@ -333,7 +326,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2Shadow,sharedChecksV2});
+const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
@@ -541,7 +534,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:storageShadow,storageOwner,sharedChecksV2Composition,sharedChecksV2,sharedChecksV2Shadow,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:storageShadow,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,
@@ -591,7 +584,7 @@ const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
-const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2Shadow,sharedChecksV2});
+const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2});
 
 const domainsFinanceController=createDomainsFinanceController({
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
@@ -1033,6 +1026,6 @@ bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),startupUiActions);
 uiGlobalSearch.bind();
 uiKeyboardNavigation.bind();
-export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked)return false;sharedChecksV2Shadow.boundary();domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
-export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}
+export const appReady=lifecycle.boot().then(()=>{if(session.storageProtocolBlocked)return false;domainsCalendarController.start();if(tab.primaryTab&&navigator.onLine&&cloudAuth.loadSession())setTimeout(()=>void domainsCustomers.recoverPendingMorningOperation({quiet:false}),350);return true});
+export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}
 void appReady.then(ready=>{if(ready)uiAlertCenter.startDateWatcher()});

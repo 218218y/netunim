@@ -1,6 +1,5 @@
 import {createKupaStorageV2Coordinator} from './composition/storage-v2.js';
 import {installLocalSiteResetPeerListener} from './shared/local-site-reset.js';
-import {createSharedChecksObserver} from './shared/shared-checks-v2-shadow.js';
 import {assertKupaEntityInvariants} from './state/validation.js';
 import {KUPA_FINANCE_DOMAINS} from './state/revisions.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
@@ -169,12 +168,6 @@ const syncChecksState=createSyncChecksState({
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
-const sharedChecksV2Shadow=createSharedChecksObserver({
-  readState:()=>({checks:model.state.checks,bankEvents:checksSession.sharedChecksBankEvents||[]}),
-  ...storageV2Coordinator.observerPorts(storageShadow,'netunim-shared-checks-v2-shadow'),
-});
-
-
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
@@ -232,7 +225,6 @@ const storagePersistence=createStoragePersistence({
   storageV2Primary:()=>storageShadow.primaryReady,
   recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
   storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
-  observeSharedChecks:sharedChecksV2Shadow.mutation,
   ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
@@ -319,7 +311,6 @@ const syncChecks=createSyncChecks({
   files,
   tab,
   persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
-  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   ...storageV2Cloud,
   persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
   markSharedChecksPending:(...args)=>syncChecksState.markSharedChecksPending(...args),
@@ -748,7 +739,6 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 });
 
 const uiBackup=createUiBackup({
-  observeSharedChecksBoundary:sharedChecksV2Shadow.boundary,
   ...storageV2Cloud,
   storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
   storageV2LocalPrimary:()=>storageShadow.primaryReady,
@@ -1021,5 +1011,5 @@ bindDismissibleDetails(document);
 bindNumberInputWheelGuard(document);
 uiEvents.bindActionEvents(document.getElementById('modal'),uiActions);
 uiGlobalSearch.bind();
-export const appReady=lifecycle.boot().then(result=>{if(!session.storageProtocolBlocked)sharedChecksV2Shadow.boundary();return result});
-export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2Shadow.flush();return {...sharedChecksV2Shadow.diagnostics}}
+export const appReady=lifecycle.boot();
+export async function sharedChecksStorageV2Diagnostics(){await sharedChecksV2.flush();return {...sharedChecksV2.diagnostics}}

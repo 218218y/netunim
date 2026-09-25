@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
-import {createSharedChecksObserver} from '../shared/shared-checks-v2-shadow.js';
 import {readStorageRecord} from '../shared/storage-journal-model.js';
 
 const clone=structuredClone;
@@ -129,42 +128,4 @@ test('Shared Checks V2 never promotes a shadow checkpoint or transfers account A
   const restarted=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});assert.deepEqual((await restarted.open()).state,seed);
   const separate=createSharedChecksStorageV2({owner:()=> 'B',primary:()=>true,db:memoryDb(),emergency});
   await assert.rejects(separate.open({migrationState:seed,migrationIntent:'legacy-upgrade',sourceOwner:'A'}),/transfer_intent_required/);
-});
-
-test('Shared Checks shadow replays real typed edits, checkpoints authoritative pulls and reports incomplete descriptors',async()=>{
-  const f=fixture();let visible=state([check('A')]);const shadow=createSharedChecksObserver({owner:()=> 'account-A',primary:()=>true,enabled:()=>true,createStorage:f.create,readState:()=>visible});
-  assert.equal(shadow.boundary(),true);await shadow.flush();
-  visible=state([check('A','deposited')]);shadow.mutation([put('A')],{surface:'checks.deposit'});await shadow.flush();
-  assert.equal(shadow.diagnostics.operations,1);assert.equal(shadow.diagnostics.parityChecks,1);
-  visible=state([check('A','deposited')],[{seq:7,checkId:'A'}]);shadow.boundary();await shadow.flush();
-  visible=state([],[{seq:7,checkId:'A'}]);shadow.mutation([del('A')],{deleteIds:['A']});await shadow.flush();
-  assert.equal(shadow.diagnostics.operations,2,JSON.stringify(shadow.diagnostics));
-  visible=state([check('B')],[{seq:7,checkId:'A'}]);shadow.mutation([put('A')]);await shadow.flush();
-  assert.equal(shadow.diagnostics.mismatches,1,'an incomplete mutation description is diagnosed instead of trusted');
-  visible=state([check('B','deposited')],[{seq:7,checkId:'A'}]);shadow.mutation(null);await shadow.flush();
-  assert.equal(shadow.diagnostics.missingOperations,1,'a missing typed descriptor must remain visible in diagnostics');
-  assert.ok(shadow.diagnostics.boundaries>=2);
-});
-
-test('Shared Checks shadow pauses on a live account switch instead of copying one account into another namespace',async()=>{
-  let account='A',created=0,visible=state([check('A')]);const f=fixture();
-  const observer=createSharedChecksObserver({owner:()=>account,primary:()=>true,enabled:()=>true,readState:()=>visible,createStorage:options=>{created++;return f.create(options)}});
-  observer.boundary();await observer.flush();assert.equal(created,1);
-  account='B';visible=state([check('B')]);assert.equal(observer.boundary(),false);await observer.flush();
-  assert.equal(created,1);assert.equal(observer.diagnostics.ownerTransitions,1);
-});
-
-test('Shared Checks shadow observation cannot interrupt the authoritative V1 save',async()=>{
-  const observer=createSharedChecksObserver({owner:()=> 'A',primary:()=>true,enabled:()=>true,
-    readState:()=>state([{id:'A',unsupported:()=>{}}]),createStorage:()=>assert.fail('a non-cloneable observation cannot reach storage')});
-  assert.equal(observer.mutation([put('A')]),false);
-  assert.equal(observer.diagnostics.errors,1);
-});
-
-test('Shared Checks shadow reports an edit observed before its initial baseline',async()=>{
-  const f=fixture(),observer=createSharedChecksObserver({owner:()=> 'A',primary:()=>true,enabled:()=>true,
-    readState:()=>state([check('A')]),createStorage:f.create});
-  assert.equal(observer.mutation([put('A')]),true);
-  await observer.flush();
-  assert.equal(observer.diagnostics.unverifiedBaseline,1);
 });
