@@ -221,6 +221,55 @@ test('browser adapters skip the full V1 compatibility snapshot when a transition
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
+test('a V2 transition without emergency durability is not reported as locally safe and never writes a V1 mirror',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    for(const kind of ['orders','kupa']){
+      const state=clone(kind==='orders'?ORDERS_INITIAL_STATE:KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,cloudRevision:7,dbRevision:7,storageV2CloudPending:false};
+      const storageV2={cutoverActive:true,persist:()=>({handled:true,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1})};
+      const browser=kind==='orders'
+        ?createOrdersStorageBrowser({storageV2,model:{state},files,session,prepareState:clone,prepareCloudState:clone,normalizeState:clone})
+        :createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+      const saved=kind==='orders'?browser.localSnapshot(state,{operations:[{type:'set',field:'__unused',value:true}]}):browser.persistImmediateBrowserSnapshot(state,7,{operations:[{type:'set',field:'__unused',value:true}]});
+      assert.equal(saved,false);
+      assert.equal(storage.getItem(kind==='orders'?ORDERS_STORAGE_KEY:KUPA_STORAGE_KEY),null);
+      await files.storageV2CommitPromise;
+    }
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('a cut-over account reads its V2 cursor without reopening an obsolete V1 outbox',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    storage.setItem('orders.supabase.pending.v1','stale');
+    const state={seq:4,base:{revision:8,ackSeq:4,state:{}},pending:false,flight:null,control:null};
+    const v2={cutoverActive:true,primaryReady:true,cloudState:async()=>state};
+    const orders=createOrdersStorageBrowser({storageV2:v2,model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0,storageV2CloudPending:false},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    assert.equal(await orders.refreshStorageV2CloudState(),state);
+    assert.equal(orders.storageV2CloudOutboxActive(),true);
+    assert.equal(orders.cloudPendingExists(),false,'obsolete V1 pending is not active work after cutover');
+    let legacyReads=0;
+    const kupa=createKupaStorageBrowser({storageV2:v2,verifyLegacyCloudPending:async()=>{legacyReads++;throw new Error('legacy-read')},legacyCloudHeadVerifiedClean:()=>false,legacyCloudPendingExists:()=>true,model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0,storageV2CloudPending:false},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    assert.equal(await kupa.refreshStorageV2CloudState(),state);
+    assert.equal(kupa.storageV2CloudOutboxActive(),true);
+    assert.equal(legacyReads,0);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('direct V1 browser writers are fenced when no explicit legacy drain is active',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const orders=createOrdersStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    assert.throws(()=>orders.queueBrowserStateSnapshot({}),/storage_v1_write_forbidden/);
+    await assert.rejects(orders.persistBrowserStateSnapshot({}),/storage_v1_write_forbidden/);
+    await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
+    const kupa=createKupaStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    assert.throws(()=>kupa.persistBrowserStateSync({}),/storage_v1_write_forbidden/);
+    assert.throws(()=>kupa.queueBrowserStateIdb({}),/storage_v1_write_forbidden/);
+    assert.equal(storage.length,0);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
 
 
 test('Cloud V2 cutover waits for durable V1 outbox verification and drains an IndexedDB-only Kupa pending record',async()=>{
