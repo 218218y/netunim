@@ -101,8 +101,8 @@ test('a debt may be deleted after a verified Morning application once no recover
   rejectDebtRecoveryMutation:()=>false,
  });
  const applied=editor.applyVerifiedMorningDocument({debtId:row.id,operationId:op(13),documentId:'morning-doc-13',documentNumber:'1013',type:320,amount:1000,verifiedAt:'2026-09-09T16:00:00.000Z'});assert.equal(applied.changed,true);assert.equal(applied.persisted,true);
- assert.match(morningDebtLinksMarkup(row),/morning-doc-13/);
- editor.openDebtProgressDetails(row.id);assert.match(details,/debt-progress-linked-row/);assert.match(details,/data-click-arg0="morning-doc-13"/);
+ const debtDocumentMarkup=morningDebtLinksMarkup(row);assert.match(debtDocumentMarkup,/morning-doc-13/);assert.match(debtDocumentMarkup,/חשבונית מס \/ קבלה 1013/);
+ editor.openDebtProgressDetails(row.id);assert.match(details,/debt-progress-linked-row/);assert.match(details,/data-click-arg0="morning-doc-13"/);assert.match(details,/חשבונית מס \/ קבלה 1013/);
  await editor.deleteDebt(row.id);
  assert.equal(model.state.customerDebts.length,0,'verified Morning progress does not create a permanent local reference that prevents later debt deletion');
  assert.equal(model.state.customerDebts.some(debt=>morningDebtLinksMarkup(debt).includes('morning-doc-13')),false,'deleting a debt removes its row and embedded document link');
@@ -132,7 +132,7 @@ test('concurrent verified document links merge independently on the same debt',(
 test('historical Morning debt movements expose an operation-backed document link',()=>{
  const row=debt({debtProgress:[{id:`MORNING:${op(17)}:payment`,kind:'payment',action:'add',amount:100,source:'morning',createdAt:'2026-09-09T10:00:00.000Z'}]});
  const markup=morningDebtLinksMarkup(row);
- assert.match(markup,/מסמך Morning/);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);
+ assert.match(markup,/מסמך Morning/);assert.match(markup,/data-click-arg1="00000000-0000-4000-8000-000000000017"/);assert.match(markup,/data-morning-debt-operation="00000000-0000-4000-8000-000000000017"/);
  assert.equal(morningDebtLinksMarkup(debt()),'');
 });
 

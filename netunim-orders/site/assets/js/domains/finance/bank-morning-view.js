@@ -1,5 +1,6 @@
 import {esc} from '../../core/values.js';
 import {bankMorningEligibility} from './bank-morning.js';
+import {morningDocumentLabel} from '../../core/morning-document-types.js';
 
 export function bankMorningActionCell(row,role='business'){
   if(role!=='business')return'';
@@ -11,7 +12,7 @@ export function bankMorningActionCell(row,role='business'){
 
 export function bankMorningLinkedDocumentsMarkup(row){
   const links=Array.isArray(row?.documentLinks)?row.documentLinks:[];if(!links.length)return'';
-  const shown=links.slice(0,3);return `<div class="bank-row-morning-docs" aria-label="מסמכי Morning מקושרים">${shown.map(link=>`<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span>${esc(Number(link.documentType)===320?'חשבונית מס / קבלה':'קבלה')} ${esc(link.documentNumber||'')}</span></button>`).join('')}${links.length>shown.length?`<small>+${esc(links.length-shown.length)} מסמכים נוספים</small>`:''}</div>`;
+  const shown=links.slice(0,3);return `<div class="bank-row-morning-docs" aria-label="מסמכי Morning מקושרים">${shown.map(link=>`<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span>${esc(morningDocumentLabel(link))}</span></button>`).join('')}${links.length>shown.length?`<small>+${esc(links.length-shown.length)} מסמכים נוספים</small>`:''}</div>`;
 }
 
 export function createBankMorningDocumentActions({getBusinessRows,openDocument}){

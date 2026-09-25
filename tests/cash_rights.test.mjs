@@ -42,16 +42,22 @@ test('manual rights calculation date is stateful and saved independently of ledg
 });
 
 test('rights editor keeps canonical types, shows requested labels and applies the sign automatically',()=>{
+  let typeChange=null;
+  const amountTone=new Set(),amountField={classList:{remove:(...names)=>names.forEach(name=>amountTone.delete(name)),add:name=>amountTone.add(name)}},amountLabel={textContent:''},amountGuide={className:'',innerHTML:''};
   const fields={
-    mDate:{value:'2026-09-01'},mType:{value:'הכנסה'},mDesc:{value:'בדיקה'},mAmount:{value:'75.48'},mNote:{value:'הערה'}
+    mDate:{value:'2026-09-01'},mType:{value:'הכנסה',addEventListener:(name,fn)=>{if(name==='change')typeChange=fn}},mDesc:{value:'בדיקה'},mAmount:{value:'75.48'},
+    ledgerAmountField:amountField,ledgerAmountLabel:amountLabel,ledgerAmountGuide:amountGuide
   };
   Object.defineProperty(globalThis,'document',{value:{getElementById:id=>fields[id]},configurable:true});
   let modalSave=null,modalBody='',saved='',cashOpened=0,rightOpened=0,renders=0;
   const model={state:{cash:[],rights:[]}};
   const editor=createDomainsCashEditor({model,armModalDraftGuard:()=>{},modal:(_t,body,_s,onSave)=>{modalBody=body;modalSave=onSave},deleteRecord:()=>{},saveState:msg=>{saved=msg},toast:msg=>{throw new Error(msg)},closeModal:()=>{},dateEditorMarkup,renderCash:()=>{renders++}});
-  editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);assert.match(modalBody,/value="הכנסה" selected>זכות למעשר/);assert.match(modalBody,/value="הוצאה" >חובה למעשר/);assert.match(modalBody,/אין צורך להוסיף מינוס/);modalSave();
+  editor.openRightModal();assert.match(modalBody,/step="1"/);assert.match(modalBody,/inputmode="decimal"/);assert.match(modalBody,/value="הכנסה" selected>זכות למעשר/);assert.match(modalBody,/value="הוצאה" >חובה למעשר/);assert.match(modalBody,/סכום · יישמר כפלוס \(\+\)/);assert.match(modalBody,/נשמר אוטומטית כחיובי/);assert.doesNotMatch(modalBody,/id="mNote"/);assert.doesNotMatch(modalBody,/<label>הערה<\/label>/);assert.match(modalBody,/<label>תיאור<\/label><input id="mDesc"[^>]*><\/div><div id="ledgerAmountField"/);
+  assert.ok(typeChange,'the amount cue must react to operation changes');assert.equal(amountLabel.textContent,'סכום · יישמר כפלוס (+)');assert.ok(amountTone.has('is-positive'));
+  fields.mType.value='הוצאה';typeChange();assert.equal(amountLabel.textContent,'סכום · יישמר כמינוס (−)');assert.ok(amountTone.has('is-negative'));assert.match(amountGuide.innerHTML,/נשמר אוטומטית כשלילי/);
+  fields.mType.value='הכנסה';typeChange();assert.ok(amountTone.has('is-positive'));modalSave();
   assert.equal(model.state.cash.length,0);assert.equal(model.state.rights.length,1);assert.equal(model.state.rights[0].type,'הכנסה');assert.equal(model.state.rights[0].amount,75.48);assert.equal(saved,'תנועת המעשר נשמרה');
-  fields.mType.value='הוצאה';fields.mAmount.value='12.34';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-12.34);
+  model.state.rights[0].note='הערה ישנה';fields.mType.value='הוצאה';fields.mAmount.value='12.34';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-12.34);assert.equal(model.state.rights[0].note,'הערה ישנה','removing the note field must not erase historical note data');
   fields.mAmount.value='-9.99';editor.saveRight(model.state.rights[0].id);assert.equal(model.state.rights[0].amount,-9.99,'a typed minus must not invert a debit into a credit');
   assert.equal(renders,3,'each local ledger mutation refreshes the cash view immediately');
   const actions=createUiActions({ui:{},openCashModal:()=>cashOpened++,openRightModal:()=>rightOpened++});
@@ -93,4 +99,6 @@ test('cash ledger CSS keeps desktop columns aligned to the page without artifici
   assert.match(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:0[^}]*table-layout:fixed/);
   assert.doesNotMatch(css,/\.cash-ledger-section \.cash-table\{[^}]*min-width:540px/);
   assert.match(css,/@media\(max-width:1180px\)\{[\s\S]*?\.cash-ledgers\{grid-template-columns:1fr/);
+  assert.match(css,/\.ledger-amount-field\.is-positive>label\{color:#2f7952\}/);
+  assert.match(css,/\.ledger-amount-field\.is-negative>label\{color:#b5443c\}/);
 });

@@ -352,3 +352,10 @@ button.bank-cashflow-projected:focus-visible,.cashflow-breakdown-trigger:focus-v
 
 /* Secondary tabs remain useful for viewing, but never become writer sessions without a reload. */
 .readonly-tab-banner{width:100%;text-align:center;padding:6px 12px;border:1px solid #f0dfbe;border-radius:10px;background:#fff5e7;color:#91651e;font-size:12px;font-weight:850}.readonly-tab-banner[hidden]{display:none}.secondary-readonly .topbar{flex-wrap:wrap}.secondary-readonly .readonly-tab-banner{flex:1 0 100%}.secondary-readonly input:not([type="search"]),.secondary-readonly textarea,.secondary-readonly select{cursor:not-allowed}
+
+/* מזומן ומעשר — חיווי ברור לסימן הסכום בחלון התנועה */
+.ledger-amount-field>label,.ledger-amount-field #mAmount{transition:color .15s,border-color .15s,background-color .15s,box-shadow .15s}
+.ledger-amount-field.is-positive>label{color:#2f7952}.ledger-amount-field.is-positive #mAmount{color:#2f7952;border-color:#c8dfd1;background:#f8fcf9}
+.ledger-amount-field.is-negative>label{color:#b5443c}.ledger-amount-field.is-negative #mAmount{color:#b5443c;border-color:#e6c8c5;background:#fffafa}
+.ledger-amount-field.is-neutral>label{color:#526274}
+.ledger-amount-guide{font-weight:650}.ledger-amount-guide.is-positive{background:#f0f8f3;border-color:#d3e7da;color:#396c4d}.ledger-amount-guide.is-negative{background:#fff3f1;border-color:#ecd3cf;color:#98453f}.ledger-amount-guide.is-neutral{background:#f5f7f5;border-color:#e3e8e4;color:#65726f}

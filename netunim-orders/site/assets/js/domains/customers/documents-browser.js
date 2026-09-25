@@ -1,9 +1,10 @@
 import {esc} from '../../core/values.js';
 import {$} from '../../state/constants.js';
+import {MORNING_DOCUMENT_TYPES,morningDocumentLabel} from '../../core/morning-document-types.js';
 
 const BACKEND_PATH='/functions/v1/morning-documents';
 const CACHE_TTL_MS=90_000;
-const TYPES=Object.freeze({10:'הצעת מחיר',20:'הזמנה / אישור הזמנה',100:'הזמנה',200:'תעודת משלוח',210:'תעודת החזרה',300:'חשבון עסקה',305:'חשבונית מס',320:'חשבונית מס / קבלה',330:'חשבונית זיכוי',400:'קבלה',405:'קבלה על תרומה',410:'קבלת פיקדון',500:'תעודת חיוב',600:'הזמנת רכש',610:'הצעת רכש'});
+const TYPES=MORNING_DOCUMENT_TYPES;
 const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400]);
 const SEARCH_TYPES=Object.freeze(Object.fromEntries(SEARCH_TYPE_CODES.map(type=>[type,TYPES[type]])));
 const STATUSES=Object.freeze({0:'פתוח',1:'סגור',2:'נסגר ידנית',3:'מבוטל',4:'מבטל'});
@@ -16,10 +17,34 @@ function options(values){return '<option value="">הכל</option>'+Object.entrie
 function amount(value,currency){return new Intl.NumberFormat('he-IL',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(value)||0)+' '+String(currency||'')}
 
 export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,dateEditorMarkup}){
-  const cache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
+  const cache=new Map(),operationMetadataCache=new Map();let query=defaultDocumentSearch(),sequence=0,picker=false,busy=false,lastItems=[],previewObjectUrl='';
   async function backend(action,payload={}){
     const response=await supaFetch(BACKEND_PATH,{method:'POST',networkRetry:false,body:JSON.stringify({action,...payload})});
     const data=await response.json();if(!response.ok||data.ok===false)throw new Error(data.message||'לא ניתן לקרוא מסמכים מ-Morning');return data;
+  }
+  async function verifiedOperationMetadata(operationId){
+    const operation=String(operationId||'').trim();if(!operation)return null;
+    if(operationMetadataCache.has(operation))return operationMetadataCache.get(operation);
+    const pending=backend('status',{operation_id:operation}).then(async data=>{
+      const row=data?.operation;if(row?.state!=='created'||!row.verified_at||!row.document_id)return null;
+      const metadata={documentId:String(row.document_id),documentNumber:String(row.document_number||''),documentType:Number(row.document_type)||0};
+      if(!metadata.documentNumber||!metadata.documentType){
+        try{const detail=await backend('get_document',{document_id:metadata.documentId}),document=detail?.document||{};metadata.documentNumber=String(document.number||metadata.documentNumber);metadata.documentType=Number(document.type)||metadata.documentType}catch{}
+      }
+      return metadata;
+    }).catch(()=>{operationMetadataCache.delete(operation);return null});
+    operationMetadataCache.set(operation,pending);return pending;
+  }
+  async function hydrateDebtDocumentLinks(root=globalThis.document){
+    const buttons=Array.from(root?.querySelectorAll?.('[data-morning-debt-operation]')||[]);
+    await Promise.all(buttons.map(async button=>{
+      const metadata=await verifiedOperationMetadata(button?.dataset?.morningDebtOperation);if(!metadata)return;
+      if(button?.isConnected===false&&globalThis.document?.contains?.(button)===false)return;
+      button.dataset.clickArg0=metadata.documentId;button.title=`צפה במסמך Morning ${metadata.documentNumber}`;
+      const label=button.querySelector?.('[data-morning-debt-label]');if(label)label.textContent=morningDocumentLabel(metadata);
+      delete button.dataset.morningDebtOperation;
+    }));
+    return buttons.length;
   }
   function invalidateCache(){cache.clear()}
   function root(){return $('#morningDocumentsBrowser')}
@@ -128,5 +153,5 @@ export function createDomainsCustomersDocumentsBrowser({modal,toast,supaFetch,da
       const host=$('#morningBrowserStatus')||$('#morningOperationResult');if(host)host.appendChild(anchor);else document.body.appendChild(anchor);anchor.click();setTimeout(()=>anchor.remove(),60_000);
     }catch(error){toast(error.message||'הורדת המסמך נכשלה')}finally{if(button)button.disabled=false}
   }
-  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument};
+  return {openDocuments,openInvoicePicker,search,page,selectInvoice,details,invalidateCache,viewDocument,viewVerifiedOperation,downloadDocument,hydrateDebtDocumentLinks};
 }

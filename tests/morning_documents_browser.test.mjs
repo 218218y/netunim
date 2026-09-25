@@ -66,11 +66,26 @@ try{
     supaFetch:async(_path,options)=>{
       const body=JSON.parse(options.body);
       if(body.action==='status'){statusReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'legacy-doc'}}),{status:200,headers:{'Content-Type':'application/json'}})}
+      if(body.action==='get_document')return new Response(JSON.stringify({ok:true,document:{id:'legacy-doc',number:'2001',type:400}}),{status:200,headers:{'Content-Type':'application/json'}});
       assert.equal(body.document_id,'legacy-doc');return new Response(new Blob(['%PDF-1.4\nlegacy'],{type:'application/pdf'}),{status:200,headers:{'Content-Type':'application/pdf'}});
     },
   });
   assert.equal(await legacyBrowser.viewVerifiedOperation('legacy-operation'),true);
   assert.equal(statusReads,1,'a historical debt movement resolves its document through the verified operation ledger');
+
+  const label={textContent:'מסמך Morning'},button={dataset:{morningDebtOperation:'legacy-operation'},title:'',isConnected:true,querySelector(selector){return selector==='[data-morning-debt-label]'?label:null}};
+  const hydrateRoot={querySelectorAll(selector){assert.equal(selector,'[data-morning-debt-operation]');return[button]}};
+  assert.equal(await legacyBrowser.hydrateDebtDocumentLinks(hydrateRoot),1);
+  assert.equal(statusReads,2,'legacy metadata hydration reads the same authoritative operation ledger');
+  assert.equal(button.dataset.clickArg0,'legacy-doc');assert.equal(label.textContent,'קבלה 2001','missing ledger metadata is read back from the official Morning document instead of guessed');
+
+  let metadataReads=0;
+  const metadataBrowser=createDomainsCustomersDocumentsBrowser({
+    modal(){},toast(message){throw new Error(`Unexpected toast: ${message}`)},dateEditorMarkup(){return''},
+    supaFetch:async(_path,options)=>{const body=JSON.parse(options.body);assert.equal(body.action,'status');metadataReads++;return new Response(JSON.stringify({ok:true,operation:{state:'created',verified_at:'2026-09-09T10:00:00Z',document_id:'doc-3889',document_number:'3889',document_type:320}}),{status:200,headers:{'Content-Type':'application/json'}})},
+  });
+  const richLabel={textContent:'מסמך Morning'},richButton={dataset:{morningDebtOperation:'operation-3889'},title:'',isConnected:true,querySelector(){return richLabel}},richRoot={querySelectorAll(){return[richButton]}};
+  assert.equal(await metadataBrowser.hydrateDebtDocumentLinks(richRoot),1);assert.equal(metadataReads,1);assert.equal(richButton.dataset.clickArg0,'doc-3889');assert.equal(richLabel.textContent,'חשבונית מס / קבלה 3889');assert.equal(richButton.dataset.morningDebtOperation,undefined);
 
   console.log('PASS Morning embedded PDF keeps its Blob URL alive until the preview is replaced');
 } finally {

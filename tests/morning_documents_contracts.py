@@ -22,9 +22,11 @@ editor=(SITE/'assets/js/domains/customers/editor.js').read_text(encoding='utf-8'
 morning_debt=(SITE/'assets/js/domains/customers/morning-debt.js').read_text(encoding='utf-8')
 morning_debt_recovery=(SITE/'assets/js/domains/customers/morning-debt-recovery.js').read_text(encoding='utf-8')
 morning_payments=(SITE/'assets/js/domains/customers/morning-payments.js').read_text(encoding='utf-8')
+browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
 persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8')
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
+document_types=(SITE/'assets/js/core/morning-document-types.js').read_text(encoding='utf-8')
 actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 runtime_events=(SITE/'assets/js/runtime-events.js').read_text(encoding='utf-8')
@@ -128,7 +130,7 @@ ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
    'Customer composition: customer/debt/Morning actions are wired through the same public API used by tests')
 
 
-browser=(SITE/'assets/js/domains/customers/documents-browser.js').read_text(encoding='utf-8')
+
 app_css=(SITE/'assets/app.css').read_text(encoding='utf-8')
 
 migration=next((ROOT/'supabase/migrations').glob('*_morning_operation_ledger.sql')).read_text(encoding='utf-8')
@@ -233,7 +235,7 @@ ok('morning-document-hero' not in documents and "modal('בודק חיבור ל-M
    'Morning compact issuance UI: connection status owns the modal header while document/payment fields use scoped compact grids')
 ok('חיפוש ישיר ב-Morning · כולל מסמכים שהופקו באתר Morning' not in browser and "modal('הצגה וחיפוש במסמכי Morning',markup()" in browser,
    'Morning document browser copy: redundant intro is removed and the modal title states its browse/search purpose')
-ok('const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400])' in browser and 'options(SEARCH_TYPES)' in browser and all(label in browser for label in ('קבלה על תרומה','קבלת פיקדון','תעודת חיוב','הזמנת רכש','הצעת רכש')),
+ok('const SEARCH_TYPE_CODES=Object.freeze([10,20,100,200,210,300,305,320,330,400])' in browser and 'options(SEARCH_TYPES)' in browser and 'const TYPES=MORNING_DOCUMENT_TYPES' in browser and all(label in document_types for label in ('קבלה על תרומה','קבלת פיקדון','תעודת חיוב','הזמנת רכש','הצעת רכש')),
    'Morning document browser types: unnecessary types stay displayable for existing documents but are excluded from the search filter')
 ok('.morning-document-fields .morning-client-name-field,.morning-document-fields .morning-document-amount-field,.morning-document-fields .morning-order-field{grid-column:span 2}' in app_css,
    'Morning issuance layout: customer, gross amount and optional order number share equal first-row widths for every issuance type')

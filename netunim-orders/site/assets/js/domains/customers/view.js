@@ -3,17 +3,18 @@ import {esc,uid} from '../../core/values.js';
 import {customerDebtFilteredTotal,customerDebtMatchesFilter,customerDebtStatus,createCustomerRenderSelector} from './model.js';
 import {customerDebtProgressData,customerDebtActiveProgressEntries} from '../../shared/customer-debt-progress.js';
 import {morningDebtDocuments} from './morning-debt-documents.js';
+import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {money} from '../../core/money.js';
 import {$} from '../../state/constants.js';
 
 export function morningDebtLinksMarkup(debt){
   const links=morningDebtDocuments(debt).slice(-3).reverse();
   if(!links.length)return'';
-  return `<div class="customer-debt-documents" aria-label="מסמכי Morning של החוב">${links.map(link=>`<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span>${esc(Number(link.documentType)===320?'חשבונית מס / קבלה':Number(link.documentType)===305?'חשבונית מס':Number(link.documentType)===400?'קבלה':'מסמך Morning')} ${esc(link.documentNumber||'')}</span></button>`).join('')}</div>`;
+  return `<div class="customer-debt-documents" aria-label="מסמכי Morning של החוב">${links.map(link=>{const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link);return `<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button>`}).join('')}</div>`;
 }
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersView({customerRevision,model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>'',rejectDebtRecoveryMutation=()=>false}){
+export function createDomainsCustomersView({customerRevision,model, customerUi, bindScrollViewport, mountViewLayout, customerStats, customerBulkHeader, customerBulkControls, syncCustomerBulkUi, customerBottomSummary, customerBulkCell, scheduleSave, morningDocumentButton=()=>'',hydrateMorningDebtDocuments=()=>{},rejectDebtRecoveryMutation=()=>false}){
 const pages=createResultPages({ui:customerUi,action:'customer-results-page'});
 function pageCustomerResults(name,delta){if(pages.move(name,delta)){renderCustomers({resultsOnly:true,resetScroll:true});pages.focus(name,delta)}}
 function customerPage(rows){const page=pages.page(rows,customerUi.customerTab,`${customerUi.customerFilter}:${customerUi.customerSearch||''}`,{target:customerUi.resultTarget});customerUi.resultTarget='';return page}
@@ -54,6 +55,7 @@ function renderCustomers({resultsOnly=false,resetScroll=false}={}){
     if(visibleDebtTotal!==null)updateCustomerVisibleTotal(visibleDebtTotal);
     bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'),{resetTop:resetScroll});
     syncCustomerBulkUi();
+    hydrateMorningDebtDocuments(host);
     return;
   }
   const filters=customerUi.customerTab==='debts'?`<div class="filters"><button class="chip-filter ${esc(customerUi.customerFilter==='all'?'active':'')}" data-action="customer-filter">הכל</button><button class="chip-filter ${esc(customerUi.customerFilter==='open'?'active':'')}" data-action="customer-filter-2">חוב פתוח</button><button class="chip-filter ${esc(customerUi.customerFilter==='invoice'?'active':'')}" data-action="customer-filter-3" title="חובות שטרם יצאה עליהם חשבונית מלאה, גם אם טרם שולמו">בלי חשבונית מלאה</button><button class="chip-filter ${esc(customerUi.customerFilter==='closed'?'active':'')}" data-action="customer-filter-4">נסגר</button></div>`:'';
@@ -62,6 +64,7 @@ function renderCustomers({resultsOnly=false,resetScroll=false}={}){
   mountViewLayout({sourceSelector:'.customers-view',headCount:1,className:'customers-view'});
   bindScrollViewport(`customers:${customerUi.customerTab}`,$('.customer-work-table'),{resetTop:resetScroll});
   syncCustomerBulkUi();
+  hydrateMorningDebtDocuments($('#customerSearchResults'));
 }
 
 function customerOrderInput(o,field,placeholder){return `<input class="inline-input customer-order-input" value="${esc(o[field]||'')}" placeholder="${esc(placeholder)}" data-keydown="blur-on-enter" data-blur="save-customer-order-field" data-blur-arg0="${esc(o.id)}" data-blur-arg1="${esc(field)}">`}

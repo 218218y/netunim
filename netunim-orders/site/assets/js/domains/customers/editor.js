@@ -3,10 +3,11 @@ import {money} from '../../core/money.js';
 import {customerDebtProgressData,customerDebtProgressEntries,customerDebtActiveProgressEntries,customerDebtProgressMode} from '../../shared/customer-debt-progress.js';
 import {applyVerifiedMorningDocumentToDebt} from './morning-debt.js';
 import {addVerifiedMorningDebtDocument,morningDebtDocuments} from './morning-debt-documents.js';
+import {morningDocumentLabel} from '../../core/morning-document-types.js';
 import {$} from '../../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false}){
+export function createDomainsCustomersEditor({model, customerUi, modal, toast, scheduleSave, closeModal, renderCustomers, confirmDialog,hydrateMorningDebtDocuments=()=>{},isDebtRecoveryPending=()=>false,rejectDebtRecoveryMutation=()=>false}){
 
 const persistedMorningDebts=new WeakMap();
 
@@ -129,7 +130,8 @@ function progressHistoryMarkup(debt,rows){
     const operation=/^MORNING:([^:]+):(payment|invoice)$/.exec(String(row.id||''))?.[1],link=links.get(operation);
     if(!link||shown.has(operation))return progressEntryMarkup(row);
     shown.add(operation);
-    return `<div class="debt-progress-linked-row">${progressEntryMarkup(row)}<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span>מסמך ${esc(link.documentNumber||'Morning')}</span></button></div>`;
+    const unresolved=!link.documentId||!link.documentNumber||!Number(link.documentType),label=morningDocumentLabel(link);
+    return `<div class="debt-progress-linked-row">${progressEntryMarkup(row)}<button type="button" class="bank-row-morning-doc" data-action="morning-open-document" data-click-arg0="${esc(link.documentId)}" data-click-arg1="${esc(link.operationId)}" ${unresolved?`data-morning-debt-operation="${esc(link.operationId)}"`:''} title="צפה במסמך Morning ${esc(link.documentNumber||'')}"><span aria-hidden="true">▤</span><span data-morning-debt-label>${esc(label)}</span></button></div>`;
   }).join('');
 }
 
@@ -137,6 +139,7 @@ function openDebtProgressDetails(id){
   const d=(model.state.customerDebts||[]).find(x=>x.id===id);if(!d)return toast('חוב הלקוח לא נמצא');const p=customerDebtProgressData(d),rows=customerDebtProgressEntries(d).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))||String(b.id||'').localeCompare(String(a.id||'')));
   const remainingLabel=p.paymentPartial?'נותר לתשלום':p.invoicePartial?'נותר לחשבונית':'יתרה שנותרה',remainingValue=p.paymentPartial?p.remainingPayment:p.invoicePartial?p.remainingInvoice:p.remainingPayment;
   modal(`פירוט חוב · ${d.customerName||'לקוח'}`,`<div class="debt-progress-details"><section class="debt-progress-total debt-progress-total-remaining"><div><span>${esc(remainingLabel)}</span><small>מתוך חוב מקורי ${money(d.amount)}</small></div><b>${money(remainingValue)}</b></section><section class="debt-progress-detail-grid"><div><span>שולם</span><b>${money(p.paymentApplied)}</b><small>מתוך ${money(p.targetMagnitude)}</small></div><div><span>חשבוניות</span><b>${money(p.invoiceApplied)}</b><small>נותר ${money(p.remainingInvoice)}</small></div></section><div class="debt-progress-history"><h4>תנועות שנרשמו</h4>${progressHistoryMarkup(d,rows)||'<div class="empty debt-progress-empty">אין תנועות חלקיות. מצב מלא שסומן ידנית נשמר בשדות הסטטוס הרגילים.</div>'}</div></div>`,`<button class="btn primary" data-action="open-debt-modal-2" data-click-arg0="${esc(d.id)}">עריכת החוב</button><button class="btn" data-action="close-modal">סגור</button>`);
+  hydrateMorningDebtDocuments(globalThis.document);
 }
 
 

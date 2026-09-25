@@ -55,6 +55,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     customerBulkCell:(...args)=>bulk.customerBulkCell(...args),
     scheduleSave:(...args)=>storagePersistence.scheduleSave(...args),
     morningDocumentButton:(...args)=>documents.documentButton(...args),
+    hydrateMorningDebtDocuments:(...args)=>documentsBrowser.hydrateDebtDocumentLinks(...args),
   });
   editor=createDomainsCustomersEditor({
     model,customerUi,
@@ -66,6 +67,7 @@ export function createDomainsCustomers({customerRevision,model,customerUi,uiLayo
     closeModal:(...args)=>uiModal.closeModal(...args),
     renderCustomers:(...args)=>view.renderCustomers(...args),
     confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+    hydrateMorningDebtDocuments:(...args)=>documentsBrowser.hydrateDebtDocumentLinks(...args),
   });
   return {
     selectors,bulk,view,editor,documents,documentsBrowser,
