@@ -36,16 +36,29 @@ test('verified recovery clears only a recovered failed sequence and repairs the 
   recoveredSeq=1;await runtime.recover();assert.equal(runtime.durabilityAtRisk,false);assert.equal(await runtime.flush(),true);
 });
 
-test('Main owner handoff never migrates the currently visible account implicitly',async()=>{
+test('Main recovery never installs a legacy snapshot, including after an owner change',async()=>{
   let owner='A';const installs=[];
   const runtime=createStorageV2Runtime({app:'orders',owner:()=>owner,primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:options=>({ready:false,
     open:async()=>null,install:async state=>installs.push({owner:options.owner,state}),recover:async()=>({state:{notes:[]},seq:0}),
   })});
-  await runtime.recover({notes:[{id:'A'}]});assert.equal(installs.length,1);
-  owner='B';assert.equal(await runtime.recover({notes:[{id:'A'}]}),null);assert.equal(installs.length,1);
+  assert.equal(await runtime.recover({notes:[{id:'A'}]}),null);assert.equal(installs.length,0);
+  owner='B';assert.equal(await runtime.recover({notes:[{id:'A'}]}),null);assert.equal(installs.length,0);
   await assert.rejects(runtime.recoverForOwner({intent:'upload-local',sourceOwner:'A',state:{notes:[{id:'A'}]}}),/transfer_intent/);
-  await runtime.recoverForOwner({intent:'legacy-upgrade',sourceOwner:'B',state:{notes:[{id:'B'}]}});
-  assert.equal(installs.length,2);assert.equal(installs[1].owner,'B:orders');assert.equal(installs[1].state.notes[0].id,'B');
+  await assert.rejects(runtime.recoverForOwner({intent:'legacy-upgrade',sourceOwner:'B',state:{notes:[{id:'B'}]}}),/transfer_intent/);
+  assert.equal(installs.length,0);
+});
+
+test('a recovered shadow checkpoint cannot accept a primary edit or cloud read',async()=>{
+  let appends=0;
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'A',primary:()=>true,validate:noop,mode:()=> 'primary',createJournal:()=>({
+    ready:true,open:async()=>({state:{notes:[]},seq:0,appMetadata:{storageRole:'shadow'}}),
+    append:()=>{appends++;throw new Error('shadow was written')},cloudState:async()=>({base:{revision:1}}),
+  })});
+  assert.equal(await runtime.recover({notes:[{id:'legacy'}]}),null);
+  assert.equal(runtime.primaryReady,false);
+  assert.deepEqual(runtime.persist({notes:[{id:'n'}]},{operations:[{type:'put',collection:'notes',id:'n',record:{id:'n'}}]}),{handled:false,reason:'not-ready'});
+  assert.equal(await runtime.cloudState(),null);
+  assert.equal(appends,0);
 });
 
 test('Orders waits for an IDB-only journal commit even if the cloud cursor becomes unavailable',async()=>{
