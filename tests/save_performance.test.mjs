@@ -13,7 +13,6 @@ import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/ca
 import {createDomainsExpensesEditor} from '../netunim-kupa/site/assets/js/domains/expenses/editor.js';
 import {createDomainsCreditEditor} from '../netunim-kupa/site/assets/js/domains/credit/editor.js';
 import {createDomainsRecordsCommands} from '../netunim-kupa/site/assets/js/domains/records/commands.js';
-import {BROWSER_STATE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 import {configurePerformance,beginMeasure,performanceSummary,clearPerformance} from '../shared/runtime-performance.js';
 import {supplierRenderModelData,supplierViewRowsData,balanceRowsData,supplierYearContextData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 
@@ -145,26 +144,22 @@ test('Kupa writer normalizes legacy durable snapshots once before sending withou
   assert.deepEqual(f.sent[0].p_state.rights,[]);assert.equal('checks' in f.sent[0].p_state,false);assert.equal('creditSync' in f.sent[0].p_state,false);
 });
 
-test('snapshot sequence reads persisted metadata once, verifies every write, and invalidates on another tab write',async t=>{
-  const ls=new Map([[BROWSER_STATE_KEY,JSON.stringify({snapshotSeq:50})]]);let reads=0,storageEvent;
-  const previous=globalThis.addEventListener;t.after(()=>{globalThis.addEventListener=previous});
-  globalThis.addEventListener=(type,handler)=>{if(type==='storage')storageEvent=handler};
-  globalThis.localStorage={getItem:key=>{reads++;return ls.get(key)??null},setItem:(key,value)=>ls.set(key,value)};
-  const session={},files={},api=kupaBrowser({model:{state:{}},session,files,normalizeState:clone,idbPut:async()=>{},idbGet:async()=>null});
+test('V2 snapshot sequence never reads or writes the legacy full-state cache',()=>{
+  let reads=0,writes=0;const sequences=[];
+  globalThis.localStorage={getItem:()=>{reads++;return null},setItem:()=>{writes++}};
+  const session={localSnapshotSeq:50},files={},storageV2={cutoverActive:true,persist:(_state,_options,metadata)=>{sequences.push(metadata.snapshotSeq);return {handled:true,emergencyDurable:true,committed:Promise.resolve()}}};
+  const api=kupaBrowser({storageV2,model:{state:{}},session,files,normalizeState:clone,idbGet:async()=>null});
   assert.equal(api.persistImmediateBrowserSnapshot({value:1}),true);assert.equal(api.persistImmediateBrowserSnapshot({value:2}),true);
-  assert.equal(reads,3,'one sequence read plus two read-back verifications');assert.equal(session.localSnapshotSeq,52);
-  ls.set(BROWSER_STATE_KEY,JSON.stringify({snapshotSeq:90}));storageEvent({key:BROWSER_STATE_KEY});
-  api.persistImmediateBrowserSnapshot({value:3});assert.equal(session.localSnapshotSeq,91);assert.equal(reads,5);
-  await files.browserStateWritePromise;
+  api.persistImmediateBrowserSnapshot({value:3});
+  assert.deepEqual(sequences,[51,52,53]);assert.equal(reads,0);assert.equal(writes,0);
 });
 
-test('normalized snapshot fast path produces identical isolated browser and cloud copies',async()=>{
+test('normalized cloud projection stays detached without a V1 browser snapshot copy',async()=>{
   const model={},normalizer=createStateNormalization({model});model.state=normalizer.normalizeState({notes:[{id:'A',content:'original'}]});
   const canonical=clone(model.state),cloud=normalizer.prepareKupaCloudState(canonical,{normalized:true});
   assert.deepEqual(cloud,normalizer.prepareKupaCloudState(model.state));cloud.notes[0].content='changed';assert.equal(canonical.notes[0].content,'original');
-  globalThis.localStorage={getItem:()=>null};const browser=kupaBrowser({model,session:{},files:{},normalizeState:normalizer.normalizeState});
-  const record=browser.browserStateRecord(canonical,10,{normalized:true});assert.deepEqual(record.state,model.state);
-  record.state.notes[0].content='changed';assert.equal(canonical.notes[0].content,'original');
+  const browser=kupaBrowser({model,session:{},files:{},normalizeState:normalizer.normalizeState});
+  assert.equal(browser.browserStateRecord,undefined);
 });
 
 test('backup ACK fast path skips directory scans but retains the latest payload and rechecks a changed directory',async()=>{

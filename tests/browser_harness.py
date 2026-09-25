@@ -688,3 +688,22 @@ class LegacyBrowserSession(BrowserSession):
         if source.count(drain_only) != 1:
             raise AssertionError('Legacy test fixture must locate the reviewed production V1 writer gate')
         coordinator.write_text(source.replace(drain_only, legacy_fixture), encoding='utf-8')
+        # The production browser writer is V2-only. These historical suites
+        # deliberately disable local birth to exercise the legacy cloud outbox,
+        # so give their disposable copy a minimal V1 snapshot fixture. Never
+        # patch the production site or use this fixture in V2 coverage.
+        browser_writer = self.tmp / 'site/assets/js/storage/browser.js'
+        source = browser_writer.read_text(encoding='utf-8')
+        if 'netunim-orders' in str(self.site):
+            current = "if(!fast?.handled)throw new Error('storage_v2_write_unavailable');"
+            fixture = ("if(!fast?.handled){const payload=structuredClone(source);"
+                       "payload._meta={...payload._meta,localSnapshotSeq:session.localSnapshotSeq};"
+                       "localStorage.setItem(STORAGE_KEY,JSON.stringify(payload));return true}")
+        else:
+            current = "if(!fast?.handled)throw new Error('storage_v2_write_unavailable');"
+            fixture = ("if(!fast?.handled){const record={schemaVersion:1,snapshotSeq:session.localSnapshotSeq,"
+                       "state:clone(snapshot),revision:Number(revision||0),savedAt:new Date().toISOString()};"
+                       "localStorage.setItem(BROWSER_STATE_KEY,JSON.stringify(record));return true}")
+        if source.count(current) != 1:
+            raise AssertionError('Legacy test fixture must locate the V2-only browser writer')
+        browser_writer.write_text(source.replace(current, fixture), encoding='utf-8')
