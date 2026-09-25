@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {applyStoredOperation,replayStorageJournal,sealStorageRecord,readStorageRecord,validateStoredOperation} from '../shared/storage-journal-model.js';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
+import {STORAGE_SCHEMAS} from '../shared/storage-v2-schema.js';
 
 const schema={collections:['notes'],fields:['setting']};
 const checkpoint=()=>sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{notes:[{id:'n',text:'old'}],setting:1}});
@@ -27,6 +28,17 @@ test('unknown operations and implicit deletes are never accepted',()=>{
   assert.throws(()=>applyStoredOperation({notes:[]},operation(1,[put('x')]),schema));
   assert.throws(()=>applyStoredOperation({notes:[]},operation(1,[{type:'delete',collection:'notes',id:'n'}]),schema));
   assert.throws(()=>sealStorageRecord({value:NaN}));assert.throws(()=>sealStorageRecord({value:undefined}));
+});
+test('Main V2 refuses new check operations while old checkpoints remain replayable until projection migration',()=>{
+  for(const app of ['orders','kupa']){
+    const mainSchema=STORAGE_SCHEMAS[app],check={type:'put',collection:'checks',mode:'insert',id:'C1',index:0,record:{id:'C1'}};
+    assert.equal(mainSchema.collections.includes('checks'),false);
+    assert.throws(()=>validateStoredOperation(operation(1,[check]),mainSchema),/storage_invalid_collection/);
+    const legacy=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{checks:[]},appMetadata:{storageRole:'primary'}}),oldEntry=sealStorageRecord(operation(1,[check]));
+    assert.deepEqual(replayStorageJournal(legacy,[oldEntry],mainSchema).state.checks,[{id:'C1'}]);
+    const migrated=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:1,state:{},appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
+    assert.throws(()=>replayStorageJournal(migrated,[oldEntry],mainSchema),/storage_invalid_collection/);
+  }
 });
 test('full-state replacement requires an explicit durable import or cloud normalization boundary',()=>{
   const replacement={type:'replace-state',state:{notes:[{id:'imported'}],setting:2}};
