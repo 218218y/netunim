@@ -11,7 +11,7 @@ export function storageRecoveryFailure(error){
   return /^(storage_(checksum_mismatch|non_json_value|unsafe_key|checkpoint_metadata|committed_metadata_mismatch|committed_journal_missing|invalid_checkpoint|invalid_operation|invalid_local_import|invalid_field|invalid_collection|invalid_put|unknown_operation|foreign_operation|duplicate_sequence|journal_gap_or_duplicate|missing_collection|delete_target_missing|insert_conflict|update_target_missing|emergency_owner|main_projection_invalid))$/.test(message)?'fatal':'retryable';
 }
 
-const LIFECYCLE_BOUNDARIES=new Set(['network-offline-mirror','pagehide-v1-checkpoint','beforeunload-v1-checkpoint','manual-flush']);
+const LIFECYCLE_BOUNDARIES=new Set(['manual-flush']);
 
 export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',{preparing=false}={}){
   try{

@@ -1018,7 +1018,7 @@ model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClon
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
 checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,storageBrowser,storageChecks,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow,sharedChecksV2});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

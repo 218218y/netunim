@@ -278,10 +278,15 @@ ok(-1 not in (folder_slot_pos, save_pill_pos, cloud_pill_pos, settings_pos)
    "orders: autosave status leads directly to settings; redundant manual save action is removed")
 runtime_events = (O / "site/assets/js/runtime-events.js").read_text(encoding="utf-8")
 orders_persistence = (O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
+kupa_runtime = (K / "site/assets/js/main.js").read_text(encoding="utf-8")
 ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_events and "async function manualSaveNow()" in orders_persistence
    and "const generation=++session.localGeneration,localOk=localSnapshot(undefined,{operations,storageBoundary,generation,mutationType,surface,deleteIntents})" in orders_persistence
-   and "window.addEventListener('pagehide'" in runtime_events and "storageBrowser.localSnapshot(undefined,{storageBoundary:'pagehide-v1-checkpoint'})" in runtime_events,
-   "orders: header omits manual-save UI while the tested durable flush API and automatic local/page-exit staging remain available")
+   and "window.addEventListener('pagehide'" not in runtime_events
+   and "storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk" in runtime_events,
+   "orders: autosave uses the journal and page exit warns only when a V2 commit is not durable")
+ok(all(boundary not in kupa_runtime for boundary in ("network-offline-mirror", "pagehide-v1-checkpoint", "beforeunload-v1-checkpoint"))
+   and "storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk" in kupa_runtime,
+   "kupa: network and page lifecycle never create a V1 snapshot or outbox")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
 ok('<div class="brand">ניהול הזמנות</div>' not in orders_html
