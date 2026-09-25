@@ -22,8 +22,9 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const legacyDrainActive=()=>legacyDrain&&!session.storageProtocolBlocked;
-  const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&(!preparing()||legacyDrain);
-  const legacyChecksWriteAllowed=()=>legacyWriteAllowed()&&storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)!=='2'&&!(owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:orders:local')==='2');
+  const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:orders:local')==='2';
+  const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()&&(!preparing()||legacyDrain);
+  const legacyChecksWriteAllowed=legacyWriteAllowed;
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});

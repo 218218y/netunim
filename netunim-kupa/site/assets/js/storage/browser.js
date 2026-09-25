@@ -11,7 +11,7 @@ let sequenceLoaded=false,v2CloudStateCache=null;
 // Another primary tab may have saved while this tab was inactive.
 globalThis.addEventListener?.('storage',event=>{if(event.key===BROWSER_STATE_KEY||event.key===null)sequenceLoaded=false});
 function nextSnapshotSequence(){
-  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(loadBrowserStateSync()?.snapshotSeq||0));sequenceLoaded=true}
+  if(!sequenceLoaded){session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),storageV2?.cutoverActive?0:Number(loadBrowserStateSync()?.snapshotSeq||0));sequenceLoaded=true}
   return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
 }
 
@@ -24,7 +24,8 @@ function loadBrowserStateSync(){try{const raw=localStorage.getItem(BROWSER_STATE
 function queueBrowserStateIdb(record){if(storageV2?.cutoverActive)throw new Error('storage_v1_write_forbidden');files.browserStatePendingRecord=clone(record);if(files.browserStateWritePromise)return files.browserStateWritePromise;files.browserStateWritePromise=(async()=>{while(files.browserStatePendingRecord){const next=files.browserStatePendingRecord;files.browserStatePendingRecord=null;await idbPut('sync',BROWSER_STATE_IDB_KEY,next)}})().catch(e=>console.error('browser state idb',e)).finally(()=>{files.browserStateWritePromise=null;if(files.browserStatePendingRecord)queueBrowserStateIdb(files.browserStatePendingRecord)});return files.browserStateWritePromise}
 
 function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.dbRevision,options){const done=beginMeasure('kupa:local-snapshot');try{
-  nextSnapshotSequence();const appMetadata={snapshotSeq:session.localSnapshotSeq,revision:Number(revision||0)},drain=legacyDrainActive();if(!drain&&!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');const fast=drain?null:storageV2?.persist?.(snapshot,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;const mirrorOk=!fast.transitioning||fast.emergencyDurable||storageV2?.cutoverActive||persistStorageV2CompatibilitySnapshot(snapshot,revision);if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return mirrorOk&&(fast.emergencyDurable||fast.transitioning)}
+  if(session.storageProtocolBlocked)throw new Error('storage_protocol_verification_required');
+  nextSnapshotSequence();const appMetadata={snapshotSeq:session.localSnapshotSeq,revision:Number(revision||0)},drain=legacyDrainActive(),fast=drain?null:storageV2?.persist?.(snapshot,options,appMetadata);if(fast?.handled){files.storageV2CommitPromise=fast.committed;const mirrorOk=!fast.transitioning||fast.emergencyDurable||storageV2?.cutoverActive||persistStorageV2CompatibilitySnapshot(snapshot,revision);if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return mirrorOk&&(fast.emergencyDurable||fast.transitioning)}
   if(storageV2?.cutoverActive||!legacyWriteAllowed())throw new Error('storage_v1_write_forbidden');
   const record=browserStateRecord(snapshot,revision,{...options,skipSequence:true});record.snapshotSeq=session.localSnapshotSeq;const ok=persistBrowserStateSync(record);queueBrowserStateIdb(record);if(!drain&&!fast?.transitioning)try{if(storageV2)storageV2.afterLegacy(record.state,options,appMetadata);else observeStorage(record.state,options)}catch(error){console.error('storage V2 observation',error)}return ok
 }finally{done()}}
