@@ -73,7 +73,6 @@ import {createBankChequeImageStorage} from './shared/bank-cheque-images.js';
 
 
 
-import {jsonEq} from "./sync/merge-records.js";
 
 
 
@@ -975,35 +974,15 @@ const uiActions=createUiActions({
 
 
 window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
-window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'network-offline-mirror'});uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
+window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 uiSidebar.bind();
 document.getElementById('backupTop').addEventListener('click',()=>{if(uiStatus.canRunInteractiveAction('manual-backup'))uiBackup.manualBackup()});
 bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.closeModal());
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
-window.addEventListener('pagehide',()=>{
-  if(!tab.primaryTab||session.storageProtocolBlocked)return;
-  const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
-  if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'pagehide-v1-checkpoint'});
-  if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud&&session.lastSavedSnapshot){
-    const current=stateNormalization.prepareKupaCloudState(model.state);
-    if(!jsonEq(current,syncChecksState.lastSavedCloudState()))syncPending.stageCloudPendingLocal(current,'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);
-  }
-  if(!sharedChecksV2.primaryReady&&session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork())syncChecksState.markSharedChecksPending();
-});
-
 window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab||session.storageProtocolBlocked)return;
-  if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue='';return}
-  const v2Cloud=storageV2Cloud.storageV2CloudOutboxActive();
-  const unsavedKupa=!v2Cloud&&session.backendReady&&session.lastSavedSnapshot&&!jsonEq(stateNormalization.prepareKupaCloudState(model.state),syncChecksState.lastSavedCloudState());
-  const unsavedChecks=!sharedChecksV2.primaryReady&&session.connectionMode==='supabase'&&syncChecksState.sharedChecksHaveLocalWork();
-  const v2Pending=v2Cloud&&!!session.storageV2CloudPending;
-  if(!unsavedKupa&&!unsavedChecks&&!storagePending.cloudPendingExistsSync()&&!v2Pending)return;
-  if(!storageShadow.primaryReady)storageBrowser.persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'beforeunload-v1-checkpoint'});
-  if(session.connectionMode==='supabase'&&unsavedKupa&&session.lastSavedSnapshot)syncPending.stageCloudPendingLocal(stateNormalization.prepareKupaCloudState(model.state),'שינוי לפני סגירה',session.dbRevision,syncChecksState.lastSavedCloudState(),session.localGeneration,false);
-  if(unsavedChecks)syncChecksState.markSharedChecksPending();
-  e.preventDefault();e.returnValue='';
+  if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
 });
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);
