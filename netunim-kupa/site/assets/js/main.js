@@ -133,8 +133,6 @@ const storagePending=createStoragePending({
 const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
-  legacyDrainActive:storageV2Coordinator.legacyDrainActive,
-  legacyWriteAllowed:storageV2Coordinator.legacyWriteAllowed,
   legacyCloudPendingExists:(...args)=>storagePending.cloudPendingExistsSync(...args),
   legacyCloudHeadVerifiedClean:(...args)=>storagePending.cloudPendingHeadVerifiedCleanSync(...args),
   verifyLegacyCloudPending:(...args)=>storagePending.getCloudPending(...args),
@@ -143,7 +141,6 @@ const storageBrowser=createStorageBrowser({
   files,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
 const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);

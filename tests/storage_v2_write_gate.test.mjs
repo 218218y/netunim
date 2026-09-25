@@ -97,7 +97,7 @@ test('cutover marker forbids Kupa V1 browser snapshots and cloud outboxes',async
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;
   try{
     const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
-    assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/write_forbidden/);
+    assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(browser.loadBrowserState(),/cutover_recovery_required/);
     const pending=createStoragePending({session:{},idbGet:async()=>null,idbPut:async()=>{writes++},idbDelete:async()=>{writes++},legacyWriteAllowed:()=>false});
     await assert.rejects(pending.putCloudPending({snapshot:{}}),/write_forbidden/);

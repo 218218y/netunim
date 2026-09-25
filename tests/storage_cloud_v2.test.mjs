@@ -352,16 +352,18 @@ test('a cut-over account reads its V2 cursor without reopening an obsolete V1 ou
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
-test('direct V1 browser writers are fenced when no explicit legacy drain is active',async()=>{
+test('browser adapters expose no V1 snapshot writer and require a ready V2 journal',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
     const orders=createOrdersStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
-    assert.throws(()=>orders.queueBrowserStateSnapshot({}),/storage_v1_write_forbidden/);
-    await assert.rejects(orders.persistBrowserStateSnapshot({}),/storage_v1_write_forbidden/);
+    assert.equal(orders.queueBrowserStateSnapshot,undefined);
+    assert.equal(orders.persistBrowserStateSnapshot,undefined);
+    assert.throws(()=>orders.localSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
     const kupa=createKupaStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
-    assert.throws(()=>kupa.persistBrowserStateSync({}),/storage_v1_write_forbidden/);
-    assert.throws(()=>kupa.queueBrowserStateIdb({}),/storage_v1_write_forbidden/);
+    assert.equal(kupa.persistBrowserStateSync,undefined);
+    assert.equal(kupa.queueBrowserStateIdb,undefined);
+    assert.throws(()=>kupa.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
     assert.equal(storage.length,0);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
@@ -412,12 +414,13 @@ test('cloud reset keeps the newest visible state in V2 without a transition comp
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
-test('transition fallback does not enqueue a second legacy epoch install when emergency durability is unavailable',async()=>{
+test('transition without a ready V2 writer cannot create a compatibility snapshot',()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
     let afterLegacyCalls=0;const state=clone(KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,dbRevision:9,storageV2CloudPending:false},storageV2={persist:()=>({handled:false,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1}),afterLegacy:()=>{afterLegacyCalls++}};
     const browser=createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
-    assert.equal(browser.persistImmediateBrowserSnapshot(state,9,{operations:[{type:'set',field:'__unused',value:true}]}),true);assert.equal(afterLegacyCalls,0);assert.equal(JSON.parse(storage.getItem(KUPA_STORAGE_KEY)).snapshotSeq,1);await files.browserStateWritePromise;
+    assert.throws(()=>browser.persistImmediateBrowserSnapshot(state,9,{operations:[{type:'set',field:'__unused',value:true}]}),/storage_v2_write_unavailable/);
+    assert.equal(afterLegacyCalls,0);assert.equal(storage.getItem(KUPA_STORAGE_KEY),null);assert.equal(files.browserStateWritePromise,undefined);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
