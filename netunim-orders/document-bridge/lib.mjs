@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=2;
+export const BRIDGE_VERSION=3;
 export const MAX_QUERY_CHARS=160;
 export const MAX_QUERY_TERMS=12;
 export const MAX_RESULTS=80;
@@ -76,15 +76,17 @@ function searchTerms(value){
 export function buildContentQuery(value){
   const terms=searchTerms(value);
   if(!terms.length)return '';
-  // is-indexed-property keeps this search on Everything's existing content index.
-  // no-background-search prevents ES from returning before a content search completes.
-  return `ext:pdf is-indexed-property:content no-background-search: ${terms.map(term=>`content:${quotedLiteral(term)}`).join(' ')}`;
+  // Do not restrict to is-indexed-property:content. Everything's content: search
+  // can use indexed content when available and can search file content on demand otherwise.
+  // no-background-search makes ES wait for the content result set instead of returning early.
+  return `no-background-search: ${terms.map(term=>`content:${quotedLiteral(term)}`).join(' ')}`;
 }
 
 export function buildNameQuery(value){
   const terms=searchTerms(value);
   if(!terms.length)return '';
-  return `ext:pdf ${terms.map(quotedLiteral).join(' ')}`;
+  // Plain quoted terms mirror the normal Everything filename search and work for all file types.
+  return terms.map(quotedLiteral).join(' ');
 }
 
 export function buildDocumentQuery(value,mode='content'){
@@ -106,12 +108,12 @@ function jsonRows(parsed){
   return Array.isArray(firstArray)?firstArray:[];
 }
 
-function commonEsPrefix({timeoutMs=6000,instance=''}){
-  const timeout=Math.max(1500,Math.min(15000,Number(timeoutMs)||6000));
+function commonEsPrefix({timeoutMs=12000,instance=''}){
+  const timeout=Math.max(1500,Math.min(30000,Number(timeoutMs)||12000));
   return ['-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
-export function buildEsRawSearchArgs({root,search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=6000,instance=''}){
+export function buildEsRawSearchArgs({root,search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=12000,instance=''}){
   const rootPath=normalizeWindowsPath(root?.path||root);
   if(!rootPath)throw new TypeError('Document root is required');
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
@@ -119,13 +121,13 @@ export function buildEsRawSearchArgs({root,search,limit=DEFAULT_RESULT_LIMIT,tim
   return [...commonEsPrefix({timeoutMs,instance}),'-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count),'-path',rootPath,'/a-d',String(search)];
 }
 
-export function buildEsSearchArgs({root,query,mode='content',limit=DEFAULT_RESULT_LIMIT,timeoutMs=6000,instance=''}){
+export function buildEsSearchArgs({root,query,mode='content',limit=DEFAULT_RESULT_LIMIT,timeoutMs=12000,instance=''}){
   const search=buildDocumentQuery(query,mode);
   if(!search)throw new TypeError('Search query must contain at least two characters');
   return buildEsRawSearchArgs({root,search,limit,timeoutMs,instance});
 }
 
-export function buildEsCountArgs({root,search,timeoutMs=6000,instance=''}){
+export function buildEsCountArgs({root,search,timeoutMs=12000,instance=''}){
   const rootPath=normalizeWindowsPath(root?.path||root);
   if(!rootPath)throw new TypeError('Document root is required');
   if(!text(search))throw new TypeError('Search expression is required');
@@ -151,14 +153,15 @@ export function parseEsJson(stdout,{root}={}){
     const parent=normalizeWindowsPath(field(row,['path','parent path','parent_path']));
     const direct=normalizeWindowsPath(field(row,['full path and name','full-path-and-name','filename column','fullpath','full path']));
     const fullPath=direct||(parent&&name?path.win32.join(parent,name):'');
-    if(!fullPath||!name||!name.toLowerCase().endsWith('.pdf'))return null;
+    if(!fullPath||!name)return null;
     if(rootPath&&!pathInsideRoot(fullPath,rootPath))return null;
     const relative=rootPath?path.win32.relative(rootPath,fullPath):name;
     const relativeDir=path.win32.dirname(relative)==='.'?'':path.win32.dirname(relative);
     const modified=text(field(row,['date modified','date-modified','datemodified','date_modified','dm']));
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
-    return {name,fullPath,relativePath:relativeDir,modified,size:Number.isFinite(size)?size:null,rootId:root?.id||'',rootLabel:root?.label||''};
+    const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
+    return {name,fullPath,relativePath:relativeDir,modified,size:Number.isFinite(size)?size:null,extension,rootId:root?.id||'',rootLabel:root?.label||''};
   }).filter(Boolean);
 }
 
@@ -177,6 +180,17 @@ export function mergeDocumentResults(groups,limit=DEFAULT_RESULT_LIMIT){
     return String(a.name||'').localeCompare(String(b.name||''),'he');
   });
   return rows.slice(0,Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT)));
+}
+
+export function parseRegistryInstallLocation(stdout,valueName='InstallLocation'){
+  const wanted=String(valueName||'InstallLocation').toLowerCase();
+  for(const line of String(stdout??'').split(/\r?\n/)){
+    const trimmed=line.trim();
+    if(!trimmed.toLowerCase().startsWith(wanted))continue;
+    const match=trimmed.match(/^\S+\s+REG_(?:SZ|EXPAND_SZ)\s+(.+)$/i);
+    if(match?.[1])return match[1].trim();
+  }
+  return '';
 }
 
 function wildcardToRegExp(pattern){

@@ -1,16 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentQuery,buildNameQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,normalizeRoots,normalizeSearchText,originAllowed,parseEsCount,parseEsJson,pathInsideRoot,
+  buildContentQuery,buildNameQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,normalizeRoots,normalizeSearchText,originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,pathInsideRoot,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
-test('document bridge turns browser text into bounded PDF content terms instead of raw Everything syntax',()=>{
-  assert.equal(buildContentQuery('  משה   כהן  '),'ext:pdf is-indexed-property:content no-background-search: content:"משה" content:"כהן"');
+test('browser text becomes bounded all-file content terms instead of raw Everything syntax',()=>{
+  assert.equal(buildContentQuery('  משה   כהן  '),'no-background-search: content:"משה" content:"כהן"');
   const hostile=buildContentQuery('invoice" | ext:exe');
-  assert.equal(hostile,'ext:pdf is-indexed-property:content no-background-search: content:"invoice&quot:" content:"|" content:"ext:exe"');
-  assert.ok(hostile.startsWith('ext:pdf '));
+  assert.equal(hostile,'no-background-search: content:"invoice&quot:" content:"|" content:"ext:exe"');
   assert.equal(buildContentQuery('a'),'');
-  assert.equal(buildNameQuery('חשבונית 123'),'ext:pdf "חשבונית" "123"');
+  assert.equal(buildNameQuery('חשבונית 123'),'"חשבונית" "123"');
   assert.equal(normalizeSearchText('a\n b'),'a b');
 });
 
@@ -24,15 +23,18 @@ test('document roots are normalized per computer and containment rejects sibling
   assert.equal(pathInsideRoot('\\\\server\\share\\pdf\\a.pdf','\\\\server\\share\\pdf'),true);
 });
 
-test('ES JSON parsing accepts named columns, enforces PDF/root boundaries and keeps relative display paths',()=>{
+test('ES JSON parsing accepts all file types, enforces root boundaries and keeps relative display paths',()=>{
   const json=JSON.stringify({results:[
     {Name:'invoice.pdf',Path:'Z:\\Shared PDFs\\2026',Size:'1,024','Date Modified':'2026-09-25T12:00:00Z'},
     {Name:'note.txt',Path:'Z:\\Shared PDFs',Size:'2'},
-    {Name:'escape.pdf',Path:'Z:\\Other',Size:'3'},
+    {Name:'sheet.xlsx',Path:'Z:\\Shared PDFs\\2026',Size:'3'},
+    {Name:'escape.docx',Path:'Z:\\Other',Size:'4'},
   ]});
   const rows=parseEsJson(json,{root:{id:'network',label:'משותף',path:'Z:\\Shared PDFs'}});
-  assert.equal(rows.length,1);
-  assert.deepEqual(rows[0],{name:'invoice.pdf',fullPath:'Z:\\Shared PDFs\\2026\\invoice.pdf',relativePath:'2026',modified:'2026-09-25T12:00:00Z',size:1024,rootId:'network',rootLabel:'משותף'});
+  assert.equal(rows.length,3);
+  assert.deepEqual(rows[0],{name:'invoice.pdf',fullPath:'Z:\\Shared PDFs\\2026\\invoice.pdf',relativePath:'2026',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',rootId:'network',rootLabel:'משותף'});
+  assert.equal(rows[1].extension,'txt');
+  assert.equal(rows[2].extension,'xlsx');
 });
 
 test('merged results dedupe the same indexed path but retain separate mirrored copies',()=>{
@@ -53,18 +55,25 @@ test('origin allowlist supports only the configured website families and local d
   assert.equal(originAllowed('https://evil.example',patterns),false);
 });
 
-test('ES invocation is fixed to IPC3, PDF content, files-only and the configured root',()=>{
-  const args=buildEsSearchArgs({root:{path:'Z:\\Shared PDFs'},query:'משה | ext:exe',limit:999,timeoutMs:1,instance:'1.5a'});
+test('ES invocation stays IPC3, files-only, root-bounded and does not force PDF/content-index filters',()=>{
+  const args=buildEsSearchArgs({root:{path:'Z:\\Shared Files'},query:'משה | ext:exe',limit:999,timeoutMs:1,instance:'1.5a'});
   assert.deepEqual(args.slice(0,4),['-ipc3','-instance','1.5a','-timeout']);
   assert.ok(args.includes('-json'));
   assert.ok(args.includes('/a-d'));
-  assert.equal(args[args.indexOf('-path')+1],'Z:\\Shared PDFs');
+  assert.equal(args[args.indexOf('-path')+1],'Z:\\Shared Files');
   assert.equal(args[args.indexOf('-n')+1],'80');
-  assert.equal(args[args.length-1],'ext:pdf is-indexed-property:content no-background-search: content:"משה" content:"|" content:"ext:exe"');
-  const nameArgs=buildEsSearchArgs({root:{path:'Z:\\Shared PDFs'},query:'חשבונית 123',mode:'name'});
-  assert.equal(nameArgs[nameArgs.length-1],'ext:pdf "חשבונית" "123"');
-  const countArgs=buildEsCountArgs({root:{path:'Z:\\Shared PDFs'},search:'ext:pdf is-indexed-property:content'});
+  assert.equal(args[args.length-1],'no-background-search: content:"משה" content:"|" content:"ext:exe"');
+  assert.doesNotMatch(args[args.length-1],/ext:pdf|is-indexed-property:content/);
+  const nameArgs=buildEsSearchArgs({root:{path:'Z:\\Shared Files'},query:'חשבונית 123',mode:'name'});
+  assert.equal(nameArgs[nameArgs.length-1],'"חשבונית" "123"');
+  const countArgs=buildEsCountArgs({root:{path:'Z:\\Shared Files'},search:'is-indexed-property:content'});
   assert.ok(countArgs.includes('-get-result-count'));
   assert.equal(parseEsCount('123\r\n'),123);
   assert.throws(()=>parseEsCount('oops'),/invalid result count/i);
+});
+
+test('Everything install location is parsed from official registry query output',()=>{
+  const stdout='HKEY_LOCAL_MACHINE\\SOFTWARE\\voidtools\\Everything\r\n    InstallLocation    REG_SZ    C:\\Program Files\\Everything\r\n';
+  assert.equal(parseRegistryInstallLocation(stdout),'C:\\Program Files\\Everything');
+  assert.equal(parseRegistryInstallLocation(''),'');
 });

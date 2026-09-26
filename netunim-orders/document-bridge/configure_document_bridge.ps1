@@ -52,7 +52,7 @@ function Save-Roots($config, [string[]]$roots) {
 }
 
 $form = New-Object System.Windows.Forms.Form
-$form.Text = Decode-UiText '15TXkteT16jXqiDXl9eZ16TXldepINee16HXnteb15nXnSDXkdee15fXqdeR'
+$form.Text = Decode-UiText '15TXkteT16jXqiDXl9eZ16TXldepINen15HXpteZ150g15HXnteX16nXkQ=='
 $form.StartPosition = 'CenterScreen'
 $form.Size = New-Object System.Drawing.Size(720, 500)
 $form.MinimumSize = New-Object System.Drawing.Size(650, 430)
@@ -62,7 +62,7 @@ $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 $form.MaximizeBox = $false
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = Decode-UiText '15HXl9eoINeQ16og15TXqteZ16fXmdeV16og16nXkdeU158g16DXntem15DXmdedINen15HXpteZINeULVBERg=='
+$title.Text = Decode-UiText '15HXl9eoINeQ16og15TXqteZ16fXmdeV16og16nXkdeU158g16DXntem15DXmdedINeU16fXkdem15nXnSDXnNeX15nXpNeV16k='
 $title.AutoSize = $false
 $title.Location = New-Object System.Drawing.Point(24, 20)
 $title.Size = New-Object System.Drawing.Size(650, 28)
@@ -147,7 +147,7 @@ function Add-Path([string]$candidate) {
 
 $browse.Add_Click({
   $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-  $dialog.Description = Decode-UiText '15HXl9eoINeq15nXp9eZ15nXqiBQREYg15zXl9eZ16TXldep'
+  $dialog.Description = Decode-UiText '15HXl9eoINeq15nXp9eZ15nXlCDXnNeX15nXpNeV16k='
   $dialog.ShowNewFolderButton = $false
   if ($list.Items.Count -gt 0) { $dialog.SelectedPath = [string]$list.Items[0] }
   if ($dialog.ShowDialog($form) -eq [System.Windows.Forms.DialogResult]::OK) { Add-Path $dialog.SelectedPath }

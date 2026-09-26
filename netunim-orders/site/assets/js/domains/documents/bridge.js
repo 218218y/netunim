@@ -1,6 +1,6 @@
 const BRIDGE_URL='http://127.0.0.1:8766';
 const TOKEN_KEY='netunim_orders_document_bridge_token_v1';
-const REQUEST_TIMEOUT_MS=9000;
+const REQUEST_TIMEOUT_MS=25000;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 

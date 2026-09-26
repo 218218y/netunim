@@ -48,6 +48,10 @@ node "%STAGING%\server.mjs" --init
 if not "%ERRORLEVEL%"=="0" goto :stage_error
 if not exist "%CONFIG%" goto :stage_error
 
+echo Ensuring Everything is running in background mode - no search window...
+node "%STAGING%\server.mjs" --ensure-everything
+if not "%ERRORLEVEL%"=="0" goto :everything_error
+
 rem Always use a normal Windows picker. Existing roots are preloaded for easy verification.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%STAGING%\configure_document_bridge.ps1" -AppRoot "%APPROOT%" -FirstRun
 if not "%ERRORLEVEL%"=="0" goto :config_error
@@ -81,8 +85,9 @@ if exist "%CONFIGBACKUP%" del /Q "%CONFIGBACKUP%" >nul 2>nul
 echo.
 echo ============================================================
 echo Document Bridge installed successfully on THIS computer.
-echo Notepad will open with the key to paste into the website,
-echo configured folders and real Everything index diagnostics.
+echo Everything will be started automatically in background mode
+echo whenever the Bridge starts. No Everything search window is needed.
+echo Notepad will open with the key and diagnostics.
 echo ============================================================
 echo.
 start "" notepad.exe "%SUMMARY%"
@@ -94,6 +99,17 @@ echo.
 echo ERROR: Could not install/verify the official Everything ES command-line client.
 echo Detailed log: %APPROOT%\install-es.log
 call :restore_config
+if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
+pause
+exit /b 1
+
+:everything_error
+call :restore_config
+echo.
+echo ERROR: Everything could not be started in background mode.
+echo The installer looked for the installed Everything.exe and used the official -startup mode.
+echo Install Everything 1.5 with the official installer, then run this installer again.
+echo Runtime log: %APPROOT%\bridge.log
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
