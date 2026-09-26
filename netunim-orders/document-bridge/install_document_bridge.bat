@@ -30,7 +30,7 @@ set "CONFIGWASNEW=no"
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs start_document_bridge.bat) do (
+for %%F in (server.mjs lib.mjs start_document_bridge.bat office_preview.ps1) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 

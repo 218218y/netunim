@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
-  normalizeSearchText,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  normalizeSearchText,officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
 test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
@@ -43,6 +43,15 @@ test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths witho
   assert.deepEqual(rows[0],{name:'מסכת יבמות.pdf',fullPath:'Y:\\ספרים\\שס\\מסכת יבמות.pdf',relativePath:'Y:\\ספרים\\שס',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',attributes:'',isDirectory:false,rootId:'everything',rootLabel:'Everything'});
   assert.equal(rows[1].name,'שיעור.docx');
   assert.equal(rows[1].fullPath,'C:\\Users\\יעקב\\Documents\\שיעור.docx');
+});
+
+
+test('Office preview classification preserves layout-capable formats for local PDF conversion',()=>{
+  assert.equal(officePreviewKind('docx'),'word');
+  assert.equal(officePreviewKind('.rtf'),'word');
+  assert.equal(officePreviewKind('xlsx'),'excel');
+  assert.equal(officePreviewKind('pptx'),'powerpoint');
+  assert.equal(officePreviewKind('pdf'),'');
 });
 
 test('preview query addresses one exact full path and requests Everything content as a property',()=>{

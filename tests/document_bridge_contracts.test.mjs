@@ -43,27 +43,41 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
 
-test('file opening uses Start-Process while folder opening hands off to the Windows Shell COM API',()=>{
+test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
-  assert.match(server,/Shell\.Application/);
-  assert.match(server,/\$s\.Open\(\$p\)/);
-  assert.match(server,/Start-Process -FilePath \$env:NETUNIM_OPEN_TARGET -ErrorAction Stop/);
-  assert.doesNotMatch(server,/Invoke-Item -LiteralPath/);
+  assert.match(server,/System\.Diagnostics\.ProcessStartInfo/);
+  assert.match(server,/UseShellExecute=\$true/);
+  assert.match(server,/System\.Diagnostics\.Process\]::Start/);
+  assert.doesNotMatch(server,/Shell\.Application; \$s\.Open/);
+  assert.doesNotMatch(server,/execFile\('explorer\.exe'/);
   assert.match(server,/await fs\.stat\(row\.fullPath\)/);
-  assert.match(server,/await appendLog\(`OPEN type=/);
+  assert.match(server,/shell=UseShellExecute/);
   assert.match(server,/body\.id/);
   assert.doesNotMatch(server,/body\.path/);
 });
 
-test('preview stays local and supports PDF/image, text and Everything content fallbacks',()=>{
+test('preview stays local, renders Office through local PDF conversion, and keeps text fallback',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
+  const office=read('netunim-orders/document-bridge/office_preview.ps1');
   assert.match(server,/documents\/preview/);
   assert.match(server,/documents\/preview-file/);
+  assert.match(server,/OFFICE_PREVIEW_SCRIPT/);
+  assert.match(server,/ensureOfficePreview/);
+  assert.match(server,/source:'office-pdf'/);
   assert.match(server,/application\/pdf/);
+  assert.match(lib,/officePreviewKind/);
   assert.match(lib,/buildEsContentPreviewArgs/);
-  assert.match(lib,/'-add-columns','content'/);
+  assert.match(installer,/office_preview\.ps1/);
+  assert.match(office,/Word\.Application/);
+  assert.match(office,/ExportAsFixedFormat/);
+  assert.match(office,/Excel\.Application/);
+  assert.match(office,/PowerPoint\.Application/);
+  assert.match(office,/SaveAs\(\$output, 32\)/);
+  assert.equal([...Buffer.from(office,'utf8')].some(byte=>byte>0x7f),false,'office_preview.ps1 must remain ASCII-only for Windows PowerShell 5.1');
+  assert.match(ui,/toolbar=0&navpanes=0&view=FitH/);
   assert.match(ui,/dblclick/);
   assert.match(ui,/selectDocumentResult/);
   assert.match(ui,/document-results-table/);

@@ -36,8 +36,8 @@ export function createDomainsDocumentBridge(){
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const search=(query,{mode='content',limit=60,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
-  const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:15000});
-  const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:25000,signal});
+  const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:65000});
+  const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:35000,signal});
   const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:7000});
   return {getToken,setToken,health,status,search,preview,previewFile,openDocument};
 }

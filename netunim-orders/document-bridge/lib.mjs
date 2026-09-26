@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=6;
+export const BRIDGE_VERSION=7;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const DEFAULT_RESULT_LIMIT=60;
@@ -17,6 +17,19 @@ export const DEFAULT_ALLOWED_ORIGINS=[
 ];
 
 function text(value){return String(value??'').trim()}
+
+const WORD_PREVIEW_EXTENSIONS=new Set(['doc','docx','docm','dot','dotx','dotm','rtf']);
+const EXCEL_PREVIEW_EXTENSIONS=new Set(['xls','xlsx','xlsm','xlsb','xlt','xltx','xltm']);
+const POWERPOINT_PREVIEW_EXTENSIONS=new Set(['ppt','pptx','pptm','pps','ppsx','ppsm','pot','potx','potm']);
+
+export function officePreviewKind(extension){
+  const ext=String(extension??'').replace(/^\./,'').toLowerCase();
+  if(WORD_PREVIEW_EXTENSIONS.has(ext))return 'word';
+  if(EXCEL_PREVIEW_EXTENSIONS.has(ext))return 'excel';
+  if(POWERPOINT_PREVIEW_EXTENSIONS.has(ext))return 'powerpoint';
+  return '';
+}
+
 
 export function normalizeWindowsPath(value){
   let candidate=text(value).replace(/^"|"$/g,'');

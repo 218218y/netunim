@@ -1,22 +1,19 @@
-NETUNIM Document Bridge v6 - Everything search + local preview
-===============================================================
+NETUNIM Document Bridge v7 - Everything search + rich local preview
+=====================================================================
 
 Search scope
 ------------
-The Bridge searches the COMPLETE local Everything index. There is no second
-folder allowlist in the Bridge. Whatever the local Everything instance indexes
-is searchable from the website.
+The Bridge searches the COMPLETE local Everything index. Whatever the local
+Everything instance indexes is searchable from the website.
 
 Website modes
 -------------
 1. Content files
    The Bridge builds an Everything content:"..." no-background-search: query.
-   Search text is passed to ES after -- so quotes remain part of the Everything
-   query exactly.
 
 2. Everything
-   The query is passed directly to Everything search syntax after --. Filters,
-   paths, ext:, dm: and other Everything syntax are preserved.
+   The query is passed directly to Everything search syntax. Filters, paths,
+   ext:, dm: and other Everything syntax are preserved.
 
 Unicode
 -------
@@ -24,31 +21,36 @@ ES output is forced to UTF-8 with -cp 65001 and ES uses native Windows argument
 parsing with -argv. This preserves Unicode query text, filenames and paths over
 Node pipes.
 
-Result list and preview
------------------------
-Document search uses a compact Everything-style result table. A single click
-selects a result and loads the preview pane; a double click opens the result in
-Windows.
-
-Preview stays local:
-- PDF and common images are loaded from the local Bridge into an in-browser blob.
-- Text files are read locally with a bounded preview size.
-- Office/other document types first use Everything's Content property when it is
-  available, providing a fast text preview without uploading the document.
-- Unsupported/very large files show metadata and can still be opened in Windows.
-
 Opening files and folders
 -------------------------
-The browser sends only an expiring result ID. The Bridge verifies the path on
- disk immediately before opening it.
+The browser sends only an expiring result ID. The Bridge resolves the ID and
+checks the path again immediately before opening it.
 
-Files use PowerShell Start-Process, which asks Windows to use the registered
-default application.
+Both folders and documents now use .NET ProcessStartInfo with UseShellExecute=true.
+That hands the path to the interactive Windows graphical shell and invokes its
+registered default Open action. The Bridge does not wait for explorer.exe to
+exit and does not depend on Shell.Application.Open.
 
-Folders use the documented Windows Shell.Application Open method. This hands the
-folder to the interactive Explorer shell and returns immediately, avoiding the
-previous explorer.exe / Invoke-Item lifecycle problem where the Bridge waited but
-no Explorer window appeared.
+Rich local preview
+------------------
+The preview never uploads the source file.
+
+- PDF files are streamed from 127.0.0.1 and opened with Chromium PDF parameters
+  toolbar=0, navpanes=0 and view=FitH. This hides the thumbnail/navigation pane
+  and fits the page to the available preview width while mouse/keyboard scrolling
+  stays inside the PDF viewer.
+- Common images are streamed locally into the preview pane.
+- Plain text files use a bounded local text preview.
+- Word/Excel/PowerPoint/RTF preview uses the locally installed Microsoft Office
+  application in hidden/read-only mode to create a cached PDF under:
+    %LOCALAPPDATA%\NetunimDocumentBridge\preview-cache
+  The source document is never modified. The PDF preserves normal Office page
+  layout/formatting far better than extracted text.
+- If Microsoft Office is unavailable or conversion fails, the Bridge falls back
+  to Everything's indexed Content text when available.
+
+The Office conversion cache is keyed by path + file size + modification time,
+so repeated previews are fast. Old cache entries are removed automatically.
 
 Everything background process
 -----------------------------
@@ -59,8 +61,8 @@ client against the same local Everything instance/database.
 Installation
 ------------
 Run install_document_bridge.bat on each PC. The installer upgrades the Bridge,
-verifies ES/Everything, starts Everything in background mode if required, and
-opens:
+including office_preview.ps1, verifies ES/Everything, starts Everything in
+background mode if required, and opens:
   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
 The website key is near the top of this file.
 
@@ -82,4 +84,4 @@ Security
 - CORS is limited to configured website origins/local development.
 - Open and preview operations accept only an unexpired result ID produced by an
   authenticated search. The browser cannot submit an arbitrary filesystem path.
-- Files and extracted content stay on the local computer.
+- Files and extracted/generated preview content stay on the local computer.

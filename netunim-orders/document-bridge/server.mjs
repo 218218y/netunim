@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
   buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,
-  originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
 const execFile=promisify(execFileCb);
@@ -19,13 +19,15 @@ const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
+const OFFICE_PREVIEW_SCRIPT=path.join(APP_ROOT,'app','office_preview.ps1');
+const PREVIEW_CACHE_DIR=path.join(APP_ROOT,'preview-cache');
 const requestResults=new Map();
 const TEXT_PREVIEW_MAX_BYTES=1024*1024;
 const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
-const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm','rtf']);
+const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
-let server=null,cachedProbe=null,everythingStartPromise=null;
+let server=null,cachedProbe=null,everythingStartPromise=null,previewCachePruneAt=0;
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
 async function appendLog(message){try{await ensureRoot();await fs.appendFile(LOG_PATH,`${new Date().toISOString()} ${message}\n`,'utf8')}catch{}}
@@ -199,6 +201,35 @@ async function readTextPreview(fullPath,stat){
   const length=Math.min(Number(stat.size)||0,TEXT_PREVIEW_MAX_BYTES),handle=await fs.open(fullPath,'r');
   try{const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,0);const decoded=decodeTextBuffer(buffer.subarray(0,bytesRead));const result=trimPreviewText(decoded);return {...result,truncated:result.truncated||Number(stat.size)>length}}finally{await handle.close()}
 }
+async function prunePreviewCache(){
+  if(Date.now()<previewCachePruneAt)return;previewCachePruneAt=Date.now()+30*60*1000;
+  try{
+    await fs.mkdir(PREVIEW_CACHE_DIR,{recursive:true});
+    const names=await fs.readdir(PREVIEW_CACHE_DIR),rows=[];
+    for(const name of names){
+      const file=path.join(PREVIEW_CACHE_DIR,name);try{const stat=await fs.stat(file);if(stat.isFile())rows.push({file,size:Number(stat.size)||0,mtimeMs:Number(stat.mtimeMs)||0})}catch{}
+    }
+    const cutoff=Date.now()-7*24*60*60*1000;for(const row of rows)if(row.mtimeMs<cutoff)try{await fs.unlink(row.file)}catch{}
+    const fresh=rows.filter(row=>row.mtimeMs>=cutoff).sort((a,b)=>b.mtimeMs-a.mtimeMs);let total=0,count=0;
+    for(const row of fresh){total+=row.size;count+=1;if(count>200||total>512*1024*1024)try{await fs.unlink(row.file)}catch{}}
+  }catch(error){await appendLog(`PREVIEW_CACHE_PRUNE_FAILED ${JSON.stringify(String(error?.message||error))}`)}
+}
+function officePreviewCachePath(fullPath,stat){
+  const stamp=`${fullPath}\u0000${Number(stat.size)||0}\u0000${Number(stat.mtimeMs)||0}`,hash=crypto.createHash('sha256').update(stamp).digest('hex');
+  return path.join(PREVIEW_CACHE_DIR,`${hash}.pdf`);
+}
+async function ensureOfficePreview(fullPath,stat,kind){
+  if(!kind)return null;await prunePreviewCache();await fs.mkdir(PREVIEW_CACHE_DIR,{recursive:true});
+  const output=officePreviewCachePath(fullPath,stat);
+  try{const cached=await fs.stat(output);if(cached.isFile()&&cached.size>16){const now=new Date();await fs.utimes(output,now,now).catch(()=>{});return output}}catch{}
+  if(!(await existsFile(OFFICE_PREVIEW_SCRIPT))){await appendLog(`OFFICE_PREVIEW_SCRIPT_MISSING ${OFFICE_PREVIEW_SCRIPT}`);return null}
+  const env={...process.env,NETUNIM_PREVIEW_SOURCE:fullPath,NETUNIM_PREVIEW_OUTPUT:output,NETUNIM_PREVIEW_KIND:kind};
+  try{
+    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',OFFICE_PREVIEW_SCRIPT],{encoding:'utf8',windowsHide:true,timeout:60000,maxBuffer:1024*1024,env});
+    const converted=await fs.stat(output);if(!converted.isFile()||converted.size<16)throw new Error('Office preview PDF is empty.');
+    await appendLog(`OFFICE_PREVIEW_OK kind=${kind} path=${JSON.stringify(fullPath)} bytes=${converted.size}`);return output;
+  }catch(error){try{await fs.unlink(output)}catch{}await appendLog(`OFFICE_PREVIEW_FAILED kind=${kind} path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.stderr||error?.message||error))}`);return null}
+}
 async function readEverythingContentPreview(fullPath){
   try{
     const config=await loadConfig(),probe=await probeEverything({autoStart:true});
@@ -212,17 +243,20 @@ async function previewDocument(id){
   const {row,stat}=await resolveResult(id),meta=previewMetadata(row,stat);
   if(stat.isDirectory())return {ok:true,kind:'folder',...meta};
   const mime=BINARY_PREVIEW_MIME.get(meta.extension);
-  if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,...meta};
+  if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,source:'file',...meta};
+  const officeKind=officePreviewKind(meta.extension);
+  if(officeKind){const converted=await ensureOfficePreview(row.fullPath,stat,officeKind);if(converted)return {ok:true,kind:'binary',mime:'application/pdf',source:'office-pdf',officeKind,...meta}}
   if(TEXT_EXTENSIONS.has(meta.extension)){const data=await readTextPreview(row.fullPath,stat);return {ok:true,kind:'text',source:'file',...meta,...data}}
   const indexed=await readEverythingContentPreview(row.fullPath);
-  if(indexed)return {ok:true,kind:'text',source:'everything-content',...meta,...indexed};
+  if(indexed)return {ok:true,kind:'text',source:officeKind?'office-text-fallback':'everything-content',...meta,...indexed};
   if(mime)return {ok:true,kind:'unavailable',reason:'too-large',...meta};
-  return {ok:true,kind:'unavailable',reason:'no-preview-handler',...meta};
+  return {ok:true,kind:'unavailable',reason:officeKind?'office-preview-unavailable':'no-preview-handler',...meta};
 }
 async function readBinaryPreview(id){
   const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
-  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),mime=BINARY_PREVIEW_MIME.get(extension);
-  if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),officeKind=officePreviewKind(extension);
+  if(officeKind){const converted=await ensureOfficePreview(row.fullPath,stat,officeKind);if(!converted){const e=new Error('Microsoft Office לא הצליח ליצור תצוגה מעוצבת לקובץ.');e.code='OFFICE_PREVIEW_UNAVAILABLE';throw e}const convertedStat=await fs.stat(converted);if(convertedStat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('תצוגת Office גדולה מדי להצגה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}return {buffer:await fs.readFile(converted),mime:'application/pdf',name:`${path.win32.basename(row.fullPath)}.pdf`}}
+  const mime=BINARY_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
   if(stat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
   return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
 }
@@ -239,16 +273,13 @@ async function openDocument(id){
   const {row,stat}=await resolveResult(id);
   if(process.platform!=='win32'){const e=new Error('פתיחת קובץ נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
   const env={...process.env,NETUNIM_OPEN_TARGET:row.fullPath};
-  if(stat.isDirectory()){
-    // Shell.Application.Open is the same Windows Shell operation used to open a folder.
-    // Unlike waiting on explorer.exe/Invoke-Item, the COM call returns immediately after
-    // handing the folder to the interactive Explorer shell.
-    const script='$p=$env:NETUNIM_OPEN_TARGET; $s=New-Object -ComObject Shell.Application; $s.Open($p); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($s)';
-    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-STA','-Command',script],{windowsHide:true,timeout:5000,env});
-  }else{
-    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Process -FilePath $env:NETUNIM_OPEN_TARGET -ErrorAction Stop'],{windowsHide:true,timeout:5000,env});
-  }
-  await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} path=${JSON.stringify(row.fullPath)}`);
+  // Use the Windows graphical shell for both folders and documents. Unlike
+  // Shell.Application.Open, ProcessStartInfo+UseShellExecute invokes the
+  // registered default "open" action for a directory/document in the user's
+  // interactive shell and does not wait for explorer.exe to exit.
+  const script='$p=$env:NETUNIM_OPEN_TARGET; $psi=New-Object System.Diagnostics.ProcessStartInfo; $psi.FileName=$p; $psi.UseShellExecute=$true; [void][System.Diagnostics.Process]::Start($psi)';
+  await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:7000,env});
+  await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} shell=UseShellExecute path=${JSON.stringify(row.fullPath)}`);
   return {ok:true,type:stat.isDirectory()?'folder':'file'};
 }
 
