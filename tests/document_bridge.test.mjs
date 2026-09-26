@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentQuery,buildEverythingQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
-  normalizeSearchText,originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
+  normalizeSearchText,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
 test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
@@ -40,9 +40,25 @@ test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths witho
   ]});
   const rows=parseEsJson(json);
   assert.equal(rows.length,2);
-  assert.deepEqual(rows[0],{name:'מסכת יבמות.pdf',fullPath:'Y:\\ספרים\\שס\\מסכת יבמות.pdf',relativePath:'Y:\\ספרים\\שס',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',rootId:'everything',rootLabel:'Everything'});
+  assert.deepEqual(rows[0],{name:'מסכת יבמות.pdf',fullPath:'Y:\\ספרים\\שס\\מסכת יבמות.pdf',relativePath:'Y:\\ספרים\\שס',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',attributes:'',isDirectory:false,rootId:'everything',rootLabel:'Everything'});
   assert.equal(rows[1].name,'שיעור.docx');
   assert.equal(rows[1].fullPath,'C:\\Users\\יעקב\\Documents\\שיעור.docx');
+});
+
+test('preview query addresses one exact full path and requests Everything content as a property',()=>{
+  const args=buildEsContentPreviewArgs({fullPath:'C:\\Users\\Test\\My File.docx',instance:'1.5a'});
+  assert.ok(args.includes('-add-columns'));
+  assert.equal(args[args.indexOf('-add-columns')+1],'content');
+  assert.equal(args[args.indexOf('-max-results')+1],'1');
+  assert.equal(args[args.indexOf('--')+1],'whole:fullpath:"C:\\Users\\Test\\My File.docx"');
+  assert.equal(parseEsContentPreview(JSON.stringify({results:[{Name:'My File.docx',Content:'preview text'}]})),'preview text');
+});
+
+test('ES JSON parser identifies folder results from the attributes column',()=>{
+  const rows=parseEsJson(JSON.stringify({results:[{Name:'Folder',Path:'C:\\Docs',Attributes:'D','Date Modified':'2026-09-25T12:00:00Z'}]}));
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].isDirectory,true);
+  assert.equal(rows[0].attributes,'D');
 });
 
 test('global Everything result merging dedupes only identical paths',()=>{

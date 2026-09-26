@@ -8,8 +8,8 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
-  buildDocumentQuery,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,
-  originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,
+  originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
 const execFile=promisify(execFileCb);
@@ -20,6 +20,11 @@ const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
 const requestResults=new Map();
+const TEXT_PREVIEW_MAX_BYTES=1024*1024;
+const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
+const TEXT_PREVIEW_MAX_CHARS=600000;
+const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm','rtf']);
+const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
 let server=null,cachedProbe=null,everythingStartPromise=null;
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
@@ -161,7 +166,7 @@ async function diagnoseIndex({freshProbe=false}={}){
 }
 
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
-function publicResult(row){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,rootId:'everything',rootLabel:'Everything'}}
+function publicResult(row){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
 async function searchDocuments(query,limit,mode='everything'){
   const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
@@ -174,6 +179,55 @@ async function searchDocuments(query,limit,mode='everything'){
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
 
+async function resolveResult(id){
+  pruneResults();
+  const row=requestResults.get(String(id||''));
+  if(!row){const e=new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.');e.code='RESULT_EXPIRED';throw e}
+  let stat;try{stat=await fs.stat(row.fullPath)}catch{const e=new Error('הקובץ כבר אינו קיים או שאינו נגיש.');e.code='OPEN_TARGET_MISSING';throw e}
+  return {row,stat};
+}
+
+function decodeTextBuffer(buffer){
+  if(buffer.length>=3&&buffer[0]===0xef&&buffer[1]===0xbb&&buffer[2]===0xbf)return new TextDecoder('utf-8').decode(buffer.subarray(3));
+  if(buffer.length>=2&&buffer[0]===0xff&&buffer[1]===0xfe)return new TextDecoder('utf-16le').decode(buffer.subarray(2));
+  if(buffer.length>=2&&buffer[0]===0xfe&&buffer[1]===0xff)return new TextDecoder('utf-16be').decode(buffer.subarray(2));
+  try{return new TextDecoder('utf-8',{fatal:true}).decode(buffer)}catch{}
+  try{return new TextDecoder('windows-1255').decode(buffer)}catch{return buffer.toString('latin1')}
+}
+function trimPreviewText(value){const text=String(value??'').replace(/\u0000/g,'');return {text:text.slice(0,TEXT_PREVIEW_MAX_CHARS),truncated:text.length>TEXT_PREVIEW_MAX_CHARS}}
+async function readTextPreview(fullPath,stat){
+  const length=Math.min(Number(stat.size)||0,TEXT_PREVIEW_MAX_BYTES),handle=await fs.open(fullPath,'r');
+  try{const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,0);const decoded=decodeTextBuffer(buffer.subarray(0,bytesRead));const result=trimPreviewText(decoded);return {...result,truncated:result.truncated||Number(stat.size)>length}}finally{await handle.close()}
+}
+async function readEverythingContentPreview(fullPath){
+  try{
+    const config=await loadConfig(),probe=await probeEverything({autoStart:true});
+    const args=buildEsContentPreviewArgs({fullPath,timeoutMs:config.searchTimeoutMs,instance:probe.instance});
+    const {stdout}=await runEs(probe.esPath,args,{timeout:config.searchTimeoutMs+5000});
+    const content=parseEsContentPreview(stdout);if(!content)return null;return trimPreviewText(content);
+  }catch(error){await appendLog(`PREVIEW_CONTENT_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`);return null}
+}
+function previewMetadata(row,stat){const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
+async function previewDocument(id){
+  const {row,stat}=await resolveResult(id),meta=previewMetadata(row,stat);
+  if(stat.isDirectory())return {ok:true,kind:'folder',...meta};
+  const mime=BINARY_PREVIEW_MIME.get(meta.extension);
+  if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,...meta};
+  if(TEXT_EXTENSIONS.has(meta.extension)){const data=await readTextPreview(row.fullPath,stat);return {ok:true,kind:'text',source:'file',...meta,...data}}
+  const indexed=await readEverythingContentPreview(row.fullPath);
+  if(indexed)return {ok:true,kind:'text',source:'everything-content',...meta,...indexed};
+  if(mime)return {ok:true,kind:'unavailable',reason:'too-large',...meta};
+  return {ok:true,kind:'unavailable',reason:'no-preview-handler',...meta};
+}
+async function readBinaryPreview(id){
+  const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),mime=BINARY_PREVIEW_MIME.get(extension);
+  if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
+  if(stat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
+  return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
+}
+function sendBinary(req,res,status,{buffer,mime,name},config){res.writeHead(status,{'Content-Type':mime,'Content-Length':String(buffer.length),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(name)}`,...corsHeaders(req,config)});res.end(buffer)}
+
 function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b=Buffer.from(String(actual||''));return a.length===b.length&&a.length>0&&timingSafeEqual(a,b)}
 function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
 function corsHeaders(req,config){const origin=String(req.headers.origin||'');return {'Access-Control-Allow-Origin':origin&&originAllowed(origin,config.allowedOrigins)?origin:'null','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Allow-Private-Network':'true','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin'}}
@@ -182,16 +236,20 @@ async function readJson(req){let size=0,chunks=[];for await(const chunk of req){
 function safeError(error){return {ok:false,code:error?.code||'DOCUMENT_BRIDGE_ERROR',message:error?.message||'שגיאת Document Bridge',rootErrors:Array.isArray(error?.rootErrors)?error.rootErrors:[]}}
 
 async function openDocument(id){
-  pruneResults();const row=requestResults.get(String(id||''));if(!row){const e=new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.');e.code='RESULT_EXPIRED';throw e}
+  const {row,stat}=await resolveResult(id);
   if(process.platform!=='win32'){const e=new Error('פתיחת קובץ נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
-  let stat;try{stat=await fs.stat(row.fullPath)}catch{const e=new Error('הקובץ כבר אינו קיים או שאינו נגיש.');e.code='OPEN_TARGET_MISSING';throw e}
-  // Use the Windows shell default action for both files and folders. explorer.exe
-  // may return a non-zero exit code even after accepting a folder open request,
-  // which caused valid folders to be reported as failures. Invoke-Item -LiteralPath
-  // handles folders and registered file types and reports PowerShell errors reliably.
-  await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Invoke-Item -LiteralPath $env:NETUNIM_OPEN_TARGET -ErrorAction Stop'],{windowsHide:true,timeout:8000,env:{...process.env,NETUNIM_OPEN_TARGET:row.fullPath}});
+  const env={...process.env,NETUNIM_OPEN_TARGET:row.fullPath};
+  if(stat.isDirectory()){
+    // Shell.Application.Open is the same Windows Shell operation used to open a folder.
+    // Unlike waiting on explorer.exe/Invoke-Item, the COM call returns immediately after
+    // handing the folder to the interactive Explorer shell.
+    const script='$p=$env:NETUNIM_OPEN_TARGET; $s=New-Object -ComObject Shell.Application; $s.Open($p); [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($s)';
+    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-STA','-Command',script],{windowsHide:true,timeout:5000,env});
+  }else{
+    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Process -FilePath $env:NETUNIM_OPEN_TARGET -ErrorAction Stop'],{windowsHide:true,timeout:5000,env});
+  }
   await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} path=${JSON.stringify(row.fullPath)}`);
-  return {ok:true};
+  return {ok:true,type:stat.isDirectory()?'folder':'file'};
 }
 
 async function handle(req,res){
@@ -206,6 +264,8 @@ async function handle(req,res){
       sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||''}},config);return;
     }
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/shutdown'){sendJson(req,res,200,{ok:true},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete')})},20);return}
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);

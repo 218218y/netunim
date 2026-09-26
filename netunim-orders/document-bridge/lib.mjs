@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=5;
+export const BRIDGE_VERSION=6;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const DEFAULT_RESULT_LIMIT=60;
@@ -114,7 +114,7 @@ function commonEsPrefix({timeoutMs=15000,instance=''}){
 
 function displayArgs({limit=DEFAULT_RESULT_LIMIT}){
   const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
-  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-max-results',String(count)];
+  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count)];
 }
 
 export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false}){
@@ -126,6 +126,17 @@ export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_
   const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode);
   if(!search)throw new TypeError('Search query must contain at least two characters');
   return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
+}
+
+export function buildExactFullPathQuery(fullPath){
+  const normalized=normalizeWindowsPath(fullPath);
+  if(!normalized)throw new TypeError('Full path is required');
+  return `whole:fullpath:"${everythingLiteral(normalized)}"`;
+}
+
+export function buildEsContentPreviewArgs({fullPath,timeoutMs=15000,instance=''}){
+  const search=buildExactFullPathQuery(fullPath);
+  return [...commonEsPrefix({timeoutMs,instance}),'-json','-no-folder-append-path-separator','-name','-path-column','-add-columns','content','-max-results','1','--',search];
 }
 
 export function buildEsCountArgs({search='*',timeoutMs=15000,instance='',filesOnly=true}){
@@ -156,8 +167,19 @@ export function parseEsJson(stdout){
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
     const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
-    return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,rootId:'everything',rootLabel:'Everything'};
+    const attributes=text(field(row,['attributes','attribs','attrib']));
+    const isDirectory=/(?:^|\s)D(?:\s|$)/i.test(attributes)||/directory/i.test(attributes);
+    return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};
   }).filter(Boolean);
+}
+
+export function parseEsContentPreview(stdout){
+  const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();
+  if(!raw)return '';
+  let parsed;
+  try{parsed=JSON.parse(raw)}catch(error){const e=new Error('ES returned invalid preview JSON');e.code='ES_INVALID_PREVIEW_JSON';e.cause=error;throw e}
+  const row=jsonRows(parsed)[0];
+  return text(field(row,['content']));
 }
 
 export function mergeDocumentResults(groups,limit=DEFAULT_RESULT_LIMIT){

@@ -13,10 +13,14 @@ test('orders site exposes content search plus direct Everything search over loop
   assert.match(html,/קבצים במחשב/);
   assert.match(html,/תוכן קבצים/);
   assert.match(html,/>Everything<\/button>/);
+  assert.match(html,/globalSearchDocumentPreview/);
+  assert.match(html,/globalSearchPreviewOpen/);
   assert.match(main,/createDomainsDocumentBridge/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);
+  assert.match(client,/documents\/preview/);
+  assert.match(client,/documents\/preview-file/);
   assert.match(headers,/connect-src[^\n]*http:\/\/127\.0\.0\.1:8766/);
 });
 
@@ -39,15 +43,31 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
 
-test('file and folder opening uses the Windows shell default action and literal paths',()=>{
+test('file opening uses Start-Process while folder opening hands off to the Windows Shell COM API',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
-  assert.doesNotMatch(server,/rundll32\.exe/);
-  assert.match(server,/Invoke-Item -LiteralPath \$env:NETUNIM_OPEN_TARGET -ErrorAction Stop/);
-  assert.doesNotMatch(server,/execFile\('explorer\.exe'/);
+  assert.match(server,/Shell\.Application/);
+  assert.match(server,/\$s\.Open\(\$p\)/);
+  assert.match(server,/Start-Process -FilePath \$env:NETUNIM_OPEN_TARGET -ErrorAction Stop/);
+  assert.doesNotMatch(server,/Invoke-Item -LiteralPath/);
   assert.match(server,/await fs\.stat\(row\.fullPath\)/);
   assert.match(server,/await appendLog\(`OPEN type=/);
   assert.match(server,/body\.id/);
   assert.doesNotMatch(server,/body\.path/);
+});
+
+test('preview stays local and supports PDF/image, text and Everything content fallbacks',()=>{
+  const server=read('netunim-orders/document-bridge/server.mjs');
+  const lib=read('netunim-orders/document-bridge/lib.mjs');
+  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  assert.match(server,/documents\/preview/);
+  assert.match(server,/documents\/preview-file/);
+  assert.match(server,/application\/pdf/);
+  assert.match(lib,/buildEsContentPreviewArgs/);
+  assert.match(lib,/'-add-columns','content'/);
+  assert.match(ui,/dblclick/);
+  assert.match(ui,/selectDocumentResult/);
+  assert.match(ui,/document-results-table/);
+  assert.match(ui,/document-preview-frame/);
 });
 
 test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{

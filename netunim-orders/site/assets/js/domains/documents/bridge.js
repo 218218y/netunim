@@ -21,9 +21,23 @@ export function createDomainsDocumentBridge(){
       throw bridgeError('לא ניתן להתחבר ל-Document Bridge במחשב זה.','DOCUMENT_BRIDGE_UNAVAILABLE');
     }finally{clearTimeout(timer);signal?.removeEventListener?.('abort',onAbort)}
   }
+  async function requestBlob(path,{body,timeoutMs=REQUEST_TIMEOUT_MS,signal=null}={}){
+    const token=getToken();if(!token)throw bridgeError('חסר מפתח Document Bridge במחשב זה.','DOCUMENT_BRIDGE_NOT_PAIRED');
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);const onAbort=()=>controller.abort();signal?.addEventListener?.('abort',onAbort,{once:true});
+    try{
+      const response=await fetch(BRIDGE_URL+path,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body||{}),signal:controller.signal,cache:'no-store'});
+      if(!response.ok){let data={};try{data=await response.json()}catch{}throw bridgeError(data.message||`Document Bridge החזיר שגיאה (${response.status})`,data.code||`HTTP_${response.status}`,{httpStatus:response.status})}
+      return await response.blob();
+    }catch(error){
+      if(error?.name==='AbortError')throw bridgeError(signal?.aborted?'התצוגה הקודמת בוטלה.':'Document Bridge לא הגיב בזמן.','DOCUMENT_BRIDGE_ABORTED');
+      if(error?.code)throw error;throw bridgeError('לא ניתן להתחבר ל-Document Bridge במחשב זה.','DOCUMENT_BRIDGE_UNAVAILABLE');
+    }finally{clearTimeout(timer);signal?.removeEventListener?.('abort',onAbort)}
+  }
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const search=(query,{mode='content',limit=60,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
-  const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:5000});
-  return {getToken,setToken,health,status,search,openDocument};
+  const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:15000});
+  const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:25000,signal});
+  const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:7000});
+  return {getToken,setToken,health,status,search,preview,previewFile,openDocument};
 }
