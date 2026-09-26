@@ -170,7 +170,7 @@ async function searchDocuments(query,limit,mode='everything'){
   const {stdout}=await runEs(probe.esPath,args,{timeout:config.searchTimeoutMs+5000});
   const rows=parseEsJson(stdout);
   pruneResults();const merged=mergeDocumentResults([rows],limit).map(publicResult),elapsedMs=Date.now()-started;
-  await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} query=${JSON.stringify(String(query||''))}`);
+  await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
 
@@ -185,12 +185,12 @@ async function openDocument(id){
   pruneResults();const row=requestResults.get(String(id||''));if(!row){const e=new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.');e.code='RESULT_EXPIRED';throw e}
   if(process.platform!=='win32'){const e=new Error('פתיחת קובץ נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
   let stat;try{stat=await fs.stat(row.fullPath)}catch{const e=new Error('הקובץ כבר אינו קיים או שאינו נגיש.');e.code='OPEN_TARGET_MISSING';throw e}
-  if(stat.isDirectory()){
-    await execFile('explorer.exe',[row.fullPath],{windowsHide:true,timeout:5000});
-  }else{
-    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Process -FilePath $env:NETUNIM_OPEN_TARGET'],{windowsHide:true,timeout:5000,env:{...process.env,NETUNIM_OPEN_TARGET:row.fullPath}});
-  }
-  await appendLog(`OPEN path=${JSON.stringify(row.fullPath)}`);
+  // Use the Windows shell default action for both files and folders. explorer.exe
+  // may return a non-zero exit code even after accepting a folder open request,
+  // which caused valid folders to be reported as failures. Invoke-Item -LiteralPath
+  // handles folders and registered file types and reports PowerShell errors reliably.
+  await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Invoke-Item -LiteralPath $env:NETUNIM_OPEN_TARGET -ErrorAction Stop'],{windowsHide:true,timeout:8000,env:{...process.env,NETUNIM_OPEN_TARGET:row.fullPath}});
+  await appendLog(`OPEN type=${stat.isDirectory()?'folder':'file'} path=${JSON.stringify(row.fullPath)}`);
   return {ok:true};
 }
 
@@ -241,7 +241,7 @@ async function printDoctor(){
 async function writeInstallSummary(){
   const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='';
   try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,'','Search scope: COMPLETE EVERYTHING INDEX','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI.','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
+  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,'','Search scope: COMPLETE EVERYTHING INDEX','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI.','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
 

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=4;
+export const BRIDGE_VERSION=5;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const DEFAULT_RESULT_LIMIT=60;
@@ -107,17 +107,19 @@ function commonEsPrefix({timeoutMs=15000,instance=''}){
   // ES writes redirected/pipe output using its console code page. Force UTF-8
   // and use CommandLineToArgvW parsing so both query input and JSON output keep
   // Hebrew/Unicode intact when Node communicates through pipes on Windows.
+  // Search text itself is passed after -- (not with -search): ES parses/removes
+  // quotes supplied to -search, which changes content:"multi word" semantics.
   return ['-argv','-cp','65001','-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
 function displayArgs({limit=DEFAULT_RESULT_LIMIT}){
   const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
-  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count)];
+  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-max-results',String(count)];
 }
 
 export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false}){
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
-  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit}),...(filesOnly?['/a-d']:[]),'-search',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit}),...(filesOnly?['/a-d']:[]),'--',String(search)];
 }
 
 export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
@@ -128,7 +130,7 @@ export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_
 
 export function buildEsCountArgs({search='*',timeoutMs=15000,instance='',filesOnly=true}){
   if(!text(search))throw new TypeError('Search expression is required');
-  return [...commonEsPrefix({timeoutMs,instance}),'-no-digit-grouping',...(filesOnly?['/a-d']:[]),'-get-result-count','-search',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),'-no-digit-grouping',...(filesOnly?['/a-d']:[]),'-get-result-count','--',String(search)];
 }
 
 export function parseEsCount(stdout){

@@ -17,14 +17,20 @@ test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
   const args=buildEsSearchArgs({query:'יבמות',mode:'everything',limit:999,timeoutMs:1,instance:'1.5a'});
   assert.deepEqual(args.slice(0,7),['-argv','-cp','65001','-ipc3','-instance','1.5a','-timeout']);
   assert.ok(args.includes('-json'));
-  assert.equal(args[args.indexOf('-n')+1],'120');
-  assert.equal(args[args.indexOf('-search')+1],'יבמות');
+  assert.equal(args[args.indexOf('-max-results')+1],'120');
+  assert.equal(args.includes('-n'),false);
+  assert.equal(args.includes('-search'),false);
+  assert.equal(args[args.indexOf('--')+1],'יבמות');
   assert.equal(args.includes('-path'),false);
   assert.equal(args.includes('/a-d'),false);
 
   const content=buildEsSearchArgs({query:'יבמות',mode:'content'});
   assert.ok(content.includes('/a-d'));
-  assert.equal(content[content.indexOf('-search')+1],'content:"יבמות" no-background-search:');
+  assert.equal(content.includes('-search'),false);
+  assert.equal(content[content.indexOf('--')+1],'content:"יבמות" no-background-search:');
+
+  const phrase=buildEsSearchArgs({query:'מילה אחת',mode:'content'});
+  assert.equal(phrase[phrase.indexOf('--')+1],'content:"מילה אחת" no-background-search:');
 });
 
 test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths without root filtering',()=>{
@@ -53,7 +59,8 @@ test('index count requests are global and Unicode-safe',()=>{
   assert.deepEqual(args.slice(0,7),['-argv','-cp','65001','-ipc3','-instance','1.5a','-timeout']);
   assert.ok(args.includes('-get-result-count'));
   assert.equal(args.includes('-path'),false);
-  assert.equal(args[args.indexOf('-search')+1],'is-indexed-property:content');
+  assert.equal(args.includes('-search'),false);
+  assert.equal(args[args.indexOf('--')+1],'is-indexed-property:content');
   assert.equal(parseEsCount('123\r\n'),123);
   assert.throws(()=>parseEsCount('oops'),/invalid result count/i);
 });

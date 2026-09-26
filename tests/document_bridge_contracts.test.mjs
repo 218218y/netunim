@@ -30,19 +30,22 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.doesNotMatch(server,/config\.roots/);
   assert.doesNotMatch(server,/pathInsideRoot/);
   assert.match(lib,/'-argv','-cp','65001','-ipc3'/);
-  assert.match(lib,/'-search',String\(search\)/);
+  assert.match(lib,/'--',String\(search\)/);
+  assert.match(lib,/'-max-results',String\(count\)/);
+  assert.doesNotMatch(lib,/'-search',String\(search\)/);
+  assert.doesNotMatch(lib,/'-n',String\(count\)/);
   assert.doesNotMatch(lib,/'-path',rootPath/);
   assert.match(server,/probeEverything\(\{fresh:true,autoStart:true\}\)/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
 
-test('file opening waits for Windows shell launch instead of fire-and-forget rundll32',()=>{
+test('file and folder opening uses the Windows shell default action and literal paths',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   assert.doesNotMatch(server,/rundll32\.exe/);
-  assert.match(server,/Start-Process -FilePath \$env:NETUNIM_OPEN_TARGET/);
-  assert.match(server,/explorer\.exe/);
+  assert.match(server,/Invoke-Item -LiteralPath \$env:NETUNIM_OPEN_TARGET -ErrorAction Stop/);
+  assert.doesNotMatch(server,/execFile\('explorer\.exe'/);
   assert.match(server,/await fs\.stat\(row\.fullPath\)/);
-  assert.match(server,/await appendLog\(`OPEN path=/);
+  assert.match(server,/await appendLog\(`OPEN type=/);
   assert.match(server,/body\.id/);
   assert.doesNotMatch(server,/body\.path/);
 });

@@ -1,54 +1,67 @@
-NETUNIM Document Bridge v4 - Everything search for the website
-===============================================================
+NETUNIM Document Bridge v5 - direct Everything search for the website
+=====================================================================
 
-What changed in v4
-------------------
-The Bridge now searches the COMPLETE Everything index. It no longer maintains a
-second folder allowlist (Y:\, C:\, Drive, etc). Whatever is indexed and searchable
-in the local Everything instance is the database searched by the website.
+Search scope
+------------
+The Bridge searches the COMPLETE local Everything index. There is no second
+folder allowlist in the Bridge. Whatever the local Everything instance indexes
+is searchable from the website.
 
-There are two website search modes:
-1. Content - sends a literal content:"..." query to Everything.
-2. Everything - sends the query directly to Everything search syntax, like the
-   Everything search box itself. Example: יבמות, ext:pdf יבמות, dm:thisweek.
+Website modes
+-------------
+1. Content files
+   The Bridge builds an Everything content:"..." no-background-search: query.
+   Search text is passed to ES after -- so the quotes in content:"..." remain
+   part of the Everything query exactly. The Bridge does NOT use ES -search,
+   because ES parses/removes quotes supplied to -search.
+
+2. Everything
+   The query is passed directly to Everything search syntax after --. Filters,
+   paths, ext:, dm: and other Everything syntax are preserved.
+
+Result limiting
+---------------
+The Bridge uses ES -max-results for the IPC viewport. It does NOT use ES -n.
+Recent ES versions implement -n by adding a count: filter into the Everything
+search itself; that changes the search expression and is undesirable for slow
+content queries.
 
 Unicode / Hebrew
 ----------------
-ES writes pipe output using its console code page. v4 forces:
+ES output is forced to UTF-8 with:
   -cp 65001
-so JSON output is UTF-8, and also uses:
+and ES uses native Windows argument parsing with:
   -argv
-so ES parses the Windows command line with CommandLineToArgvW. This is important
-for Hebrew/Unicode search text and Hebrew filenames/paths.
+This preserves Hebrew/Unicode query text, filenames and paths over Node pipes.
+
+Opening files and folders
+-------------------------
+The browser sends only an expiring result ID. The Bridge first verifies that the
+path still exists, then asks the Windows shell to perform the default action with:
+  Invoke-Item -LiteralPath <result path>
+The actual path is passed through an environment variable, not interpolated into
+PowerShell source. This works for both folders (Explorer) and associated files,
+and avoids treating explorer.exe's non-zero process exit code as an open failure.
 
 Everything background process
 -----------------------------
-Everything.exe is started automatically with -startup when needed. No visible
-search window is required. The Bridge talks to the local Everything IPC through
-the official ES command-line client.
+Everything.exe is started automatically with -startup when needed. A visible
+Everything search window is not required. The Bridge uses the official ES IPC
+client against the same local Everything instance/database.
 
 Installation
 ------------
-Run install_document_bridge.bat on each PC.
-There is no Bridge folder-selection step anymore. Configure disks/folders/content
-indexing only in Everything itself. The installer checks the complete Everything
-index and opens:
+Run install_document_bridge.bat on each PC. The installer upgrades the Bridge,
+verifies ES/Everything, starts Everything in hidden startup mode if required,
+and opens:
   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
-The key to paste into the website is near the top of this file.
-
-Opening results
----------------
-The browser sends only the temporary result ID back to the Bridge. The browser
-cannot submit an arbitrary filesystem path. The Bridge verifies that the result
-still exists, then opens files through Windows Start-Process (default association)
-and folders through Explorer. The API returns success only after Windows accepts
-the launch request.
+The website key is near the top of this file.
 
 Logs
 ----
 Installation information / website key:
   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
-Runtime log:
+Runtime log (includes input query, exact Everything query, result count and time):
   %LOCALAPPDATA%\NetunimDocumentBridge\bridge.log
 Console log:
   %LOCALAPPDATA%\NetunimDocumentBridge\bridge-console.log
@@ -59,7 +72,6 @@ Security
 --------
 - Bridge binds only to 127.0.0.1.
 - Requests require the per-computer Bridge token.
-- CORS is limited to the configured Netunim website origins/local development.
-- Opening a file/folder requires an unexpired result ID produced by a recent
-  authenticated Everything search.
-- Files and extracted content remain on the local computer.
+- CORS is limited to configured Netunim website origins/local development.
+- Opening requires an unexpired result ID produced by an authenticated search.
+- Files and extracted content stay on the local computer.
