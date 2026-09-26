@@ -30,7 +30,7 @@ set "CONFIGWASNEW=no"
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs start_document_bridge.bat configure_document_bridge.ps1) do (
+for %%F in (server.mjs lib.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 
@@ -52,9 +52,7 @@ echo Ensuring Everything is running in background mode - no search window...
 node "%STAGING%\server.mjs" --ensure-everything
 if not "%ERRORLEVEL%"=="0" goto :everything_error
 
-rem Always use a normal Windows picker. Existing roots are preloaded for easy verification.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%STAGING%\configure_document_bridge.ps1" -AppRoot "%APPROOT%" -FirstRun
-if not "%ERRORLEVEL%"=="0" goto :config_error
+rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
 
 rem Write the key/diagnostics before the doctor too, so failures are easy to inspect.
 node "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
@@ -117,7 +115,7 @@ exit /b 1
 :config_error
 call :restore_config
 echo.
-echo ERROR: Document folder selection was cancelled or invalid.
+echo ERROR: Document Bridge configuration could not be prepared.
 echo The previous configuration was restored.
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause

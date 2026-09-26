@@ -1,95 +1,65 @@
-NETUNIM Document Bridge v3 - חיפוש מקומי עם Everything 1.5
-=========================================================
+NETUNIM Document Bridge v4 - Everything search for the website
+===============================================================
 
-מה תוקן ב-v3
+What changed in v4
+------------------
+The Bridge now searches the COMPLETE Everything index. It no longer maintains a
+second folder allowlist (Y:\, C:\, Drive, etc). Whatever is indexed and searchable
+in the local Everything instance is the database searched by the website.
+
+There are two website search modes:
+1. Content - sends a literal content:"..." query to Everything.
+2. Everything - sends the query directly to Everything search syntax, like the
+   Everything search box itself. Example: יבמות, ext:pdf יבמות, dm:thisweek.
+
+Unicode / Hebrew
+----------------
+ES writes pipe output using its console code page. v4 forces:
+  -cp 65001
+so JSON output is UTF-8, and also uses:
+  -argv
+so ES parses the Windows command line with CommandLineToArgvW. This is important
+for Hebrew/Unicode search text and Hebrew filenames/paths.
+
+Everything background process
+-----------------------------
+Everything.exe is started automatically with -startup when needed. No visible
+search window is required. The Bridge talks to the local Everything IPC through
+the official ES command-line client.
+
+Installation
 ------------
-1. אין צורך לפתוח את חלון Everything ידנית.
-   ה-Bridge מאתר את Everything.exe ומפעיל אותו עם האפשרות הרשמית:
-     Everything.exe -startup
-   זה מפעיל את Everything ברקע בלי לפתוח חלון חיפוש.
-
-2. ה-Bridge עצמו עולה עם Windows דרך Startup של המשתמש.
-   בכל הפעלה הוא מוודא ש-Everything זמין ברקע; וגם לפני כל חיפוש הוא יודע
-   להפעיל את Everything מחדש אם הוא נסגר.
-
-3. חיפוש אינו מוגבל עוד ל-PDF.
-   - "תוכן קבצים" משתמש ב-content: של Everything לכל סוג קובץ ש-Everything
-     מסוגל לקרוא/לחפש בו.
-   - "שם קובץ" משתמש באינדקס השמות הרגיל של Everything לכל סוגי הקבצים.
-
-4. Content Indexing אינו תנאי להתקנה.
-   אם Everything מציג "Files with indexed content: 0", חיפוש content: עדיין
-   יכול לעבוד על-ידי קריאת הקבצים בזמן החיפוש. הוא פשוט עלול להיות איטי יותר.
-   Content Indexing מומלץ לביצועים, אבל אינו סיבה לעצור את ההתקנה.
-
-למה לא מתקינים את ה-Bridge כ-Windows Service
---------------------------------------------
-במחשב הזה קיימים גם כוננים ממופים כגון Y:\. כונן ממופה שייך למשתמש המחובר
-ולא בהכרח נראה מתוך Session של Windows Service. לכן הארכיטקטורה הנכונה היא:
-- Everything Service יכול להישאר מופעל לצורך אינדוקס NTFS.
-- Everything.exe רץ כתהליך משתמש ברקע עם -startup, בלי חלון חיפוש.
-- Document Bridge רץ כתהליך משתמש מוסתר ומדבר עם האתר ב-127.0.0.1:8766.
-כך גם כונני רשת ממופים נשארים זמינים לחיפוש.
-
-התקנה
------
-1. Everything 1.5 צריך להיות מותקן. הוא לא חייב להיות פתוח.
-2. הפעל install_document_bridge.bat.
-3. המתקין מוודא ש-ES קיים ואז מאתר את Everything.exe ומפעיל אותו ברקע.
-4. נפתח חלון Windows רגיל לבחירת תיקיות החיפוש.
-5. המתקין בודק לכל תיקייה:
-   - Folder accessible
-   - Files visible in Everything
-   - Files with indexed content
-   - ES JSON result parsing
-6. אפס קבצים עם Content מאונדקס הוא WARNING בלבד, לא ERROR.
-7. בסיום נפתח אוטומטית:
-   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
-   והמפתח להדבקה באתר נמצא בתחילת הקובץ.
-
-איפה Everything.exe נמצא
-------------------------
-ה-Bridge מחפש בסדר בטוח ומוגבל:
-- path שכבר נשמר ב-config של ה-Bridge;
-- HKEY_LOCAL_MACHINE/HKEY_CURRENT_USER תחת voidtools\Everything;
-- מיקומי Program Files המקובלים;
-- LocalAppData המקובל;
-- PATH של Windows.
-אם Everything הותקן בדרך רגילה, אין צורך להגדיר נתיב ידנית.
-
-באתר
------
-Ctrl+K -> קבצים במחשב.
-
-אפשר לבחור:
-- תוכן קבצים: content: דרך Everything. אם יש Content Indexing הוא מהיר מאוד;
-  אחרת Everything יכול לקרוא תוכן בזמן החיפוש ולכן חיפוש גדול עשוי לקחת זמן.
-- שם קובץ: חיפוש מהיר באינדקס השמות של Everything.
-
-האינדקס נשאר מקומי בכל מחשב. אם יש 2-3 מחשבים, מתקינים את ה-Bridge בכל אחד
-והוא משתמש ב-Everything ובתיקיות של אותו מחשב בלבד.
-
-לוגים
------
-מידע התקנה + המפתח לאתר:
+Run install_document_bridge.bat on each PC.
+There is no Bridge folder-selection step anymore. Configure disks/folders/content
+indexing only in Everything itself. The installer checks the complete Everything
+index and opens:
   %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
+The key to paste into the website is near the top of this file.
 
-לוג Bridge:
+Opening results
+---------------
+The browser sends only the temporary result ID back to the Bridge. The browser
+cannot submit an arbitrary filesystem path. The Bridge verifies that the result
+still exists, then opens files through Windows Start-Process (default association)
+and folders through Explorer. The API returns success only after Windows accepts
+the launch request.
+
+Logs
+----
+Installation information / website key:
+  %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
+Runtime log:
   %LOCALAPPDATA%\NetunimDocumentBridge\bridge.log
-
-פלט הקונסולה של Bridge:
+Console log:
   %LOCALAPPDATA%\NetunimDocumentBridge\bridge-console.log
-
-לוג התקנת ES:
+ES installer log:
   %LOCALAPPDATA%\NetunimDocumentBridge\install-es.log
 
-שינוי תיקיות:
-  %LOCALAPPDATA%\NetunimDocumentBridge\configure_document_bridge.bat
-
-אבטחה
------
-- ה-Bridge מאזין ל-127.0.0.1 בלבד.
-- האתר שולח טקסט רגיל ואינו מקבל תחביר Everything חופשי.
-- החיפוש מוגבל לתיקיות שהוגדרו מקומית בכל מחשב.
-- פתיחת קובץ נעשית רק לפי מזהה זמני של תוצאה שה-Bridge עצמו החזיר.
-- הקבצים ותוכן החיפוש אינם מועלים לאתר או ל-Supabase.
+Security
+--------
+- Bridge binds only to 127.0.0.1.
+- Requests require the per-computer Bridge token.
+- CORS is limited to the configured Netunim website origins/local development.
+- Opening a file/folder requires an unexpired result ID produced by a recent
+  authenticated Everything search.
+- Files and extracted content remain on the local computer.

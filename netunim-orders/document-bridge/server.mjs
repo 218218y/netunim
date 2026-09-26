@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
   buildDocumentQuery,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,
-  normalizeRoots,originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,pathInsideRoot,
+  originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
 const execFile=promisify(execFileCb);
@@ -30,14 +30,13 @@ async function ensureToken(){await ensureRoot();try{const token=(await fs.readFi
 async function loadConfig(){
   const raw=await readJsonFile(CONFIG_PATH,{});
   return {
-    roots:normalizeRoots(raw.roots),
     everythingInstance:String(raw.everythingInstance||'').trim(),
     everythingExecutable:String(raw.everythingExecutable||'').trim(),
     allowedOrigins:Array.isArray(raw.allowedOrigins)&&raw.allowedOrigins.length?raw.allowedOrigins.map(String):DEFAULT_ALLOWED_ORIGINS,
     searchTimeoutMs:Math.max(3000,Math.min(30000,Number(raw.searchTimeoutMs)||15000)),
   };
 }
-async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{roots:normalizeRoots(config.roots),everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
+async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
 async function init(){await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
 
@@ -140,55 +139,39 @@ async function probeEverything({fresh=false,autoStart=true}={}){
   return cachedProbe;
 }
 
-async function countRoot({esPath,instance},config,root,search){
-  const args=buildEsCountArgs({root,search,timeoutMs:config.searchTimeoutMs,instance});
+async function countIndex({esPath,instance},config,search='*'){
+  const args=buildEsCountArgs({search,timeoutMs:config.searchTimeoutMs,instance,filesOnly:true});
   const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+3000});
   return parseEsCount(stdout);
 }
-async function sampleRoot({esPath,instance},config,root){
-  const args=buildEsRawSearchArgs({root,search:'*',limit:1,timeoutMs:config.searchTimeoutMs,instance});
+async function sampleIndex({esPath,instance},config){
+  const args=buildEsRawSearchArgs({search:'*',limit:1,timeoutMs:config.searchTimeoutMs,instance,filesOnly:false});
   const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+3000});
-  return parseEsJson(stdout,{root});
+  return parseEsJson(stdout);
 }
-async function diagnoseRoot(probe,config,root){
-  let accessible=true,accessError='';
-  try{const stat=await fs.stat(root.path);accessible=stat.isDirectory();if(!accessible)accessError='הנתיב אינו תיקייה'}catch(error){accessible=false;accessError=String(error?.code||error?.message||error)}
+async function diagnoseIndex({freshProbe=false}={}){
+  const config=await loadConfig(),probe=await probeEverything({fresh:freshProbe,autoStart:true});
   let fileCount=null,indexedContentCount=null,sampleOk=false,error='';
   try{
-    fileCount=await countRoot(probe,config,root,'*');
-    indexedContentCount=await countRoot(probe,config,root,'is-indexed-property:content');
-    if(fileCount>0){const sample=await sampleRoot(probe,config,root);sampleOk=sample.length>0}
+    fileCount=await countIndex(probe,config,'*');
+    indexedContentCount=await countIndex(probe,config,'is-indexed-property:content');
+    if(fileCount>0)sampleOk=(await sampleIndex(probe,config)).length>0;
   }catch(err){error=String(err?.message||err)}
-  return {id:root.id,label:root.label,path:root.path,accessible,accessError,fileCount,indexedContentCount,sampleOk,error};
-}
-async function diagnoseRoots({freshProbe=false}={}){
-  const config=await loadConfig();
-  if(!config.roots.length){const e=new Error('לא הוגדרה תיקיית חיפוש במחשב זה.');e.code='ROOTS_NOT_CONFIGURED';throw e}
-  const probe=await probeEverything({fresh:freshProbe,autoStart:true});
-  const diagnostics=[];
-  for(const root of config.roots)diagnostics.push(await diagnoseRoot(probe,config,root));
-  return {config,probe,diagnostics};
+  return {config,probe,diagnostics:{fileCount,indexedContentCount,sampleOk,error}};
 }
 
-async function searchRoot({esPath,instance},config,root,query,mode,limit){
-  const perRoot=Math.max(10,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
-  const args=buildEsSearchArgs({root,query,mode,limit:perRoot,timeoutMs:config.searchTimeoutMs,instance});
-  const {stdout}=await runEs(esPath,args,{timeout:config.searchTimeoutMs+5000});
-  return parseEsJson(stdout,{root});
-}
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
-function publicResult(row){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,rootId:row.rootId,expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,rootId:row.rootId,rootLabel:row.rootLabel}}
-async function searchDocuments(query,limit,mode='content'){
+function publicResult(row){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,rootId:'everything',rootLabel:'Everything'}}
+async function searchDocuments(query,limit,mode='everything'){
   const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
-  if(!everythingQuery){const e=new Error(normalizedMode==='name'?'יש להקליד לפחות שני תווים לחיפוש בשם הקובץ.':'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.');e.code='QUERY_TOO_SHORT';throw e}
-  const config=await loadConfig();if(!config.roots.length){const e=new Error('לא הוגדרה תיקיית חיפוש במחשב זה. פתח את configure_document_bridge.bat.');e.code='ROOTS_NOT_CONFIGURED';throw e}
-  const probe=await probeEverything({autoStart:true});const started=Date.now();
-  const settled=await Promise.allSettled(config.roots.map(root=>searchRoot(probe,config,root,query,normalizedMode,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT))));
-  const groups=[],errors=[];for(let i=0;i<settled.length;i++){const item=settled[i];if(item.status==='fulfilled')groups.push(item.value);else errors.push({rootId:config.roots[i].id,rootLabel:config.roots[i].label,code:item.reason?.code||'ES_SEARCH_FAILED',message:item.reason?.message||'חיפוש נכשל'})}
-  if(!groups.length){const e=new Error(errors[0]?.message||'החיפוש ב-Everything נכשל.');e.code=errors[0]?.code||'ES_SEARCH_FAILED';e.rootErrors=errors;throw e}
-  pruneResults();const merged=mergeDocumentResults(groups,limit).map(publicResult);const elapsedMs=Date.now()-started;
-  await appendLog(`SEARCH mode=${normalizedMode} roots=${config.roots.length} results=${merged.length} elapsedMs=${elapsedMs} partial=${errors.length>0}`);
-  return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:errors.length>0,rootErrors:errors};
+  if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
+  const config=await loadConfig(),probe=await probeEverything({autoStart:true}),started=Date.now();
+  const args=buildEsSearchArgs({query,mode:normalizedMode,limit:Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT),timeoutMs:config.searchTimeoutMs,instance:probe.instance});
+  const {stdout}=await runEs(probe.esPath,args,{timeout:config.searchTimeoutMs+5000});
+  const rows=parseEsJson(stdout);
+  pruneResults();const merged=mergeDocumentResults([rows],limit).map(publicResult),elapsedMs=Date.now()-started;
+  await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} query=${JSON.stringify(String(query||''))}`);
+  return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
 
 function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b=Buffer.from(String(actual||''));return a.length===b.length&&a.length>0&&timingSafeEqual(a,b)}
@@ -200,9 +183,15 @@ function safeError(error){return {ok:false,code:error?.code||'DOCUMENT_BRIDGE_ER
 
 async function openDocument(id){
   pruneResults();const row=requestResults.get(String(id||''));if(!row){const e=new Error('תוצאת החיפוש פגה. חפש שוב את הקובץ.');e.code='RESULT_EXPIRED';throw e}
-  const config=await loadConfig(),root=config.roots.find(x=>x.id===row.rootId);if(!root||!pathInsideRoot(row.fullPath,root.path)){const e=new Error('הקובץ אינו בתוך תיקייה מורשית.');e.code='OPEN_NOT_ALLOWED';throw e}
   if(process.platform!=='win32'){const e=new Error('פתיחת קובץ נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
-  const child=spawn('rundll32.exe',['url.dll,FileProtocolHandler',row.fullPath],{detached:true,windowsHide:true,stdio:'ignore'});child.unref();return {ok:true};
+  let stat;try{stat=await fs.stat(row.fullPath)}catch{const e=new Error('הקובץ כבר אינו קיים או שאינו נגיש.');e.code='OPEN_TARGET_MISSING';throw e}
+  if(stat.isDirectory()){
+    await execFile('explorer.exe',[row.fullPath],{windowsHide:true,timeout:5000});
+  }else{
+    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','Start-Process -FilePath $env:NETUNIM_OPEN_TARGET'],{windowsHide:true,timeout:5000,env:{...process.env,NETUNIM_OPEN_TARGET:row.fullPath}});
+  }
+  await appendLog(`OPEN path=${JSON.stringify(row.fullPath)}`);
+  return {ok:true};
 }
 
 async function handle(req,res){
@@ -213,14 +202,14 @@ async function handle(req,res){
   const expected=await ensureToken();if(!tokenEqual(expected,authToken(req))){sendJson(req,res,401,{ok:false,code:'UNAUTHORIZED',message:'מפתח Document Bridge שגוי או חסר.'},config);return}
   try{
     if(req.method==='GET'&&req.url==='/status'){
-      const {probe,diagnostics}=await diagnoseRoots({freshProbe:true});
-      sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,roots:diagnostics.map(row=>({id:row.id,label:row.label,path:row.path,accessible:row.accessible,fileCount:row.fileCount,indexedContentCount:row.indexedContentCount,error:row.error||''}))},config);return;
+      const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
+      sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||''}},config);return;
     }
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/shutdown'){sendJson(req,res,200,{ok:true},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete')})},20);return}
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);
-  }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='ROOTS_NOT_CONFIGURED'?409:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
+  }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
 }
 
 function loopbackRequest(urlPath,{method='GET',token='',timeoutMs=2500}={}){
@@ -242,24 +231,17 @@ async function stopExisting(){
 }
 
 async function printDoctor(){
-  await init();const {probe,diagnostics}=await diagnoseRoots({freshProbe:true});
+  await init();const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
   const executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
-  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Roots: ${diagnostics.length}`);
-  let fatal=false,totalFiles=0,totalIndexedContent=0;
-  for(const [index,row] of diagnostics.entries()){
-    console.log(`Root ${index+1}: ${row.path}`);console.log(`  Folder accessible: ${row.accessible?'YES':`NO (${row.accessError||'unknown'})`}`);console.log(`  Files visible in Everything: ${row.fileCount===null?'ERROR':row.fileCount}`);console.log(`  Files with indexed content: ${row.indexedContentCount===null?'ERROR':row.indexedContentCount}`);console.log(`  ES JSON result parsing: ${row.fileCount>0?(row.sampleOk?'OK':'FAILED'):'not tested'}`);if(row.error)console.log(`  ES error: ${row.error}`);
-    if(Number.isFinite(row.fileCount))totalFiles+=row.fileCount;if(Number.isFinite(row.indexedContentCount))totalIndexedContent+=row.indexedContentCount;if(!row.accessible||row.error||(row.fileCount>0&&!row.sampleOk))fatal=true;
-  }
-  console.log(`Total files visible: ${totalFiles}`);console.log(`Total files with indexed content: ${totalIndexedContent}`);
-  if(totalFiles===0)console.log('WARNING: Everything currently sees no files inside the configured roots. Installation may continue, but searches will be empty until Everything indexes them.');
-  if(totalFiles>0&&totalIndexedContent===0)console.log('WARNING: No file content is pre-indexed. content: search will still work by reading files on demand, but it can be much slower.');
-  if(fatal){const e=new Error('Document root diagnostics failed. Fix the inaccessible/error roots shown above.');e.code='ROOT_DIAGNOSTICS_FAILED';throw e}
+  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log('Search scope: complete Everything index (same database as Everything UI)');
+  console.log(`Files visible in Everything: ${diagnostics.fileCount===null?'ERROR':diagnostics.fileCount}`);console.log(`Files with indexed content: ${diagnostics.indexedContentCount===null?'ERROR':diagnostics.indexedContentCount}`);console.log(`ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`);if(diagnostics.error)console.log(`ES error: ${diagnostics.error}`);
+  if(diagnostics.error||(diagnostics.fileCount>0&&!diagnostics.sampleOk)){const e=new Error('Everything/ES diagnostics failed.');e.code='INDEX_DIAGNOSTICS_FAILED';throw e}
+  if(diagnostics.fileCount===0)console.log('WARNING: Everything currently sees no files. The website will mirror that empty Everything index.');
 }
 async function writeInstallSummary(){
-  const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics=[],everythingExecutable='';
-  try{const data=await diagnoseRoots({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const totalFiles=diagnostics.reduce((sum,row)=>sum+(Number.isFinite(row.fileCount)?row.fileCount:0),0),totalIndexed=diagnostics.reduce((sum,row)=>sum+(Number.isFinite(row.indexedContentCount)?row.indexedContentCount:0),0);
-  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,'','תיקיות שהוגדרו במחשב הזה:',...(config.roots.length?config.roots.map((root,index)=>`${index+1}. ${root.path}`):['(לא הוגדרו תיקיות)']),'','בדיקת האינדקס:',...(diagnostics.length?diagnostics.flatMap((row,index)=>[`${index+1}. ${row.path}`,`   folder accessible: ${row.accessible?'YES':'NO'}`,`   files visible in Everything: ${row.fileCount??'ERROR'}`,`   files with indexed content: ${row.indexedContentCount??'ERROR'}`,`   ES JSON parsing: ${row.fileCount>0?(row.sampleOk?'OK':'FAILED'):'not tested'}`,...(row.error?[`   error: ${row.error}`]:[])]):['(הבדיקה לא הייתה זמינה)']),'',`TOTAL files visible: ${totalFiles}`,`TOTAL files with indexed content: ${totalIndexed}`,'',totalFiles>0&&totalIndexed===0?'NOTE: Content is not pre-indexed. Content searches still work on demand but may be slower.':'Content index status: OK / partial indexing available.',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,`Change folders: ${path.join(APP_ROOT,'configure_document_bridge.bat')}`,'','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
+  const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='';
+  try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
+  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,'','Search scope: COMPLETE EVERYTHING INDEX','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI.','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
 

@@ -1,75 +1,70 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentQuery,buildNameQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,normalizeRoots,normalizeSearchText,originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,pathInsideRoot,
+  buildContentQuery,buildEverythingQuery,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
+  normalizeSearchText,originAllowed,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
-test('browser text becomes bounded all-file content terms instead of raw Everything syntax',()=>{
-  assert.equal(buildContentQuery('  משה   כהן  '),'no-background-search: content:"משה" content:"כהן"');
-  const hostile=buildContentQuery('invoice" | ext:exe');
-  assert.equal(hostile,'no-background-search: content:"invoice&quot:" content:"|" content:"ext:exe"');
+test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
+  assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
   assert.equal(buildContentQuery('a'),'');
-  assert.equal(buildNameQuery('חשבונית 123'),'"חשבונית" "123"');
+  assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
+  assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
 });
 
-test('document roots are normalized per computer and containment rejects sibling traversal',()=>{
-  const roots=normalizeRoots(['G:/My Drive/PDF/','Z:\\Shared PDFs','g:\\my drive\\pdf']);
-  assert.equal(roots.length,2);
-  assert.equal(roots[0].path,'G:\\My Drive\\PDF');
-  assert.equal(pathInsideRoot('G:\\My Drive\\PDF\\2026\\a.pdf',roots[0].path),true);
-  assert.equal(pathInsideRoot('G:\\My Drive\\PDF-old\\a.pdf',roots[0].path),false);
-  assert.equal(pathInsideRoot('G:\\My Drive\\other\\a.pdf',roots[0].path),false);
-  assert.equal(pathInsideRoot('\\\\server\\share\\pdf\\a.pdf','\\\\server\\share\\pdf'),true);
+test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
+  const args=buildEsSearchArgs({query:'יבמות',mode:'everything',limit:999,timeoutMs:1,instance:'1.5a'});
+  assert.deepEqual(args.slice(0,7),['-argv','-cp','65001','-ipc3','-instance','1.5a','-timeout']);
+  assert.ok(args.includes('-json'));
+  assert.equal(args[args.indexOf('-n')+1],'120');
+  assert.equal(args[args.indexOf('-search')+1],'יבמות');
+  assert.equal(args.includes('-path'),false);
+  assert.equal(args.includes('/a-d'),false);
+
+  const content=buildEsSearchArgs({query:'יבמות',mode:'content'});
+  assert.ok(content.includes('/a-d'));
+  assert.equal(content[content.indexOf('-search')+1],'content:"יבמות" no-background-search:');
 });
 
-test('ES JSON parsing accepts all file types, enforces root boundaries and keeps relative display paths',()=>{
+test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths without root filtering',()=>{
   const json=JSON.stringify({results:[
-    {Name:'invoice.pdf',Path:'Z:\\Shared PDFs\\2026',Size:'1,024','Date Modified':'2026-09-25T12:00:00Z'},
-    {Name:'note.txt',Path:'Z:\\Shared PDFs',Size:'2'},
-    {Name:'sheet.xlsx',Path:'Z:\\Shared PDFs\\2026',Size:'3'},
-    {Name:'escape.docx',Path:'Z:\\Other',Size:'4'},
+    {Name:'מסכת יבמות.pdf',Path:'Y:\\ספרים\\שס',Size:'1024','Date Modified':'2026-09-25T12:00:00Z'},
+    {Name:'שיעור.docx',Path:'C:\\Users\\יעקב\\Documents',Size:'2048','Date Modified':'2026-09-24T10:00:00Z'},
   ]});
-  const rows=parseEsJson(json,{root:{id:'network',label:'משותף',path:'Z:\\Shared PDFs'}});
-  assert.equal(rows.length,3);
-  assert.deepEqual(rows[0],{name:'invoice.pdf',fullPath:'Z:\\Shared PDFs\\2026\\invoice.pdf',relativePath:'2026',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',rootId:'network',rootLabel:'משותף'});
-  assert.equal(rows[1].extension,'txt');
-  assert.equal(rows[2].extension,'xlsx');
-});
-
-test('merged results dedupe the same indexed path but retain separate mirrored copies',()=>{
-  const a={name:'a.pdf',fullPath:'Z:\\Docs\\a.pdf',modified:'2026-09-24T00:00:00Z'};
-  const duplicate={...a,fullPath:'z:\\docs\\A.pdf'};
-  const mirror={...a,fullPath:'G:\\Drive\\a.pdf',modified:'2026-09-25T00:00:00Z'};
-  const rows=mergeDocumentResults([[a],[duplicate,mirror]],10);
+  const rows=parseEsJson(json);
   assert.equal(rows.length,2);
-  assert.equal(rows[0].fullPath,'G:\\Drive\\a.pdf');
+  assert.deepEqual(rows[0],{name:'מסכת יבמות.pdf',fullPath:'Y:\\ספרים\\שס\\מסכת יבמות.pdf',relativePath:'Y:\\ספרים\\שס',modified:'2026-09-25T12:00:00Z',size:1024,extension:'pdf',rootId:'everything',rootLabel:'Everything'});
+  assert.equal(rows[1].name,'שיעור.docx');
+  assert.equal(rows[1].fullPath,'C:\\Users\\יעקב\\Documents\\שיעור.docx');
 });
 
-test('origin allowlist supports only the configured website families and local development',()=>{
+test('global Everything result merging dedupes only identical paths',()=>{
+  const a={name:'א.pdf',fullPath:'Y:\\Docs\\א.pdf',modified:'2026-09-24T00:00:00Z'};
+  const duplicate={...a,fullPath:'y:\\docs\\א.PDF'};
+  const other={...a,fullPath:'C:\\Docs\\א.pdf',modified:'2026-09-25T00:00:00Z'};
+  const rows=mergeDocumentResults([[a,duplicate,other]],10);
+  assert.equal(rows.length,2);
+  assert.equal(rows[0].fullPath,'C:\\Docs\\א.pdf');
+});
+
+test('index count requests are global and Unicode-safe',()=>{
+  const args=buildEsCountArgs({search:'is-indexed-property:content',instance:'1.5a'});
+  assert.deepEqual(args.slice(0,7),['-argv','-cp','65001','-ipc3','-instance','1.5a','-timeout']);
+  assert.ok(args.includes('-get-result-count'));
+  assert.equal(args.includes('-path'),false);
+  assert.equal(args[args.indexOf('-search')+1],'is-indexed-property:content');
+  assert.equal(parseEsCount('123\r\n'),123);
+  assert.throws(()=>parseEsCount('oops'),/invalid result count/i);
+});
+
+test('origin allowlist supports only configured website families and local development',()=>{
   const patterns=['https://bargig-orders.pages.dev','https://*.bargig-orders.pages.dev','https://*.bargig-furniture.com','http://localhost:*'];
   assert.equal(originAllowed('https://orders.bargig-furniture.com',patterns),true);
   assert.equal(originAllowed('https://abc.bargig-orders.pages.dev',patterns),true);
   assert.equal(originAllowed('https://abc.pages.dev',patterns),false);
   assert.equal(originAllowed('http://localhost:8082',patterns),true);
   assert.equal(originAllowed('https://evil.example',patterns),false);
-});
-
-test('ES invocation stays IPC3, files-only, root-bounded and does not force PDF/content-index filters',()=>{
-  const args=buildEsSearchArgs({root:{path:'Z:\\Shared Files'},query:'משה | ext:exe',limit:999,timeoutMs:1,instance:'1.5a'});
-  assert.deepEqual(args.slice(0,4),['-ipc3','-instance','1.5a','-timeout']);
-  assert.ok(args.includes('-json'));
-  assert.ok(args.includes('/a-d'));
-  assert.equal(args[args.indexOf('-path')+1],'Z:\\Shared Files');
-  assert.equal(args[args.indexOf('-n')+1],'80');
-  assert.equal(args[args.length-1],'no-background-search: content:"משה" content:"|" content:"ext:exe"');
-  assert.doesNotMatch(args[args.length-1],/ext:pdf|is-indexed-property:content/);
-  const nameArgs=buildEsSearchArgs({root:{path:'Z:\\Shared Files'},query:'חשבונית 123',mode:'name'});
-  assert.equal(nameArgs[nameArgs.length-1],'"חשבונית" "123"');
-  const countArgs=buildEsCountArgs({root:{path:'Z:\\Shared Files'},search:'is-indexed-property:content'});
-  assert.ok(countArgs.includes('-get-result-count'));
-  assert.equal(parseEsCount('123\r\n'),123);
-  assert.throws(()=>parseEsCount('oops'),/invalid result count/i);
 });
 
 test('Everything install location is parsed from official registry query output',()=>{

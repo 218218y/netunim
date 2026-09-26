@@ -2,11 +2,10 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=3;
-export const MAX_QUERY_CHARS=160;
-export const MAX_QUERY_TERMS=12;
-export const MAX_RESULTS=80;
-export const DEFAULT_RESULT_LIMIT=40;
+export const BRIDGE_VERSION=4;
+export const MAX_QUERY_CHARS=240;
+export const MAX_RESULTS=120;
+export const DEFAULT_RESULT_LIMIT=60;
 export const RESULT_TTL_MS=10*60*1000;
 export const DEFAULT_ALLOWED_ORIGINS=[
   'https://bargig-furniture.com',
@@ -59,38 +58,33 @@ export function normalizeRoots(input){
 }
 
 function everythingLiteral(value){return String(value??'').replaceAll('"','&quot:')}
-function quotedLiteral(value){return `"${everythingLiteral(value)}"`}
 
 export function normalizeSearchText(value){
   return String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,MAX_QUERY_CHARS);
 }
 
-export function normalizeDocumentSearchMode(value){return value==='name'?'name':'content'}
-
-function searchTerms(value){
-  const normalized=normalizeSearchText(value);
-  if(normalized.length<2)return [];
-  return normalized.split(' ').filter(Boolean).slice(0,MAX_QUERY_TERMS);
-}
+export function normalizeDocumentSearchMode(value){return value==='content'?'content':'everything'}
 
 export function buildContentQuery(value){
-  const terms=searchTerms(value);
-  if(!terms.length)return '';
-  // Do not restrict to is-indexed-property:content. Everything's content: search
-  // can use indexed content when available and can search file content on demand otherwise.
-  // no-background-search makes ES wait for the content result set instead of returning early.
-  return `no-background-search: ${terms.map(term=>`content:${quotedLiteral(term)}`).join(' ')}`;
+  const normalized=normalizeSearchText(value);
+  if(normalized.length<2)return '';
+  // Match the same content: function used by Everything itself. When content
+  // indexing is enabled Everything uses it; otherwise Everything applies its
+  // normal on-disk content behavior. no-background-search makes ES wait for
+  // the completed result set instead of returning while content work continues.
+  return `content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 
-export function buildNameQuery(value){
-  const terms=searchTerms(value);
-  if(!terms.length)return '';
-  // Plain quoted terms mirror the normal Everything filename search and work for all file types.
-  return terms.map(quotedLiteral).join(' ');
+export function buildEverythingQuery(value){
+  // This mode intentionally mirrors the Everything search box. Operators,
+  // filters and Everything syntax entered by the user are preserved.
+  return normalizeSearchText(value);
 }
 
-export function buildDocumentQuery(value,mode='content'){
-  return normalizeDocumentSearchMode(mode)==='name'?buildNameQuery(value):buildContentQuery(value);
+export function buildNameQuery(value){return buildEverythingQuery(value)}
+
+export function buildDocumentQuery(value,mode='everything'){
+  return normalizeDocumentSearchMode(mode)==='content'?buildContentQuery(value):buildEverythingQuery(value);
 }
 
 function normalizedKey(value){return String(value??'').toLowerCase().replace(/[\s_-]+/g,'')}
@@ -108,60 +102,59 @@ function jsonRows(parsed){
   return Array.isArray(firstArray)?firstArray:[];
 }
 
-function commonEsPrefix({timeoutMs=12000,instance=''}){
-  const timeout=Math.max(1500,Math.min(30000,Number(timeoutMs)||12000));
-  return ['-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
+function commonEsPrefix({timeoutMs=15000,instance=''}){
+  const timeout=Math.max(3000,Math.min(30000,Number(timeoutMs)||15000));
+  // ES writes redirected/pipe output using its console code page. Force UTF-8
+  // and use CommandLineToArgvW parsing so both query input and JSON output keep
+  // Hebrew/Unicode intact when Node communicates through pipes on Windows.
+  return ['-argv','-cp','65001','-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
-export function buildEsRawSearchArgs({root,search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=12000,instance=''}){
-  const rootPath=normalizeWindowsPath(root?.path||root);
-  if(!rootPath)throw new TypeError('Document root is required');
-  if(!String(search??'').trim())throw new TypeError('Search expression is required');
+function displayArgs({limit=DEFAULT_RESULT_LIMIT}){
   const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
-  return [...commonEsPrefix({timeoutMs,instance}),'-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count),'-path',rootPath,'/a-d',String(search)];
+  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-sort','date-modified-descending','-n',String(count)];
 }
 
-export function buildEsSearchArgs({root,query,mode='content',limit=DEFAULT_RESULT_LIMIT,timeoutMs=12000,instance=''}){
-  const search=buildDocumentQuery(query,mode);
+export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false}){
+  if(!String(search??'').trim())throw new TypeError('Search expression is required');
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit}),...(filesOnly?['/a-d']:[]),'-search',String(search)];
+}
+
+export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
+  const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode);
   if(!search)throw new TypeError('Search query must contain at least two characters');
-  return buildEsRawSearchArgs({root,search,limit,timeoutMs,instance});
+  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
 }
 
-export function buildEsCountArgs({root,search,timeoutMs=12000,instance=''}){
-  const rootPath=normalizeWindowsPath(root?.path||root);
-  if(!rootPath)throw new TypeError('Document root is required');
+export function buildEsCountArgs({search='*',timeoutMs=15000,instance='',filesOnly=true}){
   if(!text(search))throw new TypeError('Search expression is required');
-  return [...commonEsPrefix({timeoutMs,instance}),'-no-digit-grouping','-path',rootPath,'/a-d','-get-result-count',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),'-no-digit-grouping',...(filesOnly?['/a-d']:[]),'-get-result-count','-search',String(search)];
 }
 
 export function parseEsCount(stdout){
-  const raw=String(stdout??'').trim();
+  const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();
   const match=raw.match(/-?\d+/);
   const value=match?Number(match[0]):NaN;
   if(!Number.isSafeInteger(value)||value<0){const error=new Error(`ES returned an invalid result count: ${raw||'(empty)'}`);error.code='ES_INVALID_COUNT';throw error}
   return value;
 }
 
-export function parseEsJson(stdout,{root}={}){
+export function parseEsJson(stdout){
   const raw=String(stdout??'').replace(/^\uFEFF/,'').trim();
   if(!raw)return [];
   let parsed;
   try{parsed=JSON.parse(raw)}catch(error){const e=new Error('ES returned invalid JSON');e.code='ES_INVALID_JSON';e.cause=error;throw e}
-  const rootPath=normalizeWindowsPath(root?.path||'');
   return jsonRows(parsed).map(row=>{
     const name=text(field(row,['name','filename','file name']));
     const parent=normalizeWindowsPath(field(row,['path','parent path','parent_path']));
     const direct=normalizeWindowsPath(field(row,['full path and name','full-path-and-name','filename column','fullpath','full path']));
     const fullPath=direct||(parent&&name?path.win32.join(parent,name):'');
     if(!fullPath||!name)return null;
-    if(rootPath&&!pathInsideRoot(fullPath,rootPath))return null;
-    const relative=rootPath?path.win32.relative(rootPath,fullPath):name;
-    const relativeDir=path.win32.dirname(relative)==='.'?'':path.win32.dirname(relative);
     const modified=text(field(row,['date modified','date-modified','datemodified','date_modified','dm']));
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
     const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
-    return {name,fullPath,relativePath:relativeDir,modified,size:Number.isFinite(size)?size:null,extension,rootId:root?.id||'',rootLabel:root?.label||''};
+    return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,rootId:'everything',rootLabel:'Everything'};
   }).filter(Boolean);
 }
 
