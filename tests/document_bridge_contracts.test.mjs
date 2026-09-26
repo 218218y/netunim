@@ -47,6 +47,16 @@ test('document bridge installer is per-computer, pinned, bounded and supports ve
   assert.match(server,/INSTALLATION-LOG\.txt/);
 });
 
+
+test('PowerShell configurator stays code-page independent for Windows PowerShell 5.1',()=>{
+  const bytes=fs.readFileSync(new URL('../netunim-orders/document-bridge/configure_document_bridge.ps1',import.meta.url));
+  const source=bytes.toString('ascii');
+  assert.equal([...bytes].some(byte=>byte>0x7f),false,'configure_document_bridge.ps1 must remain ASCII-only');
+  assert.match(source,/function Decode-UiText/);
+  assert.match(source,/Encoding\]::UTF8\.GetString/);
+  assert.doesNotMatch(source,/[^\x00-\x7F]/);
+});
+
 test('document search uses bounded content/name ES queries and browser open calls cannot submit arbitrary paths',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
