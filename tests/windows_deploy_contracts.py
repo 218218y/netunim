@@ -90,6 +90,8 @@ class WindowsDeploymentContracts(unittest.TestCase):
     def test_real_engine_database_gate_runs_before_preflight_success_and_stops_both_sites(self):
         shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')
         shutil.copyfile(ROOT/'tools/wrangler-version.txt', self.root/'tools/wrangler-version.txt')
+        shutil.copyfile(ROOT/'tools/pdfjs-runtime.py', self.root/'tools/pdfjs-runtime.py')
+        shutil.copyfile(ROOT/'tools/document-viewers-runtime.py', self.root/'tools/document-viewers-runtime.py')
         for app in ('orders', 'kupa'):
             shutil.copytree(ROOT/f'netunim-{app}/site', self.root/f'netunim-{app}/site')
         self.write('tools/supabase_deploy_gate.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('database\\n')\nraise SystemExit(int(os.environ['DATABASE_EXIT']))\n")
@@ -103,6 +105,16 @@ class WindowsDeploymentContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(calls, ['remote', 'public', 'database', 'database'])
         self.assertNotIn('Deploying the verified static site', result.stdout)
+
+        vendor = self.root/'netunim-orders/site/assets/vendor/document-viewers/jszip/jszip.min.js'
+        original_vendor = vendor.read_bytes()
+        vendor.write_bytes(original_vendor + b'\n// tampered\n')
+        result, calls = self.run_bat('deploy_all_fast.bat')
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(calls, ['remote', 'public'])
+        self.assertIn('runtime integrity verification failed', result.stdout)
+        vendor.write_bytes(original_vendor)
+
         unsafe = self.root/'netunim-orders/site/assets/js/nested/unsafe.js'
         unsafe.parent.mkdir(parents=True, exist_ok=True)
         for source in ("eval('1')", "new Function('return 1')"):

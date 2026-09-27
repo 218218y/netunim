@@ -10,6 +10,7 @@ for command in (
     [sys.executable, 'tests/pdfjs_runtime_vendor_contracts.py'],
     [sys.executable, 'tests/document_viewer_runtime_vendor_contracts.py'],
     [sys.executable, 'tools/pdfjs-runtime.py', 'check'],
+    [sys.executable, 'tools/document-viewers-runtime.py', 'check'],
     [sys.executable, 'tools/sync-assets.py', '--check'],
     [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],

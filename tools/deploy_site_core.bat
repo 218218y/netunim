@@ -86,12 +86,50 @@ if not exist "%SITE_DIR%\supabase\config.js" (
   exit /b 2
 )
 
-rem Executable browser code is kept in explicit JavaScript assets. The CSP does not
-rem allow dynamic code execution, so reject eval/Function-constructor regressions anywhere
-rem in the published JavaScript tree rather than checking index.html only.
+rem Third-party browser runtimes are intentionally vendored for offline/stable use.
+rem Their bytes must match the integrity-pinned manifests before deployment. Only after
+rem that verification may the first-party dynamic-code scan exclude assets\vendor.
+set "VENDOR_DIR=%SITE_DIR%\assets\vendor"
+if exist "%SITE_DIR%\assets\js\domains\documents\pdf-search-viewer.js" (
+  if not exist "%VENDOR_DIR%\pdfjs\_runtime-manifest.txt" (
+    echo ERROR: PDF.js local runtime is missing or incomplete.
+    echo Run npm run pdfjs:install before deployment.
+    exit /b 2
+  )
+  python "%~dp0pdfjs-runtime.py" check
+  if errorlevel 1 (
+    echo ERROR: PDF.js local runtime integrity verification failed.
+    exit /b 2
+  )
+)
+if exist "%SITE_DIR%\assets\js\domains\documents\docx-search-viewer.js" (
+  if not exist "%VENDOR_DIR%\document-viewers\_runtime-manifest.txt" (
+    echo ERROR: Word/Excel local viewer runtimes are missing or incomplete.
+    echo Run npm run document-viewers:install before deployment.
+    exit /b 2
+  )
+  python "%~dp0document-viewers-runtime.py" check
+  if errorlevel 1 (
+    echo ERROR: Word/Excel local viewer runtime integrity verification failed.
+    exit /b 2
+  )
+)
+if exist "%VENDOR_DIR%\" (
+  for /D %%D in ("%VENDOR_DIR%\*") do (
+    if /I not "%%~nxD"=="pdfjs" if /I not "%%~nxD"=="document-viewers" (
+      echo ERROR: unreviewed vendor runtime directory found: "%%D"
+      exit /b 2
+    )
+  )
+)
+
+rem Executable first-party browser code is kept in explicit JavaScript assets. The CSP
+rem does not allow dynamic code execution, so reject eval/Function-constructor regressions
+rem everywhere except integrity-verified third-party vendor runtimes.
 set "FOUND_DYNAMIC_CODE="
-rem One recursive scan avoids launching two findstr processes for every JS module.
-for /F "delims=" %%F in ('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\*.js" 2^>nul') do (
+rem One recursive scan finds candidate files; the second findstr removes the verified
+rem vendor subtree from that candidate list without weakening checks on application code.
+for /F "delims=" %%F in ('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\*.js" 2^>nul ^| findstr /V /I /C:"\assets\vendor\"') do (
   echo ERROR: public JavaScript contains dynamic code: "%%F"
   set "FOUND_DYNAMIC_CODE=1"
 )
