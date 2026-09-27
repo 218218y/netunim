@@ -13,7 +13,7 @@ async function loadGlobals() {
 const globals = await loadGlobals();
 
 export default [
-  {ignores:['.work/**','.offline/**','node_modules/**','**/data/**','**/backups/**']},
+  {ignores:['.work/**','.offline/**','node_modules/**','**/data/**','**/backups/**','**/assets/vendor/**']},
   {
     files:['netunim-*/site/**/*.js','shared/**/*.js'],
     languageOptions:{ecmaVersion:'latest',sourceType:'module',globals:{...globals.browser,...globals.serviceworker}},

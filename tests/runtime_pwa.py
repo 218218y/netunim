@@ -40,9 +40,39 @@ for label, fixture in fixtures.items():
           const keys=(await cache.keys()).map(r=>new URL(r.url).pathname);
           return {keys,globals:['render','saveState','openModal','KUPA_SUPABASE_CONFIG','ORDER_SUPABASE_CONFIG'].filter(n=>Object.hasOwn(window,n))};
         })()""")
-        assets=['/'+p.relative_to(browser.tmp/'site').as_posix() for p in (browser.tmp/'site/assets').rglob('*.js')]
-        assert set(assets).issubset(installed['keys']), (label, installed)
+        asset_root=browser.tmp/'site/assets'
+        application_js=[
+            '/'+p.relative_to(browser.tmp/'site').as_posix()
+            for p in asset_root.rglob('*.js')
+            if 'vendor' not in p.relative_to(asset_root).parts
+        ]
+        assert set(application_js).issubset(installed['keys']), (label, installed)
+        assert not any(key.startswith('/assets/vendor/') for key in installed['keys']), (label, 'vendor runtime was eagerly cached')
         assert installed['globals']==[], installed
+
+        # Third-party runtimes are deliberately excluded from the install shell.
+        # Prove the Orders PDF.js runtime is cached on first use instead of merely
+        # weakening the old "every JS file is pre-cached" assertion. The cache
+        # write is attached to event.waitUntil(), so poll briefly after fetch to
+        # avoid racing the asynchronous CacheStorage put.
+        if label=='orders':
+            lazy_pdfjs='/assets/vendor/pdfjs/build/pdf.mjs'
+            assert (browser.tmp/'site'/lazy_pdfjs.lstrip('/')).is_file(), lazy_pdfjs
+            assert lazy_pdfjs not in installed['keys'], installed
+            lazy_cached=browser.evaluate("""(async()=>{
+              const path="""+json.dumps(lazy_pdfjs)+""";
+              const response=await fetch(path);
+              if(!response.ok)return false;
+              for(let attempt=0;attempt<50;attempt++){
+                for(const name of await caches.keys()){
+                  const hit=await (await caches.open(name)).match(path);
+                  if(hit)return true;
+                }
+                await new Promise(resolve=>setTimeout(resolve,20));
+              }
+              return false;
+            })()""")
+            assert lazy_cached, 'PDF.js runtime request was not cached lazily'
 
         # Seed once on the next navigation. Subsequent reloads have no seeding:
         # they must use the real recovery path and keep pending intact.
@@ -89,5 +119,5 @@ for label, fixture in fixtures.items():
         # local snapshots and pending must still survive (asserted above).
         errors=[e for e in errors if not e.startswith("Blocked attempt to show a 'beforeunload' confirmation panel")]
         assert not errors,errors
-        print('PASS',label,'native ESM,',len(assets),'cached modules, offline reload/recovery, pending, second-tab guard')
+        print('PASS',label,'native ESM,',len(application_js),'cached application modules, lazy vendor runtime, offline reload/recovery, pending, second-tab guard')
     test_worker_upgrade(label, fixture)
