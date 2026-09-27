@@ -20,7 +20,6 @@ export function composeCloudUi({
     authPassword:(...args)=>cloudAuth.authPassword(...args),
     authPasswordForLocalReset:(...args)=>cloudAuth.authPasswordForLocalReset(...args),
     localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-    markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
     getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
     clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
     setCloud:(...args)=>uiStatus.setCloud(...args),

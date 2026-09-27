@@ -119,7 +119,8 @@ ok("shared_checks_documents" in ks and "save_shared_checks_document" in ks,
    "kupa: shared checks endpoint configured")
 ok("shared_checks_documents" in os and "save_shared_checks_document" in os,
    "orders: shared checks endpoint configured")
-ok("ensureSharedChecksForNewCloud" in ks, "kupa: explicit greenfield shared-checks onboarding exists")
+ok("ensureSharedChecksForNewCloud" not in ks and "startStorageV2OwnerTransfer" in ks,
+   "kupa: greenfield Shared Checks onboarding uses the durable V2 owner transfer")
 ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.length>0&&jsonEq(b,r)&&!normalizeDeleteIds(deleteIds).length" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
    "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
 ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
@@ -159,8 +160,12 @@ ok("prepareAuthenticatedStorageOwner" in kupa_cloud_ui and "storage_owner_local_
    'kupa cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
 ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),
    'kupa cloud apply: owner adoption completes before the account state becomes interactive')
-ok(orders_cloud_ui.index("await adoptAuthenticatedStorageOwner(ownerIntent)") < orders_cloud_ui.index("render();if(existing)"),
-   'orders cloud enable: owner adoption completes before rendering the prepared account state')
+orders_enable=orders_cloud_ui.split('async function enableCloud(afterLogin=false){',1)[1].split('async function openCloud(',1)[0]
+kupa_enable=kupa_cloud_ui.split('async function enableCloudFromCurrentState(){',1)[1].split('async function connectSupabaseFromLogin(',1)[0]
+ok("return await transferLocalV2('upload-local')" in orders_enable and 'markCloudPending' not in orders_enable,
+   'orders first upload: durable V2 owner transfer is the only local-to-account writer')
+ok("return await transferLocalV2('upload-local')" in kupa_enable and 'persistSupabaseState' not in kupa_enable and 'ensureSharedChecksForNewCloud' not in kupa_enable,
+   'kupa first upload: durable V2 owner transfer is the only local-to-account writer')
 
 ok("Array.isArray(state.bank.adjustments)" in ks, "kupa: cloud-state bank adjustments are validated")
 ok("!Array.isArray(d)" in os, "orders: cloud state rejects arrays")
@@ -783,9 +788,10 @@ for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
        and "scheduleCloudRecovery" in ui_cloud and "cloudRecoveryTimer" in ui_cloud,
        f"{label} cloud startup: transient Data API failure schedules bounded automatic recovery instead of requiring a reload")
 kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
+shared_checks_v2=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")
 kupa_cloud_policy=(K / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
 ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
-   and kupa_sync_checks.count("runBusyCloudWriteWithPolicy(()=>rpcSaveSharedChecks")>=2
+   and "runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(" in shared_checks_v2
    and "runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync" in kupa_transport
    and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy
    and "if(normalizeCloudError(result).kind!=='busy')return result" in kupa_cloud_policy
@@ -805,8 +811,7 @@ ok("const HEADER_DOMAIN_ORDER=['orders','checks'];" in orders_status
    and "HEADER_DOMAIN_ORDER.filter(domain=>domains[domain].required)" in orders_status,
    "orders cloud header: only Orders + shared checks own the top status timestamp/state")
 ok("setCloud('ענן: מסנכרן בנק ואשראי…')" not in orders_cloud_ui
-   and "finance readout unavailable after orders cloud open; header status remains scoped to orders + checks" in orders_cloud_ui
-   and "finance readout unavailable after orders cloud enable; header status remains scoped to orders + checks" in orders_cloud_ui,
+   and "finance readout unavailable after orders cloud open; header status remains scoped to orders + checks" in orders_cloud_ui,
    "orders cloud hydration: finance remains loaded but cannot turn the top header into a financial status indicator")
 ok('select=*' in kupa_transport
    and 'row.coreUpdatedAt=resolveKupaCoreUpdatedAt(row,row.financeUpdatedAt,financeAvailable)' in kupa_transport

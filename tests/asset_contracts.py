@@ -164,12 +164,13 @@ for label, project in APPS.items():
     else:
         ok("if(name==='reset-local-site-storage')return true;" in status,
            "kupa: reset recovery remains reachable while an interrupted storage protocol blocks ordinary edits")
-        reset_auth_branch="if(mode==='reset'){const resetSession=await supaAuthPasswordForLocalReset(email,password);closeModal();return resetLocalSiteStorage({allowAuthPrompt:false,resetSession})}"
+        reset_auth_branch="if(mode==='reset'){"
         connect_start=cloud.index("async function connectSupabaseFromLogin(mode)")
         reset_branch_pos=cloud.find(reset_auth_branch,connect_start)
         normal_auth_pos=cloud.find("await supaAuthPassword(email,password);",connect_start)
-        owner_pos=cloud.find("let localOwner=storageOwnerCurrent()==='local'",connect_start)
-        ok("openSupabaseLoginModal('reset')" in cloud and reset_branch_pos >= 0 and normal_auth_pos >= 0 and owner_pos >= 0 and
+        owner_pos=cloud.find("if(storageOwnerCurrent()==='local')",connect_start)
+        ok("openSupabaseLoginModal('reset')" in cloud and reset_branch_pos >= 0 and
+           "return resetLocalSiteStorage({allowAuthPrompt:false,resetSession});" in cloud[reset_branch_pos:normal_auth_pos] and normal_auth_pos >= 0 and owner_pos >= 0 and
            reset_branch_pos < normal_auth_pos < owner_pos,
            "kupa: reset-only authentication exits before normal owner checks, merge or upload logic")
         reset_auth_body=cloud_auth.split("async function supaAuthPasswordForLocalReset",1)[1].split("async function localResetReadOnlyFetch",1)[0]

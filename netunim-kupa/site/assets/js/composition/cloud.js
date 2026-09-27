@@ -41,8 +41,6 @@ export function composeCloudUi({
     startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
     render:(...args)=>getUiNavigation().render(...args),
     setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
-    ensureSharedChecksForNewCloud:(...args)=>syncChecks.ensureSharedChecksForNewCloud(...args),
-    persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
     supaAuthPassword:(...args)=>cloudAuth.supaAuthPassword(...args),
     supaAuthPasswordForLocalReset:(...args)=>cloudAuth.supaAuthPasswordForLocalReset(...args),
     closeModal:(...args)=>getUiModal().closeModal(...args),

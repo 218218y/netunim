@@ -56,6 +56,14 @@ test('Orders V2 first upload transfers without a V1 pending write or visible pre
   }finally{cleanup()}
 });
 
+test('Orders first upload refuses a missing V2 local engine without creating a V1 outbox',async()=>{
+  const cleanup=installGlobals();try{
+    const h=ordersHarness({remote:null,v2:false});assert.equal(await h.ui.enableCloud(true),false);
+    assert.equal(h.owner,'local');assert.equal(h.events.includes('pending'),false);
+    assert.equal(h.events.includes('save-main'),false);
+  }finally{cleanup()}
+});
+
 test('Orders V2 account load leaves the local view and owner intact on detached failure',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness({v2:true,sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
@@ -76,5 +84,34 @@ test('Kupa V2 first upload transfers without its V1 main or Shared writers',asyn
     });
     await ui.enableCloudFromCurrentState();assert.equal(owner,'B');assert.ok(events.includes('transfer:upload-local'));
     assert.equal(events.includes('main-upload'),false);assert.equal(events.includes('shared-created'),false);
+  }finally{cleanup()}
+});
+
+test('Kupa first upload refuses a missing V2 local engine without legacy writes',async()=>{
+  const cleanup=installGlobals();try{
+    const events=[],model={state:{checks:[]}};
+    const ui=createKupaUiCloud({tab:{primaryTab:true},model,session:{},checksSession:{},supaConfigured:()=>true,
+      restoreSupaSession:async()=>({user:{id:'B'}}),supaEnsureSession:async()=>{},storageOwnerCurrent:()=> 'local',storageV2PrimaryRequested:()=>false,
+      setCloudHeaderStatus:()=>{},isSupabaseAuthError:()=>false,friendlySupabaseError:error=>error.message,
+      persistSupabaseState:async()=>events.push('legacy-main'),ensureSharedChecksForNewCloud:async()=>events.push('legacy-checks')});
+    assert.equal(await ui.enableCloudFromCurrentState(),false);
+    assert.deepEqual(events,[]);
+  }finally{cleanup()}
+});
+
+test('Kupa password login with upload intent enters only the V2 owner transfer',async()=>{
+  const cleanup=installGlobals();try{
+    document.getElementById('supaEmail').value='owner@example.test';
+    document.getElementById('supaPassword').value='password';
+    const events=[];let authenticated=false,owner='local';
+    const ui=createKupaUiCloud({tab:{primaryTab:true},model:{state:{checks:[]}},session:{},checksSession:{},
+      supaConfigured:()=>true,restoreSupaSession:async()=>authenticated?{user:{id:'B'}}:null,prepareKupaCloudState:state=>structuredClone(state),
+      supaAuthPassword:async()=>{authenticated=true;events.push('auth')},supaEnsureSession:async()=>{},
+      storageOwnerCurrent:()=>owner,storageV2PrimaryRequested:()=>true,loadSupaSession:()=>({user:{id:'B'}}),
+      startStorageV2OwnerTransfer:async()=>{events.push('transfer');owner='B';return {mainRevision:1,sharedRevision:1}},
+      setCloudHeaderStatus:()=>{},setConnectedStatus:()=>{},render:()=>{},startCloudPolling:()=>{},closeModal:()=>events.push('close'),friendlySupabaseError:error=>error.message,isSupabaseAuthError:()=>false,
+      persistSupabaseState:async()=>events.push('legacy-main'),ensureSharedChecksForNewCloud:async()=>events.push('legacy-checks')});
+    assert.equal(await ui.connectSupabaseFromLogin('upload'),true);
+    assert.deepEqual(events,['auth','transfer','close']);
   }finally{cleanup()}
 });

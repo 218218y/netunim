@@ -7,7 +7,7 @@ import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constant
 const CLOUD_RECOVERY_DELAYS_MS=[15_000,30_000,60_000,120_000];
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, readSharedChecksDocument, verifyLocalResetCloud, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, ensureSharedChecksForNewCloud, persistSupabaseState, supaAuthPassword, supaAuthPasswordForLocalReset, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}}){
+export function createUiCloud({session, tab, checksSession, model, clearCloudPending, loadSupabaseState, toast, supaConfigured, modal, configureCloudConnectButton, supaProjectRef, setCloudHeaderStatus, loadSupaSession, setConnectUI, prepareKupaCloudState, getCloudPending=async()=>null, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, loadSharedChecksBase, loadSharedChecksBankEvents, showSecondaryTabGuard, openBrowserStateFallback, restoreSupaSession, storeSupaSession, isSupabaseAuthError, friendlySupabaseError, supaEnsureSession, readSupabaseDocument, readSharedChecksDocument, verifyLocalResetCloud, syncSharedChecksFromCloud, applyCloudRow, reconcileCloudPending, startCloudPolling, render, setConnectedStatus, supaAuthPassword, supaAuthPasswordForLocalReset, closeModal, showFirstRun, confirmDialog, prepareAuthenticatedStorageOwner=async()=>null, storageOwnerCurrent=()=> 'local', storageOwnerAdoption=()=>null, adoptAuthenticatedStorageOwner=async()=>true, startStorageV2OwnerTransfer=async()=>{throw new Error('storage_transfer_unavailable')}}){
 function clearCloudRecovery(){if(session.cloudRecoveryTimer){clearTimeout(session.cloudRecoveryTimer);session.cloudRecoveryTimer=null}session.cloudRecoveryAttempt=0}
 function scheduleCloudRecovery(){
   if(!tab.primaryTab||!navigator.onLine||localStorage.getItem(SUPA_AUTO_KEY)!=='1'||!loadSupaSession()||session.cloudRecoveryTimer)return;
@@ -69,33 +69,63 @@ async function openCloudUsingSavedSession({interactive=true}={}){
 }
 
 async function enableCloudFromCurrentState(){
-  if(!tab.primaryTab){showSecondaryTabGuard();return}if(!supaConfigured())return alert('קובץ הגדרת Supabase חסר או לא תקין.');
-  const saved=await restoreSupaSession();if(!saved)return openSupabaseLoginModal('upload');
+  if(!tab.primaryTab){showSecondaryTabGuard();return false}
+  if(!supaConfigured()){alert('הגדרות Supabase חסרות');return false}
+  const saved=await restoreSupaSession();
+  if(!saved){openSupabaseLoginModal('upload');return false}
   try{
-    setCloudHeaderStatus('syncing','ענן: בודק…');let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();if(!localOwner&&await deferPendingRecovery())return;
-    await supaEnsureSession();if(localOwner&&storageV2PrimaryRequested())return await transferLocalV2('upload-local');
-    const existing=await readSupabaseDocument();let ownerIntent=reserved?.intent||null;if(localOwner&&!ownerIntent)ownerIntent=await effectiveOwnerIntent(existing?'load-account':'upload-local');
-    if(ownerIntent==='load-account'&&!existing)throw new Error('storage_owner_reserved_account_document_missing');
-    if(existing){const pending=await getCloudPending();if(localOwner&&ownerIntent==='load-account'&&pending)throw localOwnerPendingError();if(pending){session.connectionMode='supabase';session.backendReady=true;session.dbRevision=Number(existing.revision||0);session.serverInfo.lastSavedAt=existing.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(existing.state));await reconcileCloudPending(existing);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});if(localOwner)await adoptAuthenticatedStorageOwner(ownerIntent||'load-account');document.getElementById('connectScreen').style.display='none';render();startCloudPolling()}else await applyCloudRow(existing);toast('כבר קיימת קופה בענן — נטענה הגרסה הקיימת');return}
-    if(ownerIntent!=='upload-local')throw new Error('storage_owner_upload_intent_required');if(storageV2PrimaryRequested()||await refreshStorageV2CloudState())throw new Error('kupa_v2_owner_bootstrap_required');
-    const localSnapshot=clone(model.state);session.connectionMode='supabase';session.backendReady=true;session.dbRevision=0;session.serverInfo={schemaVersion:6,lastSavedAt:null,databaseFile:'Supabase',backups:[]};localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');await persistSupabaseState(localSnapshot,'הקופה הועלתה לענן והסנכרון הופעל');checksSession.sharedChecksBase=loadSharedChecksBase();await ensureSharedChecksForNewCloud('מאגר הצקים המשותף נוצר וסונכרן');await adoptAuthenticatedStorageOwner(ownerIntent);setConnectedStatus('Supabase מחובר');setCloudHeaderStatus('synced','ענן: מסונכרן');document.getElementById('connectScreen').style.display='none'
-  }catch(e){console.error(e);if(isSupabaseAuthError(e)){storeSupaSession(null);setCloudHeaderStatus('off','ענן: נדרשת התחברות');openSupabaseLoginModal('upload');return}alert('לא ניתן להפעיל את הענן: '+friendlySupabaseError(e))}
+    setCloudHeaderStatus('syncing','ענן: בודק…');
+    await supaEnsureSession();
+    if(storageOwnerCurrent()==='local'){
+      if(!storageV2PrimaryRequested())throw new Error('storage_v2_local_engine_required');
+      return await transferLocalV2('upload-local');
+    }
+    return await openCloudUsingSavedSession({interactive:false});
+  }catch(error){
+    console.error(error);
+    if(isSupabaseAuthError(error)){
+      storeSupaSession(null);
+      setCloudHeaderStatus('off','ענן: נדרשת התחברות');
+      openSupabaseLoginModal('upload');
+      return false;
+    }
+    alert('לא ניתן להפעיל את הענן: '+friendlySupabaseError(error));
+    return false;
+  }
 }
 
 async function connectSupabaseFromLogin(mode){
-  const email=document.getElementById('supaEmail')?.value.trim(),password=document.getElementById('supaPassword')?.value||'';if(!email||!password)return toast('יש להזין אימייל וסיסמה');
+  const email=document.getElementById('supaEmail')?.value.trim();
+  const password=document.getElementById('supaPassword')?.value||'';
+  if(!email||!password)return toast('יש להזין אימייל וסיסמה');
   try{
-    if(mode==='reset'){const resetSession=await supaAuthPasswordForLocalReset(email,password);closeModal();return resetLocalSiteStorage({allowAuthPrompt:false,resetSession})}await supaAuthPassword(email,password);let localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
-    if(localOwner&&storageV2PrimaryRequested()){await transferLocalV2(mode==='upload'?'upload-local':'load-account');closeModal();return}
-    if(!localOwner&&await deferPendingRecovery()){closeModal();return}
-    if(mode==='upload'){
-      const existing=await readSupabaseDocument();let ownerIntent=reserved?.intent||null;if(localOwner&&!ownerIntent)ownerIntent=await effectiveOwnerIntent(existing?'load-account':'upload-local');
-      if(existing){const pending=await getCloudPending();if(localOwner&&ownerIntent==='load-account'&&pending)throw localOwnerPendingError();if(pending){session.connectionMode='supabase';session.backendReady=true;session.dbRevision=Number(existing.revision||0);session.serverInfo.lastSavedAt=existing.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(existing.state));await reconcileCloudPending(existing);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});if(localOwner)await adoptAuthenticatedStorageOwner(ownerIntent||'load-account');render();startCloudPolling()}else await applyCloudRow(existing);closeModal();toast('כבר קיימת קופה בענן — נטענה הגרסה הקיימת');return}
-      if(ownerIntent!=='upload-local')throw new Error('storage_owner_upload_intent_required');if(storageV2PrimaryRequested()||await refreshStorageV2CloudState())throw new Error('kupa_v2_owner_bootstrap_required');const localSnapshot=clone(model.state);session.connectionMode='supabase';session.backendReady=true;session.dbRevision=0;session.serverInfo={schemaVersion:6,lastSavedAt:null,databaseFile:'Supabase',backups:[]};localStorage.setItem(STORAGE_PREF_KEY,'supabase');localStorage.setItem(SUPA_AUTO_KEY,'1');await persistSupabaseState(localSnapshot,'הקופה הועלתה לענן והסנכרון הופעל');checksSession.sharedChecksBase=loadSharedChecksBase();await ensureSharedChecksForNewCloud('מאגר הצקים המשותף נוצר וסונכרן');await adoptAuthenticatedStorageOwner(ownerIntent);setConnectedStatus('Supabase מחובר');setCloudHeaderStatus('synced','ענן: מסונכרן');document.getElementById('connectScreen').style.display='none';closeModal();return
+    if(mode==='reset'){
+      const resetSession=await supaAuthPasswordForLocalReset(email,password);
+      closeModal();
+      return resetLocalSiteStorage({allowAuthPrompt:false,resetSession});
     }
-    const row=await readSupabaseDocument();if(!row){closeModal();await showCloudNoDocument();return}let ownerIntent=reserved?.intent||null;if(localOwner&&!ownerIntent)ownerIntent=await effectiveOwnerIntent('load-account');if(ownerIntent==='upload-local'){closeModal();return enableCloudFromCurrentState()}
-    const pending=await getCloudPending();if(localOwner&&pending)throw localOwnerPendingError();if(pending){session.connectionMode='supabase';session.backendReady=true;session.dbRevision=Number(row.revision||0);session.serverInfo.lastSavedAt=row.coreUpdatedAt||session.serverInfo.lastSavedAt||null;session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));await reconcileCloudPending(row);checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});if(localOwner)await adoptAuthenticatedStorageOwner(ownerIntent||'load-account');document.getElementById('connectScreen').style.display='none';render();startCloudPolling()}else await applyCloudRow(row);closeModal()
-  }catch(e){console.error(e);const msg='לא ניתן להתחבר ל-Supabase: '+friendlySupabaseError(e);const box=document.getElementById('supaLoginError');if(box){box.textContent=msg;box.style.display='block'}else alert(msg)}
+    await supaAuthPassword(email,password);
+    if(mode==='upload'){
+      const ok=await enableCloudFromCurrentState();
+      if(ok)closeModal();
+      return ok;
+    }
+    if(storageOwnerCurrent()==='local'){
+      if(!storageV2PrimaryRequested())throw new Error('storage_v2_local_engine_required');
+      const ok=await transferLocalV2('load-account');
+      if(ok)closeModal();
+      return ok;
+    }
+    const ok=await openCloudUsingSavedSession({interactive:false});
+    if(ok)closeModal();
+    return ok;
+  }catch(error){
+    console.error(error);
+    const message='לא ניתן להתחבר ל-Supabase: '+friendlySupabaseError(error);
+    const box=document.getElementById('supaLoginError');
+    if(box){box.textContent=message;box.style.display='block'}else alert(message);
+    return false;
+  }
 }
 
 async function tryAutoOpenSupabase(){
