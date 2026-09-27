@@ -31,12 +31,17 @@ const fs=require('fs'),vm=require('vm');
 const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.includes('LAZY_RUNTIME_PREFIXES');
 (async()=>{
   const handlers={},calls={open:[],addAll:[],put:[],deleted:[],currentMatch:[],globalMatch:[],claim:0,skip:0,network:0};
-  let currentAssetRequest=null;
+  let currentAssetRequest=null,lazyPutEntered=false,lazyPutRelease;
+  const lazyPutGate=new Promise(resolve=>{lazyPutRelease=resolve});
   const currentAsset={tag:'current-app-js'},currentIndex={tag:'current-index'};
   const unrelatedAsset={tag:'unrelated-app-js'},unrelatedIndex={tag:'unrelated-index'};
   const cache={
     addAll:async items=>{calls.addAll.push([...items])},
-    put:async(req,res)=>{calls.put.push(typeof req==='string'?req:req.url||'request')},
+    put:async(req,res)=>{
+      const key=typeof req==='string'?req:req.url||'request';
+      calls.put.push(key);
+      if(key.includes('/assets/vendor/pdfjs/')){lazyPutEntered=true;await lazyPutGate}
+    },
     match:async key=>{
       calls.currentMatch.push(typeof key==='string'?key:key.url||'request');
       if(key===currentAssetRequest)return currentAsset;
@@ -67,10 +72,16 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
   const activate=event({});handlers.activate(activate);await Promise.all(activate._waits);
   const onlineReq={method:'GET',url:'https://app.test/index.html',mode:'navigate'};
   const online=event({request:onlineReq});handlers.fetch(online);const onlineRes=await online._response();await Promise.all(online._waits);
-  let lazyCached=null;
+  let lazyCached=null,lazyHeldUntilCacheWrite=null;
   if(hasLazyRuntime){
     const lazyReq={method:'GET',url:'https://app.test/assets/vendor/pdfjs/build/pdf.mjs',mode:'cors'};
-    const lazy=event({request:lazyReq});handlers.fetch(lazy);await lazy._response();await Promise.all(lazy._waits);
+    const lazy=event({request:lazyReq});handlers.fetch(lazy);
+    let lazyResponseSettled=false;
+    const lazyResponse=lazy._response().then(value=>{lazyResponseSettled=true;return value});
+    for(let attempt=0;attempt<10&&!lazyPutEntered;attempt++)await new Promise(resolve=>setTimeout(resolve,0));
+    lazyHeldUntilCacheWrite=lazyPutEntered&&!lazyResponseSettled;
+    lazyPutRelease();
+    await lazyResponse;await Promise.all(lazy._waits);
     lazyCached=calls.put.includes(lazyReq.url);
   }
   context.fetch=async()=>{calls.network++;throw new Error('offline')};
@@ -86,7 +97,7 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
     deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
     cached:cachedRes&&cachedRes.tag,fallback:fallbackRes&&fallbackRes.tag,
     currentMatches:calls.currentMatch,globalMatches:calls.globalMatch,
-    lazyCached,crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
+    lazyCached,lazyHeldUntilCacheWrite,crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
   }));
 })().catch(e=>{console.error(e);process.exit(1)});
 """
@@ -136,10 +147,12 @@ for label, site in APPS.items():
     if label == 'orders':
         ok("LAZY_RUNTIME_PREFIXES=['./assets/vendor/pdfjs/']" in text and 'isLazyRuntimePath' in text,
            'orders: PDF.js vendor assets use lazy network-first runtime caching')
-        wait_pos = text.find('event.waitUntil(cacheWrite)')
-        respond_pos = text.find('event.respondWith', text.find("self.addEventListener('fetch'"))
-        ok(wait_pos >= 0 and respond_pos >= 0 and wait_pos < respond_pos,
-           'orders: lazy runtime cache lifetime is registered synchronously before the fetch response')
+        lazy_branch = text.find('if(lazyRuntime)')
+        lazy_put = text.find('await cache.put(event.request,response.clone())', lazy_branch)
+        lazy_wait = text.find('event.waitUntil(lazyResponse.then', lazy_branch)
+        lazy_respond = text.find('event.respondWith(lazyResponse)', lazy_branch)
+        ok(lazy_branch >= 0 and lazy_put > lazy_branch and lazy_wait > lazy_put and lazy_respond > lazy_wait,
+           'orders: lazy PDF.js response resolves only after its first CacheStorage write is complete')
     for item in shell:
         if item == "./":
             continue
@@ -175,6 +188,8 @@ for label, site in APPS.items():
         ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
         if label == 'orders':
             ok(probe.get('lazyCached') is True, 'orders: first PDF.js runtime request is persisted by the lazy runtime cache')
+            ok(probe.get('lazyHeldUntilCacheWrite') is True,
+               'orders: first PDF.js response stays pending until its lazy CacheStorage write completes')
         ok(probe.get("cached") == "current-app-js", f"{label}: offline asset ignores a conflicting unrelated cache")
         ok(probe.get("fallback") == "current-index", f"{label}: navigation fallback ignores a conflicting unrelated cache")
         ok(not probe.get("globalMatches"), f"{label}: offline fallback never searches all origin caches")

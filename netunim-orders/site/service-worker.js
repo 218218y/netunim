@@ -245,12 +245,37 @@ self.addEventListener('fetch',event=>{
   const lazyRuntime=isLazyRuntimePath(url.pathname);
   if(event.request.mode!=='navigate'&&!SHELL_PATHS.has(url.pathname)&&!lazyRuntime)return;
 
+  // PDF.js is an immutable, version-pinned runtime that is intentionally kept
+  // out of the install shell. On its first request, persist the clone before
+  // resolving the response promise. This makes the lazy cache deterministic:
+  // callers that have received the module can rely on it already being cached.
+  if(lazyRuntime){
+    const lazyResponse=(async()=>{
+      try{
+        const response=await fetch(event.request);
+        if(response.ok){
+          const cache=await caches.open(CACHE);
+          await cache.put(event.request,response.clone());
+        }
+        return response;
+      }catch(error){
+        const cache=await caches.open(CACHE);
+        const cached=await cache.match(event.request);
+        if(cached)return cached;
+        throw error;
+      }
+    })();
+    event.waitUntil(lazyResponse.then(()=>undefined,()=>undefined));
+    event.respondWith(lazyResponse);
+    return;
+  }
+
   // Network-first prevents a previously installed PWA from keeping stale HTML,
   // config or icons after a deployment. Offline remains fully supported by the
   // verified app-shell cache and navigation fallback.
   const network=fetch(event.request);
   const cacheWrite=network.then(response=>{
-    if(!response.ok||(!SHELL_PATHS.has(url.pathname)&&!lazyRuntime))return;
+    if(!response.ok||!SHELL_PATHS.has(url.pathname))return;
     return caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
   }).catch(()=>{});
   event.waitUntil(cacheWrite);

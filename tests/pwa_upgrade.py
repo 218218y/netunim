@@ -167,8 +167,14 @@ def test_worker_upgrade(label, fixture):
         assert 'unrelated-cache' in upgraded['names'], upgraded
         assert upgraded['names'].index('unrelated-cache') < upgraded['names'].index(upgraded['cacheName']), upgraded
         assert upgraded['globalEntry'] == fake_app and 'UNRELATED_CACHE_INDEX' in upgraded['globalIndex'], upgraded
-        expected = ['/'+p.relative_to(browser.release).as_posix() for p in (browser.release/'assets').rglob('*.js')]
+        asset_root = browser.release/'assets'
+        expected = [
+            '/'+p.relative_to(browser.release).as_posix()
+            for p in asset_root.rglob('*.js')
+            if 'vendor' not in p.relative_to(asset_root).parts
+        ]
         assert set(expected).issubset(upgraded['paths']), upgraded
+        assert not any(path.startswith('/assets/vendor/') for path in upgraded['paths']), upgraded
         expected_entry_hash = hashlib.sha256((browser.release/'assets/app.js').read_bytes()).hexdigest()
         assert upgraded['entryHash'] == expected_entry_hash
         assert upgraded['mainHash'] == hashlib.sha256((browser.release/'assets/js/main.js').read_bytes()).hexdigest()
