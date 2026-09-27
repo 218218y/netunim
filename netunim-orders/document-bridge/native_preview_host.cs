@@ -21,6 +21,13 @@ namespace NetunimPreview
         [PreserveSig] uint TranslateAccelerator(ref MSG msg);
     }
 
+    [ComImport, Guid("00000114-0000-0000-C000-000000000046"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IOleWindow
+    {
+        [PreserveSig] int GetWindow(out IntPtr hwnd);
+        [PreserveSig] int ContextSensitiveHelp([MarshalAs(UnmanagedType.Bool)] bool enterMode);
+    }
+
     [ComImport, Guid("B7D14566-0509-4CCE-A71F-0A554233BD9B"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     internal interface IInitializeWithFile
     {
@@ -60,12 +67,54 @@ namespace NetunimPreview
         public POINT pt;
     }
 
+    internal static class NativeDpi
+    {
+        private static readonly IntPtr PerMonitorAwareV2 = new IntPtr(-4);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetProcessDPIAware();
+
+        public static void Enable()
+        {
+            try
+            {
+                if (SetProcessDpiAwarenessContext(PerMonitorAwareV2)) return;
+            }
+            catch (EntryPointNotFoundException) { }
+            catch (DllNotFoundException) { }
+
+            try { SetProcessDPIAware(); }
+            catch { }
+        }
+    }
+
     internal sealed class PreviewPanel : Panel
     {
         private static readonly Guid ShellItemGuid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
         private const string PreviewHandlerKey = "{8895B1C6-B41F-4C1C-A562-0D564250836F}";
         private object handlerObject;
         private IPreviewHandler handler;
+        private readonly System.Windows.Forms.Timer settleTimer;
+        private int settlePassesRemaining;
+        private const uint SWP_NOZORDER = 0x0004;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_SHOWWINDOW = 0x0040;
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr hwnd, out RECT rect);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetParent(IntPtr hwnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
 
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
         private static extern int SHCreateItemFromParsingName(
@@ -78,6 +127,18 @@ namespace NetunimPreview
         {
             Dock = DockStyle.Fill;
             BackColor = Color.White;
+            settleTimer = new System.Windows.Forms.Timer();
+            settleTimer.Interval = 125;
+            settleTimer.Tick += delegate
+            {
+                if (handler == null || settlePassesRemaining <= 0)
+                {
+                    settleTimer.Stop();
+                    return;
+                }
+                settlePassesRemaining--;
+                SynchronizePreviewBounds();
+            };
         }
 
         public string CurrentHandlerId { get; private set; }
@@ -149,10 +210,13 @@ namespace NetunimPreview
                     return false;
                 }
 
-                RECT rect = new RECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
+                RECT rect = CurrentClientRect();
                 handler.SetWindow(Handle, ref rect);
                 handler.DoPreview();
                 CurrentHandlerId = clsid.ToString("B");
+                settlePassesRemaining = 10;
+                SynchronizePreviewBounds();
+                settleTimer.Start();
                 return true;
             }
             catch (Exception ex)
@@ -163,20 +227,49 @@ namespace NetunimPreview
             }
         }
 
-        protected override void OnResize(EventArgs e)
+        private RECT CurrentClientRect()
         {
-            base.OnResize(e);
-            if (handler == null) return;
+            RECT rect;
+            if (IsHandleCreated && GetClientRect(Handle, out rect))
+            {
+                rect.Left = 0;
+                rect.Top = 0;
+                rect.Right = Math.Max(1, rect.Right);
+                rect.Bottom = Math.Max(1, rect.Bottom);
+                return rect;
+            }
+            return new RECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
+        }
+
+        public void SynchronizePreviewBounds()
+        {
+            if (handler == null || !IsHandleCreated) return;
+            RECT rect = CurrentClientRect();
+            try { handler.SetWindow(Handle, ref rect); } catch { }
+            try { handler.SetRect(ref rect); } catch { }
+
             try
             {
-                RECT rect = new RECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
-                handler.SetRect(ref rect);
+                IOleWindow oleWindow = handlerObject as IOleWindow;
+                IntPtr previewWindow;
+                if (oleWindow != null && oleWindow.GetWindow(out previewWindow) >= 0 && previewWindow != IntPtr.Zero && GetParent(previewWindow) == Handle)
+                {
+                    SetWindowPos(previewWindow, IntPtr.Zero, 0, 0, Math.Max(1, rect.Right), Math.Max(1, rect.Bottom), SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                }
             }
             catch { }
         }
 
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            SynchronizePreviewBounds();
+        }
+
         public void UnloadPreview()
         {
+            settleTimer.Stop();
+            settlePassesRemaining = 0;
             if (handler != null)
             {
                 try { handler.Unload(); } catch { }
@@ -230,7 +323,11 @@ namespace NetunimPreview
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) UnloadPreview();
+            if (disposing)
+            {
+                UnloadPreview();
+                settleTimer.Dispose();
+            }
             base.Dispose(disposing);
         }
     }
@@ -256,6 +353,9 @@ namespace NetunimPreview
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
 
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
+
         private static IntPtr SetOwner(IntPtr hwnd, IntPtr owner)
         {
             return IntPtr.Size == 8 ? SetWindowLongPtr64(hwnd, GWL_HWNDPARENT, owner) : SetWindowLong32(hwnd, GWL_HWNDPARENT, owner);
@@ -266,6 +366,7 @@ namespace NetunimPreview
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
+            AutoScaleMode = AutoScaleMode.None;
             BackColor = Color.White;
             previewPanel = new PreviewPanel();
             Controls.Add(previewPanel);
@@ -281,6 +382,17 @@ namespace NetunimPreview
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW
                 return cp;
+            }
+        }
+
+        public string Diagnostics
+        {
+            get
+            {
+                uint dpi = 96;
+                try { dpi = GetDpiForWindow(Handle); }
+                catch { }
+                return "CLIENT=" + previewPanel.ClientSize.Width + "x" + previewPanel.ClientSize.Height + " DPI=" + dpi;
             }
         }
 
@@ -303,6 +415,7 @@ namespace NetunimPreview
             }
             handlerId = previewPanel.CurrentHandlerId;
             ApplyBounds(x, y, width, height);
+            previewPanel.SynchronizePreviewBounds();
             return true;
         }
 
@@ -310,6 +423,7 @@ namespace NetunimPreview
         {
             if (!Visible) return;
             ApplyBounds(x, y, width, height);
+            previewPanel.SynchronizePreviewBounds();
         }
 
         private void ApplyBounds(int x, int y, int width, int height)
@@ -334,6 +448,7 @@ namespace NetunimPreview
         [STAThread]
         private static void Main()
         {
+            NativeDpi.Enable();
             Console.InputEncoding = Encoding.UTF8;
             Console.OutputEncoding = Encoding.UTF8;
             Application.EnableVisualStyles();
@@ -394,7 +509,7 @@ namespace NetunimPreview
                 {
                     if (parts.Length < 6) throw new InvalidOperationException("MOVE requires x y width height.");
                     form.MovePreview(ParseInt(parts[2]), ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]));
-                    Reply(id, true, "MOVED");
+                    Reply(id, true, "MOVED " + form.Diagnostics);
                     return;
                 }
                 if (command == "OPEN")
@@ -404,7 +519,7 @@ namespace NetunimPreview
                     string handlerId, error;
                     bool ok = form.Open(path, ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]), ParseInt(parts[6]), out handlerId, out error);
                     if (!ok) throw new InvalidOperationException(error ?? "Preview handler failed.");
-                    Reply(id, true, "OPENED " + (handlerId ?? String.Empty));
+                    Reply(id, true, "OPENED " + (handlerId ?? String.Empty) + " " + form.Diagnostics);
                     return;
                 }
                 throw new InvalidOperationException("Unknown command: " + command);

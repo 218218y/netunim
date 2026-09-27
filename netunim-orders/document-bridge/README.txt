@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v8 - Everything search + native Windows preview
+NETUNIM Document Bridge v9 - Everything search + DPI-correct native Windows preview
 ======================================================================
 
 Search scope
@@ -56,6 +56,24 @@ That could be slow on first use, could trigger Office startup/security UI, and
 could not reproduce Excel workbook tabs or the exact system preview appearance.
 The native Preview Handler path avoids Office automation and uses the same class
 of preview component that Everything normally hosts.
+
+DPI and resize correctness
+--------------------------
+Browser geometry is measured in CSS pixels, while a native Windows preview host
+must be positioned in device pixels. The website converts preview coordinates
+with window.devicePixelRatio before sending them to the Bridge.
+
+NetunimPreviewHost.exe enables Per-Monitor-V2 DPI awareness before creating any
+UI. It reads its real client RECT from Windows and reapplies SetWindow + SetRect
+to the active IPreviewHandler on every resize/MOVE, even when the requested outer
+bounds did not numerically change. When the handler exposes IOleWindow and its
+preview HWND is a direct child of our host, that child is also resized to fill
+the complete client area. A short settle pass repeats the bounds after DoPreview
+for handlers (notably some Office handlers) that create their child UI lazily.
+
+The browser also forces a geometry resync when its window regains focus. This
+prevents another preview host or a monitor/DPI transition from leaving a stale
+Office preview size behind.
 
 Everything background process
 -----------------------------

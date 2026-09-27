@@ -33,9 +33,11 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   function cleanupPreviewObject(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
   function nativePreviewGeometry(){
     const {previewBody}=refs();if(!previewBody||previewBody.hidden)return null;const rect=previewBody.getBoundingClientRect();if(rect.width<80||rect.height<80)return null;
+    const scale=Math.max(.5,Math.min(5,Number(window.devicePixelRatio)||1));
     const sideInset=Math.max(0,(Number(window.outerWidth)||0)-(Number(window.innerWidth)||0))/2;
     const topInset=Math.max(0,(Number(window.outerHeight)||0)-(Number(window.innerHeight)||0)-sideInset);
-    return {x:Math.round((Number(window.screenX)||0)+sideInset+rect.left),y:Math.round((Number(window.screenY)||0)+topInset+rect.top),width:Math.round(rect.width),height:Math.round(rect.height)};
+    const physical=value=>Math.round(Number(value||0)*scale);
+    return {x:physical((Number(window.screenX)||0)+sideInset+rect.left),y:physical((Number(window.screenY)||0)+topInset+rect.top),width:Math.max(1,physical(rect.width)),height:Math.max(1,physical(rect.height)),scale};
   }
   function nativeGeometryKey(value){return value?`${value.x}:${value.y}:${value.width}:${value.height}`:''}
   function stopNativePreviewPolling(){if(nativePreviewPoll){clearInterval(nativePreviewPoll);nativePreviewPoll=null}}
@@ -183,6 +185,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     results.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.id==='globalSearchDocumentToken'){event.preventDefault();pairDocumentBridge()}});
     backdrop.addEventListener('pointerdown',event=>{backdropPointerId=event.target===backdrop?event.pointerId:null});backdrop.addEventListener('pointerup',event=>{const dismiss=backdropPointerId===event.pointerId&&event.target===backdrop;backdropPointerId=null;if(dismiss)close()});backdrop.addEventListener('pointercancel',()=>{backdropPointerId=null});
     window.addEventListener('resize',()=>{syncNativePreviewGeometry({force:true})});
+    window.addEventListener('focus',()=>{if(nativePreviewActive)syncNativePreviewGeometry({force:true})});
     document.addEventListener('visibilitychange',()=>{if(document.hidden){if(nativePreviewActive)deactivateNativePreview({forget:false});return}if(mode==='documents'&&nativePreviewWantedId&&selectedDocumentId===nativePreviewWantedId){const sequence=previewSequence;showNativePreview(nativePreviewWantedId,sequence).catch(()=>{})}});
     document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();open();return}if(event.key==='Escape'&&!backdrop.hidden)close()});
   }

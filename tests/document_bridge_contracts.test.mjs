@@ -86,7 +86,15 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(host,/IInitializeWithItem/);
   assert.match(host,/8895b1c6-b41f-4c1c-a562-0d564250836f/i);
   assert.match(host,/handler\.SetWindow/);
+  assert.match(host,/handler\.SetRect/);
   assert.match(host,/handler\.DoPreview/);
+  assert.match(host,/SetProcessDpiAwarenessContext/);
+  assert.match(host,/PerMonitorAwareV2/);
+  assert.match(host,/GetClientRect/);
+  assert.match(host,/interface IOleWindow/);
+  assert.match(host,/GetParent\(previewWindow\) == Handle/);
+  assert.match(host,/SynchronizePreviewBounds/);
+  assert.match(host,/settlePassesRemaining/);
   assert.match(host,/SetWindowLongPtr/);
   assert.match(host,/SetWindowPos/);
   assert.equal([...Buffer.from(host,'utf8')].some(byte=>byte>0x7f),false,'native_preview_host.cs must remain ASCII-only');
@@ -95,6 +103,8 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(client,/moveNativePreview/);
   assert.match(client,/hideNativePreview/);
   assert.match(ui,/documentSearchMode='everything'/);
+  assert.match(ui,/window\.devicePixelRatio/);
+  assert.match(ui,/window\.addEventListener\('focus'/);
   assert.match(ui,/data.kind==='native'/);
   assert.match(ui,/toolbar=0&navpanes=0&view=FitH/);
   assert.match(ui,/dblclick/);
