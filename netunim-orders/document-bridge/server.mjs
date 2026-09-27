@@ -276,7 +276,8 @@ async function previewMatches(id){
   if(row.mode!=='content'||query.length<2||stat.isDirectory())return {ok:true,active:false,query:'',count:0,snippets:[]};
   const started=Date.now(),content=await searchablePreviewText(row,stat);
   if(!content?.text)return {ok:true,active:true,query,count:0,snippets:[],truncated:false,source:'unavailable',elapsedMs:Date.now()-started};
-  const matches=buildContentMatchInfo(content.text,query);
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
+  const matches=extension==='pdf'?buildContentMatchInfo(content.text,query,{contextChars:96,maxSnippets:500,maxMatches:500}):buildContentMatchInfo(content.text,query);
   await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
   return {ok:true,active:true,...matches,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
 }

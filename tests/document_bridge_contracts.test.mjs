@@ -112,14 +112,20 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/window\.devicePixelRatio/);
   assert.match(ui,/window\.addEventListener\('focus'/);
   assert.match(ui,/data.kind==='native'/);
-  assert.match(ui,/toolbar=0&navpanes=0&view=FitH/);
   assert.match(ui,/dblclick/);
   assert.match(ui,/selectDocumentResult/);
   assert.match(ui,/document-results-table/);
   assert.match(ui,/document-preview-frame/);
   assert.match(ui,/document-preview-inline-match/);
-  assert.match(ui,/:~:text=/);
+  assert.match(ui,/buildPdfPreviewSrc/);
+  assert.match(ui,/syncPdfPreviewMatch/);
   assert.match(ui,/loadPreviewMatches/);
+  const pdfFragments=read('netunim-orders/site/assets/js/domains/documents/pdf-text-fragments.js');
+  assert.match(pdfFragments,/toolbar=0&navpanes=0&view=FitH/);
+  assert.match(pdfFragments,/buildPdfTextDirectives/);
+  assert.match(pdfFragments,/directives\[index\]/);
+  assert.match(pdfFragments,/\.map\(value=>`text=\$\{value\}`\)/);
+  assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
 });
 
 test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{

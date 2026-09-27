@@ -116,7 +116,7 @@ Content-search match highlighting
 Highlighting is intentionally computed only for the single selected result. The main Everything result list is never rescanned for snippets.
 
 - Text previews highlight the selected content-search phrase directly in the preview.
-- Chromium PDF previews use the browser's Text Fragment support to highlight and scroll to the first matching phrase while keeping the native PDF renderer.
+- Chromium PDF previews use multiple browser Text Fragments so matching occurrences are highlighted together. The match arrows reorder the fragments so the selected occurrence becomes the scroll target while the other highlights remain visible. PDF match navigation is bounded to 500 occurrences per selected file to keep large documents responsive.
 - Office previews keep the Windows IPreviewHandler surface for layout fidelity. IPreviewHandler has no generic API for injecting search highlights, so a compact local match bar above the native preview shows the match count and highlighted context snippets instead of manipulating the Office preview window.
 - Match text is cached in memory for a short period by file path + size + modified time, with a small bounded cache. No snippets or file content are uploaded.
 
