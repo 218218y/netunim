@@ -162,6 +162,11 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
   assert.match(ui,/documentIconKind/);
+  assert.match(ui,/settledEmpty:data\.total===0/);
+  assert.match(ui,/settledEmpty:state\.status==='done'&&count===0/);
+  assert.match(ui,/hideEmptySources=filter==='all'/);
+  assert.match(ui,/const header=hasRows\?'':sourceHeader/);
+  assert.match(ui,/sections\.join\(''\)\|\|\(loading\?/);
   assert.match(ui,/setPointerCapture/);
 });
 

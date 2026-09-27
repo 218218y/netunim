@@ -96,27 +96,28 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     const data=searchGlobalEntries(indexedEntries(),raw),visibleGroups=data.groups.filter(group=>group.total>0);
     const groups=visibleGroups.map(group=>{const rows=group.items.map((item,index)=>{const key=`${group.key}:${item.kind}:${item.id}:${index}`;resultByKey.set(key,item);const metaParts=resultMeta(item);return `<button class="global-search-result" type="button" data-global-result-key="${esc(key)}"><span class="global-search-result-main"><span class="global-search-result-kicker">${esc(item.context||group.label)} · ${esc(item.badge||group.label)}</span><b>${esc(item.title||'תוצאה')}</b>${item.subtitle?`<span class="global-search-result-subtitle">${esc(item.subtitle)}</span>`:''}</span>${metaParts.length?`<span class="global-search-result-meta">${metaParts.map(x=>`<em>${esc(x)}</em>`).join('')}</span>`:''}<span class="global-search-result-arrow" aria-hidden="true">←</span></button>`}).join('');const hidden=group.total-group.items.length;return `<section class="global-search-group"><header><b>${esc(group.label)}</b><span>${esc(group.total)}</span></header><div class="global-search-group-results">${rows}</div>${hidden>0?`<div class="global-search-more">יש עוד ${esc(hidden)} תוצאות בקבוצה — אפשר לצמצם את החיפוש.</div>`:''}</section>`}).join('');
     const body=groups||'<div class="global-search-source-empty">לא נמצאו תוצאות באתר.</div>';
-    return {total:data.total,html:`<section class="global-search-source-section" data-search-source="site">${sourceHeader('חיפוש באתר',data.total)}<div class="global-search-source-body">${body}</div></section>`};
+    return {total:data.total,settledEmpty:data.total===0,html:`<section class="global-search-source-section" data-search-source="site">${sourceHeader('חיפוש באתר',data.total)}<div class="global-search-source-body">${body}</div></section>`};
   }
   function documentErrorHtml(error){const code=String(error?.code||'');if(code==='DOCUMENT_BRIDGE_NOT_PAIRED'||code==='UNAUTHORIZED')return documentPairing();const hint=code==='DOCUMENT_BRIDGE_UNAVAILABLE'?'ודא ש־Document Bridge מותקן ופועל במחשב זה.':code==='EVERYTHING_EXE_NOT_FOUND'?'ה־Bridge לא מצא את Everything.exe. התקן את Everything 1.5 באמצעות המתקין הרשמי.':'בדוק ש־Everything פועל ושהאינדקס שלו מחזיר את אותה שאילתה בחלון Everything.';return `<div class="global-search-empty document-search-error"><div class="global-search-empty-icon">!</div><b>חיפוש הקבצים אינו זמין</b><p>${esc(error?.message||'לא ניתן להשלים את החיפוש המקומי.')}<br>${esc(hint)}</p></div>`}
   function renderDocumentSource(mode,raw){
-    const state=documentStates[mode],label=sourceLabel(mode),count=state.rows.length;
+    const state=documentStates[mode],label=sourceLabel(mode),count=state.rows.length,hasRows=state.status==='done'&&count>0;
     let body='';
     if(state.status==='loading')body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>מחפש דרך Everything המקומי…</div>';
     else if(state.status==='pairing')body=documentPairing({compact:filter==='all'&&mode==='content'});
     else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'});
     else if(state.status==='short')body=documentIntro(mode);
-    else if(state.status==='done')body=count?renderDocumentTable(state.rows,mode):`<div class="global-search-source-empty">לא נמצאו תוצאות ב־${label}.</div>`;
+    else if(state.status==='done')body=hasRows?renderDocumentTable(state.rows,mode):`<div class="global-search-source-empty">לא נמצאו תוצאות ב־${label}.</div>`;
     else body=raw?'<div class="global-search-source-empty">החיפוש המקומי עדיין לא הופעל.</div>':documentIntro(mode);
-    return {total:count,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${sourceHeader(label,count,{loading:state.status==='loading'})}<div class="global-search-source-body">${body}</div></section>`};
+    const header=hasRows?'':sourceHeader(label,count,{loading:state.status==='loading'});
+    return {total:count,settledEmpty:state.status==='done'&&count===0,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${body}</div></section>`};
   }
   function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש במחשב ממשיך…`:'מחפש במחשב…';return}meta.textContent=total?`${total} תוצאות`:'לא נמצאו תוצאות'}
   function renderCombinedResults(value=''){
     const {results}=refs();if(!results)return;const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){setPreviewLayout(false);refs().meta&&(refs().meta.textContent='');results.innerHTML=scopeIntro();return}
-    const sections=[];let siteTotal=0,documentTotal=0,loading=false;
-    if(includesSite()){const site=renderSiteSource(raw);siteTotal=site.total;sections.push(site.html)}
-    for(const mode of requestedDocumentModes()){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading';sections.push(source.html)}
-    results.innerHTML=sections.join('');
+    const sections=[];let siteTotal=0,documentTotal=0,loading=false;const hideEmptySources=filter==='all';
+    if(includesSite()){const site=renderSiteSource(raw);siteTotal=site.total;if(!hideEmptySources||!site.settledEmpty)sections.push(site.html)}
+    for(const mode of requestedDocumentModes()){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading';if(!hideEmptySources||!source.settledEmpty)sections.push(source.html)}
+    results.innerHTML=sections.join('')||(loading?'<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>מחפש…</div>':'<div class="global-search-source-empty">לא נמצאו תוצאות.</div>');
     const hasDocumentRows=requestedDocumentModes().some(mode=>documentStates[mode].rows.length>0);setPreviewLayout(hasDocumentRows);
     if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
     updateMeta(siteTotal,documentTotal,loading);
