@@ -86,7 +86,7 @@ function bootFixture({primary=true,failBirth=false}={}){
   const events=[],model={state:{checks:[]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));let marker=false;
   Object.assign(ports,{model,session,checksSession:{},tab:{primaryTab:primary},normalizeState:value=>value,prepareKupaCloudState:value=>value,
     acquirePrimaryTabLock:async()=>events.push('lock'),hydrateStorageOwner:async()=>events.push('owner'),
-    restoreSupaSession:async()=>null,storageOwnerCurrent:()=> 'local',hydrateStorageTransition:async()=>events.push('transition'),
+    restoreSupaSession:async()=>null,storageOwnerCurrent:()=> 'local',
     hydrateLocalBirth:async()=>events.push('birth-hydrated'),verifyStorageCutover:async()=>false,
     verifyLocalStorageEngine:async()=>marker,ensureLocalBirth:async()=>{events.push('birth');if(failBirth)throw Error('birth-failed');marker=true;return true},
     recoverLocalV2State:async()=>{events.push('main');model.state.checks=[{id:'stale'}];return true},
@@ -105,12 +105,12 @@ test('Kupa production startup finishes local birth and hydrates Shared before pr
   Object.defineProperties(globalThis,{navigator:{configurable:true,value:{onLine:false}},localStorage:{configurable:true,value:storage()},document:{configurable:true,value:{getElementById:()=>({addEventListener:noop})}}});
   try{
     const ready=bootFixture();await ready.lifecycle.boot();
-    assert.deepEqual(ready.events,['lock','owner','transition','birth-hydrated','birth','main','shared','first-run']);
+    assert.deepEqual(ready.events,['lock','owner','birth-hydrated','birth','main','shared','first-run']);
     assert.equal(ready.session.storageProtocolBlocked,false);
     const blocked=bootFixture({failBirth:true});await blocked.lifecycle.boot();
-    assert.deepEqual(blocked.events,['lock','owner','transition','birth-hydrated','birth','blocked']);
+    assert.deepEqual(blocked.events,['lock','owner','birth-hydrated','birth','blocked']);
     const secondary=bootFixture({primary:false});await secondary.lifecycle.boot();
-    assert.deepEqual(secondary.events,['lock','owner','transition','birth-hydrated','secondary']);
+    assert.deepEqual(secondary.events,['lock','owner','birth-hydrated','secondary']);
   }finally{for(const [key,descriptor] of Object.entries(previous)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}
 });
 

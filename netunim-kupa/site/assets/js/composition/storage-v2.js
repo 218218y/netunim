@@ -1,6 +1,5 @@
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
-import {createStorageV2ProductionTransition} from '../shared/storage-v2-production-transition.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
@@ -22,15 +21,14 @@ import {normalizeSharedChecks} from '../domains/checks/model.js';
 import {assertKupaEntityInvariants,assertValidCloudState} from '../state/validation.js';
 import {INITIAL_STATE} from '../state/constants.js';
 
-// Owns the Kupa storage migration state machines. main.js supplies application
-// ports, but no longer carries drain/bootstrap/owner-adoption orchestration.
+// Owns the Kupa V2 storage lifecycle. main.js supplies application ports.
 export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.localStorage}={}){
   if(!tab||!session)throw new Error('kupa_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'kupa',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab});
-  let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
+  let localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('kupa_storage_v2_not_configured');return ports};
-  const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
+  const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const scheduleLegacyRetirement=createLegacyRetirementScheduler({
     ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
     settle:async()=>{const p=requirePorts(),pending=[p.files.browserStateWritePromise,p.session.cloudOutboxCommitPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
@@ -40,15 +38,13 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
       deleteRecords:async()=>{for(const key of ['browser-state-v1','cloud-pending-v2','cloud-pending-v3','shared-checks-outbox-v3'])await p.storageIndexedDb.idbDelete('sync',key)}})},
   });
-  const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:kupa:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:kupa:local')==='2';
-  // Retained only for a verified pre-cutover outbox drain. An unmarked browser
-  // cannot create a new V1 business snapshot during ordinary startup or save.
-  const legacyWriteAllowed=()=>legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active();
+  // Compatibility modules are read-only until they are removed. No production
+  // transition is allowed to reopen a V1 business writer.
+  const legacyWriteAllowed=()=>false;
   const legacyChecksWriteAllowed=legacyWriteAllowed;
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});
-  const status=(runtime,authenticated)=>({active:runtime.cutoverActive,preparing:preparing(),canBegin:tab.primaryTab&&owner.current()!=='local'&&!!authenticated&&!runtime.cutoverActive});
   const pendingLegacyWriteAllowed=runtime=>legacyWriteAllowed()&&!runtime.cutoverActive;
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,syncChecksState,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
@@ -60,21 +56,6 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   async function verifyLegacyClean(){
     const p=requirePorts(),main=await p.storagePending.getCloudPending();
     return !main&&p.storagePending.cloudPendingHeadVerifiedCleanSync()&&!p.storagePending.cloudPendingExistsSync()&&(await p.syncChecksState.verifyLegacyChecksClean())===true;
-  }
-  async function drainLegacy(){
-    const p=requirePorts(),previousMode=p.session.connectionMode,previousReady=p.session.backendReady;
-    legacyDrain=true;p.session.connectionMode='supabase';p.session.backendReady=true;
-    try{
-      const mainPending=await p.storagePending.getCloudPending();
-      if(mainPending){const ok=await p.syncDocument.reconcileCloudPending(null,{legacyDrain:true});if(!ok&&await p.storagePending.getCloudPending())throw new Error('storage_cutover_main_legacy_drain_incomplete')}
-      const checksPending=await p.syncChecksState.getSharedChecksPending();
-      if(checksPending){const ok=await p.syncChecks.saveSharedChecksToCloud('',{legacyDrain:true});if(!ok&&await p.syncChecksState.getSharedChecksPending())throw new Error('storage_cutover_shared_legacy_drain_incomplete')}
-      if(await verifyLegacyClean()!==true)throw new Error('storage_cutover_legacy_pending');
-      return {main:true,shared:true};
-    }finally{
-      legacyDrain=false;
-      if(!p.storageShadow.cutoverActive){p.session.connectionMode=previousMode;p.session.backendReady=previousReady}
-    }
   }
   function detachedNormalization(){return createStateNormalization({model:{state:{},lastNormalizeRemovedCredits:0},externalWorkbooks:true})}
   async function settleTransferSource({sourceOwner}){
@@ -153,7 +134,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     return result;
   }
   function configure(next){
-    if(transition)throw new Error('kupa_storage_v2_already_configured');ports=next;
+    if(ports)throw new Error('kupa_storage_v2_already_configured');ports=next;
     const p=requirePorts();
     fencedRecovery=createStorageV2FencedRecovery({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
@@ -163,28 +144,6 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       projectMainState:state=>p.stateNormalization.prepareKupaCloudState(state),
       validateMainState:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),
       validateMainCloud:state=>assertValidCloudState(state,'Kupa fenced recovery cloud state'),storage});
-    transition=createStorageV2ProductionTransition({
-      app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab&&owner.writable,online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,bootstrapCoordinator:bootstrap,
-      readMainState:()=>p.model.state,projectMainState:state=>p.stateNormalization.prepareKupaCloudState(state),emptyMainState:()=>p.stateNormalization.normalizeState(INITIAL_STATE),mainSourceSeq:()=>p.session.localSnapshotSeq,
-      readSharedState:()=>({checks:p.model.state.checks,bankEvents:p.checksSession.sharedChecksBankEvents||[]}),sharedSourceSeq:()=>p.checksSession.sharedChecksGeneration,
-      readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>p.stateNormalization.prepareKupaCloudState(row.state),readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>({checks:row.state.checks,bankEvents:row.state.bankEvents}),
-      initializeMainHead:options=>p.storageBrowser.initializeStorageV2BootstrapHead(options),
-      initializeSharedHead:options=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.initialize(options)},
-      syncMain:()=>p.syncDocument.requestStorageV2CloudSave('',{force:true}),
-      syncShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.sync()},
-      readMainCloudState:()=>p.storageBrowser.refreshStorageV2CloudState(),
-      readSharedCloudState:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.cloudState()},
-      readMainRecoveredState:async()=> (await p.storageShadow.recoverForOwner({intent:'load-account'}))?.state||null,
-      readSharedRecoveredState:async()=> (await p.sharedChecksV2.recover())?.state||null,
-      freeze:async()=>{
-        clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
-        if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');
-        await p.syncDocument.quiesceForStorageCutover();
-        const pending=[p.checksSession.sharedChecksSavePromise,p.checksSession.sharedChecksPullPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending);
-        return true;
-      },
-      drainLegacy,verifyLegacyClean,markCutover:options=>p.sharedChecksV2Composition.markCutover(options),verifyCutover:()=>p.verifyStorageCutover(),
-    });
     const workbookStore=createSpreadsheetStore();
     localBirth=createStorageV2LocalBirth({
       app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
@@ -215,7 +174,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     ownerTransfer=createStorageV2OwnerTransfer({app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab,
       online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,
       settleSource:settleTransferSource,createDetachedTarget,installTargetView:installTransferTargetView});
-    return transition;
+    return true;
   }
   async function hydrateLocalBirth(){return localBirth?.hydrate()??null}
   async function ensureLocalBirth(){if(owner.current()!=='local')return false;if(!localBirth)throw new Error('kupa_storage_v2_not_configured');if(!tab.primaryTab)throw new Error('storage_local_birth_primary_required');await localBirth.begin();return true}
@@ -244,13 +203,6 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     await owner.adoptPreparedLocalOwner(target,{intent:effectiveIntent,proof:{mainRevision:Number(p.session.dbRevision||0),sharedRevision:Number(p.checksSession.sharedChecksRevision||0),preparedAt:new Date().toISOString()}});
     return true;
   }
-  async function beginCutover(){
-    const p=requirePorts();if(p.storageShadow.cutoverActive)return {already:true};
-    if(!tab.primaryTab)throw new Error('storage_cutover_primary_required');if(globalThis.navigator?.onLine===false)throw new Error('storage_cutover_online_required');
-    const auth=p.cloudAuth.loadSupaSession();owner.assertAuthenticatedOwner(auth?.user?.id);await p.cloudAuth.ensureSyncCapabilities();p.session.connectionMode='supabase';p.session.backendReady=true;
-    await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
-    return {already:false};
-  }
   async function recoverLocalV2State(){
     const p=requirePorts(),recovered=await p.storageShadow.recover();
     if(!recovered)throw new Error('storage_local_engine_main_recovery_required');
@@ -269,12 +221,11 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     }
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,pendingLegacyWriteAllowed,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
-    transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing,
-      hydrateLocalBirth,ensureLocalBirth,localBirthPreparing:()=>!!localBirth?.preparing,
+    lifecyclePorts:()=>({hydrateLocalBirth,ensureLocalBirth,localBirthPreparing:()=>!!localBirth?.preparing,
       hydrateStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
-    hydrateTransition:()=>{if(!transition)throw new Error('kupa_storage_v2_not_configured');return transition.hydrate()},resumeTransition:()=>{if(!transition)throw new Error('kupa_storage_v2_not_configured');return transition.resume()},get transitionPreparing(){return !!transition?.preparing}};
+  };
 }

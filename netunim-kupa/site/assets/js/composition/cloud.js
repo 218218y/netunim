@@ -49,6 +49,5 @@ export function composeCloudUi({
     showFirstRun:(...args)=>uiConnection.showFirstRun(...args),
     confirmDialog:(...args)=>getUiModal().confirmDialog(...args),
     ...storageV2Coordinator.ownerUiPorts(),
-    storageTransitionPreparing:()=>storageV2Coordinator.transitionPreparing,
   });
 }
