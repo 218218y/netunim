@@ -10,7 +10,8 @@ function emptyOrders(){return {
   version:4,businessName:'ניהול הזמנות',suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[],notes:[],checks:[],importAudit:{},stage2Audit:{},
 }}
 function validateOrders(state){
-  for(const key of ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryEvents','warehouseOrders','notes','checks'])assert.ok(Array.isArray(state[key]),key);
+  for(const key of ['suppliers','transactions','customerDebts','customerOrders','serviceCalls','inventoryItems','inventoryEvents','warehouseOrders','notes'])assert.ok(Array.isArray(state[key]),key);
+  if(Object.hasOwn(state,'checks'))assert.ok(Array.isArray(state.checks),'checks');
   assert.ok(Array.isArray(state.inventoryCategoryOrder));
 }
 function makeRuntime(db,owner='account-A',mode=()=> 'primary'){
@@ -31,7 +32,7 @@ test('Main non-empty first-cloud bootstrap is empty base plus one durable pendin
   const runtime=makeRuntime(db);
   const recovered=await runtime.initializeUploadLocalCloudHead(initial,current,{cloudState:cloudProjection(initial),validateBase:()=>{}});
   assert.equal(recovered.seq,1);
-  assert.deepEqual(recovered.state,current);
+  assert.deepEqual(recovered.state,cloudProjection(current));assert.equal(recovered.appMetadata.mainProjectionVersion,2);
   const cloud=await runtime.cloudState({validateBase:()=>{}});
   assert.equal(cloud.base.revision,0);
   assert.equal(cloud.base.ackSeq,0);
@@ -42,7 +43,7 @@ test('Main non-empty first-cloud bootstrap is empty base plus one durable pendin
   const restarted=makeRuntime(db);
   const afterRestart=await restarted.recover();
   assert.equal(afterRestart.seq,1);
-  assert.deepEqual(afterRestart.state,current);
+  assert.deepEqual(afterRestart.state,cloudProjection(current));
   const pendingAfterRestart=await restarted.cloudState({validateBase:()=>{}});
   assert.equal(pendingAfterRestart.pending,true);
   assert.equal(pendingAfterRestart.base.ackSeq,0);
@@ -53,7 +54,7 @@ test('Main first-cloud bootstrap also supports data already bound to the same ac
   const db=memoryDb(),initial=emptyOrders(),current=emptyOrders();current.notes=[{id:'N-account',content:'owned locally by account-A'}];
   const runtime=makeRuntime(db,'account-A');
   const recovered=await runtime.initializeFirstCloudHead(initial,current,{sourceOwner:'account-A',cloudState:cloudProjection(initial),validateBase:()=>{}});
-  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,current);
+  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,cloudProjection(current));
   const cloud=await runtime.cloudState({validateBase:()=>{}});assert.equal(cloud.base.revision,0);assert.equal(cloud.base.ackSeq,0);assert.equal(cloud.pending,true);
   const stored=await db.load('account-A:orders');assert.equal(stored.journal[0].data.appMetadata.migrationIntent,'upload-owner');assert.equal(stored.journal[0].data.appMetadata.sourceOwner,'account-A');assert.equal(stored.journal[0].data.appMetadata.targetOwner,'account-A');
 });
@@ -78,7 +79,7 @@ test('pre-cutover preparation may initialize/recover V2 but freezes normal mutat
   const current=emptyOrders();current.notes=[{id:'N1'}];
   await before.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}});
   const restarted=makeRuntime(db,'account-A',preparing),recovered=await restarted.recover(legacy,{snapshotSeq:99});
-  assert.deepEqual(recovered.state,current);assert.equal(recovered.source,'v2');
+  assert.deepEqual(recovered.state,cloudProjection(current));assert.equal(recovered.source,'v2');
   assert.throws(()=>restarted.persist(current,{operations:[{type:'set',field:'businessName',value:'still blocked'}]}),/preparation_locked/);
 });
 
@@ -89,7 +90,7 @@ test('Main bootstrap initialization is idempotent only for the same durable boot
   await first.initializeFirstCloudHead(emptyOrders(),current,options);
   const restarted=makeRuntime(db);
   const replay=await restarted.initializeFirstCloudHead(emptyOrders(),current,options);
-  assert.equal(replay.seq,1);assert.deepEqual(replay.state,current);
+  assert.equal(replay.seq,1);assert.deepEqual(replay.state,cloudProjection(current));
   const foreign=makeRuntime(db);
   await assert.rejects(foreign.initializeFirstCloudHead(emptyOrders(),current,{...options,appMetadata:{bootstrapOperationId:'different:main'}}),/existing_head_mismatch/);
 });
@@ -103,7 +104,7 @@ test('Main bootstrap atomically promotes an identical shadow checkpoint instead 
 
   const runtime=makeRuntime(db,'account-A',()=> 'preparing');
   const recovered=await runtime.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-promote:main'}});
-  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,current);
+  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,cloudProjection(current));
   const stored=await db.load('account-A:orders');assert.equal(stored.journal.length,1);assert.equal(stored.bases.data.revision,0);assert.equal(stored.metadata.seq,1);
   const cloud=await runtime.cloudState({validateBase:()=>{}});assert.equal(cloud.pending,true);assert.equal(cloud.base.ackSeq,0);
 });

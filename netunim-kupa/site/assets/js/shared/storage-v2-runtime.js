@@ -121,8 +121,8 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       const idempotent=!!recovered&&recovered.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&recovered.appMetadata?.migrationIntent===intent&&recovered.appMetadata?.sourceOwner===sourceOwner&&recovered.appMetadata?.targetOwner===scopedIdentity&&cloud?.base?.revision===revision&&equalSyncJson(cloud.base.state,cloudState)&&equalSyncJson(recovered.state,finalState);
       if(idempotent)result=recovered;
       else{
-        if(!recovered||recovered.appMetadata?.storageRole==='primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(recovered.state,finalState))throw new Error('storage_bootstrap_existing_head_mismatch');
-        result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata,replaceExistingState:finalState});
+        if(!recovered||recovered.appMetadata?.storageRole==='primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(checkpointState(recovered.state),finalState))throw new Error('storage_bootstrap_existing_head_mismatch');
+        result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata,replaceExistingState:recovered.state});
       }
     }
     if(identity!==scopedIdentity||currentOwner()!==scopedIdentity)throw new Error('storage_owner_changed_during_recovery');
