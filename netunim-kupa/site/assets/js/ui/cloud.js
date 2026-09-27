@@ -1,6 +1,6 @@
 import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
 
-import {esc, clone} from '../core/values.js';
+import {esc} from '../core/values.js';
 import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
 import {SUPA_EMAIL_KEY, SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';
 

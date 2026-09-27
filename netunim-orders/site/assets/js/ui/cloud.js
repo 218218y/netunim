@@ -1,4 +1,4 @@
-import {esc, clone} from '../core/values.js';
+import {esc} from '../core/values.js';
 import {CLOUD_EMAIL_KEY, $, CLOUD_AUTO_KEY, CLOUD_BASE_KEY} from '../state/constants.js';
 import {getOutboxRetryDelay} from '../shared/cloud-sync.js';
 import {beginLocalSiteResetNavigation} from '../shared/local-site-reset.js';
