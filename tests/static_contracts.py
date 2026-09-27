@@ -123,8 +123,14 @@ ok("ensureSharedChecksForNewCloud" not in ks and "startStorageV2OwnerTransfer" i
    "kupa: greenfield Shared Checks onboarding uses the durable V2 owner transfer")
 ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.length>0&&jsonEq(b,r)&&!normalizeDeleteIds(deleteIds).length" in ks and "repairedEmptyBootstrap" in ks and "SHARED_CHECKS_BOOT_REPAIR_KEY" not in ks,
    "kupa: shared bootstrap protection is state-based, not stale-marker based, and never overrides explicit deletion intent")
-ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
-   "clients: missing shared store fails safe outside greenfield setup")
+ok("shared_checks_v2_required" in ks and "shared_checks_v2_required" in os
+   and "sharedChecksV2.sync()" in ks and "sharedChecksV2.sync()" in os,
+   "clients: missing Shared V2 runtime fails closed without a legacy writer")
+checks_sync_sources=[(app / "site/assets/js/sync/checks.js").read_text(encoding="utf-8") for app in (K, O)]
+ok(all(symbol not in source for source in checks_sync_sources for symbol in
+       ("markChecksPending", "markSharedChecksPending", "getChecksPending", "getSharedChecksPending",
+        "legacyDrain", "persistChecksBase", "persistSharedChecksBase")),
+   "clients: ordinary Shared Checks sync has no V1 outbox or base writer")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
@@ -419,8 +425,9 @@ ok('.col-row-actions{width:78px}' in orders_css
 orders_main = (O / "site/assets/js/main.js").read_text(encoding="utf-8")
 orders_checks_composition = (O / "site/assets/js/composition/checks-sync.js").read_text(encoding="utf-8")
 ok("composeChecksSync({" in orders_main
-   and "getChecksPending:(...args)=>storageChecks.getChecksPending(...args)" in orders_checks_composition[orders_checks_composition.find("return createSyncChecks({"):],
-   "orders cloud sync composition: shared-checks durable outbox reader is injected into createSyncChecks")
+   and "sharedChecksV2," in orders_checks_composition
+   and "getChecksPending:" not in orders_checks_composition,
+   "orders cloud sync composition: Shared V2 is the only checks writer")
 orders_finance_view = (O / "site/assets/js/domains/finance/view.js").read_text(encoding="utf-8")
 orders_bank_connection_view = (O / "site/assets/js/domains/finance/bank-connection-view.js").read_text(encoding="utf-8")
 orders_credit_detail_view = (O / "site/assets/js/domains/finance/credit-detail-view.js").read_text(encoding="utf-8")
