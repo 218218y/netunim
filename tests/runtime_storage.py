@@ -417,22 +417,23 @@ with BrowserSession(ROOT/'netunim-orders/site','storage-v2-dead-recovery-store')
     result=browser.evaluate(r"""(async()=>{
       const name='storage-v2-dead-recovery-store';
       const old=await new Promise((resolve,reject)=>{const request=indexedDB.open(name,9);
-        request.onupgradeneeded=()=>request.result.createObjectStore('legacy-recoveries');
+        request.onupgradeneeded=()=>{request.result.createObjectStore('legacy-recoveries');request.result.createObjectStore('cutover-preparations')};
         request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      const tx=old.transaction('legacy-recoveries','readwrite');
+      const tx=old.transaction(['legacy-recoveries','cutover-preparations'],'readwrite');
       tx.objectStore('legacy-recoveries').put({obsolete:true},'orders:stale');
+      tx.objectStore('cutover-preparations').put({obsolete:true},'orders:stale');
       await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error)});
       old.close();
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       await createStorageJournalDb({name}).readOwnerBinding('orders');
       const upgraded=await new Promise((resolve,reject)=>{const request=indexedDB.open(name,10);
         request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      const result={version:upgraded.version,hasLegacyRecovery:upgraded.objectStoreNames.contains('legacy-recoveries'),hasMain:upgraded.objectStoreNames.contains('checkpoints')};
+      const result={version:upgraded.version,hasLegacyRecovery:upgraded.objectStoreNames.contains('legacy-recoveries'),hasCutoverPreparation:upgraded.objectStoreNames.contains('cutover-preparations'),hasMain:upgraded.objectStoreNames.contains('checkpoints')};
       upgraded.close();return result;
     })()""")
-    assert result=={'version':10,'hasLegacyRecovery':False,'hasMain':True},result
+    assert result=={'version':10,'hasLegacyRecovery':False,'hasCutoverPreparation':False,'hasMain':True},result
     assert not browser.drain_serious_errors()
-    print('PASS V2 schema upgrade removes the unused legacy recovery store')
+    print('PASS V2 schema upgrade removes unused legacy recovery and cutover preparation stores')
 
 with BrowserSession(ROOT/'netunim-orders/site','legacy-retirement-records') as browser:
     result=browser.evaluate(r"""(async()=>{

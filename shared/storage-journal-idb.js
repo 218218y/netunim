@@ -10,8 +10,8 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(!db.objectStoreNames.contains('owner-bindings'))db.createObjectStore('owner-bindings');
     if(!db.objectStoreNames.contains('owner-handoffs'))db.createObjectStore('owner-handoffs');
     if(!db.objectStoreNames.contains('bootstrap-groups'))db.createObjectStore('bootstrap-groups');
-    if(!db.objectStoreNames.contains('cutover-preparations'))db.createObjectStore('cutover-preparations');
     if(!db.objectStoreNames.contains('local-births'))db.createObjectStore('local-births');
+    if(db.objectStoreNames.contains('cutover-preparations'))db.deleteObjectStore('cutover-preparations');
     // Fenced adoption discards obsolete V1 state and never writes quarantine
     // records. Retire the unused store during the normal schema upgrade.
     if(db.objectStoreNames.contains('legacy-recoveries'))db.deleteObjectStore('legacy-recoveries');
@@ -303,35 +303,6 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     }catch(cause){error=cause;try{tx.abort()}catch{}}};
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
   }))}
-  function readCutoverPreparation(scope){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['cutover-preparations'],'readonly'),request=tx.objectStore('cutover-preparations').get(scope);
-    request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
-    request.onerror=()=>reject(request.error);
-  }))}
-  function beginCutoverPreparation(scope,record){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['cutover-preparations'],'readwrite'),store=tx.objectStore('cutover-preparations'),request=store.get(scope);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      const existing=request.result&&readStorageRecord(request.result);
-      if(existing){
-        if(existing.id===record.id){result=existing;return}
-        if(existing.phase!=='complete')throw new Error('storage_cutover_preparation_pending');
-        result=existing;return;
-      }
-      if(record.version!==1||record.scope!==scope||record.phase!=='freezing-source'||!String(record.id||'').trim())throw new Error('storage_cutover_preparation_invalid');
-      result=structuredClone(record);store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_cutover_preparation_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
-  function advanceCutoverPreparation(scope,id,fromPhase,toPhase,patch={}){return open().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(['cutover-preparations'],'readwrite'),store=tx.objectStore('cutover-preparations'),request=store.get(scope);let result=null,error=null;
-    request.onsuccess=()=>{try{
-      if(!request.result)throw new Error('storage_cutover_preparation_missing');
-      const current=readStorageRecord(request.result);
-      if(current.id!==id||current.scope!==scope||current.phase!==fromPhase)throw new Error('storage_cutover_preparation_changed');
-      result={...current,...structuredClone(patch),phase:toPhase};store.put(sealStorageRecord(result),scope);
-    }catch(cause){error=cause;try{tx.abort()}catch{}}};
-    tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_cutover_preparation_aborted'));tx.onerror=()=>{error??=tx.error};
-  }))}
   function readCutover(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['cutovers'],'readonly'),request=tx.objectStore('cutovers').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
@@ -437,10 +408,10 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
         base:sealStorageRecord({version:2,owner:side.owner,epoch,revision:side.revision,state:side.cloud,projection:'cloud',ackSeq:0},{kind:'cloud-base'})};
     });
     return open().then(db=>new Promise((resolve,reject)=>{
-      const names=['cutovers','owner-bindings','owner-handoffs','cutover-preparations','bootstrap-groups','local-births','boundaries',...stores];
+      const names=['cutovers','owner-bindings','owner-handoffs','bootstrap-groups','local-births','boundaries',...stores];
       const tx=db.transaction(names,'readwrite');let result=null,error=null;
       const requests={marker:tx.objectStore('cutovers').get(scope),binding:tx.objectStore('owner-bindings').get(app),handoff:tx.objectStore('owner-handoffs').get(app),
-        preparation:tx.objectStore('cutover-preparations').get(scope),bootstrap:tx.objectStore('bootstrap-groups').get(scope),boundary:tx.objectStore('boundaries').get(identity)};
+        bootstrap:tx.objectStore('bootstrap-groups').get(scope),boundary:tx.objectStore('boundaries').get(identity)};
       if(sourceOwner==='local'){
         requests.localMarker=tx.objectStore('cutovers').get(`local-engine:${app}:local`);
         requests.localBirth=tx.objectStore('local-births').get(`${app}:local`);
@@ -465,7 +436,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
             Object.entries(requests).some(([key,request])=>(key.startsWith('local:')||key.startsWith('local-shared:'))&&
               (Array.isArray(request.result)?request.result.length>0:!!request.result)))throw new Error('storage_fenced_recovery_existing_local_v2');
         }
-        for(const [name,phase] of [['handoff','complete'],['preparation','complete'],['bootstrap','complete'],['boundary','complete']]){
+        for(const [name,phase] of [['handoff','complete'],['bootstrap','complete'],['boundary','complete']]){
           const record=requests[name].result&&readStorageRecord(requests[name].result);
           if(record&&record.phase!==phase)throw new Error('storage_fenced_recovery_transition_pending');
         }
@@ -490,5 +461,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutoverPreparation,beginCutoverPreparation,advanceCutoverPreparation,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,fencedLegacyInactive};
+  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,fencedLegacyInactive};
 }
