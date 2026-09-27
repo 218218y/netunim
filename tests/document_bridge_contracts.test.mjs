@@ -15,12 +15,14 @@ test('orders site exposes file search first and content search second over loopb
   assert.match(html,/globalSearchDocumentNameMode[^>]*class="document-search-mode active"[^>]*aria-selected="true"/);
   assert.match(html,/globalSearchDocumentPreview/);
   assert.match(html,/globalSearchPreviewOpen/);
+  assert.match(html,/globalSearchPreviewMatches/);
   assert.match(main,/createDomainsDocumentBridge/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);
   assert.match(client,/documents\/preview/);
   assert.match(client,/documents\/preview-file/);
+  assert.match(client,/documents\/matches/);
   assert.match(client,/documents\/native-preview/);
   assert.match(client,/nativePreview/);
   assert.match(headers,/connect-src[^\n]*http:\/\/127\.0\.0\.1:8766/);
@@ -68,6 +70,7 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   const host=read('netunim-orders/document-bridge/native_preview_host.cs');
   assert.match(server,/documents\/preview/);
   assert.match(server,/documents\/preview-file/);
+  assert.match(server,/documents\/matches/);
   assert.match(server,/documents\/native-preview/);
   assert.match(server,/NATIVE_PREVIEW_HOST/);
   assert.match(server,/source:'windows-preview-handler'/);
@@ -76,6 +79,7 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.doesNotMatch(server,/source:'office-pdf'/);
   assert.match(lib,/officePreviewKind/);
   assert.match(lib,/buildEsContentPreviewArgs/);
+  assert.match(lib,/buildContentMatchInfo/);
   assert.match(installer,/build_native_preview\.ps1/);
   assert.match(installer,/native_preview_host\.cs/);
   assert.match(installer,/NetunimPreviewHost\.exe/);
@@ -111,6 +115,9 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/selectDocumentResult/);
   assert.match(ui,/document-results-table/);
   assert.match(ui,/document-preview-frame/);
+  assert.match(ui,/document-preview-inline-match/);
+  assert.match(ui,/:~:text=/);
+  assert.match(ui,/loadPreviewMatches/);
 });
 
 test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{
@@ -142,6 +149,8 @@ test('computer search UI keeps primary modes in the header and exposes a resizab
   assert.match(css,/document-result-icon\.pdf/);
   assert.match(css,/document-result-icon\.word/);
   assert.match(css,/document-result-icon\.folder/);
+  assert.match(css,/document-preview-matches/);
+  assert.match(css,/document-preview-inline-match/);
   assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
   assert.match(ui,/documentSearchMode='everything'/);
   assert.match(ui,/documentIconKind/);

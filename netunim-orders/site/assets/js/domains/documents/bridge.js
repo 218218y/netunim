@@ -37,10 +37,11 @@ export function createDomainsDocumentBridge(){
   const status=()=>request('/status',{timeoutMs:5000});
   const search=(query,{mode='content',limit=60,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:12000});
+  const matches=(id,{signal=null}={})=>request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});
   const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:35000,signal});
   const nativePreview=(id,geometry)=>request('/documents/native-preview',{method:'POST',body:{id,geometry},timeoutMs:12000});
   const moveNativePreview=geometry=>request('/documents/native-preview/move',{method:'POST',body:{geometry},timeoutMs:3500});
   const hideNativePreview=()=>request('/documents/native-preview/hide',{method:'POST',body:{},timeoutMs:3500});
   const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:7000});
-  return {getToken,setToken,health,status,search,preview,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument};
+  return {getToken,setToken,health,status,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument};
 }

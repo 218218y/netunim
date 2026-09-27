@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=9;
+export const BRIDGE_VERSION=10;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const DEFAULT_RESULT_LIMIT=60;
@@ -86,6 +86,28 @@ export function buildContentQuery(value){
   // normal on-disk content behavior. no-background-search makes ES wait for
   // the completed result set instead of returning while content work continues.
   return `content:"${everythingLiteral(normalized)}" no-background-search:`;
+}
+
+export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000}={}){
+  const source=String(value??'').replace(/\u0000/g,''),needle=normalizeSearchText(query);
+  if(!source||needle.length<2)return {query:needle,count:0,snippets:[],capped:false};
+  const haystack=source.toLocaleLowerCase('he-IL'),target=needle.toLocaleLowerCase('he-IL');
+  const context=Math.max(24,Math.min(240,Number(contextChars)||90));
+  const snippetLimit=Math.max(1,Math.min(30,Number(maxSnippets)||12));
+  const matchLimit=Math.max(snippetLimit,Math.min(20000,Number(maxMatches)||5000));
+  const snippets=[];let count=0,offset=0,capped=false;
+  while(offset<=haystack.length-target.length){
+    const index=haystack.indexOf(target,offset);if(index<0)break;
+    count+=1;
+    if(snippets.length<snippetLimit){
+      const start=Math.max(0,index-context),end=Math.min(source.length,index+needle.length+context);
+      const clean=part=>String(part??'').replace(/\s+/g,' ');
+      snippets.push({before:clean(source.slice(start,index)).trimStart(),match:source.slice(index,index+needle.length),after:clean(source.slice(index+needle.length,end)).trimEnd(),leading:start>0,trailing:end<source.length});
+    }
+    offset=index+Math.max(1,target.length);
+    if(count>=matchLimit){capped=true;break}
+  }
+  return {query:needle,count,snippets,capped};
 }
 
 export function buildEverythingQuery(value){

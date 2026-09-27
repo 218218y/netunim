@@ -1,9 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
   normalizeSearchText,officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
+
+
+test('selected-file content match info is bounded and returns highlighted snippets without rescanning result lists',()=>{
+  const info=buildContentMatchInfo('פתיחה ואז מילה אחת באמצע. עוד טקסט. מילה אחת בסוף.','מילה אחת',{contextChars:12,maxSnippets:4});
+  assert.equal(info.query,'מילה אחת');
+  assert.equal(info.count,2);
+  assert.equal(info.snippets.length,2);
+  assert.equal(info.snippets[0].match,'מילה אחת');
+  assert.equal(info.snippets[1].match,'מילה אחת');
+  assert.equal(info.capped,false);
+  const capped=buildContentMatchInfo('abc abc abc abc','abc',{maxSnippets:2,maxMatches:3});
+  assert.equal(capped.count,3);
+  assert.equal(capped.snippets.length,2);
+  assert.equal(capped.capped,true);
+});
 
 test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
   assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');

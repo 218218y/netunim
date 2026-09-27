@@ -8,7 +8,7 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
-  buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,
+  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,normalizeSearchText,
   officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
@@ -21,9 +21,12 @@ const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
 const NATIVE_PREVIEW_HOST=path.join(APP_ROOT,'app','NetunimPreviewHost.exe');
 const requestResults=new Map();
+const previewTextCache=new Map();
 const TEXT_PREVIEW_MAX_BYTES=1024*1024;
 const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
+const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
+const PREVIEW_TEXT_CACHE_MAX=24;
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
 let server=null,cachedProbe=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
@@ -168,7 +171,7 @@ async function diagnoseIndex({freshProbe=false}={}){
 }
 
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
-function publicResult(row){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
+function publicResult(row,{query='',mode='everything'}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,query:String(query||''),mode:normalizeDocumentSearchMode(mode),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
 async function searchDocuments(query,limit,mode='everything'){
   const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
@@ -176,7 +179,7 @@ async function searchDocuments(query,limit,mode='everything'){
   const args=buildEsSearchArgs({query,mode:normalizedMode,limit:Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT),timeoutMs:config.searchTimeoutMs,instance:probe.instance});
   const {stdout}=await runEs(probe.esPath,args,{timeout:config.searchTimeoutMs+5000});
   const rows=parseEsJson(stdout);
-  pruneResults();const merged=mergeDocumentResults([rows],limit).map(publicResult),elapsedMs=Date.now()-started;
+  pruneResults();const merged=mergeDocumentResults([rows],limit).map(row=>publicResult(row,{query,mode:normalizedMode})),elapsedMs=Date.now()-started;
   await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
@@ -255,6 +258,28 @@ async function readEverythingContentPreview(fullPath){
     const content=parseEsContentPreview(stdout);if(!content)return null;return trimPreviewText(content);
   }catch(error){await appendLog(`PREVIEW_CONTENT_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`);return null}
 }
+function prunePreviewTextCache(){
+  const now=Date.now();for(const [key,value] of previewTextCache)if(now-value.at>PREVIEW_TEXT_CACHE_TTL_MS)previewTextCache.delete(key);
+  while(previewTextCache.size>PREVIEW_TEXT_CACHE_MAX)previewTextCache.delete(previewTextCache.keys().next().value);
+}
+async function searchablePreviewText(row,stat){
+  prunePreviewTextCache();const key=String(row.fullPath||'').toLocaleLowerCase('en-US'),fingerprint=`${Number(stat.size)||0}:${Number(stat.mtimeMs)||0}`;
+  const cached=previewTextCache.get(key);if(cached&&cached.fingerprint===fingerprint){cached.at=Date.now();previewTextCache.delete(key);previewTextCache.set(key,cached);return cached.data}
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();let data=null;
+  if(TEXT_EXTENSIONS.has(extension)){const direct=await readTextPreview(row.fullPath,stat);data={...direct,source:'file'}}
+  else{const extracted=await readEverythingContentPreview(row.fullPath);if(extracted)data={...extracted,source:'everything-content'}}
+  if(data){previewTextCache.set(key,{fingerprint,at:Date.now(),data});prunePreviewTextCache()}
+  return data;
+}
+async function previewMatches(id){
+  const {row,stat}=await resolveResult(id),query=normalizeSearchText(row.query);
+  if(row.mode!=='content'||query.length<2||stat.isDirectory())return {ok:true,active:false,query:'',count:0,snippets:[]};
+  const started=Date.now(),content=await searchablePreviewText(row,stat);
+  if(!content?.text)return {ok:true,active:true,query,count:0,snippets:[],truncated:false,source:'unavailable',elapsedMs:Date.now()-started};
+  const matches=buildContentMatchInfo(content.text,query);
+  await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
+  return {ok:true,active:true,...matches,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
+}
 function previewMetadata(row,stat){const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
 async function previewDocument(id){
   const {row,stat}=await resolveResult(id),meta=previewMetadata(row,stat);
@@ -312,6 +337,7 @@ async function handle(req,res){
     }
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/native-preview'){const body=await readJson(req),result=await openNativePreview(body.id,body.geometry);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/native-preview/move'){const body=await readJson(req),result=await moveNativePreview(body.geometry);sendJson(req,res,200,result,config);return}
