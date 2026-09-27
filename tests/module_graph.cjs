@@ -18,6 +18,11 @@ for(const app of ['kupa','orders']){
       if(string!==null)assert.ok(!/(?:^|[\s<])on[a-z]+\s*=/i.test(string),relative+': executable event attribute in HTML fragment');
       if(node.type==='AssignmentExpression'&&node.left.type==='MemberExpression')assert.ok(!['window','globalThis'].includes(node.left.object.name),relative+': global compatibility assignment');
       if(node.type==='ImportExpression')assert.equal(node.source.type,'Literal',relative+': imports must have a statically verifiable graph');
+      if(node.type==='NewExpression'&&node.callee.type==='Identifier'&&node.callee.name==='Worker'){
+        const url=node.arguments[0];assert.ok(url?.type==='NewExpression'&&url.callee?.type==='Identifier'&&url.callee.name==='URL',relative+': Worker entrypoint must use new URL(relative, import.meta.url)');
+        const spec=url.arguments[0];assert.equal(spec?.type,'Literal',relative+': Worker entrypoint must be statically verifiable');assert.ok(String(spec.value||'').startsWith('.'),relative+': Worker entrypoint must be local and relative');
+        const target=path.resolve(path.dirname(file),String(spec.value));assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site Worker dependency '+spec.value);edges.push(target);
+      }
       if(node.type==='ImportDeclaration'||node.type==='ExportAllDeclaration'||node.type==='ExportNamedDeclaration'&&node.source||node.type==='ImportExpression'){
         const spec=node.source.value;assert.ok(spec.startsWith('.'),relative+': runtime must use local relative imports');
         const target=path.resolve(path.dirname(file),spec);

@@ -14,8 +14,8 @@ for label in ('kupa','orders'):
         if not file.is_file():
             continue
         relative=file.relative_to(site)
-        vendor_pdfjs=relative.parts[:3]==('assets','vendor','pdfjs')
-        allowed_vendor=vendor_pdfjs and (file.suffix.lower() in VENDOR_ALLOWED or file.name in VENDOR_LICENSE_NAMES)
+        vendor_asset=relative.parts[:2]==('assets','vendor')
+        allowed_vendor=vendor_asset and (file.suffix.lower() in VENDOR_ALLOWED or file.name in VENDOR_LICENSE_NAMES or file.name.startswith('LICENSE'))
         assert file.name=='_headers' or file.suffix in ALLOWED or allowed_vendor, f'{label}: unexpected deployable file {file}'
         assert file.stat().st_size<=25*1024*1024, f'{label}: oversized public asset {file}'
         if file.suffix in {'.js','.mjs','.html','.css','.webmanifest'}:

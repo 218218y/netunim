@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,
-  normalizeSearchText,officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  normalizeSearchText,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
 
@@ -75,6 +75,17 @@ test('Office preview classification identifies formats that should use the nativ
   assert.equal(officePreviewKind('xlsx'),'excel');
   assert.equal(officePreviewKind('pptx'),'powerpoint');
   assert.equal(officePreviewKind('pdf'),'');
+});
+
+test('content preview classification uses controlled local renderers only for supported Word OOXML and Excel formats',()=>{
+  assert.equal(structuredPreviewKind('docx'),'word');
+  assert.equal(structuredPreviewKind('docm'),'word');
+  assert.equal(structuredPreviewKind('doc'),'');
+  assert.equal(structuredPreviewKind('rtf'),'');
+  assert.equal(structuredPreviewKind('xlsx'),'spreadsheet');
+  assert.equal(structuredPreviewKind('xls'),'spreadsheet');
+  assert.equal(structuredPreviewKind('xlsb'),'spreadsheet');
+  assert.equal(structuredPreviewKind('pptx'),'');
 });
 
 test('preview query addresses one exact full path and requests Everything content as a property',()=>{

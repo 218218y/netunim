@@ -1,5 +1,7 @@
 ﻿התקנת Pdf
 npm run pdfjs:install
+npm run document-viewers:install
+npm run document-viewers:check
 
 עדכון נתונים ניהול הזמנות
 npm run deps:update

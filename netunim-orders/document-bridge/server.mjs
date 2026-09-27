@@ -9,7 +9,7 @@ import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,normalizeSearchText,
-  officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
 const execFile=promisify(execFileCb);
@@ -24,11 +24,13 @@ const requestResults=new Map();
 const previewTextCache=new Map();
 const TEXT_PREVIEW_MAX_BYTES=1024*1024;
 const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
+const STRUCTURED_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
+const STRUCTURED_PREVIEW_MIME=new Map([['docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['docm','application/vnd.ms-word.document.macroEnabled.12'],['dotx','application/vnd.openxmlformats-officedocument.wordprocessingml.template'],['dotm','application/vnd.ms-word.template.macroEnabled.12'],['xls','application/vnd.ms-excel'],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],['xlsm','application/vnd.ms-excel.sheet.macroEnabled.12'],['xlsb','application/vnd.ms-excel.sheet.binary.macroEnabled.12'],['xlt','application/vnd.ms-excel'],['xltx','application/vnd.openxmlformats-officedocument.spreadsheetml.template'],['xltm','application/vnd.ms-excel.template.macroEnabled.12']]);
 let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
 const nativePreviewPending=new Map();
 
@@ -317,19 +319,24 @@ async function previewDocument(id){
   if(stat.isDirectory())return {ok:true,kind:'folder',...meta};
   const mime=BINARY_PREVIEW_MIME.get(meta.extension);
   if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,source:'file',...meta};
-  const officeKind=officePreviewKind(meta.extension);
-  if(officeKind)return {ok:true,kind:'native',source:'windows-preview-handler',officeKind,...meta};
+  const officeKind=officePreviewKind(meta.extension),structuredKind=structuredPreviewKind(meta.extension);
+  if(row.mode==='content'&&structuredKind&&stat.size<=STRUCTURED_PREVIEW_MAX_BYTES)return {ok:true,kind:'structured',documentKind:structuredKind,mime:STRUCTURED_PREVIEW_MIME.get(meta.extension)||'application/octet-stream',source:'local-renderer',...meta};
   if(TEXT_EXTENSIONS.has(meta.extension)){const data=await readTextPreview(row.fullPath,stat);return {ok:true,kind:'text',source:'file',...meta,...data}}
+  if(row.mode==='content'&&officeKind){
+    const indexed=await readEverythingContentPreview(row.fullPath);if(indexed)return {ok:true,kind:'text',source:'office-text-fallback',...meta,...indexed};
+  }
+  if(officeKind)return {ok:true,kind:'native',source:'windows-preview-handler',officeKind,...meta};
   const indexed=await readEverythingContentPreview(row.fullPath);
-  if(indexed)return {ok:true,kind:'text',source:officeKind?'office-text-fallback':'everything-content',...meta,...indexed};
-  if(mime)return {ok:true,kind:'unavailable',reason:'too-large',...meta};
-  return {ok:true,kind:'unavailable',reason:officeKind?'office-preview-unavailable':'no-preview-handler',...meta};
+  if(indexed)return {ok:true,kind:'text',source:'everything-content',...meta,...indexed};
+  if(mime||structuredKind)return {ok:true,kind:'unavailable',reason:'too-large',...meta};
+  return {ok:true,kind:'unavailable',reason:'no-preview-handler',...meta};
 }
 async function readBinaryPreview(id){
   const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
   const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
-  const mime=BINARY_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
-  if(stat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
+  const mime=BINARY_PREVIEW_MIME.get(extension)||STRUCTURED_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
+  const limit=STRUCTURED_PREVIEW_MIME.has(extension)?STRUCTURED_PREVIEW_MAX_BYTES:BINARY_PREVIEW_MAX_BYTES;
+  if(stat.size>limit){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
   return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
 }
 function sendBinary(req,res,status,{buffer,mime,name},config){res.writeHead(status,{'Content-Type':mime,'Content-Length':String(buffer.length),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(name)}`,...corsHeaders(req,config)});res.end(buffer)}

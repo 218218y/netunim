@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v12 - Everything search + DPI-correct native Windows preview
+NETUNIM Document Bridge v13 - Everything search + DPI-correct native Windows preview
 ======================================================================
 
 Search scope
@@ -117,7 +117,7 @@ Highlighting is intentionally computed only for the single selected result. The 
 
 - Text previews highlight the selected content-search phrase directly in the preview.
 - Content-search PDFs use the bundled local PDF.js viewer. Its find controller highlights every match and the match arrows select and scroll to the previous/next occurrence. The browser-native PDF iframe remains only a fallback if the controlled viewer cannot initialize.
-- Office previews keep the Windows IPreviewHandler surface for layout fidelity. IPreviewHandler has no generic API for injecting search highlights, so a compact local match bar above the native preview shows the match count and highlighted context snippets instead of manipulating the Office preview window.
+- Office filename previews keep the Windows IPreviewHandler surface for layout fidelity. Content-search DOCX-family files use the local docx-preview runtime; Excel workbooks use the local SheetJS runtime in a Web Worker; plain text uses the browser DOM. These controlled viewers highlight all matches and the same match arrows scroll to the active result. Legacy DOC/RTF content falls back to Everything-extracted text because browser DOCX renderers cannot faithfully parse the old binary Word format.
 - Match text is cached in memory for a short period by file path + size + modified time, with a small bounded cache. No snippets or file content are uploaded.
 
 

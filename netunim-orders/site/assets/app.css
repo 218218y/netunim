@@ -828,3 +828,27 @@ button.bank-cashflow-projected:focus-visible,button.bank-current-balance:focus-v
 .nav.keytips-active button[data-nav-keytip]{padding-inline-start:29px}
 .nav.keytips-active button[data-nav-keytip]::before{display:inline-flex}
 .nav.keytips-active button[data-nav-keytip]:hover::before,.nav.keytips-active button[data-nav-keytip].active::before{background:#ffedaa;border-color:#b88d3d;color:#49330d}
+
+/* Controlled content-search viewers: Word, spreadsheets and plain text. */
+::highlight(netunim-document-search-all){background:rgba(255,224,84,.64);color:inherit}
+::highlight(netunim-document-search-current){background:rgba(255,149,38,.38);color:inherit}
+.document-preview-match-location{max-width:120px;overflow:hidden;text-overflow:ellipsis;color:#7f6a59!important;font-weight:750}
+.document-text-search-viewer{min-height:100%;background:#fff}
+.document-docx-search-viewer{position:absolute;inset:0;overflow:auto;background:#707070;direction:ltr;scrollbar-gutter:stable;padding:10px 0}
+.document-docx-rendered{min-height:100%}
+.document-docx-search-viewer .docx-wrapper{padding:10px!important;background:#707070!important}
+.document-docx-search-viewer .docx-wrapper>section.docx{box-sizing:border-box!important;max-width:calc(100% - 20px);margin:0 auto 10px!important;box-shadow:0 2px 8px rgba(0,0,0,.22)!important}
+.document-spreadsheet-search-viewer{position:absolute;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#fff;direction:ltr}
+.spreadsheet-tabs{display:flex;gap:3px;overflow:auto;padding:5px 6px;border-bottom:1px solid #dfe5e8;background:#f4f6f7;scrollbar-width:thin}
+.spreadsheet-tabs button{flex:0 0 auto;border:1px solid #d4dadd;border-radius:5px;background:#fff;padding:4px 9px;color:#56636c;font:700 9.5px/1.2 "Segoe UI",Arial,sans-serif;cursor:pointer}
+.spreadsheet-tabs button.active{border-color:#8a735f;background:#f5eee7;color:#4e3e33}
+.spreadsheet-grid-wrap{min-height:0;overflow:auto;scrollbar-gutter:stable;background:#fff}
+.spreadsheet-grid{border-collapse:separate;border-spacing:0;min-width:100%;table-layout:auto;color:#27323a;font:400 11px/1.35 "Segoe UI",Arial,sans-serif;direction:ltr}
+.spreadsheet-grid th,.spreadsheet-grid td{min-width:74px;max-width:340px;height:25px;padding:4px 7px;border-inline-end:1px solid #e1e5e7;border-bottom:1px solid #e1e5e7;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top;text-align:start;background:#fff}
+.spreadsheet-grid thead th{position:sticky;top:0;z-index:3;height:24px;background:#f2f4f5;text-align:center;color:#6f7b82;font-weight:750}
+.spreadsheet-grid tbody th{position:sticky;left:0;z-index:2;min-width:44px;width:44px;background:#f5f6f7;text-align:center;color:#7c858b;font-weight:650}
+.spreadsheet-grid thead th:first-child{position:sticky;left:0;z-index:4;min-width:44px;width:44px}
+.spreadsheet-grid td.active-match-cell{background:#fff8e8}
+.spreadsheet-grid mark.spreadsheet-match{border:0;border-radius:2px;background:rgba(255,224,84,.72);color:inherit;padding:0 1px;box-shadow:none}
+.spreadsheet-grid mark.spreadsheet-match.current{background:rgba(255,149,38,.4)}
+.spreadsheet-large-note{padding:5px 8px;border-top:1px solid #e1e5e7;background:#fff9ea;color:#79664e;text-align:center;font-size:9px;direction:rtl}

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-7b0d6cfb95c2';
+const CACHE='orders-app-shell-esm-291f1c2fd8c8';
 const SHELL=[
   './',
   './index.html',
@@ -53,8 +53,13 @@ const SHELL=[
   './assets/js/domains/customers/view.js',
   './assets/js/domains/dashboard/view.js',
   './assets/js/domains/documents/bridge.js',
+  './assets/js/domains/documents/document-search-navigator.js',
+  './assets/js/domains/documents/docx-search-viewer.js',
   './assets/js/domains/documents/pdf-search-viewer.js',
   './assets/js/domains/documents/pdf-text-fragments.js',
+  './assets/js/domains/documents/spreadsheet-preview-worker.js',
+  './assets/js/domains/documents/spreadsheet-search-viewer.js',
+  './assets/js/domains/documents/text-search-viewer.js',
   './assets/js/domains/finance/bank-cashflow-view.js',
   './assets/js/domains/finance/bank-cheque-image-runtime.js',
   './assets/js/domains/finance/bank-connection-view.js',
@@ -227,7 +232,7 @@ const SHELL=[
 ];
 
 const SHELL_PATHS=new Set(SHELL.map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname));
-const LAZY_RUNTIME_PREFIXES=['./assets/vendor/pdfjs/'].map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname);
+const LAZY_RUNTIME_PREFIXES=['./assets/vendor/'].map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname);
 const isLazyRuntimePath=pathname=>LAZY_RUNTIME_PREFIXES.some(prefix=>pathname.startsWith(prefix));
 
 self.addEventListener('install',event=>{
@@ -245,8 +250,8 @@ self.addEventListener('fetch',event=>{
   const lazyRuntime=isLazyRuntimePath(url.pathname);
   if(event.request.mode!=='navigate'&&!SHELL_PATHS.has(url.pathname)&&!lazyRuntime)return;
 
-  // PDF.js is an immutable, version-pinned runtime that is intentionally kept
-  // out of the install shell. On its first request, persist the clone before
+  // Third-party document runtimes are immutable, version-pinned assets intentionally kept
+  // out of the install shell. On first request, persist the clone before
   // resolving the response promise. This makes the lazy cache deterministic:
   // callers that have received the module can rely on it already being cached.
   if(lazyRuntime){

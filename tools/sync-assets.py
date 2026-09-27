@@ -153,12 +153,13 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
         relative = f'{site}/{item[2:]}'
         digest.update(item.encode('utf-8'))
         digest.update(asset_hash_bytes(relative, snapshot.read(relative)))
-    # Vendor files are lazy-cached, but a runtime upgrade must still rotate the
-    # cache so an offline session can never combine a new adapter with an old
-    # PDF.js runtime.  The manifest is small and deterministic.
-    vendor_manifest = f'{site}/assets/vendor/pdfjs/_runtime-manifest.txt'
-    if vendor_manifest in snapshot.files:
-        digest.update(b'pdfjs-runtime-manifest')
+    # Vendor trees are lazy-cached, but runtime upgrades must still rotate the
+    # app cache so an offline session cannot combine a new adapter with stale
+    # third-party code. Hash every deterministic vendor runtime manifest.
+    vendor_prefix=f'{site}/assets/vendor/'
+    vendor_manifests=sorted(path for path in snapshot.files if path.startswith(vendor_prefix) and PurePosixPath(path).name=='_runtime-manifest.txt')
+    for vendor_manifest in vendor_manifests:
+        digest.update(vendor_manifest.encode('utf-8'))
         digest.update(asset_hash_bytes(vendor_manifest, snapshot.read(vendor_manifest)))
     updated, count = re.subn(
         r"const CACHE='[^']+';",

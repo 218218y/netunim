@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEV_NODE_MODULES = Path(os.environ.get("NETUNIM_OFFLINE_NODE_MODULES", ROOT / "node_modules"))
 for command in (
     [sys.executable, 'tests/pdfjs_runtime_vendor_contracts.py'],
+    [sys.executable, 'tests/document_viewer_runtime_vendor_contracts.py'],
     [sys.executable, 'tools/pdfjs-runtime.py', 'check'],
     [sys.executable, 'tools/sync-assets.py', '--check'],
     [sys.executable, 'tests/sync_assets_contracts.py'],

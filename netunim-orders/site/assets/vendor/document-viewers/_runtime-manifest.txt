@@ -1,0 +1,19 @@
+runtime=netunim-document-viewers
+format=1
+docx-preview.version=0.4.0
+docx-preview.source=https://registry.npmjs.org/docx-preview/-/docx-preview-0.4.0.tgz
+docx-preview.integrity=sha512-OdKtE/uj3M4RfGarLkGjahUzRg8/kBp0Sraj1r1NAY1tp/sTpHOBqDrzVf9onMBt9vxP6SdQ6bpLCUCsFwjgcA==
+jszip.version=3.10.1
+jszip.source=https://registry.npmjs.org/jszip/-/jszip-3.10.1.tgz
+jszip.integrity=sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==
+xlsx.version=0.20.3
+xlsx.source=https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
+xlsx.integrity=sha512-oLDq3jw7AcLqKWH2AhCpVTZl8mf6X2YReP+Neh0SJUzV/BdZYjth94tG5toiMB1PPrYtxOCfaoUCkvtuH+3AJA==
+files=6
+
+051ef503f2677d53159a388b7384e950eda41ea4e47a103e5e36f124d7faea40  docx-preview/docx-preview.min.js
+8668bf4417d161e4eb4d47d6044526e4914d9eb3c748573d9bb7e87708c1253f  docx-preview/LICENSE
+acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e  jszip/jszip.min.js
+566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4  jszip/LICENSE
+4d2a38ac35cda06a555c84074a819d413339cd3691b822cae50f8f322fe01f64  xlsx/LICENSE
+cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41  xlsx/xlsx.full.min.js

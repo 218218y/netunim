@@ -40,7 +40,7 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
     put:async(req,res)=>{
       const key=typeof req==='string'?req:req.url||'request';
       calls.put.push(key);
-      if(key.includes('/assets/vendor/pdfjs/')){lazyPutEntered=true;await lazyPutGate}
+      if(key.includes('/assets/vendor/')){lazyPutEntered=true;await lazyPutGate}
     },
     match:async key=>{
       calls.currentMatch.push(typeof key==='string'?key:key.url||'request');
@@ -74,7 +74,7 @@ const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.inclu
   const online=event({request:onlineReq});handlers.fetch(online);const onlineRes=await online._response();await Promise.all(online._waits);
   let lazyCached=null,lazyHeldUntilCacheWrite=null;
   if(hasLazyRuntime){
-    const lazyReq={method:'GET',url:'https://app.test/assets/vendor/pdfjs/build/pdf.mjs',mode:'cors'};
+    const lazyReq={method:'GET',url:'https://app.test/assets/vendor/document-viewers/docx-preview/docx-preview.min.js',mode:'cors'};
     const lazy=event({request:lazyReq});handlers.fetch(lazy);
     let lazyResponseSettled=false;
     const lazyResponse=lazy._response().then(value=>{lazyResponseSettled=true;return value});
@@ -145,14 +145,14 @@ for label, site in APPS.items():
     ok(set(shell) == required and len(shell)==len(required), f"{label}: shell contains exactly the expected public app files")
     ok(not any('/assets/vendor/' in item for item in shell), f"{label}: third-party runtimes are not eagerly pre-cached in the install shell")
     if label == 'orders':
-        ok("LAZY_RUNTIME_PREFIXES=['./assets/vendor/pdfjs/']" in text and 'isLazyRuntimePath' in text,
-           'orders: PDF.js vendor assets use lazy network-first runtime caching')
+        ok("LAZY_RUNTIME_PREFIXES=['./assets/vendor/']" in text and 'isLazyRuntimePath' in text,
+           'orders: all local document-viewer vendor assets use lazy network-first runtime caching')
         lazy_branch = text.find('if(lazyRuntime)')
         lazy_put = text.find('await cache.put(event.request,response.clone())', lazy_branch)
         lazy_wait = text.find('event.waitUntil(lazyResponse.then', lazy_branch)
         lazy_respond = text.find('event.respondWith(lazyResponse)', lazy_branch)
         ok(lazy_branch >= 0 and lazy_put > lazy_branch and lazy_wait > lazy_put and lazy_respond > lazy_wait,
-           'orders: lazy PDF.js response resolves only after its first CacheStorage write is complete')
+           'orders: lazy vendor response resolves only after its first CacheStorage write is complete')
     for item in shell:
         if item == "./":
             continue
@@ -187,9 +187,9 @@ for label, site in APPS.items():
         ok(probe.get("deleted") == [probe.get('oldCache')], f"{label}: activate deletes only this app's obsolete caches")
         ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
         if label == 'orders':
-            ok(probe.get('lazyCached') is True, 'orders: first PDF.js runtime request is persisted by the lazy runtime cache')
+            ok(probe.get('lazyCached') is True, 'orders: first local document runtime request is persisted by the lazy runtime cache')
             ok(probe.get('lazyHeldUntilCacheWrite') is True,
-               'orders: first PDF.js response stays pending until its lazy CacheStorage write completes')
+               'orders: first local document runtime response stays pending until its lazy CacheStorage write completes')
         ok(probe.get("cached") == "current-app-js", f"{label}: offline asset ignores a conflicting unrelated cache")
         ok(probe.get("fallback") == "current-index", f"{label}: navigation fallback ignores a conflicting unrelated cache")
         ok(not probe.get("globalMatches"), f"{label}: offline fallback never searches all origin caches")

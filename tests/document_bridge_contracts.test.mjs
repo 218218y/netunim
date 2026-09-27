@@ -69,7 +69,7 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
   assert.doesNotMatch(server,/body\.path/);
 });
 
-test('preview stays local and Office uses the native Windows IPreviewHandler layer instead of Office automation',()=>{
+test('preview stays local: filename Office preview stays native while content search uses controlled local document renderers',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
@@ -83,10 +83,14 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(server,/documents\/native-preview/);
   assert.match(server,/NATIVE_PREVIEW_HOST/);
   assert.match(server,/source:'windows-preview-handler'/);
+  assert.match(server,/kind:'structured'/);
+  assert.match(server,/structuredPreviewKind/);
+  assert.match(server,/STRUCTURED_PREVIEW_MIME/);
   assert.doesNotMatch(server,/OFFICE_PREVIEW_SCRIPT/);
   assert.doesNotMatch(server,/ensureOfficePreview/);
   assert.doesNotMatch(server,/source:'office-pdf'/);
   assert.match(lib,/officePreviewKind/);
+  assert.match(lib,/structuredPreviewKind/);
   assert.match(lib,/buildEsContentPreviewArgs/);
   assert.match(lib,/buildContentMatchInfo/);
   assert.match(installer,/build_native_preview\.ps1/);
@@ -132,11 +136,13 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/selectDocumentResult/);
   assert.match(ui,/document-results-table/);
   assert.match(ui,/document-preview-frame/);
-  assert.match(ui,/document-preview-inline-match/);
+  assert.match(ui,/createTextSearchViewer/);
+  assert.match(ui,/createDocxSearchViewer/);
+  assert.match(ui,/createSpreadsheetSearchViewer/);
   assert.match(ui,/createPdfSearchViewer/);
-  assert.match(ui,/pdfSearchViewer\.previous\(\)/);
-  assert.match(ui,/pdfSearchViewer\.next\(\)/);
-  assert.match(ui,/onPdfSearchMatchState/);
+  assert.match(ui,/previewSearchViewer\.previous\(\)/);
+  assert.match(ui,/previewSearchViewer\.next\(\)/);
+  assert.match(ui,/onPreviewSearchMatchState/);
   assert.match(ui,/document-preview-match-term/);
   assert.match(ui,/buildPdfPreviewSrc\(previewObjectUrl,\{query\}\)/);
   assert.doesNotMatch(ui,/syncPdfPreviewMatch/);
@@ -152,7 +158,7 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(pdfViewer,/ResizeObserver/);
   assert.match(pdfViewer,/resize\(options=\{\}\)/);
   assert.match(ui,/preloadPdfSearchRuntime/);
-  assert.match(ui,/pdfSearchViewer\?\.resize/);
+  assert.match(ui,/previewSearchViewer\?\.resize/);
   assert.match(css,/document-pdfjs-container \.pdfViewer \.page\{box-sizing:content-box/);
   assert.match(css,/highlight\.selected\{background-color:rgba\(255,149,38,\.36\)/);
   assert.doesNotMatch(css,/highlight\.selected\{[^}]*?(?:outline|box-shadow|border)/);
