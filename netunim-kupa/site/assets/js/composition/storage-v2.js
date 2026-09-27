@@ -190,7 +190,11 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
       main:p.storageShadow,shared:p.sharedChecksV2,
       enableShared:()=>{if(p.sharedChecksV2Composition.lockPreparation()||mode()==='primary')return;throw new Error('kupa_local_birth_shared_lock_required')},
-      readSource:createLegacyLocalBirthSource({idbGet:(...args)=>p.storageIndexedDb.idbGet(...args),normalizeState:state=>p.stateNormalization.normalizeState(state)}),
+      readSource:async()=>{
+        const source=await createLegacyLocalBirthSource({idbGet:(...args)=>p.storageIndexedDb.idbGet(...args),normalizeState:state=>p.stateNormalization.normalizeState(state)})();
+        const mainState=structuredClone(source.mainState);delete mainState.checks;
+        return {...source,mainState};
+      },
       applyAuxiliary:async auxiliary=>{
         if(!auxiliary?.workbook)throw new Error('kupa_local_birth_workbook_missing');
         migrateLegacySpreadsheet(auxiliary.workbook);

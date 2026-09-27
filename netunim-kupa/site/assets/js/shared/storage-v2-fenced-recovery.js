@@ -33,7 +33,7 @@ export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOw
     const mainCloud=projectMainRemote(mainRow),sharedRaw=projectSharedRemote(sharedRow);
     const sharedState={checks:structuredClone(sharedRaw?.checks),bankEvents:structuredClone(sharedRaw?.bankEvents)};
     validateSharedChecksState(sharedState);validateMainCloud(mainCloud);
-    const mainState=composeMainState(mainCloud,sharedState);validateMainState(mainState);
+    const mainState=composeMainState(mainCloud,sharedState);delete mainState.checks;validateMainState(mainState);
     if(!equalSyncJson(projectMainState(mainState),mainCloud))throw new Error('storage_fenced_recovery_main_projection_changed');
     // Recheck authorization and the server fence immediately before the local
     // transaction. A remote revision may advance later; ordinary V2 sync then

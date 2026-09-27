@@ -29,7 +29,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const diagnostics={mode:'off',recoveries:0,operations:0,boundaries:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
-  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false,mainProjectionVersion=1,projectionMigration=false;
+  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false,mainProjectionVersion=2,projectionMigration=false;
   const guardCloudMutation=()=>{if(boundaryGate()||projectionMigration)throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
@@ -40,7 +40,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    identity=next;authoritative=false;commits=Promise.resolve();mainProjectionVersion=1;const scopedOwner=next;
+    identity=next;authoritative=false;commits=Promise.resolve();mainProjectionVersion=2;const scopedOwner=next;
     journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   function verifiedRecovery(active,recovered){
@@ -100,7 +100,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     const cloud=recovered?await active.cloudState():null;
     if(cloud?.base||cloud?.flight||cloud?.control)throw new Error('storage_local_birth_cloud_head_exists');
     if(!recovered||recovered.appMetadata?.storageRole!=='primary'){
-      await active.install(canonical,{expectedEpoch:recovered?.epoch??null,appMetadata:{...appMetadata,storageRole:'primary',migrationIntent:'local-birth',sourceOwner:'local'}});
+      await active.install(canonical,{expectedEpoch:recovered?.epoch??null,appMetadata:{...appMetadata,storageRole:'primary',migrationIntent:'local-birth',sourceOwner:'local',mainProjectionVersion:2}});
       recovered=await active.recover();
     }
     if(scopedIdentity!==currentOwner()||identity!==scopedIdentity||!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_owner_changed');
@@ -111,18 +111,18 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     const active=create(),scopedIdentity=identity;
     const validIntent=intent==='cloud-authoritative'&&sourceOwner===scopedIdentity||intent==='upload-local'&&sourceOwner==='local'&&revision===0||intent==='upload-owner'&&sourceOwner===scopedIdentity&&revision===0;
     if(!validIntent)throw new Error('storage_owner_transfer_intent_required');
-    const prepared=checkpointState(state),metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent};
+    const prepared=checkpointState(state),preparedChanges=changes?.map(change=>change?.type==='replace-state'?{...change,state:checkpointState(change.state)}:change),metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent,mainProjectionVersion:2};
     let result;
-    try{result=await active.initializeCloudHead(revision,prepared,{cloudState,changes,validateBase,appMetadata:metadata})}
+    try{result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata})}
     catch(error){
       if(error?.message!=='storage_initialization_exists'||!String(metadata.bootstrapOperationId||'').trim())throw error;
       const recovered=await active.open(),cloud=await active.cloudState({validateBase});
-      const finalState=changes?.length===1&&changes[0]?.type==='replace-state'?checkpointState(changes[0].state):prepared;
+      const finalState=preparedChanges?.length===1&&preparedChanges[0]?.type==='replace-state'?preparedChanges[0].state:prepared;
       const idempotent=!!recovered&&recovered.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&recovered.appMetadata?.migrationIntent===intent&&recovered.appMetadata?.sourceOwner===sourceOwner&&recovered.appMetadata?.targetOwner===scopedIdentity&&cloud?.base?.revision===revision&&equalSyncJson(cloud.base.state,cloudState)&&equalSyncJson(recovered.state,finalState);
       if(idempotent)result=recovered;
       else{
-        if(!recovered||recovered.appMetadata?.storageRole==='primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(recovered.state,finalState))throw new Error('storage_bootstrap_existing_head_mismatch');
-        result=await active.initializeCloudHead(revision,prepared,{cloudState,changes,validateBase,appMetadata:metadata,replaceExistingState:finalState});
+        if(!recovered||recovered.appMetadata?.storageRole==='primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(checkpointState(recovered.state),finalState))throw new Error('storage_bootstrap_existing_head_mismatch');
+        result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata,replaceExistingState:recovered.state});
       }
     }
     if(identity!==scopedIdentity||currentOwner()!==scopedIdentity)throw new Error('storage_owner_changed_during_recovery');

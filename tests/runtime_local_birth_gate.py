@@ -14,10 +14,11 @@ for app in ['kupa', 'orders']:
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const marker=await createStorageJournalDb().readLocalEngine('APP');
           const main=await storageShadow.cloudState(),shared=await sharedChecksV2.cloudState();
-          return {marker:marker?.version,mainBase:main?.base??null,sharedBase:shared?.base??null,
+          const head=await storageShadow.recover();
+          return {marker:marker?.version,mainProjection:head?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(head?.state||{},'checks'),mainBase:main?.base??null,sharedBase:shared?.base??null,
             mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,writes:window.__legacyWrites};
         })()""".replace('APP',app))
-        assert born['marker']==2 and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['writes'],born
+        assert born['marker']==2 and born['mainProjection']==2 and not born['mainHasChecks'] and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['writes'],born
         result=browser.evaluate("""(async()=>{
           await appReady;
           if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');

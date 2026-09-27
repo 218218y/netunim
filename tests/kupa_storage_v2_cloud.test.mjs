@@ -22,13 +22,15 @@ test('Kupa V2 canonicalizes runtime-only credit fields at the storage boundary',
 
   const db=memoryDb(),emergency=emergencyStore(),owner=()=> 'account-kupa';let mode='preparing';
   const runtime=createStorageV2Runtime({app:'kupa',owner,primary:()=>true,mode:()=>mode,
-    validate:state=>assertKupaEntityInvariants(state,{includeChecks:true,required:true}),
+    validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),
     prepareCheckpoint:state=>normalization.prepareKupaStorageState(state),
     prepareOperation:operation=>normalization.prepareKupaStorageOperation(operation),
     createJournal:options=>createStorageJournal({...options,db,emergency})});
   const cloud=normalization.prepareKupaCloudState(model.state);
   await assert.doesNotReject(()=>runtime.initializeCloudHead(7,model.state,{sourceOwner:'account-kupa',intent:'cloud-authoritative',cloudState:cloud,validateBase:value=>assertValidCloudState(value,'Kupa V2 credit checkpoint test')}));
   let recovered=await runtime.recoverForOwner({intent:'load-account'});
+  assert.equal(recovered.appMetadata.mainProjectionVersion,2);
+  assert.equal(Object.hasOwn(recovered.state,'checks'),false,'a new Main cloud head never duplicates Shared Checks');
   let durableAccount=recovered.state.creditSync.profiles[0].accounts[0];
   assert.equal(Object.hasOwn(durableAccount,'txns'),false,'derived credit txns are excluded from the durable checkpoint');
   assert.equal(Object.hasOwn(durableAccount.months[0]?.transactions?.[0]||{},'category'),false,'undefined optional fields are omitted from the durable checkpoint');
