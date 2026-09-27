@@ -5,7 +5,8 @@ const acorn=require('acorn');
 function walk(n,visit){if(!n?.type)return;visit(n);for(const x of Object.values(n))for(const v of Array.isArray(x)?x:[x])if(v?.type)walk(v,visit)}
 for(const app of ['kupa','orders']){
   const site=path.resolve(`netunim-${app}/site`), files=[], htmlFiles=[];
-  function list(dir){for(const d of fs.readdirSync(dir,{withFileTypes:true})){const f=path.join(dir,d.name);if(d.isDirectory())list(f);else if(f.endsWith('.js'))files.push(f);else if(f.endsWith('.html'))htmlFiles.push(f)}}
+  const vendorRoot=path.join(site,'assets','vendor');
+  function list(dir){for(const d of fs.readdirSync(dir,{withFileTypes:true})){const f=path.join(dir,d.name);if(d.isDirectory()){if(f===vendorRoot)continue;list(f)}else if(f.endsWith('.js'))files.push(f);else if(f.endsWith('.html'))htmlFiles.push(f)}}
   list(site);const graph=new Map();
   for(const file of files){
     const code=fs.readFileSync(file,'utf8'),relative=path.relative(site,file).split(path.sep).join('/');

@@ -125,9 +125,14 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
     source = raw_source.decode('utf-8').replace('\r\n', '\n').replace('\r', '\n')
     site = f'netunim-{label}/site'
     asset_prefix = f'{site}/assets/'
+    # Third-party runtimes are intentionally lazy.  Pre-caching the complete
+    # PDF.js vendor tree made every service-worker install download hundreds of
+    # files before the user had ever opened a PDF.  Runtime assets are cached on
+    # first use by the worker instead of being part of the installation shell.
     assets = sorted(
         path for path in snapshot.files
-        if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css') or path.startswith(asset_prefix+'vendor/'))
+        if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css'))
+        and not path.startswith(asset_prefix+'vendor/')
     )
     shell = ['./', './index.html', './reset-local.html', './assets/app.css']
     shell += ['./' + PurePosixPath(path).relative_to(site).as_posix() for path in assets]
@@ -148,6 +153,13 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
         relative = f'{site}/{item[2:]}'
         digest.update(item.encode('utf-8'))
         digest.update(asset_hash_bytes(relative, snapshot.read(relative)))
+    # Vendor files are lazy-cached, but a runtime upgrade must still rotate the
+    # cache so an offline session can never combine a new adapter with an old
+    # PDF.js runtime.  The manifest is small and deterministic.
+    vendor_manifest = f'{site}/assets/vendor/pdfjs/_runtime-manifest.txt'
+    if vendor_manifest in snapshot.files:
+        digest.update(b'pdfjs-runtime-manifest')
+        digest.update(asset_hash_bytes(vendor_manifest, snapshot.read(vendor_manifest)))
     updated, count = re.subn(
         r"const CACHE='[^']+';",
         f"const CACHE='{label}-app-shell-esm-{digest.hexdigest()[:12]}';",

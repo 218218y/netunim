@@ -2,3 +2,6 @@
 * text=auto
 *.bat text eol=crlf
 tools/git-hooks/* text eol=lf
+
+# Vendored PDF.js is integrity-checked byte-for-byte; never rewrite line endings.
+netunim-orders/site/assets/vendor/pdfjs/** -text

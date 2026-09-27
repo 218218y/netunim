@@ -20,6 +20,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(main,/documentBridge:domainsDocumentBridge/);
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);
+  assert.match(client,/documents\/warm/);
   assert.match(client,/documents\/preview/);
   assert.match(client,/documents\/preview-file/);
   assert.match(client,/documents\/matches/);
@@ -44,6 +45,11 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.doesNotMatch(lib,/'-n',String\(count\)/);
   assert.doesNotMatch(lib,/'-path',rootPath/);
   assert.match(server,/probeEverything\(\{fresh:true,autoStart:true\}\)/);
+  assert.match(server,/everythingProbePromise/);
+  assert.match(server,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
+  assert.match(server,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
+  assert.match(server,/documents\/warm/);
+  assert.match(server,/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
 
@@ -109,6 +115,10 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
+  assert.match(ui,/function warmDocumentSearchBridge\(\)/);
+  assert.match(ui,/documentBridge\.warm\(\)/);
+  assert.match(ui,/DOCUMENT_BRIDGE_WARM_TTL_MS=25000/);
+  assert.ok((ui.match(/warmDocumentSearchBridge\(\);/g)||[]).length>=2,'Bridge warm-up should run at bind time and when the search opens');
   assert.match(ui,/window\.devicePixelRatio/);
   assert.match(ui,/window\.addEventListener\('focus'/);
   assert.match(ui,/data.kind==='native'/);

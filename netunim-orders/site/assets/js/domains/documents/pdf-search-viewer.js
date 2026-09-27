@@ -47,11 +47,13 @@ async function loadRuntime(){
     // verify them statically, while the browser still downloads PDF.js lazily only
     // when content-search opens a PDF preview.
     const stylesheetTask=ensureViewerStylesheet();
-    const [pdfjsLib,pdfjsViewer]=await Promise.all([
-      import('../../../vendor/pdfjs/build/pdf.mjs'),
-      import('../../../vendor/pdfjs/web/pdf_viewer.mjs'),
-      stylesheetTask,
-    ]);
+    // pdf_viewer.mjs reads globalThis.pdfjsLib during module evaluation instead of
+    // importing pdf.mjs itself.  Keep CSS parallel, but establish the core runtime
+    // first; loading both modules in Promise.all creates a real evaluation race and
+    // silently drops the UI back to the native iframe fallback.
+    const pdfjsLib=await import('../../../vendor/pdfjs/build/pdf.mjs');
+    const viewerTask=import('../../../vendor/pdfjs/web/pdf_viewer.mjs');
+    const [pdfjsViewer]=await Promise.all([viewerTask,stylesheetTask]);
     pdfjsLib.GlobalWorkerOptions.workerSrc=runtimeUrl(PDF_SEARCH_RUNTIME.worker);
     return {pdfjsLib,pdfjsViewer};
   })().catch(error=>{runtimePromise=null;throw error});

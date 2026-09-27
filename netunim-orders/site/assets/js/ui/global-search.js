@@ -9,6 +9,7 @@ import {createPdfSearchViewer,preloadPdfSearchRuntime} from '../domains/document
 import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
 
 const DOCUMENT_SEARCH_DELAY_MS=200;
+const DOCUMENT_BRIDGE_WARM_TTL_MS=25000;
 const DOCUMENT_PREVIEW_WIDTH_KEY='netunim_orders_document_preview_width_v1';
 const DOCUMENT_PREVIEW_DEFAULT=58;
 const DOCUMENT_PREVIEW_MIN=32;
@@ -18,7 +19,7 @@ const SEARCH_FILTERS=new Set(['all','site','files','content']);
 // Global search owns one query and one result surface. Site, file-name and file-content
 // sources are searched independently, then composed in a deterministic source order.
 export function createUiGlobalSearch({documentBridge=null,searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
-  let resultByKey=new Map(),documentResultByKey=new Map(),highlightTimer=null,backdropPointerId=null,filter='all',documentSequence=0,documentAbort=null,activeQuery='',selectedDocumentId='',selectedDocumentKey='',selectedDocumentMode='everything',previewSequence=0,previewObjectUrl='',previewAbort=null,previewMatchesAbort=null,previewMatchInfo=null,currentPreviewData=null,pdfSearchViewer=null,pdfSearchState={current:0,total:0},nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null;
+  let resultByKey=new Map(),documentResultByKey=new Map(),highlightTimer=null,backdropPointerId=null,filter='all',documentSequence=0,documentAbort=null,activeQuery='',selectedDocumentId='',selectedDocumentKey='',selectedDocumentMode='everything',previewSequence=0,previewObjectUrl='',previewAbort=null,previewMatchesAbort=null,previewMatchInfo=null,currentPreviewData=null,pdfSearchViewer=null,pdfSearchState={current:0,total:0},nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null,documentWarmPromise=null,documentWarmAt=0;
   let documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')};
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),preview:byId('globalSearchDocumentPreview'),previewBody:byId('globalSearchPreviewBody'),previewMatches:byId('globalSearchPreviewMatches'),splitter:byId('globalSearchDocumentSplitter')});
@@ -26,6 +27,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   const indexedEntries=createSearchFragmentIndex({fragments:Object.keys(ORDER_SEARCH_FRAGMENTS),revision:name=>name==='notes'&&model.state.notesSheet?null:searchRevision?.(ORDER_SEARCH_FRAGMENTS[name],name),build:name=>buildOrderSearchFragment(model.state,name)});
 
   function emptyDocumentState(mode){return{mode,status:'idle',rows:[],error:null,elapsedMs:0}}
+  function warmDocumentSearchBridge(){if(!documentBridge?.warm||!documentBridge.getToken?.())return null;const now=Date.now();if(documentWarmPromise)return documentWarmPromise;if(now-documentWarmAt<DOCUMENT_BRIDGE_WARM_TTL_MS)return null;documentWarmAt=now;documentWarmPromise=Promise.resolve(documentBridge.warm()).catch(()=>null).finally(()=>{documentWarmPromise=null});return documentWarmPromise}
   function sourceLabel(mode){return mode==='content'?'חיפוש תוכן':'חיפוש קבצים'}
   function includesSite(){return filter==='all'||filter==='site'}
   function includesDocumentMode(mode){return filter==='all'||(filter==='files'&&mode==='everything')||(filter==='content'&&mode==='content')}
@@ -153,7 +155,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   function renderResults(value=''){
     const raw=String(value||'').trim();scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;if(raw!==activeQuery){activeQuery=raw;resetDocumentPreview()}const shouldSearchDocuments=prepareDocumentStates(raw);renderCombinedResults(raw);if(shouldSearchDocuments)scheduledDocumentRender(raw);
   }
-  function open(){const {backdrop,input,trigger}=refs();if(!backdrop)return;backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');updateFilterUi();renderResults(input?.value||'');requestAnimationFrame(()=>input?.focus())}
+  function open(){const {backdrop,input,trigger}=refs();if(!backdrop)return;backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');warmDocumentSearchBridge();updateFilterUi();renderResults(input?.value||'');requestAnimationFrame(()=>input?.focus())}
   function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;resetDocumentPreview();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
   function toggle(){const {backdrop}=refs();if(!backdrop)return;backdrop.hidden?open():close()}
   function flushCurrent(){return scheduledDocumentRender.flush()}
@@ -186,6 +188,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(splitter&&workspace){let resizing=false;const updateFromPointer=event=>{if(!resizing)return;const rect=workspace.getBoundingClientRect();if(!rect.width)return;applyPreviewWidth((event.clientX-rect.left)/rect.width*100)};const finish=event=>{if(!resizing)return;resizing=false;splitter.classList.remove('dragging');try{splitter.releasePointerCapture?.(event.pointerId)}catch{}const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||DOCUMENT_PREVIEW_DEFAULT;applyPreviewWidth(current,{save:true})};splitter.addEventListener('pointerdown',event=>{if(splitter.hidden)return;resizing=true;splitter.classList.add('dragging');splitter.setPointerCapture?.(event.pointerId);updateFromPointer(event);event.preventDefault()});splitter.addEventListener('pointermove',updateFromPointer);splitter.addEventListener('pointerup',finish);splitter.addEventListener('pointercancel',finish);splitter.addEventListener('keydown',event=>{if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'&&event.key!=='Home'&&event.key!=='End')return;event.preventDefault();const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||savedPreviewWidth();const next=event.key==='Home'?DOCUMENT_PREVIEW_MIN:event.key==='End'?DOCUMENT_PREVIEW_MAX:current+(event.key==='ArrowRight'?3:-3);applyPreviewWidth(next,{save:true})})}
     results.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.id==='globalSearchDocumentToken'){event.preventDefault();pairDocumentBridge()}});
     backdrop.addEventListener('pointerdown',event=>{backdropPointerId=event.target===backdrop?event.pointerId:null});backdrop.addEventListener('pointerup',event=>{const dismiss=backdropPointerId===event.pointerId&&event.target===backdrop;backdropPointerId=null;if(dismiss)close()});backdrop.addEventListener('pointercancel',()=>{backdropPointerId=null});
+    warmDocumentSearchBridge();
     window.addEventListener('resize',()=>{syncNativePreviewGeometry({force:true})});window.addEventListener('focus',()=>{if(nativePreviewActive)syncNativePreviewGeometry({force:true})});document.addEventListener('visibilitychange',()=>{if(document.hidden){if(nativePreviewActive)deactivateNativePreview({forget:false});return}if(nativePreviewWantedId&&selectedDocumentId===nativePreviewWantedId&&!backdrop.hidden){const sequence=previewSequence;showNativePreview(nativePreviewWantedId,sequence).catch(()=>{})}});document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();open();return}if(event.key==='Escape'&&!backdrop.hidden)close()});
   }
 

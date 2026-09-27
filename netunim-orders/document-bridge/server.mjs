@@ -29,7 +29,7 @@ const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
-let server=null,cachedProbe=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
+let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
 const nativePreviewPending=new Map();
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
@@ -51,9 +51,10 @@ async function init(){await ensureToken();const existing=await loadConfig();if(!
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
 
 async function whereEs(){
+  if(cachedEsPath)return cachedEsPath;
   const candidates=[process.env.NETUNIM_EVERYTHING_ES_PATH,TOOL_ES,path.join(process.env.LOCALAPPDATA||'','Microsoft','WindowsApps','es.exe'),path.join(process.env.PROGRAMFILES||'C:\\Program Files','Everything','es.exe'),path.join(process.env['PROGRAMFILES(X86)']||'C:\\Program Files (x86)','Everything','es.exe')].filter(Boolean);
-  for(const candidate of candidates)if(await existsFile(candidate))return candidate;
-  if(process.platform==='win32')try{const {stdout}=await execFile('where.exe',['es.exe'],{encoding:'utf8',windowsHide:true,timeout:3000});const candidate=stdout.split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(candidate)return candidate}catch{}
+  for(const candidate of candidates)if(await existsFile(candidate)){cachedEsPath=candidate;return cachedEsPath}
+  if(process.platform==='win32')try{const {stdout}=await execFile('where.exe',['es.exe'],{encoding:'utf8',windowsHide:true,timeout:3000});const candidate=stdout.split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(candidate){cachedEsPath=candidate;return cachedEsPath}}catch{}
   const e=new Error('es.exe לא נמצא. יש להריץ מחדש את מתקין Document Bridge.');e.code='ES_NOT_FOUND';throw e;
 }
 function instanceArgs(instance){return instance?['-instance',instance]:[]}
@@ -64,15 +65,21 @@ async function runEs(esPath,args,{timeout=18000}={}){
 function instanceCandidates(config){return [...new Set([config.everythingInstance,'','1.5a'].filter(value=>value!==undefined&&value!==null))]}
 async function probeRunningInstances(config,esPath){
   let esVersion='';try{esVersion=(await runEs(esPath,['-version'],{timeout:3000})).stdout.trim()}catch{}
-  let lastError=null,onlyNotRunning=true;
-  for(const instance of instanceCandidates(config)){
-    try{
-      const {stdout}=await runEs(esPath,['-ipc3',...instanceArgs(instance),'-timeout','3000','-get-everything-version'],{timeout:4500});
-      return {at:Date.now(),esPath,esVersion,everythingVersion:stdout.trim(),instance,startedByBridge:false};
-    }catch(error){lastError=error;if(error.exitCode!==8)onlyNotRunning=false}
+  const probeOne=async instance=>{
+    const {stdout}=await runEs(esPath,['-ipc3',...instanceArgs(instance),'-timeout','3000','-get-everything-version'],{timeout:4500});
+    return {at:Date.now(),esPath,esVersion,everythingVersion:stdout.trim(),instance,startedByBridge:false};
+  };
+  const preferred=String(config.everythingInstance||'').trim();
+  if(preferred){
+    try{return await probeOne(preferred)}catch{}
   }
-  const e=new Error(onlyNotRunning?'Everything אינו פועל כרגע.':'לא ניתן להתחבר ל-Everything המקומי.');
-  e.code=onlyNotRunning?'EVERYTHING_NOT_RUNNING':'EVERYTHING_UNAVAILABLE';e.cause=lastError;throw e;
+  const candidates=instanceCandidates(config).filter(instance=>!preferred||instance!==preferred);
+  try{return await Promise.any(candidates.map(instance=>probeOne(instance)))}catch(aggregate){
+    const errors=Array.isArray(aggregate?.errors)?aggregate.errors:[];
+    const onlyNotRunning=errors.length>0&&errors.every(error=>error?.exitCode===8);
+    const e=new Error(onlyNotRunning?'Everything אינו פועל כרגע.':'לא ניתן להתחבר ל-Everything המקומי.');
+    e.code=onlyNotRunning?'EVERYTHING_NOT_RUNNING':'EVERYTHING_UNAVAILABLE';e.cause=errors.at(-1)||aggregate;throw e;
+  }
 }
 async function registryValue(key,value='InstallLocation'){
   if(process.platform!=='win32')return '';
@@ -140,13 +147,20 @@ async function startEverythingBackground(config,esPath){
 }
 async function probeEverything({fresh=false,autoStart=true}={}){
   if(!fresh&&cachedProbe&&Date.now()-cachedProbe.at<30000)return cachedProbe;
-  const config=await loadConfig(),esPath=await whereEs();
-  try{cachedProbe=await probeRunningInstances(config,esPath)}catch(error){
-    if(error.code!=='EVERYTHING_NOT_RUNNING'||!autoStart)throw error;
-    cachedProbe=await startEverythingBackground(config,esPath);
-  }
-  if(!cachedProbe.everythingExecutable){try{cachedProbe.everythingExecutable=await findEverythingExecutable(config)}catch{}}
-  return cachedProbe;
+  if(everythingProbePromise)return everythingProbePromise;
+  const task=(async()=>{
+    const config=await loadConfig(),esPath=await whereEs();
+    let probe;
+    try{probe=await probeRunningInstances(config,esPath)}catch(error){
+      if(error.code!=='EVERYTHING_NOT_RUNNING'||!autoStart)throw error;
+      probe=await startEverythingBackground(config,esPath);
+    }
+    cachedProbe=probe;
+    if(config.everythingInstance!==probe.instance){config.everythingInstance=probe.instance;await saveConfig(config)}
+    return cachedProbe;
+  })();
+  everythingProbePromise=task;
+  try{return await task}finally{if(everythingProbePromise===task)everythingProbePromise=null}
 }
 
 async function countIndex({esPath,instance},config,search='*'){
@@ -160,7 +174,8 @@ async function sampleIndex({esPath,instance},config){
   return parseEsJson(stdout);
 }
 async function diagnoseIndex({freshProbe=false}={}){
-  const config=await loadConfig(),probe=await probeEverything({fresh:freshProbe,autoStart:true});
+  const config=await loadConfig();let probe=await probeEverything({fresh:freshProbe,autoStart:true});
+  if(!probe.everythingExecutable){try{probe={...probe,everythingExecutable:await findEverythingExecutable(config)}}catch{}}
   let fileCount=null,indexedContentCount=null,sampleOk=false,error='';
   try{
     fileCount=await countIndex(probe,config,'*');
@@ -175,10 +190,17 @@ function publicResult(row,{query='',mode='everything'}={}){const id=crypto.rando
 async function searchDocuments(query,limit,mode='everything'){
   const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
-  const config=await loadConfig(),probe=await probeEverything({autoStart:true}),started=Date.now();
-  const args=buildEsSearchArgs({query,mode:normalizedMode,limit:Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT),timeoutMs:config.searchTimeoutMs,instance:probe.instance});
-  const {stdout}=await runEs(probe.esPath,args,{timeout:config.searchTimeoutMs+5000});
-  const rows=parseEsJson(stdout);
+  const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
+  const runSearch=async currentProbe=>{
+    const args=buildEsSearchArgs({query,mode:normalizedMode,limit:Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT),timeoutMs:config.searchTimeoutMs,instance:currentProbe.instance});
+    return runEs(currentProbe.esPath,args,{timeout:config.searchTimeoutMs+5000});
+  };
+  let output;
+  try{output=await runSearch(probe)}catch(error){
+    if(error?.exitCode!==8)throw error;
+    cachedProbe=null;probe=await probeEverything({fresh:true,autoStart:true});output=await runSearch(probe);
+  }
+  const rows=parseEsJson(output.stdout);
   pruneResults();const merged=mergeDocumentResults([rows],limit).map(row=>publicResult(row,{query,mode:normalizedMode})),elapsedMs=Date.now()-started;
   await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
@@ -336,6 +358,7 @@ async function handle(req,res){
       const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
       sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||''}},config);return;
     }
+    if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}

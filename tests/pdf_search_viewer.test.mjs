@@ -81,10 +81,16 @@ test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
 });
 
 
-test('PDF runtime loading keeps the application module graph static and local',()=>{
+test('PDF runtime loading keeps the application module graph static, local and dependency-ordered',()=>{
   const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js',import.meta.url),'utf8');
+  const vendorViewer=fs.readFileSync(new URL('../netunim-orders/site/assets/vendor/pdfjs/web/pdf_viewer.mjs',import.meta.url),'utf8');
+  const coreImport="await import('../../../vendor/pdfjs/build/pdf.mjs')";
+  const viewerImport="import('../../../vendor/pdfjs/web/pdf_viewer.mjs')";
   assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)/);
   assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/);
+  assert.ok(source.indexOf(coreImport)>=0&&source.indexOf(viewerImport)>source.indexOf(coreImport),'pdf.mjs must finish before pdf_viewer.mjs starts');
+  assert.match(vendorViewer,/globalThis\.pdfjsLib/,'the pinned viewer really depends on the pdfjsLib global during evaluation');
+  assert.doesNotMatch(source,/Promise\.all\(\[\s*import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)[\s\S]*?import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/,'core and viewer must never be started in parallel');
   assert.doesNotMatch(source,/cdnjs|jsdelivr|https:\/\//i);
   assert.doesNotMatch(source,/script\.src|loadRuntimeScript/);
   assert.match(source,/link\.rel='stylesheet'/,'PDF.js CSS is loaded as a native local stylesheet');
