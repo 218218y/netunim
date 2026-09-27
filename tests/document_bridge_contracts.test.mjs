@@ -21,6 +21,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);
   assert.match(client,/documents\/warm/);
+  assert.match(client,/documents\/recent/);
   assert.match(client,/documents\/preview/);
   assert.match(client,/documents\/preview-file/);
   assert.match(client,/documents\/matches/);
@@ -49,6 +50,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
   assert.match(server,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
   assert.match(server,/documents\/warm/);
+  assert.match(server,/documents\/recent/);
+  assert.match(server,/RECENT scope=everything-index files-only=true sort=date-modified-descending/);
   assert.match(server,/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
@@ -115,6 +118,9 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
+  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
+  assert.match(ui,/label:'קבצים אחרונים'/);
+  assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/function warmDocumentSearchBridge\(\)/);
   assert.match(ui,/documentBridge\.warm\(\)/);
   assert.match(ui,/DOCUMENT_BRIDGE_WARM_TTL_MS=25000/);
@@ -193,6 +199,9 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
+  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
+  assert.match(ui,/label:'קבצים אחרונים'/);
+  assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/documentIconKind/);
   assert.match(ui,/settledEmpty:data\.total===0/);
   assert.match(ui,/settledEmpty:state\.status==='done'&&count===0/);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsSearchArgs,mergeDocumentResults,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,
   normalizeSearchText,officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
@@ -26,6 +26,14 @@ test('content search is a literal Everything content: query while direct mode mi
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
+});
+
+test('recent files query is bounded, file-only and sorted by modified date inside Everything',()=>{
+  const args=buildEsRecentFilesArgs({limit:40,instance:'1.5a'});
+  assert.ok(args.includes('/a-d'));
+  assert.equal(args[args.indexOf('-max-results')+1],'40');
+  assert.equal(args[args.indexOf('-sort')+1],'date-modified-descending');
+  assert.equal(args[args.indexOf('--')+1],'*');
 });
 
 test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{

@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v11 - Everything search + DPI-correct native Windows preview
+NETUNIM Document Bridge v12 - Everything search + DPI-correct native Windows preview
 ======================================================================
 
 Search scope
@@ -120,3 +120,5 @@ Highlighting is intentionally computed only for the single selected result. The 
 - Office previews keep the Windows IPreviewHandler surface for layout fidelity. IPreviewHandler has no generic API for injecting search highlights, so a compact local match bar above the native preview shows the match count and highlighted context snippets instead of manipulating the Office preview window.
 - Match text is cached in memory for a short period by file path + size + modified time, with a small bounded cache. No snippets or file content are uploaded.
 
+
+חיפוש כללי ריק: ה-Bridge מחזיר קבצים אחרונים ישירות מאינדקס Everything, ממוינים לפי Date Modified, ללא סריקת דיסק.

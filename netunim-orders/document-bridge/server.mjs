@@ -8,7 +8,7 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
-  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,normalizeSearchText,
+  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,normalizeSearchText,
   officePreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
@@ -187,23 +187,31 @@ async function diagnoseIndex({freshProbe=false}={}){
 
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
 function publicResult(row,{query='',mode='everything'}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,query:String(query||''),mode:normalizeDocumentSearchMode(mode),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
-async function searchDocuments(query,limit,mode='everything'){
-  const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
-  if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
+async function runEverythingJson(buildArgs){
   const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
-  const runSearch=async currentProbe=>{
-    const args=buildEsSearchArgs({query,mode:normalizedMode,limit:Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT),timeoutMs:config.searchTimeoutMs,instance:currentProbe.instance});
-    return runEs(currentProbe.esPath,args,{timeout:config.searchTimeoutMs+5000});
-  };
+  const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000});
   let output;
   try{output=await runSearch(probe)}catch(error){
     if(error?.exitCode!==8)throw error;
     cachedProbe=null;probe=await probeEverything({fresh:true,autoStart:true});output=await runSearch(probe);
   }
-  const rows=parseEsJson(output.stdout);
-  pruneResults();const merged=mergeDocumentResults([rows],limit).map(row=>publicResult(row,{query,mode:normalizedMode})),elapsedMs=Date.now()-started;
+  return {rows:parseEsJson(output.stdout),elapsedMs:Date.now()-started};
+}
+async function searchDocuments(query,limit,mode='everything'){
+  const normalizedMode=normalizeDocumentSearchMode(mode),everythingQuery=buildDocumentQuery(query,normalizedMode);
+  if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
+  const boundedLimit=Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT);
+  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+  pruneResults();const merged=mergeDocumentResults([rows],boundedLimit).map(row=>publicResult(row,{query,mode:normalizedMode}));
   await appendLog(`SEARCH mode=${normalizedMode} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
+}
+async function recentDocuments(limit){
+  const boundedLimit=Math.min(MAX_RESULTS,Math.max(1,Number(limit)||40));
+  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+  pruneResults();const results=mergeDocumentResults([rows],boundedLimit).map(row=>publicResult(row,{query:'',mode:'everything'}));
+  await appendLog(`RECENT scope=everything-index files-only=true sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`);
+  return {ok:true,mode:'recent',results,elapsedMs,partial:false,rootErrors:[]};
 }
 
 async function resolveResult(id){
@@ -359,6 +367,7 @@ async function handle(req,res){
       sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||''}},config);return;
     }
     if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
+    if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}

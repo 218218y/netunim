@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=11;
+export const BRIDGE_VERSION=12;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const DEFAULT_RESULT_LIMIT=60;
@@ -161,6 +161,10 @@ export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_
   const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode);
   if(!search)throw new TypeError('Search query must contain at least two characters');
   return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
+}
+
+export function buildEsRecentFilesArgs({limit=40,timeoutMs=15000,instance='' }={}){
+  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true});
 }
 
 export function buildExactFullPathQuery(fullPath){

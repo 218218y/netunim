@@ -28,7 +28,7 @@ def ok(condition, message):
 def runtime_probe(sw_path: Path):
     probe = r"""
 const fs=require('fs'),vm=require('vm');
-const source=fs.readFileSync(process.argv[1],'utf8');
+const source=fs.readFileSync(process.argv[1],'utf8'),hasLazyRuntime=source.includes('LAZY_RUNTIME_PREFIXES');
 (async()=>{
   const handlers={},calls={open:[],addAll:[],put:[],deleted:[],currentMatch:[],globalMatch:[],claim:0,skip:0,network:0};
   let currentAssetRequest=null;
@@ -67,6 +67,12 @@ const source=fs.readFileSync(process.argv[1],'utf8');
   const activate=event({});handlers.activate(activate);await Promise.all(activate._waits);
   const onlineReq={method:'GET',url:'https://app.test/index.html',mode:'navigate'};
   const online=event({request:onlineReq});handlers.fetch(online);const onlineRes=await online._response();await Promise.all(online._waits);
+  let lazyCached=null;
+  if(hasLazyRuntime){
+    const lazyReq={method:'GET',url:'https://app.test/assets/vendor/pdfjs/build/pdf.mjs',mode:'cors'};
+    const lazy=event({request:lazyReq});handlers.fetch(lazy);await lazy._response();await Promise.all(lazy._waits);
+    lazyCached=calls.put.includes(lazyReq.url);
+  }
   context.fetch=async()=>{calls.network++;throw new Error('offline')};
   const cachedReq={method:'GET',url:'https://app.test/assets/app.js',mode:'no-cors'};currentAssetRequest=cachedReq;
   const offlineCached=event({request:cachedReq});handlers.fetch(offlineCached);const cachedRes=await offlineCached._response();
@@ -80,7 +86,7 @@ const source=fs.readFileSync(process.argv[1],'utf8');
     deleted:calls.deleted,oldCache:prefix+'old',online:onlineRes&&onlineRes.tag,putCount:calls.put.length,
     cached:cachedRes&&cachedRes.tag,fallback:fallbackRes&&fallbackRes.tag,
     currentMatches:calls.currentMatch,globalMatches:calls.globalMatch,
-    crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
+    lazyCached,crossResponded:!!cross._response(),postResponded:!!post._response(),businessResponded:!!business._response()
   }));
 })().catch(e=>{console.error(e);process.exit(1)});
 """
@@ -130,6 +136,10 @@ for label, site in APPS.items():
     if label == 'orders':
         ok("LAZY_RUNTIME_PREFIXES=['./assets/vendor/pdfjs/']" in text and 'isLazyRuntimePath' in text,
            'orders: PDF.js vendor assets use lazy network-first runtime caching')
+        wait_pos = text.find('event.waitUntil(cacheWrite)')
+        respond_pos = text.find('event.respondWith', text.find("self.addEventListener('fetch'"))
+        ok(wait_pos >= 0 and respond_pos >= 0 and wait_pos < respond_pos,
+           'orders: lazy runtime cache lifetime is registered synchronously before the fetch response')
     for item in shell:
         if item == "./":
             continue
@@ -148,10 +158,10 @@ for label, site in APPS.items():
        f"{label}: activation removes obsolete caches")
     # Both apps deliberately use network-first for same-origin GETs. This means a
     # deployment can refresh static files even if the cache name is not manually bumped.
-    fetch_pos = text.find("event.respondWith")
-    network_pos = text.find("fetch(event.request)", fetch_pos)
-    cache_pos = text.find("cache.match(event.request)", fetch_pos)
-    ok(fetch_pos >= 0 and network_pos >= 0 and (cache_pos < 0 or network_pos < cache_pos),
+    fetch_handler_pos = text.find("self.addEventListener('fetch'")
+    network_pos = text.find("fetch(event.request)", fetch_handler_pos)
+    cache_pos = text.find("cache.match(event.request)", fetch_handler_pos)
+    ok(fetch_handler_pos >= 0 and network_pos >= 0 and (cache_pos < 0 or network_pos < cache_pos),
        f"{label}: normal same-origin GET path is network-first")
 
     probe, probe_error = runtime_probe(sw_path)
@@ -163,6 +173,8 @@ for label, site in APPS.items():
         ok(probe.get("skip") == 1 and probe.get("claim") == 1, f"{label}: install/activate take control immediately")
         ok(probe.get("deleted") == [probe.get('oldCache')], f"{label}: activate deletes only this app's obsolete caches")
         ok(probe.get("online") == "network" and probe.get("putCount", 0) >= 1, f"{label}: online GET returns network response and refreshes cache")
+        if label == 'orders':
+            ok(probe.get('lazyCached') is True, 'orders: first PDF.js runtime request is persisted by the lazy runtime cache')
         ok(probe.get("cached") == "current-app-js", f"{label}: offline asset ignores a conflicting unrelated cache")
         ok(probe.get("fallback") == "current-index", f"{label}: navigation fallback ignores a conflicting unrelated cache")
         ok(not probe.get("globalMatches"), f"{label}: offline fallback never searches all origin caches")

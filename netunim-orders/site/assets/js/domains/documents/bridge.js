@@ -36,6 +36,7 @@ export function createDomainsDocumentBridge(){
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const warm=()=>request('/documents/warm',{method:'POST',body:{},timeoutMs:8000});
+  const recent=({limit=40,signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const search=(query,{mode='content',limit=60,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:12000});
   const matches=(id,{signal=null}={})=>request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});
@@ -44,5 +45,5 @@ export function createDomainsDocumentBridge(){
   const moveNativePreview=geometry=>request('/documents/native-preview/move',{method:'POST',body:{geometry},timeoutMs:3500});
   const hideNativePreview=()=>request('/documents/native-preview/hide',{method:'POST',body:{},timeoutMs:3500});
   const openDocument=id=>request('/documents/open',{method:'POST',body:{id},timeoutMs:7000});
-  return {getToken,setToken,health,status,warm,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument};
+  return {getToken,setToken,health,status,warm,recent,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument};
 }

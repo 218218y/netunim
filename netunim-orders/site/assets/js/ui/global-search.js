@@ -9,6 +9,8 @@ import {createPdfSearchViewer,preloadPdfSearchRuntime} from '../domains/document
 import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
 
 const DOCUMENT_SEARCH_DELAY_MS=200;
+const RECENT_DOCUMENT_LIMIT=40;
+const RECENT_DOCUMENT_TTL_MS=15000;
 const DOCUMENT_BRIDGE_WARM_TTL_MS=25000;
 const DOCUMENT_PREVIEW_WIDTH_KEY='netunim_orders_document_preview_width_v1';
 const DOCUMENT_PREVIEW_DEFAULT=58;
@@ -20,18 +22,20 @@ const SEARCH_FILTERS=new Set(['all','site','files','content']);
 // sources are searched independently, then composed in a deterministic source order.
 export function createUiGlobalSearch({documentBridge=null,searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
   let resultByKey=new Map(),documentResultByKey=new Map(),highlightTimer=null,backdropPointerId=null,filter='all',documentSequence=0,documentAbort=null,activeQuery='',selectedDocumentId='',selectedDocumentKey='',selectedDocumentMode='everything',previewSequence=0,previewObjectUrl='',previewAbort=null,previewMatchesAbort=null,previewMatchInfo=null,currentPreviewData=null,pdfSearchViewer=null,pdfSearchState={current:0,total:0},nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null,documentWarmPromise=null,documentWarmAt=0;
-  let documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')};
+  let documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')},recentDocumentState=emptyRecentDocumentState();
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),preview:byId('globalSearchDocumentPreview'),previewBody:byId('globalSearchPreviewBody'),previewMatches:byId('globalSearchPreviewMatches'),splitter:byId('globalSearchDocumentSplitter')});
   const scheduledDocumentRender=createSearchScheduler(value=>runDocumentSearch(value),{delay:DOCUMENT_SEARCH_DELAY_MS});
   const indexedEntries=createSearchFragmentIndex({fragments:Object.keys(ORDER_SEARCH_FRAGMENTS),revision:name=>name==='notes'&&model.state.notesSheet?null:searchRevision?.(ORDER_SEARCH_FRAGMENTS[name],name),build:name=>buildOrderSearchFragment(model.state,name)});
 
   function emptyDocumentState(mode){return{mode,status:'idle',rows:[],error:null,elapsedMs:0}}
+  function emptyRecentDocumentState(){return{status:'idle',rows:[],error:null,elapsedMs:0,loadedAt:0}}
   function warmDocumentSearchBridge(){if(!documentBridge?.warm||!documentBridge.getToken?.())return null;const now=Date.now();if(documentWarmPromise)return documentWarmPromise;if(now-documentWarmAt<DOCUMENT_BRIDGE_WARM_TTL_MS)return null;documentWarmAt=now;documentWarmPromise=Promise.resolve(documentBridge.warm()).catch(()=>null).finally(()=>{documentWarmPromise=null});return documentWarmPromise}
   function sourceLabel(mode){return mode==='content'?'חיפוש תוכן':'חיפוש קבצים'}
   function includesSite(){return filter==='all'||filter==='site'}
   function includesDocumentMode(mode){return filter==='all'||(filter==='files'&&mode==='everything')||(filter==='content'&&mode==='content')}
   function requestedDocumentModes(){return ['everything','content'].filter(includesDocumentMode)}
+  function includesRecentDocuments(){return filter==='all'||filter==='files'}
   function scopeIntro(){return `<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>חיפוש אחד בכל המאגרים</b><p>הקלדה כאן מחפשת באתר, בשמות קבצים ובתוכן קבצים במחשב זה. אפשר לצמצם את התוצאות בעזרת המסננים למעלה.</p><div class="global-search-scopes"><span>האתר</span><span>קבצים</span><span>תוכן קבצים</span></div></div>`}
   function documentPairing({compact=false}={}){if(compact)return `<div class="document-search-compact-note">חיפוש התוכן יהיה זמין לאחר חיבור Document Bridge במחשב זה.</div>`;return `<div class="global-search-empty document-search-setup"><div class="global-search-empty-icon">⌕</div><b>חיפוש מסמכים במחשב זה</b><p>Document Bridge עדיין לא משויך לדפדפן הזה. מתקינים אותו בנפרד בכל מחשב; המפתח שהמתקין מעתיק ללוח נשמר רק בדפדפן המקומי.</p><div class="document-search-pair"><input id="globalSearchDocumentToken" type="password" autocomplete="off" spellcheck="false" placeholder="הדבק מפתח Document Bridge"><button type="button" data-document-pair>חבר מחשב</button></div><small>הקבצים ותוכן החיפוש נשארים במחשב ואינם מועלים לאתר או לענן.</small></div>`}
   function documentIntro(mode){const content=mode==='content';return `<div class="global-search-empty document-search-intro"><div class="global-search-empty-icon">FILE</div><b>${content?'חיפוש תוכן':'חיפוש קבצים'}</b><p>${content?'הקלד לפחות שני תווים כדי לחפש מילים בתוך תוכן הקבצים דרך Everything.':'חיפוש קבצים ותיקיות דרך אותו אינדקס ותחביר של Everything.'}</p></div>`}
@@ -64,11 +68,10 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(item?.isDirectory)return 'folder';const ext=String(item?.extension||'').toLowerCase();
     if(ext==='pdf')return 'pdf';if(['doc','docx','docm','dot','dotx','rtf'].includes(ext))return 'word';if(['xls','xlsx','xlsm','xlsb','csv'].includes(ext))return 'excel';if(['ppt','pptx','pptm','pps','ppsx'].includes(ext))return 'powerpoint';if(['txt','md','log','ini','json','xml','html','htm','css','js','mjs','ts','csv'].includes(ext))return 'text';if(['jpg','jpeg','png','gif','bmp','webp','svg','tif','tiff'].includes(ext))return 'image';if(['zip','7z','rar','tar','gz'].includes(ext))return 'archive';return 'file';
   }
-  function renderDocumentTable(rows,mode){
-    const label=sourceLabel(mode);
+  function renderDocumentTable(rows,mode,{label=sourceLabel(mode),hint='לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה'}={}){
     const header='<div class="document-results-head" aria-hidden="true"><span>שם</span><span>נתיב</span><span>גודל</span><span>עודכן</span></div>';
     const body=rows.map(item=>{const icon=documentIconKind(item),key=`${mode}:${item.id}`;documentResultByKey.set(key,item);const selected=selectedDocumentKey===key?' selected':'';return `<button class="global-search-result document-search-row${selected}" type="button" data-document-result-id="${esc(item.id)}" data-document-result-key="${esc(key)}" data-document-search-mode="${esc(mode)}" title="לחיצה: תצוגה מקדימה · לחיצה כפולה: פתיחה במחשב"><span class="document-result-name"><i class="document-result-icon ${esc(icon)}" aria-hidden="true"></i><span><b>${esc(item.name||(item.isDirectory?'תיקייה':'קובץ'))}</b><small>${esc(fileKindLabel(item))}</small></span></span><span class="document-result-path">${esc(item.relativePath||'')}</span><span class="document-result-size">${item.isDirectory?'—':esc(bytes(item.size)||'—')}</span><span class="document-result-date">${esc(localDate(item.modified)||'—')}</span></button>`}).join('');
-    return `<section class="document-results-table"><div class="document-results-summary"><b>${esc(label)}</b><span>${esc(rows.length)}</span><small>לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה</small></div>${header}<div class="document-results-body">${body}</div></section>`;
+    return `<section class="document-results-table"><div class="document-results-summary"><b>${esc(label)}</b><span>${esc(rows.length)}</span><small>${esc(hint)}</small></div>${header}<div class="document-results-body">${body}</div></section>`;
   }
   function clampPreviewWidth(value){const n=Number(value);return Math.max(DOCUMENT_PREVIEW_MIN,Math.min(DOCUMENT_PREVIEW_MAX,Number.isFinite(n)?n:DOCUMENT_PREVIEW_DEFAULT))}
   function savedPreviewWidth(){try{const value=localStorage.getItem(DOCUMENT_PREVIEW_WIDTH_KEY);return value===null?DOCUMENT_PREVIEW_DEFAULT:clampPreviewWidth(value)}catch{return DOCUMENT_PREVIEW_DEFAULT}}
@@ -118,8 +121,22 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     return {total:count,settledEmpty:state.status==='done'&&count===0,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${body}</div></section>`};
   }
   function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש במחשב ממשיך…`:'מחפש במחשב…';return}meta.textContent=total?`${total} תוצאות`:'לא נמצאו תוצאות'}
+  function renderRecentDocuments(){
+    const {results,meta}=refs();if(!results)return;resultByKey=new Map();documentResultByKey=new Map();
+    if(!includesRecentDocuments()){setPreviewLayout(false);if(meta)meta.textContent='';results.innerHTML=filter==='content'?documentIntro('content'):scopeIntro();return}
+    const state=recentDocumentState,rows=Array.isArray(state.rows)?state.rows:[];let body='';
+    if(state.status==='loading')body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים מ־Everything…</div>';
+    else if(state.status==='pairing')body=documentPairing();
+    else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'});
+    else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:'קבצים אחרונים',hint:'לפי תאריך שינוי · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה'});
+    else if(state.status==='done')body='<div class="global-search-source-empty">לא נמצאו קבצים באינדקס Everything.</div>';
+    else body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
+    results.innerHTML=`<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${body}</div></section>`;
+    setPreviewLayout(rows.length>0);if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
+    if(meta)meta.textContent=state.status==='loading'?'טוען קבצים אחרונים…':rows.length?`${rows.length} קבצים אחרונים`:state.status==='done'?'אין קבצים להצגה':'';
+  }
   function renderCombinedResults(value=''){
-    const {results}=refs();if(!results)return;const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){setPreviewLayout(false);refs().meta&&(refs().meta.textContent='');results.innerHTML=scopeIntro();return}
+    const {results}=refs();if(!results)return;const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
     const sections=[];let siteTotal=0,documentTotal=0,loading=false;const hideEmptySources=filter==='all';
     if(includesSite()){const site=renderSiteSource(raw);siteTotal=site.total;if(!hideEmptySources||!site.settledEmpty)sections.push(site.html)}
     for(const mode of requestedDocumentModes()){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading';if(!hideEmptySources||!source.settledEmpty)sections.push(source.html)}
@@ -135,6 +152,21 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(!documentBridge.getToken?.()){for(const mode of modes)documentStates[mode]={...emptyDocumentState(mode),status:'pairing'};return false}
     for(const mode of modes){documentStates[mode]={...emptyDocumentState(mode),status:mode==='content'&&raw.length<2?'short':'loading'}}
     return modes.some(mode=>documentStates[mode].status==='loading');
+  }
+  function prepareRecentDocuments(){
+    if(!includesRecentDocuments())return false;
+    if(!documentBridge){recentDocumentState={...emptyRecentDocumentState(),status:'unavailable',error:{message:'רכיב החיפוש המקומי אינו טעון.'}};return false}
+    if(!documentBridge.getToken?.()){recentDocumentState={...emptyRecentDocumentState(),status:'pairing'};return false}
+    if(recentDocumentState.status==='done'&&Date.now()-recentDocumentState.loadedAt<RECENT_DOCUMENT_TTL_MS)return false;
+    recentDocumentState={...emptyRecentDocumentState(),status:'loading'};return true;
+  }
+  async function runRecentDocuments(sequence){
+    if(!documentBridge?.recent||sequence!==documentSequence||activeQuery)return;const controller=new AbortController();documentAbort=controller;
+    try{
+      const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
+      recentDocumentState={status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),loadedAt:Date.now()};renderCombinedResults('');
+    }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');recentDocumentState={...emptyRecentDocumentState(),status:String(error?.code)==='DOCUMENT_BRIDGE_NOT_PAIRED'||String(error?.code)==='UNAUTHORIZED'?'pairing':'error',error};renderCombinedResults('')}
+    finally{if(documentAbort===controller)documentAbort=null}
   }
   async function runDocumentSearch(value=''){
     const raw=String(value||'').trim(),sequence=documentSequence;if(!raw||raw!==activeQuery)return;const modes=requestedDocumentModes().filter(mode=>documentStates[mode].status==='loading');if(!modes.length)return;
@@ -153,7 +185,9 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   function setFilter(next){const normalized=SEARCH_FILTERS.has(next)?next:'all';if(filter===normalized)return;filter=normalized;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;resetDocumentPreview();updateFilterUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
   function setMode(next){setFilter(next==='documents'?'files':'site')}
   function renderResults(value=''){
-    const raw=String(value||'').trim();scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;if(raw!==activeQuery){activeQuery=raw;resetDocumentPreview()}const shouldSearchDocuments=prepareDocumentStates(raw);renderCombinedResults(raw);if(shouldSearchDocuments)scheduledDocumentRender(raw);
+    const raw=String(value||'').trim();scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;if(raw!==activeQuery){activeQuery=raw;resetDocumentPreview()}
+    if(!raw){documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')};const shouldLoadRecent=prepareRecentDocuments();renderCombinedResults('');if(shouldLoadRecent)runRecentDocuments(documentSequence);return}
+    const shouldSearchDocuments=prepareDocumentStates(raw);renderCombinedResults(raw);if(shouldSearchDocuments)scheduledDocumentRender(raw);
   }
   function open(){const {backdrop,input,trigger}=refs();if(!backdrop)return;backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');warmDocumentSearchBridge();updateFilterUi();renderResults(input?.value||'');requestAnimationFrame(()=>input?.focus())}
   function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;resetDocumentPreview();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}

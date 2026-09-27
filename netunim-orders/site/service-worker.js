@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-e1c4c6332f42';
+const CACHE='orders-app-shell-esm-7b0d6cfb95c2';
 const SHELL=[
   './',
   './index.html',
@@ -248,14 +248,14 @@ self.addEventListener('fetch',event=>{
   // Network-first prevents a previously installed PWA from keeping stale HTML,
   // config or icons after a deployment. Offline remains fully supported by the
   // verified app-shell cache and navigation fallback.
+  const network=fetch(event.request);
+  const cacheWrite=network.then(response=>{
+    if(!response.ok||(!SHELL_PATHS.has(url.pathname)&&!lazyRuntime))return;
+    return caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
+  }).catch(()=>{});
+  event.waitUntil(cacheWrite);
   event.respondWith(
-    fetch(event.request).then(response=>{
-      if(response.ok&&(SHELL_PATHS.has(url.pathname)||lazyRuntime)){
-        const copy=response.clone();
-        event.waitUntil(caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{}));
-      }
-      return response;
-    }).catch(async()=>{
+    network.catch(async()=>{
       const cache=await caches.open(CACHE);
       const cached=await cache.match(event.request);
       if(cached)return cached;
