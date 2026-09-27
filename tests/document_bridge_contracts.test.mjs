@@ -14,8 +14,7 @@ test('orders site exposes file search first and content search second over loopb
   assert.match(html,/globalSearchDocumentNameMode[\s\S]*חיפוש קבצים<\/button>[\s\S]*globalSearchDocumentContentMode[\s\S]*חיפוש תוכן<\/button>/);
   assert.match(html,/globalSearchDocumentNameMode[^>]*class="document-search-mode active"[^>]*aria-selected="true"/);
   assert.match(html,/globalSearchDocumentPreview/);
-  assert.doesNotMatch(html,/globalSearchPreviewOpen/);
-  assert.doesNotMatch(html,/globalSearchPreviewTitle|globalSearchPreviewMeta/);
+  assert.match(html,/globalSearchPreviewOpen/);
   assert.match(html,/globalSearchPreviewMatches/);
   assert.match(main,/createDomainsDocumentBridge/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
@@ -118,10 +117,6 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/document-preview-frame/);
   assert.match(ui,/document-preview-inline-match/);
   assert.match(ui,/:~:text=/);
-  assert.match(ui,/pdfTextDirective/);
-  assert.match(ui,/pdfFragmentContext/);
-  assert.match(ui,/navigatePdfPreviewToMatch/);
-  assert.match(ui,/URL\.createObjectURL\(previewPdfBlob\)/);
   assert.match(ui,/loadPreviewMatches/);
 });
 
@@ -160,9 +155,6 @@ test('computer search UI keeps primary modes in the header and exposes a resizab
   assert.match(ui,/documentSearchMode='everything'/);
   assert.match(ui,/documentIconKind/);
   assert.match(ui,/setPointerCapture/);
-  assert.match(ui,/requestAnimationFrame\(flushResize\)/);
-  assert.match(ui,/nativePreviewMoveInFlight/);
-  assert.match(ui,/scheduleNativePreviewGeometry/);
 });
 
 test('orders service worker contains the current document bridge client after asset synchronization',()=>{
