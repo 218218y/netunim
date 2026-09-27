@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {buildPdfFindRequest,createPdfSearchViewer,PDF_SEARCH_RUNTIME,PDF_SEARCH_RUNTIMES} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 
 class FakeEventBus{
@@ -67,4 +68,14 @@ test('PDF.js runtime is pinned to an exact stable version and explicit worker/cs
   assert.equal(PDF_SEARCH_RUNTIME.version,'6.3.289');
   assert.equal(PDF_SEARCH_RUNTIMES.length,2);
   for(const runtime of PDF_SEARCH_RUNTIMES){for(const key of ['pdf','viewer','worker','css'])assert.match(runtime[key],/6\.3\.289/);assert.match(runtime.worker,/pdf\.worker\.min\.mjs$/)}
+});
+
+
+test('PDF runtime loading keeps the application module graph static',()=>{
+  const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js',import.meta.url),'utf8');
+  assert.doesNotMatch(source,/\bimport\s*\(/,'deployable JS must not use dynamic import for the external PDF runtime');
+  assert.doesNotMatch(source,/globalThis\.pdfjsLib\s*=/,'the app must not publish compatibility globals itself');
+  assert.match(source,/script\.type='module'/);
+  assert.match(source,/loadRuntimeScript\(runtime\.pdf,'pdfjsLib'\)/);
+  assert.match(source,/loadRuntimeScript\(runtime\.viewer,'pdfjsViewer'\)/);
 });

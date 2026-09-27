@@ -10,6 +10,7 @@ export const PDF_SEARCH_RUNTIME=PDF_SEARCH_RUNTIMES[0];
 
 let runtimePromise=null;
 let stylesheetPromise=null;
+const runtimeScriptPromises=new Map();
 
 function absoluteCssUrls(cssText,baseUrl){
   return String(cssText||'').replace(/url\(\s*(["\']?)(?!data:|blob:|https?:|\/)([^"\')]+)\1\s*\)/gi,(_,quote,value)=>`url("${new URL(value.trim(),baseUrl).href}")`);
@@ -31,21 +32,46 @@ export function buildPdfFindRequest(query,{type='',findPrevious=false}={}){
   return {source:null,type,query:String(query||''),phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
 }
 
+function runtimeGlobal(name){
+  const value=globalThis[name];
+  return value&&typeof value==='object'?value:null;
+}
+
+function loadRuntimeScript(url,globalName){
+  const ready=runtimeGlobal(globalName);
+  if(ready)return Promise.resolve(ready);
+  const key=`${globalName}:${url}`;
+  if(runtimeScriptPromises.has(key))return runtimeScriptPromises.get(key);
+  const task=new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.type='module';
+    script.async=true;
+    script.src=url;
+    script.onload=()=>{
+      const value=runtimeGlobal(globalName);
+      script.remove();
+      if(value)resolve(value);
+      else reject(new Error(`PDF.js module loaded without ${globalName}.`));
+    };
+    script.onerror=()=>{script.remove();reject(new Error(`PDF.js module failed to load (${url}).`))};
+    document.head.append(script);
+  }).catch(error=>{runtimeScriptPromises.delete(key);throw error});
+  runtimeScriptPromises.set(key,task);
+  return task;
+}
+
 async function loadRuntime(){
   if(runtimePromise)return runtimePromise;
   runtimePromise=(async()=>{
     const errors=[];
     for(const runtime of PDF_SEARCH_RUNTIMES){
       try{
-        // CSS and the display layer are independent downloads. Start them together
-        // so opening the first searched PDF does not pay two serial network waits.
+        // Keep the application module graph local/static. PDF.js is an explicitly
+        // pinned external runtime, loaded as module scripts under the site's CSP.
+        // CSS and the display layer start together to avoid serial first-open waits.
         const stylesheetTask=ensureViewerStylesheet(runtime);
-        const pdfjsLib=await import(runtime.pdf);
-        // pdf_viewer.mjs intentionally consumes the display layer through the global
-        // in the official component build. Assigning it explicitly also avoids races
-        // with browsers that evaluate the two modules in different turns.
-        globalThis.pdfjsLib=pdfjsLib;
-        const viewerTask=import(runtime.viewer);
+        const pdfjsLib=await loadRuntimeScript(runtime.pdf,'pdfjsLib');
+        const viewerTask=loadRuntimeScript(runtime.viewer,'pdfjsViewer');
         await stylesheetTask;
         const pdfjsViewer=await viewerTask;
         pdfjsLib.GlobalWorkerOptions.workerSrc=runtime.worker;

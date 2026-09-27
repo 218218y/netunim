@@ -122,7 +122,8 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/pdfSearchViewer\.next\(\)/);
   assert.match(ui,/onPdfSearchMatchState/);
   assert.match(ui,/document-preview-match-term/);
-  assert.doesNotMatch(ui,/buildPdfPreviewSrc|syncPdfPreviewMatch/);
+  assert.match(ui,/buildPdfPreviewSrc\(previewObjectUrl,\{query\}\)/);
+  assert.doesNotMatch(ui,/syncPdfPreviewMatch/);
   assert.match(ui,/loadPreviewMatches/);
   const pdfViewer=read('netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js');
   const css=read('netunim-orders/site/assets/app.css');
@@ -138,6 +139,8 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(ui,/pdfSearchViewer\?\.resize/);
   assert.match(css,/document-pdfjs-container \.pdfViewer \.page\{box-sizing:content-box/);
   assert.match(css,/highlight\.selected\{background-color:rgba\(255,149,38,\.36\)/);
+  assert.doesNotMatch(css,/highlight\.selected\{[^}]*?(?:outline|box-shadow|border)/);
+  assert.doesNotMatch(pdfViewer,/import\(runtime\.(?:pdf|viewer)\)/);
   assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
 });
 
