@@ -3,6 +3,10 @@ npm run pdfjs:install
 npm run document-viewers:install
 npm run document-viewers:check
 
+ריענון חיפוש בeverything
+content:
+ctrl a , ctrl f5
+
 עדכון נתונים ניהול הזמנות
 npm run deps:update
 npm run wrangler:update

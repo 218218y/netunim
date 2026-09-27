@@ -125,15 +125,11 @@ if exist "%VENDOR_DIR%\" (
 
 rem Executable first-party browser code is kept in explicit JavaScript assets. The CSP
 rem does not allow dynamic code execution, so reject eval/Function-constructor regressions
-rem everywhere except integrity-verified third-party vendor runtimes.
-set "FOUND_DYNAMIC_CODE="
-rem One recursive scan finds candidate files; the second findstr removes the verified
-rem vendor subtree from that candidate list without weakening checks on application code.
-for /F "delims=" %%F in ('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\*.js" 2^>nul ^| findstr /V /I /C:"\assets\vendor\"') do (
-  echo ERROR: public JavaScript contains dynamic code: "%%F"
-  set "FOUND_DYNAMIC_CODE=1"
-)
-if defined FOUND_DYNAMIC_CODE (
+rem everywhere except integrity-verified third-party vendor runtimes. Use the Python guard
+rem instead of a findstr pipeline: path filtering must be structural and deterministic on
+rem Windows, especially when the repository path contains spaces or non-ASCII characters.
+python "%~dp0public_js_guard.py" "%SITE_DIR%"
+if errorlevel 1 (
   echo Remove dynamic-code execution before deployment.
   exit /b 2
 )
