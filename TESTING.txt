@@ -26,12 +26,16 @@ supabase migration list --linked --workdir .
 supabase db push --linked --workdir . --dry-run
 ```
 
-ב-dry-run יש לוודא שהמיגרציה הנצרכת `20260914160000_bank_cheque_image_storage_v1.sql` מופיעה כממתינה,
-ושלא מופיעות במפתיע מיגרציות ישנות שכבר אמורות להיות בשרת.
+ב-dry-run יש לוודא שמופיעות כממתינות רק המיגרציות שנבדקו ומיועדות לפריסה,
+ושלא מופיעות במפתיע מיגרציות ישנות שכבר אמורות להיות בשרת. אם מופיעה מיגרציה
+נוספת שלא התכוונת לפרוס, יש לעצור ולבדוק את היסטוריית המיגרציות לפני `db push`.
+
+לפני החלה על השרת יש להריץ מהשורש `verify.bat --no-pause` ולוודא שכל הבדיקות עברו.
+אין להריץ `db push` כאשר אחת מקבוצות ה-verification נכשלת, גם אם ה-dry-run עצמו תקין.
 
 ## 2. החלת Supabase
 
-לאחר dry-run תקין:
+רק לאחר dry-run תקין ו-verification ירוק:
 
 ```powershell
 supabase db push --linked --workdir .

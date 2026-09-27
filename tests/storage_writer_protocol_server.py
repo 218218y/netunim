@@ -303,14 +303,29 @@ def verify_legacy_revoke(db):
 
 
 if __name__ == '__main__':
-    migrations = sorted((ROOT/'supabase/migrations').glob('*.sql'))
-    with IsolatedPostgres(schema_files=migrations[:-2], demotable_postgres=True) as database:
+    migrations_dir = ROOT/'supabase/migrations'
+    migrations = sorted(migrations_dir.glob('*.sql'))
+    internalization = migrations_dir/'20260925120000_storage_writer_internalization.sql'
+    legacy_revoke = migrations_dir/'20260925123000_revoke_legacy_storage_writers.sql'
+    assert internalization in migrations, internalization
+    assert legacy_revoke in migrations, legacy_revoke
+    internalization_index = migrations.index(internalization)
+    legacy_revoke_index = migrations.index(legacy_revoke)
+    assert internalization_index < legacy_revoke_index, (internalization, legacy_revoke)
+
+    # This test deliberately exercises the transition boundary: first the
+    # compatibility writers are still callable, then the retirement migration
+    # removes their public grants. Newer unrelated migrations must not move
+    # that boundary merely by being appended to the migration directory.
+    with IsolatedPostgres(schema_files=migrations[:internalization_index], demotable_postgres=True) as database:
         # Supabase's migration postgres role is not a superuser. Installing the
-        # new migration after demotion catches privileged function SET clauses.
+        # transition migrations after demotion catches privileged function SET
+        # clauses without coupling the test to the tail of the migration list.
         database.sql('grant create on schema public to postgres; grant authenticated to postgres; '
                      'alter role postgres nosuperuser bypassrls;')
-        database.migrate(migrations[-2].read_text(encoding='utf-8-sig'))
+        for migration in migrations[internalization_index:legacy_revoke_index]:
+            database.migrate(migration.read_text(encoding='utf-8-sig'))
         run(database, verify_without_legacy=False)
-        database.migrate(migrations[-1].read_text(encoding='utf-8-sig'))
+        database.migrate(legacy_revoke.read_text(encoding='utf-8-sig'))
         verify_legacy_revoke(database)
     print('PASS Storage V2 server fence: legacy grants revoked, v6/restore/finance allowed, owner isolation')
