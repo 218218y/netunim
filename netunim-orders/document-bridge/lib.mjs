@@ -2,9 +2,10 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=13;
+export const BRIDGE_VERSION=14;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
+export const RECENT_RESULT_LIMIT=150;
 export const DEFAULT_RESULT_LIMIT=60;
 export const RESULT_TTL_MS=10*60*1000;
 export const DEFAULT_ALLOWED_ORIGINS=[
@@ -155,14 +156,15 @@ function commonEsPrefix({timeoutMs=15000,instance=''}){
   return ['-argv','-cp','65001','-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
-function displayArgs({limit=DEFAULT_RESULT_LIMIT}){
-  const count=Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT));
+function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS}){
+  const ceiling=Math.max(1,Number(maxResults)||MAX_RESULTS);
+  const count=Math.max(1,Math.min(ceiling,Number(limit)||DEFAULT_RESULT_LIMIT));
   return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count)];
 }
 
-export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false}){
+export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS}){
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
-  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit}),...(filesOnly?['/a-d']:[]),'--',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults}),...(filesOnly?['/a-d']:[]),'--',String(search)];
 }
 
 export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
@@ -171,8 +173,8 @@ export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_
   return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
 }
 
-export function buildEsRecentFilesArgs({limit=40,timeoutMs=15000,instance='' }={}){
-  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true});
+export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='' }={}){
+  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT});
 }
 
 export function buildExactFullPathQuery(fullPath){
@@ -229,7 +231,7 @@ export function parseEsContentPreview(stdout){
   return text(field(row,['content']));
 }
 
-export function mergeDocumentResults(groups,limit=DEFAULT_RESULT_LIMIT){
+export function mergeDocumentResults(groups,limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS){
   const deduped=new Map();
   for(const group of Array.isArray(groups)?groups:[]){
     for(const row of Array.isArray(group)?group:[]){
@@ -243,7 +245,8 @@ export function mergeDocumentResults(groups,limit=DEFAULT_RESULT_LIMIT){
     if(Number.isFinite(ad)||Number.isFinite(bd))return (Number.isFinite(bd)?bd:0)-(Number.isFinite(ad)?ad:0);
     return String(a.name||'').localeCompare(String(b.name||''),'he');
   });
-  return rows.slice(0,Math.max(1,Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT)));
+  const ceiling=Math.max(1,Number(maxResults)||MAX_RESULTS);
+  return rows.slice(0,Math.max(1,Math.min(ceiling,Number(limit)||DEFAULT_RESULT_LIMIT)));
 }
 
 export function parseRegistryInstallLocation(stdout,valueName='InstallLocation'){

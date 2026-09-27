@@ -12,7 +12,7 @@ import {createDocxSearchViewer,preloadDocxSearchRuntime} from '../domains/docume
 import {createSpreadsheetSearchViewer} from '../domains/documents/spreadsheet-search-viewer.js';
 
 const DOCUMENT_SEARCH_DELAY_MS=200;
-const RECENT_DOCUMENT_LIMIT=40;
+const RECENT_DOCUMENT_LIMIT=150;
 const RECENT_DOCUMENT_TTL_MS=15000;
 const DOCUMENT_BRIDGE_WARM_TTL_MS=25000;
 const DOCUMENT_PREVIEW_WIDTH_KEY='netunim_orders_document_preview_width_v1';

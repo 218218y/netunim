@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,RECENT_RESULT_LIMIT,
   normalizeSearchText,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 
@@ -28,12 +28,18 @@ test('content search is a literal Everything content: query while direct mode mi
   assert.equal(normalizeSearchText('a\n b'),'a b');
 });
 
-test('recent files query is bounded, file-only and sorted by modified date inside Everything',()=>{
-  const args=buildEsRecentFilesArgs({limit:40,instance:'1.5a'});
+test('recent files query allows 150 results without raising normal search limits',()=>{
+  assert.equal(RECENT_RESULT_LIMIT,150);
+  const args=buildEsRecentFilesArgs({limit:999,instance:'1.5a'});
   assert.ok(args.includes('/a-d'));
-  assert.equal(args[args.indexOf('-max-results')+1],'40');
+  assert.equal(args[args.indexOf('-max-results')+1],'150');
   assert.equal(args[args.indexOf('-sort')+1],'date-modified-descending');
   assert.equal(args[args.indexOf('--')+1],'*');
+  const normal=buildEsSearchArgs({query:'קובץ',mode:'everything',limit:999});
+  assert.equal(normal[normal.indexOf('-max-results')+1],'120');
+  const rows=Array.from({length:160},(_,index)=>({fullPath:`C:\\recent\\${index}.txt`,name:`${index}.txt`,modified:new Date(2026,0,1,0,index).toISOString()}));
+  assert.equal(mergeDocumentResults([rows],999).length,120,'normal result merging keeps the existing 120-result ceiling');
+  assert.equal(mergeDocumentResults([rows],999,RECENT_RESULT_LIMIT).length,150,'recent-file merging has its own 150-result ceiling');
 });
 
 test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{

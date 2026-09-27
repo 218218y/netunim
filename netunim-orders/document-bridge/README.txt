@@ -121,4 +121,4 @@ Highlighting is intentionally computed only for the single selected result. The 
 - Match text is cached in memory for a short period by file path + size + modified time, with a small bounded cache. No snippets or file content are uploaded.
 
 
-חיפוש כללי ריק: ה-Bridge מחזיר קבצים אחרונים ישירות מאינדקס Everything, ממוינים לפי Date Modified, ללא סריקת דיסק.
+חיפוש כללי ריק: ה-Bridge מחזיר עד 150 קבצים אחרונים ישירות מאינדקס Everything, ממוינים לפי Date Modified, ללא סריקת דיסק.

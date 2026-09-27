@@ -123,7 +123,11 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
+  assert.match(ui,/const RECENT_DOCUMENT_LIMIT=150/);
   assert.match(ui,/label:'קבצים אחרונים'/);
+
+  assert.match(client,/const recent=\(\{limit=150,signal=null\}=\{\}\)=>/);
+  assert.match(server,/RECENT_RESULT_LIMIT/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/function warmDocumentSearchBridge\(\)/);
   assert.match(ui,/documentBridge\.warm\(\)/);

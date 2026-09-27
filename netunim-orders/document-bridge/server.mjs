@@ -7,7 +7,7 @@ import crypto,{timingSafeEqual} from 'node:crypto';
 import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {
-  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RESULT_TTL_MS,
+  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,normalizeDocumentSearchMode,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
@@ -209,9 +209,9 @@ async function searchDocuments(query,limit,mode='everything'){
   return {ok:true,query:String(query||'').trim(),mode:normalizedMode,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
 async function recentDocuments(limit){
-  const boundedLimit=Math.min(MAX_RESULTS,Math.max(1,Number(limit)||40));
+  const boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
   const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
-  pruneResults();const results=mergeDocumentResults([rows],boundedLimit).map(row=>publicResult(row,{query:'',mode:'everything'}));
+  pruneResults();const results=mergeDocumentResults([rows],boundedLimit,RECENT_RESULT_LIMIT).map(row=>publicResult(row,{query:'',mode:'everything'}));
   await appendLog(`RECENT scope=everything-index files-only=true sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`);
   return {ok:true,mode:'recent',results,elapsedMs,partial:false,rootErrors:[]};
 }

@@ -36,7 +36,7 @@ export function createDomainsDocumentBridge(){
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const warm=()=>request('/documents/warm',{method:'POST',body:{},timeoutMs:8000});
-  const recent=({limit=40,signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
+  const recent=({limit=150,signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const search=(query,{mode='content',limit=60,signal=null}={})=>request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:12000});
   const matches=(id,{signal=null}={})=>request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});
