@@ -87,8 +87,9 @@ for label, project in APPS.items():
 
     ok("assets\\app.css" in deploy and "assets\\app.js" in deploy,
        f"{label}: deploy preflight requires both external assets")
-    ok('findstr /S /M /C:"eval(" /C:"new Function(" "%SITE_DIR%\\*.js"' in deploy,
-       f"{label}: deploy scans the external JavaScript tree for dynamic-code regressions")
+    public_js_guard = ROOT / "tools/public_js_guard.py"
+    ok(public_js_guard.is_file() and 'python "%~dp0public_js_guard.py" "%SITE_DIR%"' in deploy,
+       f"{label}: deploy scans first-party public JavaScript through the external dynamic-code guard")
 
 # Orders deliberately keeps its empty portable seed as inert JSON in HTML. It is data,
 # not executable JavaScript, and the deploy policy intentionally rejects standalone .json
