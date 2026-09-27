@@ -163,5 +163,10 @@
     "version": "20260925123000",
     "name": "revoke_legacy_storage_writers",
     "sha256": "b2fc88d266829d6149e6a33f3a4f863d4cc23def683bf9648e4450b013ef51be"
+  },
+  {
+    "version": "20260927121000",
+    "name": "google_drive_oauth_search",
+    "sha256": "5bbc2a48f8a2854d0c9971ddac137a3a7e74d9eda5575c18ec48a5e7fe255c53"
   }
 ]

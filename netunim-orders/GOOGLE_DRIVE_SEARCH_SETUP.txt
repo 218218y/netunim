@@ -1,0 +1,102 @@
+ניהול הזמנות — חיפוש ופתיחת Google Drive באנדרואיד
+===================================================
+
+מטרת השינוי
+-----------
+ב-Windows החיפוש נשאר במסלול המקומי הקיים: האתר פונה ל-Document Bridge ב-127.0.0.1:8766 וה-Bridge מחפש דרך Everything וממשיך להשתמש בכל מנגנוני ה-Preview המקומיים הקיימים.
+ב-Android אין Document Bridge מקומי ולכן האתר בוחר אוטומטית מקור מסמכים שני: Google Drive API.
+
+מה עובד באנדרואיד
+-----------------
+- "חיפוש קבצים" משתמש ב-name contains של Google Drive.
+- "חיפוש תוכן" משתמש ב-fullText contains של Google Drive ומחזיר קבצים בלבד.
+- קבצים אחרונים מסודרים לפי modifiedTime.
+- לחיצה על תוצאה מציגה את פרטי הקובץ/התיקייה ובצד התצוגה מופיע כפתור מפורש "פתח ... ב-Google Drive" שמתאים למסך מגע.
+- הכפתור פותח את webViewLink הרשמי שמחזיר Google Drive, בחלון/טאב חדש. זהו הקישור הרשמי לפתיחת הקובץ במציג או בעורך המתאים של Google.
+- לחיצה כפולה/Enter נשארות אפשרויות פתיחה נוספות, אך אינן נדרשות באנדרואיד.
+
+למה אין Preview מלא של תוכן הקובץ בתוך האתר באנדרואיד
+-----------------------------------------------------
+החיבור מבקש רק:
+https://www.googleapis.com/auth/drive.metadata.readonly
+
+Google מגדירה scope זה כהרשאת מטא-דאטה בלבד, והוא אוסר על האפליקציה להוריד את תוכן הקבצים. לכן האתר אינו מוריד PDF/Word/Excel מה-Drive ואינו מנסה להציג אותם בתוך iframe לא-מתועד.
+במקום זאת, לאחר החיפוש נפתחת התצוגה/העורך הרשמי של Google Drive דרך webViewLink. כך יש גישה אמיתית לצפייה ופתיחה בקובץ, בלי לתת לאתר הרשאת הורדה לכל ה-Drive.
+
+אם בעתיד יידרש Preview מלא בתוך האתר עצמו, זה שינוי הרשאות מהותי שידרוש drive.readonly (או מנגנון בחירה מצומצם אחר) ובדיקת אבטחה/אימות OAuth מחדש. אין צורך בכך כדי לחפש ולפתוח קבצים ב-Drive.
+
+הרשאה ואבטחה
+-------------
+Access Token קצר-חיים מוחזק בזיכרון הדפדפן בלבד.
+Refresh Token נשמר רק בטבלת Supabase שנחסמה ל-anon/authenticated ונקרא רק על-ידי Edge Function עם service_role.
+Client Secret נשאר ב-Supabase Secrets בלבד.
+ה-Edge Function משתמש באותם שמות מפתחות חדשים כמו פונקציית Calendar הקיימת: SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS, עם fallback למפתחות legacy של Supabase.
+
+הכנה חד-פעמית ב-Google Cloud
+-----------------------------
+1. באותו Google Cloud Project שבו מוגדר ה-OAuth Web Client הקיים, הפעל Google Drive API.
+2. ב-Google Auth Platform > Data Access הוסף:
+   https://www.googleapis.com/auth/drive.metadata.readonly
+3. פתח את OAuth Client ID מסוג Web application שמספרו:
+   113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com
+4. תחת Authorized redirect URIs הוסף בדיוק:
+   https://bupoidcurcxuypfrjqio.supabase.co/functions/v1/google-drive-oauth/callback
+5. שמור.
+
+חשוב: drive.metadata.readonly מסווג על-ידי Google כ-Restricted Scope. באפליקציית External Production ייתכן שתידרש השלמת OAuth verification והדרישות של Google ל-Restricted Scopes.
+
+הכנה חד-פעמית ב-Supabase
+-------------------------
+1. פרוס את migration:
+   supabase/migrations/20260927121000_google_drive_oauth_search.sql
+
+   עותק התקנה ייעודי נמצא גם ב:
+   netunim-orders/supabase/google_drive_oauth.sql
+
+   נוצרת תשתית OAuth ייעודית בלבד:
+   - google_drive_connections
+   - google_drive_oauth_states
+
+2. פרוס את Edge Function:
+   netunim-orders/supabase/functions/google-drive-oauth/index.ts
+
+   שם הפונקציה:
+   google-drive-oauth
+
+   callback מגיע ישירות מ-Google ולכן verify_jwt=false מוגדר ב-supabase/config.toml. פעולות start/token/disconnect עצמן עדיין מאמתות Supabase User JWT בתוך הקוד.
+
+3. Client Secret:
+   אם Google Drive משתמש באותו OAuth Client שכבר משמש את Google Calendar, הקוד יכול להשתמש ב-GOOGLE_CALENDAR_CLIENT_SECRET הקיים.
+   אם רוצים Secret ייעודי, אפשר להגדיר:
+   GOOGLE_DRIVE_CLIENT_SECRET
+
+חיבור ראשון באנדרואיד
+---------------------
+1. התחבר באתר למשתמש Supabase הרגיל.
+2. פתח את החיפוש הכללי דרך כפתור החיפוש.
+3. במסנן קבצים/תוכן יופיע "חבר Google Drive" אם עדיין אין חיבור.
+4. לחץ עליו, אשר את הרשאת Google, וחזור לאתר.
+5. חפש קובץ. לחץ פעם אחת על התוצאה.
+6. באזור הפרטים לחץ על "פתח את הקובץ ב-Google Drive" או "פתח את התיקייה ב-Google Drive".
+
+מגבלות חיפוש Drive
+------------------
+Google Drive אינו Everything ולכן אין התאמה מלאה:
+- name contains מבצע התאמה לפי כללי Drive ולא לפי תחביר Everything.
+- fullText contains עובד על tokens/phrases ש-Google אינדקסה. הוא עשוי להתאים לשם, תיאור, indexableText, מטא-דאטה ותוכן מאונדקס.
+- קובץ שלא עבר אינדוקס תוכן אצל Google לא יימצא לפי תוכן.
+- פתיחת הקובץ מתבצעת דרך webViewLink הרשמי של Drive/Docs; התוכן עצמו אינו מורד על-ידי האתר.
+
+בדיקה לאחר פריסה
+----------------
+ב-Windows:
+- ודא שחיפוש קבצים ותוכן עדיין מציג Everything.
+- ודא שהתצוגה המקדימה המקומית החדשה (PDF/Office/טקסט/Native Preview) ממשיכה לעבוד ללא שינוי.
+
+ב-Android:
+- התחבר פעם אחת ל-Google Drive.
+- חפש שם של קובץ קיים במסנן "חיפוש קבצים".
+- חפש מילה ידועה מתוך מסמך שכבר מאונדקס ב-Google Drive במסנן "חיפוש תוכן".
+- לחץ פעם אחת על התוצאה וודא שמופיע כפתור פתיחה.
+- לחץ על הכפתור וודא שהקובץ נפתח ב-Google Drive/Docs ושאפשר לצפות בו.
+- חזור לאתר וודא שהחיפוש נשאר זמין.

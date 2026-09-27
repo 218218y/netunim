@@ -22,6 +22,7 @@ GROUPS = {
         "deploy_preflight.py",
         "service_worker_contracts.py",
         "calendar_contracts.py",
+        "google_drive_contracts.py",
         "morning_documents_contracts.py",
         "bank_bridge_contracts.py",
     ],

@@ -65,6 +65,7 @@ the browser connects only to Supabase and www.googleapis.com for Calendar REST c
 refresh tokens/client secret remain server-side, and no Google OAuth popup or browser OAuth library is required.
 Inline styles remain allowed only in style-src-attr; style-src-elem is self-only. Existing object/base/frame, MIME, referrer
 and permission protections remain. See GOOGLE_CALENDAR_SETUP.txt before enabling the Calendar connection.
+For Android document search/opening, also deploy google-drive-oauth and follow GOOGLE_DRIVE_SEARCH_SETUP.txt. Windows keeps the local Everything/Document Bridge path.
 
 Ordinary frontend deployment requires no SQL/schema changes and must not rerun cutover.
 For a genuinely new database, follow the existing setup and shared-check SQL documentation.
