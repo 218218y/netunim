@@ -37,13 +37,17 @@ async function loadRuntime(){
     const errors=[];
     for(const runtime of PDF_SEARCH_RUNTIMES){
       try{
-        await ensureViewerStylesheet(runtime);
+        // CSS and the display layer are independent downloads. Start them together
+        // so opening the first searched PDF does not pay two serial network waits.
+        const stylesheetTask=ensureViewerStylesheet(runtime);
         const pdfjsLib=await import(runtime.pdf);
         // pdf_viewer.mjs intentionally consumes the display layer through the global
         // in the official component build. Assigning it explicitly also avoids races
         // with browsers that evaluate the two modules in different turns.
         globalThis.pdfjsLib=pdfjsLib;
-        const pdfjsViewer=await import(runtime.viewer);
+        const viewerTask=import(runtime.viewer);
+        await stylesheetTask;
+        const pdfjsViewer=await viewerTask;
         pdfjsLib.GlobalWorkerOptions.workerSrc=runtime.worker;
         return {pdfjsLib,pdfjsViewer};
       }catch(error){errors.push(error);stylesheetPromise=null}
@@ -52,6 +56,8 @@ async function loadRuntime(){
   })().catch(error=>{runtimePromise=null;throw error});
   return runtimePromise;
 }
+
+export function preloadPdfSearchRuntime(){return loadRuntime()}
 
 function normalizeMatchCount(value){
   const current=Math.max(0,Number(value?.current)||0),total=Math.max(0,Number(value?.total)||0);
@@ -73,12 +79,18 @@ export async function createPdfSearchViewer({host,url,query,onMatchState,runtime
   if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
   const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
   linkService.setViewer(pdfViewer);
-  let destroyed=false,loadingTask=null,pdfDocument=null,lastCount={current:0,total:0};
+  let destroyed=false,loadingTask=null,pdfDocument=null,lastCount={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null;
   const emit=value=>{const next=normalizeMatchCount(value);if(next.current===lastCount.current&&next.total===lastCount.total)return;lastCount=next;onMatchState?.(next)};
   eventBus.on('updatefindmatchescount',event=>emit(event?.matchesCount));
   eventBus.on('updatefindcontrolstate',event=>emit(event?.matchesCount));
   const dispatch=(type='',findPrevious=false)=>{if(destroyed)return;const request=buildPdfFindRequest(needle,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
-  eventBus.on('pagesinit',()=>{if(destroyed)return;pdfViewer.currentScaleValue='page-width';dispatch('',false)});
+  const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
+  const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
+  const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
+  const queueFrame=callback=>{resizeFrame=typeof requestAnimationFrame==='function'?requestAnimationFrame(()=>{resizeFrame=null;callback()}):setTimeout(()=>{resizeFrame=null;callback()},0)};
+  const scheduleResize=({immediate=false}={})=>{if(destroyed)return;cancelScheduledResize();if(immediate){queueFrame(()=>fitToWidth());return}resizeTimer=setTimeout(()=>{resizeTimer=null;queueFrame(()=>fitToWidth())},90)};
+  if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
+  eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
   try{
     loadingTask=pdfjsLib.getDocument({url});
     pdfDocument=await loadingTask.promise;
@@ -88,9 +100,10 @@ export async function createPdfSearchViewer({host,url,query,onMatchState,runtime
   return {
     next(){dispatch('again',false)},
     previous(){dispatch('again',true)},
+    resize(options={}){scheduleResize(options)},
     matchState(){return {...lastCount}},
     async destroy(){
-      if(destroyed)return;destroyed=true;
+      if(destroyed)return;destroyed=true;cancelScheduledResize();resizeObserver?.disconnect?.();resizeObserver=null;
       try{pdfViewer.setDocument(null)}catch{}
       try{linkService.setDocument(null,null)}catch{}
       try{await loadingTask?.destroy?.()}catch{}

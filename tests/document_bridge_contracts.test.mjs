@@ -125,12 +125,19 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.doesNotMatch(ui,/buildPdfPreviewSrc|syncPdfPreviewMatch/);
   assert.match(ui,/loadPreviewMatches/);
   const pdfViewer=read('netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js');
+  const css=read('netunim-orders/site/assets/app.css');
   assert.match(pdfViewer,/PDFFindController/);
   assert.match(pdfViewer,/highlightAll:true/);
   assert.match(pdfViewer,/next\(\)\{dispatch\('again',false\)\}/);
   assert.match(pdfViewer,/previous\(\)\{dispatch\('again',true\)\}/);
   assert.match(pdfViewer,/updatefindmatchescount/);
   assert.match(pdfViewer,/currentScaleValue='page-width'/);
+  assert.match(pdfViewer,/ResizeObserver/);
+  assert.match(pdfViewer,/resize\(options=\{\}\)/);
+  assert.match(ui,/preloadPdfSearchRuntime/);
+  assert.match(ui,/pdfSearchViewer\?\.resize/);
+  assert.match(css,/document-pdfjs-container \.pdfViewer \.page\{box-sizing:content-box/);
+  assert.match(css,/highlight\.selected\{background-color:rgba\(255,149,38,\.36\)/);
   assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
 });
 
