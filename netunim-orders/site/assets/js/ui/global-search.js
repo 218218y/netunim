@@ -7,6 +7,10 @@ import {customerDebtProgressData} from '../shared/customer-debt-progress.js';
 import {createSearchScheduler} from '../shared/search-scheduler.js';
 
 const DOCUMENT_SEARCH_DELAY_MS=200;
+const DOCUMENT_PREVIEW_WIDTH_KEY='netunim_orders_document_preview_width_v1';
+const DOCUMENT_PREVIEW_DEFAULT=58;
+const DOCUMENT_PREVIEW_MIN=32;
+const DOCUMENT_PREVIEW_MAX=72;
 
 // Global search is a UI coordinator. Site data stays in domains/search/model.js.
 // Local file/content search is deliberately isolated behind Document Bridge and is
@@ -14,7 +18,7 @@ const DOCUMENT_SEARCH_DELAY_MS=200;
 export function createUiGlobalSearch({documentBridge=null,searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
   let resultByKey=new Map(),documentResultById=new Map(),highlightTimer=null,backdropPointerId=null,mode='site',documentSearchMode='content',documentSequence=0,documentAbort=null,selectedDocumentId='',previewSequence=0,previewObjectUrl='',previewAbort=null;
   const byId=id=>document.getElementById(id);
-  const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),siteMode:byId('globalSearchSiteMode'),documentsMode:byId('globalSearchDocumentsMode'),documentModebar:byId('globalSearchDocumentModebar'),documentContentMode:byId('globalSearchDocumentContentMode'),documentNameMode:byId('globalSearchDocumentNameMode'),preview:byId('globalSearchDocumentPreview'),previewTitle:byId('globalSearchPreviewTitle'),previewMeta:byId('globalSearchPreviewMeta'),previewBody:byId('globalSearchPreviewBody'),previewOpen:byId('globalSearchPreviewOpen')});
+  const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),siteMode:byId('globalSearchSiteMode'),documentsMode:byId('globalSearchDocumentsMode'),documentModebar:byId('globalSearchDocumentModebar'),documentContentMode:byId('globalSearchDocumentContentMode'),documentNameMode:byId('globalSearchDocumentNameMode'),preview:byId('globalSearchDocumentPreview'),previewTitle:byId('globalSearchPreviewTitle'),previewMeta:byId('globalSearchPreviewMeta'),previewBody:byId('globalSearchPreviewBody'),previewOpen:byId('globalSearchPreviewOpen'),splitter:byId('globalSearchDocumentSplitter')});
   const scheduledSiteRender=createSearchScheduler(value=>renderSiteResults(value));
   const scheduledDocumentRender=createSearchScheduler(value=>renderDocumentResults(value),{delay:DOCUMENT_SEARCH_DELAY_MS});
   const indexedEntries=createSearchFragmentIndex({fragments:Object.keys(ORDER_SEARCH_FRAGMENTS),revision:name=>name==='notes'&&model.state.notesSheet?null:searchRevision?.(ORDER_SEARCH_FRAGMENTS[name],name),build:name=>buildOrderSearchFragment(model.state,name)});
@@ -32,12 +36,27 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     const {previewTitle,previewMeta,previewBody,previewOpen}=refs();if(previewTitle)previewTitle.textContent='תצוגה מקדימה';if(previewMeta)previewMeta.textContent='בחר תוצאה לצפייה';if(previewOpen)previewOpen.disabled=true;if(previewBody)previewBody.innerHTML='<div class="document-preview-empty"><span>⌕</span><b>תצוגה מקדימה</b><p>לחיצה אחת על תוצאה תציג אותה כאן. לחיצה כפולה תפתח אותה במחשב.</p></div>';
   }
   function fileKindLabel(item){if(item?.isDirectory)return 'תיקייה';const ext=String(item?.extension||'').toUpperCase();return ext||'קובץ'}
+  function documentIconKind(item){
+    if(item?.isDirectory)return 'folder';
+    const ext=String(item?.extension||'').toLowerCase();
+    if(ext==='pdf')return 'pdf';
+    if(['doc','docx','docm','dot','dotx','rtf'].includes(ext))return 'word';
+    if(['xls','xlsx','xlsm','xlsb','csv'].includes(ext))return 'excel';
+    if(['ppt','pptx','pptm','pps','ppsx'].includes(ext))return 'powerpoint';
+    if(['txt','md','log','ini','json','xml','html','htm','css','js','mjs','ts','csv'].includes(ext))return 'text';
+    if(['jpg','jpeg','png','gif','bmp','webp','svg','tif','tiff'].includes(ext))return 'image';
+    if(['zip','7z','rar','tar','gz'].includes(ext))return 'archive';
+    return 'file';
+  }
   function renderDocumentTable(rows){
     documentResultById=new Map(rows.map(item=>[String(item.id),item]));
     const header='<div class="document-results-head" aria-hidden="true"><span>שם</span><span>נתיב</span><span>גודל</span><span>עודכן</span></div>';
-    const body=rows.map(item=>`<button class="global-search-result document-search-row" type="button" data-document-result-id="${esc(item.id)}" title="לחיצה: תצוגה מקדימה · לחיצה כפולה: פתיחה במחשב"><span class="document-result-name"><i class="document-result-icon ${item.isDirectory?'folder':'file'}" aria-hidden="true"></i><span><b>${esc(item.name||'קובץ')}</b><small>${esc(fileKindLabel(item))}</small></span></span><span class="document-result-path">${esc(item.relativePath||'')}</span><span class="document-result-size">${item.isDirectory?'—':esc(bytes(item.size)||'—')}</span><span class="document-result-date">${esc(localDate(item.modified)||'—')}</span></button>`).join('');
+    const body=rows.map(item=>{const icon=documentIconKind(item);return `<button class="global-search-result document-search-row" type="button" data-document-result-id="${esc(item.id)}" title="לחיצה: תצוגה מקדימה · לחיצה כפולה: פתיחה במחשב"><span class="document-result-name"><i class="document-result-icon ${esc(icon)}" aria-hidden="true"></i><span><b>${esc(item.name||(item.isDirectory?'תיקייה':'קובץ'))}</b><small>${esc(fileKindLabel(item))}</small></span></span><span class="document-result-path">${esc(item.relativePath||'')}</span><span class="document-result-size">${item.isDirectory?'—':esc(bytes(item.size)||'—')}</span><span class="document-result-date">${esc(localDate(item.modified)||'—')}</span></button>`}).join('');
     return `<section class="document-results-table"><div class="document-results-summary"><b>תוצאות Everything</b><span>${esc(rows.length)}</span><small>לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה</small></div>${header}<div class="document-results-body">${body}</div></section>`
   }
+  function clampPreviewWidth(value){const n=Number(value);return Math.max(DOCUMENT_PREVIEW_MIN,Math.min(DOCUMENT_PREVIEW_MAX,Number.isFinite(n)?n:DOCUMENT_PREVIEW_DEFAULT))}
+  function savedPreviewWidth(){try{const value=localStorage.getItem(DOCUMENT_PREVIEW_WIDTH_KEY);return value===null?DOCUMENT_PREVIEW_DEFAULT:clampPreviewWidth(value)}catch{return DOCUMENT_PREVIEW_DEFAULT}}
+  function applyPreviewWidth(value,{save=false}={}){const width=clampPreviewWidth(value),{workspace,splitter}=refs();workspace?.style.setProperty('--document-preview-width',`${width}%`);splitter?.setAttribute('aria-valuenow',String(Math.round(width)));if(save)try{localStorage.setItem(DOCUMENT_PREVIEW_WIDTH_KEY,String(width))}catch{}return width}
   function previewDetailsHtml(data){const rows=[[data.isDirectory?'סוג':'סיומת',data.isDirectory?'תיקייה':(String(data.extension||'').toUpperCase()||'קובץ')],['גודל',data.isDirectory?'—':bytes(data.size)],['עודכן',localDate(data.modified)],['נתיב',data.fullPath]].filter(([,value])=>value);return `<dl class="document-preview-details">${rows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`}
   async function selectDocumentResult(id,button){
     if(!documentBridge||!id)return;selectedDocumentId=String(id);for(const row of refs().results?.querySelectorAll?.('[data-document-result-id]')||[])row.classList.toggle('selected',row===button);const item=documentResultById.get(String(id));const {previewTitle,previewMeta,previewBody,previewOpen}=refs();if(previewTitle)previewTitle.textContent=item?.name||'תצוגה מקדימה';if(previewMeta)previewMeta.textContent=item?.relativePath||'';if(previewOpen)previewOpen.disabled=false;cleanupPreviewObject();previewSequence+=1;const sequence=previewSequence;previewAbort?.abort();previewAbort=new AbortController();if(previewBody)previewBody.innerHTML='<div class="document-preview-loading"><span></span><b>טוען תצוגה מקדימה…</b></div>';
@@ -56,7 +75,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(mode!=='site')return;
     const {results,meta}=refs();if(!results||!meta)return;
     const raw=String(value||'').trim();resultByKey=new Map();
-    if(!raw){meta.textContent='כל המאגרים במקום אחד';results.innerHTML=scopeIntro();return}
+    if(!raw){meta.textContent='';results.innerHTML=scopeIntro();return}
     const data=searchGlobalEntries(indexedEntries(),raw),visibleGroups=data.groups.filter(group=>group.total>0);meta.textContent=data.total?`${data.total} תוצאות בכל המאגרים`:'לא נמצאו תוצאות';
     if(!visibleGroups.length){results.innerHTML=`<div class="global-search-empty"><div class="global-search-empty-icon">∅</div><b>לא נמצאו תוצאות</b><p>החיפוש נבדק בכל ספקים, לקוחות, שירות, צ'קים, מחסן והערות.</p></div>`;return}
     results.innerHTML=visibleGroups.map(group=>{
@@ -91,9 +110,10 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   }
 
   function updateModeUi(){
-    const {siteMode,documentsMode,documentModebar,documentContentMode,documentNameMode,input,dialog,workspace,preview}=refs();const documents=mode==='documents',content=documentSearchMode==='content';
+    const {backdrop,siteMode,documentsMode,documentModebar,documentContentMode,documentNameMode,input,dialog,workspace,preview,splitter}=refs();const documents=mode==='documents',content=documentSearchMode==='content';
     siteMode?.classList.toggle('active',!documents);siteMode?.setAttribute('aria-selected',documents?'false':'true');documentsMode?.classList.toggle('active',documents);documentsMode?.setAttribute('aria-selected',documents?'true':'false');
-    if(documentModebar)documentModebar.hidden=!documents;if(preview)preview.hidden=!documents;dialog?.classList.toggle('document-search-active',documents);workspace?.classList.toggle('document-search-active',documents);
+    if(documentModebar)documentModebar.hidden=!documents;if(preview)preview.hidden=!documents;if(splitter)splitter.hidden=!documents;backdrop?.classList.toggle('document-search-active',documents);dialog?.classList.toggle('document-search-active',documents);workspace?.classList.toggle('document-search-active',documents);
+    if(documents)applyPreviewWidth(savedPreviewWidth());
     documentContentMode?.classList.toggle('active',content);documentContentMode?.setAttribute('aria-selected',content?'true':'false');documentNameMode?.classList.toggle('active',!content);documentNameMode?.setAttribute('aria-selected',content?'false':'true');
     if(input)input.placeholder=documents?(content?'חפש טקסט בתוך תוכן קבצים…':'חפש כמו ב־Everything…'):'שם, הזמנה, טלפון, צ׳ק, סכום, הערה, מיקום…';
   }
@@ -129,13 +149,14 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   }
 
   function bind(){
-    const {trigger,backdrop,input,results,close:closeButton,siteMode,documentsMode,documentContentMode,documentNameMode,previewOpen}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
+    const {trigger,backdrop,input,results,close:closeButton,siteMode,documentsMode,documentContentMode,documentNameMode,previewOpen,splitter,workspace}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
     trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);siteMode?.addEventListener('click',()=>setMode('site'));documentsMode?.addEventListener('click',()=>setMode('documents'));documentContentMode?.addEventListener('click',()=>setDocumentSearchMode('content'));documentNameMode?.addEventListener('click',()=>setDocumentSearchMode('everything'));input.addEventListener('input',()=>scheduleCurrent(input.value));
     input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){flushCurrent();const first=results.querySelector('.global-search-result');if(first){event.preventDefault();first.focus()}}});
     results.addEventListener('keydown',event=>{if(!event.target.matches('.global-search-result'))return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){const buttons=[...results.querySelectorAll('.global-search-result')],index=buttons.indexOf(event.target),next=event.key==='ArrowDown'?Math.min(buttons.length-1,index+1):Math.max(0,index-1);event.preventDefault();buttons[next]?.focus();if(buttons[next]?.dataset.documentResultId)selectDocumentResult(buttons[next].dataset.documentResultId,buttons[next])}else if(event.key==='Enter'&&event.target.dataset.documentResultId){event.preventDefault();openDocumentResult(event.target.dataset.documentResultId,event.target)}else if(event.key==='Escape')close()});
     results.addEventListener('click',event=>{const pair=event.target.closest('[data-document-pair]');if(pair){pairDocumentBridge();return}const documentButton=event.target.closest('[data-document-result-id]');if(documentButton){selectDocumentResult(documentButton.dataset.documentResultId,documentButton);return}const button=event.target.closest('[data-global-result-key]');if(button)openResult(button.dataset.globalResultKey)});
     results.addEventListener('dblclick',event=>{const documentButton=event.target.closest('[data-document-result-id]');if(documentButton){event.preventDefault();openDocumentResult(documentButton.dataset.documentResultId,documentButton)}});
     previewOpen?.addEventListener('click',()=>{if(!selectedDocumentId)return;const button=[...results.querySelectorAll('[data-document-result-id]')].find(row=>row.dataset.documentResultId===selectedDocumentId)||null;openDocumentResult(selectedDocumentId,button)});
+    if(splitter&&workspace){let resizing=false;const updateFromPointer=event=>{if(!resizing)return;const rect=workspace.getBoundingClientRect();if(!rect.width)return;applyPreviewWidth((event.clientX-rect.left)/rect.width*100)};const finish=event=>{if(!resizing)return;resizing=false;splitter.classList.remove('dragging');try{splitter.releasePointerCapture?.(event.pointerId)}catch{}const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||DOCUMENT_PREVIEW_DEFAULT;applyPreviewWidth(current,{save:true})};splitter.addEventListener('pointerdown',event=>{if(mode!=='documents')return;resizing=true;splitter.classList.add('dragging');splitter.setPointerCapture?.(event.pointerId);updateFromPointer(event);event.preventDefault()});splitter.addEventListener('pointermove',updateFromPointer);splitter.addEventListener('pointerup',finish);splitter.addEventListener('pointercancel',finish);splitter.addEventListener('keydown',event=>{if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'&&event.key!=='Home'&&event.key!=='End')return;event.preventDefault();const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||savedPreviewWidth();const next=event.key==='Home'?DOCUMENT_PREVIEW_MIN:event.key==='End'?DOCUMENT_PREVIEW_MAX:current+(event.key==='ArrowRight'?3:-3);applyPreviewWidth(next,{save:true})})}
     results.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.id==='globalSearchDocumentToken'){event.preventDefault();pairDocumentBridge()}});
     backdrop.addEventListener('pointerdown',event=>{backdropPointerId=event.target===backdrop?event.pointerId:null});backdrop.addEventListener('pointerup',event=>{const dismiss=backdropPointerId===event.pointerId&&event.target===backdrop;backdropPointerId=null;if(dismiss)close()});backdrop.addEventListener('pointercancel',()=>{backdropPointerId=null});
     document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();open();return}if(event.key==='Escape'&&!backdrop.hidden)close()});

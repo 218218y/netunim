@@ -51,14 +51,14 @@
 <main class="main" id="main"></main>
 </div>
 <div class="global-search-backdrop" id="globalSearchBackdrop" hidden aria-hidden="true">
-  <section class="global-search-dialog" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
+  <section class="global-search-dialog" role="dialog" aria-modal="true" aria-label="חיפוש">
     <div class="global-search-head">
-      <div><h2 id="globalSearchTitle">חיפוש</h2><span id="globalSearchMeta">כל המאגרים במקום אחד</span></div>
+      <div class="global-search-modebar" role="tablist" aria-label="סוג חיפוש">
+        <button id="globalSearchSiteMode" class="global-search-mode active" type="button" role="tab" aria-selected="true" data-global-search-mode="site">חיפוש באתר</button>
+        <button id="globalSearchDocumentsMode" class="global-search-mode" type="button" role="tab" aria-selected="false" data-global-search-mode="documents">חיפוש במחשב</button>
+      </div>
+      <span class="global-search-head-status" id="globalSearchMeta" aria-live="polite"></span>
       <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
-    </div>
-    <div class="global-search-modebar" role="tablist" aria-label="סוג חיפוש">
-      <button id="globalSearchSiteMode" class="global-search-mode active" type="button" role="tab" aria-selected="true" data-global-search-mode="site">חיפוש באתר</button>
-      <button id="globalSearchDocumentsMode" class="global-search-mode" type="button" role="tab" aria-selected="false" data-global-search-mode="documents">קבצים במחשב</button>
     </div>
     <div class="document-search-modebar" id="globalSearchDocumentModebar" role="tablist" aria-label="אופן חיפוש בקבצים" hidden>
       <button id="globalSearchDocumentContentMode" class="document-search-mode active" type="button" role="tab" aria-selected="true">תוכן קבצים</button>
@@ -80,6 +80,7 @@
           <div class="document-preview-empty"><span>⌕</span><b>תצוגה מקדימה</b><p>לחיצה אחת על תוצאה תציג אותה כאן. לחיצה כפולה תפתח אותה במחשב.</p></div>
         </div>
       </aside>
+      <div class="document-preview-splitter" id="globalSearchDocumentSplitter" role="separator" aria-orientation="vertical" aria-label="שנה את רוחב התצוגה המקדימה" aria-valuemin="32" aria-valuemax="72" aria-valuenow="58" tabindex="0" hidden><span aria-hidden="true"></span></div>
     </div>
   </section>
 </div>

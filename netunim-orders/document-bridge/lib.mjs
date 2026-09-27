@@ -181,7 +181,7 @@ export function parseEsJson(stdout){
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
     const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
     const attributes=text(field(row,['attributes','attribs','attrib']));
-    const isDirectory=/(?:^|\s)D(?:\s|$)/i.test(attributes)||/directory/i.test(attributes);
+    const isDirectory=attributes.toUpperCase().includes('D')||/directory/i.test(attributes);
     return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};
   }).filter(Boolean);
 }

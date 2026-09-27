@@ -10,7 +10,7 @@ test('orders site exposes content search plus direct Everything search over loop
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
   const headers=read('netunim-orders/site/_headers');
   assert.match(html,/data-global-search-mode="documents"/);
-  assert.match(html,/קבצים במחשב/);
+  assert.match(html,/חיפוש במחשב/);
   assert.match(html,/תוכן קבצים/);
   assert.match(html,/>Everything<\/button>/);
   assert.match(html,/globalSearchDocumentPreview/);
@@ -99,6 +99,23 @@ test('installer keeps Everything hidden background startup and no longer asks fo
 test('PowerShell configurator remains code-page independent even though v4 no longer uses it during install',()=>{
   const bytes=fs.readFileSync(new URL('../netunim-orders/document-bridge/configure_document_bridge.ps1',import.meta.url));
   assert.equal([...bytes].some(byte=>byte>0x7f),false,'configure_document_bridge.ps1 must remain ASCII-only');
+});
+
+test('computer search UI keeps primary modes in the header and exposes a resizable preview split',()=>{
+  const html=read('netunim-orders/site/index.html');
+  const css=read('netunim-orders/site/assets/app.css');
+  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  assert.doesNotMatch(html,/id="globalSearchTitle"/);
+  assert.match(html,/global-search-head[\s\S]*global-search-modebar/);
+  assert.match(html,/חיפוש במחשב/);
+  assert.match(html,/globalSearchDocumentSplitter/);
+  assert.match(css,/--document-preview-width:58%/);
+  assert.match(css,/document-result-icon\.pdf/);
+  assert.match(css,/document-result-icon\.word/);
+  assert.match(css,/document-result-icon\.folder/);
+  assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
+  assert.match(ui,/documentIconKind/);
+  assert.match(ui,/setPointerCapture/);
 });
 
 test('orders service worker contains the current document bridge client after asset synchronization',()=>{

@@ -64,10 +64,10 @@ test('preview query addresses one exact full path and requests Everything conten
 });
 
 test('ES JSON parser identifies folder results from the attributes column',()=>{
-  const rows=parseEsJson(JSON.stringify({results:[{Name:'Folder',Path:'C:\\Docs',Attributes:'D','Date Modified':'2026-09-25T12:00:00Z'}]}));
+  const rows=parseEsJson(JSON.stringify({results:[{Name:'Folder',Path:'C:\\Docs',Attributes:'DA','Date Modified':'2026-09-25T12:00:00Z'}]}));
   assert.equal(rows.length,1);
   assert.equal(rows[0].isDirectory,true);
-  assert.equal(rows[0].attributes,'D');
+  assert.equal(rows[0].attributes,'DA');
 });
 
 test('global Everything result merging dedupes only identical paths',()=>{
