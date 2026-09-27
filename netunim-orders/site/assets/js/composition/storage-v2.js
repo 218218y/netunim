@@ -82,7 +82,8 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         // The spreadsheet journal is independent of Main; preserve a legacy
         // sheet before the frozen source is committed, including after retry.
         await p.storageBrowser.captureLegacyWorkbookForMigration(source.legacyWorkbook);
-        return {mainState:p.prepareV2Checkpoint(source.mainState),sharedState};
+        const mainState=p.prepareV2Checkpoint(source.mainState);delete mainState.checks;
+        return {mainState,sharedState};
       },
       quiesce:async()=>{
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;

@@ -42,13 +42,14 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
                     'mainNote':'durable local note','sharedCheck':123,
                     'visibleNote':'durable local note','visibleCheck':123,'legacyWrites':[]},result
     browser._navigate()
-    recovered=browser.evaluate("""(async()=>{await appReady;return {
+    recovered=browser.evaluate("""(async()=>{await appReady;const main=await storageShadow.recover();return {
       owner:storageOwner.current(),note:state.notes.find(row=>row.id==='transfer-note')?.content,
       check:state.checks.find(row=>row.id==='transfer-check')?.amount,
+      mainProjection:main?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(main?.state||{},'checks'),
       mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
       legacyWrites:window.__legacyWrites
     }})()""")
-    assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
+    assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
     assert not browser.drain_serious_errors()
     print('PASS Orders production local V2 -> account V2 transfer with Main and Shared data after restart')
 
@@ -92,12 +93,13 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
                     'mainNote':'durable local note','sharedCheck':123,
                     'visibleNote':'durable local note','visibleCheck':123,'legacyWrites':[]},result
     browser._navigate()
-    recovered=browser.evaluate("""(async()=>{await appReady;return {
+    recovered=browser.evaluate("""(async()=>{await appReady;const main=await storageShadow.recover();return {
       owner:storageOwner.current(),note:state.notes.find(row=>row.id==='transfer-note')?.content,
       check:state.checks.find(row=>row.id==='transfer-check')?.amount,
+      mainProjection:main?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(main?.state||{},'checks'),
       mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
       legacyWrites:window.__legacyWrites
     }})()""")
-    assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
+    assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
     assert not browser.drain_serious_errors()
     print('PASS Kupa production local V2 -> account V2 transfer with Main and Shared data after restart')
