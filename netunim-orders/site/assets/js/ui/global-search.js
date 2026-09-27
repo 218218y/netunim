@@ -16,7 +16,7 @@ const DOCUMENT_PREVIEW_MAX=72;
 // Local file/content search is deliberately isolated behind Document Bridge and is
 // activated only in its dedicated scope, so it never blocks the normal site search.
 export function createUiGlobalSearch({documentBridge=null,searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal}){
-  let resultByKey=new Map(),documentResultById=new Map(),highlightTimer=null,backdropPointerId=null,mode='site',documentSearchMode='content',documentSequence=0,documentAbort=null,selectedDocumentId='',previewSequence=0,previewObjectUrl='',previewAbort=null;
+  let resultByKey=new Map(),documentResultById=new Map(),highlightTimer=null,backdropPointerId=null,mode='site',documentSearchMode='everything',documentSequence=0,documentAbort=null,selectedDocumentId='',previewSequence=0,previewObjectUrl='',previewAbort=null,nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null;
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),siteMode:byId('globalSearchSiteMode'),documentsMode:byId('globalSearchDocumentsMode'),documentModebar:byId('globalSearchDocumentModebar'),documentContentMode:byId('globalSearchDocumentContentMode'),documentNameMode:byId('globalSearchDocumentNameMode'),preview:byId('globalSearchDocumentPreview'),previewTitle:byId('globalSearchPreviewTitle'),previewMeta:byId('globalSearchPreviewMeta'),previewBody:byId('globalSearchPreviewBody'),previewOpen:byId('globalSearchPreviewOpen'),splitter:byId('globalSearchDocumentSplitter')});
   const scheduledSiteRender=createSearchScheduler(value=>renderSiteResults(value));
@@ -25,14 +25,36 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
 
   function scopeIntro(){return `<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>חיפוש בכל מאגר ניהול ההזמנות</b><p>אפשר לחפש שם ספק או לקוח, מספר הזמנה, טלפון, מספר צ'ק, סכום, הערה, מיקום, תוכן שירות ועוד.</p><div class="global-search-scopes"><span>ספקים</span><span>לקוחות</span><span>שירות</span><span>צ'קים</span><span>מחסן ומלאי</span><span>הערות</span></div></div>`}
   function documentPairing(){return `<div class="global-search-empty document-search-setup"><div class="global-search-empty-icon">⌕</div><b>חיפוש מסמכים במחשב זה</b><p>Document Bridge עדיין לא משויך לדפדפן הזה. מתקינים אותו בנפרד בכל מחשב; המפתח שהמתקין מעתיק ללוח נשמר רק בדפדפן המקומי.</p><div class="document-search-pair"><input id="globalSearchDocumentToken" type="password" autocomplete="off" spellcheck="false" placeholder="הדבק מפתח Document Bridge"><button type="button" data-document-pair>חבר מחשב</button></div><small>הקבצים ותוכן החיפוש נשארים במחשב ואינם מועלים לאתר או לענן.</small></div>`}
-  function documentIntro(){const content=documentSearchMode==='content';return `<div class="global-search-empty document-search-intro"><div class="global-search-empty-icon">FILE</div><b>${content?'חיפוש בתוכן הקבצים':'חיפוש ישיר ב־Everything'}</b><p>${content?'החיפוש שולח ל־Everything את content: על כל האינדקס המקומי, ללא הגבלת כונן נוספת.':'הטקסט נשלח לתיבת החיפוש של Everything כפי שהוא, כולל תחביר Everything אם תבחר להשתמש בו.'}</p><div class="global-search-scopes"><span>${content?'תוכן קבצים':'Everything'}</span><span>כל האינדקס</span><span>Unicode מלא</span></div></div>`}
+  function documentIntro(){const content=documentSearchMode==='content';return `<div class="global-search-empty document-search-intro"><div class="global-search-empty-icon">FILE</div><b>${content?'חיפוש תוכן':'חיפוש קבצים'}</b><p>${content?'חיפוש מילים בתוך תוכן הקבצים דרך Everything.':'חיפוש קבצים ותיקיות דרך אותו אינדקס ותחביר של Everything.'}</p><div class="global-search-scopes"><span>${content?'חיפוש תוכן':'חיפוש קבצים'}</span><span>כל האינדקס</span><span>Unicode מלא</span></div></div>`}
 
   function resultMeta(item){const parts=[...(item.meta||[])];if(item.amount!==undefined&&item.amount!==null&&Number.isFinite(Number(item.amount)))parts.unshift(money(item.amount));return parts.filter(Boolean)}
   function bytes(value){const size=Number(value);if(!Number.isFinite(size)||size<0)return '';if(size<1024)return `${size} B`;if(size<1024*1024)return `${Math.round(size/1024)} KB`;return `${(size/1024/1024).toFixed(size<10*1024*1024?1:0)} MB`}
   function localDate(value){const time=Date.parse(value||'');if(!Number.isFinite(time))return '';try{return new Intl.DateTimeFormat('he-IL',{dateStyle:'short',timeStyle:'short'}).format(new Date(time))}catch{return ''}}
   function cleanupPreviewObject(){if(previewObjectUrl){URL.revokeObjectURL(previewObjectUrl);previewObjectUrl=''}}
+  function nativePreviewGeometry(){
+    const {previewBody}=refs();if(!previewBody||previewBody.hidden)return null;const rect=previewBody.getBoundingClientRect();if(rect.width<80||rect.height<80)return null;
+    const sideInset=Math.max(0,(Number(window.outerWidth)||0)-(Number(window.innerWidth)||0))/2;
+    const topInset=Math.max(0,(Number(window.outerHeight)||0)-(Number(window.innerHeight)||0)-sideInset);
+    return {x:Math.round((Number(window.screenX)||0)+sideInset+rect.left),y:Math.round((Number(window.screenY)||0)+topInset+rect.top),width:Math.round(rect.width),height:Math.round(rect.height)};
+  }
+  function nativeGeometryKey(value){return value?`${value.x}:${value.y}:${value.width}:${value.height}`:''}
+  function stopNativePreviewPolling(){if(nativePreviewPoll){clearInterval(nativePreviewPoll);nativePreviewPoll=null}}
+  function deactivateNativePreview({forget=true}={}){
+    nativePreviewActive=false;nativePreviewGeometryKey='';stopNativePreviewPolling();if(forget)nativePreviewWantedId='';
+    documentBridge?.hideNativePreview?.().catch(()=>{});
+  }
+  async function syncNativePreviewGeometry({force=false}={}){
+    if(!nativePreviewActive||!documentBridge?.moveNativePreview)return;const geometry=nativePreviewGeometry();if(!geometry)return;const key=nativeGeometryKey(geometry);if(!force&&key===nativePreviewGeometryKey)return;
+    nativePreviewGeometryKey=key;try{await documentBridge.moveNativePreview(geometry)}catch{}
+  }
+  function startNativePreviewPolling(){stopNativePreviewPolling();nativePreviewPoll=setInterval(()=>{syncNativePreviewGeometry()},350)}
+  async function showNativePreview(id,sequence){
+    if(!documentBridge?.nativePreview)return false;const geometry=nativePreviewGeometry();if(!geometry)throw new Error('אזור התצוגה המקדימה אינו זמין.');nativePreviewWantedId=String(id);
+    await documentBridge.nativePreview(id,geometry);if(sequence!==previewSequence||selectedDocumentId!==String(id)){documentBridge.hideNativePreview?.().catch(()=>{});return false}
+    nativePreviewActive=true;nativePreviewGeometryKey=nativeGeometryKey(geometry);startNativePreviewPolling();return true
+  }
   function resetDocumentPreview(){
-    previewSequence+=1;previewAbort?.abort();previewAbort=null;cleanupPreviewObject();selectedDocumentId='';
+    previewSequence+=1;previewAbort?.abort();previewAbort=null;cleanupPreviewObject();deactivateNativePreview();selectedDocumentId='';
     const {previewTitle,previewMeta,previewBody,previewOpen}=refs();if(previewTitle)previewTitle.textContent='תצוגה מקדימה';if(previewMeta)previewMeta.textContent='בחר תוצאה לצפייה';if(previewOpen)previewOpen.disabled=true;if(previewBody)previewBody.innerHTML='<div class="document-preview-empty"><span>⌕</span><b>תצוגה מקדימה</b><p>לחיצה אחת על תוצאה תציג אותה כאן. לחיצה כפולה תפתח אותה במחשב.</p></div>';
   }
   function fileKindLabel(item){if(item?.isDirectory)return 'תיקייה';const ext=String(item?.extension||'').toUpperCase();return ext||'קובץ'}
@@ -56,13 +78,14 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   }
   function clampPreviewWidth(value){const n=Number(value);return Math.max(DOCUMENT_PREVIEW_MIN,Math.min(DOCUMENT_PREVIEW_MAX,Number.isFinite(n)?n:DOCUMENT_PREVIEW_DEFAULT))}
   function savedPreviewWidth(){try{const value=localStorage.getItem(DOCUMENT_PREVIEW_WIDTH_KEY);return value===null?DOCUMENT_PREVIEW_DEFAULT:clampPreviewWidth(value)}catch{return DOCUMENT_PREVIEW_DEFAULT}}
-  function applyPreviewWidth(value,{save=false}={}){const width=clampPreviewWidth(value),{workspace,splitter}=refs();workspace?.style.setProperty('--document-preview-width',`${width}%`);splitter?.setAttribute('aria-valuenow',String(Math.round(width)));if(save)try{localStorage.setItem(DOCUMENT_PREVIEW_WIDTH_KEY,String(width))}catch{}return width}
+  function applyPreviewWidth(value,{save=false}={}){const width=clampPreviewWidth(value),{workspace,splitter}=refs();workspace?.style.setProperty('--document-preview-width',`${width}%`);splitter?.setAttribute('aria-valuenow',String(Math.round(width)));if(save)try{localStorage.setItem(DOCUMENT_PREVIEW_WIDTH_KEY,String(width))}catch{}if(nativePreviewActive)queueMicrotask(()=>syncNativePreviewGeometry({force:true}));return width}
   function previewDetailsHtml(data){const rows=[[data.isDirectory?'סוג':'סיומת',data.isDirectory?'תיקייה':(String(data.extension||'').toUpperCase()||'קובץ')],['גודל',data.isDirectory?'—':bytes(data.size)],['עודכן',localDate(data.modified)],['נתיב',data.fullPath]].filter(([,value])=>value);return `<dl class="document-preview-details">${rows.map(([label,value])=>`<div><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>`}
   async function selectDocumentResult(id,button){
-    if(!documentBridge||!id)return;selectedDocumentId=String(id);for(const row of refs().results?.querySelectorAll?.('[data-document-result-id]')||[])row.classList.toggle('selected',row===button);const item=documentResultById.get(String(id));const {previewTitle,previewMeta,previewBody,previewOpen}=refs();if(previewTitle)previewTitle.textContent=item?.name||'תצוגה מקדימה';if(previewMeta)previewMeta.textContent=item?.relativePath||'';if(previewOpen)previewOpen.disabled=false;cleanupPreviewObject();previewSequence+=1;const sequence=previewSequence;previewAbort?.abort();previewAbort=new AbortController();if(previewBody)previewBody.innerHTML='<div class="document-preview-loading"><span></span><b>טוען תצוגה מקדימה…</b></div>';
+    if(!documentBridge||!id)return;deactivateNativePreview();selectedDocumentId=String(id);for(const row of refs().results?.querySelectorAll?.('[data-document-result-id]')||[])row.classList.toggle('selected',row===button);const item=documentResultById.get(String(id));const {previewTitle,previewMeta,previewBody,previewOpen}=refs();if(previewTitle)previewTitle.textContent=item?.name||'תצוגה מקדימה';if(previewMeta)previewMeta.textContent=item?.relativePath||'';if(previewOpen)previewOpen.disabled=false;cleanupPreviewObject();previewSequence+=1;const sequence=previewSequence;previewAbort?.abort();previewAbort=new AbortController();if(previewBody)previewBody.innerHTML='<div class="document-preview-loading"><span></span><b>טוען תצוגה מקדימה…</b></div>';
     try{
       const data=await documentBridge.preview(id);if(sequence!==previewSequence||selectedDocumentId!==String(id))return;if(previewTitle)previewTitle.textContent=data.name||item?.name||'תצוגה מקדימה';if(previewMeta)previewMeta.textContent=data.path||item?.relativePath||'';
       if(data.kind==='folder'){previewBody.innerHTML=`<div class="document-preview-folder"><div class="document-preview-folder-icon"></div><b>${esc(data.name||'תיקייה')}</b><p>לחיצה כפולה על התוצאה או הכפתור למעלה תפתח את התיקייה בסייר הקבצים.</p>${previewDetailsHtml(data)}</div>`;return}
+      if(data.kind==='native'){previewBody.innerHTML='<div class="document-preview-native"><span>OFFICE</span><b>Windows Preview</b><p>נטענת התצוגה המקורית שמותקנת ב-Windows…</p></div>';await showNativePreview(id,sequence);return}
       if(data.kind==='binary'){
         const blob=await documentBridge.previewFile(id,{signal:previewAbort.signal});if(sequence!==previewSequence||selectedDocumentId!==String(id))return;previewObjectUrl=URL.createObjectURL(blob);previewBody.innerHTML=data.mime==='application/pdf'?`<div class="document-preview-pdf"><iframe class="document-preview-frame" src="${esc(previewObjectUrl)}#toolbar=0&navpanes=0&view=FitH" title="${esc(data.name||'PDF')}"></iframe></div>`:`<div class="document-preview-image"><img src="${esc(previewObjectUrl)}" alt="${esc(data.name||'תמונה')}"></div>`;return
       }
@@ -98,9 +121,9 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     documentSequence+=1;const sequence=documentSequence;documentAbort?.abort();documentAbort=null;
     if(!documentBridge){meta.textContent='Document Bridge אינו זמין';results.innerHTML=documentErrorHtml({message:'רכיב החיפוש המקומי אינו טעון.'});return}
     if(!documentBridge.getToken?.()){meta.textContent='נדרש חיבור חד־פעמי במחשב זה';results.innerHTML=documentPairing();return}
-    if(!raw){meta.textContent=documentSearchMode==='content'?'חיפוש תוכן דרך כל אינדקס Everything':'אותו חיפוש כמו בתיבת Everything';results.innerHTML=documentIntro();return}
+    if(!raw){meta.textContent=documentSearchMode==='content'?'חיפוש תוכן':'חיפוש קבצים דרך Everything';results.innerHTML=documentIntro();return}
     if((documentSearchMode==='content'&&raw.length<2)||!raw.length){meta.textContent=documentSearchMode==='content'?'הקלד לפחות שני תווים':'הקלד חיפוש';results.innerHTML=documentIntro();return}
-    const controller=new AbortController();documentAbort=controller;const content=documentSearchMode==='content';meta.textContent=content?'מחפש בתוכן דרך Everything…':'מחפש ישירות ב־Everything…';results.innerHTML='<div class="global-search-empty"><div class="global-search-empty-icon document-search-spinner">⌕</div><b>מחפש דרך Everything המקומי…</b><p>הקבצים עצמם נשארים במחשב.</p></div>';
+    const controller=new AbortController();documentAbort=controller;const content=documentSearchMode==='content';meta.textContent=content?'מחפש בתוכן הקבצים…':'מחפש קבצים דרך Everything…';results.innerHTML='<div class="global-search-empty"><div class="global-search-empty-icon document-search-spinner">⌕</div><b>מחפש דרך Everything המקומי…</b><p>הקבצים עצמם נשארים במחשב.</p></div>';
     try{
       const data=await documentBridge.search(raw,{mode:documentSearchMode,limit:60,signal:controller.signal});if(mode!=='documents'||sequence!==documentSequence)return;
       const rows=Array.isArray(data.results)?data.results:[];meta.textContent=rows.length?`${rows.length} תוצאות · ${Math.max(0,Number(data.elapsedMs)||0)}ms · אינדקס Everything`:'לא נמצאו תוצאות ב־Everything';
@@ -115,7 +138,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(documentModebar)documentModebar.hidden=!documents;if(preview)preview.hidden=!documents;if(splitter)splitter.hidden=!documents;backdrop?.classList.toggle('document-search-active',documents);dialog?.classList.toggle('document-search-active',documents);workspace?.classList.toggle('document-search-active',documents);
     if(documents)applyPreviewWidth(savedPreviewWidth());
     documentContentMode?.classList.toggle('active',content);documentContentMode?.setAttribute('aria-selected',content?'true':'false');documentNameMode?.classList.toggle('active',!content);documentNameMode?.setAttribute('aria-selected',content?'false':'true');
-    if(input)input.placeholder=documents?(content?'חפש טקסט בתוך תוכן קבצים…':'חפש כמו ב־Everything…'):'שם, הזמנה, טלפון, צ׳ק, סכום, הערה, מיקום…';
+    if(input)input.placeholder=documents?(content?'חפש טקסט בתוך תוכן הקבצים…':'חפש קובץ או תיקייה…'):'שם, הזמנה, טלפון, צ׳ק, סכום, הערה, מיקום…';
   }
   function setDocumentSearchMode(next){
     const normalized=next==='content'?'content':'everything';if(documentSearchMode===normalized)return;documentSearchMode=normalized;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;resetDocumentPreview();updateModeUi();const {input}=refs();renderDocumentResults(input?.value||'');requestAnimationFrame(()=>input?.focus())
@@ -159,6 +182,8 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(splitter&&workspace){let resizing=false;const updateFromPointer=event=>{if(!resizing)return;const rect=workspace.getBoundingClientRect();if(!rect.width)return;applyPreviewWidth((event.clientX-rect.left)/rect.width*100)};const finish=event=>{if(!resizing)return;resizing=false;splitter.classList.remove('dragging');try{splitter.releasePointerCapture?.(event.pointerId)}catch{}const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||DOCUMENT_PREVIEW_DEFAULT;applyPreviewWidth(current,{save:true})};splitter.addEventListener('pointerdown',event=>{if(mode!=='documents')return;resizing=true;splitter.classList.add('dragging');splitter.setPointerCapture?.(event.pointerId);updateFromPointer(event);event.preventDefault()});splitter.addEventListener('pointermove',updateFromPointer);splitter.addEventListener('pointerup',finish);splitter.addEventListener('pointercancel',finish);splitter.addEventListener('keydown',event=>{if(event.key!=='ArrowLeft'&&event.key!=='ArrowRight'&&event.key!=='Home'&&event.key!=='End')return;event.preventDefault();const current=parseFloat(workspace.style.getPropertyValue('--document-preview-width'))||savedPreviewWidth();const next=event.key==='Home'?DOCUMENT_PREVIEW_MIN:event.key==='End'?DOCUMENT_PREVIEW_MAX:current+(event.key==='ArrowRight'?3:-3);applyPreviewWidth(next,{save:true})})}
     results.addEventListener('keydown',event=>{if(event.key==='Enter'&&event.target.id==='globalSearchDocumentToken'){event.preventDefault();pairDocumentBridge()}});
     backdrop.addEventListener('pointerdown',event=>{backdropPointerId=event.target===backdrop?event.pointerId:null});backdrop.addEventListener('pointerup',event=>{const dismiss=backdropPointerId===event.pointerId&&event.target===backdrop;backdropPointerId=null;if(dismiss)close()});backdrop.addEventListener('pointercancel',()=>{backdropPointerId=null});
+    window.addEventListener('resize',()=>{syncNativePreviewGeometry({force:true})});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden){if(nativePreviewActive)deactivateNativePreview({forget:false});return}if(mode==='documents'&&nativePreviewWantedId&&selectedDocumentId===nativePreviewWantedId){const sequence=previewSequence;showNativePreview(nativePreviewWantedId,sequence).catch(()=>{})}});
     document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();open();return}if(event.key==='Escape'&&!backdrop.hidden)close()});
   }
 

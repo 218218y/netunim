@@ -30,9 +30,13 @@ set "CONFIGWASNEW=no"
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs start_document_bridge.bat office_preview.ps1) do (
+for %%F in (server.mjs lib.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
+
+echo Building local Windows Preview Handler host...
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build_native_preview.ps1" -Source "%~dp0native_preview_host.cs" -Output "%STAGING%\NetunimPreviewHost.exe"
+if not "%ERRORLEVEL%"=="0" goto :preview_host_error
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install_es.ps1" -AppRoot "%APPROOT%"
 if not "%ERRORLEVEL%"=="0" goto :es_error
@@ -91,6 +95,14 @@ echo.
 start "" notepad.exe "%SUMMARY%"
 pause
 exit /b 0
+
+:preview_host_error
+echo.
+echo ERROR: Could not build the local Windows Preview Handler host.
+echo This component is required for fast native Office previews.
+if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
+pause
+exit /b 1
 
 :es_error
 echo.

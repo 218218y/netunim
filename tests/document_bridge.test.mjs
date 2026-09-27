@@ -46,7 +46,7 @@ test('ES JSON parser preserves Hebrew/Unicode names and full indexed paths witho
 });
 
 
-test('Office preview classification preserves layout-capable formats for local PDF conversion',()=>{
+test('Office preview classification identifies formats that should use the native Windows preview handler',()=>{
   assert.equal(officePreviewKind('docx'),'word');
   assert.equal(officePreviewKind('.rtf'),'word');
   assert.equal(officePreviewKind('xlsx'),'excel');

@@ -19,15 +19,15 @@ const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
-const OFFICE_PREVIEW_SCRIPT=path.join(APP_ROOT,'app','office_preview.ps1');
-const PREVIEW_CACHE_DIR=path.join(APP_ROOT,'preview-cache');
+const NATIVE_PREVIEW_HOST=path.join(APP_ROOT,'app','NetunimPreviewHost.exe');
 const requestResults=new Map();
 const TEXT_PREVIEW_MAX_BYTES=1024*1024;
 const BINARY_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
-let server=null,cachedProbe=null,everythingStartPromise=null,previewCachePruneAt=0;
+let server=null,cachedProbe=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
+const nativePreviewPending=new Map();
 
 async function ensureRoot(){await fs.mkdir(APP_ROOT,{recursive:true})}
 async function appendLog(message){try{await ensureRoot();await fs.appendFile(LOG_PATH,`${new Date().toISOString()} ${message}\n`,'utf8')}catch{}}
@@ -201,35 +201,52 @@ async function readTextPreview(fullPath,stat){
   const length=Math.min(Number(stat.size)||0,TEXT_PREVIEW_MAX_BYTES),handle=await fs.open(fullPath,'r');
   try{const buffer=Buffer.alloc(length);const {bytesRead}=await handle.read(buffer,0,length,0);const decoded=decodeTextBuffer(buffer.subarray(0,bytesRead));const result=trimPreviewText(decoded);return {...result,truncated:result.truncated||Number(stat.size)>length}}finally{await handle.close()}
 }
-async function prunePreviewCache(){
-  if(Date.now()<previewCachePruneAt)return;previewCachePruneAt=Date.now()+30*60*1000;
-  try{
-    await fs.mkdir(PREVIEW_CACHE_DIR,{recursive:true});
-    const names=await fs.readdir(PREVIEW_CACHE_DIR),rows=[];
-    for(const name of names){
-      const file=path.join(PREVIEW_CACHE_DIR,name);try{const stat=await fs.stat(file);if(stat.isFile())rows.push({file,size:Number(stat.size)||0,mtimeMs:Number(stat.mtimeMs)||0})}catch{}
-    }
-    const cutoff=Date.now()-7*24*60*60*1000;for(const row of rows)if(row.mtimeMs<cutoff)try{await fs.unlink(row.file)}catch{}
-    const fresh=rows.filter(row=>row.mtimeMs>=cutoff).sort((a,b)=>b.mtimeMs-a.mtimeMs);let total=0,count=0;
-    for(const row of fresh){total+=row.size;count+=1;if(count>200||total>512*1024*1024)try{await fs.unlink(row.file)}catch{}}
-  }catch(error){await appendLog(`PREVIEW_CACHE_PRUNE_FAILED ${JSON.stringify(String(error?.message||error))}`)}
+function rejectNativePreviewPending(error){
+  for(const [,pending] of nativePreviewPending){clearTimeout(pending.timer);pending.reject(error)}
+  nativePreviewPending.clear();
 }
-function officePreviewCachePath(fullPath,stat){
-  const stamp=`${fullPath}\u0000${Number(stat.size)||0}\u0000${Number(stat.mtimeMs)||0}`,hash=crypto.createHash('sha256').update(stamp).digest('hex');
-  return path.join(PREVIEW_CACHE_DIR,`${hash}.pdf`);
+function handleNativePreviewOutput(chunk){
+  nativePreviewBuffer+=String(chunk||'');
+  while(true){
+    const index=nativePreviewBuffer.indexOf('\n');if(index<0)break;
+    const line=nativePreviewBuffer.slice(0,index).replace(/\r$/,'');nativePreviewBuffer=nativePreviewBuffer.slice(index+1);
+    if(!line)continue;
+    const [id,status,...rest]=line.split('\t'),pending=nativePreviewPending.get(id);if(!pending)continue;
+    nativePreviewPending.delete(id);clearTimeout(pending.timer);const message=rest.join('\t');
+    if(status==='OK')pending.resolve(message);else{const error=new Error(message||'Windows Preview Handler failed.');error.code='NATIVE_PREVIEW_FAILED';pending.reject(error)}
+  }
 }
-async function ensureOfficePreview(fullPath,stat,kind){
-  if(!kind)return null;await prunePreviewCache();await fs.mkdir(PREVIEW_CACHE_DIR,{recursive:true});
-  const output=officePreviewCachePath(fullPath,stat);
-  try{const cached=await fs.stat(output);if(cached.isFile()&&cached.size>16){const now=new Date();await fs.utimes(output,now,now).catch(()=>{});return output}}catch{}
-  if(!(await existsFile(OFFICE_PREVIEW_SCRIPT))){await appendLog(`OFFICE_PREVIEW_SCRIPT_MISSING ${OFFICE_PREVIEW_SCRIPT}`);return null}
-  const env={...process.env,NETUNIM_PREVIEW_SOURCE:fullPath,NETUNIM_PREVIEW_OUTPUT:output,NETUNIM_PREVIEW_KIND:kind};
-  try{
-    await execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',OFFICE_PREVIEW_SCRIPT],{encoding:'utf8',windowsHide:true,timeout:60000,maxBuffer:1024*1024,env});
-    const converted=await fs.stat(output);if(!converted.isFile()||converted.size<16)throw new Error('Office preview PDF is empty.');
-    await appendLog(`OFFICE_PREVIEW_OK kind=${kind} path=${JSON.stringify(fullPath)} bytes=${converted.size}`);return output;
-  }catch(error){try{await fs.unlink(output)}catch{}await appendLog(`OFFICE_PREVIEW_FAILED kind=${kind} path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.stderr||error?.message||error))}`);return null}
+async function ensureNativePreviewProcess(){
+  if(process.platform!=='win32'){const e=new Error('Windows Preview Handler זמין רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
+  if(nativePreviewProcess&&!nativePreviewProcess.killed&&nativePreviewProcess.exitCode===null)return nativePreviewProcess;
+  if(!(await existsFile(NATIVE_PREVIEW_HOST))){const e=new Error('רכיב Windows Preview Handler לא הותקן. הרץ מחדש את מתקין Document Bridge.');e.code='NATIVE_PREVIEW_HOST_MISSING';throw e}
+  nativePreviewBuffer='';
+  const child=spawn(NATIVE_PREVIEW_HOST,[],{windowsHide:true,stdio:['pipe','pipe','pipe']});nativePreviewProcess=child;
+  child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',handleNativePreviewOutput);child.stderr.on('data',data=>appendLog(`NATIVE_PREVIEW_STDERR ${JSON.stringify(String(data||'').trim())}`));
+  child.on('error',error=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host failed: ${error.message}`),{code:'NATIVE_PREVIEW_HOST_FAILED'}))});
+  child.on('exit',(code,signal)=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host exited (${code??signal??'unknown'}).`),{code:'NATIVE_PREVIEW_HOST_EXITED'}))});
+  await nativePreviewCommand('PING',[],4000);return child;
 }
+async function nativePreviewCommand(command,args=[],timeoutMs=6000){
+  const child=command==='PING'&&nativePreviewProcess?nativePreviewProcess:await ensureNativePreviewProcess();
+  if(!child?.stdin?.writable){const e=new Error('Windows Preview Handler host is not writable.');e.code='NATIVE_PREVIEW_HOST_FAILED';throw e}
+  const id=String(++nativePreviewSequence),fields=[id,String(command),...args.map(value=>String(value??'').replace(/[\r\n\t]/g,' '))];
+  return await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{nativePreviewPending.delete(id);const e=new Error('Windows Preview Handler did not respond in time.');e.code='NATIVE_PREVIEW_TIMEOUT';reject(e)},timeoutMs);nativePreviewPending.set(id,{resolve,reject,timer});child.stdin.write(fields.join('\t')+'\n','utf8',error=>{if(!error)return;const pending=nativePreviewPending.get(id);if(!pending)return;nativePreviewPending.delete(id);clearTimeout(timer);reject(error)})});
+}
+function normalizePreviewGeometry(value){
+  const source=value&&typeof value==='object'?value:{};
+  const integer=(name,fallback,min,max)=>Math.max(min,Math.min(max,Math.round(Number(source[name])||fallback)));
+  return {x:integer('x',0,-20000,20000),y:integer('y',0,-20000,20000),width:integer('width',900,200,5000),height:integer('height',700,160,4000)};
+}
+async function openNativePreview(id,geometry){
+  const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('לתיקייה אין Windows Preview Handler של מסמך.');e.code='NATIVE_PREVIEW_NOT_FILE';throw e}
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),officeKind=officePreviewKind(extension);if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
+  const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
+  const response=await nativePreviewCommand('OPEN',[encoded,box.x,box.y,box.width,box.height],9000);await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind} handler=${JSON.stringify(response)} path=${JSON.stringify(row.fullPath)}`);return {ok:true,kind:'native',officeKind};
+}
+async function moveNativePreview(geometry){const box=normalizePreviewGeometry(geometry);if(!nativePreviewProcess)return {ok:true,visible:false};await nativePreviewCommand('MOVE',[box.x,box.y,box.width,box.height],2500);return {ok:true,visible:true}}
+async function hideNativePreview(){if(!nativePreviewProcess)return {ok:true};try{await nativePreviewCommand('HIDE',[],2500)}catch{}return {ok:true}}
+async function stopNativePreview(){const child=nativePreviewProcess;if(!child)return;try{await nativePreviewCommand('EXIT',[],1500)}catch{}try{child.kill()}catch{}nativePreviewProcess=null}
 async function readEverythingContentPreview(fullPath){
   try{
     const config=await loadConfig(),probe=await probeEverything({autoStart:true});
@@ -245,7 +262,7 @@ async function previewDocument(id){
   const mime=BINARY_PREVIEW_MIME.get(meta.extension);
   if(mime&&stat.size<=BINARY_PREVIEW_MAX_BYTES)return {ok:true,kind:'binary',mime,source:'file',...meta};
   const officeKind=officePreviewKind(meta.extension);
-  if(officeKind){const converted=await ensureOfficePreview(row.fullPath,stat,officeKind);if(converted)return {ok:true,kind:'binary',mime:'application/pdf',source:'office-pdf',officeKind,...meta}}
+  if(officeKind)return {ok:true,kind:'native',source:'windows-preview-handler',officeKind,...meta};
   if(TEXT_EXTENSIONS.has(meta.extension)){const data=await readTextPreview(row.fullPath,stat);return {ok:true,kind:'text',source:'file',...meta,...data}}
   const indexed=await readEverythingContentPreview(row.fullPath);
   if(indexed)return {ok:true,kind:'text',source:officeKind?'office-text-fallback':'everything-content',...meta,...indexed};
@@ -254,8 +271,7 @@ async function previewDocument(id){
 }
 async function readBinaryPreview(id){
   const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
-  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),officeKind=officePreviewKind(extension);
-  if(officeKind){const converted=await ensureOfficePreview(row.fullPath,stat,officeKind);if(!converted){const e=new Error('Microsoft Office לא הצליח ליצור תצוגה מעוצבת לקובץ.');e.code='OFFICE_PREVIEW_UNAVAILABLE';throw e}const convertedStat=await fs.stat(converted);if(convertedStat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('תצוגת Office גדולה מדי להצגה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}return {buffer:await fs.readFile(converted),mime:'application/pdf',name:`${path.win32.basename(row.fullPath)}.pdf`}}
+  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
   const mime=BINARY_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
   if(stat.size>BINARY_PREVIEW_MAX_BYTES){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
   return {buffer:await fs.readFile(row.fullPath),mime,name:path.win32.basename(row.fullPath)};
@@ -297,8 +313,11 @@ async function handle(req,res){
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/native-preview'){const body=await readJson(req),result=await openNativePreview(body.id,body.geometry);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/native-preview/move'){const body=await readJson(req),result=await moveNativePreview(body.geometry);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/native-preview/hide'){const result=await hideNativePreview();sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/shutdown'){sendJson(req,res,200,{ok:true},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete')})},20);return}
+    if(req.method==='POST'&&req.url==='/shutdown'){await stopNativePreview();sendJson(req,res,200,{ok:true},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete')})},20);return}
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);
   }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
 }
@@ -324,7 +343,7 @@ async function stopExisting(){
 async function printDoctor(){
   await init();const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
   const executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
-  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log('Search scope: complete Everything index (same database as Everything UI)');
+  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log('Search scope: complete Everything index (same database as Everything UI)');
   console.log(`Files visible in Everything: ${diagnostics.fileCount===null?'ERROR':diagnostics.fileCount}`);console.log(`Files with indexed content: ${diagnostics.indexedContentCount===null?'ERROR':diagnostics.indexedContentCount}`);console.log(`ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`);if(diagnostics.error)console.log(`ES error: ${diagnostics.error}`);
   if(diagnostics.error||(diagnostics.fileCount>0&&!diagnostics.sampleOk)){const e=new Error('Everything/ES diagnostics failed.');e.code='INDEX_DIAGNOSTICS_FAILED';throw e}
   if(diagnostics.fileCount===0)console.log('WARNING: Everything currently sees no files. The website will mirror that empty Everything index.');
@@ -332,7 +351,7 @@ async function printDoctor(){
 async function writeInstallSummary(){
   const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='';
   try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,'','Search scope: COMPLETE EVERYTHING INDEX','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI.','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
+  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'','Search scope: COMPLETE EVERYTHING INDEX','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
 

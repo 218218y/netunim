@@ -1,5 +1,5 @@
-NETUNIM Document Bridge v7 - Everything search + rich local preview
-=====================================================================
+NETUNIM Document Bridge v8 - Everything search + native Windows preview
+======================================================================
 
 Search scope
 ------------
@@ -8,12 +8,12 @@ Everything instance indexes is searchable from the website.
 
 Website modes
 -------------
-1. Content files
-   The Bridge builds an Everything content:"..." no-background-search: query.
+1. File search (default)
+   The query is passed directly to Everything search syntax. Filenames,
+   folders, filters, paths, ext:, dm: and other Everything syntax are preserved.
 
-2. Everything
-   The query is passed directly to Everything search syntax. Filters, paths,
-   ext:, dm: and other Everything syntax are preserved.
+2. Content search
+   The Bridge builds an Everything content:"..." no-background-search: query.
 
 Unicode
 -------
@@ -26,31 +26,36 @@ Opening files and folders
 The browser sends only an expiring result ID. The Bridge resolves the ID and
 checks the path again immediately before opening it.
 
-Both folders and documents now use .NET ProcessStartInfo with UseShellExecute=true.
+Both folders and documents use .NET ProcessStartInfo with UseShellExecute=true.
 That hands the path to the interactive Windows graphical shell and invokes its
-registered default Open action. The Bridge does not wait for explorer.exe to
-exit and does not depend on Shell.Application.Open.
+registered default Open action.
 
-Rich local preview
-------------------
+Local preview
+-------------
 The preview never uploads the source file.
 
-- PDF files are streamed from 127.0.0.1 and opened with Chromium PDF parameters
-  toolbar=0, navpanes=0 and view=FitH. This hides the thumbnail/navigation pane
-  and fits the page to the available preview width while mouse/keyboard scrolling
-  stays inside the PDF viewer.
+- PDF files are streamed from 127.0.0.1 into the browser PDF viewer.
 - Common images are streamed locally into the preview pane.
 - Plain text files use a bounded local text preview.
-- Word/Excel/PowerPoint/RTF preview uses the locally installed Microsoft Office
-  application in hidden/read-only mode to create a cached PDF under:
-    %LOCALAPPDATA%\NetunimDocumentBridge\preview-cache
-  The source document is never modified. The PDF preserves normal Office page
-  layout/formatting far better than extracted text.
-- If Microsoft Office is unavailable or conversion fails, the Bridge falls back
-  to Everything's indexed Content text when available.
+- Word/Excel/PowerPoint/RTF use the Windows system IPreviewHandler associated
+  with the file extension. This is the same Windows preview layer normally used
+  by Everything and File Explorer. Office applications are NOT launched and no
+  temporary PDF is exported for the normal Office preview path.
 
-The Office conversion cache is keyed by path + file size + modification time,
-so repeated previews are fast. Old cache entries are removed automatically.
+The native Windows preview is hosted by NetunimPreviewHost.exe. The installer
+builds this small local helper from native_preview_host.cs with the .NET
+Framework compiler already included in Windows. The helper has no network
+access. It receives only a local file path from the authenticated Bridge and
+hosts the registered Windows Preview Handler in a borderless owned window that
+is positioned over the website preview pane.
+
+Why this changed
+----------------
+The previous implementation automated Word/Excel/PowerPoint and exported a PDF.
+That could be slow on first use, could trigger Office startup/security UI, and
+could not reproduce Excel workbook tabs or the exact system preview appearance.
+The native Preview Handler path avoids Office automation and uses the same class
+of preview component that Everything normally hosts.
 
 Everything background process
 -----------------------------
@@ -60,10 +65,12 @@ client against the same local Everything instance/database.
 
 Installation
 ------------
-Run install_document_bridge.bat on each PC. The installer upgrades the Bridge,
-including office_preview.ps1, verifies ES/Everything, starts Everything in
-background mode if required, and opens:
-  %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt
+Run install_document_bridge.bat on each PC. The installer:
+- builds NetunimPreviewHost.exe locally;
+- upgrades the Bridge;
+- verifies ES/Everything;
+- starts Everything in background mode if required;
+- opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 
 Logs
@@ -84,4 +91,4 @@ Security
 - CORS is limited to configured website origins/local development.
 - Open and preview operations accept only an unexpired result ID produced by an
   authenticated search. The browser cannot submit an arbitrary filesystem path.
-- Files and extracted/generated preview content stay on the local computer.
+- Files and preview content stay on the local computer.
