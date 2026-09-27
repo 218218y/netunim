@@ -5,7 +5,7 @@ import {filterExcludedGroupCards,preserveInstalledChromiumIdentity,unsettledAppr
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Amex can use the current DigitalV3 flow.
 
-export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-2026-09-netunim-v44';
+export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-2026-09-netunim-v45';
 export const AMEX_LOGIN_BASE_URL='https://he.americanexpress.co.il';
 export const AMEX_WEB_BASE_URL='https://web.americanexpress.co.il';
 export const AMEX_LOGIN_COMPANY_CODE='77';
@@ -85,7 +85,7 @@ function fixInstallments(txns){return txns.map(tx=>{
   return {...tx,date:addCalendarMonthsIso(tx.date,Number(tx.installments.number)-1)};
 })}
 
-export async function prepareAmexDigitalV3Page(page){
+export async function prepareAmexDigitalV3Page(page,{identityProbeUrl=''}={}){
   if(!page?.evaluate||!page?.setUserAgent||!page?.evaluateOnNewDocument||!page?.setRequestInterception||!page?.on)throw safeError('ממשק Chrome/Edge אינו תואם למסלול American Express DigitalV3.','CREDIT_BROWSER_IDENTITY_UNAVAILABLE',{stage:'BrowserIdentity'});
   // Match the live-tested ordering from upstream PR #1159: install request
   // interception first, then mask only the HeadlessChrome token while preserving
@@ -98,7 +98,7 @@ export async function prepareAmexDigitalV3Page(page){
       else void request.continue(undefined,INTERCEPTION_CONTINUE_PRIORITY);
     }catch{}
   });
-  const identity=await preserveInstalledChromiumIdentity(page);
+  const identity=await preserveInstalledChromiumIdentity(page,{probeUrl:identityProbeUrl});
   if(!identity.ok)throw safeError('לא ניתן לשמר זהות Chrome/Edge מקורית ועקבית עבור American Express; הסנכרון נעצר לפני פנייה לאתר כדי לא לשלוח User-Agent בלי Client Hints תואמים.','CREDIT_BROWSER_IDENTITY_UNAVAILABLE',{stage:'BrowserIdentity',clientHintsState:identity.clientHintsState,browserMajorVersion:identity.browserMajorVersion});
   // PR #1159 deliberately returns undefined here (not false).
   await page.evaluateOnNewDocument(()=>{
@@ -208,7 +208,7 @@ async function monthTransactions(page,card,month,isNextBillingDate,processedDate
   return txns;
 }
 
-export async function scrapeAmexDigitalV3({credentials,browserPath,interactive=false,startDate,futureMonthsToScrape=1,excludedAccountNumbers=[],onDiagnostic=()=>{},now=()=>new Date(),puppeteerModule=null}={}){
+export async function scrapeAmexDigitalV3({credentials,browserPath,identityProbeUrl='',interactive=false,startDate,futureMonthsToScrape=1,excludedAccountNumbers=[],onDiagnostic=()=>{},now=()=>new Date(),puppeteerModule=null}={}){
   if(!credentials?.id||!credentials?.card6Digits||!credentials?.password)throw safeError('חסרים פרטי התחברות ל-American Express.','CREDIT_CREDENTIALS',{stage:'Login'});
   let puppeteer=puppeteerModule;
   if(!puppeteer){try{const imported=await import('puppeteer');puppeteer=imported.default||imported}catch{throw safeError('Puppeteer אינו מותקן ב-Bank Bridge. הרץ מחדש install_bank_bridge.bat.','CREDIT_BROWSER_RUNTIME_MISSING',{stage:'BrowserLaunch'})}}
@@ -217,7 +217,7 @@ export async function scrapeAmexDigitalV3({credentials,browserPath,interactive=f
     browser=await puppeteer.launch({headless:!interactive,executablePath:browserPath,timeout:NAVIGATION_TIMEOUT_MS});
     page=await browser.newPage();page.setDefaultTimeout(45_000);page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);await page.setCacheEnabled(false);await page.setViewport({width:1024,height:768});
     diagnostic(onDiagnostic,{stage:'BrowserLaunch'});
-    let identity;try{identity=await prepareAmexDigitalV3Page(page);diagnostic(onDiagnostic,{stage:'BrowserIdentity',clientHintsState:identity.clientHintsState,browserMajorVersion:identity.browserMajorVersion})}catch(error){diagnostic(onDiagnostic,{stage:'BrowserIdentity',errorClass:error?.code||'CREDIT_BROWSER_IDENTITY_UNAVAILABLE',clientHintsState:error?.clientHintsState||'',browserMajorVersion:error?.browserMajorVersion||0});throw error};
+    let identity;try{identity=await prepareAmexDigitalV3Page(page,{identityProbeUrl});diagnostic(onDiagnostic,{stage:'BrowserIdentity',clientHintsState:identity.clientHintsState,browserMajorVersion:identity.browserMajorVersion})}catch(error){diagnostic(onDiagnostic,{stage:'BrowserIdentity',errorClass:error?.code||'CREDIT_BROWSER_IDENTITY_UNAVAILABLE',clientHintsState:error?.clientHintsState||'',browserMajorVersion:error?.browserMajorVersion||0});throw error};
     await login(page,credentials,onDiagnostic);diagnostic(onDiagnostic,{stage:'Login'});
     const discoveredCards=await fetchCards(page,onDiagnostic),cards=filterExcludedGroupCards(discoveredCards,excludedAccountNumbers,accountNumber=>diagnostic(onDiagnostic,{stage:'CardExcluded',accountSuffix:String(accountNumber).slice(-4)})),months=getAllMonthMoments(startDate,futureMonthsToScrape,now()),txnsByCard=new Map(cards.map(card=>[card.cardSuffix,[]])),rawSampleByCard=new Map();
     // Current DigitalV3 traffic keeps isNextBillingDate=true for every billingMonth; billingMonth itself selects the cycle.

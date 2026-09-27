@@ -11,6 +11,7 @@ function brandedClientHints(product,brands=[]){
   const names=(Array.isArray(brands)?brands:[]).map(row=>String(row?.brand||''));
   return product==='edge'?names.some(name=>/Microsoft Edge/i.test(name)):product==='chrome'?names.some(name=>/Google Chrome/i.test(name)):false;
 }
+function headlessClientHints(brands=[]){return (Array.isArray(brands)?brands:[]).some(row=>/HeadlessChrome/i.test(String(row?.brand||'')))}
 function majorVersion(userAgent=''){
   const match=String(userAgent||'').match(/\b(?:Chrome|Edg)\/(\d+)/i),value=Number(match?.[1]);
   return Number.isFinite(value)?Math.trunc(value):0;
@@ -21,18 +22,50 @@ function majorVersion(userAgent=''){
  * classic HeadlessChrome UA token. Puppeteer maps setUserAgent() to CDP's
  * Network.setUserAgentOverride; Client Hints are only preserved when the native
  * userAgentMetadata is supplied as well. Never synthesize brands or versions.
+ *
+ * navigator.userAgentData is secure-context gated. A freshly-created Puppeteer
+ * page can therefore expose the classic UA while omitting native Client Hints.
+ * When that happens, read the same browser metadata from the bridge's trusted
+ * loopback origin before applying the override. The probe is deliberately
+ * restricted to loopback so identity discovery can never contact an issuer or
+ * an arbitrary remote host.
  */
-export async function preserveInstalledChromiumIdentity(page){
-  const native=await page.evaluate(async()=>{
+function loopbackIdentityProbeUrl(value=''){
+  try{
+    const url=new URL(String(value||''));
+    if(!['http:','https:'].includes(url.protocol)||url.username||url.password)return '';
+    const host=String(url.hostname||'').toLowerCase(),ipv4=host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/),isIpv4Loopback=!!ipv4&&Number(ipv4[1])===127&&ipv4.slice(1).every(part=>Number(part)>=0&&Number(part)<=255),isLoopback=isIpv4Loopback||host==='localhost'||host.endsWith('.localhost')||host==='[::1]'||host==='::1';
+    return isLoopback?url.href:'';
+  }catch{return ''}
+}
+async function readNativeChromiumIdentity(page){
+  return page.evaluate(async()=>{
     const data=navigator.userAgentData;let high={};
     if(data?.getHighEntropyValues){
       try{high=await data.getHighEntropyValues(['architecture','bitness','model','platformVersion','uaFullVersion','fullVersionList','wow64'])}catch{}
     }
     return {userAgent:String(navigator.userAgent||''),navigatorPlatform:String(navigator.platform||''),userAgentData:data?{brands:Array.isArray(data.brands)?data.brands:[],mobile:!!data.mobile,platform:String(data.platform||''),...high}:null};
   });
-  const nativeUserAgent=String(native?.userAgent||''),userAgent=nativeUserAgent.replace('HeadlessChrome/','Chrome/'),product=chromiumProduct(userAgent),uaData=native?.userAgentData;
+}
+export async function preserveInstalledChromiumIdentity(page,{probeUrl=''}={}){
+  let native=await readNativeChromiumIdentity(page),nativeUserAgent=String(native?.userAgent||''),userAgent=nativeUserAgent.replace('HeadlessChrome/','Chrome/'),product=chromiumProduct(userAgent);
+  if(product&&!native?.userAgentData){
+    const safeProbeUrl=loopbackIdentityProbeUrl(probeUrl);
+    if(safeProbeUrl&&typeof page?.goto==='function'){
+      try{
+        await page.goto(safeProbeUrl,{waitUntil:'domcontentloaded',timeout:10_000});
+        native=await readNativeChromiumIdentity(page);nativeUserAgent=String(native?.userAgent||nativeUserAgent);userAgent=nativeUserAgent.replace('HeadlessChrome/','Chrome/');product=chromiumProduct(userAgent);
+      }catch{}
+    }
+  }
+  const uaData=native?.userAgentData;
   if(!product||!uaData)return {ok:false,userAgent,product,clientHintsState:'missing',browserMajorVersion:majorVersion(userAgent)};
-  const brands=brandVersions(uaData.brands),fullVersionList=brandVersions(uaData.fullVersionList),branded=brandedClientHints(product,[...brands,...fullVersionList]);
+  const brands=brandVersions(uaData.brands),fullVersionList=brandVersions(uaData.fullVersionList),nativeHeadless=/HeadlessChrome\//i.test(nativeUserAgent)&&headlessClientHints([...brands,...fullVersionList]);
+  // If Chrome itself reports HeadlessChrome in UA-CH, masking only the classic UA
+  // would create the exact cross-surface mismatch this guard is meant to prevent.
+  // Keep the browser's complete native identity instead of fabricating a headful one.
+  if(nativeHeadless)return {ok:true,userAgent:nativeUserAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent),identityMode:'native-headless'};
+  const branded=brandedClientHints(product,[...brands,...fullVersionList]);
   if(!brands.length||!branded)return {ok:false,userAgent,product,clientHintsState:brands.length?'unbranded':'missing',browserMajorVersion:majorVersion(userAgent)};
   const userAgentMetadata={brands,mobile:!!uaData.mobile,platform:String(uaData.platform||'')};
   if(fullVersionList.length)userAgentMetadata.fullVersionList=fullVersionList;

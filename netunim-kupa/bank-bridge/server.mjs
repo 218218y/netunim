@@ -51,7 +51,8 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=61;
+const BRIDGE_VERSION=62;
+const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
 const TOKEN_FILE=path.join(APP_DIR,'bridge-token.txt');
@@ -604,7 +605,7 @@ function excludedAccountsForProfile(selection,profileId){return selection.find(r
 
 async function scrapeCreditProfile(profile,{interactive=false,correlationId='',syncMode='quick',excludedAccountNumbers=[],allowCamoufoxFallback=true}={}){
   const browserPath=await findInstalledBrowser(),{CompanyTypes,createScraper}=await import('israeli-bank-scrapers'),identityDir=creditIdentityDirectory(CREDIT_IDENTITIES_DIR,profile);
-  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,allowCamoufoxFallback,onDiagnostic:event=>creditDiagnostics.record({browserEngine:'chromium',...event})});
+  const adapter=createCreditProviderAdapter({profile,CompanyTypes,createScraper,browserPath,identityProbeUrl:BROWSER_IDENTITY_PROBE_URL,interactive,identityDir,correlationId,syncMode,excludedAccountNumbers,allowCamoufoxFallback,onDiagnostic:event=>creditDiagnostics.record({browserEngine:'chromium',...event})});
   return adapter.scrape();
 }
 async function scrapeAllCreditProfiles(profiles,{interactive=false,previousErrors=[],syncMode='quick',selection=[]}={}){

@@ -408,3 +408,10 @@ Bridge v61 browser identity hardening:
 - The bridge never invents Sec-CH-UA brands or versions; if the installed browser does not expose a branded native Client Hints identity, the sync stops before issuer navigation.
 - Credit diagnostics record only the safe Client Hints state and browser major version (not raw headers).
 
+
+Bridge v62 browser identity secure-context recovery:
+- v61 could read `navigator.userAgentData` from a newly-created pre-navigation page. On current Chrome this page can expose the classic UA while omitting UA Client Hints because the API is secure-context gated, causing a false `CREDIT_BROWSER_IDENTITY_UNAVAILABLE` before any issuer request.
+- When that exact condition occurs, v62 reads the installed browser's native UA Client Hints from the already-running Bank Bridge loopback origin (`127.0.0.1`) and then applies the coherent UA/Client-Hints override before issuer navigation.
+- The recovery probe is restricted to loopback HTTP/HTTPS origins and never synthesizes brands or versions. A missing or unbranded native identity still fails closed before contacting Isracard/American Express.
+- If Chrome itself reports `HeadlessChrome` in UA Client Hints, v62 keeps the complete native headless UA/CH pair instead of masking only the classic UA and creating a cross-surface mismatch. This is deliberately truthful rather than manufacturing a headful fingerprint.
+- The Kupa and Orders clients now require Bridge v62 so an older v61 runtime cannot keep reproducing the false BrowserIdentity failure after deployment. No Supabase migration or SQL change is required; re-run `install_bank_bridge.bat` after deploying v62.
