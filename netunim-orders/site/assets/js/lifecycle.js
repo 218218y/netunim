@@ -6,7 +6,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateStorageTransition=async()=>null,resumeStorageTransition=async()=>null,storageTransitionPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState({v2Only=false}={}){
   if(v2Only){
     const v2=await refreshStorageV2CloudState();
@@ -103,9 +103,9 @@ async function boot(){
   await hydrateStorageOwner();startupMark('storage-owner-ready');
   loadSession();
   const transfer=await hydrateStorageV2OwnerTransfer();
-  await hydrateStorageTransition();await hydrateLocalBirth();
+  await hydrateLocalBirth();
   let localOwner=storageOwnerCurrent()==='local';
-  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine(),transitionPreparing=storageTransitionPreparing();
+  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine();
   let protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
@@ -126,7 +126,7 @@ async function boot(){
   session.storageProtocolBlocked=false;
 
   if(!tab.primaryTab){
-    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||transitionPreparing||localBirthPreparing());
+    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||localBirthPreparing());
     let shown=false;
     if(v2Required){
       const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
@@ -146,7 +146,7 @@ async function boot(){
       setSave('העריכה נעולה עד השלמת מעבר החשבון','error');
       syncFolderAccessButton();return;
     }
-    cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine();transitionPreparing=storageTransitionPreparing();
+    cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine();
   }
   if(localOwner){
     try{
@@ -165,19 +165,12 @@ async function boot(){
   // cut-over account must hydrate Shared before any early capability exit can
   // render business state or allow a background poll to inspect that copy.
   let sharedPrimary=false;
-  if((cutoverActive||localEngineActive)&&!transitionPreparing){
+  if((cutoverActive||localEngineActive)){
     sharedPrimary=await recoverSharedChecksV2Primary();
     if(!sharedPrimary)throw new Error('orders_shared_v2_recovery_required');
   }
   if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
   if(session.syncCapabilitiesError){if(!cutoverActive||sharedPrimary)render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
-
-  transitionPreparing=storageTransitionPreparing();
-  if(transitionPreparing){
-    if(!navigator.onLine||!loadSession()){render();setCloud('ענן: מעבר Storage V2 ממתין להתחברות ולרשת','error');setSave('העריכה נעולה עד השלמת מעבר האחסון','error');return}
-    try{await resumeStorageTransition();cutoverActive=await verifyStorageCutover();if(!cutoverActive)throw new Error('storage_cutover_marker_verification_failed')}
-    catch(error){console.error('Storage V2 cutover resume',error);render();setCloud('ענן: מעבר Storage V2 דורש השלמה','error');setSave('העריכה נעולה עד השלמת מעבר האחסון','error');return}
-  }
 
   if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   if(localEngineActive&&!sharedPrimary)throw new Error('orders_local_shared_v2_recovery_required');

@@ -1,6 +1,5 @@
 import {createStorageOwnerBinding} from '../shared/storage-owner.js';
 import {createStorageV2BootstrapCoordinator} from '../shared/storage-v2-bootstrap.js';
-import {createStorageV2ProductionTransition} from '../shared/storage-v2-production-transition.js';
 import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
@@ -13,15 +12,14 @@ import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-compos
 import {assertValidOrderCloudState} from '../state/validation.js';
 import {INITIAL_STATE} from '../state/constants.js';
 
-// Owns the Orders storage migration state machines. main.js supplies application
-// ports, but no longer carries drain/bootstrap/owner-adoption orchestration.
+// Owns the Orders V2 storage lifecycle. main.js supplies application ports.
 export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis.localStorage}={}){
   if(!tab||!session)throw new Error('orders_storage_v2_tab_required');
   const owner=createStorageOwnerBinding({app:'orders',primary:()=>tab.primaryTab});
   const bootstrap=createStorageV2BootstrapCoordinator({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab});
-  let transition=null,localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,legacyDrain=false,ports=null;
+  let localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
-  const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!transition?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
+  const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const scheduleLegacyRetirement=createLegacyRetirementScheduler({
     ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
     settle:async()=>{const p=requirePorts(),pending=[p.files.browserStateWritePromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
@@ -31,15 +29,13 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
       deleteRecords:()=>p.storageBrowser.deleteLegacyBusinessRecords()})},
   });
-  const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:orders:${owner.current()}`)==='2'||owner.current()==='local'&&storage?.getItem('netunim-storage-engine-version:orders:local')==='2';
-  // Retained only for a verified pre-cutover outbox drain. An unmarked browser
-  // cannot create a new V1 business snapshot during ordinary startup or save.
-  const legacyWriteAllowed=()=>legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active();
+  // Compatibility modules are read-only until they are removed. No production
+  // transition is allowed to reopen a V1 business writer.
+  const legacyWriteAllowed=()=>false;
   const legacyChecksWriteAllowed=legacyWriteAllowed;
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});
-  const status=(runtime,authenticated)=>({active:runtime.cutoverActive,preparing:preparing(),canBegin:tab.primaryTab&&owner.current()!=='local'&&!!authenticated&&!runtime.cutoverActive});
   const pendingLegacyWriteAllowed=runtime=>legacyWriteAllowed()&&!runtime.cutoverActive;
   const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,storageChecks,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
@@ -51,19 +47,8 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   async function verifyLegacyClean(){
     const p=requirePorts();return (await p.storageBrowser.verifyLegacyCloudClean())===true&&(await p.storageChecks.verifyLegacyChecksClean())===true;
   }
-  async function drainLegacy(){
-    const p=requirePorts();legacyDrain=true;
-    try{
-      const mainPending=await p.storageBrowser.getCloudPending();
-      if(mainPending){const ok=await p.syncDocument.requestCloudSave('',{legacyDrain:true});if(!ok&&await p.storageBrowser.getCloudPending())throw new Error('storage_cutover_main_legacy_drain_incomplete')}
-      const checksPending=await p.storageChecks.getChecksPending();
-      if(checksPending){const ok=await p.syncChecks.saveSharedChecksToCloud('',{legacyDrain:true});if(!ok&&await p.storageChecks.getChecksPending())throw new Error('storage_cutover_shared_legacy_drain_incomplete')}
-      if(await verifyLegacyClean()!==true)throw new Error('storage_cutover_legacy_pending');
-      return {main:true,shared:true};
-    }finally{legacyDrain=false}
-  }
   function configure(next){
-    if(transition)throw new Error('orders_storage_v2_already_configured');ports=next;
+    if(ports)throw new Error('orders_storage_v2_already_configured');ports=next;
     const p=requirePorts();
     fencedRecovery=createStorageV2FencedRecovery({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,refreshOwnerBinding:()=>owner.refresh(),
       authenticatedOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),
@@ -92,28 +77,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         if(pending.length)await Promise.all(pending);
       },
       verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
-    });
-    transition=createStorageV2ProductionTransition({
-      app:'orders',ownerBinding:owner,primary:()=>tab.primaryTab&&owner.writable,online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSession()?.user?.id||null,bootstrapCoordinator:bootstrap,
-      readMainState:()=>p.model.state,projectMainState:state=>p.stateSnapshots.prepareCloudState(state),emptyMainState:()=>p.stateNormalization.normalizeState(INITIAL_STATE),mainSourceSeq:()=>p.session.localSnapshotSeq,
-      readSharedState:()=>({checks:p.model.state.checks,bankEvents:p.checksSession.checksBankEvents||[]}),sharedSourceSeq:()=>p.checksSession.checksGeneration,
-      readMainRemote:()=>p.cloudTransport.readCloud(),projectMainRemote:row=>p.stateSnapshots.prepareCloudState(row.state),readSharedRemote:()=>p.cloudTransport.readSharedChecksCloud(),projectSharedRemote:row=>({checks:row.state.checks,bankEvents:row.state.bankEvents}),
-      initializeMainHead:options=>p.storageBrowser.initializeStorageV2BootstrapHead(options),
-      initializeSharedHead:options=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.initialize(options)},
-      syncMain:()=>p.syncDocument.requestStorageV2CloudSave('',{force:true}),
-      syncShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.sync()},
-      readMainCloudState:()=>p.storageBrowser.refreshStorageV2CloudState(),
-      readSharedCloudState:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');return p.sharedChecksV2.cloudState()},
-      readMainRecoveredState:async()=> (await p.storageShadow.recoverForOwner({intent:'load-account'}))?.state||null,
-      readSharedRecoveredState:async()=> (await p.sharedChecksV2.recover())?.state||null,
-      freeze:async()=>{
-        clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
-        if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('shared_checks_preparation_lock_required');
-        await p.syncDocument.quiesceForStorageCutover();
-        const pending=[p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending);
-        return true;
-      },
-      drainLegacy,verifyLegacyClean,markCutover:options=>p.sharedChecksV2Composition.markCutover(options),verifyCutover:()=>p.verifyStorageCutover(),
     });
     const fixedMain=identity=>createStorageV2Runtime({
       app:'orders',owner:()=>identity,primary:()=>tab.primaryTab,mode:()=> 'preparing',
@@ -177,7 +140,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         p.checksSession.checksBankEvents=structuredClone(sharedState.bankEvents);p.checksSession.checksSaveRequested=false;
       },
     });
-    return transition;
+    return true;
   }
   async function rebindTransferredOwner(){
     const p=requirePorts();
@@ -219,13 +182,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     await owner.adoptPreparedLocalOwner(target,{intent:effectiveIntent,proof:{mainRevision:Number(p.session.cloudRevision||0),sharedRevision:Number(p.checksSession.checksCloudRevision||0),preparedAt:new Date().toISOString()}});
     return true;
   }
-  async function beginCutover(){
-    const p=requirePorts();if(p.storageShadow.cutoverActive)return {already:true};
-    if(!tab.primaryTab)throw new Error('storage_cutover_primary_required');if(globalThis.navigator?.onLine===false)throw new Error('storage_cutover_online_required');
-    const auth=p.cloudAuth.loadSession();owner.assertAuthenticatedOwner(auth?.user?.id);await p.cloudAuth.ensureSyncCapabilities();
-    await transition.hydrate();await transition.begin();if(await p.verifyStorageCutover()!==true)throw new Error('storage_cutover_marker_verification_failed');
-    return {already:false};
-  }
   async function recoverSharedAndMigrate(){
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     if(recovered){
@@ -234,12 +190,11 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     }
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,status,pendingLegacyWriteAllowed,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,beginCutover,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,pendingLegacyWriteAllowed,legacyWriteAllowed,legacyChecksWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
-    transitionLifecyclePorts:()=>({hydrateStorageTransition:()=>transition.hydrate(),resumeStorageTransition:()=>transition.resume(),storageTransitionPreparing:()=>!!transition?.preparing}),
     localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),resumeLocalBirth:()=>localBirth.resume(),localBirthPreparing:()=>!!localBirth?.preparing,storageOwnerCurrent:()=>owner.current()}),
     ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     ownerTransferUiPorts:()=>({startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
-    hydrateTransition:()=>{if(!transition)throw new Error('orders_storage_v2_not_configured');return transition.hydrate()},resumeTransition:()=>{if(!transition)throw new Error('orders_storage_v2_not_configured');return transition.resume()},get transitionPreparing(){return !!transition?.preparing}};
+  };
 }

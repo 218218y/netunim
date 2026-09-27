@@ -696,11 +696,6 @@ storageV2Coordinator.configure({
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
-async function beginStorageV2Cutover(){
-  const result=await storageV2Coordinator.beginCutover();
-  if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
-  uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startPolling();uiSettings.renderSettings();return true;
-}
 
 const uiCloud=composeCloudUi({
   model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
@@ -741,13 +736,11 @@ const uiSettings=createUiSettings({
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   financeSnapshot:(...args)=>domainsFinanceController.readSnapshot(...args),
-  storageV2Status:()=>storageV2Coordinator.status(storageShadow,cloudAuth.loadSession()),
 });
 
 const lifecycle=createLifecycle({
   hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:()=>cloudAuth.loadSession()?.user?.id}),
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
-  ...storageV2Coordinator.transitionLifecyclePorts(),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
   verifyStorageCutover,
@@ -979,7 +972,6 @@ const uiActions=createUiActions({
   finishCloudLogin:(...args)=>uiCloud.finishCloudLogin(...args),
   finishLocalResetLogin:(...args)=>uiCloud.finishLocalResetLogin(...args),
   enableCloud:(...args)=>uiCloud.enableCloud(...args),
-  beginStorageV2Cutover,
   openCloud:(...args)=>uiCloud.openCloud(...args),
   logoutCloud:(...args)=>uiCloud.logoutCloud(...args),
   resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args),

@@ -8,7 +8,6 @@ function fixture(overrides={}){
   const ports={
     model:{state:{checks:[]}},files:{},tab,session,checksSession:{},ui:{currentView:'orders'},
     hydrateStorageOwner:async()=>calls.push('owner'),
-    hydrateStorageTransition:async()=>calls.push('account-transition'),
     hydrateLocalBirth:async()=>calls.push('birth-hydrated'),
     storageOwnerCurrent:()=> 'local',
     verifyStorageCutover:async()=>false,
@@ -31,7 +30,7 @@ function fixture(overrides={}){
 
 test('Orders fresh local startup commits birth then hydrates both V2 journals before render',async()=>{
   const f=fixture();await f.lifecycle.boot();await f.session.startupHydrationPromise;
-  assert.deepEqual(f.calls.slice(0,8),['tab-lock','owner','account-transition','birth-hydrated','birth','main-v2','shared-v2','render']);
+  assert.deepEqual(f.calls.slice(0,7),['tab-lock','owner','birth-hydrated','birth','main-v2','shared-v2','render']);
   assert.equal(f.session.storageProtocolBlocked,false);
 });
 

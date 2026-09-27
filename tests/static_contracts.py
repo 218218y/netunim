@@ -125,39 +125,24 @@ ok("checksSession.sharedChecksBootstrapActive&&!rawLocal.length&&r.length>0&&b.l
 ok("shared_checks_missing_during_merge" in ks and "shared_checks_missing_during_merge" in os and "cutover" in ks and "cutover" in os,
    "clients: missing shared store fails safe outside greenfield setup")
 
-# Storage V2 cutover must remain dependency-inverted: production transition code may
-# ask the application to drain already-durable V1 work, but it must never regain a
-# direct route to a legacy writer/outbox/mirror. Concrete V1 access belongs behind
-# the explicit legacyDrain application port only.
-v2_transition_paths = [
+# The account cutover has finished. A current client may adopt an already fenced
+# cloud account, but it must not expose the historic V1-drain transition again.
+for path in (
     ROOT / "shared/storage-v2-production-transition.js",
     ROOT / "shared/storage-v2-transition.js",
     ROOT / "shared/storage-v2-cutover-coordinator.js",
-]
-v2_transition_source = "\n".join(path.read_text(encoding="utf-8") for path in v2_transition_paths)
-legacy_writer_symbols = (
-    "markCloudPending",
-    "markChecksPending",
-    "markSharedChecksPending",
-    "persistImmediateBrowserSnapshot",
-    "queueBrowserStateIdb",
-    "CLOUD_BASE_KEY",
-    "BROWSER_STATE_KEY",
-)
-ok(not any(symbol in v2_transition_source for symbol in legacy_writer_symbols),
-   "storage v2 cutover: production coordinator cannot directly reach concrete V1 writers or mirrors")
-ok("drainLegacy" in v2_transition_source and "legacyDrain" not in (ROOT / "shared/storage-v2-production-transition.js").read_text(encoding="utf-8"),
-   "storage v2 cutover: shared production adapter depends only on the abstract legacy drain port")
+):
+    ok(not path.exists(), f"retired cutover module removed: {path.name}")
 for label, app_root in (("kupa", K), ("orders", O)):
-    drain_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
+    coordinator_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
-    ok("legacyDrain:true" in drain_source
-       and "legacyDrain=true" in drain_source
-       and "legacyDrain=false" in drain_source
-       and "const durableV2Active=" in drain_source
-       and "legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()" in drain_source
-       and "legacyDrain:true" not in main_source,
-       f"{label}: only explicit drain may reach V1 writers before a durable V2 marker")
+    lifecycle_source=(app_root / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+    ok("legacyDrain" not in coordinator_source and "drainLegacy" not in coordinator_source
+       and "legacyWriteAllowed=()=>false" in coordinator_source
+       and "beginCutover" not in coordinator_source
+       and "begin-storage-v2-cutover" not in main_source
+       and "resumeStorageTransition" not in lifecycle_source,
+       f"{label}: production cannot resume V1 drain or begin legacy cutover")
 
 owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
 owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')

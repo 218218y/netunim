@@ -680,14 +680,18 @@ class LegacyBrowserSession(BrowserSession):
         prepared.write_text(source, encoding='utf-8')
         # These historical fault-injection suites intentionally bypass local
         # birth and exercise the retired V1 path in a disposable copy only.
-        # Production must keep the drain-only writer gate above.
+        # Production has no V1 drain or writer. Only this disposable fixture
+        # re-enables old paths for historical fault-injection coverage.
         coordinator = self.tmp / 'site/assets/js/composition/storage-v2.js'
         source = coordinator.read_text(encoding='utf-8')
-        drain_only = 'const legacyWriteAllowed=()=>legacyDrain&&!session.storageProtocolBlocked&&owner.writable&&!durableV2Active();'
-        legacy_fixture = 'const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()&&(!preparing()||legacyDrain);'
-        if source.count(drain_only) != 1:
+        retired_gate = 'const legacyWriteAllowed=()=>false;'
+        legacy_fixture = ('const durableV2Active=()=>storage?.getItem(`netunim-storage-cutover-version:'
+                          + ('orders' if 'netunim-orders' in str(self.site) else 'kupa')
+                          + ':${owner.current()}`)===\'2\';'
+                          'const legacyWriteAllowed=()=>!session.storageProtocolBlocked&&owner.writable&&!durableV2Active()&&!preparing();')
+        if source.count(retired_gate) != 1:
             raise AssertionError('Legacy test fixture must locate the reviewed production V1 writer gate')
-        coordinator.write_text(source.replace(drain_only, legacy_fixture), encoding='utf-8')
+        coordinator.write_text(source.replace(retired_gate, legacy_fixture), encoding='utf-8')
         # The production browser writer is V2-only. These historical suites
         # deliberately disable local birth to exercise the legacy cloud outbox,
         # so give their disposable copy a minimal V1 snapshot fixture. Never

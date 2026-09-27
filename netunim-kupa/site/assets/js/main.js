@@ -391,18 +391,6 @@ storageV2Coordinator.configure({
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });
-async function beginStorageV2Cutover(){
-  try{
-    const result=await storageV2Coordinator.beginCutover();
-    if(result.already){uiStatus.toast('Storage V2 כבר פעיל לחשבון הזה.');return true}
-    uiStatus.toast('המעבר ל־Storage V2 הושלם ואומת.');syncDocument.startCloudPolling();uiSettings.renderSettings();return true;
-  }catch(error){
-    console.error(error);
-    uiStatus.toast('המעבר ל־Storage V2 נעצר בבדיקת בטיחות. לא בוצע מעבר.');
-    uiSettings.renderSettings();
-    return false;
-  }
-}
 
 const uiCloud=composeCloudUi({
   session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,storagePending,syncDocument,uiStatus,cloudAuth,
@@ -654,7 +642,6 @@ const uiSettings=createUiSettings({
   supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
   bankCurrentBalance:(...args)=>domainsBankSelectors.bankCurrentBalance(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
-  storageV2Status:()=>storageV2Coordinator.status(storageShadow,cloudAuth.loadSupaSession()),
 });
 
 const uiModal=createUiModal({
@@ -781,7 +768,7 @@ const lifecycle=createLifecycle({
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}),
   recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
   recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),
-  ...storageV2Coordinator.transitionLifecyclePorts(),
+  ...storageV2Coordinator.lifecyclePorts(),
   verifyStorageCutover,
   storageOwnerCurrent:()=>storageOwner.current(),
   authenticatedOwner:()=>cloudAuth.loadSupaSession()?.user?.id||null,
@@ -875,7 +862,6 @@ const uiActions=createUiActions({
   enableCloudFromCurrentState:(...args)=>uiCloud.enableCloudFromCurrentState(...args),
   logoutSupabase:(...args)=>uiCloud.logoutSupabase(...args),
   resetLocalSiteStorage:(...args)=>uiCloud.resetLocalSiteStorage(...args),
-  beginStorageV2Cutover,
   handleCheckDatePartInput:(...args)=>uiDateEditor.handleCheckDatePartInput(...args),
   handleCheckDatePartBlur:(...args)=>uiDateEditor.handleCheckDatePartBlur(...args),
   handleCheckDatePartKeydown:(...args)=>uiDateEditor.handleCheckDatePartKeydown(...args),

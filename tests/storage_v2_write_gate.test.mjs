@@ -27,7 +27,6 @@ test('ordinary startup cannot enable V1 writers in an unmarked browser',()=>{
     assert.equal(coordinator.pendingLegacyWriteAllowed({cutoverActive:false}),false);
   }
 });
-
 test('V2 owner handoff routes first-cloud UI through V2 and never stages a V1 outbox',async()=>{
   const prior=globalThis.localStorage,priorAlert=globalThis.alert,priorDocument=globalThis.document;
   globalThis.localStorage=localStore();globalThis.alert=()=>{};globalThis.document={getElementById:()=>({style:{display:'flex'}})};
@@ -238,20 +237,4 @@ test('Kupa V2 startup holds Main recovery off screen until Shared hydration',asy
     loadSharedChecksBase:()=>[],sharedChecksPendingExists:()=>false,startCloudPolling:()=>{},render:()=>calls.push('render')});
   assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
   assert.deepEqual(calls,[]);assert.equal(model.state.checks[0].id,'stale');
-});
-
-test('Kupa blocks ordinary cloud-open paths while a Storage V2 cutover is preparing',async()=>{
-  const priorNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator'),priorAlert=globalThis.alert;
-  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
-  let reads=0,sharedPulls=0,alerts=0;
-  globalThis.alert=()=>{alerts++};
-  try{
-    const cloud=createKupaUiCloud({session:{},tab:{primaryTab:true},checksSession:{},model:{state:{}},supaConfigured:()=>true,
-      restoreSupaSession:async()=>({user:{id:'account-A'}}),storageTransitionPreparing:()=>true,setCloudHeaderStatus:()=>{},
-      readSupabaseDocument:async()=>{reads++;return {revision:1,state:{}}},syncSharedChecksFromCloud:async()=>{sharedPulls++;return true},
-      openBrowserStateFallback:async()=>false,isSupabaseAuthError:()=>false,friendlySupabaseError:error=>error.message});
-    assert.equal(await cloud.openCloudUsingSavedSession({interactive:true}),false);
-    assert.equal(await cloud.tryAutoOpenSupabase(),false);
-    assert.equal(reads,0);assert.equal(sharedPulls,0);assert.equal(alerts,1);
-  }finally{if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator;if(priorAlert===undefined)delete globalThis.alert;else globalThis.alert=priorAlert}
 });

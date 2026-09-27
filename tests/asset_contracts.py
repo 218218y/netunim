@@ -168,10 +168,10 @@ for label, project in APPS.items():
         connect_start=cloud.index("async function connectSupabaseFromLogin(mode)")
         reset_branch_pos=cloud.find(reset_auth_branch,connect_start)
         normal_auth_pos=cloud.find("await supaAuthPassword(email,password);",connect_start)
-        transition_pos=cloud.find("if(storageTransitionPreparing())",connect_start)
-        ok("openSupabaseLoginModal('reset')" in cloud and reset_branch_pos >= 0 and normal_auth_pos >= 0 and transition_pos >= 0 and
-           reset_branch_pos < normal_auth_pos < transition_pos,
-           "kupa: reset-only authentication exits before normal owner checks, storage transition, merge or upload logic")
+        owner_pos=cloud.find("let localOwner=storageOwnerCurrent()==='local'",connect_start)
+        ok("openSupabaseLoginModal('reset')" in cloud and reset_branch_pos >= 0 and normal_auth_pos >= 0 and owner_pos >= 0 and
+           reset_branch_pos < normal_auth_pos < owner_pos,
+           "kupa: reset-only authentication exits before normal owner checks, merge or upload logic")
         reset_auth_body=cloud_auth.split("async function supaAuthPasswordForLocalReset",1)[1].split("async function localResetReadOnlyFetch",1)[0]
         ok("assertSessionOwner" not in reset_auth_body and "storeSupaSession" not in reset_auth_body and "localStorage" not in reset_auth_body,
            "kupa: reset-only authentication neither asserts nor persists the stale local owner")
