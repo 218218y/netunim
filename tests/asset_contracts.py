@@ -51,6 +51,9 @@ for label, project in APPS.items():
     ok(bool(style_elem_policy) and style_elem_policy[1].strip() == "'self'" and
        "object-src 'none'" in headers and "frame-ancestors 'none'" in headers and "base-uri 'none'" in headers,
        f'{label}: element styles are self-only and object, frame and base policies are retained')
+    if label == 'orders':
+        ok('cdnjs.cloudflare.com' not in headers and 'cdn.jsdelivr.net' not in headers,
+           'orders: PDF runtime CSP has no external CDN dependency')
 
     ok(app_js.is_file() and app_js.stat().st_size > 0, f"{label}: JavaScript entrypoint exists in site/assets/app.js")
     ok(app_css.is_file() and app_css.stat().st_size > 1000, f"{label}: stylesheet exists in site/assets/app.css")

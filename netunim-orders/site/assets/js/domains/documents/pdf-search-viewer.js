@@ -1,30 +1,38 @@
 const PDFJS_VERSION='6.3.289';
-const PDFJS_CDN=`https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION}`;
-const PDFJS_JSDELIVR=`https://cdn.jsdelivr.net/npm/pdfjs-dist@${PDFJS_VERSION}`;
+const PDFJS_ROOT='../../../vendor/pdfjs/';
 
-export const PDF_SEARCH_RUNTIMES=[
-  {version:PDFJS_VERSION,pdf:`${PDFJS_CDN}/pdf.min.mjs`,viewer:`${PDFJS_CDN}/pdf_viewer.mjs`,worker:`${PDFJS_CDN}/pdf.worker.min.mjs`,css:`${PDFJS_CDN}/pdf_viewer.css`},
-  {version:PDFJS_VERSION,pdf:`${PDFJS_JSDELIVR}/build/pdf.min.mjs`,viewer:`${PDFJS_JSDELIVR}/web/pdf_viewer.mjs`,worker:`${PDFJS_JSDELIVR}/build/pdf.worker.min.mjs`,css:`${PDFJS_JSDELIVR}/web/pdf_viewer.css`},
-];
-export const PDF_SEARCH_RUNTIME=PDF_SEARCH_RUNTIMES[0];
+export const PDF_SEARCH_RUNTIME=Object.freeze({
+  version:PDFJS_VERSION,
+  root:PDFJS_ROOT,
+  pdf:`${PDFJS_ROOT}build/pdf.mjs`,
+  viewer:`${PDFJS_ROOT}web/pdf_viewer.mjs`,
+  worker:`${PDFJS_ROOT}build/pdf.worker.min.mjs`,
+  css:`${PDFJS_ROOT}web/pdf_viewer.css`,
+  cmaps:`${PDFJS_ROOT}cmaps/`,
+  iccs:`${PDFJS_ROOT}iccs/`,
+  standardFonts:`${PDFJS_ROOT}standard_fonts/`,
+  wasm:`${PDFJS_ROOT}wasm/`,
+});
 
 let runtimePromise=null;
 let stylesheetPromise=null;
-const runtimeScriptPromises=new Map();
 
-function absoluteCssUrls(cssText,baseUrl){
-  return String(cssText||'').replace(/url\(\s*(["\']?)(?!data:|blob:|https?:|\/)([^"\')]+)\1\s*\)/gi,(_,quote,value)=>`url("${new URL(value.trim(),baseUrl).href}")`);
-}
+function runtimeUrl(relative){return new URL(relative,import.meta.url).href}
 
-function ensureViewerStylesheet(runtime){
+function ensureViewerStylesheet(){
   if(stylesheetPromise)return stylesheetPromise;
-  stylesheetPromise=(async()=>{
-    const response=await fetch(runtime.css,{cache:'force-cache'});
-    if(!response.ok)throw new Error(`PDF.js stylesheet failed to load (${response.status}).`);
-    const sheet=new CSSStyleSheet();
-    await sheet.replace(absoluteCssUrls(await response.text(),runtime.css));
-    document.adoptedStyleSheets=[...document.adoptedStyleSheets,sheet];
-  })().catch(error=>{stylesheetPromise=null;throw error});
+  const href=runtimeUrl(PDF_SEARCH_RUNTIME.css);
+  stylesheetPromise=new Promise((resolve,reject)=>{
+    const existing=[...document.querySelectorAll('link[rel="stylesheet"]')].find(link=>link.href===href);
+    if(existing?.sheet){resolve();return}
+    const link=existing||document.createElement('link');
+    const cleanup=()=>{link.removeEventListener('load',loaded);link.removeEventListener('error',failed)};
+    const loaded=()=>{cleanup();resolve()};
+    const failed=()=>{cleanup();if(!existing)link.remove();reject(new Error('PDF.js stylesheet failed to load.'))};
+    link.addEventListener('load',loaded,{once:true});
+    link.addEventListener('error',failed,{once:true});
+    if(!existing){link.rel='stylesheet';link.href=href;link.dataset.pdfjsRuntime=PDFJS_VERSION;document.head.append(link)}
+  }).catch(error=>{stylesheetPromise=null;throw error});
   return stylesheetPromise;
 }
 
@@ -32,53 +40,20 @@ export function buildPdfFindRequest(query,{type='',findPrevious=false}={}){
   return {source:null,type,query:String(query||''),phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
 }
 
-function runtimeGlobal(name){
-  const value=globalThis[name];
-  return value&&typeof value==='object'?value:null;
-}
-
-function loadRuntimeScript(url,globalName){
-  const ready=runtimeGlobal(globalName);
-  if(ready)return Promise.resolve(ready);
-  const key=`${globalName}:${url}`;
-  if(runtimeScriptPromises.has(key))return runtimeScriptPromises.get(key);
-  const task=new Promise((resolve,reject)=>{
-    const script=document.createElement('script');
-    script.type='module';
-    script.async=true;
-    script.src=url;
-    script.onload=()=>{
-      const value=runtimeGlobal(globalName);
-      script.remove();
-      if(value)resolve(value);
-      else reject(new Error(`PDF.js module loaded without ${globalName}.`));
-    };
-    script.onerror=()=>{script.remove();reject(new Error(`PDF.js module failed to load (${url}).`))};
-    document.head.append(script);
-  }).catch(error=>{runtimeScriptPromises.delete(key);throw error});
-  runtimeScriptPromises.set(key,task);
-  return task;
-}
-
 async function loadRuntime(){
   if(runtimePromise)return runtimePromise;
   runtimePromise=(async()=>{
-    const errors=[];
-    for(const runtime of PDF_SEARCH_RUNTIMES){
-      try{
-        // Keep the application module graph local/static. PDF.js is an explicitly
-        // pinned external runtime, loaded as module scripts under the site's CSP.
-        // CSS and the display layer start together to avoid serial first-open waits.
-        const stylesheetTask=ensureViewerStylesheet(runtime);
-        const pdfjsLib=await loadRuntimeScript(runtime.pdf,'pdfjsLib');
-        const viewerTask=loadRuntimeScript(runtime.viewer,'pdfjsViewer');
-        await stylesheetTask;
-        const pdfjsViewer=await viewerTask;
-        pdfjsLib.GlobalWorkerOptions.workerSrc=runtime.worker;
-        return {pdfjsLib,pdfjsViewer};
-      }catch(error){errors.push(error);stylesheetPromise=null}
-    }
-    throw new Error(`PDF.js runtime is unavailable (${errors.at(-1)?.message||'network error'}).`);
+    // Keep both imports literal and local: the repository module-graph contract can
+    // verify them statically, while the browser still downloads PDF.js lazily only
+    // when content-search opens a PDF preview.
+    const stylesheetTask=ensureViewerStylesheet();
+    const [pdfjsLib,pdfjsViewer]=await Promise.all([
+      import('../../../vendor/pdfjs/build/pdf.mjs'),
+      import('../../../vendor/pdfjs/web/pdf_viewer.mjs'),
+      stylesheetTask,
+    ]);
+    pdfjsLib.GlobalWorkerOptions.workerSrc=runtimeUrl(PDF_SEARCH_RUNTIME.worker);
+    return {pdfjsLib,pdfjsViewer};
   })().catch(error=>{runtimePromise=null;throw error});
   return runtimePromise;
 }
@@ -88,6 +63,18 @@ export function preloadPdfSearchRuntime(){return loadRuntime()}
 function normalizeMatchCount(value){
   const current=Math.max(0,Number(value?.current)||0),total=Math.max(0,Number(value?.total)||0);
   return {current:current<=total?current:0,total};
+}
+
+function documentRuntimeOptions(url){
+  return {
+    url,
+    cMapUrl:runtimeUrl(PDF_SEARCH_RUNTIME.cmaps),
+    cMapPacked:true,
+    iccUrl:runtimeUrl(PDF_SEARCH_RUNTIME.iccs),
+    standardFontDataUrl:runtimeUrl(PDF_SEARCH_RUNTIME.standardFonts),
+    wasmUrl:runtimeUrl(PDF_SEARCH_RUNTIME.wasm),
+    useWorkerFetch:true,
+  };
 }
 
 export async function createPdfSearchViewer({host,url,query,onMatchState,runtime=null}={}){
@@ -118,7 +105,7 @@ export async function createPdfSearchViewer({host,url,query,onMatchState,runtime
   if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
   eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
   try{
-    loadingTask=pdfjsLib.getDocument({url});
+    loadingTask=pdfjsLib.getDocument(documentRuntimeOptions(url));
     pdfDocument=await loadingTask.promise;
     if(destroyed){await pdfDocument.destroy?.();throw new Error('PDF preview was closed before loading finished.')}
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);

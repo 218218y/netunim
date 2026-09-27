@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,createPdfSearchViewer,PDF_SEARCH_RUNTIME,PDF_SEARCH_RUNTIMES} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,createPdfSearchViewer,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
@@ -10,14 +10,14 @@ class FakeEventBus{
 }
 
 function fakeRuntime(){
-  const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0};
+  const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0,documentOptions:null};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
   class PDFLinkService{constructor(){state.linkService=this}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
   class PDFFindController{constructor(options){this.options=options;state.findController=this}}
   class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
   const pdfDocument={destroy:async()=>{state.documentDestroyed=true}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{state.loadingDestroyed=true}};
-  return {state,runtime:{pdfjsLib:{AnnotationEditorType:{DISABLE:-1},getDocument:()=>loadingTask},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
+  return {state,runtime:{pdfjsLib:{AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
 
 function fakeHost(){
@@ -34,11 +34,18 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.equal(buildPdfFindRequest('needle',{type:'again'}).type,'again');
 });
 
-test('controlled PDF viewer uses PDFFindController and arrows dispatch real PDF navigation',async()=>{
+test('controlled PDF viewer uses PDFFindController, local support assets and real arrow navigation',async()=>{
   const {state,runtime}=fakeRuntime(),host=fakeHost(),updates=[];
   const controller=await createPdfSearchViewer({host,url:'blob:test',query:'needle',runtime,onMatchState:value=>updates.push(value)});
   assert.ok(state.findController,'find controller is created');
   assert.equal(state.setDocumentCalls,1,'PDF document is attached to the viewer');
+  assert.equal(state.documentOptions.url,'blob:test');
+  assert.equal(state.documentOptions.cMapPacked,true);
+  assert.equal(state.documentOptions.useWorkerFetch,true);
+  assert.match(state.documentOptions.cMapUrl,/assets\/vendor\/pdfjs\/cmaps\/$/);
+  assert.match(state.documentOptions.iccUrl,/assets\/vendor\/pdfjs\/iccs\/$/);
+  assert.match(state.documentOptions.standardFontDataUrl,/assets\/vendor\/pdfjs\/standard_fonts\/$/);
+  assert.match(state.documentOptions.wasmUrl,/assets\/vendor\/pdfjs\/wasm\/$/);
   state.eventBus.dispatch('pagesinit',{});
   assert.equal(state.scaleValues.at(-1),'page-width','initial page width fit is applied');
   assert.equal(state.updateCalls,1,'viewer is updated after initial fit');
@@ -64,18 +71,21 @@ test('controlled PDF viewer uses PDFFindController and arrows dispatch real PDF 
   assert.equal(state.documentDestroyed,true);
 });
 
-test('PDF.js runtime is pinned to an exact stable version and explicit worker/css assets',()=>{
+test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
   assert.equal(PDF_SEARCH_RUNTIME.version,'6.3.289');
-  assert.equal(PDF_SEARCH_RUNTIMES.length,2);
-  for(const runtime of PDF_SEARCH_RUNTIMES){for(const key of ['pdf','viewer','worker','css'])assert.match(runtime[key],/6\.3\.289/);assert.match(runtime.worker,/pdf\.worker\.min\.mjs$/)}
+  for(const key of ['pdf','viewer','worker','css','cmaps','iccs','standardFonts','wasm']){
+    assert.match(PDF_SEARCH_RUNTIME[key],/^\.\.\/\.\.\/\.\.\/vendor\/pdfjs\//);
+    assert.doesNotMatch(PDF_SEARCH_RUNTIME[key],/^https?:/);
+  }
+  assert.match(PDF_SEARCH_RUNTIME.worker,/pdf\.worker\.min\.mjs$/);
 });
 
 
-test('PDF runtime loading keeps the application module graph static',()=>{
+test('PDF runtime loading keeps the application module graph static and local',()=>{
   const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js',import.meta.url),'utf8');
-  assert.doesNotMatch(source,/\bimport\s*\(/,'deployable JS must not use dynamic import for the external PDF runtime');
-  assert.doesNotMatch(source,/globalThis\.pdfjsLib\s*=/,'the app must not publish compatibility globals itself');
-  assert.match(source,/script\.type='module'/);
-  assert.match(source,/loadRuntimeScript\(runtime\.pdf,'pdfjsLib'\)/);
-  assert.match(source,/loadRuntimeScript\(runtime\.viewer,'pdfjsViewer'\)/);
+  assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)/);
+  assert.match(source,/import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/);
+  assert.doesNotMatch(source,/cdnjs|jsdelivr|https:\/\//i);
+  assert.doesNotMatch(source,/script\.src|loadRuntimeScript/);
+  assert.match(source,/link\.rel='stylesheet'/,'PDF.js CSS is loaded as a native local stylesheet');
 });

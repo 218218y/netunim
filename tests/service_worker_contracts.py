@@ -125,6 +125,9 @@ for label, site in APPS.items():
     }
     required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets').rglob('*.js'))
     required.update('./'+p.relative_to(site).as_posix() for p in (site/'assets/js/shared').glob('*.css'))
+    vendor = site / 'assets/vendor'
+    if vendor.is_dir():
+        required.update('./'+p.relative_to(site).as_posix() for p in vendor.rglob('*') if p.is_file())
     ok(set(shell) == required and len(shell)==len(required), f"{label}: shell contains exactly the expected public app files")
     for item in shell:
         if item == "./":

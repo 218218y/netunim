@@ -1,4 +1,7 @@
-﻿עדכון נתונים ניהול הזמנות
+﻿התקנת Pdf
+npm run pdfjs:install
+
+עדכון נתונים ניהול הזמנות
 npm run deps:update
 npm run wrangler:update
 

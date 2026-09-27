@@ -20,7 +20,9 @@
     "offline:clean": "python tools/offline_deps.py clean",
     "test:offline": "python tools/offline_deps.py test",
     "test:chat": "python tools/offline_deps.py chat-test",
-    "lint:offline": "python tools/offline_deps.py lint"
+    "lint:offline": "python tools/offline_deps.py lint",
+    "pdfjs:install": "python tools/pdfjs-runtime.py install && python tools/sync-assets.py",
+    "pdfjs:check": "python tools/pdfjs-runtime.py check && python tools/sync-assets.py --check"
   },
   "devDependencies": {
     "acorn": "^8.18.0",

@@ -17,7 +17,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
-TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.webmanifest'}
+TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.txt', '.webmanifest'}
 
 
 def asset_hash_bytes(path: str | PurePosixPath, data: bytes | None = None) -> bytes:
@@ -55,6 +55,9 @@ class WorktreeSnapshot:
             site = root / f'netunim-{label}/site'
             paths.extend((site / 'assets').rglob('*.js'))
             paths.extend((site / 'assets/js/shared').glob('*.css'))
+            vendor = site / 'assets/vendor'
+            if vendor.is_dir():
+                paths.extend(path for path in vendor.rglob('*') if path.is_file())
             paths.extend(site / relative for relative in fixed)
         self.files = {path.relative_to(root).as_posix() for path in paths if path.is_file()}
 
@@ -124,7 +127,7 @@ def render_worker(label: str, snapshot: OverlaySnapshot, worker_path: str) -> by
     asset_prefix = f'{site}/assets/'
     assets = sorted(
         path for path in snapshot.files
-        if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css'))
+        if path.startswith(asset_prefix) and (path.lower().endswith('.js') or path.startswith(asset_prefix+'js/shared/') and path.lower().endswith('.css') or path.startswith(asset_prefix+'vendor/'))
     )
     shell = ['./', './index.html', './reset-local.html', './assets/app.css']
     shell += ['./' + PurePosixPath(path).relative_to(site).as_posix() for path in assets]
