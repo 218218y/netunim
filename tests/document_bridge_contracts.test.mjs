@@ -4,17 +4,17 @@ import fs from 'node:fs';
 
 const read=path=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
 
-test('orders site exposes file search first and content search second over loopback bridge',()=>{
+test('orders site exposes one unified search with site, file and content filters over loopback bridge',()=>{
   const html=read('netunim-orders/site/index.html');
   const main=read('netunim-orders/site/assets/js/main.js');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
   const headers=read('netunim-orders/site/_headers');
-  assert.match(html,/data-global-search-mode="documents"/);
-  assert.match(html,/חיפוש במחשב/);
-  assert.match(html,/globalSearchDocumentNameMode[\s\S]*חיפוש קבצים<\/button>[\s\S]*globalSearchDocumentContentMode[\s\S]*חיפוש תוכן<\/button>/);
-  assert.match(html,/globalSearchDocumentNameMode[^>]*class="document-search-mode active"[^>]*aria-selected="true"/);
+  assert.match(html,/global-search-head[\s\S]*global-search-input-wrap/);
+  assert.doesNotMatch(html,/globalSearchSiteMode|globalSearchDocumentsMode|globalSearchDocumentNameMode|globalSearchDocumentContentMode/);
+  assert.match(html,/globalSearchFilterAll[\s\S]*הכל<\/button>[\s\S]*globalSearchFilterSite[\s\S]*חיפוש באתר<\/button>[\s\S]*globalSearchFilterFiles[\s\S]*חיפוש קבצים<\/button>[\s\S]*globalSearchFilterContent[\s\S]*חיפוש תוכן<\/button>/);
+  assert.match(html,/globalSearchFilterAll[^>]*class="global-search-filter active"[^>]*aria-selected="true"/);
   assert.match(html,/globalSearchDocumentPreview/);
-  assert.match(html,/globalSearchPreviewOpen/);
+  assert.doesNotMatch(html,/globalSearchPreviewTitle|globalSearchPreviewMeta|globalSearchPreviewOpen|פתח במחשב/);
   assert.match(html,/globalSearchPreviewMatches/);
   assert.match(main,/createDomainsDocumentBridge/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
@@ -106,7 +106,9 @@ test('preview stays local and Office uses the native Windows IPreviewHandler lay
   assert.match(client,/nativePreview/);
   assert.match(client,/moveNativePreview/);
   assert.match(client,/hideNativePreview/);
-  assert.match(ui,/documentSearchMode='everything'/);
+  assert.match(ui,/filter='all'/);
+  assert.match(ui,/requestedDocumentModes/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
   assert.match(ui,/window\.devicePixelRatio/);
   assert.match(ui,/window\.addEventListener\('focus'/);
   assert.match(ui,/data.kind==='native'/);
@@ -137,14 +139,18 @@ test('PowerShell configurator remains code-page independent even though v4 no lo
   assert.equal([...bytes].some(byte=>byte>0x7f),false,'configure_document_bridge.ps1 must remain ASCII-only');
 });
 
-test('computer search UI keeps primary modes in the header and exposes a resizable preview split',()=>{
+test('unified search uses a full-screen header search, four result filters and a headerless resizable preview',()=>{
   const html=read('netunim-orders/site/index.html');
   const css=read('netunim-orders/site/assets/app.css');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
-  assert.match(html,/global-search-head[\s\S]*global-search-modebar/);
-  assert.match(html,/חיפוש במחשב/);
+  assert.match(html,/global-search-head[\s\S]*globalSearchInput/);
+  assert.match(html,/global-search-filterbar[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent/);
+  assert.doesNotMatch(html,/global-search-modebar|document-search-modebar|globalSearchPreviewOpen/);
   assert.match(html,/globalSearchDocumentSplitter/);
+  assert.match(css,/global-search-dialog\{width:100vw;height:100dvh/);
+  assert.match(css,/global-search-source-section\+\.global-search-source-section/);
+  assert.match(css,/global-search-workspace\.preview-active/);
   assert.match(css,/--document-preview-width:58%/);
   assert.match(css,/document-result-icon\.pdf/);
   assert.match(css,/document-result-icon\.word/);
@@ -152,7 +158,9 @@ test('computer search UI keeps primary modes in the header and exposes a resizab
   assert.match(css,/document-preview-matches/);
   assert.match(css,/document-preview-inline-match/);
   assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
-  assert.match(ui,/documentSearchMode='everything'/);
+  assert.match(ui,/filter='all'/);
+  assert.match(ui,/requestedDocumentModes/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
   assert.match(ui,/documentIconKind/);
   assert.match(ui,/setPointerCapture/);
 });
