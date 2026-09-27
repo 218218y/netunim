@@ -27,6 +27,8 @@ navigator=(ROOT/'netunim-orders/site/assets/js/domains/documents/document-search
 assert 'CSS.highlights' in navigator and 'new Highlight' in navigator
 worker=(ROOT/'netunim-orders/site/assets/js/domains/documents/spreadsheet-preview-worker.js').read_text(encoding='utf-8')
 assert "dense:true" in worker and 'MAX_MATCHES=5000' in worker and 'importScripts' in worker
+assert 'workbook.SheetNames.map' in worker and 'workbook.Sheets[name]' in worker and 'matches.push({sheet:index' in worker
+assert 'globalThis.XLSX.read' in worker and 'globalThis.XLSX.utils.decode_range' in worker
 
 def archive(files):
     output=io.BytesIO()
