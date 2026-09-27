@@ -30,6 +30,17 @@ assert "dense:true" in worker and 'MAX_MATCHES=5000' in worker and 'importScript
 assert 'workbook.SheetNames.map' in worker and 'workbook.Sheets[name]' in worker and 'matches.push({sheet:index' in worker
 assert 'globalThis.XLSX.read' in worker and 'globalThis.XLSX.utils.decode_range' in worker
 
+docx=(ROOT/'netunim-orders/site/assets/js/domains/documents/docx-search-viewer.js').read_text(encoding='utf-8')
+assert 'renderAsync(' not in docx and 'parseAsync(' in docx and 'renderDocument(' in docx
+assert "new Blob([css],{type:'text/css'})" in docx and "link.rel='stylesheet'" in docx and 'URL.revokeObjectURL' in docx
+pdf=(ROOT/'netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js').read_text(encoding='utf-8')
+assert 'blob?.arrayBuffer' in pdf and 'options.data=new Uint8Array' in pdf
+headers=(ROOT/'netunim-orders/site/_headers').read_text(encoding='utf-8')
+assert "style-src-elem 'self' blob:" in headers and "style-src-elem 'self' 'unsafe-inline'" not in headers
+connect=headers.split('connect-src ',1)[1].split(';',1)[0]
+assert 'blob:' not in connect
+assert 'createPdfSearchViewer({host:previewBody,blob,query' in ui
+
 def archive(files):
     output=io.BytesIO()
     with tarfile.open(fileobj=output,mode='w:gz') as tar:

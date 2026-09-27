@@ -67,9 +67,8 @@ function normalizeMatchCount(value){
   return {current:current<=total?current:0,total};
 }
 
-function documentRuntimeOptions(url){
-  return {
-    url,
+async function documentRuntimeOptions({url='',blob=null,data=null}={}){
+  const options={
     cMapUrl:runtimeUrl(PDF_SEARCH_RUNTIME.cmaps),
     cMapPacked:true,
     iccUrl:runtimeUrl(PDF_SEARCH_RUNTIME.iccs),
@@ -77,11 +76,15 @@ function documentRuntimeOptions(url){
     wasmUrl:runtimeUrl(PDF_SEARCH_RUNTIME.wasm),
     useWorkerFetch:true,
   };
+  if(data)options.data=data instanceof Uint8Array?data:new Uint8Array(data);
+  else if(blob?.arrayBuffer)options.data=new Uint8Array(await blob.arrayBuffer());
+  else options.url=url;
+  return options;
 }
 
-export async function createPdfSearchViewer({host,url,query,onMatchState,runtime=null}={}){
+export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,onMatchState,runtime=null}={}){
   if(!host)throw new Error('PDF preview host is missing.');
-  if(!url)throw new Error('PDF preview URL is missing.');
+  if(!url&&!blob&&!data)throw new Error('PDF preview source is missing.');
   const needle=String(query||'').trim();
   if(needle.length<2)throw new Error('PDF search query is too short.');
   const {pdfjsLib,pdfjsViewer}=runtime||await loadRuntime();
@@ -107,7 +110,7 @@ export async function createPdfSearchViewer({host,url,query,onMatchState,runtime
   if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
   eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
   try{
-    loadingTask=pdfjsLib.getDocument(documentRuntimeOptions(url));
+    loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
     pdfDocument=await loadingTask.promise;
     if(destroyed){await pdfDocument.destroy?.();throw new Error('PDF preview was closed before loading finished.')}
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);

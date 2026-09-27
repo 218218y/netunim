@@ -36,10 +36,13 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
 
 test('controlled PDF viewer uses PDFFindController, local support assets and real arrow navigation',async()=>{
   const {state,runtime}=fakeRuntime(),host=fakeHost(),updates=[];
-  const controller=await createPdfSearchViewer({host,url:'blob:test',query:'needle',runtime,onMatchState:value=>updates.push(value)});
+  const input=new Blob([new Uint8Array([37,80,68,70])],{type:'application/pdf'});
+  const controller=await createPdfSearchViewer({host,blob:input,query:'needle',runtime,onMatchState:value=>updates.push(value)});
   assert.ok(state.findController,'find controller is created');
   assert.equal(state.setDocumentCalls,1,'PDF document is attached to the viewer');
-  assert.equal(state.documentOptions.url,'blob:test');
+  assert.ok(state.documentOptions.data instanceof Uint8Array,'PDF bytes are passed directly to PDF.js');
+  assert.deepEqual([...state.documentOptions.data],[37,80,68,70]);
+  assert.equal('url' in state.documentOptions,false,'controlled PDF preview does not fetch its blob URL through connect-src');
   assert.equal(state.documentOptions.cMapPacked,true);
   assert.equal(state.documentOptions.useWorkerFetch,true);
   assert.match(state.documentOptions.cMapUrl,/assets\/vendor\/pdfjs\/cmaps\/$/);
