@@ -24,9 +24,9 @@
   },
   "devDependencies": {
     "acorn": "^8.18.0",
-    "eslint": "^10.9.1",
+    "eslint": "^10.11.0",
     "eslint-scope": "^9.1.2",
-    "globals": "^17.11.0"
+    "globals": "^17.12.0"
   },
   "engines": {
     "node": "^22.13.0 || >=24"

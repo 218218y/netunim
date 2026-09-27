@@ -55,12 +55,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Installing the pinned Camoufox adapter used by American Express...
-call npm install --no-save --package-lock=false --no-audit --no-fund camoufox-js@0.12.0 playwright-core@1.60.0 fingerprint-generator@2.1.86
+echo Installing the pinned browser runtimes used by DigitalV3 and American Express...
+set "PUPPETEER_SKIP_DOWNLOAD=true"
+call npm install --no-save --package-lock=false --no-audit --no-fund puppeteer-modern@npm:puppeteer@25.12.0 camoufox-js@0.12.0 playwright-core@1.60.0 fingerprint-generator@2.1.86
+set "PUPPETEER_SKIP_DOWNLOAD="
 if errorlevel 1 (
   popd
   rmdir /S /Q "%STAGING%" >nul 2>nul
-  echo ERROR: Camoufox Node runtime installation failed. The existing Bank Bridge was not changed.
+  echo ERROR: Browser runtime installation failed. The existing Bank Bridge was not changed.
   pause
   exit /b 1
 )
@@ -147,14 +149,14 @@ copy /Y "%~dp0rollback_bank_bridge.bat" "%APPROOT%\rollback_bank_bridge.bat" >nu
 
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=62)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
+node -e "fetch('http://127.0.0.1:8765/health',{cache:'no-store'}).then(r=>r.json()).then(j=>{if(j.service!=='netunim-kupa-bank-bridge'||!(Number(j.version)>=63)||Number(j.creditContractVersion)!==2)process.exit(2)}).catch(()=>process.exit(1))"
 if errorlevel 1 (
   node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
   if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
   if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
   if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
   if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
-  echo ERROR: Bank Bridge v60 did not start correctly. The previous runtime was restored when available.
+  echo ERROR: Bank Bridge v63 did not start correctly. The previous runtime was restored when available.
   echo See: %APPROOT%\bridge.log
   pause
   exit /b 1

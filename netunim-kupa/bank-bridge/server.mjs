@@ -51,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=62;
+const BRIDGE_VERSION=63;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
@@ -242,6 +242,17 @@ async function findInstalledBrowser(){
     try{const output=await runProcess('where.exe',[name]);const candidate=output.split(/\r?\n/).map(x=>x.trim()).find(Boolean);if(candidate)return rememberBrowser(candidate)}catch{}
   }
   throw Object.assign(new Error('לא נמצא Google Chrome או Microsoft Edge מותקן במחשב'),{code:'BROWSER_NOT_FOUND'});
+}
+async function doctorModernPuppeteer(browserPath){
+  const imported=await import('puppeteer-modern'),puppeteer=imported.default||imported;
+  if(typeof puppeteer?.launch!=='function')throw new Error('puppeteer-modern did not expose a compatible launch API');
+  let browser=null;
+  try{
+    browser=await puppeteer.launch({headless:true,executablePath:browserPath,args:['--no-first-run','--no-default-browser-check']});
+    const version=String(await browser.version()||'').trim();
+    if(!version)throw new Error('puppeteer-modern launched the browser but did not return a browser version');
+    return version;
+  }finally{if(browser)try{await browser.close()}catch{}}
 }
 
 function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b=Buffer.from(String(actual||''));return a.length===b.length&&a.length>0&&timingSafeEqual(a,b)}
@@ -777,6 +788,7 @@ if(args.has('--stop-existing')){try{await stopExistingBridge();process.exit(0)}c
 if(args.has('--doctor')){
   try{
     const browserPath=await findInstalledBrowser();
+    const digitalV3BrowserVersion=await doctorModernPuppeteer(browserPath);
     const pkg=await import('israeli-bank-scrapers');
     if(!pkg?.createScraper||!pkg?.CompanyTypes?.hapoalim||!pkg?.CompanyTypes?.visaCal||!pkg?.CompanyTypes?.max||!pkg?.CompanyTypes?.isracard||!pkg?.CompanyTypes?.amex)throw new Error('israeli-bank-scrapers did not expose required Hapoalim/Cal/Max/Isracard/Amex support');
     const probe=pkg.createScraper({companyId:pkg.CompanyTypes.hapoalim,startDate:new Date(),showBrowser:false,executablePath:browserPath});
@@ -784,6 +796,7 @@ if(args.has('--doctor')){
     if(typeof probe.initialize!=='function'||typeof probe.login!=='function'||typeof probe.terminate!=='function')throw new Error('Hapoalim scraper lifecycle API is incompatible');
     await doctorCamoufox();
     console.log(`Browser: ${browserPath}`);
+    console.log(`DigitalV3 Puppeteer: ${digitalV3BrowserVersion}`);
     console.log(`Camoufox: ${CAMOUFOX_INSTALL_DIR}`);
     console.log('Scraper: Hapoalim + Cal + Max + Isracard native/fallback + Amex Camoufox support, secure multi-profile credit sync, session-aware bank reads OK');
     process.exit(0);

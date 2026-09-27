@@ -196,7 +196,7 @@ async function monthTransactions(page,card,month,isNextBillingDate,processedDate
 export async function scrapeIsracardDigitalV3({credentials,browserPath,identityProbeUrl='',interactive=false,startDate,futureMonthsToScrape=1,excludedAccountNumbers=[],onDiagnostic=()=>{},now=()=>new Date(),puppeteerModule=null}={}){
   if(!credentials?.id||!credentials?.card6Digits||!credentials?.password)throw safeError('חסרים פרטי התחברות ל-ישראכרט.','CREDIT_CREDENTIALS',{stage:'Login'});
   let puppeteer=puppeteerModule;
-  if(!puppeteer){try{const imported=await import('puppeteer');puppeteer=imported.default||imported}catch{throw safeError('Puppeteer אינו מותקן ב-Bank Bridge. הרץ מחדש install_bank_bridge.bat.','CREDIT_BROWSER_RUNTIME_MISSING',{stage:'BrowserLaunch'})}}
+  if(!puppeteer){try{const imported=await import('puppeteer-modern');puppeteer=imported.default||imported}catch{throw safeError('Puppeteer אינו מותקן ב-Bank Bridge. הרץ מחדש install_bank_bridge.bat.','CREDIT_BROWSER_RUNTIME_MISSING',{stage:'BrowserLaunch'})}}
   let browser,page,success=false;
   try{
     browser=await puppeteer.launch({headless:!interactive,executablePath:browserPath,timeout:NAVIGATION_TIMEOUT_MS});

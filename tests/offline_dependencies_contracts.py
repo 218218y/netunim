@@ -181,7 +181,7 @@ for name, command in expected_scripts.items():
 ok(config.get('profile') == 'chat-linux-x64-glibc', 'offline deps: profile is explicitly scoped to the ChatGPT Linux environment')
 ok(config.get('platform') == {'system': 'Linux', 'machine': 'x86_64', 'libc': 'glibc'}, 'offline deps: native platform fails closed instead of pretending to be cross-platform')
 node = config.get('node', {})
-ok(node.get('version') == '24.18.0' and node.get('file') == 'node-v24.18.0-linux-x64.tar.xz', 'offline deps: repository-pinned Linux Node runtime is explicit')
+ok(node.get('version') == '24.21.0' and node.get('file') == 'node-v24.21.0-linux-x64.tar.xz', 'offline deps: repository-pinned Linux Node runtime is explicit')
 ok(len(node.get('sha256', '')) == 64 and node.get('url', '').startswith('https://nodejs.org/dist/'), 'offline deps: Node archive has an HTTPS source and pinned SHA256')
 
 py = config.get('python', [])
