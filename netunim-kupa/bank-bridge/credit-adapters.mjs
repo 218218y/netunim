@@ -253,15 +253,16 @@ function coverageError(profile,error,{month='',tier='',accountNumber='',at=new D
 
 export function applyVisaCalLoginNavigationPolicy(scraper){
   if(!scraper||typeof scraper.getLoginOptions!=='function')throw safeError('מחבר כאל המותקן אינו חושף את חוזה getLoginOptions שנדרש למדיניות הניווט המקומית.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
-  const getLoginOptions=scraper.getLoginOptions.bind(scraper);
+  const getLoginOptions=scraper.getLoginOptions.bind(scraper);scraper.__netunimLoginStep='navigation';
   scraper.getLoginOptions=credentials=>{
     const options=getLoginOptions(credentials);
     if(!options||typeof options!=='object'||Array.isArray(options))throw safeError('מחבר כאל המותקן החזיר חוזה LoginOptions לא תקין.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+    const wrapStep=(step,nextStep,action)=>typeof action==='function'?async(...args)=>{scraper.__netunimLoginStep=step;const result=await action(...args);if(nextStep)scraper.__netunimLoginStep=nextStep;return result}:action;
     // The Cal landing page is an SPA. Waiting for the full load event can hang on
     // non-essential resources even though the login UI is already usable. The upstream
     // login flow already has an explicit #ccLoginDesktopBtn readiness gate immediately
     // after navigation, so DOMContentLoaded is the correct document-level boundary here.
-    return {...options,waitUntil:'domcontentloaded'};
+    return {...options,waitUntil:'domcontentloaded',checkReadiness:wrapStep('landing-readiness','open-login-popup',options.checkReadiness),preAction:wrapStep('open-login-popup','credentials-submit',options.preAction),postAction:wrapStep('post-submit-navigation','result-detection',options.postAction)};
   };
   return scraper;
 }
@@ -279,7 +280,7 @@ export class VisaCalAdapter extends CreditProviderAdapter {
     const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:this.now()}),scraper=applyVisaCalLoginNavigationPolicy(this.createScraper({companyId:this.CompanyTypes.visaCal,startDate,futureMonthsToScrape:0,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:false}));let initialized=false,success=false;
     try{
       await scraper.initialize();initialized=true;this.event({stage:'BrowserInit'});
-      let loginResult,loginStarted=Date.now();try{loginResult=await scraper.login(profile.credentials)}catch(error){const failure=creditLoginThrownScrapeFailure(error,profile);this.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code});throw failure}
+      let loginResult,loginStarted=Date.now();try{loginResult=await scraper.login(profile.credentials)}catch(error){const loginStep=['navigation','landing-readiness','open-login-popup','credentials-submit','post-submit-navigation','result-detection'].includes(String(scraper.__netunimLoginStep||''))?String(scraper.__netunimLoginStep):'';const failure=creditLoginThrownScrapeFailure(error,profile);if(loginStep)failure.loginStep=loginStep;this.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code,loginStep});throw failure}
       if(!loginResult?.success)throw creditScrapeFailure(loginResult,profile);this.event({stage:'Login',durationMs:Date.now()-loginStarted});
       let cards;try{cards=await scraper.getCards()}catch{throw safeError('נתוני init ורשימת הכרטיסים של כאל לא נמצאו לאחר הכניסה.','CREDIT_SESSION_INIT_MISSING',{stage:'DashboardInit'})}
       if(!Array.isArray(cards)||!cards.length)throw safeError('כאל לא החזירה רשימת כרטיסים תקינה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'DashboardInit'});

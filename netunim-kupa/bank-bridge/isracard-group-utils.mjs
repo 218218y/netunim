@@ -67,12 +67,19 @@ export async function preserveInstalledChromiumIdentity(page,{probeUrl=''}={}){
   if(nativeHeadless)return {ok:true,userAgent:nativeUserAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent),identityMode:'native-headless'};
   const branded=brandedClientHints(product,[...brands,...fullVersionList]);
   if(!brands.length||!branded)return {ok:false,userAgent,product,clientHintsState:brands.length?'unbranded':'missing',browserMajorVersion:majorVersion(userAgent)};
-  const userAgentMetadata={brands,mobile:!!uaData.mobile,platform:String(uaData.platform||'')};
+  const hasOwn=(key)=>Object.prototype.hasOwnProperty.call(uaData,key),requiredMetadata=['architecture','model','platformVersion'];
+  if(requiredMetadata.some(key=>!hasOwn(key)))return {ok:false,userAgent,product,clientHintsState:'incomplete',browserMajorVersion:majorVersion(userAgent)};
+  // CDP treats architecture/mobile/model/platform/platformVersion as required
+  // UserAgentMetadata fields. Empty strings are valid native desktop values (model
+  // is normally empty); dropping them changes the protocol shape and causes
+  // Network.setUserAgentOverride to reject the otherwise-native metadata.
+  const userAgentMetadata={brands,mobile:!!uaData.mobile,platform:String(uaData.platform??''),platformVersion:String(uaData.platformVersion??''),architecture:String(uaData.architecture??''),model:String(uaData.model??'')};
   if(fullVersionList.length)userAgentMetadata.fullVersionList=fullVersionList;
-  for(const key of ['architecture','bitness','model','platformVersion']){const value=String(uaData?.[key]??'').trim();if(value)userAgentMetadata[key]=value}
+  if(hasOwn('bitness'))userAgentMetadata.bitness=String(uaData.bitness??'');
   if(typeof uaData?.wow64==='boolean')userAgentMetadata.wow64=uaData.wow64;
   const fullVersion=String(uaData?.uaFullVersion||'').trim();if(fullVersion)userAgentMetadata.fullVersion=fullVersion;
-  await page.setUserAgent({userAgent,userAgentMetadata,platform:String(native?.navigatorPlatform||'')||undefined});
+  try{await page.setUserAgent({userAgent,userAgentMetadata,platform:String(native?.navigatorPlatform||'')||undefined})}
+  catch{return {ok:false,userAgent,product,clientHintsState:'override-failed',browserMajorVersion:majorVersion(userAgent)}}
   return {ok:true,userAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent)};
 }
 

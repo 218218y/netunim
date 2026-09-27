@@ -5,7 +5,7 @@ import {filterExcludedGroupCards,preserveInstalledChromiumIdentity,unsettledAppr
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Isracard can use the current DigitalV3 flow.
 
-export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-2026-09-netunim-v46';
+export const ISRACARD_DIGITAL_V3_SCHEMA_VERSION='isracard-digitalv3-2026-09-netunim-v47';
 export const ISRACARD_LOGIN_BASE_URL='https://digital.isracard.co.il';
 export const ISRACARD_WEB_BASE_URL='https://web.isracard.co.il';
 export const ISRACARD_LOGIN_COMPANY_CODE='11';

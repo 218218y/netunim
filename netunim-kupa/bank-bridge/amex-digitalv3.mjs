@@ -5,7 +5,7 @@ import {filterExcludedGroupCards,preserveInstalledChromiumIdentity,unsettledAppr
 // Netunim keeps this adapter local until that upstream PR is released, so the installed
 // bridge stays on a published dependency while Amex can use the current DigitalV3 flow.
 
-export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-2026-09-netunim-v45';
+export const AMEX_DIGITAL_V3_SCHEMA_VERSION='amex-digitalv3-2026-09-netunim-v46';
 export const AMEX_LOGIN_BASE_URL='https://he.americanexpress.co.il';
 export const AMEX_WEB_BASE_URL='https://web.americanexpress.co.il';
 export const AMEX_LOGIN_COMPANY_CODE='77';

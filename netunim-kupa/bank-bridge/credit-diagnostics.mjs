@@ -30,7 +30,7 @@ export function safeCreditResponseShape(value){
 export function responseShapeFingerprint(value={}){const shape=sanitizeStoredResponseShape(value),{statusCode:_,...structural}=shape;return createHash('sha256').update(JSON.stringify(structural)).digest('hex').slice(0,24)}
 
 export function diagnosticFingerprint(value={}){
-  const stable=[value.provider,value.browserEngine,value.stage,value.month,value.errorClass||value.code,value.httpStatus,value.providerStatus,value.providerReturnCode].map(item=>text(item,80)).join('|');
+  const parts=[value.provider,value.browserEngine,value.stage,value.month,value.errorClass||value.code,value.httpStatus,value.providerStatus,value.providerReturnCode].map(item=>text(item,80));if(value.loginStep)parts.push(text(value.loginStep,40));const stable=parts.join('|');
   return createHash('sha256').update(stable).digest('hex').slice(0,16);
 }
 
@@ -40,10 +40,10 @@ export function sanitizeCreditDiagnosticEvent(value={}){
     timestamp:iso(value.timestamp),correlationId:text(value.correlationId,80),provider:text(value.provider,30),profileId:text(value.profileId,80),
     bridgeVersion:Math.max(0,Math.trunc(Number(value.bridgeVersion)||0)),contractVersion:Math.max(0,Math.trunc(Number(value.contractVersion)||0)),connectorVersion:text(value.connectorVersion,80),browserEngine:text(value.browserEngine,40),
     syncMode:['quick','forecast','recovery'].includes(String(value.syncMode||''))?String(value.syncMode):'',browserMode:['headless','headed'].includes(String(value.browserMode||''))?String(value.browserMode):'',browserProduct:['chrome','edge','camoufox'].includes(String(value.browserProduct||''))?String(value.browserProduct):'',
-    clientHintsState:['preserved','missing','unbranded'].includes(String(value.clientHintsState||''))?String(value.clientHintsState):'',browserMajorVersion:Math.max(0,Math.min(999,Math.trunc(Number(value.browserMajorVersion)||0))),
+    clientHintsState:['preserved','missing','unbranded','incomplete','override-failed','unavailable'].includes(String(value.clientHintsState||''))?String(value.clientHintsState):'',browserMajorVersion:Math.max(0,Math.min(999,Math.trunc(Number(value.browserMajorVersion)||0))),
     stage:text(value.stage,80),accountSuffix:suffix(value.accountSuffix||value.accountNumber),month:safeMonth(value.month),durationMs:Math.max(0,Math.trunc(Number(value.durationMs)||0)),
     errorClass:text(value.errorClass||value.code,80),httpStatus:Math.max(0,Math.trunc(Number(value.httpStatus)||0)),retryAfterAt:value.retryAfterAt?iso(value.retryAfterAt):null,
-    providerStatus:text(value.providerStatus,24),providerReturnCode:text(value.providerReturnCode,24),
+    providerStatus:text(value.providerStatus,24),providerReturnCode:text(value.providerReturnCode,24),loginStep:['navigation','landing-readiness','open-login-popup','credentials-submit','post-submit-navigation','result-detection'].includes(String(value.loginStep||''))?String(value.loginStep):'',
     startupFailureReason:['timeout','profile_lock','process_exit','binary_startup','unknown'].includes(String(value.startupFailureReason||''))?String(value.startupFailureReason):'',
     identityState:['new','legacy_unverified','verified'].includes(String(value.identityState||''))?String(value.identityState):'',
     profileRecovery:['none','fresh_profile','identity_rotated','legacy_profile_reset'].includes(String(value.profileRecovery||''))?String(value.profileRecovery):'',
