@@ -1,102 +1,129 @@
-ניהול הזמנות — חיפוש ופתיחת Google Drive באנדרואיד
-===================================================
+ניהול הזמנות — חיפוש ותצוגה מקדימה ישירה דרך Google Drive
+============================================================
 
 מטרת השינוי
 -----------
-ב-Windows החיפוש נשאר במסלול המקומי הקיים: האתר פונה ל-Document Bridge ב-127.0.0.1:8766 וה-Bridge מחפש דרך Everything וממשיך להשתמש בכל מנגנוני ה-Preview המקומיים הקיימים.
-ב-Android אין Document Bridge מקומי ולכן האתר בוחר אוטומטית מקור מסמכים שני: Google Drive API.
+ב-Windows האתר ממשיך להעדיף את המסלול המקומי הקיים: Document Bridge ב-127.0.0.1:8766 + Everything + מנגנוני ה-Preview המקומיים.
+ב-Android אין Bridge מקומי ולכן Google Drive הוא מקור המסמכים הראשי.
+ב-Windows נוסף failover: אם Document Bridge/Everything אינם זמינים, אינם משויכים, אינם רצים או אינם תואמים לגרסה, האתר עובר אוטומטית ל-Google Drive ומציג הודעה קטנה שמסבירה שהחיבור נעשה דרך Drive כי הגישה המקומית אינה זמינה.
 
-מה עובד באנדרואיד
+מה עובד דרך Drive
 -----------------
-- "חיפוש קבצים" משתמש ב-name contains של Google Drive.
-- "חיפוש תוכן" משתמש ב-fullText contains של Google Drive ומחזיר קבצים בלבד.
-- קבצים אחרונים מסודרים לפי modifiedTime.
-- לחיצה על תוצאה מציגה את פרטי הקובץ/התיקייה ובצד התצוגה מופיע כפתור מפורש "פתח ... ב-Google Drive" שמתאים למסך מגע.
-- הכפתור פותח את webViewLink הרשמי שמחזיר Google Drive, בחלון/טאב חדש. זהו הקישור הרשמי לפתיחת הקובץ במציג או בעורך המתאים של Google.
-- לחיצה כפולה/Enter נשארות אפשרויות פתיחה נוספות, אך אינן נדרשות באנדרואיד.
+- חיפוש שמות: name contains של Google Drive.
+- חיפוש תוכן: fullText contains של Google Drive.
+- קבצים אחרונים לפי modifiedTime.
+- תצוגה מקדימה ישירות בתוך האתר, בלי לפתוח Google Drive, עבור סוגים נתמכים:
+  * PDF דרך PDF.js המקומי של האתר.
+  * תמונות נתמכות.
+  * DOCX/DOCM/DOTX/DOTM דרך docx-preview המקומי.
+  * XLS/XLSX/XLSM/XLSB/XLT/XLT(X/M) דרך מציג הגיליונות המקומי.
+  * קבצי טקסט/JSON/XML וסיומות טקסט מוכרות.
+  * Google Docs / Google Slides / Google Drawings מיוצאים ל-PDF לצורך Preview.
+  * Google Sheets מיוצא ל-XLSX לצורך Preview.
+- אם הסוג אינו נתמך, אם הבעלים חסם הורדה/ייצוא, אם הקובץ גדול מדי, או אם Google אינה יכולה לייצא אותו — האתר מציג הסבר וכפתור פתיחה רשמי ב-Google Drive.
+- לחיצה כפולה/Enter עדיין פותחות את webViewLink הרשמי של Google.
 
-למה אין Preview מלא של תוכן הקובץ בתוך האתר באנדרואיד
------------------------------------------------------
-החיבור מבקש רק:
+למה נדרש שינוי הרשאה
+--------------------
+הגרסה הקודמת ביקשה:
 https://www.googleapis.com/auth/drive.metadata.readonly
 
-Google מגדירה scope זה כהרשאת מטא-דאטה בלבד, והוא אוסר על האפליקציה להוריד את תוכן הקבצים. לכן האתר אינו מוריד PDF/Word/Excel מה-Drive ואינו מנסה להציג אותם בתוך iframe לא-מתועד.
-במקום זאת, לאחר החיפוש נפתחת התצוגה/העורך הרשמי של Google Drive דרך webViewLink. כך יש גישה אמיתית לצפייה ופתיחה בקובץ, בלי לתת לאתר הרשאת הורדה לכל ה-Drive.
+Scope זה מאפשר חיפוש/מטא-דאטה אך אינו מאפשר להוריד את תוכן הקובץ, ולכן לא ניתן לבנות Preview אמיתי בתוך האתר.
+הגרסה הזו מבקשת במקום זאת:
+https://www.googleapis.com/auth/drive.readonly
 
-אם בעתיד יידרש Preview מלא בתוך האתר עצמו, זה שינוי הרשאות מהותי שידרוש drive.readonly (או מנגנון בחירה מצומצם אחר) ובדיקת אבטחה/אימות OAuth מחדש. אין צורך בכך כדי לחפש ולפתוח קבצים ב-Drive.
+האתר משתמש בהרשאה לקריאה בלבד:
+- קבצים רגילים יורדים ישירות מה-Drive API באמצעות files.get + alt=media.
+- מסמכי Google Workspace מיוצאים דרך files.export לפורמט שהמציג המקומי יודע לקרוא.
+- Refresh Token נשמר רק בצד Supabase.
+- Access Token קצר-חיים מוחזק בזיכרון הדפדפן בלבד.
+- תוכן הקבצים עובר ישירות מ-Google לדפדפן; Edge Function אינה מעבירה את תוכן המסמך.
 
-הרשאה ואבטחה
--------------
-Access Token קצר-חיים מוחזק בזיכרון הדפדפן בלבד.
-Refresh Token נשמר רק בטבלת Supabase שנחסמה ל-anon/authenticated ונקרא רק על-ידי Edge Function עם service_role.
-Client Secret נשאר ב-Supabase Secrets בלבד.
-ה-Edge Function משתמש באותם שמות מפתחות חדשים כמו פונקציית Calendar הקיימת: SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS, עם fallback למפתחות legacy של Supabase.
+חשוב: drive.readonly מסווג על-ידי Google כ-Restricted Scope. באפליקציית External/Production יש לוודא שה-OAuth consent/verification של הפרויקט מאושר בהתאם לדרישות Google.
 
-הכנה חד-פעמית ב-Google Cloud
------------------------------
-1. באותו Google Cloud Project שבו מוגדר ה-OAuth Web Client הקיים, הפעל Google Drive API.
-2. ב-Google Auth Platform > Data Access הוסף:
-   https://www.googleapis.com/auth/drive.metadata.readonly
-3. פתח את OAuth Client ID מסוג Web application שמספרו:
-   113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com
-4. תחת Authorized redirect URIs הוסף בדיוק:
+שדרוג חיבור קיים
+----------------
+אם Google Drive כבר חובר בגרסה הקודמת, ה-Refresh Token הקיים כולל רק metadata.readonly ואינו יכול לקבל אוטומטית הרשאת תוכן חדשה.
+לא מוחקים ידנית את הטבלה ולא משנים SQL.
+לאחר פריסת ה-Edge Function החדשה האתר יזהה את ה-scope הישן ויבקש חיבור מחדש.
+לחץ "חבר Google Drive" ואשר מחדש את ההרשאה. החיבור החדש יחליף בצורה מבוקרת את ה-Refresh Token הישן.
+
+הכנה ב-Google Cloud
+-------------------
+1. ודא ש-Google Drive API פעיל באותו Google Cloud Project.
+2. ב-Google Auth Platform > Data Access הוסף/אשר:
+   https://www.googleapis.com/auth/drive.readonly
+3. אפשר להשאיר metadata.readonly ברשימת ה-scopes המוגדרים בפרויקט, אבל הקוד עצמו מבקש drive.readonly בלבד.
+4. ב-OAuth Web Client ודא ש-Authorized redirect URI כולל בדיוק:
    https://bupoidcurcxuypfrjqio.supabase.co/functions/v1/google-drive-oauth/callback
 5. שמור.
 
-חשוב: drive.metadata.readonly מסווג על-ידי Google כ-Restricted Scope. באפליקציית External Production ייתכן שתידרש השלמת OAuth verification והדרישות של Google ל-Restricted Scopes.
+הכנה ב-Supabase
+---------------
+אין migration SQL חדש לשינוי ה-Preview. הטבלה הקיימת google_drive_connections כבר מכילה את עמודת scope הדרושה לזיהוי חיבור ישן.
 
-הכנה חד-פעמית ב-Supabase
--------------------------
-1. פרוס את migration:
-   supabase/migrations/20260927121000_google_drive_oauth_search.sql
+כן צריך לפרוס מחדש את Edge Function:
+  netunim-orders/supabase/functions/google-drive-oauth/index.ts
 
-   עותק התקנה ייעודי נמצא גם ב:
-   netunim-orders/supabase/google_drive_oauth.sql
+שם הפונקציה:
+  google-drive-oauth
 
-   נוצרת תשתית OAuth ייעודית בלבד:
-   - google_drive_connections
-   - google_drive_oauth_states
+אם Google Drive משתמש באותו OAuth Client של Calendar, אפשר להמשיך להשתמש ב-GOOGLE_CALENDAR_CLIENT_SECRET.
+לחלופין אפשר להגדיר GOOGLE_DRIVE_CLIENT_SECRET ייעודי.
 
-2. פרוס את Edge Function:
-   netunim-orders/supabase/functions/google-drive-oauth/index.ts
+סדר פריסה מומלץ
+---------------
+1. הרץ את verification של הפרויקט.
+2. ב-Google Cloud ודא ש-drive.readonly נוסף ל-Data Access.
+3. פרוס מחדש את Edge Function google-drive-oauth, כדי שכל חיבור/חיבור-מחדש חדש יקבל מיד את ה-scope הנכון.
+4. פרוס את האתר המעודכן מיד לאחר מכן.
+5. אין צורך ב-db push נוסף רק בגלל השינוי הזה, אם migration 20260927121000_google_drive_oauth_search.sql כבר נפרס.
+6. פתח את האתר, התחבר לענן, ופתח את החיפוש הכללי.
+7. אם מופיעה בקשת חיבור מחדש ל-Drive — אשר אותה פעם אחת.
 
-   שם הפונקציה:
-   google-drive-oauth
+התנהגות Windows / Failover
+--------------------------
+ב-Windows המקור המועדף נשאר Everything.
+המעבר ל-Drive מתבצע רק כאשר הגישה המקומית אינה שימושית, למשל:
+- Document Bridge אינו משויך לדפדפן.
+- Document Bridge אינו נגיש.
+- מפתח Bridge אינו תקין.
+- Everything אינו מותקן/אינו רץ/אינו נגיש ל-Bridge.
+- Bridge דורש שדרוג לגרסה התואמת לקוד האתר.
 
-   callback מגיע ישירות מ-Google ולכן verify_jwt=false מוגדר ב-supabase/config.toml. פעולות start/token/disconnect עצמן עדיין מאמתות Supabase User JWT בתוך הקוד.
+במצב fallback:
+- תופיע הודעה קטנה: "מחובר דרך Google Drive כי הגישה המקומית אינה זמינה."
+- התוצאות מסומנות פנימית לפי המקור כדי ש-Preview/פתיחה תמיד יישלחו לספק הנכון.
+- במסך חיבור Drive ב-Windows נשארת גם אפשרות להזין מחדש מפתח Document Bridge ולחזור למסלול המקומי.
+- אם החיבור המקומי חוזר לעבוד, הוא חוזר להיות המקור המועדף בפעולה הבאה שמצליחה דרכו.
 
-3. Client Secret:
-   אם Google Drive משתמש באותו OAuth Client שכבר משמש את Google Calendar, הקוד יכול להשתמש ב-GOOGLE_CALENDAR_CLIENT_SECRET הקיים.
-   אם רוצים Secret ייעודי, אפשר להגדיר:
-   GOOGLE_DRIVE_CLIENT_SECRET
-
-חיבור ראשון באנדרואיד
----------------------
-1. התחבר באתר למשתמש Supabase הרגיל.
-2. פתח את החיפוש הכללי דרך כפתור החיפוש.
-3. במסנן קבצים/תוכן יופיע "חבר Google Drive" אם עדיין אין חיבור.
-4. לחץ עליו, אשר את הרשאת Google, וחזור לאתר.
-5. חפש קובץ. לחץ פעם אחת על התוצאה.
-6. באזור הפרטים לחץ על "פתח את הקובץ ב-Google Drive" או "פתח את התיקייה ב-Google Drive".
-
-מגבלות חיפוש Drive
-------------------
-Google Drive אינו Everything ולכן אין התאמה מלאה:
-- name contains מבצע התאמה לפי כללי Drive ולא לפי תחביר Everything.
-- fullText contains עובד על tokens/phrases ש-Google אינדקסה. הוא עשוי להתאים לשם, תיאור, indexableText, מטא-דאטה ותוכן מאונדקס.
-- קובץ שלא עבר אינדוקס תוכן אצל Google לא יימצא לפי תוכן.
-- פתיחת הקובץ מתבצעת דרך webViewLink הרשמי של Drive/Docs; התוכן עצמו אינו מורד על-ידי האתר.
+מגבלות Preview
+---------------
+- קבצים רגילים מעל 64MB אינם נטענים ל-Preview כדי לא להעמיס על זיכרון הדפדפן; עדיין אפשר לפתוח אותם ב-Drive.
+- קבצי טקסט ל-Preview מוגבלים ל-4MB.
+- Google מגבילה files.export של מסמכי Google Workspace ל-10MB. אם הייצוא גדול יותר, Google תחזיר שגיאה והמשתמש יוכל לפתוח את המסמך ב-Drive.
+- קבצים שהבעלים/מנהל חסם עבורם download/export לא יוצגו בתוך האתר.
+- סוגי קבצים שאין עבורם מציג בטוח ומקומי נשארים עם כפתור "פתח ב-Google Drive".
+- Google Drive אינו Everything: fullText מבוסס על האינדקס של Google ולכן תוצאות חיפוש תוכן אינן בהכרח זהות לחיפוש המקומי.
 
 בדיקה לאחר פריסה
 ----------------
-ב-Windows:
-- ודא שחיפוש קבצים ותוכן עדיין מציג Everything.
-- ודא שהתצוגה המקדימה המקומית החדשה (PDF/Office/טקסט/Native Preview) ממשיכה לעבוד ללא שינוי.
+Android:
+1. חפש PDF ובחר תוצאה — ה-PDF צריך להופיע בתוך אזור ה-Preview באתר.
+2. בחיפוש תוכן PDF בדוק שהחיצים עוברים בין ההתאמות דרך PDF.js.
+3. חפש DOCX — המסמך צריך להופיע בתוך האתר.
+4. חפש XLSX — הגיליון צריך להופיע בתוך האתר.
+5. חפש Google Doc — הוא צריך להופיע כ-PDF מיוצא בתוך האתר.
+6. חפש Google Sheet — הוא צריך להופיע כ-XLSX בתוך מציג הגיליונות.
+7. בדוק קובץ לא נתמך — צריך להופיע הסבר + כפתור פתיחה ב-Drive.
 
-ב-Android:
-- התחבר פעם אחת ל-Google Drive.
-- חפש שם של קובץ קיים במסנן "חיפוש קבצים".
-- חפש מילה ידועה מתוך מסמך שכבר מאונדקס ב-Google Drive במסנן "חיפוש תוכן".
-- לחץ פעם אחת על התוצאה וודא שמופיע כפתור פתיחה.
-- לחץ על הכפתור וודא שהקובץ נפתח ב-Google Drive/Docs ושאפשר לצפות בו.
-- חזור לאתר וודא שהחיפוש נשאר זמין.
+Windows עם Bridge תקין:
+1. ודא שהכותרת/מקור נשארים Everything.
+2. ודא ש-Windows Preview וכל המציגים המקומיים ממשיכים לעבוד ללא שינוי.
+
+Windows ללא Bridge/Everything:
+1. עצור את Bridge או בדוק במחשב ללא Bridge.
+2. החיפוש צריך לעבור ל-Google Drive ולא להיתקע.
+3. צריכה להופיע הודעת fallback קטנה.
+4. Preview דרך Drive צריך לעבוד כמו באנדרואיד.
+5. אם מזינים מפתח Bridge תקין מחדש, המסלול המקומי צריך לחזור להיות המועדף.

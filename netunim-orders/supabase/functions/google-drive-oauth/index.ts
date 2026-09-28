@@ -1,7 +1,8 @@
 import {createClient} from 'npm:@supabase/supabase-js@2.112.4';
 
 const CLIENT_ID='113139579639-jo09d2gts6kujig6rcaeid3bu40ojjqm.apps.googleusercontent.com';
-const SCOPES='https://www.googleapis.com/auth/drive.metadata.readonly';
+const SCOPES='https://www.googleapis.com/auth/drive.readonly';
+const REQUIRED_SCOPE='https://www.googleapis.com/auth/drive.readonly';
 const GOOGLE_AUTH_URL='https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL='https://oauth2.googleapis.com/token';
 const GOOGLE_REVOKE_URL='https://oauth2.googleapis.com/revoke';
@@ -68,16 +69,19 @@ async function start(req:Request,userId:string,body:any){
   return json({authorize_url:url.toString()});
 }
 
+function hasRequiredScope(value:unknown){return String(value||'').split(/\s+/).filter(Boolean).includes(REQUIRED_SCOPE)}
+
 async function token(userId:string){
   if(!GOOGLE_CLIENT_SECRET)return json({code:'google_drive_backend_not_configured',message:'Google Drive OAuth secret חסר ב-Supabase Edge Function'},503);
-  const {data:connection,error}=await admin.from('google_drive_connections').select('google_account_id,refresh_token').eq('owner_id',userId).maybeSingle();
+  const {data:connection,error}=await admin.from('google_drive_connections').select('google_account_id,refresh_token,scope').eq('owner_id',userId).maybeSingle();
   if(error)return adminError(error,'google_drive_connection_read_failed');
   if(!connection?.refresh_token)return json({code:'google_drive_not_connected'},404);
+  if(!hasRequiredScope(connection.scope))return json({code:'google_drive_reconnect_required',reason:'scope_upgrade_required'},409);
   try{
     const refreshed=await googleToken({client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,refresh_token:String(connection.refresh_token),grant_type:'refresh_token'});
     const rotated=String(refreshed?.refresh_token||'').trim();
     if(rotated&&rotated!==connection.refresh_token)await admin.from('google_drive_connections').update({refresh_token:rotated,updated_at:new Date().toISOString()}).eq('owner_id',userId);
-    return json({access_token:String(refreshed.access_token||''),expires_in:Number(refreshed.expires_in||3600),account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||SCOPES)});
+    return json({access_token:String(refreshed.access_token||''),expires_in:Number(refreshed.expires_in||3600),account_id:String(connection.google_account_id||''),scope:String(refreshed.scope||connection.scope||SCOPES)});
   }catch(error){
     const code=String((error as Error&{code?:string})?.code||'');
     if(code==='invalid_grant'){
@@ -114,12 +118,13 @@ async function callback(url:URL){
   if(!GOOGLE_CLIENT_SECRET)return Response.redirect(appendOAuthResult(returnUrl,'error','backend_not_configured'),303);
   try{
     const exchanged=await googleToken({code,client_id:CLIENT_ID,client_secret:GOOGLE_CLIENT_SECRET,redirect_uri:REDIRECT_URI,grant_type:'authorization_code'});
-    const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim();
+    const refreshToken=String(exchanged?.refresh_token||'').trim(),accessToken=String(exchanged?.access_token||'').trim(),grantedScope=String(exchanged?.scope||SCOPES);
     if(!refreshToken||!accessToken)throw new Error('Google did not return the required offline credentials');
+    if(!hasRequiredScope(grantedScope))throw new Error('Google did not grant the required Drive read-only scope');
     const accountId=await googleAccountId(accessToken);
     const {data:previous,error:previousError}=await admin.from('google_drive_connections').select('refresh_token').eq('owner_id',stateRow.owner_id).maybeSingle();
     if(previousError)return adminError(previousError,'google_drive_connection_read_failed');
-    const {error:upsertError}=await admin.from('google_drive_connections').upsert({owner_id:stateRow.owner_id,google_account_id:accountId,refresh_token:refreshToken,scope:String(exchanged?.scope||SCOPES),updated_at:new Date().toISOString()},{onConflict:'owner_id'});
+    const {error:upsertError}=await admin.from('google_drive_connections').upsert({owner_id:stateRow.owner_id,google_account_id:accountId,refresh_token:refreshToken,scope:grantedScope,updated_at:new Date().toISOString()},{onConflict:'owner_id'});
     if(upsertError){if(dataApiUnavailable(upsertError))return json({code:'google_drive_data_api_unavailable',message:'Drive OAuth storage is temporarily unavailable'},503);throw new Error(upsertError.message)}
     if(previous?.refresh_token&&previous.refresh_token!==refreshToken)await revokeGoogleToken(String(previous.refresh_token));
     return Response.redirect(appendOAuthResult(returnUrl,'connected'),303);
