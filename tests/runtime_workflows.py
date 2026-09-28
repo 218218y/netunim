@@ -160,7 +160,8 @@ for label,flow in flows.items():
                 time.sleep(0.05)
             assert safety_backups, 'restore safety backup was not captured in the isolated test download directory'
             assert all(path.parent==isolated_download_dir for path in safety_backups)
-        assert not browser.drain_serious_errors()
+        errors=browser.drain_serious_errors()
+        assert not errors, errors
     if isolated_download_dir is not None:
         assert not isolated_download_dir.exists(), 'browser test download directory was not cleaned after the session'
 

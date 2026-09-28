@@ -131,8 +131,10 @@ for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.j
 for label, path in (("Orders checks", ORDERS / "site/assets/js/sync/checks.js"),
                     ("Kupa checks", KUPA / "site/assets/js/sync/checks.js")):
     source = path.read_text(encoding="utf-8")
-    ok("createOutboxRetryScheduler" in source and "outboxRetryScheduler.schedule(pending" in source,
-       f"{label}: Shared Checks recovery is gated before backend access")
+    ok("sharedChecksV2.sync()" in source and "sharedChecksV2.cloudState()" in source
+       and "flight.pull" in source and "flight.save" in source
+       and "createOutboxRetryScheduler" not in source,
+       f"{label}: Shared V2 journal owns retry and the UI serializes pull/save")
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
 orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")

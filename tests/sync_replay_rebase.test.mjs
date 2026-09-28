@@ -14,7 +14,7 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:t
 globalThis.localStorage={setItem:noop,getItem:()=>null};
 const o=ordersNormalization({}),k=kupaNormalization({model:{}});
 
-for(const domain of ['orders','kupa','orders-checks','kupa-checks'])for(const same of [true,false])for(const duringClear of [false,true])test(`${domain}: lost ACK, newer generation, intervening ${same?'same':'different'} entity${duringClear?' during ACK cleanup':''}`,async()=>{
+for(const domain of ['orders','kupa'])for(const same of [true,false])for(const duringClear of [false,true])test(`${domain}: lost ACK, newer generation, intervening ${same?'same':'different'} entity${duringClear?' during ACK cleanup':''}`,async()=>{
  navigator.onLine=true;
  const checks=domain.endsWith('checks'),isOrders=domain.startsWith('orders'),normalizer=isOrders?o:k;
  const prepare=checks?clone:isOrders?o.normalizeState:k.prepareKupaCloudState;
@@ -51,12 +51,6 @@ for(const domain of ['orders','kupa','orders-checks','kupa-checks'])for(const sa
 });
 
 for(const field of ['businessName','inventoryCategoryOrder','importAudit','stage2Audit'])test(`orders strict scalar ${field}`,()=>{const values=field==='businessName'?['A','B','C']:field==='inventoryCategoryOrder'?[['A'],['B'],['C']]:[{value:'A'},{value:'B'},{value:'C'}];const result=ordersMerge({normalizeState:clone}).merge3({[field]:values[0]},{[field]:values[1]},{[field]:values[2]});assert.ok(result.conflicts.includes(field))});
-// Conflicts are durable decisions, even when a later remote head happens to match local.
-for(const app of ['orders','kupa'])test(`${app} Shared Checks restart keeps durable conflict blocked`,async()=>{
- let requests=0;const record={generation:2,baseRevision:10,baseState:[],snapshot:[],conflict:{kind:'entity-conflict',items:[{entityId:'X'}]}},session={backendReady:true,connectionMode:'supabase'},checksSession={};
- const deps=new Proxy({model:{state:{checks:[]}},session,checksSession,tab:{primaryTab:true},loadSession:()=>true,getChecksPending:async()=>record,getSharedChecksPending:async()=>record,readSharedChecksCloud:async()=>{requests++},readSharedChecksDocument:async()=>{requests++}},{get:(t,k)=>k in t?t[k]:noop});
- const api=(app==='orders'?ordersChecks:kupaChecks)(deps);assert.equal(await api.saveSharedChecksToCloud(''),false);assert.equal(await api.syncSharedChecksFromCloud(),false);assert.equal(requests,0);
-});
 test('Orders restart never clears an unresolved durable conflict',async()=>{
  const state=o.normalizeState({notes:[{id:'X',content:'local'}]}),record={generation:2,baseState:state,snapshot:state,conflict:{kind:'entity-conflict',items:[{entityId:'X'}]}},session={cloudRevision:10},model={state};let stages=0;
  const deps=new Proxy({session,model,getCloudPending:async()=>record,normalizeState:o.normalizeState,markCloudPending:()=>{stages++},merge3:ordersMerge(o).merge3},{get:(t,k)=>k in t?t[k]:noop});

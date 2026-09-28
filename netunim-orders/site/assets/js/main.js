@@ -588,7 +588,7 @@ const syncMerge=createSyncMerge({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
-const syncChecks=composeChecksSync({model,files,checksSession,tab,storageBrowser,storageChecks,uiStatus,domainsBankCache,syncChecksPersistence,storageFiles,cloudAuth,cloudTransport,stateSnapshots,domainRevisions,sharedChecksV2});
+const syncChecks=composeChecksSync({model,files,checksSession,tab,uiStatus,domainsBankCache,storageFiles,cloudAuth,sharedChecksV2});
 
 const domainsFinanceController=createDomainsFinanceController({
   readRevision:()=>domainRevisions.stamp(['finance','checks','bankDisplay']),
