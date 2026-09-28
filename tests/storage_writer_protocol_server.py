@@ -46,6 +46,37 @@ def write(db, owner, domain, version, expected, operation, changed=False):
     return int(auth(db, owner, statement))
 
 
+def verify_bank_reconciles_fenced_shared_checks(db):
+    # A complete bank snapshot can reconcile a cheque in Shared Checks. An
+    # empty archive never exercises the second protected document's trigger.
+    bank_day = db.sql("select (now() at time zone 'Asia/Jerusalem')::date - 1").strip()
+    shared_state = json.loads(auth(db, OWNER, "select state::text from public.shared_checks_documents where document_name='main'"))
+    shared_state['checks'][0].update({
+        'name': 'protocol-check', 'dueDate': bank_day,
+        'checkNumber': 'protocol-check',
+    })
+    shared_before_bank = revision(db, OWNER, 'shared_checks_documents', 'main')
+    auth(db, OWNER, "select revision from public.save_shared_checks_document_v6('main'," +
+         str(shared_before_bank) + ',' + quote(json.dumps(shared_state)) +
+         ",'seed-bank-check','[]','{}')")
+    source = [{
+        'mergeKey': 'protocol-bank-deposit', 'amount': 100,
+        'date': bank_day + 'T09:00:00Z', 'processedDate': bank_day + 'T09:00:00Z',
+        'description': 'cheque deposit', 'status': 'completed',
+        'checkDetails': {'checkNumbers': ['protocol-check']},
+    }]
+    bank_epoch = auth(db, OWNER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
+    bank_snapshot = ("public.sync_bank_transactions_snapshot_v6('account-check-fence','business'," +
+                     quote(json.dumps(source)) + "::jsonb,now()," + quote(bank_day) +
+                     '::date,' + quote(bank_day) +
+                     "::date,true,'bank','bank-v6-lease'," + bank_epoch + ')')
+    assert int(auth(db, OWNER, 'select total_count from ' + bank_snapshot)) == 1
+    reconciled = json.loads(auth(db, OWNER, "select state::text from public.shared_checks_documents where document_name='main'"))
+    assert reconciled['checks'][0]['bankMatch']['phase'] == 'deposited', reconciled
+    assert revision(db, OWNER, 'shared_checks_documents', 'main') == shared_before_bank + 2
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+
+
 def verify_v6_without_public_legacy(db):
     # The V2 graph must still work when old public RPC names are absent. This
     # catches indirect V6 -> V5 -> V4 (and finance V5 -> V3) dependencies.
@@ -307,11 +338,14 @@ if __name__ == '__main__':
     migrations = sorted(migrations_dir.glob('*.sql'))
     internalization = migrations_dir/'20260925120000_storage_writer_internalization.sql'
     legacy_revoke = migrations_dir/'20260925123000_revoke_legacy_storage_writers.sql'
+    bank_shared_fix = migrations_dir/'20260928210313_bank_snapshot_shared_writer_context.sql'
     assert internalization in migrations, internalization
     assert legacy_revoke in migrations, legacy_revoke
+    assert bank_shared_fix in migrations, bank_shared_fix
     internalization_index = migrations.index(internalization)
     legacy_revoke_index = migrations.index(legacy_revoke)
-    assert internalization_index < legacy_revoke_index, (internalization, legacy_revoke)
+    bank_shared_fix_index = migrations.index(bank_shared_fix)
+    assert internalization_index < legacy_revoke_index < bank_shared_fix_index
 
     # This test deliberately exercises the transition boundary: first the
     # compatibility writers are still callable, then the retirement migration
@@ -327,5 +361,8 @@ if __name__ == '__main__':
             database.migrate(migration.read_text(encoding='utf-8-sig'))
         run(database, verify_without_legacy=False)
         database.migrate(legacy_revoke.read_text(encoding='utf-8-sig'))
+        for migration in migrations[legacy_revoke_index + 1:bank_shared_fix_index + 1]:
+            database.migrate(migration.read_text(encoding='utf-8-sig'))
+        verify_bank_reconciles_fenced_shared_checks(database)
         verify_legacy_revoke(database)
     print('PASS Storage V2 server fence: legacy grants revoked, v6/restore/finance allowed, owner isolation')

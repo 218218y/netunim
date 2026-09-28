@@ -168,5 +168,10 @@
     "version": "20260927121000",
     "name": "google_drive_oauth_search",
     "sha256": "5bbc2a48f8a2854d0c9971ddac137a3a7e74d9eda5575c18ec48a5e7fe255c53"
+  },
+  {
+    "version": "20260928210313",
+    "name": "bank_snapshot_shared_writer_context",
+    "sha256": "70c4168d7da021b30a4b3ae0a08f64d9377c6672f16820c202118e3c905ef41d"
   }
 ]
