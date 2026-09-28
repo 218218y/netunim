@@ -97,6 +97,7 @@ test('preview stays local: filename Office preview stays native while content se
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const build=read('netunim-orders/document-bridge/build_native_preview.ps1');
@@ -171,7 +172,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(ui,/previewSearchViewer\.previous\(\)/);
   assert.match(ui,/previewSearchViewer\.next\(\)/);
   assert.match(ui,/onPreviewSearchMatchState/);
-  assert.match(ui,/document-preview-match-term/);
+  assert.match(documentView,/document-preview-match-term/);
   assert.match(ui,/buildPdfPreviewSrc\(previewObjectUrl,\{query\}\)/);
   assert.doesNotMatch(ui,/syncPdfPreviewMatch/);
   assert.match(ui,/loadPreviewMatches/);
@@ -237,6 +238,7 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/label:'קבצים אחרונים'/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/documentIconKind/);
+  assert.match(ui,/document-search-view\.js/);
   assert.match(ui,/settledEmpty:data\.total===0/);
   assert.match(ui,/settledEmpty:state\.status==='done'&&count===0/);
   assert.match(ui,/hideEmptySources=filter==='all'/);

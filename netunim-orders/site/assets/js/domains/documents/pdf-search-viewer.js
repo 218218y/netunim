@@ -97,7 +97,7 @@ async function documentRuntimeOptions({url='',blob=null,data=null}={}){
   return options;
 }
 
-export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,onMatchState,runtime=null}={}){
+export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,onMatchState,runtime=null,interactiveForms=true}={}){
   if(!host)throw new Error('PDF preview host is missing.');
   if(!url&&!blob&&!data)throw new Error('PDF preview source is missing.');
   const needle=String(query||'').trim();
@@ -109,6 +109,11 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
   const viewerOptions={container,eventBus,linkService,findController};
+  // Drive preview is read-only: use the PDF-authored AcroForm appearance streams
+  // instead of rebuilding fields as HTML controls. Local preview keeps interactive
+  // form widgets so its existing select/copy behavior is preserved.
+  const annotationMode=interactiveForms?pdfjsLib.AnnotationMode?.ENABLE_FORMS:pdfjsLib.AnnotationMode?.ENABLE;
+  if(annotationMode!==undefined)viewerOptions.annotationMode=annotationMode;
   if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
   const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
   linkService.setViewer(pdfViewer);

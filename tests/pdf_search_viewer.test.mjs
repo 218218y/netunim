@@ -17,7 +17,7 @@ function fakeRuntime(){
   class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
   const pdfDocument={destroy:async()=>{state.documentDestroyed=true}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{state.loadingDestroyed=true}};
-  return {state,runtime:{pdfjsLib:{AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
+  return {state,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1,ENABLE_FORMS:2},AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
 
 function fakeHost(fields=[]){
@@ -65,6 +65,7 @@ test('controlled PDF viewer uses PDFFindController, local support assets and rea
   const input=new Blob([new Uint8Array([37,80,68,70])],{type:'application/pdf'});
   const controller=await createPdfSearchViewer({host,blob:input,query:'needle',runtime,onMatchState:value=>updates.push(value)});
   assert.ok(state.findController,'find controller is created');
+  assert.equal(state.viewer.options.annotationMode,2,'local/default preview preserves interactive form widgets');
   assert.equal(state.setDocumentCalls,1,'PDF document is attached to the viewer');
   assert.ok(state.documentOptions.data instanceof Uint8Array,'PDF bytes are passed directly to PDF.js');
   assert.deepEqual([...state.documentOptions.data],[37,80,68,70]);
@@ -98,6 +99,25 @@ test('controlled PDF viewer uses PDFFindController, local support assets and rea
   await controller.destroy();
   assert.equal(state.loadingDestroyed,true);
   assert.equal(state.documentDestroyed,true);
+});
+
+test('preview PDF renders AcroForm fields from PDF appearances instead of editable HTML controls',async()=>{
+  const state={options:null};
+  const runtime={
+    pdfjsLib:{
+      AnnotationMode:{ENABLE:1,ENABLE_FORMS:2},AnnotationEditorType:{DISABLE:-1},
+      getDocument:()=>({promise:Promise.resolve({destroy:async()=>{}}),destroy:async()=>{}}),
+    },
+    pdfjsViewer:{
+      EventBus:class{handlers=new Map();on(name,fn){this.handlers.set(name,fn)}dispatch(){}},
+      PDFLinkService:class{setViewer(){}setDocument(){}},
+      PDFViewer:class{constructor(options){state.options=options;this.currentScaleValue='';}setDocument(){}update(){}},
+    },
+  };
+  const viewer=await createPdfSearchViewer({host:fakeHost(),data:new Uint8Array([37,80,68,70]),runtime,interactiveForms:false});
+  assert.equal(state.options.annotationMode,1,'preview must use AnnotationMode.ENABLE so form appearance streams stay in the PDF canvas');
+  assert.equal(state.options.annotationEditorMode,-1);
+  await viewer.destroy();
 });
 
 test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{

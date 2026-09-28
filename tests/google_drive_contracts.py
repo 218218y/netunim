@@ -18,6 +18,8 @@ client=(SITE/'assets/js/domains/documents/google-drive.js').read_text(encoding='
 selector=(SITE/'assets/js/domains/documents/search-source.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 ui=(SITE/'assets/js/ui/global-search.js').read_text(encoding='utf-8')
+view=(SITE/'assets/js/ui/document-search-view.js').read_text(encoding='utf-8')
+pdf_viewer=(SITE/'assets/js/domains/documents/pdf-search-viewer.js').read_text(encoding='utf-8')
 css=(SITE/'assets/app.css').read_text(encoding='utf-8')
 sql=SQL.read_text(encoding='utf-8')
 migration=MIGRATION.read_text(encoding='utf-8')
@@ -43,6 +45,8 @@ ok("provider:'google-drive'" in client and '/\\bAndroid\\b/i' in client and 'LOC
 ok('createDomainsGoogleDriveSearch' in main and 'createDomainsDocumentSearch' in main and 'documentBridge:domainsDocumentBridge' in main,'application composition routes both sources through the existing unified-search port')
 ok('data-document-open-link' in ui and 'פתח את הקובץ ב-Google Drive' in ui and 'document-preview-open' in css and 'document-provider-notice' in css,'Drive preview keeps a touch-friendly open fallback and Windows failover notice')
 ok('createPdfSearchViewer' in ui and 'createDocxSearchViewer' in ui and 'createSpreadsheetSearchViewer' in ui and 'showNativePreview' in ui,'new Drive integration preserves the newer Windows local preview pipeline')
+ok('document-search-view.js' in ui and 'documentIconKind' in view and 'previewDetailsHtml' in view,'global search delegates document presentation helpers instead of growing one oversized UI responsibility')
+ok('ENABLE_FORMS' in pdf_viewer and 'interactiveForms?' in pdf_viewer and 'interactiveForms:!isGoogleDriveResult(id)' in ui,'Drive PDF preview uses static form appearances while local PDF preview preserves its existing interactive/copyable fields')
 ok('https://www.googleapis.com' in headers,'CSP permits direct Drive API calls without adding a remote script source')
 ok(SETUP.is_file() and 'drive.readonly' in SETUP.read_text(encoding='utf-8') and 'alt=media' in SETUP.read_text(encoding='utf-8') and 'files.export' in SETUP.read_text(encoding='utf-8'),'Drive deployment instructions cover scope upgrade, direct preview and Workspace export')
 
