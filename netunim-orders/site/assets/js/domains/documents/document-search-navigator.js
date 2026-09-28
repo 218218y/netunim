@@ -9,12 +9,22 @@ function regexLiteral(value){return String(value??'').replace(/[\\^$.*+?()[\]{}|
 export function normalizeContentSearch(value={}){const source=value&&typeof value==='object'?value:{};return {matchMode:CONTENT_MATCH_MODES.has(source.matchMode)?source.matchMode:'phrase',proximityWords:Math.max(0,Math.min(50,Math.trunc(Number(source.proximityWords)||0)))}}
 export function contentSearchTerms(query){return String(query??'').replace(/\s+/g,' ').trim().split(' ').map(term=>term.trim()).filter(Boolean).slice(0,16)}
 function proximityPattern(terms,proximityWords){if(terms.length<2)return '';const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`;return terms.map(regexLiteral).join(gap)}
+const PHONE_QUERY_IGNORED=/[\s\u002d\u2010-\u2015\u2212\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+function phoneSearchDigits(value){const raw=String(value??'').trim();if(!raw)return '';const digits=raw.replace(PHONE_QUERY_IGNORED,'');return /^\d{7,15}$/.test(digits)?digits:''}
+function phoneSearchPattern(value){const digits=phoneSearchDigits(value);if(!digits)return '';const separator='(?:\\s|[-‐‑‒–—―−])?',variants=[];for(const prefixLength of [2,3])if(digits.length>prefixLength)variants.push(`${regexLiteral(digits.slice(0,prefixLength))}${separator}${regexLiteral(digits.slice(prefixLength))}`);return variants.length===1?variants[0]:`(?:${variants.join('|')})`}
+function phoneViewerQueries(value){const digits=phoneSearchDigits(value);if(!digits)return [];const separators=['',' ','-','‐','‑','‒','–','—','―','−'],variants=[];for(const prefixLength of [2,3])if(digits.length>prefixLength)for(const separator of separators)variants.push(`${digits.slice(0,prefixLength)}${separator}${digits.slice(prefixLength)}`);return [...new Set(variants)]}
 
 export function findTextMatchOffsets(text,query,{maxMatches=DEFAULT_MAX_MATCHES,matchMode='phrase',proximityWords=0}={}){
   const source=String(text??''),needle=String(query??'').replace(/\s+/g,' ').trim(),search=normalizeContentSearch({matchMode,proximityWords}),terms=contentSearchTerms(needle);
   if(!source||needle.length<2)return {matches:[],capped:false,search};
   const haystack=normalized(source),limit=Math.max(1,Math.min(20000,Number(maxMatches)||DEFAULT_MAX_MATCHES));
   let matches=[],capped=false;
+  const phonePattern=phoneSearchPattern(needle);
+  if(phonePattern){
+    const regex=new RegExp(phonePattern,'gu');let match;
+    while((match=regex.exec(source))){matches.push({start:match.index,end:match.index+match[0].length});if(matches.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
+    return {matches,capped,search};
+  }
   if(search.matchMode==='proximity'&&terms.length>1){
     const regex=new RegExp(proximityPattern(terms.map(normalized),search.proximityWords),'gu');let match;
     while((match=regex.exec(haystack))){matches.push({start:match.index,end:match.index+match[0].length});if(matches.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
@@ -35,6 +45,7 @@ export function findTextMatchOffsets(text,query,{maxMatches=DEFAULT_MAX_MATCHES,
 export function buildViewerFindQuery(query,contentSearch={}){
   const needle=String(query??'').replace(/\s+/g,' ').trim(),search=normalizeContentSearch(contentSearch),terms=contentSearchTerms(needle);
   if(needle.length<2)return '';
+  const phoneQueries=phoneViewerQueries(needle);if(phoneQueries.length)return phoneQueries;
   if((search.matchMode==='all'||search.matchMode==='any')&&terms.length>1)return terms;
   return needle;
 }

@@ -42,6 +42,7 @@ export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=g
   async function status(){return withFallback('status')}
   async function localStatus(){if(!localBridge?.status)throw Object.assign(new Error('Document Bridge אינו זמין במחשב זה.'),{code:'DOCUMENT_BRIDGE_UNAVAILABLE'});const data=await localBridge.status();mark('local');return data}
   async function warm(){return withFallback('warm')}
+  async function selectFolder(){if(android||!localBridge?.selectFolder)throw Object.assign(new Error('בחירת תיקיית חיפוש זמינה רק דרך Everything במחשב זה.'),{code:'DOCUMENT_FOLDER_SCOPE_UNAVAILABLE'});const data=await localBridge.selectFolder();mark('local');return data}
   async function recent(options){return withFallback('recent',[options],{rows:true})}
   async function search(query,options){return withFallback('search',[query,options],{rows:true})}
   async function preview(id){return routed('preview',id)}
@@ -56,7 +57,7 @@ export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=g
   async function beginConnect(options){if(!googleDrive?.beginConnect)throw new Error('Google Drive connection is unavailable');mark('drive',fallbackReason);return googleDrive.beginConnect(options)}
   async function disconnect(){return googleDrive?.disconnect?.()}
   return {
-    get provider(){return sourceName(active)},get providerLabel(){return sourceLabel(active)},get authKind(){return active==='drive'?'oauth':'local-token'},get fallbackFromLocal(){return active==='drive'&&!android},get providerNotice(){return providerNotice()},get supportsLocalPairing(){return !android&&!!localBridge},
-    oauthReturn:googleDrive?.oauthReturn||{status:'',code:''},getToken,setToken,clearToken,beginConnect,disconnect,status,localStatus,warm,recent,search,preview,previewFile,matches,openDocument,revealDocument,deleteDocument,nativePreview,moveNativePreview,hideNativePreview,providerFor,
+    get provider(){return sourceName(active)},get providerLabel(){return sourceLabel(active)},get authKind(){return active==='drive'?'oauth':'local-token'},get fallbackFromLocal(){return active==='drive'&&!android},get providerNotice(){return providerNotice()},get supportsLocalPairing(){return !android&&!!localBridge},get supportsFolderScope(){return !android&&active==='local'&&typeof localBridge?.selectFolder==='function'},
+    oauthReturn:googleDrive?.oauthReturn||{status:'',code:''},getToken,setToken,clearToken,beginConnect,disconnect,status,localStatus,warm,selectFolder,recent,search,preview,previewFile,matches,openDocument,revealDocument,deleteDocument,nativePreview,moveNativePreview,hideNativePreview,providerFor,
   };
 }

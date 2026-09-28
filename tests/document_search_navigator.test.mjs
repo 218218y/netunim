@@ -29,3 +29,15 @@ test('shared document navigator mirrors advanced content-search AND, OR and orde
   assert.deepEqual(buildViewerFindQuery('מה שלומך',{matchMode:'any'}),['מה','שלומך']);
   assert.equal(buildViewerFindQuery('מה שלומך',{matchMode:'proximity',proximityWords:2}),'מה שלומך');
 });
+
+
+test('shared document navigator keeps phone-number separator variants aligned with content search',()=>{
+  const text='0501234567 | 050-1234567 | 050 1234567 | 05-01234567 | 050-123-4567';
+  const result=findTextMatchOffsets(text,'050-1234567');
+  assert.equal(result.matches.length,4);
+  assert.deepEqual(result.matches.map(row=>text.slice(row.start,row.end)),['0501234567','050-1234567','050 1234567','05-01234567']);
+  const viewerQueries=buildViewerFindQuery('050 1234567');
+  assert.ok(Array.isArray(viewerQueries));
+  for(const value of ['0501234567','050-1234567','050 1234567','05-01234567','05 01234567'])assert.ok(viewerQueries.includes(value));
+  assert.equal(viewerQueries.includes('050-123-4567'),false);
+});

@@ -53,3 +53,11 @@ test('spreadsheet worker highlights advanced AND, OR and ordered proximity match
   assert.equal(proximity.matches.length,1);assert.equal(proximity.matches[0].snippet.match,'מה אחד שני שלומך');
   assert.equal(runWorkerOpen(workbook,'מה שלומך',{matchMode:'proximity',proximityWords:1}).matches.length,0);
 });
+
+
+test('spreadsheet worker highlights phone-number variants with one optional prefix separator',()=>{
+  const workbook={SheetNames:['Sheet1'],Sheets:{Sheet1:{'!ref':'A1:A1','!data':[[{v:'0501234567 050-1234567 050 1234567 05-01234567 050-123-4567',w:'0501234567 050-1234567 050 1234567 05-01234567 050-123-4567'}]]}}};
+  const opened=runWorkerOpen(workbook,'050 1234567');
+  assert.equal(opened.matches.length,4);
+  assert.deepEqual(Array.from(opened.matches,match=>match.snippet.match),['0501234567','050-1234567','050 1234567','05-01234567']);
+});

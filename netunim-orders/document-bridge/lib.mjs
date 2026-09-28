@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=18;
+export const BRIDGE_VERSION=19;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const RECENT_RESULT_LIMIT=150;
@@ -100,6 +100,20 @@ function contentTerms(value){
   return normalizeSearchText(value).split(' ').map(term=>term.trim()).filter(Boolean).slice(0,16);
 }
 
+const PHONE_QUERY_IGNORED=/[\s\u002d\u2010-\u2015\u2212\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+function phoneSearchDigits(value){
+  const raw=String(value??'').trim();if(!raw)return '';
+  const digits=raw.replace(PHONE_QUERY_IGNORED,'');
+  return /^\d{7,15}$/.test(digits)?digits:'';
+}
+function phoneSearchRegex(value){
+  const digits=phoneSearchDigits(value);if(!digits)return '';
+  const separator='(?:\\s|[-‐‑‒–—―−])?';
+  const variants=[];
+  for(const prefixLength of [2,3])if(digits.length>prefixLength)variants.push(`${regexLiteral(digits.slice(0,prefixLength))}${separator}${regexLiteral(digits.slice(prefixLength))}`);
+  return variants.length===1?variants[0]:`(?:${variants.join('|')})`;
+}
+
 function buildContentProximityRegex(terms,proximityWords){
   if(terms.length<2)return '';
   const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`;
@@ -109,6 +123,8 @@ function buildContentProximityRegex(terms,proximityWords){
 export function buildContentQuery(value,options={}){
   const normalized=normalizeSearchText(value);
   if(normalized.length<2)return '';
+  const phonePattern=phoneSearchRegex(normalized);
+  if(phonePattern)return `regex:content:"${everythingLiteral(phonePattern)}" no-background-search:`;
   const search=normalizeContentSearchOptions(options),terms=contentTerms(normalized);
   // Match the same content: function used by Everything itself. When content
   // indexing is enabled Everything uses it; otherwise Everything applies its
@@ -128,6 +144,12 @@ function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,ma
   if(!source||needle.length<2)return {needle,search,ranges:[],capped:false};
   const haystack=source.toLocaleLowerCase('he-IL'),limit=Math.max(1,Math.min(20000,Number(maxMatches)||5000));
   let ranges=[],capped=false;
+  const phonePattern=phoneSearchRegex(needle);
+  if(phonePattern){
+    const regex=new RegExp(phonePattern,'gu');let match;
+    while((match=regex.exec(source))){ranges.push({index:match.index,length:match[0].length});if(ranges.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
+    return {needle,search,ranges,capped};
+  }
   if(search.matchMode==='proximity'&&terms.length>1){
     const regex=new RegExp(buildContentProximityRegex(terms.map(term=>term.toLocaleLowerCase('he-IL')),search.proximityWords),'gu');
     let match;while((match=regex.exec(haystack))){ranges.push({index:match.index,length:match[0].length});if(ranges.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
@@ -167,6 +189,13 @@ export function buildEverythingQuery(value){
   return normalizeSearchText(value);
 }
 
+export function normalizeSearchScopePath(value){
+  const raw=String(value??'').trim();if(!raw)return '';
+  const normalized=normalizeWindowsPath(raw);
+  if(!normalized||!path.win32.isAbsolute(normalized))throw new TypeError('Search scope must be an absolute Windows path');
+  return normalized;
+}
+
 export function buildNameQuery(value){return buildEverythingQuery(value)}
 
 export function buildDocumentQuery(value,mode='everything',contentSearch={}){
@@ -204,19 +233,20 @@ function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS}){
   return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count)];
 }
 
-export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS}){
+export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS,scopePath=''}){
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
-  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults}),...(filesOnly?['/a-d']:[]),'--',String(search)];
+  const scope=normalizeSearchScopePath(scopePath);
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
 }
 
-export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
+export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath=''}){
   const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode,contentSearch);
   if(!search)throw new TypeError('Search query must contain at least two characters');
-  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
+  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath});
 }
 
-export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='' }={}){
-  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT});
+export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='' }={}){
+  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath});
 }
 
 export function buildExactFullPathQuery(fullPath){

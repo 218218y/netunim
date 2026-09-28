@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,RECENT_RESULT_LIMIT,
-  normalizeSearchText,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
+  normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
@@ -45,9 +45,11 @@ test('selected-file content match info is bounded and returns highlighted snippe
 
 test('content search supports Everything 1.5 phrase, AND, OR and ordered word-distance syntax',()=>{
   assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
-  assert.equal(buildContentQuery('0501234567'),'content:"0501234567" no-background-search:');
-  assert.equal(buildContentQuery('050-1234567'),'content:"050-1234567" no-background-search:');
-  assert.equal(buildContentQuery('050 1234567'),'content:"050 1234567" no-background-search:');
+  const phoneQuery=buildContentQuery('0501234567');
+  assert.match(phoneQuery,/^regex:content:/);
+  assert.equal(buildContentQuery('050-1234567'),phoneQuery);
+  assert.equal(buildContentQuery('050 1234567'),phoneQuery);
+  assert.match(phoneQuery,/05/);assert.match(phoneQuery,/050/);assert.match(phoneQuery,/\\s/);
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'all'}),'content:<"מה" "שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'content:<"מה"|"שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'regex:content:"מה(?:\\s+\\S+){0,10}\\s+שלומך" no-background-search:');
@@ -56,6 +58,13 @@ test('content search supports Everything 1.5 phrase, AND, OR and ordered word-di
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
+});
+
+test('phone-like content searches match optional separator only after a 2- or 3-digit prefix',()=>{
+  const text='A 0501234567 B 050-1234567 C 050 1234567 D 05-01234567 E 050-123-4567';
+  const info=buildContentMatchInfo(text,'050 1234567');
+  assert.equal(info.count,4);
+  assert.deepEqual(info.snippets.map(row=>row.match),['0501234567','050-1234567','050 1234567','05-01234567']);
 });
 
 test('preview match extraction follows advanced content-search semantics',()=>{
@@ -79,6 +88,8 @@ test('recent files query allows 150 results without raising normal search limits
   assert.equal(args[args.indexOf('--')+1],'*');
   const normal=buildEsSearchArgs({query:'קובץ',mode:'everything',limit:999});
   assert.equal(normal[normal.indexOf('-max-results')+1],'120');
+  const scopedRecent=buildEsRecentFilesArgs({limit:25,scopePath:'Y:\\Orders'});
+  assert.deepEqual(scopedRecent.slice(scopedRecent.indexOf('-path'),scopedRecent.indexOf('-path')+2),['-path','Y:\\Orders']);
   const rows=Array.from({length:160},(_,index)=>({fullPath:`C:\\recent\\${index}.txt`,name:`${index}.txt`,modified:new Date(2026,0,1,0,index).toISOString()}));
   assert.equal(mergeDocumentResults([rows],999).length,120,'normal result merging keeps the existing 120-result ceiling');
   assert.equal(mergeDocumentResults([rows],999,RECENT_RESULT_LIMIT).length,150,'recent-file merging has its own 150-result ceiling');
@@ -94,6 +105,10 @@ test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
   assert.equal(args[args.indexOf('--')+1],'יבמות');
   assert.equal(args.includes('-path'),false);
   assert.equal(args.includes('/a-d'),false);
+  const scoped=buildEsSearchArgs({query:'יבמות',mode:'everything',scopePath:'Y:\\Orders'});
+  assert.deepEqual(scoped.slice(scoped.indexOf('-path'),scoped.indexOf('-path')+2),['-path','Y:\\Orders']);
+  assert.equal(normalizeSearchScopePath('Y:/Orders/'),'Y:\\Orders');
+  assert.throws(()=>normalizeSearchScopePath('relative\\folder'),/absolute Windows path/);
 
   const content=buildEsSearchArgs({query:'יבמות',mode:'content'});
   assert.ok(content.includes('/a-d'));

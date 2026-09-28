@@ -27,10 +27,10 @@ const CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
 // Global search owns one query and one result surface. Site, file-name and file-content
 // sources are searched independently, then composed in a deterministic source order.
 export function createUiGlobalSearch({documentBridge=null,searchRevision,model,ui,notesUi={},supplierUi,customerUi,serviceUi,warehouseUi,prepareView,render,openInventoryItemModal,confirmDialog=null}){
-  let resultByKey=new Map(),documentResultByKey=new Map(),highlightTimer=null,backdropPointerId=null,filter='all',contentMatchMode='phrase',contentProximityWords=10,documentSequence=0,documentAbort=null,activeQuery='',selectedDocumentId='',selectedDocumentKey='',selectedDocumentMode='everything',previewSequence=0,previewObjectUrl='',previewAbort=null,previewMatchesAbort=null,previewMatchInfo=null,previewSearchViewer=null,previewSearchState={current:0,total:0},nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null,documentWarmPromise=null,documentWarmAt=0;
+  let resultByKey=new Map(),documentResultByKey=new Map(),highlightTimer=null,backdropPointerId=null,filter='all',contentMatchMode='phrase',contentProximityWords=10,documentSequence=0,documentAbort=null,activeQuery='',selectedDocumentId='',selectedDocumentKey='',selectedDocumentMode='everything',previewSequence=0,previewObjectUrl='',previewAbort=null,previewMatchesAbort=null,previewMatchInfo=null,previewSearchViewer=null,previewSearchState={current:0,total:0},nativePreviewActive=false,nativePreviewWantedId='',nativePreviewGeometryKey='',nativePreviewPoll=null,documentWarmPromise=null,documentWarmAt=0,documentScopePath='',documentScopeLabel='';
   let documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')},recentDocumentState=emptyRecentDocumentState();
   const byId=id=>document.getElementById(id);
-  const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),contentOptions:byId('globalSearchContentOptions'),contentMatchMode:byId('globalSearchContentMatchMode'),proximityWrap:byId('globalSearchProximityWrap'),proximityWords:byId('globalSearchProximityWords'),preview:byId('globalSearchDocumentPreview'),previewBody:byId('globalSearchPreviewBody'),previewMatches:byId('globalSearchPreviewMatches'),splitter:byId('globalSearchDocumentSplitter')});
+  const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),contentOptions:byId('globalSearchContentOptions'),contentMatchMode:byId('globalSearchContentMatchMode'),proximityWrap:byId('globalSearchProximityWrap'),proximityWords:byId('globalSearchProximityWords'),folderScope:byId('globalSearchFolderScope'),folderPick:byId('globalSearchFolderPick'),folderLabel:byId('globalSearchFolderLabel'),folderClear:byId('globalSearchFolderClear'),preview:byId('globalSearchDocumentPreview'),previewBody:byId('globalSearchPreviewBody'),previewMatches:byId('globalSearchPreviewMatches'),splitter:byId('globalSearchDocumentSplitter')});
   const scheduledDocumentRender=createSearchScheduler(value=>runDocumentSearch(value),{delay:DOCUMENT_SEARCH_DELAY_MS});
   const indexedEntries=createSearchFragmentIndex({fragments:Object.keys(ORDER_SEARCH_FRAGMENTS),revision:name=>name==='notes'&&model.state.notesSheet?null:searchRevision?.(ORDER_SEARCH_FRAGMENTS[name],name),build:name=>buildOrderSearchFragment(model.state,name)});
 
@@ -59,6 +59,20 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(proximityWrap)proximityWrap.hidden=search.matchMode!=='proximity';
     contentOptions?.classList.toggle('is-disabled',!enabled);
   }
+  function updateFolderScopeUi(){
+    const {folderScope,folderPick,folderLabel,folderClear}=refs();if(!folderScope)return;
+    const available=!!documentBridge?.supportsFolderScope&&filter!=='site';folderScope.hidden=!available;
+    if(folderPick){folderPick.disabled=!available;folderPick.title=documentScopePath?documentScopePath:'מקד את חיפוש הקבצים והתוכן לתיקייה מסוימת'}
+    if(folderLabel)folderLabel.textContent=documentScopePath?(documentScopeLabel||documentScopePath):'בחר תיקייה';
+    if(folderClear)folderClear.hidden=!documentScopePath;
+    folderScope.classList.toggle('has-scope',!!documentScopePath);
+  }
+  async function chooseDocumentSearchFolder(){
+    const {meta,input,folderPick}=refs();if(!documentBridge?.selectFolder||!documentBridge?.supportsFolderScope)return;if(folderPick)folderPick.disabled=true;if(meta)meta.textContent='פותח בחירת תיקייה…';
+    try{const selected=await documentBridge.selectFolder();if(selected?.cancelled){renderCombinedResults(input?.value||'');return}documentScopePath=String(selected?.path||'').trim();documentScopeLabel=String(selected?.label||'').trim();recentDocumentState=emptyRecentDocumentState();updateFolderScopeUi();renderResults(input?.value||'')}
+    catch(error){if(meta)meta.textContent=error?.message||'בחירת התיקייה נכשלה'}finally{updateFolderScopeUi()}
+  }
+  function clearDocumentSearchFolder(){if(!documentScopePath)return;documentScopePath='';documentScopeLabel='';recentDocumentState=emptyRecentDocumentState();updateFolderScopeUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
   const documentMenu=createDocumentResultMenu({results:()=>refs().results,available:hasLocalDocumentActions,open:(...args)=>openDocumentResult(...args),reveal:(...args)=>revealDocumentResult(...args),remove:(...args)=>deleteDocumentResult(...args),select:(...args)=>selectDocumentResult(...args)});
   const hideDocumentContextMenu=()=>documentMenu.hide(),showDocumentContextMenu=(...args)=>documentMenu.show(...args);
   function scopeIntro(){const source=isGoogleDriveSource()?'Google Drive':'המחשב הזה';return `<div class="global-search-empty"><div class="global-search-empty-icon">⌕</div><b>חיפוש אחד בכל המאגרים</b><p>הקלדה כאן מחפשת באתר, בשמות קבצים ובתוכן קבצים דרך ${esc(source)}. אפשר לצמצם את התוצאות בעזרת המסננים למעלה.</p><div class="global-search-scopes"><span>האתר</span><span>קבצים</span><span>תוכן קבצים</span></div></div>`}
@@ -177,7 +191,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     if(meta)meta.textContent=state.status==='loading'?'טוען קבצים אחרונים…':rows.length?`${rows.length} קבצים אחרונים`:state.status==='done'?'אין קבצים להצגה':'';
   }
   function renderCombinedResults(value=''){
-    const {results}=refs();if(!results)return;updateContentSearchUi();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
+    const {results}=refs();if(!results)return;updateContentSearchUi();updateFolderScopeUi();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
     const sections=[];let siteTotal=0,documentTotal=0,loading=false;const hideEmptySources=filter==='all';
     if(includesSite()){const site=renderSiteSource(raw);siteTotal=site.total;if(!hideEmptySources||!site.settledEmpty)sections.push(site.html)}
     for(const mode of requestedDocumentModes()){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading';if(!hideEmptySources||!source.settledEmpty)sections.push(source.html)}
@@ -204,7 +218,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   async function runRecentDocuments(sequence){
     if(!documentBridge?.recent||sequence!==documentSequence||activeQuery)return;const controller=new AbortController();documentAbort=controller;
     try{
-      const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
+      const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,scopePath:documentScopePath,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
       recentDocumentState={status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),loadedAt:Date.now()};renderCombinedResults('');
     }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');recentDocumentState={...emptyRecentDocumentState(),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults('')}
     finally{if(documentAbort===controller)documentAbort=null}
@@ -214,7 +228,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     const controller=new AbortController();documentAbort=controller;
     await Promise.all(modes.map(async mode=>{
       try{
-        const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?normalizedContentSearch():undefined,limit:60,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;documentStates[mode]={mode,status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0)};renderCombinedResults(raw);
+        const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?normalizedContentSearch():undefined,scopePath:documentScopePath,limit:60,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;documentStates[mode]={mode,status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0)};renderCombinedResults(raw);
       }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');documentStates[mode]={...emptyDocumentState(mode),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults(raw)}
     }));
     if(documentAbort===controller)documentAbort=null;
@@ -222,7 +236,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   function updateFilterUi(){
     const {filterAll,filterSite,filterFiles,filterContent,input}=refs();const buttons=[[filterAll,'all'],[filterSite,'site'],[filterFiles,'files'],[filterContent,'content']];for(const [button,key] of buttons){button?.classList.toggle('active',filter===key);button?.setAttribute('aria-selected',filter===key?'true':'false')}
     if(input)input.placeholder=filter==='site'?'חפש באתר…':filter==='files'?'חפש קובץ או תיקייה…':filter==='content'?'חפש טקסט בתוך תוכן הקבצים…':'חפש באתר, בקבצים ובתוכן…';
-    updateContentSearchUi();
+    updateContentSearchUi();updateFolderScopeUi();
   }
   function setFilter(next){const normalized=SEARCH_FILTERS.has(next)?next:'all';if(filter===normalized)return;hideDocumentContextMenu();filter=normalized;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;resetDocumentPreview();updateFilterUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
   function setMode(next){setFilter(next==='documents'?'files':'site')}
@@ -270,8 +284,8 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
   }
 
   function bind(){
-    const {trigger,backdrop,input,results,close:closeButton,filterAll,filterSite,filterFiles,filterContent,contentMatchMode:contentModeControl,proximityWords:proximityControl,previewMatches,splitter,workspace}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
-    trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);filterAll?.addEventListener('click',()=>setFilter('all'));filterSite?.addEventListener('click',()=>setFilter('site'));filterFiles?.addEventListener('click',()=>setFilter('files'));filterContent?.addEventListener('click',()=>setFilter('content'));input.addEventListener('input',()=>renderResults(input.value));
+    const {trigger,backdrop,input,results,close:closeButton,filterAll,filterSite,filterFiles,filterContent,contentMatchMode:contentModeControl,proximityWords:proximityControl,folderPick,folderClear,previewMatches,splitter,workspace}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
+    trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);filterAll?.addEventListener('click',()=>setFilter('all'));filterSite?.addEventListener('click',()=>setFilter('site'));filterFiles?.addEventListener('click',()=>setFilter('files'));filterContent?.addEventListener('click',()=>setFilter('content'));folderPick?.addEventListener('click',()=>{void chooseDocumentSearchFolder()});folderClear?.addEventListener('click',clearDocumentSearchFolder);input.addEventListener('input',()=>renderResults(input.value));
     contentModeControl?.addEventListener('change',()=>{contentMatchMode=CONTENT_MATCH_MODES.has(contentModeControl.value)?contentModeControl.value:'phrase';updateContentSearchUi();renderResults(input.value);requestAnimationFrame(()=>input.focus())});
     proximityControl?.addEventListener('change',()=>{contentProximityWords=Math.max(0,Math.min(50,Math.trunc(Number(proximityControl.value)||0)));updateContentSearchUi();renderResults(input.value);requestAnimationFrame(()=>input.focus())});
     input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){flushCurrent();const first=results.querySelector('.global-search-result');if(first){event.preventDefault();first.focus()}}});

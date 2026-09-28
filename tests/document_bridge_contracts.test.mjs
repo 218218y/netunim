@@ -22,6 +22,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(client,/mode==='content'\?'content':'everything'/);
   assert.match(client,/documents\/warm/);
   assert.match(client,/documents\/recent/);
+  assert.match(client,/documents\/select-folder/);
   assert.match(client,/documents\/preview/);
   assert.match(client,/documents\/preview-file/);
   assert.match(client,/documents\/matches/);
@@ -45,13 +46,17 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.doesNotMatch(lib,/'-search',String\(search\)/);
   assert.doesNotMatch(lib,/'-n',String\(count\)/);
   assert.doesNotMatch(lib,/'-path',rootPath/);
+  assert.match(lib,/'-path',scope/);
+  assert.match(lib,/normalizeSearchScopePath/);
   assert.match(server,/probeEverything\(\{fresh:true,autoStart:true\}\)/);
   assert.match(server,/everythingProbePromise/);
   assert.match(server,/Promise\.any\(candidates\.map\(instance=>probeOne\(instance\)\)\)/);
   assert.match(server,/filter\(instance=>!preferred\|\|instance!==preferred\)/);
   assert.match(server,/documents\/warm/);
   assert.match(server,/documents\/recent/);
-  assert.match(server,/RECENT scope=everything-index files-only=true sort=date-modified-descending/);
+  assert.match(server,/documents\/select-folder/);
+  assert.match(server,/PICK_FOLDER/);
+  assert.match(server,/RECENT scope=everything-index scopePath=.* files-only=true sort=date-modified-descending/);
   assert.match(server,/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
 });
@@ -140,6 +145,8 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(host,/interface IOleWindow/);
   assert.match(host,/GetParent\(previewWindow\) == Handle/);
   assert.match(host,/SynchronizePreviewBounds/);
+  assert.match(host,/PICK_FOLDER/);
+  assert.match(host,/FolderBrowserDialog/);
   assert.match(host,/settlePassesRemaining/);
   assert.match(host,/SetWindowLongPtr/);
   assert.match(host,/SetWindowPos/);
@@ -150,12 +157,12 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(client,/hideNativePreview/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,limit:60/);
-  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,scopePath:documentScopePath,limit:60/);
+  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentScopePath/);
   assert.match(ui,/const RECENT_DOCUMENT_LIMIT=150/);
   assert.match(ui,/label:'קבצים אחרונים'/);
 
-  assert.match(client,/const recent=\(\{limit=150,signal=null\}=\{\}\)=>/);
+  assert.match(client,/const recent=\(\{limit=150,scopePath='',signal=null\}=\{\}\)=>/);
   assert.match(server,/RECENT_RESULT_LIMIT/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/function warmDocumentSearchBridge\(\)/);
@@ -223,6 +230,13 @@ test('unified search uses a full-screen header search, four result filters and a
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
   assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentMatchMode/);
+  assert.match(html,/globalSearchFolderScope[\s\S]*globalSearchFolderPick[\s\S]*globalSearchFolderLabel[\s\S]*globalSearchFolderClear/);
+  assert.match(css,/global-search-option-select select\{width:auto;min-width:0/);
+  assert.doesNotMatch(css,/global-search-option-select select\{min-width:122px/);
+  assert.match(css,/global-search-folder-scope/);
+  assert.match(ui,/documentScopePath=''/);
+  assert.match(ui,/chooseDocumentSearchFolder/);
+  assert.match(ui,/clearDocumentSearchFolder/);
   assert.match(html,/globalSearchContentMatchMode[\s\S]*value="phrase"[\s\S]*value="all"[\s\S]*value="any"[\s\S]*value="proximity"/);
   assert.match(html,/globalSearchProximityWords/);
   assert.doesNotMatch(html,/global-search-statusbar/);
@@ -248,8 +262,8 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/normalizedContentSearch/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,limit:60/);
-  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,scopePath:documentScopePath,limit:60/);
+  assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentScopePath/);
   assert.match(ui,/label:'קבצים אחרונים'/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(documentView,/documentIconKind/);
@@ -274,9 +288,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=18/);
+  assert.match(lib,/BRIDGE_VERSION=19/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=18/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=19/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

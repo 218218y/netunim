@@ -332,6 +332,13 @@ namespace NetunimPreview
         }
     }
 
+    internal sealed class WindowHandle : IWin32Window
+    {
+        private readonly IntPtr handle;
+        public WindowHandle(IntPtr handleValue) { handle = handleValue; }
+        public IntPtr Handle { get { return handle; } }
+    }
+
     internal sealed class PreviewForm : Form
     {
         private const int GWL_HWNDPARENT = -8;
@@ -355,6 +362,12 @@ namespace NetunimPreview
 
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+        public static IntPtr CurrentForegroundWindow()
+        {
+            try { return GetForegroundWindow(); }
+            catch { return IntPtr.Zero; }
+        }
 
         private static IntPtr SetOwner(IntPtr hwnd, IntPtr owner)
         {
@@ -511,6 +524,24 @@ namespace NetunimPreview
                     form.MovePreview(ParseInt(parts[2]), ParseInt(parts[3]), ParseInt(parts[4]), ParseInt(parts[5]));
                     Reply(id, true, "MOVED " + form.Diagnostics);
                     return;
+                }
+                if (command == "PICK_FOLDER")
+                {
+                    using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+                    {
+                        dialog.Description = "Select a folder to search with Everything";
+                        dialog.ShowNewFolderButton = false;
+                        IntPtr ownerHandle = PreviewForm.CurrentForegroundWindow();
+                        DialogResult result = ownerHandle != IntPtr.Zero ? dialog.ShowDialog(new WindowHandle(ownerHandle)) : dialog.ShowDialog();
+                        if (result != DialogResult.OK || String.IsNullOrWhiteSpace(dialog.SelectedPath))
+                        {
+                            Reply(id, true, "CANCELLED");
+                            return;
+                        }
+                        string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(dialog.SelectedPath));
+                        Reply(id, true, "PICKED " + encoded);
+                        return;
+                    }
                 }
                 if (command == "OPEN")
                 {

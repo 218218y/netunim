@@ -8,7 +8,7 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
-  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeSearchText,
+  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 
@@ -199,21 +199,21 @@ async function runEverythingJson(buildArgs){
   }
   return {rows:parseEsJson(output.stdout),elapsedMs:Date.now()-started};
 }
-async function searchDocuments(query,limit,mode='everything',contentSearch={}){
-  const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch);
+async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath=''){
+  const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),normalizedScope=normalizeSearchScopePath(scopePath),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
   const boundedLimit=Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT);
-  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));
   pruneResults();const merged=mergeDocumentResults([rows],boundedLimit).map(row=>publicResult(row,{query,mode:normalizedMode,contentSearch:normalizedContentSearch}));
-  await appendLog(`SEARCH mode=${normalizedMode} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,results:merged,elapsedMs,partial:false,rootErrors:[]};
+  await appendLog(`SEARCH mode=${normalizedMode} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index scopePath=${JSON.stringify(normalizedScope)} results=${merged.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,results:merged,elapsedMs,partial:false,rootErrors:[]};
 }
-async function recentDocuments(limit){
-  const boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
-  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+async function recentDocuments(limit,scopePath=''){
+  const normalizedScope=normalizeSearchScopePath(scopePath),boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
+  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));
   pruneResults();const results=mergeDocumentResults([rows],boundedLimit,RECENT_RESULT_LIMIT).map(row=>publicResult(row,{query:'',mode:'everything'}));
-  await appendLog(`RECENT scope=everything-index files-only=true sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`);
-  return {ok:true,mode:'recent',results,elapsedMs,partial:false,rootErrors:[]};
+  await appendLog(`RECENT scope=everything-index scopePath=${JSON.stringify(normalizedScope)} files-only=true sort=date-modified-descending results=${results.length} elapsedMs=${elapsedMs}`);
+  return {ok:true,mode:'recent',scopePath:normalizedScope,results,elapsedMs,partial:false,rootErrors:[]};
 }
 
 async function resolveResult(id){
@@ -281,6 +281,17 @@ async function openNativePreview(id,geometry){
 }
 async function moveNativePreview(geometry){const box=normalizePreviewGeometry(geometry);if(!nativePreviewProcess)return {ok:true,visible:false};await nativePreviewCommand('MOVE',[box.x,box.y,box.width,box.height],2500);return {ok:true,visible:true}}
 async function hideNativePreview(){if(!nativePreviewProcess)return {ok:true};try{await nativePreviewCommand('HIDE',[],2500)}catch{}return {ok:true}}
+async function selectSearchFolder(){
+  if(process.platform!=='win32'){const e=new Error('בחירת תיקיית חיפוש נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
+  const response=await nativePreviewCommand('PICK_FOLDER',[],120000);
+  if(response==='CANCELLED')return {ok:true,cancelled:true,path:'',label:''};
+  const prefix='PICKED ';if(!String(response||'').startsWith(prefix)){const e=new Error('בורר התיקיות החזיר תשובה לא תקינה.');e.code='FOLDER_PICKER_INVALID_RESPONSE';throw e}
+  let selected='';try{selected=Buffer.from(String(response).slice(prefix.length),'base64').toString('utf8')}catch{}
+  const normalized=normalizeSearchScopePath(selected);if(!normalized){const e=new Error('לא נבחרה תיקייה תקינה.');e.code='FOLDER_PICKER_INVALID_PATH';throw e}
+  const label=path.win32.basename(normalized)||path.win32.parse(normalized).root.replace(/[\\]+$/,'')||normalized;
+  await appendLog(`SEARCH_SCOPE_PICK path=${JSON.stringify(normalized)}`);
+  return {ok:true,cancelled:false,path:normalized,label};
+}
 async function stopNativePreview(){const child=nativePreviewProcess;if(!child)return;try{await nativePreviewCommand('EXIT',[],1500)}catch{}try{child.kill()}catch{}nativePreviewProcess=null}
 async function readEverythingContentPreview(fullPath){
   try{
@@ -404,8 +415,9 @@ async function handle(req,res){
       sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||''}},config);return;
     }
     if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
-    if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/select-folder'){const result=await selectSearchFolder();sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit,body.scopePath);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
