@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,createPdfSearchViewer,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,createPdfSearchViewer,makePdfReadOnlyTextFieldsCopyable,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
@@ -20,8 +20,8 @@ function fakeRuntime(){
   return {state,runtime:{pdfjsLib:{AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
 
-function fakeHost(){
-  const container={clientWidth:640,getBoundingClientRect(){return {width:this.clientWidth}}};
+function fakeHost(fields=[]){
+  const container={clientWidth:640,getBoundingClientRect(){return {width:this.clientWidth}},querySelectorAll(){return fields.filter(field=>field.disabled)}};
   return {container,innerHTML:'',querySelector(selector){assert.equal(selector,'.document-pdfjs-container');return container}};
 }
 
@@ -32,6 +32,32 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
   assert.equal(buildPdfFindRequest('needle',{type:'again',findPrevious:true}).findPrevious,true);
   assert.equal(buildPdfFindRequest('needle',{type:'again'}).type,'again');
+});
+
+test('read-only PDF text widgets use readonly semantics so selected text remains copyable',()=>{
+  const attributes=new Map();
+  const field={disabled:true,readOnly:false,dataset:{},setAttribute(name,value){attributes.set(name,String(value))}};
+  const root={querySelectorAll(selector){assert.equal(selector,'.textWidgetAnnotation input[type="text"]:disabled, .textWidgetAnnotation textarea:disabled');return [field]}};
+  assert.equal(makePdfReadOnlyTextFieldsCopyable(root),1);
+  assert.equal(field.disabled,false);
+  assert.equal(field.readOnly,true);
+  assert.equal(field.dataset.pdfCopyableReadonly,'true');
+  assert.equal(attributes.get('aria-readonly'),'true');
+});
+
+test('controlled PDF preview works without a search query and unlocks copying from read-only text fields',async()=>{
+  const field={disabled:true,readOnly:false,dataset:{},setAttribute(){}};
+  const {state,runtime}=fakeRuntime(),host=fakeHost([field]);
+  const controller=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'',runtime});
+  assert.equal(state.findController,null,'plain preview does not create unnecessary find machinery');
+  state.eventBus.dispatch('annotationlayerrendered',{});
+  assert.equal(field.disabled,false,'read-only text field is no longer disabled');
+  assert.equal(field.readOnly,true,'field stays non-editable while allowing selection/copy');
+  state.eventBus.dispatch('pagesinit',{});
+  assert.equal(state.eventBus.dispatched.filter(event=>event.name==='find').length,0,'plain preview never dispatches a find request');
+  controller.next();controller.previous();
+  assert.equal(state.eventBus.dispatched.filter(event=>event.name==='find').length,0,'match navigation is inert without a search query');
+  await controller.destroy();
 });
 
 test('controlled PDF viewer uses PDFFindController, local support assets and real arrow navigation',async()=>{
@@ -83,6 +109,12 @@ test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
   assert.match(PDF_SEARCH_RUNTIME.worker,/pdf\.worker\.min\.mjs$/);
 });
 
+
+test('global search routes ordinary local PDFs through the controlled PDF.js viewer',()=>{
+  const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/ui/global-search.js',import.meta.url),'utf8');
+  assert.match(source,/if\(data\.mime==='application\/pdf'\)\{[^\r\n]*createPdfSearchViewer/);
+  assert.doesNotMatch(source,/data\.mime==='application\/pdf'&&selectedDocumentMode==='content'/);
+});
 
 test('PDF runtime loading keeps the application module graph static, local and dependency-ordered',()=>{
   const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js',import.meta.url),'utf8');

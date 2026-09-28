@@ -45,7 +45,7 @@ async function loadRuntime(){
   runtimePromise=(async()=>{
     // Keep both imports literal and local: the repository module-graph contract can
     // verify them statically, while the browser still downloads PDF.js lazily only
-    // when content-search opens a PDF preview.
+    // when a local PDF preview is opened.
     const stylesheetTask=ensureViewerStylesheet();
     // pdf_viewer.mjs reads globalThis.pdfjsLib during module evaluation instead of
     // importing pdf.mjs itself.  Keep CSS parallel, but establish the core runtime
@@ -67,6 +67,21 @@ function normalizeMatchCount(value){
   return {current:current<=total?current:0,total};
 }
 
+export function makePdfReadOnlyTextFieldsCopyable(root){
+  if(!root?.querySelectorAll)return 0;
+  let changed=0;
+  const fields=root.querySelectorAll('.textWidgetAnnotation input[type="text"]:disabled, .textWidgetAnnotation textarea:disabled');
+  for(const field of fields){
+    field.readOnly=true;
+    field.disabled=false;
+    field.setAttribute?.('aria-readonly','true');
+    if(field.dataset)field.dataset.pdfCopyableReadonly='true';
+    else field.setAttribute?.('data-pdf-copyable-readonly','true');
+    changed+=1;
+  }
+  return changed;
+}
+
 async function documentRuntimeOptions({url='',blob=null,data=null}={}){
   const options={
     cMapUrl:runtimeUrl(PDF_SEARCH_RUNTIME.cmaps),
@@ -86,22 +101,28 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   if(!host)throw new Error('PDF preview host is missing.');
   if(!url&&!blob&&!data)throw new Error('PDF preview source is missing.');
   const needle=String(query||'').trim();
-  if(needle.length<2)throw new Error('PDF search query is too short.');
+  const hasFindQuery=needle.length>=2;
   const {pdfjsLib,pdfjsViewer}=runtime||await loadRuntime();
   host.innerHTML='<div class="document-pdfjs-container" tabindex="0"><div class="pdfViewer"></div></div>';
   const container=host.querySelector('.document-pdfjs-container');
   const eventBus=new pdfjsViewer.EventBus();
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
-  const findController=new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true});
+  const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
   const viewerOptions={container,eventBus,linkService,findController};
   if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
   const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
   linkService.setViewer(pdfViewer);
   let destroyed=false,loadingTask=null,pdfDocument=null,lastCount={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null;
   const emit=value=>{const next=normalizeMatchCount(value);if(next.current===lastCount.current&&next.total===lastCount.total)return;lastCount=next;onMatchState?.(next)};
-  eventBus.on('updatefindmatchescount',event=>emit(event?.matchesCount));
-  eventBus.on('updatefindcontrolstate',event=>emit(event?.matchesCount));
-  const dispatch=(type='',findPrevious=false)=>{if(destroyed)return;const request=buildPdfFindRequest(needle,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
+  if(hasFindQuery){
+    eventBus.on('updatefindmatchescount',event=>emit(event?.matchesCount));
+    eventBus.on('updatefindcontrolstate',event=>emit(event?.matchesCount));
+  }
+  eventBus.on('annotationlayerrendered',event=>{
+    const root=event?.source?.annotationLayer?.div||container;
+    makePdfReadOnlyTextFieldsCopyable(root);
+  });
+  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(needle,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
