@@ -1005,6 +1005,7 @@ const uiGlobalSearch=createUiGlobalSearch({
   prepareView:(...args)=>uiNavigation.prepareView(...args),
   render:(...args)=>uiNavigation.render(...args),
   openInventoryItemModal:(...args)=>{if(!tab.primaryTab){uiStatus.toast('לקריאה בלבד — עריכת פריט זמינה בטאב הראשי.');return}return domainsInventoryEditor.openInventoryItemModal(...args)},
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
 const initialOrdersLocal=storageBrowser.loadLocal();

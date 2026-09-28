@@ -69,6 +69,30 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
   assert.doesNotMatch(server,/body\.path/);
 });
 
+test('local document results expose Explorer reveal and recycle-bin delete through opaque result ids',()=>{
+  const server=read('netunim-orders/document-bridge/server.mjs');
+  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
+  const css=read('netunim-orders/site/assets/app.css');
+  assert.match(server,/documents\/reveal/);
+  assert.match(server,/documents\/delete/);
+  assert.match(server,/NETUNIM_REVEAL_TARGET/);
+  assert.match(server,/NETUNIM_DELETE_TARGET/);
+  assert.match(server,/RecycleOption\]::SendToRecycleBin/);
+  assert.match(server,/invalidateResultPath/);
+  assert.doesNotMatch(server,/body\.path/);
+  assert.match(client,/provider:'everything'/);
+  assert.match(client,/revealDocument/);
+  assert.match(client,/deleteDocument/);
+  assert.match(menu,/data-document-menu-action="open"/);
+  assert.match(menu,/data-document-menu-action="reveal"/);
+  assert.match(menu,/data-document-menu-action="delete"/);
+  assert.match(ui,/event\.key==='Delete'/);
+  assert.match(menu,/confirmDialog\('למחוק את הקובץ\?'/);
+  assert.match(css,/document-result-context-menu/);
+});
+
 test('preview stays local: filename Office preview stays native while content search uses controlled local document renderers',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
@@ -226,4 +250,15 @@ test('orders service worker contains both current document search providers afte
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/bridge\.js/);
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/google-drive\.js/);
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/search-source\.js/);
+});
+
+test('document search rejects stale bridge runtimes instead of silently using a broken newer process',()=>{
+  const lib=read('netunim-orders/document-bridge/lib.mjs');
+  const server=read('netunim-orders/document-bridge/server.mjs');
+  const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
+  assert.match(lib,/BRIDGE_VERSION=17/);
+  assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
+  assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=17/);
+  assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

@@ -4,6 +4,26 @@ import {
   buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,RECENT_RESULT_LIMIT,
   normalizeSearchText,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
+import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
+
+test('local document delete requires confirmation and invalidates only returned result ids',async()=>{
+  const calls=[],button={disabled:false,isConnected:true};
+  const options={id:'opaque-7',button,item:{name:'report.pdf',isDirectory:false},
+    bridge:{deleteDocument:async id=>{calls.push(['delete',id]);return {invalidatedIds:['opaque-7','opaque-8']}}},
+    beforeDelete:async()=>calls.push(['preview-closed']),
+    afterDelete:ids=>calls.push(['invalidated',ids]),
+    showStatus:message=>calls.push(['status',message])};
+  await deleteLocalDocumentResult({...options,confirmDialog:async()=>false});
+  assert.deepEqual(calls,[]);
+  await deleteLocalDocumentResult({...options,confirmDialog:async(title,message,settings)=>{
+    assert.equal(title,'למחוק את הקובץ?');
+    assert.match(message,/report\.pdf/);
+    assert.equal(settings.tone,'danger');
+    calls.push(['confirmed']);return true;
+  }});
+  assert.deepEqual(calls.slice(0,4),[['confirmed'],['preview-closed'],['delete','opaque-7'],['invalidated',['opaque-7','opaque-8']]]);
+  assert.equal(button.disabled,false);
+});
 
 
 test('selected-file content match info is bounded and returns highlighted snippets without rescanning result lists',()=>{
@@ -22,6 +42,9 @@ test('selected-file content match info is bounded and returns highlighted snippe
 
 test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
   assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
+  assert.equal(buildContentQuery('0501234567'),'content:"0501234567" no-background-search:');
+  assert.equal(buildContentQuery('050-1234567'),'content:"050-1234567" no-background-search:');
+  assert.equal(buildContentQuery('050 1234567'),'content:"050 1234567" no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
