@@ -9,7 +9,7 @@ import {equalSyncJson} from '../shared/cloud-sync.js';
 import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, markSharedChecksPending, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -175,22 +175,9 @@ function saveChecksState(msg='הצק נשמר',{deletedIds=[],mutationType='auto
     if(session.connectionMode==='supabase'&&session.backendReady)checksSession.sharedChecksSaveTimer=setTimeout(async()=>{checksSession.sharedChecksSaveTimer=null;try{await write.committed;await saveSharedChecksToCloud(msg)}catch(error){console.error('checks sync',error)}},220);
     return write.committed.then(()=>true,()=>false);
   }
-  measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
-  if(session.connectionMode!=='supabase'||!session.backendReady)return saveState(msg,{deleteIntents:{checks:deletedIds},mutationType,surface,domains:['checks'],operations,storageBoundary});
-  domainRevisions?.touch('checks');
-  const deleteIntents={checks:deletedIds},generation=checksSession.sharedChecksGeneration+1,fastLocal=storageV2Primary()&&Array.isArray(operations)&&operations.length>0&&!storageBoundary&&!(model.state.credits||[]).some(inactiveCreditExpired),fullSnapshot=fastLocal?null:measureStorage('normalize',()=>normalizeState(model.state)),localOk=persistImmediateBrowserSnapshot(fastLocal?model.state:fullSnapshot,session.dbRevision,{normalized:!fastLocal,owned:!fastLocal,operations,storageBoundary,generation,mutationType,surface,deleteIntents});
-  const idbPending=!localOk&&storageV2DurabilityAtRisk(),durable=idbPending?storageV2CommitPromise():null;
-  const riskToken=`checks:${generation}`;if(!localOk)beginLocalRisk(riskToken);
-  if(durable)clearLocalRiskAfter(riskToken,durable);
-  checksSession.sharedChecksGeneration++;checksSession.sharedChecksSaveRequested=true;markSharedChecksPending(model.state.checks,undefined,undefined,{deleteIds:deletedIds,mutationType,surface});
-  if(fastLocal)clearLocalRiskAfter(riskToken,checksSession.sharedChecksOutboxCommitPromise);
-  if(idbPending){
-    setSaveStatus('ממתין לאישור שמירת הצקים ב־IndexedDB','saving');
-    durable.then(()=>setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving'),()=>setSaveStatus('הצקים לא נשמרו — אין לסגור את החלון','error'));
-  }else if(!localOk)setSaveStatus('שגיאת עותק מקומי','error');else setSaveStatus(navigator.onLine?'צקים ממתינים לסנכרון':'אופליין — הצקים שמורים מקומית','saving');
-  if(files.backupsDirHandle)(fastLocal?nextTurn(()=>backupSnapshotToComputer(normalizeState(model.state),session.dbRevision)):backupSnapshotToComputer(fullSnapshot,session.dbRevision)).catch(e=>console.error('shared checks local backup',e));
-  clearTimeout(checksSession.sharedChecksSaveTimer);checksSession.sharedChecksSaveTimer=setTimeout(async()=>{checksSession.sharedChecksSaveTimer=null;if(durable)try{await durable}catch{return}await saveSharedChecksToCloud(msg)},220);
-  return durable?durable.then(()=>true,()=>false):Promise.resolve(localOk)
+  beginLocalRisk(`checks:${Number(checksSession.sharedChecksGeneration||0)+1}`);
+  setSaveStatus('Shared Checks V2 is required before saving checks','error');
+  return Promise.resolve(false);
 }
 
 async function persistState(snapshot,msg,generation=session.localGeneration,deleteIntents={}){

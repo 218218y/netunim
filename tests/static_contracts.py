@@ -131,6 +131,12 @@ ok(all(symbol not in source for source in checks_sync_sources for symbol in
        ("markChecksPending", "markSharedChecksPending", "getChecksPending", "getSharedChecksPending",
         "legacyDrain", "persistChecksBase", "persistSharedChecksBase")),
    "clients: ordinary Shared Checks sync has no V1 outbox or base writer")
+checks_writer_symbols=("markChecksPending", "markSharedChecksPending", "persistChecksBase",
+                       "persistSharedChecksBase", "clearChecksPending", "clearSharedChecksPending")
+business_sources=[path.read_text(encoding="utf-8") for app in (K, O)
+                  for path in (app / "site/assets/js").rglob("*.js")]
+ok(all(symbol not in source for source in business_sources for symbol in checks_writer_symbols),
+   "clients: Shared Checks V1 writer APIs are absent from production")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.

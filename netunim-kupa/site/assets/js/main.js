@@ -153,15 +153,12 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const syncChecksState=createSyncChecksState({
-  legacyWriteAllowed:storageV2Coordinator.legacyChecksWriteAllowed,
   session,
   checksSession,
   model,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
-  idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
 });
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
@@ -241,7 +238,6 @@ const storagePersistence=createStoragePersistence({
   lastSavedCloudState:(...args)=>syncChecksState.lastSavedCloudState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   stageCloudPendingLocal:(...args)=>syncPending.stageCloudPendingLocal(...args),
-  markSharedChecksPending:(...args)=>syncChecksState.markSharedChecksPending(...args),
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   render:(...args)=>uiNavigation.render(...args),
@@ -728,12 +724,6 @@ const uiBackup=createUiBackup({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
-  persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
-  persistSharedChecksBase:(...args)=>syncChecksState.persistSharedChecksBase(...args),
-  saveState:(...args)=>storagePersistence.saveState(...args),
-  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
-  readSharedChecksDocument:(...args)=>cloudTransport.readSharedChecksDocument(...args),
   getCloudPending:(...args)=>storagePending.getCloudPending(...args),
   getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   restoreGroupStore,

@@ -1,6 +1,6 @@
 import {createUiBackup} from '../ui/backup.js';
 
-export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
+export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageChecks,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
   return createUiBackup({
     ...storageV2Cloud,
     storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
@@ -14,25 +14,18 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     toast:(...args)=>uiStatus.toast(...args),
     showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
     modal:(...args)=>uiModal.modal(...args),
-    localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-    markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
     getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
     getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
-    persistChecksBase:(...args)=>storageChecks.persistChecksBase(...args),
-    markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
     folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
     folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
-    prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
     render:(...args)=>uiNavigation.render(...args),
     renderSettings:(...args)=>uiSettings().renderSettings(...args),
     closeModal:(...args)=>uiModal.closeModal(...args),
     writeStateSnapshotToFolder:(...args)=>storageFiles().writeStateSnapshotToFolder(...args),
     writeStateToFolder:(...args)=>storageFiles().writeStateToFolder(...args),
     loadSession:(...args)=>cloudAuth.loadSession(...args),
-    readCloud:(...args)=>cloudTransport().readCloud(...args),
     cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-    readSharedChecksCloud:(...args)=>cloudTransport().readSharedChecksCloud(...args),
     requestCloudSave:(...args)=>syncDocument().requestCloudSave(...args),
     restoreGroupStore,
     stageRestoreGroup:(...args)=>cloudTransport().stageRestoreGroup(...args),

@@ -140,12 +140,9 @@ const restoreGroupStore=createRestoreGroupStore({
 });
 
 const storageChecks=createStorageChecks({
-  legacyWriteAllowed:storageV2Coordinator.legacyChecksWriteAllowed,
   checksSession,
   model,
-  idbPut:(...args)=>storageBrowser.idbSyncPut(...args),
   idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
-  idbDelete:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
