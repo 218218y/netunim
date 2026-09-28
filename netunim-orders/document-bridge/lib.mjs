@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=17;
+export const BRIDGE_VERSION=18;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const RECENT_RESULT_LIMIT=150;
@@ -80,6 +80,7 @@ export function normalizeRoots(input){
 }
 
 function everythingLiteral(value){return String(value??'').replaceAll('"','&quot:')}
+function regexLiteral(value){return String(value??'').replace(/[\\^$.*+?()[\]{}|]/g,'\\$&')}
 
 export function normalizeSearchText(value){
   return String(value??'').replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/\s+/g,' ').trim().slice(0,MAX_QUERY_CHARS);
@@ -87,36 +88,77 @@ export function normalizeSearchText(value){
 
 export function normalizeDocumentSearchMode(value){return value==='content'?'content':'everything'}
 
-export function buildContentQuery(value){
+const CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
+export function normalizeContentSearchOptions(value={}){
+  const source=value&&typeof value==='object'?value:{};
+  const matchMode=CONTENT_MATCH_MODES.has(source.matchMode)?source.matchMode:'phrase';
+  const proximityWords=Math.max(0,Math.min(50,Math.trunc(Number(source.proximityWords) || 0)));
+  return {matchMode,proximityWords};
+}
+
+function contentTerms(value){
+  return normalizeSearchText(value).split(' ').map(term=>term.trim()).filter(Boolean).slice(0,16);
+}
+
+function buildContentProximityRegex(terms,proximityWords){
+  if(terms.length<2)return '';
+  const gap=`(?:\\s+\\S+){0,${proximityWords}}\\s+`;
+  return terms.map(regexLiteral).join(gap);
+}
+
+export function buildContentQuery(value,options={}){
   const normalized=normalizeSearchText(value);
   if(normalized.length<2)return '';
+  const search=normalizeContentSearchOptions(options),terms=contentTerms(normalized);
   // Match the same content: function used by Everything itself. When content
   // indexing is enabled Everything uses it; otherwise Everything applies its
   // normal on-disk content behavior. no-background-search makes ES wait for
   // the completed result set instead of returning while content work continues.
+  if(search.matchMode==='all'&&terms.length>1)return `content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join(' ')}> no-background-search:`;
+  if(search.matchMode==='any'&&terms.length>1)return `content:<${terms.map(term=>`"${everythingLiteral(term)}"`).join('|')}> no-background-search:`;
+  if(search.matchMode==='proximity'&&terms.length>1){
+    const pattern=buildContentProximityRegex(terms,search.proximityWords);
+    return `regex:content:"${everythingLiteral(pattern)}" no-background-search:`;
+  }
   return `content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 
-export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000}={}){
+function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,maxMatches=5000}={}){
+  const needle=normalizeSearchText(query),search=normalizeContentSearchOptions({matchMode,proximityWords}),terms=contentTerms(needle);
+  if(!source||needle.length<2)return {needle,search,ranges:[],capped:false};
+  const haystack=source.toLocaleLowerCase('he-IL'),limit=Math.max(1,Math.min(20000,Number(maxMatches)||5000));
+  let ranges=[],capped=false;
+  if(search.matchMode==='proximity'&&terms.length>1){
+    const regex=new RegExp(buildContentProximityRegex(terms.map(term=>term.toLocaleLowerCase('he-IL')),search.proximityWords),'gu');
+    let match;while((match=regex.exec(haystack))){ranges.push({index:match.index,length:match[0].length});if(ranges.length>=limit){capped=true;break}if(!match[0].length)regex.lastIndex+=1}
+    return {needle,search,ranges,capped};
+  }
+  if(search.matchMode==='all'||search.matchMode==='any'){
+    const unique=[...new Set(terms.map(term=>term.toLocaleLowerCase('he-IL')))];
+    const termRanges=[];let missing=false;
+    for(const term of unique){let found=0,offset=0;while(offset<=haystack.length-term.length){const index=haystack.indexOf(term,offset);if(index<0)break;termRanges.push({index,length:term.length});found+=1;offset=index+Math.max(1,term.length);if(termRanges.length>=limit){capped=true;break}}if(!found)missing=true;if(capped)break}
+    if(search.matchMode==='all'&&missing)return {needle,search,ranges:[],capped:false};
+    ranges=termRanges.sort((a,b)=>a.index-b.index||b.length-a.length).filter((row,index,list)=>index===0||row.index!==list[index-1].index||row.length!==list[index-1].length).slice(0,limit);
+    return {needle,search,ranges,capped:capped||termRanges.length>limit};
+  }
+  const target=needle.toLocaleLowerCase('he-IL');let offset=0;
+  while(offset<=haystack.length-target.length){const index=haystack.indexOf(target,offset);if(index<0)break;ranges.push({index,length:target.length});offset=index+Math.max(1,target.length);if(ranges.length>=limit){capped=true;break}}
+  return {needle,search,ranges,capped};
+}
+
+export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000,matchMode='phrase',proximityWords=0}={}){
   const source=String(value??'').replace(/\u0000/g,''),needle=normalizeSearchText(query);
   if(!source||needle.length<2)return {query:needle,count:0,snippets:[],capped:false};
-  const haystack=source.toLocaleLowerCase('he-IL'),target=needle.toLocaleLowerCase('he-IL');
   const context=Math.max(24,Math.min(240,Number(contextChars)||90));
   const snippetLimit=Math.max(1,Math.min(30,Number(maxSnippets)||12));
-  const matchLimit=Math.max(snippetLimit,Math.min(20000,Number(maxMatches)||5000));
-  const snippets=[];let count=0,offset=0,capped=false;
-  while(offset<=haystack.length-target.length){
-    const index=haystack.indexOf(target,offset);if(index<0)break;
-    count+=1;
-    if(snippets.length<snippetLimit){
-      const start=Math.max(0,index-context),end=Math.min(source.length,index+needle.length+context);
+  const matchLimit=Math.max(snippetLimit,Math.min(20000,Number(maxMatches)||5000)),found=contentMatchRanges(source,needle,{matchMode,proximityWords,maxMatches:matchLimit});
+  const snippets=[];
+  for(const row of found.ranges.slice(0,snippetLimit)){
+      const index=row.index,length=row.length,start=Math.max(0,index-context),end=Math.min(source.length,index+length+context);
       const clean=part=>String(part??'').replace(/\s+/g,' ');
-      snippets.push({before:clean(source.slice(start,index)).trimStart(),match:source.slice(index,index+needle.length),after:clean(source.slice(index+needle.length,end)).trimEnd(),leading:start>0,trailing:end<source.length});
-    }
-    offset=index+Math.max(1,target.length);
-    if(count>=matchLimit){capped=true;break}
+      snippets.push({before:clean(source.slice(start,index)).trimStart(),match:source.slice(index,index+length),after:clean(source.slice(index+length,end)).trimEnd(),leading:start>0,trailing:end<source.length});
   }
-  return {query:needle,count,snippets,capped};
+  return {query:needle,matchMode:found.search.matchMode,proximityWords:found.search.proximityWords,count:found.ranges.length,snippets,capped:found.capped};
 }
 
 export function buildEverythingQuery(value){
@@ -127,8 +169,8 @@ export function buildEverythingQuery(value){
 
 export function buildNameQuery(value){return buildEverythingQuery(value)}
 
-export function buildDocumentQuery(value,mode='everything'){
-  return normalizeDocumentSearchMode(mode)==='content'?buildContentQuery(value):buildEverythingQuery(value);
+export function buildDocumentQuery(value,mode='everything',contentSearch={}){
+  return normalizeDocumentSearchMode(mode)==='content'?buildContentQuery(value,contentSearch):buildEverythingQuery(value);
 }
 
 function normalizedKey(value){return String(value??'').toLowerCase().replace(/[\s_-]+/g,'')}
@@ -167,8 +209,8 @@ export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutM
   return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults}),...(filesOnly?['/a-d']:[]),'--',String(search)];
 }
 
-export function buildEsSearchArgs({query,mode='everything',limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
-  const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode);
+export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance=''}){
+  const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode,contentSearch);
   if(!search)throw new TypeError('Search query must contain at least two characters');
   return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content'});
 }

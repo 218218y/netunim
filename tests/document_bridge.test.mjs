@@ -19,6 +19,8 @@ test('local document delete requires confirmation and invalidates only returned 
     assert.equal(title,'למחוק את הקובץ?');
     assert.match(message,/report\.pdf/);
     assert.equal(settings.tone,'danger');
+    assert.equal(settings.defaultFocus,'confirm');
+    assert.equal(settings.confirmOnEnter,true);
     calls.push(['confirmed']);return true;
   }});
   assert.deepEqual(calls.slice(0,4),[['confirmed'],['preview-closed'],['delete','opaque-7'],['invalidated',['opaque-7','opaque-8']]]);
@@ -40,15 +42,31 @@ test('selected-file content match info is bounded and returns highlighted snippe
   assert.equal(capped.capped,true);
 });
 
-test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
+test('content search supports Everything 1.5 phrase, AND, OR and ordered word-distance syntax',()=>{
   assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
   assert.equal(buildContentQuery('0501234567'),'content:"0501234567" no-background-search:');
   assert.equal(buildContentQuery('050-1234567'),'content:"050-1234567" no-background-search:');
   assert.equal(buildContentQuery('050 1234567'),'content:"050 1234567" no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all'}),'content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'content:<"מה"|"שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'regex:content:"מה(?:\\s+\\S+){0,10}\\s+שלומך" no-background-search:');
+  assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'regex:content:"a\\+b(?:\\s+\\S+){0,3}\\s+c\\?" no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
+});
+
+test('preview match extraction follows advanced content-search semantics',()=>{
+  const text='פתיחה מה אחד שני שלומך. וגם מילה אחרת.';
+  assert.equal(buildContentMatchInfo(text,'מה שלומך',{matchMode:'phrase'}).count,0);
+  assert.equal(buildContentMatchInfo(text,'מה שלומך',{matchMode:'all'}).count,2);
+  assert.equal(buildContentMatchInfo(text,'מה חסרה',{matchMode:'all'}).count,0);
+  assert.equal(buildContentMatchInfo(text,'מה חסרה',{matchMode:'any'}).count,1);
+  const close=buildContentMatchInfo(text,'מה שלומך',{matchMode:'proximity',proximityWords:2});
+  assert.equal(close.count,1);
+  assert.equal(close.snippets[0].match,'מה אחד שני שלומך');
+  assert.equal(buildContentMatchInfo(text,'מה שלומך',{matchMode:'proximity',proximityWords:1}).count,0);
 });
 
 test('recent files query allows 150 results without raising normal search limits',()=>{

@@ -1,7 +1,7 @@
 const BRIDGE_URL='http://127.0.0.1:8766';
 const TOKEN_KEY='netunim_orders_document_bridge_token_v1';
 const REQUEST_TIMEOUT_MS=25000;
-const EXPECTED_BRIDGE_VERSION=17;
+const EXPECTED_BRIDGE_VERSION=18;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 
@@ -38,7 +38,7 @@ export function createDomainsDocumentBridge(){
   const status=()=>request('/status',{timeoutMs:5000});
   const warm=()=>request('/documents/warm',{method:'POST',body:{},timeoutMs:8000});
   const recent=({limit=150,signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});
-  const search=async(query,{mode='content',limit=60,signal=null}={})=>{const data=await request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});if(Number(data?.bridgeVersion)!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${Number(data?.bridgeVersion)||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי לטעון את גרסת החיפוש הנכונה.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED');return data};
+  const search=async(query,{mode='content',contentSearch={},limit=60,signal=null}={})=>{const data=await request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',contentSearch,limit},timeoutMs:REQUEST_TIMEOUT_MS,signal});if(Number(data?.bridgeVersion)!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${Number(data?.bridgeVersion)||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי לטעון את גרסת החיפוש הנכונה.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED');return data};
   const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:12000});
   const matches=(id,{signal=null}={})=>request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});
   const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:35000,signal});

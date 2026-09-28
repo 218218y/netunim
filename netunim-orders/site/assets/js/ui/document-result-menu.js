@@ -46,7 +46,7 @@ export async function deleteLocalDocumentResult({id,button,item,bridge,confirmDi
   if(!bridge?.deleteDocument||!id)return;
   const name=String(item?.name||'הפריט הנבחר'),kind=item?.isDirectory?'התיקייה':'הקובץ';
   const message=`${kind} “${name}” יישלח לסל המיחזור של Windows.\nבכונן רשת או מיקום שאינו תומך בסל המיחזור, אופן המחיקה נקבע על־ידי Windows.`;
-  const approved=confirmDialog?await confirmDialog('למחוק את הקובץ?',message,{confirmText:'מחק',cancelText:'ביטול',tone:'danger'}):globalThis.confirm?.(message);
+  const approved=confirmDialog?await confirmDialog('למחוק את הקובץ?',message,{confirmText:'מחק',cancelText:'ביטול',tone:'danger',defaultFocus:'confirm',confirmOnEnter:true}):globalThis.confirm?.(message);
   if(!approved)return;
   await beforeDelete();
   const previous=button?.disabled;if(button)button.disabled=true;

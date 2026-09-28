@@ -74,6 +74,7 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
   const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
+  const modal=read('netunim-orders/site/assets/js/ui/modal.js');
   const css=read('netunim-orders/site/assets/app.css');
   assert.match(server,/documents\/reveal/);
   assert.match(server,/documents\/delete/);
@@ -90,6 +91,9 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
   assert.match(menu,/data-document-menu-action="delete"/);
   assert.match(ui,/event\.key==='Delete'/);
   assert.match(menu,/confirmDialog\('למחוק את הקובץ\?'/);
+  assert.match(menu,/defaultFocus:'confirm',confirmOnEnter:true/);
+  assert.match(modal,/event\.key==='Enter'&&activeConfirm\.options\.confirmOnEnter===true/);
+  assert.match(modal,/document\.addEventListener\('keydown',[\s\S]*\},true\);/);
   assert.match(css,/document-result-context-menu/);
 });
 
@@ -146,7 +150,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(client,/hideNativePreview/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,limit:60/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
   assert.match(ui,/const RECENT_DOCUMENT_LIMIT=150/);
   assert.match(ui,/label:'קבצים אחרונים'/);
@@ -192,7 +196,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(css,/highlight\.selected\{background-color:rgba\(255,149,38,\.36\)/);
   assert.doesNotMatch(css,/highlight\.selected\{[^}]*?(?:outline|box-shadow|border)/);
   assert.doesNotMatch(pdfViewer,/import\(runtime\.(?:pdf|viewer)\)/);
-  assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
+  assert.match(server,/extension==='pdf'\?buildContentMatchInfo\(content\.text,query,\{\.\.\.search,contextChars:96,maxSnippets:500,maxMatches:500\}\)/);
 });
 
 test('installer keeps Everything hidden background startup and no longer asks for Bridge roots',()=>{
@@ -217,8 +221,11 @@ test('unified search uses a full-screen header search, four result filters and a
   const css=read('netunim-orders/site/assets/app.css');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
-  assert.match(html,/global-search-head[\s\S]*globalSearchInput/);
-  assert.match(html,/global-search-filterbar[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent/);
+  assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentMatchMode/);
+  assert.match(html,/globalSearchContentMatchMode[\s\S]*value="phrase"[\s\S]*value="all"[\s\S]*value="any"[\s\S]*value="proximity"/);
+  assert.match(html,/globalSearchProximityWords/);
+  assert.match(html,/global-search-statusbar[\s\S]*globalSearchMeta/);
+  assert.doesNotMatch(html,/global-search-filterbar/);
   assert.doesNotMatch(html,/global-search-modebar|document-search-modebar|globalSearchPreviewOpen/);
   assert.match(html,/globalSearchDocumentSplitter/);
   assert.match(css,/global-search-dialog\{width:100vw;height:100dvh/);
@@ -233,7 +240,8 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,limit:60/);
+  assert.match(ui,/normalizedContentSearch/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?normalizedContentSearch\(\):undefined,limit:60/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
   assert.match(ui,/label:'קבצים אחרונים'/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
@@ -258,9 +266,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=17/);
+  assert.match(lib,/BRIDGE_VERSION=18/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=17/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=18/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

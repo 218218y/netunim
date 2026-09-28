@@ -53,20 +53,36 @@
 <div class="global-search-backdrop" id="globalSearchBackdrop" hidden aria-hidden="true">
   <section class="global-search-dialog" role="dialog" aria-modal="true" aria-label="חיפוש">
     <div class="global-search-head">
-      <label class="global-search-input-wrap" for="globalSearchInput">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
-        <input id="globalSearchInput" type="search" autocomplete="off" placeholder="חפש באתר, בקבצים ובתוכן…">
-        <kbd>Ctrl K</kbd>
-      </label>
-      <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
-    </div>
-    <div class="global-search-filterbar">
       <div class="global-search-filters" role="tablist" aria-label="סינון תוצאות חיפוש">
         <button id="globalSearchFilterAll" class="global-search-filter active" type="button" role="tab" aria-selected="true">הכל</button>
         <button id="globalSearchFilterSite" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש באתר</button>
         <button id="globalSearchFilterFiles" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש קבצים</button>
         <button id="globalSearchFilterContent" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש תוכן</button>
       </div>
+      <label class="global-search-input-wrap" for="globalSearchInput">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
+        <input id="globalSearchInput" type="search" autocomplete="off" placeholder="חפש באתר, בקבצים ובתוכן…">
+        <kbd>Ctrl K</kbd>
+      </label>
+      <div class="global-search-options" id="globalSearchContentOptions" aria-label="אפשרויות חיפוש תוכן">
+        <label class="global-search-option-select" for="globalSearchContentMatchMode">
+          <span>התאמה</span>
+          <select id="globalSearchContentMatchMode" aria-label="אופן התאמת חיפוש בתוכן">
+            <option value="phrase">ביטוי מדויק</option>
+            <option value="all">כל המילים</option>
+            <option value="any">מילה כלשהי</option>
+            <option value="proximity">קרבה לפי הסדר</option>
+          </select>
+        </label>
+        <label class="global-search-proximity" id="globalSearchProximityWrap" for="globalSearchProximityWords" hidden>
+          <span>עד</span>
+          <input id="globalSearchProximityWords" type="number" min="0" max="50" step="1" value="10" inputmode="numeric" aria-label="מספר מילים מרבי בין מילות החיפוש">
+          <span>מילים ביניהן</span>
+        </label>
+      </div>
+      <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
+    </div>
+    <div class="global-search-statusbar">
       <span class="global-search-head-status" id="globalSearchMeta" aria-live="polite"></span>
     </div>
     <div class="global-search-workspace" id="globalSearchWorkspace">

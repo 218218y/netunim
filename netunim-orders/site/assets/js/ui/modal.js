@@ -91,7 +91,8 @@ function pumpConfirmQueue(){
   if(els.icon)els.icon.textContent=tone==='danger'?'!':'?';
   els.back.classList.add('open');
   els.back.setAttribute('aria-hidden','false');
-  requestAnimationFrame(()=>els.cancel?.focus());
+  const preferred=request.options.defaultFocus==='confirm'?els.accept:els.cancel;
+  requestAnimationFrame(()=>{if(activeConfirm?.resolve===request.resolve)preferred?.focus()});
 }
 
 function settleConfirmation(confirmed){
@@ -142,13 +143,21 @@ function bindConfirmationUi(){
   document.addEventListener('keydown',event=>{
     if(!activeConfirm)return;
     if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();settleConfirmation(false);return}
+    if(event.key==='Enter'&&activeConfirm.options.confirmOnEnter===true){
+      // The confirmation overlay owns Enter while it is active. In particular,
+      // this blocks the key from reaching a result row that still had focus in
+      // the frame where the dialog opened. If the user explicitly moved focus
+      // to Cancel, preserve the normal button activation instead.
+      if(document.activeElement===els.cancel)return;
+      event.preventDefault();event.stopImmediatePropagation();settleConfirmation(true);return;
+    }
     if(event.key!=='Tab')return;
     const buttons=[els.accept,els.cancel].filter(button=>button&&!button.disabled);
     if(buttons.length<2)return;
     const first=buttons[0],last=buttons[buttons.length-1];
     if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
-  });
+  },true);
 }
 
 bindConfirmationUi();
