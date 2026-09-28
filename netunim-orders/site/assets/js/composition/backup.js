@@ -1,6 +1,6 @@
 import {createUiBackup} from '../ui/backup.js';
 
-export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageChecks,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
+export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,uiNavigation,uiSettings,storageFiles,cloudAuth,cloudTransport,syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions}){
   return createUiBackup({
     ...storageV2Cloud,
     storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
