@@ -4,7 +4,7 @@ import {todayISO} from '../core/dates.js';
 import {normalizeSharedBankEvents,normalizeSharedChecks} from '../domains/checks/model.js';
 import {ledgerTypeLabel} from '../domains/cash/model.js';
 import {buildBackupCatalog,backupPointKey,backupSourceLabel,summarizeBackupDiff} from '../shared/cloud-backups.js';
-import {createRestoreGroup,executeRestoreGroup,resumeRestoreGroup} from '../shared/restore-groups.js';
+import {resumeRestoreGroup} from '../shared/restore-groups.js';
 import {applyStorageV2RestoreGroup,captureStorageV2RestoreSource} from '../shared/storage-v2-restore.js';
 import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
@@ -15,18 +15,6 @@ const KUPA_BACKUP_CONFIG=[
   {path:'businessName',label:'שם העסק'},{path:'rightsLastCalculatedDate',label:'תאריך חישוב מעשר'},{path:'cashflowSettings',label:'הגדרות תזרים'},{path:'notesSheet.sheets',label:'שמות גיליונות'},{path:'notesSheet.columns',label:'מבנה גליון'},{path:'bank.adjustments',label:'התאמות עו״ש ידניות'},{path:'bank.currentBalance',label:'יתרת עו״ש ידנית'}
 ];
 
-function restoreDeleteIntents(before,after){
-  const out={};
-  for(const key of ['credits','cash','rights','notes','expenses','cards']){
-    const kept=new Set((after?.[key]||[]).map(row=>String(row?.id||'')));
-    const ids=(before?.[key]||[]).map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));if(ids.length)out[key]=ids;
-  }
-  for(const part of ['sheets','rows','columns']){
-    const oldRows=before?.notesSheet?.[part]||[],newRows=after?.notesSheet?.[part]||[],kept=new Set(newRows.map(row=>String(row?.id||''))),ids=oldRows.map(row=>String(row?.id||'')).filter(id=>id&&!kept.has(id));
-    if(ids.length)out[`notesSheet.${part}`]=ids;
-  }
-  return out;
-}
 function localDateTime(value){const d=new Date(value||'');return Number.isFinite(d.getTime())?d.toLocaleString('he-IL',{dateStyle:'short',timeStyle:'short'}):'זמן לא ידוע'}
 const BACKUP_FIELD_LABELS={name:'שם',account:'חשבון',amount:'סכום',date:'תאריך',type:'סוג',description:'תיאור',note:'הערה',status:'סטטוס',dueDate:'תאריך פירעון',depositDate:'תאריך הפקדה',depositedAt:'הופקד',clearedDate:'נפרע',checkNumber:'מספר צ׳ק',card:'כרטיס',ownerLabel:'בעל הכרטיס',transactionDate:'תאריך עסקה',totalAmount:'סכום כולל',installments:'תשלומים',firstChargeDate:'חיוב ראשון',active:'פעיל',recurring:'קבועה',chargeDay:'יום חיוב',content:'תוכן',title:'כותרת',cells:'תאי גליון'};
 const BACKUP_TECH_FIELDS=new Set(['depositSeq','source','snapshotToken','snapshotSeq']);
@@ -37,7 +25,7 @@ function diffRowMarkup(row){const parts=[];if(row.removed)parts.push(`יוסרו
 function settingsDiffMarkup(setting){return `<div class="cloud-backup-field-change"><b>${esc(setting.label)}</b><span class="cloud-backup-now">עכשיו: ${esc(compactBackupValue(setting.current))}</span><span class="cloud-backup-target">אחרי שחזור: ${esc(compactBackupValue(setting.target))}</span></div>`}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createUiBackup({model,session,ui,files,checksSession,readJsonHandle,listBackups,createManualBackup,toast,renderSettings,stateFromPayload,persistImmediateBrowserSnapshot,persistSharedChecksBase,saveState,chooseFolder,prepareKupaCloudState,readSupabaseDocument,readSharedChecksDocument,getCloudPending,getSharedChecksPending,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,loadSupaSession,render,modal,closeModal,confirmDialog,persistSupabaseState=async()=>false,refreshStorageV2CloudState=async()=>null,resetStorageV2CloudHead=async()=>false,replaceStorageV2AuthoritativeState=async()=>false,storageV2LocalPrimary=()=>false,recoverStorageV2State=async()=>null,storageOwnerCurrent=()=>'',storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{}}){
+export function createUiBackup({model,session,ui,files,checksSession,readJsonHandle,listBackups,createManualBackup,toast,renderSettings,stateFromPayload,chooseFolder,getCloudPending,getSharedChecksPending,restoreGroupStore,stageRestoreGroup,applyRestoreGroup,listIncompleteRestoreGroups,listKupaCloudBackups,readKupaCloudBackupPoint,loadSupaSession,render,modal,closeModal,confirmDialog,persistSupabaseState=async()=>false,refreshStorageV2CloudState=async()=>null,storageV2LocalPrimary=()=>false,recoverStorageV2State=async()=>null,storageOwnerCurrent=()=>'',storageV2Boundary=null,sharedChecksV2=null,invalidateAllViewDomains=()=>{}}){
   async function manualBackup(){
     if(!session.backendReady)return toast('יש לפתוח קודם מקור נתונים');
     try{const payload=session.connectionMode==='supabase'?payloadFromState(clone(model.state),session.dbRevision):await readJsonHandle(files.dataFileHandle);if(files.backupsDirHandle){const name=await createManualBackup(payload);session.serverInfo.backups=await listBackups();toast('נוצר גיבוי: '+name);if(ui.currentPage==='settings')renderSettings()}else downloadJsonBackup()}catch(error){alert('יצירת הגיבוי נכשלה: '+error.message)}
@@ -54,13 +42,7 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
       if(group.checks){checksSession.sharedChecksRevision=applied.sharedRevision;checksSession.sharedChecksBase=clone(sharedState.checks);checksSession.sharedChecksBankEvents=clone(sharedState.bankEvents)}
       await refreshStorageV2CloudState();invalidateAllViewDomains();render();return true;
     }
-    const v2Before=await refreshStorageV2CloudState();if(v2Before&&(v2Before.pending||v2Before.flight||v2Before.control))throw new Error('נוצר שינוי מקומי בזמן השחזור; השחזור בענן הושלם אך היישום המקומי נעצר כדי לא למחוק את השינוי. יש לפתור את השינוי המקומי ואז לחדש את השחזור');
-    const previous=clone(model.state),previousRevision=session.dbRevision,previousLastSavedSnapshot=session.lastSavedSnapshot,nextRevision=Number(result.main_revision||session.dbRevision||group.main.baseRevision);model.state=clone(group.localTargetState||{...group.main.state,checks:group.checks?.state?.checks||group.beforeState?.local?.checks||[]});
-    session.connectionMode='supabase';session.backendReady=true;session.dbRevision=nextRevision;session.lastSavedSnapshot=JSON.stringify(group.main.state);
-    try{const v2Applied=await resetStorageV2CloudHead(nextRevision,model.state);if(!v2Applied&&!persistImmediateBrowserSnapshot(model.state,nextRevision,{storageBoundary:'restore-checkpoint'}))throw new Error('שמירת המצב המקומי לאחר השחזור נכשלה')}
-    catch(error){model.state=previous;session.dbRevision=previousRevision;session.lastSavedSnapshot=previousLastSavedSnapshot;invalidateAllViewDomains();throw new Error((error?.message||'שמירת המצב המקומי לאחר השחזור נכשלה')+'; השחזור נשאר ניתן לחידוש')}
-    if(group.checks){checksSession.sharedChecksRevision=Number(result.checks_revision||checksSession.sharedChecksRevision||group.checks.baseRevision);checksSession.sharedChecksBase=clone(group.checks.state.checks);checksSession.sharedChecksBankEvents=clone(group.checks.state.bankEvents||[]);persistSharedChecksBase(checksSession.sharedChecksBase,checksSession.sharedChecksBankEvents)}
-    invalidateAllViewDomains();render();return true;
+    throw new Error('shared_checks_v2_required');
   }
 
   async function resumeIncompleteRestore(){
@@ -74,6 +56,7 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
   async function restoreState(state,{title='שחזור גיבוי',message='להחליף את הנתונים הנוכחיים בנתוני הגיבוי?',surface='backup.restore'}={}){
     const currentState=clone(model.state),cloudActive=session.connectionMode==='supabase'&&session.backendReady;
     if(!await confirmDialog(title,`${message} לפני כל כתיבה יישמר צילום בטיחות durable. במצב ענן הקופה והצ׳קים ישוחזרו בפעולה מאוחדת אחת.`,{confirmText:'שחזר גיבוי',cancelText:'ביטול',tone:'danger'}))return false;
+    if(!storageV2LocalPrimary()||!sharedChecksV2?.localReady)throw new Error('storage_v2_restore_required');
     if(files.backupsDirHandle)await createManualBackup(payloadFromState(currentState,session.dbRevision),'before-restore');
     const v2Pending=await refreshStorageV2CloudState();if(await getCloudPending()||(v2Pending&&(v2Pending.pending||v2Pending.flight||v2Pending.control))||await getSharedChecksPending())throw new Error('קיים שינוי מקומי שממתין לסנכרון; יש להשלים או לפתור אותו לפני שחזור');
     const sharedCloud=sharedChecksV2?.primaryReady?await sharedChecksV2.cloudState():null;
@@ -95,35 +78,8 @@ export function createUiBackup({model,session,ui,files,checksSession,readJsonHan
       if(cloudActive&&navigator.onLine){void persistSupabaseState(model.state,'הייבוא סונכרן').catch(console.error);void sharedChecksV2.sync().catch(console.error)}
       return true;
     }
-    if(v2Source&&!cloudActive)throw new Error('שחזור מקומי ב־Storage V2 דורש גבול ענן מתואם');
-    let remoteRow=null,checksRow=null;
-    if(cloudActive){
-      if(!navigator.onLine)throw new Error('שחזור ענן דורש חיבור פעיל כדי לקבע את כל היעדים לפני הכתיבה');
-      [remoteRow,checksRow]=await Promise.all([readSupabaseDocument(),readSharedChecksDocument()]);
-      if(!remoteRow||!checksRow)throw new Error('לא ניתן לקבע את שני מסמכי הענן לפני השחזור');
-    }
-    const mainState=prepareKupaCloudState(state),checksState={version:1,checks:normalizeSharedChecks(state.checks),bankEvents:normalizeSharedBankEvents(checksRow?.state?.bankEvents||checksSession.sharedChecksBankEvents)};
-    const checksBefore=checksRow?.state?.checks||currentState.checks||[],checksDeleteIds=checksBefore.map(row=>String(row.id)).filter(id=>!checksState.checks.some(row=>row.id===id));
-    const group=await createRestoreGroup({
-      appSite:'kupa',
-      main:{documentName:session.cloudDocumentName||'main',baseRevision:Number(remoteRow?.revision||session.dbRevision||0),state:mainState,deleteIntents:restoreDeleteIntents(remoteRow?.state||currentState,mainState)},
-      checks:{documentName:'main',baseRevision:Number(checksRow?.revision||checksSession.sharedChecksRevision||0),state:checksState,deleteIds:checksDeleteIds},
-      beforeState:{local:currentState,main:clone(remoteRow?.state||prepareKupaCloudState(currentState)),checks:clone(checksRow?.state||{checks:currentState.checks||[],bankEvents:checksSession.sharedChecksBankEvents||[]})},
-      localTargetState:state,
-    });
-    if(v2Source)group.v2Source=v2Source;
-    const applyLocal=cloudActive?applyCompletedGroupLocally:async(_group,result={})=>{
-      const previous=clone(model.state),previousGeneration=Number(session.localGeneration||0);model.state=clone(state);
-      try{
-        const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.dbRevision);
-        if(v2Applied)session.localGeneration=Math.max(Number(session.localGeneration||0),previousGeneration+1);
-        else await saveState('הגיבוי שוחזר',{deleteIntents:restoreDeleteIntents(currentState,state),mutationType:'restore',surface,storageBoundary:'restore-checkpoint'});
-      }catch(error){model.state=previous;invalidateAllViewDomains();throw error}
-      invalidateAllViewDomains();render();
-    };
-    if(cloudActive)await executeRestoreGroup(group,{store:restoreGroupStore,stageRemote:stageRestoreGroup,applyRemote:applyRestoreGroup,onApplied:applyLocal});
-    else{const staged=await restoreGroupStore.stage(group);await applyLocal(staged,{});await restoreGroupStore.complete(staged)}
-    toast('השחזור הושלם ונשמר כפעולה מאוחדת');return true;
+    throw new Error('storage_v2_restore_head_required');
+
   }
 
   function restoreBackup(file){

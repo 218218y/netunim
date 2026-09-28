@@ -112,11 +112,11 @@ test('Kupa does not stage or send cloud work before an IDB-only journal commit',
   assert.deepEqual(staged,['staged']);assert.deepEqual(sent,['sent']);
 });
 
-test('Orders shared checks do not start a cloud write before an IDB-only journal commit',async()=>{
+test('Orders Shared V2 does not start a cloud write before its IDB journal commit',async()=>{
   const commit=deferred(),sent=[],checksSession={},session={localGeneration:0},model={state:{checks:[{id:'C1'}]}};
   const persistence=createSyncChecksPersistence({
-    model,session,checksSession,localSnapshot:()=>false,storageV2:{get durabilityAtRisk(){return true},get commitPromise(){return commit.promise}},
-    markChecksPending:noop,toast:noop,setSave:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,
+    model,session,checksSession,sharedChecksV2:{requested:true,persist:()=>({emergencyDurable:false,committed:commit.promise})},
+    toast:noop,setSave:noop,folderSaveTitle:()=>'',rejectSecondaryMutation:()=>false,
     folderBackupAvailable:()=>false,syncFolderAccessButton:noop,loadSession:()=>({user:{id:'A'}}),
     saveSharedChecksToCloud:async()=>{sent.push('sent');return true},
   });
@@ -125,15 +125,15 @@ test('Orders shared checks do not start a cloud write before an IDB-only journal
   commit.resolve();await tick();assert.deepEqual(sent,['sent']);
 });
 
-test('Kupa shared checks do not start a cloud write when the IDB-only journal commit fails',async()=>{
+test('Kupa Shared V2 does not start a cloud write when its IDB journal commit fails',async()=>{
   const commit=deferred(),sent=[],model={state:structuredClone(kupaInitial)};
   const normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
   const checksSession={sharedChecksGeneration:0},session={localGeneration:0,dbRevision:1,connectionMode:'supabase',backendReady:true,saveQueue:Promise.resolve()};
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   const persistence=createKupaPersistence({
     model,session,checksSession,tab:{primaryTab:true},files:{},domainRevisions:{touch:noop},storageV2Primary:()=>true,
-    storageV2CommitPromise:()=>commit.promise,storageV2DurabilityAtRisk:()=>true,persistImmediateBrowserSnapshot:()=>false,
-    normalizeState:normalization.normalizeState,markSharedChecksPending:noop,saveSharedChecksToCloud:async()=>{sent.push('sent')},
+    sharedChecksV2:{requested:true,persist:()=>({emergencyDurable:false,committed:commit.promise})},
+    normalizeState:normalization.normalizeState,saveSharedChecksToCloud:async()=>{sent.push('sent')},
     setSaveStatus:noop,
   });
   const saving=persistence.saveChecksState('edit',{operations:[{type:'put',collection:'checks',id:'C1',record:{id:'C1'}}]});

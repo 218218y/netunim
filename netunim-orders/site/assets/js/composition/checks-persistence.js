@@ -3,9 +3,6 @@ import {createSyncChecksPersistence} from '../sync/checks-persistence.js';
 export function composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles,cloudAuth,syncChecks,uiAlertCenter,domainRevisions,sharedChecksV2}){
   return createSyncChecksPersistence({
     model,session,checksSession,sharedChecksV2,
-    localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-    markChecksPending:(...args)=>storageChecks.markChecksPending(...args),
-    getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
     toast:(...args)=>uiStatus.toast(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
     syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),

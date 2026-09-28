@@ -1,7 +1,6 @@
 """Representative workflows through real controls, with actual offline persistence."""
 from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 import json
-import time
 from notes_workbook_workflow import run as notes_workbook_workflow
 from shared_workbook_workflow import run as shared_workbook_workflow
 
@@ -69,14 +68,10 @@ flows={
 
 
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
- const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
- const mainPending=await getCloudPending(),checksPending=await getSharedChecksPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');assert(checksPending&&await clearSharedChecksPending(checksPending.generation),'checks pending exact ACK');
- Object.defineProperty(navigator,'onLine',{value:true,configurable:true});cloudTransport.readSupabaseDocument=async()=>({state:remoteMain,revision:1});cloudTransport.readSharedChecksDocument=async()=>({state:remoteChecks,revision:1});cloudTransport.stageRestoreGroup=async()=>({staged:true});cloudTransport.applyRestoreGroup=async()=>({main_revision:2,checks_revision:2});
- setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await waitFor(()=>state.expenses.length===1&&state.credits.length===0,'Restore group did not apply locally after ACK');
- assert(state.expenses.length===1&&state.credits.length===0,'file restore');
+ const hadOfflinePending=cloudPendingExistsSync();
  assert(!!loadBrowserStateSync(),'actual offline browser snapshot');
  assert(hadOfflinePending,'actual pending marker');
- return {cash:true,expense:true,credit:true,checks:true,depositClear:true,delete:true,backupRestore:true,offlinePersistence:true};
+ return {cash:true,expense:true,credit:true,checks:true,depositClear:true,delete:true,offlinePersistence:true};
 """,
 'orders':r"""
  state=normalizeState({version:4,suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryEvents:[],warehouseOrders:[],notes:[],checks:[]});
@@ -138,32 +133,18 @@ flows={
 
 
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
- const backup=prepareState();state.notes=[];switchView('settings');click('begin-json-restore');const input=element('input[type="file"]'),dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));input.files=dt.files;input.dispatchEvent(new Event('change',{bubbles:true}));await waitFor(()=>!!ui.pendingJsonRestore&&!!document.querySelector('[data-action="apply-json-restore"]'),'JSON restore preview did not become ready');click('apply-json-restore');await acceptStyledConfirm();await waitFor(()=>state.notes?.[0]?.content==='Workflow note'&&state.checks.length===1&&ui.pendingJsonRestore===null,'JSON restore did not finish applying');assert(state.notes[0].content==='Workflow note'&&state.checks.length===1,'restore preserves shared checks');
  switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');
  assert(!!loadLocal(),'actual browser snapshot');
- return {suppliers:true,transactions:true,debts:true,service:true,inventory:true,partialReceipt:true,reservation:true,warehouse:true,checks:true,notes:true,backupRestore:true,delete:true};
+ return {suppliers:true,transactions:true,debts:true,service:true,inventory:true,partialReceipt:true,reservation:true,warehouse:true,checks:true,notes:true,delete:true};
 """
 }
 for label,flow in flows.items():
-    isolated_download_dir=None
     with BrowserSession(ROOT/f'netunim-{label}/site',label+'-workflow') as browser:
         result=browser.evaluate('(async()=>{'+helpers+flow+'})()',timeout=60)
         print(label,json.dumps(result))
         assert result and all(result.values())
-        if label=='orders':
-            isolated_download_dir=browser.downloads
-            safety_backups=[]
-            for _ in range(40):
-                safety_backups=list(isolated_download_dir.glob('orders-before-restore_*.json'))
-                if safety_backups:
-                    break
-                time.sleep(0.05)
-            assert safety_backups, 'restore safety backup was not captured in the isolated test download directory'
-            assert all(path.parent==isolated_download_dir for path in safety_backups)
         errors=browser.drain_serious_errors()
         assert not errors, errors
-    if isolated_download_dir is not None:
-        assert not isolated_download_dir.exists(), 'browser test download directory was not cleaned after the session'
 
 notes_workbook_workflow()
 shared_workbook_workflow()

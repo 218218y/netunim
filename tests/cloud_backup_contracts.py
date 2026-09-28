@@ -77,12 +77,14 @@ check("apply-orders-cloud-backup-restore" in orders_actions and "all:['apply-jso
 kupa_backup = read("netunim-kupa/site/assets/js/ui/backup.js")
 orders_backup = read("netunim-orders/site/assets/js/ui/backup.js")
 check("financeSyncIncluded:false" in kupa_backup and "target.creditSync=clone(live.creditSync)" in kupa_backup, "kupa: historical restore preserves live finance sync and downloaded backup marks finance as excluded")
-check("bankEvents:normalizeSharedBankEvents(checksRow?.state?.bankEvents" in orders_backup, "orders: restore preserves the live shared-check bank event ledger")
+check("bankEvents:normalizeSharedBankEvents(checksSession.checksBankEvents||[])" in orders_backup, "orders: V2 import preserves the live shared-check bank event ledger")
 check("!point?.checksState?.checks" in orders_backup and "!point?.checksState?.checks" in kupa_backup, "both apps reject an incomplete point-in-time restore without shared checks")
 check("cloud-backup-field-change" in orders_backup and "row.details" in orders_backup, "orders: preview exposes row-level current-vs-restore details")
 check("cloud-backup-field-change" in kupa_backup and "row.details" in kupa_backup, "kupa: preview exposes row-level current-vs-restore details")
-check("replaceStorageV2AuthoritativeState=async()=>false" in orders_backup and "const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.cloudRevision)" in orders_backup, "orders: local restore prefers an atomic Storage V2 authoritative replacement before legacy fallback")
-check("replaceStorageV2AuthoritativeState=async()=>false" in kupa_backup and "const v2Applied=await replaceStorageV2AuthoritativeState(model.state,session.dbRevision)" in kupa_backup, "kupa: local restore prefers an atomic Storage V2 authoritative replacement before legacy fallback")
+for label, source in (("orders", orders_backup), ("kupa", kupa_backup)):
+    check("applyStorageV2LocalImport" in source and "storage_v2_restore_required" in source
+          and "storage_v2_restore_head_required" in source and "replaceStorageV2AuthoritativeState" not in source,
+          f"{label}: local restore requires coordinated V2 import and has no legacy fallback")
 
 if errors:
     print("\nCloud backup contracts failed:")

@@ -140,11 +140,17 @@ orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encodi
 orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
 kupa_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
 kupa_checks = (KUPA / "site/assets/js/sync/checks-state.js").read_text(encoding="utf-8")
-for label, source in (("Orders", orders_storage), ("Orders checks", orders_checks),
-                      ("Kupa", kupa_pending), ("Kupa checks", kupa_checks)):
+for label, source in (("Orders", orders_storage), ("Kupa", kupa_pending)):
     ok("migrateOutboxRecord" in source and "acknowledgedGenerationMatches" in source
        and ("schemaVersion" not in source or "OUTBOX" in source),
        f"{label}: durable pending supports migration and generation-exact ACK")
+for label, source in (("Orders checks", orders_checks), ("Kupa checks", kupa_checks)):
+    reader = "getSharedChecksPending" if label == "Kupa checks" else "getChecksPending"
+    ok("migrateOutboxRecord" in source and reader in source,
+       f"{label}: old pending remains readable")
+    ok("idbPut" not in source and "writePendingCache" not in source
+       and "acknowledgedGenerationMatches" not in source,
+       f"{label}: old pending reader cannot repair or ACK V1")
 
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):

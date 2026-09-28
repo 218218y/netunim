@@ -63,8 +63,9 @@ ok("restorePayloadHash" in restore_client and "await put(currentKey" in restore_
 for site in (ORDERS, KUPA):
     ui = (site / "site/assets/js/ui/backup.js").read_text(encoding="utf-8")
     lifecycle = (site / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
-    ok("executeRestoreGroup" in ui and "resumeIncompleteRestore" in ui and "resumeIncompleteRestore" in lifecycle,
-       f"{site.name}: restore is unified and startup-resumable")
+    ok("applyStorageV2LocalImport" in ui and "applyStorageV2RestoreGroup" in ui
+       and "resumeIncompleteRestore" in ui and "resumeIncompleteRestore" in lifecycle,
+       f"{site.name}: V2 restore is coordinated and startup-resumable")
 
 ok("create table if not exists netunim_internal.safety_snapshots" in lower
    and "revoke update,delete,truncate on table netunim_internal.safety_snapshots" in lower

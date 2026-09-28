@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageChecks} from '../netunim-orders/site/assets/js/storage/checks.js';
 import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-state.js';
+import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
+import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
 import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_LEGACY_SNAPSHOT_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
@@ -23,7 +25,7 @@ test('ordinary startup cannot enable V1 writers in an unmarked browser',()=>{
     coordinator.owner.current=()=> 'local';
     Object.defineProperty(coordinator.owner,'writable',{get:()=>true});
     assert.equal(coordinator.legacyWriteAllowed(),false);
-    assert.equal(coordinator.legacyChecksWriteAllowed(),false);
+    assert.equal('legacyChecksWriteAllowed' in coordinator,false);
     assert.equal(coordinator.pendingLegacyWriteAllowed({cutoverActive:false}),false);
   }
 });
@@ -67,18 +69,37 @@ test('V2 logout clears authorization without moving visible account data into th
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior;if(priorDocument===undefined)delete globalThis.document;else globalThis.document=priorDocument}
 });
 
-for(const app of ['orders','kupa'])test(`${app}: primary rejects Shared Checks V1 base and outbox writes`,async()=>{
+for(const app of ['orders','kupa'])test(`${app}: Shared Checks storage exposes no V1 writer`,async()=>{
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;
   try{
     const model={state:{checks:[{id:'C',amount:100}]}},checksSession={},idbPut=async()=>{writes++},idbDelete=async()=>{writes++};
     const storage=app==='orders'
       ?createStorageChecks({model,checksSession,idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false})
       :createSyncChecksState({model,checksSession,session:{},idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false});
-    assert.throws(()=>app==='orders'?storage.persistChecksBase(model.state.checks):storage.persistSharedChecksBase(model.state.checks),/write_forbidden/);
-    assert.throws(()=>app==='orders'?storage.markChecksPending(model.state.checks):storage.markSharedChecksPending(model.state.checks),/write_forbidden/);
-    await assert.rejects(app==='orders'?storage.clearChecksPending(1):storage.clearSharedChecksPending(1),/write_forbidden/);
+    assert.equal('persistChecksBase' in storage || 'persistSharedChecksBase' in storage,false);
+    assert.equal('markChecksPending' in storage || 'markSharedChecksPending' in storage,false);
+    assert.equal('clearChecksPending' in storage || 'clearSharedChecksPending' in storage,false);
     assert.equal(app==='orders'?await storage.getChecksPending():await storage.getSharedChecksPending(),null);
     assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
+  }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('check edits without a ready Shared V2 runtime fail before any legacy write',async()=>{
+  const prior=globalThis.localStorage;globalThis.localStorage=localStore();
+  try{
+    const ordersSession={localGeneration:0},ordersStatus=[];
+    const orders=createSyncChecksPersistence({session:ordersSession,checksSession:{},sharedChecksV2:null,
+      rejectSecondaryMutation:()=>false,touchChecksRevision:()=>{},refreshAlertCenter:()=>{},
+      setSave:value=>ordersStatus.push(value),folderSaveTitle:()=>''});
+    assert.equal(orders.scheduleCheckSave('edit'),false);
+    assert.equal(ordersSession.localUndurableGenerations.size,1);
+    const kupaSession={},kupaStatus=[];
+    const kupa=createKupaPersistence({session:kupaSession,checksSession:{},tab:{primaryTab:true},sharedChecksV2:null,
+      setSaveStatus:value=>kupaStatus.push(value)});
+    assert.equal(await kupa.saveChecksState('edit'),false);
+    assert.equal(kupaSession.localUndurableGenerations.size,1);
+    assert.ok(ordersStatus.length&&kupaStatus.length);
+    assert.equal(globalThis.localStorage.length,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
