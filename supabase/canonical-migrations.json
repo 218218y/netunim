@@ -135,6 +135,10 @@
     {
       "version": "20260927121000",
       "name": "google_drive_oauth_search"
+    },
+    {
+      "version": "20260928210313",
+      "name": "bank_snapshot_shared_writer_context"
     }
   ]
 }

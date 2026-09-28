@@ -1,12 +1,12 @@
 {
   "project_id": "bupoidcurcxuypfrjqio",
-  "verified_at": "2026-09-11 04:55:49.662891+00",
+  "verified_at": "2026-09-28 21:11:39.903577+00",
   "production_postflight": "PASS",
   "text_hash_normalization": "lf-v1",
-  "source_audit": "audit/production-postflight-20260911T045549662891Z.json",
-  "source_audit_sha256": "9e2f1307a2f6b16895ab07831f997786d8f276f42fdac8f7b77a6c532574ae73",
+  "source_audit": "audit/production-postflight-20260928T211139903577Z.json",
+  "source_audit_sha256": "9776413bf464d52e9d9ad5fd8651704649b8d656a229532a0452f9e57eaa2d33",
   "schema_snapshot": "audit/morning-schema-live.json",
-  "schema_snapshot_sha256": "350dc135c77ba8f5699290d672042019843a0d10fc03fd82301e6b5a5e3d35fe",
+  "schema_snapshot_sha256": "38d2af7c5cc20133c1d3fab23c390e58b2b6fe041fb2007905727d05130dd82e",
   "migration_manifest": [
     {
       "version": "20260906200304",
@@ -62,6 +62,126 @@
       "version": "20260910211500",
       "name": "bank_instant_credit_reconciliation",
       "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
+    },
+    {
+      "version": "20260913120000",
+      "name": "check_bank_reconciliation",
+      "sha256": "2b483a940b412e5b280e05d569e1885e2db982e60225cc7a63be41a8a00addc3"
+    },
+    {
+      "version": "20260914120000",
+      "name": "check_bank_item_reconciliation",
+      "sha256": "f56a250a559c0c6455de4169d773c3b0596318c64a2ba4e6c46113f0df78e6d1"
+    },
+    {
+      "version": "20260914150000",
+      "name": "check_manual_deposit_tracking",
+      "sha256": "1174c8109551cfbbfea43d1c190347e9212bd5fb92832bd7405d0b4e6e729c2c"
+    },
+    {
+      "version": "20260914160000",
+      "name": "bank_cheque_image_storage_v1",
+      "sha256": "32ddc0c614033aa8bc6a87219da38db936017e4f28ae54ced7cde9cff204d201"
+    },
+    {
+      "version": "20260914183000",
+      "name": "bank_credit_settlement_identity",
+      "sha256": "3de2afb155dbcae58488bcc9bd4dbaa61910d1a3eaf7cf78c1888f5fb8d45912"
+    },
+    {
+      "version": "20260915090000",
+      "name": "check_confirmed_automation",
+      "sha256": "0113174fce5676996907bca415bcd529e9823c76ba6406c9321f73e9601c88ca"
+    },
+    {
+      "version": "20260916090000",
+      "name": "check_notification_retention",
+      "sha256": "d4ae8a18485707e7dece685612415163052b6b4bc28eb75ff746d271dbeefa9d"
+    },
+    {
+      "version": "20260917120000",
+      "name": "notes_workbook_delete",
+      "sha256": "f15ef0ccd2b02cbdd233616ef63041fca3eb5b8e9df5dc84954ad67956e508dc"
+    },
+    {
+      "version": "20260917150000",
+      "name": "orders_notes_workbook",
+      "sha256": "c723caa5fb21609e6cc1a582cddbc56ebb5c29ff9494868b3e50f6caa0bd0be6"
+    },
+    {
+      "version": "20260917180000",
+      "name": "independent_spreadsheet_documents",
+      "sha256": "c6a9a9e429ac03c7d72213d16178d64b85e9b57522c1ef31b7402ecc65f09b9b"
+    },
+    {
+      "version": "20260919234500",
+      "name": "bank_cheque_deposit_pending_transition",
+      "sha256": "75df913c47b443043d86197a7cdeb5ccf3a0105aafa0465fec2bc8bb01f8982f"
+    },
+    {
+      "version": "20260920024000",
+      "name": "check_pending_direct_deposit_reference",
+      "sha256": "8f9e3da175fb5085531ceb11200efac8f78527242fe87bba1ffb44a815f5e60b"
+    },
+    {
+      "version": "20260920034500",
+      "name": "bank_pending_direct_deposit_date_rollover",
+      "sha256": "bab2a78e049c00e1840368fd3457b853457a671d85859b2ea162fc909d6ece9b"
+    },
+    {
+      "version": "20260922043000",
+      "name": "bank_morning_documents",
+      "sha256": "df970244b88ade30f62169d1e017ae0f01677f4579766d8ba6fc590a1499f22b"
+    },
+    {
+      "version": "20260922050000",
+      "name": "bank_morning_payments_v2",
+      "sha256": "74d38389f483c41f79021b08af9f72eb5f929b6eb9a0d3f58e33e12984f4dea0"
+    },
+    {
+      "version": "20260922101500",
+      "name": "bank_handled_rpc_security_fix",
+      "sha256": "c5257a433e966ff9da60d751c618a88496818013619b5c897313132a70949f6e"
+    },
+    {
+      "version": "20260923063000",
+      "name": "bank_pending_cheque_batch_completion",
+      "sha256": "33907b1d6192a6d153f54f5a25e0ab2cf99c2f9a4f959c7a99ccba6ab5e1a0e7"
+    },
+    {
+      "version": "20260923070000",
+      "name": "bank_merge_inserted_identity",
+      "sha256": "36346ce88d761f2e91610bdc0d99585a1b65a4705c2629448378d336b3afa906"
+    },
+    {
+      "version": "20260924120000",
+      "name": "storage_writer_protocol_v2",
+      "sha256": "86ce40f153b77d3a19d8690e92365943a04d51c775be8aecfb0f2113c5881fcc"
+    },
+    {
+      "version": "20260924180000",
+      "name": "finance_storage_writer_protocol_v2",
+      "sha256": "036fb58401b393f87fce7217eab4ae97468b5d93f68b1e465f0e8c727d742dcc"
+    },
+    {
+      "version": "20260925120000",
+      "name": "storage_writer_internalization",
+      "sha256": "1c3141d651456da53df1e44a21a92b937d0e8b514724b96a23062cbc21bdaca3"
+    },
+    {
+      "version": "20260925123000",
+      "name": "revoke_legacy_storage_writers",
+      "sha256": "b2fc88d266829d6149e6a33f3a4f863d4cc23def683bf9648e4450b013ef51be"
+    },
+    {
+      "version": "20260927121000",
+      "name": "google_drive_oauth_search",
+      "sha256": "5bbc2a48f8a2854d0c9971ddac137a3a7e74d9eda5575c18ec48a5e7fe255c53"
+    },
+    {
+      "version": "20260928210313",
+      "name": "bank_snapshot_shared_writer_context",
+      "sha256": "70c4168d7da021b30a4b3ae0a08f64d9377c6672f16820c202118e3c905ef41d"
     }
   ],
   "retention_jobs": [
