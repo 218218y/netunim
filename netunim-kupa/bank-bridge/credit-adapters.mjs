@@ -21,7 +21,7 @@ import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isra
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
-export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v4+upstream-6.12.1-balance';
+export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v5+upstream-6.12.1-balance+state-login';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_RECENT_HISTORY_DAYS=30;
 export const CREDIT_SYNC_MODE_QUICK='quick';
@@ -251,18 +251,60 @@ function monthlyCoverageFailure(plan,error,at){return {month:plan.month,tier:pla
 function monthlyCoverageSuccess(plan,transactions,at,schemaVersion=VISA_CAL_PROVIDER_SCHEMA_VERSION){return {month:plan.month,tier:plan.tier,fetchStatus:'success',fetchedAt:at,transactions,providerSchemaVersion:schemaVersion,lastErrorCode:'',lastErrorAt:null}}
 function coverageError(profile,error,{month='',tier='',accountNumber='',at=new Date().toISOString(),component='',severity=''}={}){const stage=String(error?.stage||'Transactions').slice(0,80),resolvedComponent=component||(tier==='core'?'core_transactions':tier==='forecast'?'forecast_transactions':stage==='Frames'?'frames':stage==='Pending'?'pending':'profile'),resolvedSeverity=severity||(resolvedComponent==='core_transactions'?'error':'warning');return {profileId:profile.profileId,provider:profile.provider,label:profile.label,code:String(error?.code||'CREDIT_PROVIDER_DATA_ERROR'),stage,httpStatus:Number(error?.httpStatus)||0,message:error?.message||'קריאת נתוני האשראי נכשלה',at,originalFailureAt:error?.originalFailureAt||at,retryAfterAt:error?.retryAfterAt||null,month,tier,component:resolvedComponent,severity:resolvedSeverity,accountSuffix:safeSuffix(accountNumber)}}
 
-export function applyVisaCalLoginNavigationPolicy(scraper){
+const VISA_CAL_LOGIN_RESULT_TIMEOUT_MS=45_000;
+const VISA_CAL_LOGIN_RESULT_POLL_MS=200;
+
+async function visaCalClientUrl(page){
+  try{if(typeof page?.evaluate==='function')return String(await page.evaluate(()=>window.location.href)||'')}catch{}
+  try{return String(page?.url?.()||'')}catch{return ''}
+}
+function visaCalStaticLoginConditionMatches(condition,currentUrl){
+  if(condition instanceof RegExp){condition.lastIndex=0;return condition.test(currentUrl)}
+  return typeof condition==='string'&&currentUrl.toLowerCase()===condition.toLowerCase();
+}
+async function visaCalUpstreamLoginResult(page,possibleResults){
+  const currentUrl=await visaCalClientUrl(page),entries=Object.entries(possibleResults&&typeof possibleResults==='object'?possibleResults:{});
+  for(const [result,conditions] of entries)for(const condition of Array.isArray(conditions)?conditions:[])if(typeof condition!=='function'&&visaCalStaticLoginConditionMatches(condition,currentUrl))return {result,currentUrl};
+  const frames=typeof page?.frames==='function'?page.frames():[],hasConnectFrame=frames.some(frame=>{try{return /connect/i.test(String(frame?.url?.()||''))}catch{return false}});
+  if(!hasConnectFrame)return null;
+  for(const [result,conditions] of entries){
+    for(const condition of Array.isArray(conditions)?conditions:[]){
+      if(typeof condition!=='function')continue;
+      try{if(await condition({page,value:currentUrl}))return {result,currentUrl}}catch{}
+    }
+  }
+  return null;
+}
+async function waitForVisaCalUpstreamLoginResult(scraper,possibleResults,{timeoutMs=VISA_CAL_LOGIN_RESULT_TIMEOUT_MS,pollMs=VISA_CAL_LOGIN_RESULT_POLL_MS}={}){
+  const page=scraper?.page;if(!page)throw safeError('מחבר כאל לא חשף page לאחר initialize.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+  const timeout=Math.max(1000,Number(timeoutMs)||VISA_CAL_LOGIN_RESULT_TIMEOUT_MS),poll=Math.max(25,Number(pollMs)||VISA_CAL_LOGIN_RESULT_POLL_MS),deadline=Date.now()+timeout;let tutorialCloseAttempted=false;
+  while(Date.now()<=deadline){
+    const currentUrl=await visaCalClientUrl(page);
+    if(/site-tutorial(?:[/?#]|$)/i.test(currentUrl)&&!tutorialCloseAttempted){tutorialCloseAttempted=true;try{await page.click('button.btn-close')}catch{}}
+    const recognized=await visaCalUpstreamLoginResult(page,possibleResults);if(recognized)return recognized;
+    const remaining=deadline-Date.now();if(remaining<=0)break;await sleep(Math.min(poll,remaining));
+  }
+  const error=new Error(`Visa Cal login did not reach an upstream-recognized result within ${timeout} ms`);error.name='TimeoutError';throw error;
+}
+
+export function applyVisaCalLoginNavigationPolicy(scraper,{loginResultTimeoutMs=VISA_CAL_LOGIN_RESULT_TIMEOUT_MS,loginResultPollMs=VISA_CAL_LOGIN_RESULT_POLL_MS}={}){
   if(!scraper||typeof scraper.getLoginOptions!=='function')throw safeError('מחבר כאל המותקן אינו חושף את חוזה getLoginOptions שנדרש למדיניות הניווט המקומית.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
   const getLoginOptions=scraper.getLoginOptions.bind(scraper);scraper.__netunimLoginStep='navigation';
   scraper.getLoginOptions=credentials=>{
     const options=getLoginOptions(credentials);
     if(!options||typeof options!=='object'||Array.isArray(options))throw safeError('מחבר כאל המותקן החזיר חוזה LoginOptions לא תקין.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
+    if(!options.possibleResults||typeof options.possibleResults!=='object'||Array.isArray(options.possibleResults))throw safeError('מחבר כאל המותקן אינו חושף possibleResults תקין לזיהוי תוצאת הכניסה.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'LoginSetup'});
     const wrapStep=(step,nextStep,action)=>typeof action==='function'?async(...args)=>{scraper.__netunimLoginStep=step;const result=await action(...args);if(nextStep)scraper.__netunimLoginStep=nextStep;return result}:action;
-    // The Cal landing page is an SPA. Waiting for the full load event can hang on
-    // non-essential resources even though the login UI is already usable. The upstream
-    // login flow already has an explicit #ccLoginDesktopBtn readiness gate immediately
-    // after navigation, so DOMContentLoaded is the correct document-level boundary here.
-    return {...options,waitUntil:'domcontentloaded',checkReadiness:wrapStep('landing-readiness','open-login-popup',options.checkReadiness),preAction:wrapStep('open-login-popup','credentials-submit',options.preAction),postAction:wrapStep('post-submit-navigation','result-detection',options.postAction)};
+    // Cal is an SPA and the credential form lives in a cross-origin iframe. Upstream
+    // clicks Submit and only afterwards starts waitForNavigation() on the main page.
+    // That wait can miss the already-completed transition, and an iframe-local result
+    // does not have to create a main-page navigation event at all. Use the installed
+    // scraper's own possibleResults contract as the authority instead of duplicating
+    // Cal selectors/messages locally. The 45-second bound and one credential submit stay unchanged.
+    const postAction=async()=>{scraper.__netunimLoginStep='result-detection';await waitForVisaCalUpstreamLoginResult(scraper,options.possibleResults,{timeoutMs:loginResultTimeoutMs,pollMs:loginResultPollMs})};
+    // The landing document itself only needs DOMContentLoaded because upstream already
+    // owns the explicit #ccLoginDesktopBtn readiness check.
+    return {...options,waitUntil:'domcontentloaded',checkReadiness:wrapStep('landing-readiness','open-login-popup',options.checkReadiness),preAction:wrapStep('open-login-popup','credentials-submit',options.preAction),postAction};
   };
   return scraper;
 }
