@@ -1,0 +1,713 @@
+{
+  "project_id": "bupoidcurcxuypfrjqio",
+  "verified_at": "2026-09-28 21:11:39.903577+00",
+  "production_postflight": "PASS",
+  "schema_drift": [],
+  "build_fingerprint": "3b8f4c72bf57411d8ff44f00898d640600ec02266445130df8a16616a57acb2e",
+  "canonical_migrations": [
+    {
+      "name": "production_schema_baseline",
+      "version": "20260906200304"
+    },
+    {
+      "name": "capabilities_security_invoker",
+      "version": "20260906203818"
+    },
+    {
+      "name": "restore_group_qualified_owner_updates",
+      "version": "20260906203827"
+    },
+    {
+      "name": "oauth_owner_index",
+      "version": "20260906203837"
+    },
+    {
+      "name": "retention_cron_jobs",
+      "version": "20260907035930"
+    },
+    {
+      "name": "morning_operation_ledger",
+      "version": "20260908103011"
+    },
+    {
+      "name": "morning_verified_creation",
+      "version": "20260908190000"
+    },
+    {
+      "name": "morning_global_idempotency",
+      "version": "20260908194500"
+    },
+    {
+      "name": "morning_ledger_owner_retention",
+      "version": "20260908203000"
+    },
+    {
+      "name": "morning_preissue_reservation",
+      "version": "20260908204500"
+    },
+    {
+      "name": "bank_instant_credit_reconciliation",
+      "version": "20260910211500"
+    },
+    {
+      "name": "check_bank_reconciliation",
+      "version": "20260913120000"
+    },
+    {
+      "name": "check_bank_item_reconciliation",
+      "version": "20260914120000"
+    },
+    {
+      "name": "check_manual_deposit_tracking",
+      "version": "20260914150000"
+    },
+    {
+      "name": "bank_cheque_image_storage_v1",
+      "version": "20260914160000"
+    },
+    {
+      "name": "bank_credit_settlement_identity",
+      "version": "20260914183000"
+    },
+    {
+      "name": "check_confirmed_automation",
+      "version": "20260915090000"
+    },
+    {
+      "name": "check_notification_retention",
+      "version": "20260916090000"
+    },
+    {
+      "name": "notes_workbook_delete",
+      "version": "20260917120000"
+    },
+    {
+      "name": "orders_notes_workbook",
+      "version": "20260917150000"
+    },
+    {
+      "name": "independent_spreadsheet_documents",
+      "version": "20260917180000"
+    },
+    {
+      "name": "bank_cheque_deposit_pending_transition",
+      "version": "20260919234500"
+    },
+    {
+      "name": "check_pending_direct_deposit_reference",
+      "version": "20260920024000"
+    },
+    {
+      "name": "bank_pending_direct_deposit_date_rollover",
+      "version": "20260920034500"
+    },
+    {
+      "name": "bank_morning_documents",
+      "version": "20260922043000"
+    },
+    {
+      "name": "bank_morning_payments_v2",
+      "version": "20260922050000"
+    },
+    {
+      "name": "bank_handled_rpc_security_fix",
+      "version": "20260922101500"
+    },
+    {
+      "name": "bank_pending_cheque_batch_completion",
+      "version": "20260923063000"
+    },
+    {
+      "name": "bank_merge_inserted_identity",
+      "version": "20260923070000"
+    },
+    {
+      "name": "storage_writer_protocol_v2",
+      "version": "20260924120000"
+    },
+    {
+      "name": "finance_storage_writer_protocol_v2",
+      "version": "20260924180000"
+    },
+    {
+      "name": "storage_writer_internalization",
+      "version": "20260925120000"
+    },
+    {
+      "name": "revoke_legacy_storage_writers",
+      "version": "20260925123000"
+    },
+    {
+      "name": "google_drive_oauth_search",
+      "version": "20260927121000"
+    },
+    {
+      "name": "bank_snapshot_shared_writer_context",
+      "version": "20260928210313"
+    }
+  ],
+  "migration_manifest": [
+    {
+      "version": "20260906200304",
+      "name": "production_schema_baseline",
+      "sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "name": "capabilities_security_invoker",
+      "sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "name": "restore_group_qualified_owner_updates",
+      "sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "name": "oauth_owner_index",
+      "sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "name": "retention_cron_jobs",
+      "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    },
+    {
+      "version": "20260908103011",
+      "name": "morning_operation_ledger",
+      "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+    },
+    {
+      "version": "20260908190000",
+      "name": "morning_verified_creation",
+      "sha256": "58fc15f0f7fa56a8681ba201c41f31edf0fbaba149f18d9dbbb5237c15f21b8d"
+    },
+    {
+      "version": "20260908194500",
+      "name": "morning_global_idempotency",
+      "sha256": "7db16bc878f89c0eb59718a176fc5dc1036bb6159569aaf9a523e74da1693349"
+    },
+    {
+      "version": "20260908203000",
+      "name": "morning_ledger_owner_retention",
+      "sha256": "8d7795af8ba40ae9fb71820d3fb9a12d81c08b2141c6bfbbc63887b4587d3c7b"
+    },
+    {
+      "version": "20260908204500",
+      "name": "morning_preissue_reservation",
+      "sha256": "872ebb36358280a734cf00f4c73ce1a8da4eb611ece6cc2ebfbecdfd8acfe1ec"
+    },
+    {
+      "version": "20260910211500",
+      "name": "bank_instant_credit_reconciliation",
+      "sha256": "1cfb820769f979dc3b1fbd54de118efdc47747e1c00a17dcdaeb52613f2f2278"
+    },
+    {
+      "version": "20260913120000",
+      "name": "check_bank_reconciliation",
+      "sha256": "2b483a940b412e5b280e05d569e1885e2db982e60225cc7a63be41a8a00addc3"
+    },
+    {
+      "version": "20260914120000",
+      "name": "check_bank_item_reconciliation",
+      "sha256": "f56a250a559c0c6455de4169d773c3b0596318c64a2ba4e6c46113f0df78e6d1"
+    },
+    {
+      "version": "20260914150000",
+      "name": "check_manual_deposit_tracking",
+      "sha256": "1174c8109551cfbbfea43d1c190347e9212bd5fb92832bd7405d0b4e6e729c2c"
+    },
+    {
+      "version": "20260914160000",
+      "name": "bank_cheque_image_storage_v1",
+      "sha256": "32ddc0c614033aa8bc6a87219da38db936017e4f28ae54ced7cde9cff204d201"
+    },
+    {
+      "version": "20260914183000",
+      "name": "bank_credit_settlement_identity",
+      "sha256": "3de2afb155dbcae58488bcc9bd4dbaa61910d1a3eaf7cf78c1888f5fb8d45912"
+    },
+    {
+      "version": "20260915090000",
+      "name": "check_confirmed_automation",
+      "sha256": "0113174fce5676996907bca415bcd529e9823c76ba6406c9321f73e9601c88ca"
+    },
+    {
+      "version": "20260916090000",
+      "name": "check_notification_retention",
+      "sha256": "d4ae8a18485707e7dece685612415163052b6b4bc28eb75ff746d271dbeefa9d"
+    },
+    {
+      "version": "20260917120000",
+      "name": "notes_workbook_delete",
+      "sha256": "f15ef0ccd2b02cbdd233616ef63041fca3eb5b8e9df5dc84954ad67956e508dc"
+    },
+    {
+      "version": "20260917150000",
+      "name": "orders_notes_workbook",
+      "sha256": "c723caa5fb21609e6cc1a582cddbc56ebb5c29ff9494868b3e50f6caa0bd0be6"
+    },
+    {
+      "version": "20260917180000",
+      "name": "independent_spreadsheet_documents",
+      "sha256": "c6a9a9e429ac03c7d72213d16178d64b85e9b57522c1ef31b7402ecc65f09b9b"
+    },
+    {
+      "version": "20260919234500",
+      "name": "bank_cheque_deposit_pending_transition",
+      "sha256": "75df913c47b443043d86197a7cdeb5ccf3a0105aafa0465fec2bc8bb01f8982f"
+    },
+    {
+      "version": "20260920024000",
+      "name": "check_pending_direct_deposit_reference",
+      "sha256": "8f9e3da175fb5085531ceb11200efac8f78527242fe87bba1ffb44a815f5e60b"
+    },
+    {
+      "version": "20260920034500",
+      "name": "bank_pending_direct_deposit_date_rollover",
+      "sha256": "bab2a78e049c00e1840368fd3457b853457a671d85859b2ea162fc909d6ece9b"
+    },
+    {
+      "version": "20260922043000",
+      "name": "bank_morning_documents",
+      "sha256": "df970244b88ade30f62169d1e017ae0f01677f4579766d8ba6fc590a1499f22b"
+    },
+    {
+      "version": "20260922050000",
+      "name": "bank_morning_payments_v2",
+      "sha256": "74d38389f483c41f79021b08af9f72eb5f929b6eb9a0d3f58e33e12984f4dea0"
+    },
+    {
+      "version": "20260922101500",
+      "name": "bank_handled_rpc_security_fix",
+      "sha256": "c5257a433e966ff9da60d751c618a88496818013619b5c897313132a70949f6e"
+    },
+    {
+      "version": "20260923063000",
+      "name": "bank_pending_cheque_batch_completion",
+      "sha256": "33907b1d6192a6d153f54f5a25e0ab2cf99c2f9a4f959c7a99ccba6ab5e1a0e7"
+    },
+    {
+      "version": "20260923070000",
+      "name": "bank_merge_inserted_identity",
+      "sha256": "36346ce88d761f2e91610bdc0d99585a1b65a4705c2629448378d336b3afa906"
+    },
+    {
+      "version": "20260924120000",
+      "name": "storage_writer_protocol_v2",
+      "sha256": "86ce40f153b77d3a19d8690e92365943a04d51c775be8aecfb0f2113c5881fcc"
+    },
+    {
+      "version": "20260924180000",
+      "name": "finance_storage_writer_protocol_v2",
+      "sha256": "036fb58401b393f87fce7217eab4ae97468b5d93f68b1e465f0e8c727d742dcc"
+    },
+    {
+      "version": "20260925120000",
+      "name": "storage_writer_internalization",
+      "sha256": "1c3141d651456da53df1e44a21a92b937d0e8b514724b96a23062cbc21bdaca3"
+    },
+    {
+      "version": "20260925123000",
+      "name": "revoke_legacy_storage_writers",
+      "sha256": "b2fc88d266829d6149e6a33f3a4f863d4cc23def683bf9648e4450b013ef51be"
+    },
+    {
+      "version": "20260927121000",
+      "name": "google_drive_oauth_search",
+      "sha256": "5bbc2a48f8a2854d0c9971ddac137a3a7e74d9eda5575c18ec48a5e7fe255c53"
+    },
+    {
+      "version": "20260928210313",
+      "name": "bank_snapshot_shared_writer_context",
+      "sha256": "70c4168d7da021b30a4b3ae0a08f64d9377c6672f16820c202118e3c905ef41d"
+    }
+  ],
+  "server_migration_manifest": [
+    {
+      "name": "production_schema_baseline",
+      "sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b",
+      "version": "20260906200304"
+    },
+    {
+      "name": "capabilities_security_invoker",
+      "sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd",
+      "version": "20260906203818"
+    },
+    {
+      "name": "restore_group_qualified_owner_updates",
+      "sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260",
+      "version": "20260906203827"
+    },
+    {
+      "name": "oauth_owner_index",
+      "sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef",
+      "version": "20260906203837"
+    },
+    {
+      "name": "retention_cron_jobs",
+      "sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98",
+      "version": "20260907035930"
+    },
+    {
+      "name": "morning_operation_ledger",
+      "sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97",
+      "version": "20260908103011"
+    },
+    {
+      "name": "morning_verified_creation",
+      "sha256": "f67ab07cd83f88faf8326a3d4ae53ba63e2ef6745496ade0002d9fa0deea4b90",
+      "version": "20260908190000"
+    },
+    {
+      "name": "morning_global_idempotency",
+      "sha256": "42889e54f2dc67b5cdd9219a3204fe6c1441a86928890343353e48bea9501bc5",
+      "version": "20260908194500"
+    },
+    {
+      "name": "morning_ledger_owner_retention",
+      "sha256": "0f0aef3b94d83a270a3c246d4321cec10f93d2f4e8227a55a2016e4b6f61bdba",
+      "version": "20260908203000"
+    },
+    {
+      "name": "morning_preissue_reservation",
+      "sha256": "151646783f0031a48205ceaf187f0553fa957374096fa5a85410f950396d1f40",
+      "version": "20260908204500"
+    },
+    {
+      "name": "bank_instant_credit_reconciliation",
+      "sha256": "65bd00492802a97946c7ea500c780fb19ac3ab60e475f9eb01ef998ef5f26a81",
+      "version": "20260910211500"
+    },
+    {
+      "name": "check_bank_reconciliation",
+      "sha256": "aeebf167859e768de141f6f0341c845e196b2fc88f1f2335908469f32955f846",
+      "version": "20260913120000"
+    },
+    {
+      "name": "check_bank_item_reconciliation",
+      "sha256": "6c93aa59357c30e2e9a9110dfaff8558a7e2b852aa58c2565b6b801e30a977e1",
+      "version": "20260914120000"
+    },
+    {
+      "name": "check_manual_deposit_tracking",
+      "sha256": "17f6d0f999a44dc6488679f95238c01b97ac2a4004566982434578ca3a415a50",
+      "version": "20260914150000"
+    },
+    {
+      "name": "bank_cheque_image_storage_v1",
+      "sha256": "70e207e7afd323408bc350c5ed3c6848332c80af6834926b8387dd0b3e731504",
+      "version": "20260914160000"
+    },
+    {
+      "name": "bank_credit_settlement_identity",
+      "sha256": "3b87913203ee11c05e77499d92e66889e8992ae92ad562e1976793e51d6568ca",
+      "version": "20260914183000"
+    },
+    {
+      "name": "check_confirmed_automation",
+      "sha256": "97e2fc3a1b12c520a256c56ba40db50847559d328ae1035ae024fcb6b6867af2",
+      "version": "20260915090000"
+    },
+    {
+      "name": "check_notification_retention",
+      "sha256": "3d09e42232ca4894a4f9d2853dbe20111185fe4cda72af11ae4c157860901f85",
+      "version": "20260916090000"
+    },
+    {
+      "name": "notes_workbook_delete",
+      "sha256": "064987ed3c8b38e8fd6f6c3414445fd61913b6eefdd9a7326197f04967b80b75",
+      "version": "20260917120000"
+    },
+    {
+      "name": "orders_notes_workbook",
+      "sha256": "7dca55b89f34330dcb0d73047604b91cabf02e79f450f1d70298abbb67b0b3b6",
+      "version": "20260917150000"
+    },
+    {
+      "name": "independent_spreadsheet_documents",
+      "sha256": "2cfd7df654a0f979e9f4d9194d47e70ee061b4ae7f7c24a2286dd9249ab7aff6",
+      "version": "20260917180000"
+    },
+    {
+      "name": "bank_cheque_deposit_pending_transition",
+      "sha256": "01bc58bc41bc9d5b9f87ab7d045c60a243b342e0ad72d6eae863176ddae82cf7",
+      "version": "20260919234500"
+    },
+    {
+      "name": "check_pending_direct_deposit_reference",
+      "sha256": "01e59c05196b75d5b8de507cfaf0bad8ef008f06a936b4e8c783882b75d3d026",
+      "version": "20260920024000"
+    },
+    {
+      "name": "bank_pending_direct_deposit_date_rollover",
+      "sha256": "cc0386f193ec0d8763826357cc65f33f3b3513281157058c6fa11a77e9ab840b",
+      "version": "20260920034500"
+    },
+    {
+      "name": "bank_morning_documents",
+      "sha256": "cdd191952b2da44c5cc8d6682b9d6efea8b6b9dbd940a88e3e1b9a3ab46330fc",
+      "version": "20260922043000"
+    },
+    {
+      "name": "bank_morning_payments_v2",
+      "sha256": "df1ec6b231cca0bdd0ad8b9ad58736bbe432f898bf7cf3dc7a63ee3b50aafdb3",
+      "version": "20260922050000"
+    },
+    {
+      "name": "bank_handled_rpc_security_fix",
+      "sha256": "8da9ca29b386d4ee3159b14182f6a87c64c4a9ef15ad734eeba2ed644c63d422",
+      "version": "20260922101500"
+    },
+    {
+      "name": "bank_pending_cheque_batch_completion",
+      "sha256": "817fd70a779afba6924007f44c3da2b81b33d75d5a1339e5bac3d87f29bb01e9",
+      "version": "20260923063000"
+    },
+    {
+      "name": "bank_merge_inserted_identity",
+      "sha256": "9285cced0efc0b4063d95ee1d5ec94914aefc062ad8e97d74df352085c896666",
+      "version": "20260923070000"
+    },
+    {
+      "name": "storage_writer_protocol_v2",
+      "sha256": "1c2a8098635909b1ca3912091fd469980489d3f5118a300388391f0081c5a104",
+      "version": "20260924120000"
+    },
+    {
+      "name": "finance_storage_writer_protocol_v2",
+      "sha256": "2278f99eeaaaf24812d58614bc91b39405d8c2154f2b41e900f47291602492d8",
+      "version": "20260924180000"
+    },
+    {
+      "name": "storage_writer_internalization",
+      "sha256": "74c8adb4016f33926ceee966d57908139e346a6b2c2bbe91a54a47132af521eb",
+      "version": "20260925120000"
+    },
+    {
+      "name": "revoke_legacy_storage_writers",
+      "sha256": "742c00af871d1ead309734f511c54e56cfb65763fea13d85070a79a3d9c65eb2",
+      "version": "20260925123000"
+    },
+    {
+      "name": "google_drive_oauth_search",
+      "sha256": "15ca06f0457dc2ed18afe36be0b66106b540f492e9467db34008822b15bc9791",
+      "version": "20260927121000"
+    },
+    {
+      "name": "bank_snapshot_shared_writer_context",
+      "sha256": "3251ea6c81483e87796a98acb40b3404022c13812ffb8408ff686e6a5dd56945",
+      "version": "20260928210313"
+    }
+  ],
+  "migration_storage_formats": [
+    {
+      "version": "20260906200304",
+      "storage": "file-lf-v1",
+      "server_sha256": "fa02f7efbeae79e1acf92a51a3bf86b9fa22e9e4c9d4d62991cb94eb0e63b32b"
+    },
+    {
+      "version": "20260906203818",
+      "storage": "file-lf-v1",
+      "server_sha256": "a9e0848534bc2bedb540419af0694c683ce24c98c3aef2b602ca20786ac800cd"
+    },
+    {
+      "version": "20260906203827",
+      "storage": "file-lf-v1",
+      "server_sha256": "abac1fc77be8ddca17d02cda2523e1d62774d68260540c27554bbeb8f6639260"
+    },
+    {
+      "version": "20260906203837",
+      "storage": "file-lf-v1",
+      "server_sha256": "7650aff1bdb551187970b8fef90a133dafc719e909666ab8521c3dae8a1f75ef"
+    },
+    {
+      "version": "20260907035930",
+      "storage": "file-lf-v1",
+      "server_sha256": "313c57a668cf3a7a6986382859b4ea6e75ed833980d61f58f434b71031263c98"
+    },
+    {
+      "version": "20260908103011",
+      "storage": "file-lf-v1",
+      "server_sha256": "783f601f7a7cb8a8122bb4e56cc95d6a1e1b6cbb56a3a22c68ceada86031cf97"
+    },
+    {
+      "version": "20260908190000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "f67ab07cd83f88faf8326a3d4ae53ba63e2ef6745496ade0002d9fa0deea4b90"
+    },
+    {
+      "version": "20260908194500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "42889e54f2dc67b5cdd9219a3204fe6c1441a86928890343353e48bea9501bc5"
+    },
+    {
+      "version": "20260908203000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "0f0aef3b94d83a270a3c246d4321cec10f93d2f4e8227a55a2016e4b6f61bdba"
+    },
+    {
+      "version": "20260908204500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "151646783f0031a48205ceaf187f0553fa957374096fa5a85410f950396d1f40"
+    },
+    {
+      "version": "20260910211500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "65bd00492802a97946c7ea500c780fb19ac3ab60e475f9eb01ef998ef5f26a81"
+    },
+    {
+      "version": "20260913120000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "aeebf167859e768de141f6f0341c845e196b2fc88f1f2335908469f32955f846"
+    },
+    {
+      "version": "20260914120000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "6c93aa59357c30e2e9a9110dfaff8558a7e2b852aa58c2565b6b801e30a977e1"
+    },
+    {
+      "version": "20260914150000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "17f6d0f999a44dc6488679f95238c01b97ac2a4004566982434578ca3a415a50"
+    },
+    {
+      "version": "20260914160000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "70e207e7afd323408bc350c5ed3c6848332c80af6834926b8387dd0b3e731504"
+    },
+    {
+      "version": "20260914183000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "3b87913203ee11c05e77499d92e66889e8992ae92ad562e1976793e51d6568ca"
+    },
+    {
+      "version": "20260915090000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "97e2fc3a1b12c520a256c56ba40db50847559d328ae1035ae024fcb6b6867af2"
+    },
+    {
+      "version": "20260916090000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "3d09e42232ca4894a4f9d2853dbe20111185fe4cda72af11ae4c157860901f85"
+    },
+    {
+      "version": "20260917120000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "064987ed3c8b38e8fd6f6c3414445fd61913b6eefdd9a7326197f04967b80b75"
+    },
+    {
+      "version": "20260917150000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "7dca55b89f34330dcb0d73047604b91cabf02e79f450f1d70298abbb67b0b3b6"
+    },
+    {
+      "version": "20260917180000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "2cfd7df654a0f979e9f4d9194d47e70ee061b4ae7f7c24a2286dd9249ab7aff6"
+    },
+    {
+      "version": "20260919234500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "01bc58bc41bc9d5b9f87ab7d045c60a243b342e0ad72d6eae863176ddae82cf7"
+    },
+    {
+      "version": "20260920024000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "01e59c05196b75d5b8de507cfaf0bad8ef008f06a936b4e8c783882b75d3d026"
+    },
+    {
+      "version": "20260920034500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "cc0386f193ec0d8763826357cc65f33f3b3513281157058c6fa11a77e9ab840b"
+    },
+    {
+      "version": "20260922043000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "cdd191952b2da44c5cc8d6682b9d6efea8b6b9dbd940a88e3e1b9a3ab46330fc"
+    },
+    {
+      "version": "20260922050000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "df1ec6b231cca0bdd0ad8b9ad58736bbe432f898bf7cf3dc7a63ee3b50aafdb3"
+    },
+    {
+      "version": "20260922101500",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "8da9ca29b386d4ee3159b14182f6a87c64c4a9ef15ad734eeba2ed644c63d422"
+    },
+    {
+      "version": "20260923063000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "817fd70a779afba6924007f44c3da2b81b33d75d5a1339e5bac3d87f29bb01e9"
+    },
+    {
+      "version": "20260923070000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "9285cced0efc0b4063d95ee1d5ec94914aefc062ad8e97d74df352085c896666"
+    },
+    {
+      "version": "20260924120000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "1c2a8098635909b1ca3912091fd469980489d3f5118a300388391f0081c5a104"
+    },
+    {
+      "version": "20260924180000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "2278f99eeaaaf24812d58614bc91b39405d8c2154f2b41e900f47291602492d8"
+    },
+    {
+      "version": "20260925120000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "74c8adb4016f33926ceee966d57908139e346a6b2c2bbe91a54a47132af521eb"
+    },
+    {
+      "version": "20260925123000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "742c00af871d1ead309734f511c54e56cfb65763fea13d85070a79a3d9c65eb2"
+    },
+    {
+      "version": "20260927121000",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "15ca06f0457dc2ed18afe36be0b66106b540f492e9467db34008822b15bc9791"
+    },
+    {
+      "version": "20260928210313",
+      "storage": "cli-statements-lf-v1",
+      "server_sha256": "3251ea6c81483e87796a98acb40b3404022c13812ffb8408ff686e6a5dd56945"
+    }
+  ],
+  "operations": {
+    "database": "postgres",
+    "full_visibility": true,
+    "jobs": [
+      {
+        "active": true,
+        "command": "select * from netunim_internal.prune_sync_operation_ledgers();",
+        "database": "postgres",
+        "jobid": 1,
+        "jobname": "netunim-sync-ledger-retention-weekly",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "17 3 * * 0",
+        "username": "postgres"
+      },
+      {
+        "active": true,
+        "command": "select * from netunim_internal.prune_document_backups();",
+        "database": "postgres",
+        "jobid": 2,
+        "jobname": "netunim-document-backup-retention-daily",
+        "nodename": "localhost",
+        "nodeport": 5432,
+        "schedule": "43 3 * * *",
+        "username": "postgres"
+      }
+    ],
+    "launch_active_jobs": "on",
+    "pg_cron": true,
+    "server_port": 5432,
+    "timezone": "GMT"
+  },
+  "scope": "Read-only database schema, security, retention jobs and migration SQL verification. No Morning document issued."
+}

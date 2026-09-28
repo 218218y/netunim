@@ -171,20 +171,23 @@ class SupabaseContracts(unittest.TestCase):
                     'apply_restore_group_v5', 'stage_restore_group_v5', 'claim_finance_sync_lease',
                     'release_finance_sync_lease', 'merge_bank_transactions', 'sync_bank_transactions_snapshot',
                     'save_bank_sync_snapshot', 'save_finance_sync_document_v5'}
+        retired = {'apply_restore_group_v5', 'stage_restore_group_v5', 'merge_bank_transactions',
+                   'sync_bank_transactions_snapshot', 'save_bank_sync_snapshot',
+                   'save_finance_sync_document_v5'}
         warnings = read('audit/security-advisor-upgraded.json')['result']['lints']
         relevant = [w for w in warnings if w['name'] == 'authenticated_security_definer_function_executable']
         self.assertEqual({w['metadata']['name'] for w in relevant}, expected)
         inventory = read(read('postflight-target.json')['schema_snapshot'])
-        # The authenticated receipt predates V6. Current owner-isolation tests
-        # exercise V6, while the dedicated protocol test proves these historical
-        # entrypoints reject fenced owners and are revoked from browser roles.
+        # Advisor evidence is historical. The current authenticated receipt
+        # records that legacy writers were revoked, while the remaining lease
+        # and acknowledgement RPCs are still intentionally browser callable.
         tests = ((ROOT / 'tests/supabase_authorization.py').read_text(encoding='utf8') +
                  (ROOT / 'tests/storage_writer_protocol_server.py').read_text(encoding='utf8'))
         review = (ROOT / 'supabase/REVIEW.md').read_text(encoding='utf8')
         for rpc in expected:
             function = next(f for f in inventory['functions'] if f['schema'] == 'public' and f['name'] == rpc)
             self.assertTrue(function['security_definer'])
-            self.assertTrue(function['authenticated'])
+            self.assertEqual(function['authenticated'], rpc not in retired)
             self.assertFalse(function['anon'])
             self.assertIn('search_path=pg_catalog', function['config'][0])
             self.assertIn('public.' + rpc + '(', tests)
