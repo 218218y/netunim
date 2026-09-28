@@ -28,13 +28,40 @@ def load_sync_module():
 SYNC_MODULE = load_sync_module()
 
 
+def copy_fixture_tree(relative: str, destination_root: Path) -> None:
+    """Copy only assets that sync-assets actually consumes in contract fixtures.
+
+    Vendored PDF/document-viewer runtimes are validated by dedicated runtime
+    contracts. sync-assets hashes only each runtime manifest, so copying hundreds
+    of vendor files into every temporary fixture adds I/O without increasing
+    coverage.
+    """
+    source = ROOT / relative
+    target = destination_root / relative
+    if not relative.endswith('/site'):
+        shutil.copytree(source, target)
+        return
+
+    assets = source / 'assets'
+    def ignore(directory, names):
+        return ['vendor'] if Path(directory) == assets and 'vendor' in names else []
+
+    shutil.copytree(source, target, ignore=ignore)
+    vendor = source / 'assets/vendor'
+    if vendor.is_dir():
+        for manifest in vendor.rglob('_runtime-manifest.txt'):
+            copied = target / 'assets/vendor' / manifest.relative_to(vendor)
+            copied.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(manifest, copied)
+
+
 class SyncAssetContracts(unittest.TestCase):
     def setUp(self):
         self.scratch = tempfile.TemporaryDirectory(prefix='netunim-assets-')
         self.addCleanup(self.scratch.cleanup)
         self.root = Path(self.scratch.name)
         for relative in ('shared', 'netunim-kupa/site', 'netunim-orders/site'):
-            shutil.copytree(ROOT / relative, self.root / relative)
+            copy_fixture_tree(relative, self.root)
         (self.root / 'tools').mkdir()
         shutil.copyfile(ROOT / 'tools/sync-assets.py', self.root / 'tools/sync-assets.py')
         self.run_sync()
@@ -186,7 +213,7 @@ class StagedAssetContracts(unittest.TestCase):
         self.addCleanup(self.scratch.cleanup)
         self.root = Path(self.scratch.name)
         for relative in ('shared', 'netunim-kupa/site', 'netunim-orders/site'):
-            shutil.copytree(ROOT / relative, self.root / relative)
+            copy_fixture_tree(relative, self.root)
         (self.root / 'tools/git-hooks').mkdir(parents=True)
         for relative in ('sync-assets.py', 'install-git-hooks.py', 'git-hooks/pre-commit'):
             shutil.copyfile(ROOT / 'tools' / relative, self.root / 'tools' / relative)

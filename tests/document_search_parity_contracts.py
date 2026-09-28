@@ -1,10 +1,22 @@
 from pathlib import Path
+import re
 
 ROOT=Path(__file__).resolve().parents[1]
 ORDERS=ROOT/'netunim-orders/site'
 KUPA=ROOT/'netunim-kupa/site'
 CANONICAL=ROOT/'shared/document-search'
 
+
+def assert_pdf_viewer_css_isolation(site:Path, app:str):
+    css=(site/'assets/app.css').read_text(encoding='utf-8')
+    reserved=('page','pdfViewer','textLayer','annotationLayer','canvasWrapper')
+    for selector in re.findall(r'([^{}]+)\{',css):
+        if selector.lstrip().startswith('@'):
+            continue
+        for branch in selector.split(','):
+            branch=branch.strip()
+            for name in reserved:
+                assert not re.match(rf'^\.{re.escape(name)}(?:$|[\s:#.\[>+~])',branch), f'{app}: host CSS leaks into PDF.js via {branch}'
 
 def search_dialog(html:str)->str:
     start=html.index('<div class="global-search-backdrop" id="globalSearchBackdrop"')
@@ -22,7 +34,10 @@ for html in (orders_html,kupa_html):
 
 shared_shell=(ROOT/'shared/global-document-search.js').read_bytes()
 shared_css=(ROOT/'shared/global-document-search.css').read_bytes()
+shared_css_text=shared_css.decode('utf-8')
+assert '.document-pdfjs-container .pdfViewer .page{box-sizing:content-box;margin:0 auto 10px;padding:0}' in shared_css_text
 for app,site in (('orders',ORDERS),('kupa',KUPA)):
+    assert_pdf_viewer_css_isolation(site,app)
     assert (site/'assets/js/shared/global-document-search.js').read_bytes()==shared_shell, f'{app}: shared search shell drift'
     assert (site/'assets/js/shared/global-document-search.css').read_bytes()==shared_css, f'{app}: shared search CSS drift'
     main=(site/'assets/js/main.js').read_text(encoding='utf-8')
