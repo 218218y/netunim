@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const workerSource=fs.readFileSync(new URL('../netunim-orders/site/assets/js/domains/documents/spreadsheet-preview-worker.js',import.meta.url),'utf8');
 
-function runWorkerOpen(workbook,query='needle'){
+function runWorkerOpen(workbook,query='needle',contentSearch={}){
   const posted=[];
   const context={
     importScripts(){},
@@ -22,7 +22,7 @@ function runWorkerOpen(workbook,query='needle'){
   context.globalThis=context;
   vm.createContext(context);
   vm.runInContext(workerSource,context,{filename:'spreadsheet-preview-worker.js'});
-  context.self.onmessage({data:{id:1,type:'open',query,buffer:new ArrayBuffer(0)}});
+  context.self.onmessage({data:{id:1,type:'open',query,contentSearch,buffer:new ArrayBuffer(0)}});
   assert.equal(posted.length,1);
   assert.equal(posted[0].ok,true,posted[0].error);
   return posted[0];
@@ -41,4 +41,15 @@ test('spreadsheet worker searches every worksheet and preserves sheet identity f
   assert.equal(opened.matches.length,2);
   assert.equal(Array.from(opened.matches,match=>match.sheet).join(','),'0,1');
   assert.equal(Array.from(opened.matches,match=>match.text).join('|'),'needle in first|needle in second');
+});
+
+
+test('spreadsheet worker highlights advanced AND, OR and ordered proximity matches',()=>{
+  const workbook={SheetNames:['Sheet1'],Sheets:{Sheet1:{'!ref':'A1:A1','!data':[[{v:'מה אחד שני שלומך',w:'מה אחד שני שלומך'}]]}}};
+  assert.equal(runWorkerOpen(workbook,'מה שלומך',{matchMode:'all'}).matches.length,2);
+  assert.equal(runWorkerOpen(workbook,'מה חסרה',{matchMode:'any'}).matches.length,1);
+  assert.equal(runWorkerOpen(workbook,'מה חסרה',{matchMode:'all'}).matches.length,0);
+  const proximity=runWorkerOpen(workbook,'מה שלומך',{matchMode:'proximity',proximityWords:2});
+  assert.equal(proximity.matches.length,1);assert.equal(proximity.matches[0].snippet.match,'מה אחד שני שלומך');
+  assert.equal(runWorkerOpen(workbook,'מה שלומך',{matchMode:'proximity',proximityWords:1}).matches.length,0);
 });

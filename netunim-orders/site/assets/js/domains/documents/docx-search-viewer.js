@@ -76,7 +76,7 @@ function appendGeneratedStyles(nodes){
 
 export function preloadDocxSearchRuntime(){return loadRuntime()}
 
-export async function createDocxSearchViewer({host,blob,query,onMatchState=()=>{}}){
+export async function createDocxSearchViewer({host,blob,query,contentSearch={},onMatchState=()=>{}}){
   if(!host||!blob)throw new TypeError('DOCX preview host and blob are required');
   const runtime=await loadRuntime();
   host.innerHTML='';
@@ -96,7 +96,7 @@ export async function createDocxSearchViewer({host,blob,query,onMatchState=()=>{
   }
   hardenRenderedDocument(body);
   try{await styles.ready}catch(error){styles.dispose();throw error}
-  const navigator=createDomSearchNavigator({root:body,scrollContainer:viewport,query,onMatchState,horizontalScroll:false});
+  const navigator=createDomSearchNavigator({root:body,scrollContainer:viewport,query,contentSearch,onMatchState,horizontalScroll:false});
   return {
     ...navigator,
     resize:()=>navigator.resize?.(),

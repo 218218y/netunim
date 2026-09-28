@@ -49,7 +49,7 @@ export function createDomainsDocumentSearch({localBridge,googleDrive,userAgent=g
   async function matches(id,options){const decoded=decodeId(id),source=decoded.source||active;if(source==='drive')return {ok:true,active:false,query:'',count:0,snippets:[],source:'google-drive-viewer'};return routed('matches',id,options)}
   async function openDocument(id){return routed('openDocument',id)}
   async function revealDocument(id){return routed('revealDocument',id)}
-  async function deleteDocument(id){return routed('deleteDocument',id)}
+  async function deleteDocument(id){const decoded=decodeId(id),source=decoded.source||active,target=provider(source);if(!target?.deleteDocument){const error=new Error(source==='drive'?'הפעולה אינה זמינה לקובץ Google Drive.':'הפעולה המקומית אינה זמינה.');error.code='DOCUMENT_ACTION_UNAVAILABLE';throw error}mark(source,source==='drive'?fallbackReason:'');const result=await target.deleteDocument(decoded.id);return {...result,invalidatedIds:(Array.isArray(result?.invalidatedIds)?result.invalidatedIds:[decoded.id]).map(value=>prefixId(value,source))}}
   async function nativePreview(id,geometry){return routed('nativePreview',id,geometry)}
   async function moveNativePreview(geometry){if(active!=='local'||!localBridge?.moveNativePreview)return false;return localBridge.moveNativePreview(geometry)}
   async function hideNativePreview(){if(!localBridge?.hideNativePreview)return false;return localBridge.hideNativePreview()}

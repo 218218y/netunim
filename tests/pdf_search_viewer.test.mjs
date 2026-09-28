@@ -32,6 +32,7 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
   assert.equal(buildPdfFindRequest('needle',{type:'again',findPrevious:true}).findPrevious,true);
   assert.equal(buildPdfFindRequest('needle',{type:'again'}).type,'again');
+  assert.deepEqual(buildPdfFindRequest(['מה','שלומך']).query,['מה','שלומך']);
 });
 
 test('read-only PDF text widgets use readonly semantics so selected text remains copyable',()=>{
@@ -149,4 +150,21 @@ test('PDF runtime loading keeps the application module graph static, local and d
   assert.doesNotMatch(source,/cdnjs|jsdelivr|https:\/\//i);
   assert.doesNotMatch(source,/script\.src|loadRuntimeScript/);
   assert.match(source,/link\.rel='stylesheet'/,'PDF.js CSS is loaded as a native local stylesheet');
+});
+
+
+test('controlled PDF preview uses term arrays for AND/OR and an exact ordered-proximity matcher',async()=>{
+  const all=fakeRuntime(),allHost=fakeHost();
+  const allViewer=await createPdfSearchViewer({host:allHost,data:new Uint8Array([37,80,68,70]),query:'מה שלומך',contentSearch:{matchMode:'all'},runtime:all.runtime});
+  all.state.eventBus.dispatch('pagesinit',{});
+  const allFind=all.state.eventBus.dispatched.find(event=>event.name==='find');
+  assert.deepEqual(allFind.payload.query,['מה','שלומך']);
+  await allViewer.destroy();
+
+  const proximity=fakeRuntime(),proximityHost=fakeHost();
+  const proximityViewer=await createPdfSearchViewer({host:proximityHost,data:new Uint8Array([37,80,68,70]),query:'מה שלומך',contentSearch:{matchMode:'proximity',proximityWords:2},runtime:proximity.runtime});
+  assert.equal(typeof proximity.state.findController.match,'function');
+  assert.deepEqual(proximity.state.findController.match(null,'פתיחה מה אחד שני שלומך סוף',0),[{index:6,length:16}]);
+  assert.deepEqual(proximity.state.findController.match(null,'פתיחה מה אחד שני שלישי שלומך סוף',0),[]);
+  await proximityViewer.destroy();
 });

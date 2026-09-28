@@ -5,6 +5,7 @@ import {
   normalizeSearchText,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
+import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
 test('local document delete requires confirmation and invalidates only returned result ids',async()=>{
   const calls=[],button={disabled:false,isConnected:true};
@@ -184,4 +185,12 @@ test('Everything install location is parsed from official registry query output'
   const stdout='HKEY_LOCAL_MACHINE\\SOFTWARE\\voidtools\\Everything\r\n    InstallLocation    REG_SZ    C:\\Program Files\\Everything\r\n';
   assert.equal(parseRegistryInstallLocation(stdout),'C:\\Program Files\\Everything');
   assert.equal(parseRegistryInstallLocation(''),'');
+});
+
+
+test('unified local document source returns prefixed invalidation ids after delete',async()=>{
+  const calls=[];const localBridge={deleteDocument:async id=>{calls.push(id);return {ok:true,invalidatedIds:[id,'sibling']}}};
+  const source=createDomainsDocumentSearch({localBridge,userAgent:'Windows NT'}),result=await source.deleteDocument('local:opaque-7');
+  assert.deepEqual(calls,['opaque-7']);
+  assert.deepEqual(result.invalidatedIds,['local:opaque-7','local:sibling']);
 });

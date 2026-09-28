@@ -1,3 +1,4 @@
+import {buildViewerFindQuery,findTextMatchOffsets,normalizeContentSearch} from './document-search-navigator.js';
 const PDFJS_VERSION='6.3.289';
 const PDFJS_ROOT='../../../vendor/pdfjs/';
 
@@ -37,7 +38,8 @@ function ensureViewerStylesheet(){
 }
 
 export function buildPdfFindRequest(query,{type='',findPrevious=false}={}){
-  return {source:null,type,query:String(query||''),phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
+  const value=Array.isArray(query)?query.map(item=>String(item||'')).filter(Boolean):String(query||'');
+  return {source:null,type,query:value,phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
 }
 
 async function loadRuntime(){
@@ -97,17 +99,18 @@ async function documentRuntimeOptions({url='',blob=null,data=null}={}){
   return options;
 }
 
-export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,onMatchState,runtime=null,interactiveForms=true}={}){
+export async function createPdfSearchViewer({host,url='',blob=null,data=null,query,contentSearch={},onMatchState,runtime=null,interactiveForms=true}={}){
   if(!host)throw new Error('PDF preview host is missing.');
   if(!url&&!blob&&!data)throw new Error('PDF preview source is missing.');
-  const needle=String(query||'').trim();
-  const hasFindQuery=needle.length>=2;
+  const needle=String(query||'').trim(),search=normalizeContentSearch(contentSearch),findQuery=buildViewerFindQuery(needle,search);
+  const hasFindQuery=Array.isArray(findQuery)?findQuery.length>0:String(findQuery||'').length>=2;
   const {pdfjsLib,pdfjsViewer}=runtime||await loadRuntime();
   host.innerHTML='<div class="document-pdfjs-container" tabindex="0"><div class="pdfViewer"></div></div>';
   const container=host.querySelector('.document-pdfjs-container');
   const eventBus=new pdfjsViewer.EventBus();
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
+  if(findController&&search.matchMode==='proximity'){findController.match=(_query,pageContent)=>findTextMatchOffsets(pageContent,needle,{...search,maxMatches:20000}).matches.map(match=>({index:match.start,length:match.end-match.start}))}
   const viewerOptions={container,eventBus,linkService,findController};
   // Drive preview is read-only: use the PDF-authored AcroForm appearance streams
   // instead of rebuilding fields as HTML controls. Local preview keeps interactive
@@ -127,7 +130,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     const root=event?.source?.annotationLayer?.div||container;
     makePdfReadOnlyTextFieldsCopyable(root);
   });
-  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(needle,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
+  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
