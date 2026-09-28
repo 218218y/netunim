@@ -66,7 +66,6 @@
       </label>
       <div class="global-search-options" id="globalSearchContentOptions" aria-label="אפשרויות חיפוש תוכן">
         <label class="global-search-option-select" for="globalSearchContentMatchMode">
-          <span>התאמה</span>
           <select id="globalSearchContentMatchMode" aria-label="אופן התאמת חיפוש בתוכן">
             <option value="phrase">ביטוי מדויק</option>
             <option value="all">כל המילים</option>
@@ -80,10 +79,8 @@
           <span>מילים ביניהן</span>
         </label>
       </div>
+      <span class="global-search-live-status" id="globalSearchMeta" aria-live="polite" aria-atomic="true"></span>
       <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
-    </div>
-    <div class="global-search-statusbar">
-      <span class="global-search-head-status" id="globalSearchMeta" aria-live="polite"></span>
     </div>
     <div class="global-search-workspace" id="globalSearchWorkspace">
       <div class="global-search-results" id="globalSearchResults"></div>

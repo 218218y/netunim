@@ -6,7 +6,7 @@ const scriptLoads=new Map();
 const DOCX_OPTIONS=Object.freeze({
   className:'netunim-docx',
   inWrapper:true,
-  ignoreWidth:false,
+  ignoreWidth:true,
   ignoreHeight:false,
   ignoreFonts:false,
   breakPages:true,
@@ -96,7 +96,7 @@ export async function createDocxSearchViewer({host,blob,query,onMatchState=()=>{
   }
   hardenRenderedDocument(body);
   try{await styles.ready}catch(error){styles.dispose();throw error}
-  const navigator=createDomSearchNavigator({root:body,scrollContainer:viewport,query,onMatchState});
+  const navigator=createDomSearchNavigator({root:body,scrollContainer:viewport,query,onMatchState,horizontalScroll:false});
   return {
     ...navigator,
     resize:()=>navigator.resize?.(),

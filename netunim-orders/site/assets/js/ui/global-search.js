@@ -11,7 +11,7 @@ import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
 import {createTextSearchViewer} from '../domains/documents/text-search-viewer.js';
 import {createDocxSearchViewer,preloadDocxSearchRuntime} from '../domains/documents/docx-search-viewer.js';
 import {createSpreadsheetSearchViewer} from '../domains/documents/spreadsheet-search-viewer.js';
-import {bytes,documentIconKind,fileKindLabel,localDate,previewDetailsHtml,previewTextLabel,safeCloudViewUrl,snippetHtml} from './document-search-view.js';
+import {documentResultsTableHtml,previewDetailsHtml,previewTextLabel,safeCloudViewUrl,snippetHtml} from './document-search-view.js';
 
 const DOCUMENT_SEARCH_DELAY_MS=200;
 const RECENT_DOCUMENT_LIMIT=150;
@@ -87,10 +87,8 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
     const {previewBody,previewMatches}=refs();if(previewMatches){previewMatches.hidden=true;previewMatches.innerHTML=''}if(previewBody){const text=isGoogleDriveSource()?'לחיצה אחת מציגה את הקובץ ישירות כאן; אם הסוג אינו נתמך יופיע כפתור פתיחה ב-Google Drive.':'לחיצה אחת על תוצאת קובץ תציג אותה כאן. לחיצה כפולה תפתח אותה במחשב.';previewBody.innerHTML=`<div class="document-preview-empty"><span>⌕</span><b>תצוגה מקדימה</b><p>${esc(text)}</p></div>`}
   }
   function renderDocumentTable(rows,mode,{label=sourceLabel(mode),hint=isGoogleDriveSource()?'לחיצה אחת לתצוגה מקדימה · לחיצה כפולה לפתיחה ב-Google Drive':'לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה'}={}){
-    const header='<div class="document-results-head" aria-hidden="true"><span>שם</span><span>נתיב</span><span>גודל</span><span>עודכן</span></div>';
     const title=isGoogleDriveSource()?'לחיצה: תצוגה מקדימה · לחיצה כפולה: פתיחה ב-Google Drive':'לחיצה: תצוגה מקדימה · לחיצה כפולה: פתיחה במחשב';
-    const body=rows.map(item=>{const icon=documentIconKind(item),key=`${mode}:${item.id}`;documentResultByKey.set(key,item);const selected=selectedDocumentKey===key?' selected':'';return `<button class="global-search-result document-search-row${selected}" type="button" data-document-result-id="${esc(item.id)}" data-document-result-key="${esc(key)}" data-document-search-mode="${esc(mode)}" title="${esc(title)}"><span class="document-result-name"><i class="document-result-icon ${esc(icon)}" aria-hidden="true"></i><span><b>${esc(item.name||(item.isDirectory?'תיקייה':'קובץ'))}</b><small>${esc(fileKindLabel(item))}</small></span></span><span class="document-result-path">${esc(item.relativePath||'')}</span><span class="document-result-size">${item.isDirectory?'—':esc(bytes(item.size)||'—')}</span><span class="document-result-date">${esc(localDate(item.modified)||'—')}</span></button>`}).join('');
-    return `<section class="document-results-table"><div class="document-results-summary"><b>${esc(label)}</b><span>${esc(rows.length)}</span><small>${esc(hint)}</small></div>${header}<div class="document-results-body">${body}</div></section>`;
+    return documentResultsTableHtml(rows,mode,{label,hint,title,selectedKey:selectedDocumentKey,register:(key,item)=>documentResultByKey.set(key,item)});
   }
   function clampPreviewWidth(value){const n=Number(value);return Math.max(DOCUMENT_PREVIEW_MIN,Math.min(DOCUMENT_PREVIEW_MAX,Number.isFinite(n)?n:DOCUMENT_PREVIEW_DEFAULT))}
   function savedPreviewWidth(){try{const value=localStorage.getItem(DOCUMENT_PREVIEW_WIDTH_KEY);return value===null?DOCUMENT_PREVIEW_DEFAULT:clampPreviewWidth(value)}catch{return DOCUMENT_PREVIEW_DEFAULT}}

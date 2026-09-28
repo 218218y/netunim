@@ -47,21 +47,21 @@ function rangeFor(nodes,match){
 function canHighlight(){return typeof CSS!=='undefined'&&CSS.highlights&&typeof Highlight!=='undefined'}
 function setHighlight(name,ranges){if(!canHighlight())return;CSS.highlights.set(name,new Highlight(...ranges))}
 function clearHighlights(){if(!canHighlight())return;CSS.highlights.delete(ALL_HIGHLIGHT);CSS.highlights.delete(CURRENT_HIGHLIGHT)}
-function scrollRange(container,range,{behavior='smooth'}={}){
+function scrollRange(container,range,{behavior='smooth',horizontalScroll=true}={}){
   const rect=range?.getBoundingClientRect?.();if(!rect||(!rect.width&&!rect.height))return;
-  const host=container.getBoundingClientRect();const top=container.scrollTop+(rect.top-host.top)-(container.clientHeight/2)+(rect.height/2);const left=container.scrollLeft+(rect.left-host.left)-(container.clientWidth/2)+(rect.width/2);
+  const host=container.getBoundingClientRect();const top=container.scrollTop+(rect.top-host.top)-(container.clientHeight/2)+(rect.height/2),left=horizontalScroll?container.scrollLeft+(rect.left-host.left)-(container.clientWidth/2)+(rect.width/2):0;
   container.scrollTo({top:Math.max(0,top),left:Math.max(0,left),behavior});
 }
 
-export function createDomSearchNavigator({root,scrollContainer=root,query,maxMatches=DEFAULT_MAX_MATCHES,onMatchState=()=>{}}){
+export function createDomSearchNavigator({root,scrollContainer=root,query,maxMatches=DEFAULT_MAX_MATCHES,onMatchState=()=>{},horizontalScroll=true}){
   if(!root)throw new TypeError('Search root is required');
   const index=collectText(root),found=findTextMatchOffsets(index.text,query,{maxMatches});
   const rows=found.matches.map(match=>({match,range:rangeFor(index.nodes,match)})).filter(row=>row.range);
   let current=rows.length?0:-1,destroyed=false;
   setHighlight(ALL_HIGHLIGHT,rows.map(row=>row.range));
   function state(){const row=current>=0?rows[current]:null;return {current:row?current+1:0,total:rows.length,capped:found.capped,snippet:row?buildTextMatchSnippet(index.text,row.match):null}}
-  function publish({scroll=false,behavior='smooth'}={}){if(destroyed)return state();const value=state();setHighlight(CURRENT_HIGHLIGHT,current>=0?[rows[current].range]:[]);if(scroll&&current>=0)scrollRange(scrollContainer,rows[current].range,{behavior});onMatchState(value);return value}
+  function publish({scroll=false,behavior='smooth'}={}){if(destroyed)return state();const value=state();setHighlight(CURRENT_HIGHLIGHT,current>=0?[rows[current].range]:[]);if(scroll&&current>=0)scrollRange(scrollContainer,rows[current].range,{behavior,horizontalScroll});onMatchState(value);return value}
   function go(indexValue,{behavior='smooth'}={}){if(!rows.length)return publish();current=(Number(indexValue)%rows.length+rows.length)%rows.length;return publish({scroll:true,behavior})}
-  const api={matchState:state,next:()=>go(current+1),previous:()=>go(current-1),go,resize:()=>current>=0&&scrollRange(scrollContainer,rows[current].range,{behavior:'auto'}),destroy:async()=>{destroyed=true;clearHighlights()}};
+  const api={matchState:state,next:()=>go(current+1),previous:()=>go(current-1),go,resize:()=>current>=0&&scrollRange(scrollContainer,rows[current].range,{behavior:'auto',horizontalScroll}),destroy:async()=>{destroyed=true;clearHighlights()}};
   queueMicrotask(()=>publish({scroll:rows.length>0,behavior:'auto'}));return api;
 }

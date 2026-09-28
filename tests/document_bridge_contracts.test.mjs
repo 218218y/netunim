@@ -167,7 +167,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(ui,/data.kind==='native'/);
   assert.match(ui,/dblclick/);
   assert.match(ui,/selectDocumentResult/);
-  assert.match(ui,/document-results-table/);
+  assert.match(documentView,/document-results-table/);
   assert.match(ui,/document-preview-frame/);
   assert.match(ui,/createTextSearchViewer/);
   assert.match(ui,/createDocxSearchViewer/);
@@ -220,11 +220,13 @@ test('unified search uses a full-screen header search, four result filters and a
   const html=read('netunim-orders/site/index.html');
   const css=read('netunim-orders/site/assets/app.css');
   const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
   assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentMatchMode/);
   assert.match(html,/globalSearchContentMatchMode[\s\S]*value="phrase"[\s\S]*value="all"[\s\S]*value="any"[\s\S]*value="proximity"/);
   assert.match(html,/globalSearchProximityWords/);
-  assert.match(html,/global-search-statusbar[\s\S]*globalSearchMeta/);
+  assert.doesNotMatch(html,/global-search-statusbar/);
+  assert.match(html,/globalSearchMeta[^>]*global-search-live-status|global-search-live-status[^>]*globalSearchMeta/);
   assert.doesNotMatch(html,/global-search-filterbar/);
   assert.doesNotMatch(html,/global-search-modebar|document-search-modebar|globalSearchPreviewOpen/);
   assert.match(html,/globalSearchDocumentSplitter/);
@@ -237,6 +239,11 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(css,/document-result-icon\.folder/);
   assert.match(css,/document-preview-matches/);
   assert.match(css,/document-preview-inline-match/);
+  assert.match(css,/document-docx-search-viewer\{[^}]*overflow-x:hidden/);
+  assert.match(css,/netunim-docx-wrapper>section\.netunim-docx/);
+  const docxViewer=read('netunim-orders/site/assets/js/domains/documents/docx-search-viewer.js');
+  assert.match(docxViewer,/ignoreWidth:true/);
+  assert.match(docxViewer,/horizontalScroll:false/);
   assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
@@ -245,7 +252,8 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT/);
   assert.match(ui,/label:'קבצים אחרונים'/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
-  assert.match(ui,/documentIconKind/);
+  assert.match(documentView,/documentIconKind/);
+  assert.match(ui,/documentResultsTableHtml/);
   assert.match(ui,/document-search-view\.js/);
   assert.match(ui,/settledEmpty:data\.total===0/);
   assert.match(ui,/settledEmpty:state\.status==='done'&&count===0/);
