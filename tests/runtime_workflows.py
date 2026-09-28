@@ -70,7 +70,9 @@ flows={
 
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
  const backup=payloadFromState(state,dbRevision),remoteMain=prepareKupaCloudState(state),remoteChecks={version:1,checks:structuredClone(state.checks),bankEvents:[]},hadOfflinePending=cloudPendingExistsSync();state.expenses=[];
- const mainPending=await getCloudPending(),checksPending=await getSharedChecksPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');assert(checksPending&&await clearSharedChecksPending(checksPending.generation),'checks pending exact ACK');
+ // This fixture exercises UI behavior with a disposable legacy Main state.
+ // Shared Checks durability and ACK are covered by the V2 journal tests.
+ const mainPending=await getCloudPending();assert(mainPending&&await clearCloudPending(mainPending.generation),'main pending exact ACK');
  Object.defineProperty(navigator,'onLine',{value:true,configurable:true});cloudTransport.readSupabaseDocument=async()=>({state:remoteMain,revision:1});cloudTransport.readSharedChecksDocument=async()=>({state:remoteChecks,revision:1});cloudTransport.stageRestoreGroup=async()=>({staged:true});cloudTransport.applyRestoreGroup=async()=>({main_revision:2,checks_revision:2});
  setPage('settings');const dt=new DataTransfer();dt.items.add(new File([JSON.stringify(backup)],'workflow.json',{type:'application/json'}));element('#restoreInput').files=dt.files;element('#restoreInput').dispatchEvent(new Event('change',{bubbles:true}));await acceptStyledConfirm();await waitFor(()=>state.expenses.length===1&&state.credits.length===0,'Restore group did not apply locally after ACK');
  assert(state.expenses.length===1&&state.credits.length===0,'file restore');
