@@ -1,51 +1,18 @@
 import {clone} from './core/values.js';
-import {CLOUD_BASE_KEY} from './state/constants.js';
 import {checkLegacyAccountStartup} from './shared/storage-v2-server-protocol.js';
 
 function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, markCloudPending, getCloudPending, loadCloudPendingState, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, getChecksPending, checksPendingExists, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
-async function recoverOrdersLocalState({v2Only=false}={}){
-  if(v2Only){
-    const v2=await refreshStorageV2CloudState();
-    if(!v2?.base)throw new Error('orders_v2_cloud_head_missing');
-    session.lastCloudState=clone(v2.base.state);session.cloudRevision=Number(v2.base.revision||0);
-    session.storageV2CloudPending=!!(v2.pending||v2.flight);
-    session.cloudConflictBlocked=!!v2.control?.conflict;
-    session.cloudSaveRequested=!!(v2.pending||v2.flight)&&!session.cloudConflictBlocked;
-    return;
-  }
-  try{session.lastCloudState=JSON.parse(localStorage.getItem(CLOUD_BASE_KEY)||'null')}catch(e){console.error('orders cloud base load',e)}
-  const durablePending=await getCloudPending(),pending=durablePending?.snapshot||loadCloudPendingState();
-  if(pending){
-    const previous=model.state;model.state=normalizeState(clone(pending));domainRevisions?.reconcile(previous,model.state);session.localGeneration=Math.max(session.localGeneration,Number(durablePending?.generation||1));session.cloudSaveRequested=true;return;
-  }
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,restoreBrowserStateReadOnly=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,model, files, tab, ui, session, checksSession, domainRevisions, normalizeState, restoreBrowserStateFallback, resumeIncompleteRestore=async()=>false, getCloudPending, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, sameOrderCloudData, hasMeaningfulLocalData, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+async function recoverOrdersLocalState(){
   const v2=await refreshStorageV2CloudState();
-  if(v2?.base){
-    session.lastCloudState=clone(v2.base.state);session.cloudRevision=Number(v2.base.revision||0);session.storageV2CloudPending=!!(v2.pending||v2.flight);
-    if(v2.control?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;return}
-    if(v2.pending||v2.flight)session.cloudSaveRequested=true;
-    return;
-  }
-  if(cloudEnabled()&&session.lastCloudState&&!sameOrderCloudData(model.state,session.lastCloudState)){
-    session.localGeneration=Math.max(session.localGeneration,1);session.cloudSaveRequested=true;markCloudPending();return;
-  }
-  if(cloudEnabled()&&!session.lastCloudState&&hasMeaningfulLocalData(model.state)){
-    session.localGeneration=Math.max(session.localGeneration,1);session.cloudSaveRequested=true;markCloudPending();
-  }
-}
-
-async function recoverChecksLocalState(){
-  try{
-    const pending=await getChecksPending();
-    if(pending||checksPendingExists()){
-      checksSession.checksGeneration=Math.max(checksSession.checksGeneration,Number(pending?.generation||1));checksSession.checksSaveRequested=true;
-      if(pending?.snapshot){model.state.checks=clone(pending.snapshot);domainRevisions?.touch('checks');if(['checks','kupa','summary'].includes(ui.currentView))render()}
-    }
-    return pending||null;
-  }catch(error){console.error('checks pending recovery',error);return null}
+  if(!v2?.base)throw new Error('orders_v2_cloud_head_missing');
+  session.lastCloudState=clone(v2.base.state);session.cloudRevision=Number(v2.base.revision||0);
+  session.storageV2CloudPending=!!(v2.pending||v2.flight);
+  session.cloudConflictBlocked=!!v2.control?.conflict;
+  session.cloudSaveRequested=!!(v2.pending||v2.flight)&&!session.cloudConflictBlocked;
 }
 
 async function initializeLocalServices(){
@@ -70,7 +37,7 @@ async function hydrateSecondaryDomains({sharedOnline,ordersOnline,checksRecovery
     try{checksOk=await syncSharedChecksFromCloud({quiet:true,required:false})}catch(error){console.error('shared checks startup',error);checksSession.checksCloudLastError=error?.message||String(error)}
     startupMark('checks-end');
     if(checksOk)setStartupDomain('checks','ready');
-    else if(checksPendingExists()||checksSession.checksSaveRequested)setStartupDomain('checks','deferred',checksSession.checksCloudLastError||'שינויי הצ׳קים נשמרו מקומית וממתינים לסנכרון');
+    else if(checksSession.checksSaveRequested)setStartupDomain('checks','deferred',checksSession.checksCloudLastError||'שינויי הצ׳קים נשמרו מקומית וממתינים לסנכרון');
     else setStartupDomain('checks','error',checksSession.checksCloudLastError||'טעינת הצ׳קים מהענן נכשלה; נשמר העותק המקומי האחרון התקין');
 
     setStartupDomain('finance','loading');startupMark('finance-start');
@@ -177,7 +144,7 @@ async function boot(){
 
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloud('ענן: שחזור ממתין','error')}
 
-  if(!localEngineActive)await recoverOrdersLocalState({v2Only:cutoverActive});startupMark('orders-local-recovered');
+  if(!localEngineActive)await recoverOrdersLocalState();startupMark('orders-local-recovered');
   const sessionAvailable=!!loadSession(),online=!!navigator.onLine,ordersOnline=!localEngineActive&&cloudEnabled()&&online&&sessionAvailable,sharedOnline=!localEngineActive&&sessionAvailable&&online;
   beginStartupSync({orders:ordersOnline,checks:sharedOnline,finance:sharedOnline});
 
@@ -186,7 +153,7 @@ async function boot(){
   setSave(session.cloudDurabilityDegraded?'מקומי: מצב התאוששות':'מקומי: שמור',session.cloudDurabilityDegraded?'error':'',folderSaveTitle());
 
   const localServicesPromise=initializeLocalServices();
-  const checksRecoveryPromise=sharedPrimary?Promise.resolve(true):recoverChecksLocalState();
+  const checksRecoveryPromise=Promise.resolve(true);
   await nextTurn();
 
   if(cloudEnabled()&&!online)setCloud('ענן: אופליין','offline');

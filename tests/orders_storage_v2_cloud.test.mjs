@@ -1,9 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncDocument} from '../netunim-orders/site/assets/js/sync/document.js';
+import {createStoragePersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
 import {CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 
 const clone=structuredClone,noop=()=>{};
+
+test('Orders save keeps its V2 local commit and refuses cloud sync when the V2 head is unavailable',async()=>{
+  const statuses=[];let commits=0,legacyWrites=0,cloudSends=0;
+  const api=createStoragePersistence({model:{state:{}},tab:{primaryTab:true},session:{localGeneration:0},ui:{},domainRevisions:{touchAll:noop},normalizeState:clone,loadLocal:()=>null,showSecondaryTabGuard:noop,render:noop,localSnapshot:()=>{commits++;return true},markCloudPending:()=>{legacyWrites++},storageV2CloudOutboxActive:()=>false,storageV2CommitPromise:()=>Promise.resolve(),setSave:(...args)=>statuses.push(args),setCloud:(...args)=>statuses.push(args),folderSaveTitle:()=>'',cloudEnabled:()=>true,requestCloudSave:async()=>{cloudSends++}});
+  assert.equal(api.scheduleSave(),false);assert.equal(commits,1);assert.equal(legacyWrites,0);assert.equal(cloudSends,0);
+  assert.ok(statuses.some(([message])=>String(message).includes('V2')));
+});
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
 
 function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:clone(local),conflicts:[]}),failRefreshAfterAck=false,onRejected=()=>{}}={}){
@@ -25,7 +33,7 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
   };
   const wrappedRpc=async(...args)=>{sent.push({snapshot:clone(args[0]),expected:args[1],operationId:args[2]});return rpcSave?rpcSave(...args):{r:{ok:true},row:{revision:args[1]+1,state:clone(args[0]),updated_at:'2026-09-22T00:00:00Z'}}};
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
-  const api=createSyncDocument({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:clone,localSnapshot:()=>true,markCloudPending:()=>{throw new Error('legacy outbox must not be used')},getCloudPending:async()=>null,clearCloudPending:async()=>true,toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder:async()=>{},readCloud,rpcSave:wrappedRpc,merge3,applyOrderCloudState:value=>{model.state=clone(value)},cloudPendingExists:()=>seq>ackSeq,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({model,files:{},session,tab:{primaryTab:true},toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder:async()=>{},readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,legacyWrites,getState:state,getControl:()=>clone(control),mutate(value){model.state=clone(value);seq++;session.localGeneration++},setControl(value){control=clone(value)}};
 }
 

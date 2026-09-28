@@ -22,6 +22,9 @@ test('selected-file content match info is bounded and returns highlighted snippe
 
 test('content search is a literal Everything content: query while direct mode mirrors Everything syntax',()=>{
   assert.equal(buildContentQuery('  יבמות   פרק  '),'content:"יבמות פרק" no-background-search:');
+  assert.equal(buildContentQuery('0501234567'),'content:"0501234567" no-background-search:');
+  assert.equal(buildContentQuery('050-1234567'),'content:"050-1234567" no-background-search:');
+  assert.equal(buildContentQuery('050 1234567'),'content:"050 1234567" no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
