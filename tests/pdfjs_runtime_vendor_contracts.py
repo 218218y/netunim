@@ -84,6 +84,7 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
     def test_git_never_rewrites_vendored_runtime_bytes(self):
         attrs=(ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("netunim-orders/site/assets/vendor/pdfjs/** -text", attrs)
+        self.assertIn("netunim-kupa/site/assets/vendor/pdfjs/** -text", attrs)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

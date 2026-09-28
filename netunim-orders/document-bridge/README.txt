@@ -1,5 +1,12 @@
-NETUNIM Document Bridge v13 - Everything search + DPI-correct native Windows preview
+NETUNIM Document Bridge v19 - shared Everything search + DPI-correct native Windows preview
 ======================================================================
+
+Shared website integration
+--------------------------
+One Bridge installation serves both Netunim Orders and Netunim Kupa on the same PC.
+Both sites use the same loopback service on 127.0.0.1:8766 and the same per-computer
+Bridge token. The default CORS allowlist includes both bargig-orders.pages.dev and
+bargig-kupa.pages.dev families, plus the bargig-furniture.com production family.
 
 Search scope
 ------------

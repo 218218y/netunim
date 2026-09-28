@@ -12,6 +12,7 @@
 <link rel="icon" type="image/png" sizes="16x16" href="./favicon-16x16.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
 <link rel="stylesheet" href="./assets/app.css" />
+<link rel="stylesheet" href="./assets/js/shared/global-document-search.css" />
 <link rel="stylesheet" href="./assets/js/shared/notes-workbook.css" />
 </head>
 <body>
@@ -35,7 +36,7 @@
       <div class="topbar-title">
         <button class="btn mobile-menu" id="mobileMenu" type="button" aria-label="פתח תפריט" aria-controls="sidebar" aria-expanded="false">☰</button>
         <div class="topbar-heading"><h2 id="pageTitle">מזומן</h2><div class="sub" id="pageSub"></div></div>
-        <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל נתוני הקופה" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל הקופה (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg><span>חיפוש</span></button>
+        <button class="global-search-trigger" id="globalSearchButton" type="button" aria-label="חיפוש בכל נתוני הקופה" aria-haspopup="dialog" aria-expanded="false" title="חיפוש בכל הקופה (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg></button>
       </div>
       <div class="top-actions">
         <span class="cloud-head-status hide-mobile" id="cloudHeaderStatus" title="מצב סנכרון ענן"><i></i> ענן: לא מחובר</span><span class="file-status off hide-mobile" id="dbStatus"><i></i> קובץ לא נבחר</span><span class="save-indicator hide-mobile" id="saveIndicator"></span><button class="btn hide-mobile" id="backupTop">גיבוי עכשיו</button>
@@ -47,20 +48,56 @@
 </div>
 
 <div class="global-search-backdrop" id="globalSearchBackdrop" hidden aria-hidden="true">
-  <section class="global-search-dialog" role="dialog" aria-modal="true" aria-labelledby="globalSearchTitle">
+  <section class="global-search-dialog" role="dialog" aria-modal="true" aria-label="חיפוש">
     <div class="global-search-head">
-      <div><h2 id="globalSearchTitle">חיפוש בכל הקופה</h2><span id="globalSearchMeta">כל נתוני הקופה במקום אחד</span></div>
+      <div class="global-search-filters" role="tablist" aria-label="סינון תוצאות חיפוש">
+        <button id="globalSearchFilterAll" class="global-search-filter active" type="button" role="tab" aria-selected="true">הכל</button>
+        <button id="globalSearchFilterSite" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש באתר</button>
+        <button id="globalSearchFilterFiles" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש קבצים</button>
+        <button id="globalSearchFilterContent" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש תוכן</button>
+      </div>
+      <label class="global-search-input-wrap" for="globalSearchInput">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
+        <input id="globalSearchInput" type="search" autocomplete="off" placeholder="חפש באתר, בקבצים ובתוכן…">
+        <kbd>Ctrl K</kbd>
+      </label>
+      <div class="global-search-options" id="globalSearchContentOptions" aria-label="אפשרויות חיפוש תוכן">
+        <label class="global-search-option-select" for="globalSearchContentMatchMode">
+          <select id="globalSearchContentMatchMode" aria-label="אופן התאמת חיפוש בתוכן">
+            <option value="phrase">ביטוי מדויק</option>
+            <option value="all">כל המילים</option>
+            <option value="any">מילה כלשהי</option>
+            <option value="proximity">קרבה לפי הסדר</option>
+          </select>
+        </label>
+        <label class="global-search-proximity" id="globalSearchProximityWrap" for="globalSearchProximityWords" hidden>
+          <span>עד</span>
+          <input id="globalSearchProximityWords" type="number" min="0" max="50" step="1" value="10" inputmode="numeric" aria-label="מספר מילים מרבי בין מילות החיפוש">
+          <span>מילים ביניהן</span>
+        </label>
+      </div>
+      <div class="global-search-folder-scope" id="globalSearchFolderScope" hidden>
+        <button class="global-search-folder-pick" id="globalSearchFolderPick" type="button" title="מקד את חיפוש הקבצים והתוכן לתיקייה מסוימת">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5h6l2 2h9v9.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2Z"/><path d="M3.5 9h17"/></svg>
+          <span id="globalSearchFolderLabel">בחר תיקייה</span>
+        </button>
+        <button class="global-search-folder-clear" id="globalSearchFolderClear" type="button" aria-label="בטל מיקוד לתיקייה" title="חזור לחיפוש בכל האינדקס" hidden>×</button>
+      </div>
+      <span class="global-search-live-status" id="globalSearchMeta" aria-live="polite" aria-atomic="true"></span>
       <button class="global-search-close" id="globalSearchClose" type="button" aria-label="סגור חיפוש">×</button>
     </div>
-    <label class="global-search-input-wrap" for="globalSearchInput">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
-      <input id="globalSearchInput" type="search" autocomplete="off" placeholder="צ׳ק, אשראי, הוצאה, בנק, מזומן, הערה…">
-      <kbd>Ctrl K</kbd>
-    </label>
-    <div class="global-search-results" id="globalSearchResults"></div>
+    <div class="global-search-workspace" id="globalSearchWorkspace">
+      <div class="global-search-results" id="globalSearchResults"></div>
+      <aside class="document-preview-pane" id="globalSearchDocumentPreview" hidden aria-live="polite">
+        <div class="document-preview-matches" id="globalSearchPreviewMatches" hidden></div>
+        <div class="document-preview-body" id="globalSearchPreviewBody">
+          <div class="document-preview-empty"><span>⌕</span><b>תצוגה מקדימה</b><p>לחיצה אחת על תוצאת קובץ תציג אותה כאן. לחיצה כפולה תפתח אותה במחשב.</p></div>
+        </div>
+      </aside>
+      <div class="document-preview-splitter" id="globalSearchDocumentSplitter" role="separator" aria-orientation="vertical" aria-label="שנה את רוחב התצוגה המקדימה" aria-valuemin="32" aria-valuemax="72" aria-valuenow="58" tabindex="0" hidden><span aria-hidden="true"></span></div>
+    </div>
   </section>
 </div>
-
 <div class="connect-screen" id="connectScreen" style="display:none">
   <div class="connect-card">
     <div class="connect-logo">₪</div>

@@ -5,6 +5,8 @@ tools/git-hooks/* text eol=lf
 
 # Vendored PDF.js is integrity-checked byte-for-byte; never rewrite line endings.
 netunim-orders/site/assets/vendor/pdfjs/** -text
+netunim-kupa/site/assets/vendor/pdfjs/** -text
 
 # Vendored document viewers are integrity-checked byte-for-byte.
 netunim-orders/site/assets/vendor/document-viewers/** -text
+netunim-kupa/site/assets/vendor/document-viewers/** -text

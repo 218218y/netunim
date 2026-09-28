@@ -24,7 +24,8 @@ VERSION = "6.3.289"
 PACKAGE = "pdfjs-dist"
 TARBALL_URL = f"https://registry.npmjs.org/{PACKAGE}/-/{PACKAGE}-{VERSION}.tgz"
 TARBALL_INTEGRITY = "sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw=="
-DESTINATION = ROOT / "netunim-orders/site/assets/vendor/pdfjs"
+DESTINATIONS = tuple(ROOT / f"netunim-{app}/site/assets/vendor/pdfjs" for app in ("orders", "kupa"))
+DESTINATION = DESTINATIONS[0]
 MANIFEST_NAME = "_runtime-manifest.txt"
 
 REQUIRED_FILES = {
@@ -217,9 +218,11 @@ def check_runtime(destination: Path = DESTINATION) -> list[str]:
     return errors
 
 
-def install(archive: Path | None = None, destination: Path = DESTINATION) -> None:
+def install(archive: Path | None = None, destination: Path | None = None) -> None:
     archive_bytes = archive.read_bytes() if archive else download_archive()
-    build_runtime(archive_bytes, destination)
+    destinations = (destination,) if destination is not None else DESTINATIONS
+    for target in destinations:
+        build_runtime(archive_bytes, target)
 
 
 def main() -> int:
@@ -232,16 +235,20 @@ def main() -> int:
     try:
         if args.command == "install":
             install(args.archive)
-            print(f"PDF.js {VERSION} runtime installed in {DESTINATION.relative_to(ROOT)}")
+            locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
+            print(f"PDF.js {VERSION} runtime installed in {locations}")
             return 0
-        errors = check_runtime()
-        if errors:
+        failures=[]
+        for destination in DESTINATIONS:
+            failures.extend(f"{destination.relative_to(ROOT)}: {error}" for error in check_runtime(destination))
+        if failures:
             print("PDF.js runtime verification failed:")
-            for error in errors:
+            for error in failures:
                 print("-", error)
             print("Run: npm run pdfjs:install")
             return 1
-        print(f"PDF.js {VERSION} runtime verified ({DESTINATION.relative_to(ROOT)})")
+        locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
+        print(f"PDF.js {VERSION} runtime verified ({locations})")
         return 0
     except (OSError, ValueError, tarfile.TarError) as error:
         print(f"ERROR: PDF.js runtime operation failed: {error}")

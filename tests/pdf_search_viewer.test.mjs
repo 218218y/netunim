@@ -132,7 +132,7 @@ test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
 
 
 test('global search routes ordinary local PDFs through the controlled PDF.js viewer',()=>{
-  const source=fs.readFileSync(new URL('../netunim-orders/site/assets/js/ui/global-search.js',import.meta.url),'utf8');
+  const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8');
   assert.match(source,/if\(data\.mime==='application\/pdf'\)\{[^\r\n]*createPdfSearchViewer/);
   assert.doesNotMatch(source,/data\.mime==='application\/pdf'&&selectedDocumentMode==='content'/);
 });

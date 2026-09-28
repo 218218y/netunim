@@ -134,6 +134,25 @@ class SyncAssetContracts(unittest.TestCase):
             self.assertEqual((self.root / f'netunim-{app}/site/assets/js/shared/html.js').read_bytes(), source.read_bytes())
         self.run_sync(check=True)
 
+    def test_document_search_shared_drift_is_detected_and_repaired_for_both_sites(self):
+        source = self.root / 'shared/document-search/ui/document-search-view.js'
+        source.write_bytes(source.read_bytes() + b'\n// document-search shared change\n')
+        self.run_sync(check=True, expected=1)
+        self.run_sync()
+        for app in ('kupa', 'orders'):
+            target = self.root / f'netunim-{app}/site/assets/js/ui/document-search-view.js'
+            self.assertEqual(target.read_bytes(), source.read_bytes())
+        self.run_sync(check=True)
+
+    def test_removed_document_search_source_removes_obsolete_public_copies(self):
+        source = self.root / 'shared/document-search/ui/document-search-view.js'
+        copies = [self.root / f'netunim-{app}/site/assets/js/ui/document-search-view.js' for app in ('kupa', 'orders')]
+        source.unlink()
+        self.run_sync(check=True, expected=1)
+        self.run_sync()
+        self.assertTrue(all(not path.exists() for path in copies))
+        self.run_sync(check=True)
+
     def test_removed_shared_source_removes_obsolete_public_copies(self):
         source = self.root / 'shared/html.js'
         copies = [self.root / f'netunim-{app}/site/assets/js/shared/html.js' for app in ('kupa', 'orders')]

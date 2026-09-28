@@ -47,6 +47,9 @@ import {createDomainsNotesController} from './domains/notes/controller.js';
 import {createDomainsBankView} from './domains/bank/view.js';
 import {createDomainsBankAlerts} from './domains/bank/alerts.js';
 import {createDomainsBankBridge} from './domains/bank/bridge.js';
+import {createDomainsDocumentBridge} from './domains/documents/bridge.js';
+import {createDomainsGoogleDriveSearch} from './domains/documents/google-drive.js';
+import {createDomainsDocumentSearch} from './domains/documents/search-source.js';
 import {createDomainsBankController} from './domains/bank/controller.js';
 import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
@@ -280,6 +283,10 @@ const cloudAuth=createCloudAuth({
   assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
+const domainsDocumentLocalBridge=createDomainsDocumentBridge();
+const domainsGoogleDriveSearch=createDomainsGoogleDriveSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args)});
+const domainsDocumentBridge=createDomainsDocumentSearch({localBridge:domainsDocumentLocalBridge,googleDrive:domainsGoogleDriveSearch});
+
 const cloudTransport=createCloudTransport({
   session,
   supaRest:(...args)=>cloudAuth.supaRest(...args),
@@ -438,8 +445,14 @@ const uiNavigation=createUiNavigation({
 });
 
 const uiGlobalSearch=createUiGlobalSearch({
+  documentBridge:domainsDocumentBridge,
   searchRevision:domains=>domainRevisions.stamp(domains)+':'+new Date().toLocaleDateString('en-CA'),
-  runFinance:financeDerivations.run,model,ui,setPage:(...args)=>uiNavigation.setPage(...args)});
+  runFinance:financeDerivations.run,
+  model,
+  ui,
+  setPage:(...args)=>uiNavigation.setPage(...args),
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+});
 
 const uiSidebar=createUiSidebar({setPage:(...args)=>uiNavigation.setPage(...args)});
 

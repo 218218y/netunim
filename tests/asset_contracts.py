@@ -49,15 +49,14 @@ for label, project in APPS.items():
        f'{label}: script CSP forbids inline execution and dynamic code')
     style_elem_policy = re.search(r'\bstyle-src-elem\s+([^;\n]+)', headers)
     style_elem_sources = set(style_elem_policy[1].split()) if style_elem_policy else set()
-    expected_style_elem = {"'self'", "blob:"} if label == 'orders' else {"'self'"}
+    expected_style_elem = {"'self'", "blob:"}
     ok(bool(style_elem_policy) and style_elem_sources == expected_style_elem and "'unsafe-inline'" not in style_elem_sources and
        "object-src 'none'" in headers and "frame-ancestors 'none'" in headers and "base-uri 'none'" in headers,
        f'{label}: element-style CSP is minimal for its runtime and object, frame and base policies are retained')
-    if label == 'orders':
-        connect_policy = re.search(r'\bconnect-src\s+([^;\n]+)', headers)
-        ok('cdnjs.cloudflare.com' not in headers and 'cdn.jsdelivr.net' not in headers and
-           bool(connect_policy) and 'blob:' not in connect_policy[1].split(),
-           'orders: document runtimes have no external CDN or blob connect-src dependency')
+    connect_policy = re.search(r'\bconnect-src\s+([^;\n]+)', headers)
+    ok('cdnjs.cloudflare.com' not in headers and 'cdn.jsdelivr.net' not in headers and
+       bool(connect_policy) and 'blob:' not in connect_policy[1].split(),
+       f'{label}: document runtimes have no external CDN or blob connect-src dependency')
 
     ok(app_js.is_file() and app_js.stat().st_size > 0, f"{label}: JavaScript entrypoint exists in site/assets/app.js")
     ok(app_css.is_file() and app_css.stat().st_size > 1000, f"{label}: stylesheet exists in site/assets/app.css")

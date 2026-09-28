@@ -17,6 +17,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 APPS = ('kupa', 'orders')
+DOCUMENT_SEARCH_SHARED_ROOT = PurePosixPath('shared/document-search')
+DOCUMENT_SEARCH_TARGET_ROOT = PurePosixPath('assets/js')
 TEXT_ASSET_SUFFIXES = {'.html', '.css', '.js', '.mjs', '.txt', '.webmanifest'}
 
 
@@ -46,6 +48,9 @@ class WorktreeSnapshot:
     def __init__(self, root: Path):
         self.root = root
         paths = list((root / 'shared').glob('*.js')) + list((root / 'shared').glob('*.css'))
+        document_search = root / DOCUMENT_SEARCH_SHARED_ROOT
+        if document_search.is_dir():
+            paths.extend(path for path in document_search.rglob('*.js') if path.is_file())
         fixed = (
             'service-worker.js', 'index.html', 'assets/app.css', 'manifest.webmanifest',
             'supabase/config.js', 'favicon.ico', 'favicon-16x16.png', 'favicon-32x32.png',
@@ -187,6 +192,38 @@ def plan_sync(snapshot: WorktreeSnapshot | IndexSnapshot) -> list[Change]:
             expected = snapshot.read(source_path)
             if target not in snapshot.files or snapshot.read(target) != expected:
                 changes.append(Change(target, expected, f'{label}: synchronized shared source: {PurePosixPath(source_path).name}'))
+
+    document_sources = sorted(
+        path for path in snapshot.files
+        if PurePosixPath(path).is_relative_to(DOCUMENT_SEARCH_SHARED_ROOT) and path.endswith('.js')
+    )
+    document_relatives = {
+        PurePosixPath(path).relative_to(DOCUMENT_SEARCH_SHARED_ROOT).as_posix()
+        for path in document_sources
+    }
+    for label in APPS:
+        site_root = PurePosixPath(f'netunim-{label}/site')
+        target_root = site_root / DOCUMENT_SEARCH_TARGET_ROOT
+        managed_targets = {
+            path for path in snapshot.files
+            if (
+                PurePosixPath(path).parent == target_root / 'domains/documents'
+                or (
+                    PurePosixPath(path).parent == target_root / 'ui'
+                    and PurePosixPath(path).name.startswith('document-')
+                )
+            ) and path.endswith('.js')
+        }
+        expected_targets = {(target_root / relative).as_posix() for relative in document_relatives}
+        for target in sorted(managed_targets - expected_targets):
+            relative = PurePosixPath(target).relative_to(target_root)
+            changes.append(Change(target, None, f'{label}: removed obsolete shared document search: {relative.as_posix()}'))
+        for source_path in document_sources:
+            relative = PurePosixPath(source_path).relative_to(DOCUMENT_SEARCH_SHARED_ROOT)
+            target = (target_root / relative).as_posix()
+            expected = snapshot.read(source_path)
+            if target not in snapshot.files or snapshot.read(target) != expected:
+                changes.append(Change(target, expected, f'{label}: synchronized shared document search: {relative.as_posix()}'))
 
     overlay = OverlaySnapshot(snapshot, changes)
     for label in APPS:

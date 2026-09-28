@@ -77,10 +77,10 @@ test('file and folder opening use the Windows graphical shell through UseShellEx
 test('local document results expose Explorer reveal and recycle-bin delete through opaque result ids',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const ui=read('shared/global-document-search.js');
   const menu=read('netunim-orders/site/assets/js/ui/document-result-menu.js');
   const modal=read('netunim-orders/site/assets/js/ui/modal.js');
-  const css=read('netunim-orders/site/assets/app.css');
+  const css=read('shared/global-document-search.css');
   assert.match(server,/documents\/reveal/);
   assert.match(server,/documents\/delete/);
   assert.match(server,/NETUNIM_REVEAL_TARGET/);
@@ -105,7 +105,7 @@ test('local document results expose Explorer reveal and recycle-bin delete throu
 test('preview stays local: filename Office preview stays native while content search uses controlled local document renderers',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
-  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const ui=read('shared/global-document-search.js');
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
@@ -193,7 +193,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.doesNotMatch(ui,/syncPdfPreviewMatch/);
   assert.match(ui,/loadPreviewMatches/);
   const pdfViewer=read('netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js');
-  const css=read('netunim-orders/site/assets/app.css');
+  const css=read('shared/global-document-search.css');
   assert.match(pdfViewer,/PDFFindController/);
   assert.match(pdfViewer,/highlightAll:true/);
   assert.match(pdfViewer,/next\(\)\{dispatch\('again',false\)\}/);
@@ -230,8 +230,8 @@ test('PowerShell configurator remains code-page independent even though v4 no lo
 
 test('unified search uses a full-screen header search, four result filters and a headerless resizable preview',()=>{
   const html=read('netunim-orders/site/index.html');
-  const css=read('netunim-orders/site/assets/app.css');
-  const ui=read('netunim-orders/site/assets/js/ui/global-search.js');
+  const css=read('shared/global-document-search.css');
+  const ui=read('shared/global-document-search.js');
   const documentView=read('netunim-orders/site/assets/js/ui/document-search-view.js');
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
@@ -267,7 +267,7 @@ test('unified search uses a full-screen header search, four result filters and a
   const docxViewer=read('netunim-orders/site/assets/js/domains/documents/docx-search-viewer.js');
   assert.match(docxViewer,/ignoreWidth:true/);
   assert.match(docxViewer,/horizontalScroll:false/);
-  assert.match(ui,/DOCUMENT_PREVIEW_WIDTH_KEY/);
+  assert.match(ui,/previewWidthKey/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentContentOptions\.value\(\)/);

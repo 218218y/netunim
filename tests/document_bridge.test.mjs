@@ -188,9 +188,11 @@ test('index count requests are global and Unicode-safe',()=>{
 });
 
 test('origin allowlist supports only configured website families and local development',()=>{
-  const patterns=['https://bargig-orders.pages.dev','https://*.bargig-orders.pages.dev','https://*.bargig-furniture.com','http://localhost:*'];
+  const patterns=['https://bargig-orders.pages.dev','https://*.bargig-orders.pages.dev','https://bargig-kupa.pages.dev','https://*.bargig-kupa.pages.dev','https://*.bargig-furniture.com','http://localhost:*'];
   assert.equal(originAllowed('https://orders.bargig-furniture.com',patterns),true);
   assert.equal(originAllowed('https://abc.bargig-orders.pages.dev',patterns),true);
+  assert.equal(originAllowed('https://bargig-kupa.pages.dev',patterns),true);
+  assert.equal(originAllowed('https://abc.bargig-kupa.pages.dev',patterns),true);
   assert.equal(originAllowed('https://abc.pages.dev',patterns),false);
   assert.equal(originAllowed('http://localhost:8082',patterns),true);
   assert.equal(originAllowed('https://evil.example',patterns),false);

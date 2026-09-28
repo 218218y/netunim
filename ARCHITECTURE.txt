@@ -49,14 +49,19 @@ Static DOM uses addEventListener. Dynamic content uses explicit action maps and 
 Actions are JavaScript functions, never executable strings. Focus/blur use capture; keyboard and propagation
 behavior are characterized in browser tests. Business values in HTML and attributes pass through esc;
 selector values use CSS.escape. Trusted template fragments remain HTML intentionally.
-script-src forbids unsafe-inline and unsafe-eval. style-src-elem is self-only; style-src-attr retains unsafe-inline
-for existing layout and dynamic styles. Object, frame, base URI, MIME and network restrictions remain enforced.
+script-src forbids unsafe-inline and unsafe-eval. style-src-elem is limited to self plus blob: for the controlled
+document viewers; style-src-attr retains unsafe-inline for existing layout and dynamic styles. Object, frame, base URI,
+MIME and network restrictions remain enforced, and connect-src does not permit blob: or external document CDNs.
 
 Shared source and PWA assets
 ---------------------------
-shared/ is the canonical source only for proven common calendar, HTML escaping, series numbering and delegation.
+shared/ is the canonical source for proven cross-application browser code. In addition to calendar, HTML escaping,
+series numbering and delegation, it owns the advanced global document-search shell and the complete document-search/
+viewer module tree. Orders and Kupa keep thin app-specific adapters only for their own site records and navigation;
+Everything, Google Drive, document previews, match modes, folder scope and document-result actions are implemented once.
 Do not merge app helpers by name: cloning, invalid money and date behavior intentionally differ.
-python tools/sync-assets.py copies these files byte-for-byte to each site's assets/js/shared and refreshes the
+python tools/sync-assets.py copies root shared files byte-for-byte to each site's assets/js/shared, synchronizes
+shared/document-search into each site's original domains/documents and ui/document-* deployment paths, and refreshes the
 complete shell list and content-derived cache version. Text hashing normalizes LF, CRLF and lone CR so the same
 commit produces the same cache name on every checkout; binary image bytes remain exact. A real asset-content
 change still requires regeneration. --check is read-only and fails on drift. There is no cross-site runtime import.

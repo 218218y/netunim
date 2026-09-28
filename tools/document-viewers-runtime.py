@@ -11,7 +11,8 @@ from pathlib import Path, PurePosixPath
 import argparse, base64, hashlib, io, os, shutil, tarfile, tempfile, urllib.request
 
 ROOT=Path(__file__).resolve().parents[1]
-DESTINATION=ROOT/'netunim-orders/site/assets/vendor/document-viewers'
+DESTINATIONS=tuple(ROOT/f'netunim-{app}/site/assets/vendor/document-viewers' for app in ('orders','kupa'))
+DESTINATION=DESTINATIONS[0]
 MANIFEST_NAME='_runtime-manifest.txt'
 
 @dataclass(frozen=True)
@@ -131,7 +132,7 @@ def check_runtime(destination:Path=DESTINATION)->list[str]:
         if pkg.destination not in actual:errors.append(f'missing required runtime: {pkg.destination}')
     return errors
 
-def install(archive_dir:Path|None=None)->None:
+def install(archive_dir:Path|None=None,destination:Path|None=None)->None:
     archives={}
     for pkg in PACKAGES:
         if archive_dir:
@@ -140,17 +141,20 @@ def install(archive_dir:Path|None=None)->None:
             if not candidates:raise FileNotFoundError(f'archive for {pkg.name} {pkg.version} not found in {archive_dir}')
             archives[pkg.name]=candidates[0].read_bytes()
         else:archives[pkg.name]=download(pkg)
-    build_runtime(archives)
+    destinations=(destination,) if destination is not None else DESTINATIONS
+    for target in destinations:build_runtime(archives,target)
 
 def main()->int:
     parser=argparse.ArgumentParser(description='Install/check local Word and Excel browser runtimes');subs=parser.add_subparsers(dest='command',required=True)
     p=subs.add_parser('install');p.add_argument('--archive-dir',type=Path,help='directory containing already-downloaded .tgz archives')
     subs.add_parser('check');args=parser.parse_args()
     try:
-        if args.command=='install':install(args.archive_dir);print(f'Document viewer runtimes installed in {DESTINATION.relative_to(ROOT)}');return 0
-        errors=check_runtime()
+        if args.command=='install':
+            install(args.archive_dir);locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS);print(f'Document viewer runtimes installed in {locations}');return 0
+        errors=[]
+        for destination in DESTINATIONS:errors.extend(f'{destination.relative_to(ROOT)}: {error}' for error in check_runtime(destination))
         if errors:
             print('Document viewer runtime verification failed:');[print('-',e) for e in errors];print('Run: npm run document-viewers:install');return 1
-        print(f'Document viewer runtimes verified ({DESTINATION.relative_to(ROOT)})');return 0
+        locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS);print(f'Document viewer runtimes verified ({locations})');return 0
     except (OSError,ValueError,tarfile.TarError) as error:print(f'ERROR: document viewer runtime operation failed: {error}');return 2
 if __name__=='__main__':raise SystemExit(main())

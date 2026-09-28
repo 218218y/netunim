@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-6f615e1e3b1d';
+const CACHE='kupa-app-shell-esm-73b307d448a2';
 const SHELL=[
   './',
   './index.html',
@@ -40,6 +40,16 @@ const SHELL=[
   './assets/js/domains/dashboard/controller.js',
   './assets/js/domains/dashboard/model.js',
   './assets/js/domains/dashboard/view.js',
+  './assets/js/domains/documents/bridge.js',
+  './assets/js/domains/documents/document-search-navigator.js',
+  './assets/js/domains/documents/docx-search-viewer.js',
+  './assets/js/domains/documents/google-drive.js',
+  './assets/js/domains/documents/pdf-search-viewer.js',
+  './assets/js/domains/documents/pdf-text-fragments.js',
+  './assets/js/domains/documents/search-source.js',
+  './assets/js/domains/documents/spreadsheet-preview-worker.js',
+  './assets/js/domains/documents/spreadsheet-search-viewer.js',
+  './assets/js/domains/documents/text-search-viewer.js',
   './assets/js/domains/expenses/editor.js',
   './assets/js/domains/expenses/model.js',
   './assets/js/domains/expenses/selectors.js',
@@ -76,6 +86,8 @@ const SHELL=[
   './assets/js/shared/events.js',
   './assets/js/shared/finance-derivations.js',
   './assets/js/shared/finance-fence.js',
+  './assets/js/shared/global-document-search.css',
+  './assets/js/shared/global-document-search.js',
   './assets/js/shared/html.js',
   './assets/js/shared/indexed-db-connection.js',
   './assets/js/shared/kupa-cashflow.js',
@@ -150,6 +162,10 @@ const SHELL=[
   './assets/js/ui/cloud.js',
   './assets/js/ui/connection.js',
   './assets/js/ui/date-editor.js',
+  './assets/js/ui/document-result-menu.js',
+  './assets/js/ui/document-search-content-options.js',
+  './assets/js/ui/document-search-folder-scope.js',
+  './assets/js/ui/document-search-view.js',
   './assets/js/ui/folders.js',
   './assets/js/ui/global-search.js',
   './assets/js/ui/modal.js',
@@ -170,6 +186,8 @@ const SHELL=[
 ];
 
 const SHELL_PATHS=new Set(SHELL.map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname));
+const LAZY_RUNTIME_PREFIXES=['./assets/vendor/'].map(item=>new URL(item,self.location.href||self.location.origin+'/').pathname);
+const isLazyRuntimePath=pathname=>LAZY_RUNTIME_PREFIXES.some(prefix=>pathname.startsWith(prefix));
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting()));
@@ -183,18 +201,45 @@ self.addEventListener('fetch',event=>{
   if(event.request.method!=='GET')return;
   const url=new URL(event.request.url);
   if(url.origin!==self.location.origin)return;
-  if(event.request.mode!=='navigate'&&!SHELL_PATHS.has(url.pathname))return;
+  const lazyRuntime=isLazyRuntimePath(url.pathname);
+  if(event.request.mode!=='navigate'&&!SHELL_PATHS.has(url.pathname)&&!lazyRuntime)return;
 
-  // Network-first keeps deployments, config and replacement icons fresh.
-  // If the network is unavailable, fall back to the verified data-free shell.
-  event.respondWith(
-    fetch(event.request).then(response=>{
-      if(response.ok&&SHELL_PATHS.has(url.pathname)){
-        const copy=response.clone();
-        event.waitUntil(caches.open(CACHE).then(cache=>cache.put(event.request,copy)).catch(()=>{}));
+  // Third-party document runtimes are immutable, version-pinned assets intentionally kept
+  // out of the install shell. On first request, persist the clone before
+  // resolving the response promise. This makes the lazy cache deterministic:
+  // callers that have received the module can rely on it already being cached.
+  if(lazyRuntime){
+    const lazyResponse=(async()=>{
+      try{
+        const response=await fetch(event.request);
+        if(response.ok){
+          const cache=await caches.open(CACHE);
+          await cache.put(event.request,response.clone());
+        }
+        return response;
+      }catch(error){
+        const cache=await caches.open(CACHE);
+        const cached=await cache.match(event.request);
+        if(cached)return cached;
+        throw error;
       }
-      return response;
-    }).catch(async()=>{
+    })();
+    event.waitUntil(lazyResponse.then(()=>undefined,()=>undefined));
+    event.respondWith(lazyResponse);
+    return;
+  }
+
+  // Network-first prevents a previously installed PWA from keeping stale HTML,
+  // config or icons after a deployment. Offline remains fully supported by the
+  // verified app-shell cache and navigation fallback.
+  const network=fetch(event.request);
+  const cacheWrite=network.then(response=>{
+    if(!response.ok||!SHELL_PATHS.has(url.pathname))return;
+    return caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
+  }).catch(()=>{});
+  event.waitUntil(cacheWrite);
+  event.respondWith(
+    network.catch(async()=>{
       const cache=await caches.open(CACHE);
       const cached=await cache.match(event.request);
       if(cached)return cached;

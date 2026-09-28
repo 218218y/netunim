@@ -15,6 +15,7 @@ for command in (
     [sys.executable, 'tools/public_js_guard.py', 'netunim-kupa/site'],
     [sys.executable, 'tools/public_js_guard.py', 'netunim-orders/site'],
     [sys.executable, 'tools/sync-assets.py', '--check'],
+    [sys.executable, 'tests/document_search_parity_contracts.py'],
     [sys.executable, 'tests/sync_assets_contracts.py'],
     ['node', 'tests/module_graph.cjs'],
     ['node', str(DEV_NODE_MODULES / 'eslint/bin/eslint.js'), 'netunim-kupa/site', 'netunim-orders/site', 'shared'],

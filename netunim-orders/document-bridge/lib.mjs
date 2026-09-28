@@ -13,6 +13,8 @@ export const DEFAULT_ALLOWED_ORIGINS=[
   'https://*.bargig-furniture.com',
   'https://bargig-orders.pages.dev',
   'https://*.bargig-orders.pages.dev',
+  'https://bargig-kupa.pages.dev',
+  'https://*.bargig-kupa.pages.dev',
   'http://localhost:*',
   'http://127.0.0.1:*',
 ];
