@@ -2,7 +2,7 @@
 
 ה־journal המקומי של Main ושל Shared Checks אינו מחייב cloud base. התקנה חדשה נולדת אוטומטית כ־Local V2 עם marker מקומי עמיד. אפשר לבצע import מתואם של שני ה־journals ללא pending ענן; sync נותר חסום עד שנוצר cursor אמיתי. לחשבון ענן יש marker נפרד, ורק אחרי אימות שני ה־heads הוא הופך ל־V2 Primary.
 
-[המצב התפעולי לאחר מעבר שני המחשבים](STORAGE_V2_POST_CUTOVER.md) הוא מקור האמת ל־cleanup. חשבון שה־server fence שלו פעיל כותב בענן רק דרך v6; מסלולי V1 לחשבונות שטרם עברו עדיין קיימים עד לשלב הניקוי הבא.
+[המצב התפעולי לאחר מעבר שני המחשבים](STORAGE_V2_POST_CUTOVER.md) הוא מקור האמת ל־cleanup. [חוזה פעולות ה־writer בצד השרת](STORAGE_WRITER_OPERATIONS.md) מרכז את מיפוי Operation → lease → domains, כולל side effects טרנזיטיביים דרך triggers. חשבון שה־server fence שלו פעיל כותב בענן רק דרך v6; מסלולי V1 לחשבונות שטרם עברו עדיין קיימים עד לשלב הניקוי הבא.
 
 לכל אפליקציה ולכל בעלים יש Main journal. ל־Shared Checks יש journal נפרד משותף ל־Orders ולקופה. Main מחזיק נתוני אפליקציה; Shared הוא הסמכות ל־`checks` ול־`bankEvents` כאשר הוא Primary. מודל התצוגה מורכב משחזור שני המקורות. `checks` עדיין מופיעים ב־Main schema ישן לצורכי מעבר בלבד; הם אינם יעד לפעולת צ׳ק רגילה ויוסרו ב־cleanup.
 
