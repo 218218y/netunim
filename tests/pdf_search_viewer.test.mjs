@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,createPdfSearchViewer,makePdfReadOnlyTextFieldsCopyable,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,joinPdfTextSelectionSegments,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
@@ -35,25 +35,46 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.deepEqual(buildPdfFindRequest(['מה','שלומך']).query,['מה','שלומך']);
 });
 
-test('read-only PDF text widgets use readonly semantics so selected text remains copyable',()=>{
-  const attributes=new Map();
-  const field={disabled:true,readOnly:false,dataset:{},setAttribute(name,value){attributes.set(name,String(value))}};
-  const root={querySelectorAll(selector){assert.equal(selector,'.textWidgetAnnotation input[type="text"]:disabled, .textWidgetAnnotation textarea:disabled');return [field]}};
-  assert.equal(makePdfReadOnlyTextFieldsCopyable(root),1);
-  assert.equal(field.disabled,false);
-  assert.equal(field.readOnly,true);
-  assert.equal(field.dataset.pdfCopyableReadonly,'true');
-  assert.equal(attributes.get('aria-readonly'),'true');
+test('local PDF form copy layer maps text widgets without changing their authored appearance',()=>{
+  const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
+  const model=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'ליבי מאיר',fieldName:'שם',rect:[300,700,500,730],multiLine:false,defaultAppearanceData:{fontSize:14}},viewport);
+  assert.equal(model.value,'ליבי מאיר');
+  assert.equal(model.fieldName,'שם');
+  assert.equal(model.multiLine,false);
+  assert.equal(model.fontSize,14);
+  assert.deepEqual([model.left,model.top,model.width,model.height].map(value=>Math.round(value*100)/100),[50,8.75,33.33,3.75]);
+  assert.equal(copyablePdfTextFieldModel({fieldType:'Btn',fieldValue:'x',rect:[0,0,10,10]},viewport),null,'non-text widgets are never exposed as text controls');
+  assert.equal(copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'secret',password:true,rect:[0,0,10,10]},viewport),null,'password fields are never exposed');
 });
 
-test('controlled PDF preview works without a search query and unlocks copying from read-only text fields',async()=>{
-  const field={disabled:true,readOnly:false,dataset:{},setAttribute(){}};
-  const {state,runtime}=fakeRuntime(),host=fakeHost([field]);
+test('PDF text copy reconstructs visual word gaps without inserting spaces between glyph fragments',()=>{
+  const rect=(left,right,top=10,bottom=22)=>({left,right,top,bottom});
+  assert.equal(joinPdfTextSelectionSegments([
+    {text:'שלום',rect:rect(100,140),pageKey:'1'},
+    {text:'עולם',rect:rect(70,94),pageKey:'1'},
+  ]),'שלום עולם','a geometric gap on one RTL line becomes a clipboard space');
+  assert.equal(joinPdfTextSelectionSegments([
+    {text:'ש',rect:rect(130,140),pageKey:'1'},
+    {text:'ל',rect:rect(120,130),pageKey:'1'},
+    {text:'ו',rect:rect(110,120),pageKey:'1'},
+    {text:'ם',rect:rect(100,110),pageKey:'1'},
+  ]),'שלום','touching glyph fragments remain one word');
+  assert.equal(joinPdfTextSelectionSegments([
+    {text:'שורה',rect:rect(100,140,10,22),pageKey:'1'},
+    {text:'שנייה',rect:rect(100,145,35,47),pageKey:'1'},
+    {text:'עמוד',rect:rect(100,140,10,22),pageKey:'2'},
+  ]),'שורה\nשנייה\nעמוד','line and page boundaries remain explicit in copied text');
+  assert.equal(joinPdfTextSelectionSegments([
+    {text:'hello ',rect:rect(10,50),pageKey:'1'},
+    {text:'world',rect:rect(60,100),pageKey:'1'},
+  ]),'hello world','existing PDF whitespace is not duplicated');
+});
+
+test('controlled PDF preview works without a search query and stays in static-appearance mode',async()=>{
+  const {state,runtime}=fakeRuntime(),host=fakeHost();
   const controller=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'',runtime});
   assert.equal(state.findController,null,'plain preview does not create unnecessary find machinery');
-  state.eventBus.dispatch('annotationlayerrendered',{});
-  assert.equal(field.disabled,false,'read-only text field is no longer disabled');
-  assert.equal(field.readOnly,true,'field stays non-editable while allowing selection/copy');
+  assert.equal(state.viewer.options.annotationMode,1,'local preview paints authored AcroForm appearance streams instead of regenerating field glyphs');
   state.eventBus.dispatch('pagesinit',{});
   assert.equal(state.eventBus.dispatched.filter(event=>event.name==='find').length,0,'plain preview never dispatches a find request');
   controller.next();controller.previous();
@@ -66,7 +87,7 @@ test('controlled PDF viewer uses PDFFindController, local support assets and rea
   const input=new Blob([new Uint8Array([37,80,68,70])],{type:'application/pdf'});
   const controller=await createPdfSearchViewer({host,blob:input,query:'needle',runtime,onMatchState:value=>updates.push(value)});
   assert.ok(state.findController,'find controller is created');
-  assert.equal(state.viewer.options.annotationMode,2,'local/default preview preserves interactive form widgets');
+  assert.equal(state.viewer.options.annotationMode,1,'local/default preview preserves the PDF-authored static form appearance');
   assert.equal(state.setDocumentCalls,1,'PDF document is attached to the viewer');
   assert.ok(state.documentOptions.data instanceof Uint8Array,'PDF bytes are passed directly to PDF.js');
   assert.deepEqual([...state.documentOptions.data],[37,80,68,70]);

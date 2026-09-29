@@ -53,7 +53,7 @@ ok('https://www.googleapis.com' in kupa_headers and 'http://127.0.0.1:8766' in k
 ok('data-document-open-link' in ui and 'פתח את הקובץ ב-Google Drive' in ui and 'document-preview-open' in css and 'document-provider-notice' in css,'Drive preview keeps a touch-friendly open fallback and Windows failover notice')
 ok('createPdfSearchViewer' in ui and 'createDocxSearchViewer' in ui and 'createSpreadsheetSearchViewer' in ui and 'showNativePreview' in ui,'new Drive integration preserves the newer Windows local preview pipeline')
 ok('document-search-view.js' in ui and 'documentResultsTableHtml' in ui and 'documentIconKind' in view and 'previewDetailsHtml' in view,'global search delegates document presentation helpers instead of growing one oversized UI responsibility')
-ok('ENABLE_FORMS' in pdf_viewer and 'interactiveForms?' in pdf_viewer and 'interactiveForms:!isGoogleDriveResult(id)' in ui,'Drive PDF preview uses static form appearances while local PDF preview preserves its existing interactive/copyable fields')
+ok('AnnotationMode?.ENABLE' in pdf_viewer and 'document-pdf-copy-field' in pdf_viewer and 'interactiveForms:!isGoogleDriveResult(id)' in ui,'all PDF previews preserve authored form appearances; local files add copy-only text overlays while Drive stays static-only')
 ok('https://www.googleapis.com' in headers,'CSP permits direct Drive API calls without adding a remote script source')
 ok(SETUP.is_file() and 'drive.readonly' in SETUP.read_text(encoding='utf-8') and 'alt=media' in SETUP.read_text(encoding='utf-8') and 'files.export' in SETUP.read_text(encoding='utf-8'),'Drive deployment instructions cover scope upgrade, direct preview and Workspace export')
 
