@@ -284,13 +284,13 @@ async function hideNativePreview(){if(!nativePreviewProcess)return {ok:true};try
 async function selectSearchFolder(){
   if(process.platform!=='win32'){const e=new Error('בחירת תיקיית חיפוש נתמכת רק ב-Windows.');e.code='WINDOWS_REQUIRED';throw e}
   const response=await nativePreviewCommand('PICK_FOLDER',[],120000);
-  if(response==='CANCELLED')return {ok:true,cancelled:true,path:'',label:''};
+  if(response==='CANCELLED')return {ok:true,bridgeVersion:BRIDGE_VERSION,cancelled:true,path:'',label:''};
   const prefix='PICKED ';if(!String(response||'').startsWith(prefix)){const e=new Error('בורר התיקיות החזיר תשובה לא תקינה.');e.code='FOLDER_PICKER_INVALID_RESPONSE';throw e}
   let selected='';try{selected=Buffer.from(String(response).slice(prefix.length),'base64').toString('utf8')}catch{}
   const normalized=normalizeSearchScopePath(selected);if(!normalized){const e=new Error('לא נבחרה תיקייה תקינה.');e.code='FOLDER_PICKER_INVALID_PATH';throw e}
   const label=path.win32.basename(normalized)||path.win32.parse(normalized).root.replace(/[\\]+$/,'')||normalized;
   await appendLog(`SEARCH_SCOPE_PICK path=${JSON.stringify(normalized)}`);
-  return {ok:true,cancelled:false,path:normalized,label};
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,cancelled:false,path:normalized,label};
 }
 async function stopNativePreview(){const child=nativePreviewProcess;if(!child)return;try{await nativePreviewCommand('EXIT',[],1500)}catch{}try{child.kill()}catch{}nativePreviewProcess=null}
 async function readEverythingContentPreview(fullPath){

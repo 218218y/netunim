@@ -23,6 +23,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(client,/documents\/warm/);
   assert.match(client,/documents\/recent/);
   assert.match(client,/documents\/select-folder/);
+  assert.match(client,/const selectFolder=async\(\)=>\{try\{const runtime=await health\(\);requireBridgeVersion/);
   assert.match(client,/documents\/preview/);
   assert.match(client,/documents\/preview-file/);
   assert.match(client,/documents\/matches/);
@@ -148,7 +149,12 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(host,/GetParent\(previewWindow\) == Handle/);
   assert.match(host,/SynchronizePreviewBounds/);
   assert.match(host,/PICK_FOLDER/);
-  assert.match(host,/FolderBrowserDialog/);
+  assert.match(host,/interface IFileOpenDialog/);
+  assert.match(host,/FileOpenDialogCom/);
+  assert.match(host,/PickFolders = 0x00000020/);
+  assert.match(host,/ForceFileSystem = 0x00000040/);
+  assert.match(host,/ModernFolderPicker\.Pick/);
+  assert.doesNotMatch(host,/FolderBrowserDialog/);
   assert.match(host,/settlePassesRemaining/);
   assert.match(host,/SetWindowLongPtr/);
   assert.match(host,/SetWindowPos/);
@@ -300,9 +306,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=19/);
+  assert.match(lib,/BRIDGE_VERSION=20/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=19/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=20/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

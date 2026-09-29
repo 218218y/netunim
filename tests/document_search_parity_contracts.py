@@ -36,6 +36,8 @@ shared_shell=(ROOT/'shared/global-document-search.js').read_bytes()
 shared_css=(ROOT/'shared/global-document-search.css').read_bytes()
 shared_css_text=shared_css.decode('utf-8')
 assert '.document-pdfjs-container .pdfViewer .page{box-sizing:content-box;margin:0 auto 10px;padding:0}' in shared_css_text
+assert '.global-search-head{box-sizing:border-box;width:100%;' in shared_css_text
+assert '.global-search-input-wrap{display:flex;align-items:center;gap:9px;min-width:260px;max-width:none;flex:1 1 0;' in shared_css_text
 for app,site in (('orders',ORDERS),('kupa',KUPA)):
     assert_pdf_viewer_css_isolation(site,app)
     assert (site/'assets/js/shared/global-document-search.js').read_bytes()==shared_shell, f'{app}: shared search shell drift'

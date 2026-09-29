@@ -40,6 +40,105 @@ namespace NetunimPreview
         void Initialize([MarshalAs(UnmanagedType.Interface)] object item, uint mode);
     }
 
+    [Flags]
+    internal enum FileDialogOptions : uint
+    {
+        NoChangeDirectory = 0x00000008,
+        PickFolders = 0x00000020,
+        ForceFileSystem = 0x00000040,
+        PathMustExist = 0x00000800
+    }
+
+    internal enum ShellItemDisplayName : uint
+    {
+        FileSystemPath = 0x80058000
+    }
+
+    [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IShellItem
+    {
+        void BindToHandler(IntPtr bindContext, ref Guid handlerId, ref Guid interfaceId, out IntPtr result);
+        void GetParent(out IShellItem parent);
+        void GetDisplayName(ShellItemDisplayName displayName, out IntPtr name);
+        void GetAttributes(uint mask, out uint attributes);
+        void Compare(IShellItem shellItem, uint hint, out int order);
+    }
+
+    [ComImport, Guid("D57C7288-D4AD-4768-BE02-9D969532D960"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IFileOpenDialog
+    {
+        [PreserveSig] int Show(IntPtr parent);
+        void SetFileTypes(uint count, IntPtr filterSpecs);
+        void SetFileTypeIndex(uint index);
+        void GetFileTypeIndex(out uint index);
+        void Advise(IntPtr events, out uint cookie);
+        void Unadvise(uint cookie);
+        void SetOptions(FileDialogOptions options);
+        void GetOptions(out FileDialogOptions options);
+        void SetDefaultFolder(IShellItem shellItem);
+        void SetFolder(IShellItem shellItem);
+        void GetFolder(out IShellItem shellItem);
+        void GetCurrentSelection(out IShellItem shellItem);
+        void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
+        void GetFileName(out IntPtr name);
+        void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+        void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+        void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+        void GetResult(out IShellItem shellItem);
+        void AddPlace(IShellItem shellItem, int alignment);
+        void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);
+        void Close(int result);
+        void SetClientGuid(ref Guid clientGuid);
+        void ClearClientData();
+        void SetFilter(IntPtr filter);
+        void GetResults(out IntPtr shellItemArray);
+        void GetSelectedItems(out IntPtr shellItemArray);
+    }
+
+    [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+    internal class FileOpenDialogCom
+    {
+    }
+
+    internal static class ModernFolderPicker
+    {
+        private const int ErrorCancelled = unchecked((int)0x800704C7);
+        private static readonly Guid ClientGuid = new Guid("0DF12263-C68C-4F68-9F66-78FCB8BF7DE4");
+
+        public static string Pick(IntPtr ownerHandle)
+        {
+            IFileOpenDialog dialog = null;
+            IShellItem selectedItem = null;
+            IntPtr pathPointer = IntPtr.Zero;
+            try
+            {
+                dialog = (IFileOpenDialog)new FileOpenDialogCom();
+                FileDialogOptions options;
+                dialog.GetOptions(out options);
+                dialog.SetOptions(options | FileDialogOptions.NoChangeDirectory | FileDialogOptions.PickFolders | FileDialogOptions.ForceFileSystem | FileDialogOptions.PathMustExist);
+                dialog.SetTitle("\u05d1\u05d7\u05e8 \u05ea\u05d9\u05e7\u05d9\u05d9\u05d4 \u05dc\u05d7\u05d9\u05e4\u05d5\u05e9");
+                dialog.SetOkButtonLabel("\u05d1\u05d7\u05e8 \u05ea\u05d9\u05e7\u05d9\u05d9\u05d4");
+                Guid clientGuid = ClientGuid;
+                dialog.SetClientGuid(ref clientGuid);
+
+                int result = dialog.Show(ownerHandle);
+                if (result == ErrorCancelled) return null;
+                if (result < 0) Marshal.ThrowExceptionForHR(result);
+
+                dialog.GetResult(out selectedItem);
+                if (selectedItem == null) return null;
+                selectedItem.GetDisplayName(ShellItemDisplayName.FileSystemPath, out pathPointer);
+                return pathPointer == IntPtr.Zero ? null : Marshal.PtrToStringUni(pathPointer);
+            }
+            finally
+            {
+                if (pathPointer != IntPtr.Zero) Marshal.FreeCoTaskMem(pathPointer);
+                if (selectedItem != null && Marshal.IsComObject(selectedItem)) Marshal.FinalReleaseComObject(selectedItem);
+                if (dialog != null && Marshal.IsComObject(dialog)) Marshal.FinalReleaseComObject(dialog);
+            }
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct RECT
     {
@@ -332,13 +431,6 @@ namespace NetunimPreview
         }
     }
 
-    internal sealed class WindowHandle : IWin32Window
-    {
-        private readonly IntPtr handle;
-        public WindowHandle(IntPtr handleValue) { handle = handleValue; }
-        public IntPtr Handle { get { return handle; } }
-    }
-
     internal sealed class PreviewForm : Form
     {
         private const int GWL_HWNDPARENT = -8;
@@ -527,21 +619,16 @@ namespace NetunimPreview
                 }
                 if (command == "PICK_FOLDER")
                 {
-                    using (FolderBrowserDialog dialog = new FolderBrowserDialog())
+                    IntPtr ownerHandle = PreviewForm.CurrentForegroundWindow();
+                    string selectedPath = ModernFolderPicker.Pick(ownerHandle);
+                    if (String.IsNullOrWhiteSpace(selectedPath))
                     {
-                        dialog.Description = "Select a folder to search with Everything";
-                        dialog.ShowNewFolderButton = false;
-                        IntPtr ownerHandle = PreviewForm.CurrentForegroundWindow();
-                        DialogResult result = ownerHandle != IntPtr.Zero ? dialog.ShowDialog(new WindowHandle(ownerHandle)) : dialog.ShowDialog();
-                        if (result != DialogResult.OK || String.IsNullOrWhiteSpace(dialog.SelectedPath))
-                        {
-                            Reply(id, true, "CANCELLED");
-                            return;
-                        }
-                        string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(dialog.SelectedPath));
-                        Reply(id, true, "PICKED " + encoded);
+                        Reply(id, true, "CANCELLED");
                         return;
                     }
+                    string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(selectedPath));
+                    Reply(id, true, "PICKED " + encoded);
+                    return;
                 }
                 if (command == "OPEN")
                 {

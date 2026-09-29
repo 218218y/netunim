@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v19 - shared Everything search + DPI-correct native Windows preview
+NETUNIM Document Bridge v20 - shared Everything search + modern Windows folder picker + DPI-correct native preview
 ======================================================================
 
 Shared website integration
@@ -12,6 +12,14 @@ Search scope
 ------------
 The Bridge searches the COMPLETE local Everything index. Whatever the local
 Everything instance indexes is searchable from the website.
+
+Focused folder picker
+---------------------
+The search toolbar uses the native Windows IFileOpenDialog in folder mode. This
+is the same modern Explorer-style shell surface used by current Windows apps, so
+Quick Access, pinned locations and the normal navigation shortcuts remain
+available. The selected item is still required to resolve to a filesystem path
+because Everything scope filtering operates on real paths.
 
 Website modes
 -------------
