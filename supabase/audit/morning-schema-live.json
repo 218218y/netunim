@@ -1137,6 +1137,97 @@
       "default": null,
       "generated": "",
       "identity": "",
+      "name": "operation",
+      "not_null": true,
+      "position": 1,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "domain",
+      "not_null": true,
+      "position": 2,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "ordinal",
+      "not_null": true,
+      "position": 3,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "smallint"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "operation",
+      "not_null": true,
+      "position": 1,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "lease_name",
+      "not_null": true,
+      "position": 2,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "operation",
+      "not_null": true,
+      "position": 1,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operations",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
+      "name": "entrypoint",
+      "not_null": true,
+      "position": 2,
+      "schema": "netunim_internal",
+      "table": "storage_writer_operations",
+      "type": "text"
+    },
+    {
+      "acl": null,
+      "collation": null,
+      "default": null,
+      "generated": "",
+      "identity": "",
       "name": "owner_id",
       "not_null": true,
       "position": 1,
@@ -4011,6 +4102,78 @@
       "validated": true
     },
     {
+      "definition": "CHECK (domain = ANY (ARRAY['orders'::text, 'kupa'::text, 'shared-checks'::text]))",
+      "name": "storage_writer_operation_domains_domain_check",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (operation) REFERENCES netunim_internal.storage_writer_operations(operation) ON DELETE RESTRICT",
+      "name": "storage_writer_operation_domains_operation_fkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "UNIQUE (operation, ordinal)",
+      "name": "storage_writer_operation_domains_operation_ordinal_key",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "u",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (ordinal > 0)",
+      "name": "storage_writer_operation_domains_ordinal_check",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (operation, domain)",
+      "name": "storage_writer_operation_domains_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "CHECK (lease_name = ANY (ARRAY['bank'::text, 'credit'::text]))",
+      "name": "storage_writer_operation_leases_lease_name_check",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "type": "c",
+      "validated": true
+    },
+    {
+      "definition": "FOREIGN KEY (operation) REFERENCES netunim_internal.storage_writer_operations(operation) ON DELETE RESTRICT",
+      "name": "storage_writer_operation_leases_operation_fkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "type": "f",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (operation, lease_name)",
+      "name": "storage_writer_operation_leases_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "type": "p",
+      "validated": true
+    },
+    {
+      "definition": "PRIMARY KEY (operation)",
+      "name": "storage_writer_operations_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operations",
+      "type": "p",
+      "validated": true
+    },
+    {
       "definition": "CHECK (activated_revision >= 0)",
       "name": "storage_writer_protocol_activated_revision_check",
       "schema": "netunim_internal",
@@ -4944,6 +5107,20 @@
       "security_definer": false
     },
     {
+      "acl": "{postgres=X/postgres}",
+      "anon": false,
+      "authenticated": false,
+      "config": [
+        "search_path=pg_catalog, netunim_internal"
+      ],
+      "definition": "CREATE OR REPLACE FUNCTION netunim_internal.assert_storage_writer_operation_fence_v2(p_operation text, p_lease_name text, p_lease_token text, p_fence_epoch bigint)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'netunim_internal'\nAS $function$\r\nbegin\r\n  if not exists(\r\n    select 1 from netunim_internal.storage_writer_operation_leases l\r\n    where l.operation=p_operation and l.lease_name=p_lease_name\r\n  ) then\r\n    raise exception 'stale_finance_sync_fence' using errcode='PT409';\r\n  end if;\r\n  perform netunim_internal.assert_finance_sync_fence(p_lease_name,p_lease_token,p_fence_epoch);\r\nend\r\n$function$\n",
+      "identity": "p_operation text, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
+      "name": "assert_storage_writer_operation_fence_v2",
+      "owner": "postgres",
+      "schema": "netunim_internal",
+      "security_definer": true
+    },
+    {
       "acl": "{postgres=X/postgres,authenticated=X/postgres}",
       "anon": false,
       "authenticated": true,
@@ -5272,6 +5449,20 @@
       "config": [
         "search_path=pg_catalog, netunim_internal"
       ],
+      "definition": "CREATE OR REPLACE FUNCTION netunim_internal.enter_storage_writer_operation_v2(p_operation text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'netunim_internal'\nAS $function$\r\ndeclare v_domain text;v_found boolean:=false;\r\nbegin\r\n  if auth.uid() is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  for v_domain in\r\n    select d.domain from netunim_internal.storage_writer_operation_domains d\r\n    where d.operation=p_operation order by d.ordinal\r\n  loop\r\n    v_found:=true;\r\n    perform netunim_internal.enter_storage_writer_v2(v_domain);\r\n  end loop;\r\n  if not v_found then\r\n    raise exception 'storage_writer_operation_invalid' using errcode='22023';\r\n  end if;\r\nend\r\n$function$\n",
+      "identity": "p_operation text",
+      "name": "enter_storage_writer_operation_v2",
+      "owner": "postgres",
+      "schema": "netunim_internal",
+      "security_definer": true
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "anon": false,
+      "authenticated": false,
+      "config": [
+        "search_path=pg_catalog, netunim_internal"
+      ],
       "definition": "CREATE OR REPLACE FUNCTION netunim_internal.enter_storage_writer_v2(p_domain text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'netunim_internal'\nAS $function$\ndeclare v_owner uuid:=auth.uid();\nbegin\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\n  if p_domain not in ('orders','kupa','shared-checks') then\n    raise exception 'storage_protocol_domain_invalid' using errcode='22023';\n  end if;\n  insert into netunim_internal.storage_writer_invocations\n    (backend_pid,transaction_id,owner_id,domain)\n  values (pg_backend_pid(),txid_current(),v_owner,p_domain)\n  on conflict do nothing;\nend\n$function$\n",
       "identity": "p_domain text",
       "name": "enter_storage_writer_v2",
@@ -5404,6 +5595,20 @@
       "owner": "postgres",
       "schema": "netunim_internal",
       "security_definer": false
+    },
+    {
+      "acl": "{postgres=X/postgres}",
+      "anon": false,
+      "authenticated": false,
+      "config": [
+        "search_path=pg_catalog, netunim_internal"
+      ],
+      "definition": "CREATE OR REPLACE FUNCTION netunim_internal.leave_storage_writer_operation_v2(p_operation text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'netunim_internal'\nAS $function$\r\ndeclare v_domain text;\r\nbegin\r\n  if not exists(select 1 from netunim_internal.storage_writer_operations o where o.operation=p_operation) then\r\n    raise exception 'storage_writer_operation_invalid' using errcode='22023';\r\n  end if;\r\n  for v_domain in\r\n    select d.domain from netunim_internal.storage_writer_operation_domains d\r\n    where d.operation=p_operation order by d.ordinal desc\r\n  loop\r\n    perform netunim_internal.leave_storage_writer_v2(v_domain);\r\n  end loop;\r\nend\r\n$function$\n",
+      "identity": "p_operation text",
+      "name": "leave_storage_writer_operation_v2",
+      "owner": "postgres",
+      "schema": "netunim_internal",
+      "security_definer": true
     },
     {
       "acl": "{postgres=X/postgres}",
@@ -5874,7 +6079,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.apply_restore_group_v6(p_restore_group_id uuid)\n RETURNS TABLE(restore_group_id uuid, phase text, main_revision bigint, checks_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_app text;\r\nbegin\r\n  select g.app_site into v_app from netunim_internal.restore_operation_groups g\r\n    where g.owner_id=auth.uid() and g.restore_group_id=p_restore_group_id;\r\n  if v_app not in ('orders','kupa') or v_app is null then\r\n    raise exception 'restore_group_missing' using errcode='P0002';\r\n  end if;\r\n  perform netunim_internal.enter_storage_writer_v2(v_app);\r\n  perform netunim_internal.enter_storage_writer_v2('shared-checks');\r\n  return query select * from netunim_internal.apply_restore_group_current(p_restore_group_id);\r\n  perform netunim_internal.leave_storage_writer_v2('shared-checks');\r\n  perform netunim_internal.leave_storage_writer_v2(v_app);\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.apply_restore_group_v6(p_restore_group_id uuid)\n RETURNS TABLE(restore_group_id uuid, phase text, main_revision bigint, checks_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_app text;v_operation text;\r\nbegin\r\n  select g.app_site into v_app from netunim_internal.restore_operation_groups g\r\n    where g.owner_id=auth.uid() and g.restore_group_id=p_restore_group_id;\r\n  if v_app not in ('orders','kupa') or v_app is null then\r\n    raise exception 'restore_group_missing' using errcode='P0002';\r\n  end if;\r\n  v_operation:=case v_app when 'orders' then 'restore-orders-apply' else 'restore-kupa-apply' end;\r\n  perform netunim_internal.enter_storage_writer_operation_v2(v_operation);\r\n  return query select * from netunim_internal.apply_restore_group_current(p_restore_group_id);\r\n  perform netunim_internal.leave_storage_writer_operation_v2(v_operation);\r\nend\r\n$function$\n",
       "identity": "p_restore_group_id uuid",
       "name": "apply_restore_group_v6",
       "owner": "postgres",
@@ -5902,7 +6107,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_kupa_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_v2('kupa');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'kupa',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_kupa_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_v2('kupa');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_kupa_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_operation_v2('kupa-bulk-delete');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'kupa',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_kupa_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('kupa-bulk-delete');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb",
       "name": "bulk_delete_save_kupa_document_v6",
       "owner": "postgres",
@@ -5930,7 +6135,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_order_management_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_v2('orders');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'orders',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_order_management_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_v2('orders');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_order_management_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_operation_v2('orders-bulk-delete');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'orders',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_order_management_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('orders-bulk-delete');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb",
       "name": "bulk_delete_save_order_management_document_v6",
       "owner": "postgres",
@@ -5958,7 +6163,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_shared_checks_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_v2('shared-checks');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'shared-checks',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_shared_checks_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_v2('shared-checks');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.bulk_delete_save_shared_checks_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_owner uuid:=auth.uid();v_result record;\r\nbegin\r\n  if v_owner is null then raise exception 'not_authenticated' using errcode='42501';end if;\r\n  perform netunim_internal.enter_storage_writer_operation_v2('shared-checks-bulk-delete');\r\n  perform set_config('app.destructive_operation_kind','bulk-delete',true);\r\n  perform netunim_internal.capture_safety_snapshot(v_owner,'shared-checks',p_document_name,p_operation_id,'bulk-delete');\r\n  select * into v_result from netunim_internal.save_shared_checks_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,coalesce(p_audit,'{}'::jsonb)||jsonb_build_object('mutationType','bulk-delete'));\r\n  perform set_config('app.destructive_operation_kind','',true);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('shared-checks-bulk-delete');\r\n  return query select v_result.revision,v_result.updated_at,v_result.state,v_result.operation_replayed,v_result.operation_revision;\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb",
       "name": "bulk_delete_save_shared_checks_document_v6",
       "owner": "postgres",
@@ -6070,7 +6275,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.merge_bank_transactions_v6(p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(inserted_count integer, updated_count integer, total_count integer)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('kupa');\r\n  if p_lease_name is distinct from 'bank' then raise exception 'stale_finance_sync_fence' using errcode='PT409';end if;\r\n  perform netunim_internal.assert_finance_sync_fence(p_lease_name,p_lease_token,p_fence_epoch);\r\n  return query select * from netunim_internal.fenced_impl_merge_bank_transactions(p_account_key,p_account_role,p_transactions);\r\n  perform netunim_internal.leave_storage_writer_v2('kupa');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.merge_bank_transactions_v6(p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(inserted_count integer, updated_count integer, total_count integer)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.assert_storage_writer_operation_fence_v2('bank-merge',p_lease_name,p_lease_token,p_fence_epoch);\r\n  perform netunim_internal.enter_storage_writer_operation_v2('bank-merge');\r\n  return query select * from netunim_internal.fenced_impl_merge_bank_transactions(p_account_key,p_account_role,p_transactions);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('bank-merge');\r\nend\r\n$function$\n",
       "identity": "p_account_key text, p_account_role text, p_transactions jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
       "name": "merge_bank_transactions_v6",
       "owner": "postgres",
@@ -6168,7 +6373,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.save_bank_sync_snapshot_v6(p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(finance_revision bigint, kupa_revision bigint, updated_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('kupa');\r\n  if p_lease_name is distinct from 'bank' then raise exception 'stale_finance_sync_fence' using errcode='PT409';end if;\r\n  perform netunim_internal.assert_finance_sync_fence(p_lease_name,p_lease_token,p_fence_epoch);\r\n  return query select * from netunim_internal.fenced_impl_save_bank_sync_snapshot(\r\n    p_document_name,p_bank_state,p_snapshot_token,p_snapshot_seq);\r\n  perform netunim_internal.leave_storage_writer_v2('kupa');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_bank_sync_snapshot_v6(p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(finance_revision bigint, kupa_revision bigint, updated_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.assert_storage_writer_operation_fence_v2('bank-balance-snapshot',p_lease_name,p_lease_token,p_fence_epoch);\r\n  perform netunim_internal.enter_storage_writer_operation_v2('bank-balance-snapshot');\r\n  return query select * from netunim_internal.fenced_impl_save_bank_sync_snapshot(\r\n    p_document_name,p_bank_state,p_snapshot_token,p_snapshot_seq);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('bank-balance-snapshot');\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_bank_state jsonb, p_snapshot_token text, p_snapshot_seq bigint, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
       "name": "save_bank_sync_snapshot_v6",
       "owner": "postgres",
@@ -6224,7 +6429,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.save_finance_sync_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('kupa');\r\n  perform netunim_internal.assert_finance_sync_fence(p_lease_name,p_lease_token,p_fence_epoch);\r\n  return query select * from netunim_internal.fenced_impl_save_finance_sync_document_v5(\r\n    p_document_name,p_expected_revision,p_state,p_operation_id,p_audit);\r\n  perform netunim_internal.leave_storage_writer_v2('kupa');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_finance_sync_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.assert_storage_writer_operation_fence_v2('finance-document-save',p_lease_name,p_lease_token,p_fence_epoch);\r\n  perform netunim_internal.enter_storage_writer_operation_v2('finance-document-save');\r\n  return query select * from netunim_internal.fenced_impl_save_finance_sync_document_v5(\r\n    p_document_name,p_expected_revision,p_state,p_operation_id,p_audit);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('finance-document-save');\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_audit jsonb, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
       "name": "save_finance_sync_document_v6",
       "owner": "postgres",
@@ -6294,7 +6499,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.save_kupa_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('kupa');\r\n  return query select * from netunim_internal.save_kupa_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);\r\n  perform netunim_internal.leave_storage_writer_v2('kupa');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_kupa_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_operation_v2('kupa-save');\r\n  return query select * from netunim_internal.save_kupa_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('kupa-save');\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb",
       "name": "save_kupa_document_v6",
       "owner": "postgres",
@@ -6364,7 +6569,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.save_order_management_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('orders');\r\n  return query select * from netunim_internal.save_order_management_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);\r\n  perform netunim_internal.leave_storage_writer_v2('orders');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_order_management_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_operation_v2('orders-save');\r\n  return query select * from netunim_internal.save_order_management_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_delete_intents,p_audit);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('orders-save');\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_delete_intents jsonb, p_audit jsonb",
       "name": "save_order_management_document_v6",
       "owner": "postgres",
@@ -6434,7 +6639,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.save_shared_checks_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2('shared-checks');\r\n  return query select * from netunim_internal.save_shared_checks_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit);\r\n  perform netunim_internal.leave_storage_writer_v2('shared-checks');\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.save_shared_checks_document_v6(p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb)\n RETURNS TABLE(revision bigint, updated_at timestamp with time zone, state jsonb, operation_replayed boolean, operation_revision bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_operation_v2('shared-checks-save');\r\n  return query select * from netunim_internal.save_shared_checks_document_current(p_document_name,p_expected_revision,p_state,p_operation_id,p_deleted_check_ids,p_audit);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('shared-checks-save');\r\nend\r\n$function$\n",
       "identity": "p_document_name text, p_expected_revision bigint, p_state jsonb, p_operation_id text, p_deleted_check_ids jsonb, p_audit jsonb",
       "name": "save_shared_checks_document_v6",
       "owner": "postgres",
@@ -6504,7 +6709,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.stage_restore_group_v6(p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb)\n RETURNS TABLE(restore_group_id uuid, phase text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.enter_storage_writer_v2(p_app_site);\r\n  return query select * from netunim_internal.stage_restore_group_current(\r\n    p_restore_group_id,p_app_site,p_main_document_name,p_main_base_revision,\r\n    p_main_state,p_main_delete_intents,p_checks_document_name,p_checks_base_revision,\r\n    p_checks_state,p_checks_delete_ids,p_main_operation_id,p_checks_operation_id,p_audit);\r\n  perform netunim_internal.leave_storage_writer_v2(p_app_site);\r\nend\r\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.stage_restore_group_v6(p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb)\n RETURNS TABLE(restore_group_id uuid, phase text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\ndeclare v_operation text;\r\nbegin\r\n  if p_app_site not in ('orders','kupa') or p_app_site is null then\r\n    raise exception 'invalid_restore_group' using errcode='22023';\r\n  end if;\r\n  v_operation:=case p_app_site when 'orders' then 'restore-orders-stage' else 'restore-kupa-stage' end;\r\n  perform netunim_internal.enter_storage_writer_operation_v2(v_operation);\r\n  return query select * from netunim_internal.stage_restore_group_current(\r\n    p_restore_group_id,p_app_site,p_main_document_name,p_main_base_revision,\r\n    p_main_state,p_main_delete_intents,p_checks_document_name,p_checks_base_revision,\r\n    p_checks_state,p_checks_delete_ids,p_main_operation_id,p_checks_operation_id,p_audit);\r\n  perform netunim_internal.leave_storage_writer_operation_v2(v_operation);\r\nend\r\n$function$\n",
       "identity": "p_restore_group_id uuid, p_app_site text, p_main_document_name text, p_main_base_revision bigint, p_main_state jsonb, p_main_delete_intents jsonb, p_checks_document_name text, p_checks_base_revision bigint, p_checks_state jsonb, p_checks_delete_ids jsonb, p_main_operation_id text, p_checks_operation_id text, p_audit jsonb",
       "name": "stage_restore_group_v6",
       "owner": "postgres",
@@ -6532,7 +6737,7 @@
       "config": [
         "search_path=pg_catalog, public, netunim_internal"
       ],
-      "definition": "CREATE OR REPLACE FUNCTION public.sync_bank_transactions_snapshot_v6(p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(inserted_count integer, updated_count integer, total_count integer, missing_count integer, active_missing_count integer, snapshot_stored boolean, baseline_created boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\nbegin\n  if p_lease_name is distinct from 'bank' then\n    raise exception 'stale_finance_sync_fence' using errcode='PT409';\n  end if;\n  perform netunim_internal.assert_finance_sync_fence(p_lease_name,p_lease_token,p_fence_epoch);\n  perform netunim_internal.enter_storage_writer_v2('kupa');\n  perform netunim_internal.enter_storage_writer_v2('shared-checks');\n  return query select * from netunim_internal.fenced_impl_sync_bank_transactions_snapshot(\n    p_account_key,p_account_role,p_transactions,p_snapshot_at,p_coverage_from,p_coverage_to,p_complete);\n  perform netunim_internal.leave_storage_writer_v2('shared-checks');\n  perform netunim_internal.leave_storage_writer_v2('kupa');\nend\n$function$\n",
+      "definition": "CREATE OR REPLACE FUNCTION public.sync_bank_transactions_snapshot_v6(p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text DEFAULT NULL::text, p_lease_token text DEFAULT NULL::text, p_fence_epoch bigint DEFAULT NULL::bigint)\n RETURNS TABLE(inserted_count integer, updated_count integer, total_count integer, missing_count integer, active_missing_count integer, snapshot_stored boolean, baseline_created boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public', 'netunim_internal'\nAS $function$\r\nbegin\r\n  perform netunim_internal.assert_storage_writer_operation_fence_v2('bank-archive-snapshot',p_lease_name,p_lease_token,p_fence_epoch);\r\n  perform netunim_internal.enter_storage_writer_operation_v2('bank-archive-snapshot');\r\n  return query select * from netunim_internal.fenced_impl_sync_bank_transactions_snapshot(\r\n    p_account_key,p_account_role,p_transactions,p_snapshot_at,p_coverage_from,p_coverage_to,p_complete);\r\n  perform netunim_internal.leave_storage_writer_operation_v2('bank-archive-snapshot');\r\nend\r\n$function$\n",
       "identity": "p_account_key text, p_account_role text, p_transactions jsonb, p_snapshot_at timestamp with time zone, p_coverage_from date, p_coverage_to date, p_complete boolean, p_lease_name text, p_lease_token text, p_fence_epoch bigint",
       "name": "sync_bank_transactions_snapshot_v6",
       "owner": "postgres",
@@ -6611,6 +6816,38 @@
       "name": "storage_writer_invocations_pkey",
       "schema": "netunim_internal",
       "table": "storage_writer_invocations",
+      "valid": true
+    },
+    {
+      "constraint": true,
+      "definition": "CREATE UNIQUE INDEX storage_writer_operation_domains_operation_ordinal_key ON netunim_internal.storage_writer_operation_domains USING btree (operation, ordinal)",
+      "name": "storage_writer_operation_domains_operation_ordinal_key",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "valid": true
+    },
+    {
+      "constraint": true,
+      "definition": "CREATE UNIQUE INDEX storage_writer_operation_domains_pkey ON netunim_internal.storage_writer_operation_domains USING btree (operation, domain)",
+      "name": "storage_writer_operation_domains_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_domains",
+      "valid": true
+    },
+    {
+      "constraint": true,
+      "definition": "CREATE UNIQUE INDEX storage_writer_operation_leases_pkey ON netunim_internal.storage_writer_operation_leases USING btree (operation, lease_name)",
+      "name": "storage_writer_operation_leases_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operation_leases",
+      "valid": true
+    },
+    {
+      "constraint": true,
+      "definition": "CREATE UNIQUE INDEX storage_writer_operations_pkey ON netunim_internal.storage_writer_operations USING btree (operation)",
+      "name": "storage_writer_operations_pkey",
+      "schema": "netunim_internal",
+      "table": "storage_writer_operations",
       "valid": true
     },
     {
@@ -7892,6 +8129,39 @@
       "force_rls": false,
       "kind": "r",
       "name": "storage_writer_invocations",
+      "options": null,
+      "owner": "postgres",
+      "rls": false,
+      "schema": "netunim_internal",
+      "view": null
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "force_rls": false,
+      "kind": "r",
+      "name": "storage_writer_operation_domains",
+      "options": null,
+      "owner": "postgres",
+      "rls": false,
+      "schema": "netunim_internal",
+      "view": null
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "force_rls": false,
+      "kind": "r",
+      "name": "storage_writer_operation_leases",
+      "options": null,
+      "owner": "postgres",
+      "rls": false,
+      "schema": "netunim_internal",
+      "view": null
+    },
+    {
+      "acl": "{postgres=arwdDxtm/postgres}",
+      "force_rls": false,
+      "kind": "r",
+      "name": "storage_writer_operations",
       "options": null,
       "owner": "postgres",
       "rls": false,
