@@ -6,6 +6,7 @@ import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
+import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createUiConnection} from './ui/connection.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createUiStatus} from './ui/status.js';
@@ -645,6 +646,14 @@ const uiModal=createUiModal({
   ui,
 });
 
+const importFinanceConnections=createFinanceConnectionImporter({
+  bridge:domainsBankBridge,
+  getCreditProfiles:()=>model.state.creditSync?.profiles||[],
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+  afterImport:async()=>{await Promise.all([domainsBankController.refreshBankBridgeStatus(),domainsCreditController.refreshCreditBridgeStatus({quiet:true})]);uiNavigation.render()},
+});
+
 const domainsBankAlerts=createDomainsBankAlerts({
   model,
   bankProjectedThisMonth:(...args)=>domainsBankSelectors.bankProjectedThisMonth(...args),
@@ -876,6 +885,7 @@ const uiActions=createUiActions({
   toggleCreditSyncOptions:(...args)=>domainsCreditView.toggleCreditSyncOptions(...args),
   saveBankBridgeToken:(...args)=>domainsBankController.saveBankBridgeToken(...args),
   configureBankBridge:(...args)=>domainsBankController.configureBankBridge(...args),
+  importFinanceConnections:(...args)=>importFinanceConnections(...args),
   selectBankBridgeAccount:(...args)=>domainsBankController.selectBankBridgeAccount(...args),
   openCashflowBreakdown:(...args)=>domainsBankView.openCashflowBreakdown(...args),
   setBankAccountView:(...args)=>domainsBankView.setBankAccountView(...args),

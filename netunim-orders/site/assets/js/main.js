@@ -5,6 +5,7 @@ import {createInventoryRenderStore} from './domains/inventory/model.js';
 import {createFinanceDerivationStore} from './shared/finance-derivations.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
+import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
 import {createStorageChecks} from './storage/checks.js';
@@ -700,6 +701,14 @@ const uiCloud=composeCloudUi({
   domainsFinanceController,storageV2Coordinator,storageV2Cloud,
 });
 
+const importFinanceConnections=createFinanceConnectionImporter({
+  bridge:domainsFinanceBridge,
+  getCreditProfiles:()=>domainsFinanceController.snapshot().creditSync?.profiles||[],
+  confirmDialog:(...args)=>uiModal.confirmDialog(...args),
+  toast:(...args)=>uiStatus.toast(...args),
+  afterImport:async()=>{await Promise.all([domainsFinanceController.refreshBankBridgeStatus({quiet:true}),domainsFinanceController.refreshCreditBridgeStatus({quiet:true})]);domainsFinanceView.renderKupa()},
+});
+
 const domainsCalendarController=createDomainsCalendarController({
   ui,
   tab,
@@ -829,6 +838,7 @@ const uiActions=createUiActions({
   toggleOrdersBankSyncOptions:(...args)=>domainsFinanceView.toggleBankSyncOptions(...args),
   saveOrdersBankToken:(...args)=>domainsFinanceView.saveBankToken(...args),
   configureOrdersBank:(...args)=>domainsFinanceView.configureBank(...args),
+  importFinanceConnections:(...args)=>importFinanceConnections(...args),
   selectOrdersBankAccount:(...args)=>domainsFinanceView.selectBankAccount(...args),
   deleteOrdersBankCredentials:(...args)=>domainsFinanceView.deleteBankCredentials(...args),
   exportOrdersBankChequeDiagnostics:(...args)=>domainsFinanceView.exportBankChequeDiagnostics(...args),

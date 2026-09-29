@@ -55,6 +55,7 @@ async function fetchChequeImage(imageKey){
 }
 
 async function status(){return request('/status',{timeoutMs:3500})}
+async function importConnectionSettings(payload){return request('/settings/import',{method:'POST',body:payload,timeoutMs:20000})}
 async function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){
   if(token)setBridgeToken(token);
   return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000});
@@ -78,5 +79,5 @@ async function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutM
 async function creditDataDiagnostics(){return creditRequest('/data-diagnostics',{timeoutMs:10000})}
 async function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_BRIDGE_TIMEOUT_MS})}
 
-return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,autoEnabled,setAutoEnabled,markAutoAttempt,autoAttemptDelayMs,autoAttemptReady,status,importConnectionSettings,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
 }

@@ -43,6 +43,7 @@ function creditAttemptDelayMs(){return attemptDelayMs(CREDIT_ATTEMPT_KEY,Date.no
 function bankAttemptReady(){return attemptReady(BANK_ATTEMPT_KEY)}
 function creditAttemptReady(){return attemptReady(CREDIT_ATTEMPT_KEY,Date.now(),CREDIT_AUTO_RETRY_MS)}
 function status(){return request('/status',{timeoutMs:3500})}
+function importConnectionSettings(payload){return request('/settings/import',{method:'POST',body:payload,timeoutMs:20000})}
 function configureCredentials({token,userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber}){if(token)setBridgeToken(token);return request('/credentials',{method:'POST',body:{userCode,password,businessBranchNumber,businessAccountNumber,homeBranchNumber,homeAccountNumber},timeoutMs:10000})}
 function selectAccount({role='business',branchNumber,accountNumber}){return request('/account-selection',{method:'POST',body:{role,branchNumber,accountNumber},timeoutMs:10000})}
 function deleteCredentials(){return request('/credentials',{method:'DELETE',timeoutMs:10000})}
@@ -56,5 +57,5 @@ function resetCreditProfiles(){return creditRequest('/reset',{method:'POST',body
 function creditDiagnostics(){return creditRequest('/diagnostics',{timeoutMs:5000})}
 function creditDataDiagnostics(){return creditRequest('/data-diagnostics',{timeoutMs:10000})}
 function syncCreditCards({interactive=false,syncMode='quick',selection=[]}={}){const mode=normalizeCreditFetchMode(syncMode);return creditRequest('/sync',{method:'POST',body:{interactive:!!interactive,syncMode:mode,selection:Array.isArray(selection)?selection:[]},timeoutMs:INTERACTIVE_TIMEOUT_MS})}
-return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
+return {getBridgeToken,setBridgeToken,bankAutoEnabled,creditAutoEnabled,creditAutoMode,setBankAutoEnabled,setCreditAutoEnabled,setCreditAutoMode,markBankAttempt,markCreditAttempt,bankAttemptDelayMs,creditAttemptDelayMs,bankAttemptReady,creditAttemptReady,status,importConnectionSettings,configureCredentials,selectAccount,deleteCredentials,bankDiagnostics,fetchBalance,fetchChequeImage,creditStatus,saveCreditProfile,deleteCreditProfile,resetCreditProfiles,creditDiagnostics,creditDataDiagnostics,syncCreditCards};
 }

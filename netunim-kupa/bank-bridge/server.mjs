@@ -51,7 +51,7 @@ import {bankDiagnosticExportPayload,bankDiagnosticFilename,createBankDiagnosticR
 
 const HOST='127.0.0.1';
 const PORT=8765;
-const BRIDGE_VERSION=65;
+const BRIDGE_VERSION=66;
 const BROWSER_IDENTITY_PROBE_URL=`http://${HOST}:${PORT}/health`;
 const HAPOALIM_BASE_URL='https://login.bankhapoalim.co.il';
 const APP_DIR=path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimKupaBankBridge');
@@ -213,6 +213,46 @@ async function readCreditProfiles(){
   }catch(e){if(e?.code==='ENOENT')return [];throw e}
 }
 async function writeCreditProfiles(profiles){await ensureAppDir();const encrypted=await protectText(JSON.stringify(Array.isArray(profiles)?profiles:[]));await fs.writeFile(CREDIT_PROFILES_FILE,encrypted+'\n',{encoding:'utf8',mode:0o600})}
+const CONNECTION_IMPORT_SCHEMA='netunim-finance-connections';
+const CONNECTION_IMPORT_VERSION=1;
+const MAX_JSON_REQUEST_BYTES=32*1024;
+function connectionImportObject(value){return value&&typeof value==='object'&&!Array.isArray(value)?value:null}
+function connectionImportText(value,max=160){return String(value??'').trim().slice(0,max)}
+function connectionImportPlaceholder(value){return /^(?:\*+|_+fill_me_+|fill[_ -]?me|change[_ -]?me|replace[_ -]?me)$/i.test(connectionImportText(value,80))}
+function requiredConnectionSecret(value,label){const text=String(value??'');if(!text.trim()||connectionImportPlaceholder(text)){const error=new Error(`יש למלא בקובץ הייבוא את ${label}`);error.code='IMPORT_SECRET_PLACEHOLDER';throw error}return text}
+function normalizeConnectionImportAccount(value,role){const source=connectionImportObject(value)||{},branchNumber=String(source.branchNumber||'').replace(/\D/g,''),accountNumber=String(source.accountNumber||'').replace(/\D/g,'');if((branchNumber&&!accountNumber)||(!branchNumber&&accountNumber)){const error=new Error(`לחשבון ${role==='home'?'הביתי':'העסקי'} יש להזין גם סניף וגם מספר חשבון`);error.code='INCOMPLETE_ACCOUNT_SELECTOR';error.accountRole=role;throw error}return {branchNumber,accountNumber}}
+function normalizeConnectionImportDocument(value){
+  const source=connectionImportObject(value);if(!source||source.schema!==CONNECTION_IMPORT_SCHEMA||Number(source.version)!==CONNECTION_IMPORT_VERSION||source.mode!=='replace'){const error=new Error('קובץ הייבוא אינו בפורמט הגדרות החיבור הנתמך');error.code='INVALID_CONNECTION_IMPORT';throw error}
+  const bank=connectionImportObject(source.bank);if(!bank){const error=new Error('חסרה בקובץ הגדרת בנק');error.code='INVALID_CONNECTION_IMPORT_BANK';throw error}
+  if(connectionImportText(bank.provider,30)!=='hapoalim'){const error=new Error('קובץ הייבוא חייב להגדיר את בנק הפועלים');error.code='UNSUPPORTED_BANK_PROVIDER';throw error}
+  const accounts=connectionImportObject(bank.accounts)||{},business=normalizeConnectionImportAccount(accounts.business,'business'),home=normalizeConnectionImportAccount(accounts.home,'home');
+  if(business.branchNumber&&home.branchNumber&&business.branchNumber===home.branchNumber&&business.accountNumber===home.accountNumber){const error=new Error('החשבון העסקי והחשבון הביתי חייבים להיות שני חשבונות שונים');error.code='DUPLICATE_ACCOUNT_ROLE';error.accountRole='home';throw error}
+  const credentials={userCode:requiredConnectionSecret(bank.userCode,'קוד המשתמש של הבנק'),password:requiredConnectionSecret(bank.password,'סיסמת הבנק'),businessBranchNumber:business.branchNumber,businessAccountNumber:business.accountNumber,homeBranchNumber:home.branchNumber,homeAccountNumber:home.accountNumber};
+  const credit=connectionImportObject(source.credit),rawProfiles=Array.isArray(credit?.profiles)?credit.profiles:[];if(!rawProfiles.length){const error=new Error('חסרות בקובץ הגדרות אשראי');error.code='INVALID_CONNECTION_IMPORT_CREDIT';throw error}if(rawProfiles.length>50){const error=new Error('קובץ הייבוא כולל יותר מדי חיבורי אשראי');error.code='IMPORT_TOO_MANY_CREDIT_PROFILES';throw error}
+  const profiles=[],ids=new Set();
+  for(const rawValue of rawProfiles){const raw=connectionImportObject(rawValue);if(!raw){const error=new Error('אחד מחיבורי האשראי בקובץ אינו תקין');error.code='INVALID_CONNECTION_IMPORT_CREDIT';throw error}const nested=connectionImportObject(raw.credentials)||{},connectionKey=connectionImportText(raw.connectionKey,64),profileId=connectionImportText(raw.profileId,80)||(connectionKey?`import:${connectionKey}`:'');if(!profileId){const error=new Error('לכל חיבור אשראי בקובץ נדרש profileId או connectionKey');error.code='IMPORT_PROFILE_ID_REQUIRED';throw error}if(ids.has(profileId)){const error=new Error(`מזהה חיבור אשראי כפול בקובץ: ${profileId}`);error.code='IMPORT_DUPLICATE_PROFILE_ID';throw error}ids.add(profileId);const provider=connectionImportText(raw.provider,30),flat={...raw,...nested,profileId,provider};for(const field of ['username','id','card6Digits','password'])if(Object.prototype.hasOwnProperty.call(nested,field))flat[field]=nested[field];if(provider==='visaCal'||provider==='max'){flat.username=requiredConnectionSecret(flat.username,`שם המשתמש של ${raw.label||provider}`);flat.password=requiredConnectionSecret(flat.password,`הסיסמה של ${raw.label||provider}`)}else if(provider==='isracard'||provider==='amex'){flat.id=requiredConnectionSecret(flat.id,`תעודת הזהות של ${raw.label||provider}`);flat.card6Digits=requiredConnectionSecret(flat.card6Digits,`6 הספרות של ${raw.label||provider}`);flat.password=requiredConnectionSecret(flat.password,`הסיסמה של ${raw.label||provider}`)}const normalized=normalizeCreditProfileInput(flat,null);const duplicate=profiles.find(existing=>creditProfilesShareLoginIdentity(existing,normalized));if(duplicate){const error=new Error(`בקובץ קיימים שני חיבורים לאותה זהות כניסה בחברה: ${creditProfilePublic(normalized).label}`);error.code='CREDIT_DUPLICATE_LOGIN';throw error}profiles.push(normalized)}
+  return {credentials,profiles};
+}
+async function readRawFile(pathname){try{return await fs.readFile(pathname)}catch(error){if(error?.code==='ENOENT')return null;throw error}}
+async function restoreRawFile(pathname,content){if(content===null){await fs.rm(pathname,{force:true});return}await ensureAppDir();await fs.writeFile(pathname,content,{mode:0o600})}
+async function importConnectionSettings(value){
+  if(scrapeBusy)throw Object.assign(new Error('לא ניתן לייבא הגדרות בזמן שמתבצע סנכרון בנק או אשראי'),{code:'SCRAPE_BUSY'});
+  const normalized=normalizeConnectionImportDocument(value),bankEncrypted=await protectText(JSON.stringify(normalized.credentials)),creditEncrypted=await protectText(JSON.stringify(normalized.profiles));
+  const [oldBank,oldCredit]=await Promise.all([readRawFile(CREDENTIALS_FILE),readRawFile(CREDIT_PROFILES_FILE)]);
+  try{await ensureAppDir();await fs.writeFile(CREDENTIALS_FILE,bankEncrypted+'\n',{encoding:'utf8',mode:0o600});await fs.writeFile(CREDIT_PROFILES_FILE,creditEncrypted+'\n',{encoding:'utf8',mode:0o600})}
+  catch(error){await Promise.allSettled([restoreRawFile(CREDENTIALS_FILE,oldBank),restoreRawFile(CREDIT_PROFILES_FILE,oldCredit)]);throw error}
+  const cleanupJobs=[
+    ['bank-meta',writeMeta({lastScrapeAt:null,lastError:'',lastErrorAt:null,lastErrorCode:'',lastErrorStage:'',lastErrorHttpStatus:0,lastWarning:'',lastWarningCode:'',lastWarningStage:'',lastWarningHttpStatus:0,lastAvailableAccounts:[],lastAccountRole:''})],
+    ['credit-meta',fs.rm(CREDIT_META_FILE,{force:true})],
+    ['credit-data-diagnostic',deleteCreditDataDiagnostic()],
+    ['bank-diagnostic',deleteBankDiagnostic()],
+    ['cheque-image-cache',deleteChequeImageCache()],
+    ['credit-browser-identities',resetCreditIdentities(CREDIT_IDENTITIES_DIR)],
+  ];
+  const cleanupResults=await Promise.allSettled(cleanupJobs.map(([,job])=>job));
+  const cleanupWarnings=cleanupResults.flatMap((result,index)=>result.status==='rejected'?[cleanupJobs[index][0]]:[]);
+  return {credentials:normalized.credentials,profiles:normalized.profiles,cleanupWarnings};
+}
 async function resetCreditProfiles(){await Promise.all([fs.rm(CREDIT_PROFILES_FILE,{force:true}),fs.rm(CREDIT_META_FILE,{force:true}),deleteCreditDataDiagnostic(),resetCreditIdentities(CREDIT_IDENTITIES_DIR)])}
 async function readCreditMeta(){try{return JSON.parse(await fs.readFile(CREDIT_META_FILE,'utf8'))}catch{return {lastSyncAt:null,lastErrors:[]}}}
 async function writeCreditMeta(patch){const current=await readCreditMeta();await ensureAppDir();await fs.writeFile(CREDIT_META_FILE,JSON.stringify({...current,...patch},null,2),{encoding:'utf8',mode:0o600})}
@@ -259,7 +299,7 @@ function tokenEqual(expected,actual){const a=Buffer.from(String(expected||'')),b
 function corsHeaders(req){const origin=req.headers.origin||'*';return {'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET,POST,DELETE,OPTIONS','Access-Control-Allow-Headers':'Authorization,Content-Type','Access-Control-Allow-Private-Network':'true','Access-Control-Max-Age':'600','Cache-Control':'no-store','Vary':'Origin'}}
 function sendJson(req,res,status,data){res.writeHead(status,{'Content-Type':'application/json; charset=utf-8',...corsHeaders(req)});res.end(JSON.stringify(data))}
 async function readJson(req){
-  let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>16384)throw Object.assign(new Error('הבקשה גדולה מדי'),{code:'REQUEST_TOO_LARGE'});chunks.push(chunk)}
+  let size=0,chunks=[];for await(const chunk of req){size+=chunk.length;if(size>MAX_JSON_REQUEST_BYTES)throw Object.assign(new Error('הבקשה גדולה מדי'),{code:'REQUEST_TOO_LARGE'});chunks.push(chunk)}
   if(!chunks.length)return {};try{return JSON.parse(Buffer.concat(chunks).toString('utf8'))}catch{throw Object.assign(new Error('JSON לא תקין'),{code:'INVALID_JSON'})}
 }
 function authToken(req){const value=String(req.headers.authorization||'');return value.startsWith('Bearer ')?value.slice(7).trim():''}
@@ -666,6 +706,10 @@ async function handler(req,res,token){
     if(req.method==='GET'&&pathname==='/status'){
       const credentials=await readCredentials(),meta=await readMeta();
       sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:!!credentials,branchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',accountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',businessBranchNumber:credentials?.businessBranchNumber||credentials?.branchNumber||'',businessAccountNumber:credentials?.businessAccountNumber||credentials?.accountNumber||'',homeBranchNumber:credentials?.homeBranchNumber||'',homeAccountNumber:credentials?.homeAccountNumber||'',lastScrapeAt:meta.lastScrapeAt||null,lastError:meta.lastError||'',lastErrorAt:meta.lastErrorAt||null,lastErrorCode:meta.lastErrorCode||'',lastErrorStage:meta.lastErrorStage||'',lastErrorHttpStatus:Number(meta.lastErrorHttpStatus)||0,lastWarning:meta.lastWarning||'',lastWarningCode:meta.lastWarningCode||'',lastWarningStage:meta.lastWarningStage||'',lastWarningHttpStatus:Number(meta.lastWarningHttpStatus)||0,accountRole:meta.lastAccountRole==='home'?'home':meta.lastAccountRole==='business'?'business':'',availableAccounts:Array.isArray(meta.lastAvailableAccounts)?meta.lastAvailableAccounts:[]});return;
+    }
+    if(req.method==='POST'&&pathname==='/settings/import'){
+      const imported=await importConnectionSettings(await readJson(req)),credentials=imported.credentials;
+      sendJson(req,res,200,{ok:true,bridgeVersion:BRIDGE_VERSION,configured:true,bank:{businessBranchNumber:credentials.businessBranchNumber,businessAccountNumber:credentials.businessAccountNumber,homeBranchNumber:credentials.homeBranchNumber,homeAccountNumber:credentials.homeAccountNumber},credit:{contractVersion:CREDIT_CONNECTOR_CONTRACT_VERSION,profiles:publicCreditProfiles(imported.profiles)},cleanupWarnings:imported.cleanupWarnings});return;
     }
     if(req.method==='GET'&&route==='/credit/status'){
       const profiles=await readCreditProfiles(),meta=await readCreditMeta();
