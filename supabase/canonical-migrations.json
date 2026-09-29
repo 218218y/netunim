@@ -139,6 +139,10 @@
     {
       "version": "20260928210313",
       "name": "bank_snapshot_shared_writer_context"
+    },
+    {
+      "version": "20260929093000",
+      "name": "storage_writer_operation_contract"
     }
   ]
 }

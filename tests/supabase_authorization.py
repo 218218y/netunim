@@ -49,6 +49,20 @@ def run(db):
     ]
     for expression in writes:
         denied(db, OTHER, expression, 'PT409')
+    # Operation/domain contracts are internal authorization metadata. Browser
+    # roles cannot inspect, edit or invoke the helpers directly; only reviewed
+    # SECURITY DEFINER v6 entrypoints may use them.
+    internal_contract_calls = [
+        "netunim_internal.enter_storage_writer_operation_v2('orders-save')",
+        "netunim_internal.leave_storage_writer_operation_v2('orders-save')",
+        "netunim_internal.assert_storage_writer_operation_fence_v2('bank-merge','bank','x',1)",
+        "(select count(*) from netunim_internal.storage_writer_operations)",
+        "(select count(*) from netunim_internal.storage_writer_operation_domains)",
+        "(select count(*) from netunim_internal.storage_writer_operation_leases)",
+    ]
+    for expression in internal_contract_calls:
+        denied(db, OWNER, expression)
+        denied(db, OTHER, expression)
     # Same natural keys and group UUID can coexist for B without exposing/updating A.
     for kind in ('bank', 'credit'):
         auth(db, OTHER, "select * from public.claim_finance_sync_lease('" + kind + "','B-" + kind + "',60)")
@@ -67,6 +81,8 @@ def run(db):
     auth(db, OTHER, "select * from public.sync_bank_transactions_snapshot_v6('same-account','business'," + quote(transaction) + ",now(),null,null,false,'bank','B-bank',1)")
     auth(db, OTHER, "select * from public.save_bank_sync_snapshot_v6('main','{\"currentBalance\":25}','B-snapshot',0,'bank','B-bank',1)")
     revision = auth(db, OTHER, "select revision from public.finance_sync_documents where document_name='main'")
+    auth(db, OTHER, "select * from public.save_finance_sync_document_v6('main'," + revision + ",'{}','B-bank-finance','{}','bank','B-bank',1)")
+    revision = auth(db, OTHER, "select revision from public.finance_sync_documents where document_name='main'")
     auth(db, OTHER, "select * from public.save_finance_sync_document_v6('main'," + revision + ",'{}','B-credit','{}','credit','B-credit',1)")
     btx = auth(db, OTHER, "select id from public.bank_transactions where account_key='same-account'")
     auth(db, OTHER, "select * from public.acknowledge_bank_transaction_alert(" + btx + ",'returned_cheque')")
@@ -84,7 +100,8 @@ def run(db):
              'public.acknowledge_bank_transaction_missing(' + tx + ')',
              "public.acknowledge_bank_transaction_alert(" + tx + ",'returned_cheque')",
              "netunim_internal.capture_safety_snapshot(" + quote(OWNER) + ",'kupa','main','x','restore',null)",
-             "netunim_internal.record_operation_audit(" + quote(OWNER) + ",'kupa','main','seed','{}','{}','{}','{}',null)", *writes]
+             "netunim_internal.record_operation_audit(" + quote(OWNER) + ",'kupa','main','seed','{}','{}','{}','{}',null)",
+             *writes, *internal_contract_calls]
     for expression in calls:
         code = 'P0002' if expression.startswith('public.apply_restore_group_v6(') else '42501'
         denied(db, '', expression, code)

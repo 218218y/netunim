@@ -173,5 +173,10 @@
     "version": "20260928210313",
     "name": "bank_snapshot_shared_writer_context",
     "sha256": "70c4168d7da021b30a4b3ae0a08f64d9377c6672f16820c202118e3c905ef41d"
+  },
+  {
+    "version": "20260929093000",
+    "name": "storage_writer_operation_contract",
+    "sha256": "ef0a9f435d8b391b460b72efab6112bdf7464e2f95073173e79ac24c46204c9e"
   }
 ]

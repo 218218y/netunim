@@ -1,6 +1,7 @@
 """Release contracts for the canonical migration chain and reviewed Advisor notices."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -165,6 +166,155 @@ class SupabaseContracts(unittest.TestCase):
             pending,
             'Production receipt must equal the reviewed chain or be its exact prefix; arbitrary migration drift is forbidden',
         )
+
+    def test_storage_writer_operation_contract_matches_known_transitive_writes(self):
+        """Keep operation scopes centralized and tied to the known trigger topology."""
+        path = ROOT / 'supabase/migrations/20260929093000_storage_writer_operation_contract.sql'
+        sql = path.read_text(encoding='utf8')
+
+        operation_section = sql.split(
+            'insert into netunim_internal.storage_writer_operations(operation,entrypoint) values', 1
+        )[1].split('insert into netunim_internal.storage_writer_operation_domains', 1)[0]
+        self.assertEqual(dict(re.findall(r"\('([^']+)','([^']+)'\)", operation_section)), {
+            'orders-save': 'public.save_order_management_document_v6',
+            'orders-bulk-delete': 'public.bulk_delete_save_order_management_document_v6',
+            'kupa-save': 'public.save_kupa_document_v6',
+            'kupa-bulk-delete': 'public.bulk_delete_save_kupa_document_v6',
+            'shared-checks-save': 'public.save_shared_checks_document_v6',
+            'shared-checks-bulk-delete': 'public.bulk_delete_save_shared_checks_document_v6',
+            'restore-orders-stage': 'public.stage_restore_group_v6',
+            'restore-kupa-stage': 'public.stage_restore_group_v6',
+            'restore-orders-apply': 'public.apply_restore_group_v6',
+            'restore-kupa-apply': 'public.apply_restore_group_v6',
+            'bank-merge': 'public.merge_bank_transactions_v6',
+            'bank-archive-snapshot': 'public.sync_bank_transactions_snapshot_v6',
+            'bank-balance-snapshot': 'public.save_bank_sync_snapshot_v6',
+            'finance-document-save': 'public.save_finance_sync_document_v6',
+        })
+
+        domain_section = sql.split(
+            'insert into netunim_internal.storage_writer_operation_domains(operation,domain,ordinal) values', 1
+        )[1].split('insert into netunim_internal.storage_writer_operation_leases', 1)[0]
+        domain_rows = re.findall(r"\('([^']+)','([^']+)',(\d+)\)", domain_section)
+        domains = {}
+        for operation, domain, ordinal in domain_rows:
+            domains.setdefault(operation, []).append((int(ordinal), domain))
+        domains = {operation: [domain for _, domain in sorted(rows)]
+                   for operation, rows in domains.items()}
+        self.assertEqual(domains, {
+            'orders-save': ['orders'],
+            'orders-bulk-delete': ['orders'],
+            'kupa-save': ['kupa'],
+            'kupa-bulk-delete': ['kupa'],
+            'shared-checks-save': ['shared-checks'],
+            'shared-checks-bulk-delete': ['shared-checks'],
+            'restore-orders-stage': ['orders'],
+            'restore-kupa-stage': ['kupa'],
+            'restore-orders-apply': ['orders', 'shared-checks'],
+            'restore-kupa-apply': ['kupa', 'shared-checks'],
+            'bank-merge': ['kupa'],
+            'bank-archive-snapshot': ['kupa', 'shared-checks'],
+            'bank-balance-snapshot': ['kupa'],
+            'finance-document-save': ['kupa'],
+        })
+
+        lease_section = sql.split(
+            'insert into netunim_internal.storage_writer_operation_leases(operation,lease_name) values', 1
+        )[1].split('create function netunim_internal.enter_storage_writer_operation_v2', 1)[0]
+        leases = {}
+        for operation, lease in re.findall(r"\('([^']+)','([^']+)'\)", lease_section):
+            leases.setdefault(operation, []).append(lease)
+        self.assertEqual(leases, {
+            'bank-merge': ['bank'],
+            'bank-archive-snapshot': ['bank'],
+            'bank-balance-snapshot': ['bank'],
+            'finance-document-save': ['bank', 'credit'],
+        })
+
+        # Public writers must name an operation only. Raw domain enter/leave is
+        # centralized inside the helper so a new transitive side effect requires
+        # one contract edit rather than edits to every RPC body.
+        self.assertEqual(sql.count('netunim_internal.enter_storage_writer_v2('), 1)
+        self.assertEqual(sql.count('netunim_internal.leave_storage_writer_v2('), 1)
+
+        # Inspect the latest definition in the whole chain, not merely this
+        # migration. A future CREATE OR REPLACE must not silently reintroduce
+        # manually enumerated domains after the central contract exists.
+        ordered_migrations = sorted((ROOT / 'supabase/migrations').glob('*.sql'))
+        all_migrations = [(migration, migration.read_text(encoding='utf-8-sig'))
+                          for migration in ordered_migrations]
+        entrypoint_operations = {
+            'save_order_management_document_v6': 'orders-save',
+            'bulk_delete_save_order_management_document_v6': 'orders-bulk-delete',
+            'save_kupa_document_v6': 'kupa-save',
+            'bulk_delete_save_kupa_document_v6': 'kupa-bulk-delete',
+            'save_shared_checks_document_v6': 'shared-checks-save',
+            'bulk_delete_save_shared_checks_document_v6': 'shared-checks-bulk-delete',
+            'merge_bank_transactions_v6': 'bank-merge',
+            'sync_bank_transactions_snapshot_v6': 'bank-archive-snapshot',
+            'save_bank_sync_snapshot_v6': 'bank-balance-snapshot',
+            'save_finance_sync_document_v6': 'finance-document-save',
+        }
+        finance_entrypoints = {
+            'merge_bank_transactions_v6', 'sync_bank_transactions_snapshot_v6',
+            'save_bank_sync_snapshot_v6', 'save_finance_sync_document_v6',
+        }
+        for entrypoint, operation in entrypoint_operations.items():
+            definitions = []
+            pattern = re.compile(
+                r'create(?: or replace)? function public\.' + re.escape(entrypoint) +
+                r'\(.*?as \$function\$(.*?)\$function\$;',
+                re.IGNORECASE | re.DOTALL,
+            )
+            for migration, migration_sql in all_migrations:
+                definitions.extend((migration, match.group(1))
+                                   for match in pattern.finditer(migration_sql))
+            self.assertTrue(definitions, entrypoint)
+            latest_migration, body = definitions[-1]
+            operation_enter = "enter_storage_writer_operation_v2('" + operation + "'"
+            self.assertIn(operation_enter, body, (entrypoint, latest_migration.name))
+            self.assertNotIn('enter_storage_writer_v2(', body, (entrypoint, latest_migration.name))
+            self.assertNotIn('leave_storage_writer_v2(', body, (entrypoint, latest_migration.name))
+            if entrypoint in finance_entrypoints:
+                operation_fence = "assert_storage_writer_operation_fence_v2('" + operation + "'"
+                self.assertIn(operation_fence, body, (entrypoint, latest_migration.name))
+                self.assertLess(body.index(operation_fence), body.index(operation_enter),
+                                (entrypoint, latest_migration.name))
+
+        # Restore chooses an operation from persisted/staged app_site, so its
+        # operation names are dynamic but the latest wrappers still must use the
+        # centralized helper and never raw domain scopes.
+        for entrypoint in ('stage_restore_group_v6', 'apply_restore_group_v6'):
+            definitions = []
+            pattern = re.compile(
+                r'create(?: or replace)? function public\.' + re.escape(entrypoint) +
+                r'\(.*?as \$function\$(.*?)\$function\$;',
+                re.IGNORECASE | re.DOTALL,
+            )
+            for migration, migration_sql in all_migrations:
+                definitions.extend((migration, match.group(1))
+                                   for match in pattern.finditer(migration_sql))
+            self.assertTrue(definitions, entrypoint)
+            latest_migration, body = definitions[-1]
+            self.assertIn('enter_storage_writer_operation_v2(v_operation)', body,
+                          (entrypoint, latest_migration.name))
+            self.assertNotIn('enter_storage_writer_v2(', body, (entrypoint, latest_migration.name))
+            self.assertNotIn('leave_storage_writer_v2(', body, (entrypoint, latest_migration.name))
+
+        # The cross-domain bank declaration is not speculative: a complete bank
+        # snapshot has a trigger whose reconciliation implementation writes the
+        # Shared Checks document in the same transaction.
+        migrations = '\n'.join(
+            migration.read_text(encoding='utf-8-sig')
+            for migration in sorted((ROOT / 'supabase/migrations').glob('*.sql'))
+            if migration != path
+        )
+        self.assertRegex(
+            migrations,
+            r'create\s+trigger\s+bank_snapshot_check_reconcile\s+after\s+insert\s+or\s+update\s+on\s+public\.bank_transaction_snapshots',
+        )
+        self.assertIn('netunim_internal.save_shared_checks_document(', migrations)
+        self.assertEqual(domains['bank-archive-snapshot'], ['kupa', 'shared-checks'])
 
     def test_every_remaining_rpc_advisor_warning_has_reviewed_authorization_coverage(self):
         expected = {'acknowledge_bank_transaction_alert', 'acknowledge_bank_transaction_missing',

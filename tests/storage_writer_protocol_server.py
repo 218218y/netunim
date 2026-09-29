@@ -46,35 +46,186 @@ def write(db, owner, domain, version, expected, operation, changed=False):
     return int(auth(db, owner, statement))
 
 
+def verify_operation_contract(db):
+    expected_entrypoints = {
+        'orders-save': 'public.save_order_management_document_v6',
+        'orders-bulk-delete': 'public.bulk_delete_save_order_management_document_v6',
+        'kupa-save': 'public.save_kupa_document_v6',
+        'kupa-bulk-delete': 'public.bulk_delete_save_kupa_document_v6',
+        'shared-checks-save': 'public.save_shared_checks_document_v6',
+        'shared-checks-bulk-delete': 'public.bulk_delete_save_shared_checks_document_v6',
+        'restore-orders-stage': 'public.stage_restore_group_v6',
+        'restore-kupa-stage': 'public.stage_restore_group_v6',
+        'restore-orders-apply': 'public.apply_restore_group_v6',
+        'restore-kupa-apply': 'public.apply_restore_group_v6',
+        'bank-merge': 'public.merge_bank_transactions_v6',
+        'bank-archive-snapshot': 'public.sync_bank_transactions_snapshot_v6',
+        'bank-balance-snapshot': 'public.save_bank_sync_snapshot_v6',
+        'finance-document-save': 'public.save_finance_sync_document_v6',
+    }
+    expected_domains = {
+        'orders-save': ['orders'],
+        'orders-bulk-delete': ['orders'],
+        'kupa-save': ['kupa'],
+        'kupa-bulk-delete': ['kupa'],
+        'shared-checks-save': ['shared-checks'],
+        'shared-checks-bulk-delete': ['shared-checks'],
+        'restore-orders-stage': ['orders'],
+        'restore-kupa-stage': ['kupa'],
+        'restore-orders-apply': ['orders', 'shared-checks'],
+        'restore-kupa-apply': ['kupa', 'shared-checks'],
+        'bank-merge': ['kupa'],
+        'bank-archive-snapshot': ['kupa', 'shared-checks'],
+        'bank-balance-snapshot': ['kupa'],
+        'finance-document-save': ['kupa'],
+    }
+    expected_leases = {
+        'bank-merge': ['bank'],
+        'bank-archive-snapshot': ['bank'],
+        'bank-balance-snapshot': ['bank'],
+        'finance-document-save': ['bank', 'credit'],
+    }
+    entrypoints = db.sql("select operation||'|'||entrypoint from netunim_internal.storage_writer_operations order by operation").strip().splitlines()
+    domains = db.sql("select operation||'|'||domain from netunim_internal.storage_writer_operation_domains order by operation,ordinal").strip().splitlines()
+    leases = db.sql("select operation||'|'||lease_name from netunim_internal.storage_writer_operation_leases order by operation,lease_name").strip().splitlines()
+    assert entrypoints == [operation + '|' + expected_entrypoints[operation] for operation in sorted(expected_entrypoints)], entrypoints
+    assert domains == [operation + '|' + domain for operation in sorted(expected_domains) for domain in expected_domains[operation]], domains
+    assert leases == [operation + '|' + lease for operation in sorted(expected_leases) for lease in expected_leases[operation]], leases
+    denied(db, OWNER, "netunim_internal.enter_storage_writer_operation_v2('orders-save')", '42501')
+    denied(db, OWNER, "netunim_internal.leave_storage_writer_operation_v2('orders-save')", '42501')
+    denied(db, OWNER, "netunim_internal.assert_storage_writer_operation_fence_v2('bank-merge','bank','x',1)", '42501')
+    for role in ('anon', 'authenticated', 'service_role'):
+        for table in ('storage_writer_operations', 'storage_writer_operation_domains',
+                      'storage_writer_operation_leases'):
+            assert db.sql("select has_table_privilege('" + role + "','netunim_internal." +
+                          table + "','SELECT')").strip() == 'f', (role, table)
+        for signature in (
+            'enter_storage_writer_operation_v2(text)',
+            'leave_storage_writer_operation_v2(text)',
+            'assert_storage_writer_operation_fence_v2(text,text,text,bigint)',
+        ):
+            assert db.sql("select has_function_privilege('" + role +
+                          "','netunim_internal." + signature + "','EXECUTE')").strip() == 'f', (role, signature)
+
+
 def verify_bank_reconciles_fenced_shared_checks(db):
-    # A complete bank snapshot can reconcile a cheque in Shared Checks. An
-    # empty archive never exercises the second protected document's trigger.
+    # A complete bank snapshot can reconcile a cheque in Shared Checks. Exercise
+    # the real transitive write, not an empty archive that never reaches it.
     bank_day = db.sql("select (now() at time zone 'Asia/Jerusalem')::date - 1").strip()
     shared_state = json.loads(auth(db, OWNER, "select state::text from public.shared_checks_documents where document_name='main'"))
     shared_state['checks'][0].update({
         'name': 'protocol-check', 'dueDate': bank_day,
         'checkNumber': 'protocol-check',
     })
-    shared_before_bank = revision(db, OWNER, 'shared_checks_documents', 'main')
-    auth(db, OWNER, "select revision from public.save_shared_checks_document_v6('main'," +
-         str(shared_before_bank) + ',' + quote(json.dumps(shared_state)) +
-         ",'seed-bank-check','[]','{}')")
+    shared_before_seed = revision(db, OWNER, 'shared_checks_documents', 'main')
+    seeded_revision = int(auth(db, OWNER, "select revision from public.save_shared_checks_document_v6('main'," +
+                               str(shared_before_seed) + ',' + quote(json.dumps(shared_state)) +
+                               ",'seed-bank-check','[]','{}')"))
+    assert seeded_revision == shared_before_seed + 1
+    other_revision = revision(db, OTHER, 'shared_checks_documents', 'main')
     source = [{
         'mergeKey': 'protocol-bank-deposit', 'amount': 100,
         'date': bank_day + 'T09:00:00Z', 'processedDate': bank_day + 'T09:00:00Z',
         'description': 'cheque deposit', 'status': 'completed',
         'checkDetails': {'checkNumbers': ['protocol-check']},
     }]
+    source_json = quote(json.dumps(source)) + '::jsonb'
     bank_epoch = auth(db, OWNER, "select fence_epoch from public.finance_sync_leases where owner_id=auth.uid() and lease_name='bank'")
     bank_snapshot = ("public.sync_bank_transactions_snapshot_v6('account-check-fence','business'," +
-                     quote(json.dumps(source)) + "::jsonb,now()," + quote(bank_day) +
-                     '::date,' + quote(bank_day) +
+                     source_json + ",now()," + quote(bank_day) + '::date,' + quote(bank_day) +
                      "::date,true,'bank','bank-v6-lease'," + bank_epoch + ')')
+
+    # Lease and epoch failures happen before any operation scope is opened and
+    # therefore cannot modify either the bank archive or Shared Checks.
+    wrong_lease = bank_snapshot.replace("'bank-v6-lease'", "'wrong-bank-lease'")
+    denied(db, OWNER, wrong_lease, 'PT409')
+    stale_epoch = bank_snapshot.rsplit(',', 1)[0] + ',' + str(int(bank_epoch) - 1) + ')'
+    denied(db, OWNER, stale_epoch, 'PT409')
+    assert revision(db, OWNER, 'shared_checks_documents', 'main') == seeded_revision
+    assert auth(db, OWNER, "select count(*) from public.bank_transactions where account_key='account-check-fence'") == '0'
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+
+    # An incomplete archive may merge returned rows but must not create the
+    # complete-snapshot trigger that performs Shared Checks reconciliation.
+    incomplete = ("public.sync_bank_transactions_snapshot_v6('account-check-incomplete','business'," +
+                  source_json + ",now(),null,null,false,'bank','bank-v6-lease'," + bank_epoch + ')')
+    assert int(auth(db, OWNER, 'select total_count from ' + incomplete)) == 1
+    assert revision(db, OWNER, 'shared_checks_documents', 'main') == seeded_revision
+    assert auth(db, OWNER, "select count(*) from public.bank_transaction_snapshots where account_key='account-check-incomplete'") == '0'
+
+    # Force reconciliation to fail after the bank merge has started. The whole
+    # bank + Shared Checks operation must roll back, and the failed subtransaction
+    # must not leak a writer invocation that a later call in the SAME transaction
+    # can borrow.
+    db.sql("""
+create function netunim_internal.test_fail_shared_checks_reconcile()
+returns trigger language plpgsql as $$
+begin
+  if current_setting('app.test_storage_writer_failure',true)='1' then
+    raise exception 'forced_shared_checks_failure' using errcode='PZ001';
+  end if;
+  return new;
+end $$;
+create trigger test_fail_shared_checks_reconcile before update on public.shared_checks_documents
+for each row execute function netunim_internal.test_fail_shared_checks_reconcile();
+create function netunim_internal.test_probe_shared_writer_context()
+returns void language plpgsql security definer
+set search_path to 'pg_catalog', 'public', 'netunim_internal'
+as $$
+begin
+  update public.shared_checks_documents set state=state
+  where owner_id=auth.uid() and document_name='main';
+end $$;
+grant execute on function netunim_internal.test_probe_shared_writer_context() to authenticated;
+""")
+    auth(db, OWNER, "DO $test$ BEGIN "
+         "PERFORM set_config('app.test_storage_writer_failure','1',true); "
+         "BEGIN PERFORM " + bank_snapshot + "; RAISE EXCEPTION 'forced_failure_did_not_fire'; "
+         "EXCEPTION WHEN SQLSTATE 'PZ001' THEN NULL; END; "
+         "PERFORM set_config('app.test_storage_writer_failure','0',true); "
+         "BEGIN PERFORM netunim_internal.test_probe_shared_writer_context(); "
+         "RAISE EXCEPTION 'failed_writer_context_leaked'; EXCEPTION WHEN SQLSTATE 'PT426' THEN NULL; END; END $test$")
+    assert revision(db, OWNER, 'shared_checks_documents', 'main') == seeded_revision
+    assert auth(db, OWNER, "select count(*) from public.bank_transactions where account_key='account-check-fence'") == '0'
+    assert auth(db, OWNER, "select count(*) from public.bank_transaction_snapshots where account_key='account-check-fence'") == '0'
+    assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+    db.sql('drop trigger test_fail_shared_checks_reconcile on public.shared_checks_documents; drop function netunim_internal.test_fail_shared_checks_reconcile(); drop function netunim_internal.test_probe_shared_writer_context();')
+
+    # With the fault removed, the same complete snapshot commits both domains.
     assert int(auth(db, OWNER, 'select total_count from ' + bank_snapshot)) == 1
     reconciled = json.loads(auth(db, OWNER, "select state::text from public.shared_checks_documents where document_name='main'"))
     assert reconciled['checks'][0]['bankMatch']['phase'] == 'deposited', reconciled
-    assert revision(db, OWNER, 'shared_checks_documents', 'main') == shared_before_bank + 2
+    assert revision(db, OWNER, 'shared_checks_documents', 'main') == seeded_revision + 1
+    assert revision(db, OTHER, 'shared_checks_documents', 'main') == other_revision
     assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
+
+
+def verify_cross_domain_restore(db):
+    for app, table, document, group_id in (
+        ('orders', 'order_management_documents', 'suppliers', '66666666-6666-4666-8666-666666666661'),
+        ('kupa', 'kupa_documents', 'main', '66666666-6666-4666-8666-666666666662'),
+    ):
+        main_revision = revision(db, OWNER, table, document)
+        checks_revision = revision(db, OWNER, 'shared_checks_documents', 'main')
+        other_main_revision = revision(db, OTHER, table, document)
+        other_checks_revision = revision(db, OTHER, 'shared_checks_documents', 'main')
+        main_state = json.loads(auth(db, OWNER, 'select state::text from public.' + table +
+                                     ' where document_name=' + quote(document)))
+        main_state['notes'].append({'id': 'contract-restore-' + app, 'content': 'restored'})
+        checks_state = json.loads(auth(db, OWNER, "select state::text from public.shared_checks_documents where document_name='main'"))
+        checks_state['checks'][0]['name'] = 'restored-' + app
+        stage = ("public.stage_restore_group_v6('" + group_id + "'," + quote(app) + ',' +
+                 quote(document) + ',' + str(main_revision) + ',' + quote(json.dumps(main_state)) +
+                 ",'{}','main'," + str(checks_revision) + ',' + quote(json.dumps(checks_state)) +
+                 ",'[]'," + quote('contract-restore-main-' + app) + ',' +
+                 quote('contract-restore-checks-' + app) + ",'{}')")
+        auth(db, OWNER, 'select * from ' + stage)
+        assert '|completed|' in auth(db, OWNER, "select * from public.apply_restore_group_v6('" + group_id + "')")
+        assert revision(db, OWNER, table, document) == main_revision + 1
+        assert revision(db, OWNER, 'shared_checks_documents', 'main') == checks_revision + 1
+        assert revision(db, OTHER, table, document) == other_main_revision
+        assert revision(db, OTHER, 'shared_checks_documents', 'main') == other_checks_revision
+        assert db.sql('select count(*) from netunim_internal.storage_writer_invocations').strip() == '0'
 
 
 def verify_v6_without_public_legacy(db):
@@ -339,13 +490,16 @@ if __name__ == '__main__':
     internalization = migrations_dir/'20260925120000_storage_writer_internalization.sql'
     legacy_revoke = migrations_dir/'20260925123000_revoke_legacy_storage_writers.sql'
     bank_shared_fix = migrations_dir/'20260928210313_bank_snapshot_shared_writer_context.sql'
+    operation_contract = migrations_dir/'20260929093000_storage_writer_operation_contract.sql'
     assert internalization in migrations, internalization
     assert legacy_revoke in migrations, legacy_revoke
     assert bank_shared_fix in migrations, bank_shared_fix
+    assert operation_contract in migrations, operation_contract
     internalization_index = migrations.index(internalization)
     legacy_revoke_index = migrations.index(legacy_revoke)
     bank_shared_fix_index = migrations.index(bank_shared_fix)
-    assert internalization_index < legacy_revoke_index < bank_shared_fix_index
+    operation_contract_index = migrations.index(operation_contract)
+    assert internalization_index < legacy_revoke_index < bank_shared_fix_index < operation_contract_index
 
     # This test deliberately exercises the transition boundary: first the
     # compatibility writers are still callable, then the retirement migration
@@ -361,8 +515,10 @@ if __name__ == '__main__':
             database.migrate(migration.read_text(encoding='utf-8-sig'))
         run(database, verify_without_legacy=False)
         database.migrate(legacy_revoke.read_text(encoding='utf-8-sig'))
-        for migration in migrations[legacy_revoke_index + 1:bank_shared_fix_index + 1]:
+        for migration in migrations[legacy_revoke_index + 1:operation_contract_index + 1]:
             database.migrate(migration.read_text(encoding='utf-8-sig'))
+        verify_operation_contract(database)
         verify_bank_reconciles_fenced_shared_checks(database)
+        verify_cross_domain_restore(database)
         verify_legacy_revoke(database)
     print('PASS Storage V2 server fence: legacy grants revoked, v6/restore/finance allowed, owner isolation')
