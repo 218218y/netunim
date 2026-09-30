@@ -77,6 +77,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/includePageText:!geometryOnly/,'legacy preview migration must recover geometry without re-reading every page text layer');
   assert.match(pdfIndex,/collectPdfFormFields/,'interactive PDF index must persist field page and rectangle metadata');
   assert.match(pdfIndex,/buildPdfFormMatchAnchors/,'interactive PDF index must map value hits back to field geometry');
+  assert.match(pdfIndex,/pdfjs\/legacy\/build\/pdf\.mjs/,'Node bridge must prefer the PDF.js legacy build recommended for Node.js');
+  assert.match(pdfIndex,/pdfjs\/build\/pdf\.mjs/,'already-installed bridges retain a guarded modern-build fallback until the next runtime refresh');
   assert.match(installer,/pdf_form_index\.mjs/);
   assert.match(installer,/assets\\vendor\\pdfjs/);
   assert.doesNotMatch(installer,/--refresh-pdf-index --install-warmup/,'installer must never block on PDF indexing');

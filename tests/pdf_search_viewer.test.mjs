@@ -356,6 +356,8 @@ test('PDF runtime loading keeps the application module graph static, local and d
   assert.ok(source.indexOf(coreImport)>=0&&source.indexOf(viewerImport)>source.indexOf(coreImport),'pdf.mjs must finish before pdf_viewer.mjs starts');
   assert.match(vendorViewer,/globalThis\.pdfjsLib/,'the pinned viewer really depends on the pdfjsLib global during evaluation');
   assert.doesNotMatch(source,/Promise\.all\(\[\s*import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)[\s\S]*?import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/,'core and viewer must never be started in parallel');
+  assert.match(source,/assertPdfJsRuntimeContract\(pdfjsLib,pdfjsViewer\)/,'runtime loading must fail loudly when a future PDF.js API no longer matches the adapter');
+  assert.match(source,/PDFFindController\.\$\{name\}/,'the adapter explicitly validates the find-controller surface used for combined navigation');
   assert.doesNotMatch(source,/cdnjs|jsdelivr|https:\/\//i);
   assert.doesNotMatch(source,/script\.src|loadRuntimeScript/);
   assert.match(source,/link\.rel='stylesheet'/,'PDF.js CSS is loaded as a native local stylesheet');

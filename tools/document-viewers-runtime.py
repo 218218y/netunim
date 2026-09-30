@@ -24,6 +24,13 @@ PACKAGES=(
     RuntimePackage('jszip','3.10.1','https://registry.npmjs.org/jszip/-/jszip-3.10.1.tgz','sha512-xXDvecyTpGLrqFrvkrUSoxxfJI5AH7U8zxxtVclpsUtMCq4JQ290LY8AW5c7Ggnr/Y/oK+bQMbqK2qmtk3pN4g==','jszip/jszip.min.js',('dist/jszip.min.js',),('LICENSE.markdown','LICENSE','LICENSE.md')),
     RuntimePackage('xlsx','0.20.3','https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz','sha512-oLDq3jw7AcLqKWH2AhCpVTZl8mf6X2YReP+Neh0SJUzV/BdZYjth94tG5toiMB1PPrYtxOCfaoUCkvtuH+3AJA==','xlsx/xlsx.full.min.js',('dist/xlsx.full.min.js','xlsx.full.min.js'),('LICENSE','LICENSE.md','LICENSE.txt')),
 )
+API_CONTRACT_SNIPPETS={
+    # Keep first-party adapters on documented/public surfaces. A future vendor
+    # refresh fails during verification instead of breaking previews at runtime.
+    'docx-preview/docx-preview.min.js':('renderAsync',),
+    'jszip/jszip.min.js':('loadAsync','generateAsync'),
+    'xlsx/xlsx.full.min.js':('decode_range','encode_cell','SheetNames'),
+}
 
 def expected_digest(integrity:str)->bytes:
     algorithm,encoded=integrity.split('-',1)
@@ -130,6 +137,13 @@ def check_runtime(destination:Path=DESTINATION)->list[str]:
         if name in expected and digest(path)!=expected[name]:errors.append(f'vendored file digest mismatch: {name}')
     for pkg in PACKAGES:
         if pkg.destination not in actual:errors.append(f'missing required runtime: {pkg.destination}')
+    for name,snippets in API_CONTRACT_SNIPPETS.items():
+        path=actual.get(name)
+        if path is None:continue
+        try:source=path.read_text(encoding='utf-8',errors='strict')
+        except (OSError,UnicodeError) as error:errors.append(f'could not inspect runtime API contract in {name}: {error}');continue
+        for snippet in snippets:
+            if snippet not in source:errors.append(f'runtime API contract mismatch in {name}: missing {snippet!r}')
     return errors
 
 def install(archive_dir:Path|None=None,destination:Path|None=None)->None:

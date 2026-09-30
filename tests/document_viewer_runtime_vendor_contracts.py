@@ -31,7 +31,9 @@ assert 'workbook.SheetNames.map' in worker and 'workbook.Sheets[name]' in worker
 assert 'globalThis.XLSX.read' in worker and 'globalThis.XLSX.utils.decode_range' in worker
 
 docx=(ROOT/'netunim-orders/site/assets/js/domains/documents/docx-search-viewer.js').read_text(encoding='utf-8')
-assert 'renderAsync(' not in docx and 'parseAsync(' in docx and 'renderDocument(' in docx
+assert 'renderAsync(' in docx and 'parseAsync(' not in docx and 'renderDocument(' not in docx
+assert "typeof globalThis.docx?.renderAsync==='function'" in docx
+assert "const styleContainer=document.createElement('div')" in docx and 'runtime.renderAsync(bytes,body,styleContainer,DOCX_OPTIONS)' in docx
 assert "new Blob([css],{type:'text/css'})" in docx and "link.rel='stylesheet'" in docx and 'URL.revokeObjectURL' in docx
 pdf=(ROOT/'netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js').read_text(encoding='utf-8')
 assert 'blob?.arrayBuffer' in pdf and 'options.data=new Uint8Array' in pdf
@@ -52,14 +54,15 @@ def integrity(data):return 'sha512-'+base64.b64encode(hashlib.sha512(data).diges
 original=module.PACKAGES
 try:
     blobs={
-        'docx-preview':archive({'dist/docx-preview.min.js':'DOCX','LICENSE':'A'}),
-        'jszip':archive({'dist/jszip.min.js':'ZIP','LICENSE.markdown':'B'}),
-        'xlsx':archive({'dist/xlsx.full.min.js':'XLSX','LICENSE':'C'}),
+        'docx-preview':archive({'dist/docx-preview.min.js':'renderAsync','LICENSE':'A'}),
+        'jszip':archive({'dist/jszip.min.js':'loadAsync generateAsync','LICENSE.markdown':'B'}),
+        'xlsx':archive({'dist/xlsx.full.min.js':'decode_range encode_cell SheetNames','LICENSE':'C'}),
     }
     module.PACKAGES=tuple(module.RuntimePackage(pkg.name,pkg.version,pkg.url,integrity(blobs[pkg.name]),pkg.destination,pkg.candidates,pkg.license_candidates) for pkg in original)
     with tempfile.TemporaryDirectory() as tmp:
         destination=Path(tmp)/'runtime';module.build_runtime(blobs,destination);assert module.check_runtime(destination)==[]
         target=destination/'xlsx/xlsx.full.min.js';target.write_text('tampered',encoding='utf-8');assert any('digest mismatch' in item for item in module.check_runtime(destination))
+        module.write_manifest(destination);assert any('API contract mismatch' in item and 'decode_range' in item for item in module.check_runtime(destination))
 finally:module.PACKAGES=original
 
 print('PASS local Word/Excel viewer runtimes are pinned, atomically vendored, integrity-checked and same-origin only')

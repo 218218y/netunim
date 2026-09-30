@@ -35,6 +35,27 @@ REQUIRED_FILES = {
     "web/pdf_viewer.css",
     "LICENSE",
 }
+OPTIONAL_FILES = {
+    # PDF.js recommends the legacy build for Node.js. The Windows Document Bridge
+    # prefers these files when present, while browser previews keep using build/.
+    "legacy/build/pdf.mjs",
+    "legacy/build/pdf.worker.min.mjs",
+}
+API_CONTRACT_SNIPPETS = {
+    "build/pdf.mjs": (
+        "convertToViewportPoint(x, y)",
+    ),
+    "web/pdf_viewer.mjs": (
+        "class PDFFindController",
+        "get pageMatches()",
+        "get pageMatchesLength()",
+        "get selected()",
+        "match(query, pageContent, pageIndex)",
+        "scrollMatchIntoView({",
+        "class PDFViewer",
+        "getPageView(index)",
+    ),
+}
 REQUIRED_PREFIXES = (
     "web/images/",
     "cmaps/",
@@ -64,7 +85,7 @@ def selected_relative(member_name: str) -> str | None:
     if not path.parts or path.parts[0] != "package":
         return None
     relative = PurePosixPath(*path.parts[1:]).as_posix()
-    if relative in REQUIRED_FILES or any(relative.startswith(prefix) for prefix in REQUIRED_PREFIXES):
+    if relative in REQUIRED_FILES or relative in OPTIONAL_FILES or any(relative.startswith(prefix) for prefix in REQUIRED_PREFIXES):
         return relative
     return None
 
@@ -215,6 +236,18 @@ def check_runtime(destination: Path = DESTINATION) -> list[str]:
     for prefix in REQUIRED_PREFIXES:
         if not any(relative.startswith(prefix) for relative in actual_files):
             errors.append(f"required PDF.js runtime directory is empty: {prefix}")
+    for relative, snippets in API_CONTRACT_SNIPPETS.items():
+        path = actual_files.get(relative)
+        if path is None:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            errors.append(f"could not inspect PDF.js API contract in {relative}: {error}")
+            continue
+        for snippet in snippets:
+            if snippet not in source:
+                errors.append(f"PDF.js API contract mismatch in {relative}: missing {snippet!r}")
     return errors
 
 

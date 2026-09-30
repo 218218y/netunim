@@ -27,21 +27,32 @@ export class LocalPdfBinaryDataFactory{
 }
 
 let pdfJsPromise=null;
+function missingOptionalLegacyModule(error){return String(error?.code||'')==='ERR_MODULE_NOT_FOUND'||/Cannot find module|Failed to resolve module specifier/i.test(String(error?.message||''))}
+async function importNodePdfJs(){
+  try{
+    const pdfjs=await import('./pdfjs/legacy/build/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdfjs/legacy/build/pdf.worker.min.mjs',import.meta.url).href;
+    return pdfjs;
+  }catch(error){
+    if(!missingOptionalLegacyModule(error))throw error;
+  }
+  // Backward-compatible fallback for already-installed Bridge runtimes. New
+  // vendor installs include legacy/build, which PDF.js recommends for Node.js.
+  const originalWarn=console.warn;
+  try{
+    console.warn=(...args)=>{
+      if(args.length===1&&String(args[0])==='Warning: Please use the `legacy` build in Node.js environments.')return;
+      originalWarn(...args);
+    };
+    const pdfjs=await import('./pdfjs/build/pdf.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdfjs/build/pdf.worker.min.mjs',import.meta.url).href;
+    return pdfjs;
+  }finally{console.warn=originalWarn}
+}
 async function loadPdfJs(){
   if(pdfJsPromise)return pdfJsPromise;
   installNodePdfJsCompatibility();
-  pdfJsPromise=(async()=>{
-    const originalWarn=console.warn;
-    try{
-      console.warn=(...args)=>{
-        if(args.length===1&&String(args[0])==='Warning: Please use the `legacy` build in Node.js environments.')return;
-        originalWarn(...args);
-      };
-      const pdfjs=await import('./pdfjs/build/pdf.mjs');
-      pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdfjs/build/pdf.worker.min.mjs',import.meta.url).href;
-      return pdfjs;
-    }finally{console.warn=originalWarn}
-  })();
+  pdfJsPromise=importNodePdfJs().catch(error=>{pdfJsPromise=null;throw error});
   return pdfJsPromise;
 }
 

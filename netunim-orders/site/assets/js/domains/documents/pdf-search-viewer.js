@@ -28,6 +28,24 @@ function installPdfJsBrowserCompatibility(){
   if(typeof Map.prototype.getOrInsertComputed!=='function')Object.defineProperty(Map.prototype,'getOrInsertComputed',{configurable:true,writable:true,value:function(key,callback){if(this.has(key))return this.get(key);const value=callback(key);this.set(key,value);return value}});
 }
 
+function assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer){
+  const missing=[];
+  if(String(pdfjsLib?.version||'')!==PDFJS_VERSION)missing.push(`pdf.mjs version ${String(pdfjsLib?.version||'unknown')} (expected ${PDFJS_VERSION})`);
+  if(typeof pdfjsLib?.getDocument!=='function')missing.push('pdfjsLib.getDocument');
+  if(pdfjsLib?.AnnotationMode?.ENABLE===undefined)missing.push('pdfjsLib.AnnotationMode.ENABLE');
+  for(const name of ['EventBus','PDFLinkService','PDFFindController','PDFViewer'])if(typeof pdfjsViewer?.[name]!=='function')missing.push(`pdfjsViewer.${name}`);
+  const findProto=pdfjsViewer?.PDFFindController?.prototype;
+  if(findProto){
+    for(const name of ['setDocument','match','scrollMatchIntoView'])if(typeof findProto[name]!=='function')missing.push(`PDFFindController.${name}`);
+    for(const name of ['pageMatches','pageMatchesLength','selected'])if(typeof Object.getOwnPropertyDescriptor(findProto,name)?.get!=='function')missing.push(`PDFFindController.${name} getter`);
+  }
+  const viewerProto=pdfjsViewer?.PDFViewer?.prototype;
+  if(viewerProto)for(const name of ['setDocument','getPageView','update'])if(typeof viewerProto[name]!=='function')missing.push(`PDFViewer.${name}`);
+  const linkProto=pdfjsViewer?.PDFLinkService?.prototype;
+  if(linkProto)for(const name of ['setDocument','setViewer'])if(typeof linkProto[name]!=='function')missing.push(`PDFLinkService.${name}`);
+  if(missing.length)throw new Error(`PDF.js ${PDFJS_VERSION} runtime API contract mismatch: ${missing.join(', ')}`);
+}
+
 function ensureViewerStylesheet(){
   if(stylesheetPromise)return stylesheetPromise;
   const href=runtimeUrl(PDF_SEARCH_RUNTIME.css);
@@ -65,6 +83,7 @@ async function loadRuntime(){
     const pdfjsLib=await import('../../../vendor/pdfjs/build/pdf.mjs');
     const viewerTask=import('../../../vendor/pdfjs/web/pdf_viewer.mjs');
     const [pdfjsViewer]=await Promise.all([viewerTask,stylesheetTask]);
+    assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer);
     pdfjsLib.GlobalWorkerOptions.workerSrc=runtimeUrl(PDF_SEARCH_RUNTIME.worker);
     return {pdfjsLib,pdfjsViewer};
   })().catch(error=>{runtimePromise=null;throw error});

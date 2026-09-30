@@ -19,9 +19,11 @@ SPEC.loader.exec_module(RUNTIME)
 
 def archive_bytes() -> bytes:
     payloads = {
-        "package/build/pdf.mjs": b"export const version='6.3.289';\n",
+        "package/build/pdf.mjs": b"export const version='6.3.289'; class PageViewport { convertToViewportPoint(x, y){} }\n",
         "package/build/pdf.worker.min.mjs": b"// worker\n",
-        "package/web/pdf_viewer.mjs": b"export class PDFViewer {}\n",
+        "package/legacy/build/pdf.mjs": b"export const version='6.3.289';\n",
+        "package/legacy/build/pdf.worker.min.mjs": b"// legacy worker\n",
+        "package/web/pdf_viewer.mjs": b"class PDFFindController { get pageMatches(){} get pageMatchesLength(){} get selected(){} match(query, pageContent, pageIndex){} scrollMatchIntoView({}){} } export class PDFViewer { getPageView(index){} }\n",
         "package/web/pdf_viewer.css": b".pdfViewer{position:relative}\n",
         "package/LICENSE": b"Apache License\n",
         "package/web/images/example.svg": b"<svg/>\n",
@@ -64,10 +66,24 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
             self.assertEqual(RUNTIME.check_runtime(destination), [])
             self.assertTrue((destination / "build/pdf.mjs").is_file())
             self.assertTrue((destination / "web/images/example.svg").is_file())
+            self.assertTrue((destination / "legacy/build/pdf.mjs").is_file())
             self.assertFalse((destination / "build/pdf.mjs.map").exists())
             self.assertFalse((destination / "README.md").exists())
             (destination / "build/pdf.mjs").write_text("tampered\n", encoding="utf-8")
             self.assertTrue(any("digest mismatch" in item for item in RUNTIME.check_runtime(destination)))
+
+
+    def test_check_rejects_runtime_api_surface_drift(self):
+        data = archive_bytes()
+        integrity = "sha512-" + base64.b64encode(hashlib.sha512(data).digest()).decode("ascii")
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "pdfjs"
+            RUNTIME.build_runtime(data, destination, expected_integrity=integrity)
+            viewer = destination / "web/pdf_viewer.mjs"
+            source = viewer.read_text(encoding="utf-8").replace("get selected(){}", "get selection(){}")
+            viewer.write_text(source, encoding="utf-8")
+            errors = RUNTIME.check_runtime(destination)
+            self.assertTrue(any("API contract mismatch" in item and "selected" in item for item in errors))
 
     def test_integrity_mismatch_is_rejected_before_destination_changes(self):
         data = archive_bytes()

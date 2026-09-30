@@ -41,7 +41,7 @@ function loadScript(src,ready){
 
 async function loadRuntime(){
   await loadScript(JSZIP_SRC,()=>typeof globalThis.JSZip==='function');
-  await loadScript(DOCX_SRC,()=>typeof globalThis.docx?.parseAsync==='function'&&typeof globalThis.docx?.renderDocument==='function');
+  await loadScript(DOCX_SRC,()=>typeof globalThis.docx?.renderAsync==='function');
   return globalThis.docx;
 }
 
@@ -87,13 +87,13 @@ export async function createDocxSearchViewer({host,blob,query,contentSearch={},o
   viewport.append(body);
   host.append(viewport);
   const bytes=await blob.arrayBuffer();
-  const parsed=await runtime.parseAsync(bytes,DOCX_OPTIONS);
-  const rendered=await runtime.renderDocument(parsed,DOCX_OPTIONS);
-  const styles=appendGeneratedStyles(rendered);
-  for(const node of rendered){
-    if(String(node?.nodeName||'').toUpperCase()==='STYLE')continue;
-    body.append(node);
-  }
+  // docx-preview only guarantees renderAsync as a stable public API. Render styles
+  // into a detached container so CSP never has to allow inline <style> elements;
+  // the generated CSS is promoted to same-origin blob stylesheets below.
+  const styleContainer=document.createElement('div');
+  await runtime.renderAsync(bytes,body,styleContainer,DOCX_OPTIONS);
+  const styles=appendGeneratedStyles(styleContainer.querySelectorAll('style'));
+  styleContainer.replaceChildren?.();
   hardenRenderedDocument(body);
   try{await styles.ready}catch(error){styles.dispose();throw error}
   const navigator=createDomSearchNavigator({root:body,scrollContainer:viewport,query,contentSearch,onMatchState,horizontalScroll:false});
