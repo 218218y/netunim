@@ -90,6 +90,27 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     const runtime=path.join(root,'runtime');await fs.mkdir(runtime);
     for(const name of ['lib.mjs','pdf_form_index.mjs','pdf-extract-worker.mjs'])await fs.copyFile(path.join(sourceRuntime,name),path.join(runtime,name));
     await fs.cp(fileURLToPath(new URL('../netunim-orders/site/assets/vendor/pdfjs/',import.meta.url)),path.join(runtime,'pdfjs'),{recursive:true});
+    const verifyScript=path.join(runtime,'verify-runtime.mjs');
+    await fs.writeFile(verifyScript,[
+      "import {verifyNodePdfJsRuntime} from './pdf_form_index.mjs';",
+      "try{const runtime=await verifyNodePdfJsRuntime();process.stdout.write(JSON.stringify({ok:true,...runtime}))}catch(error){process.stdout.write(JSON.stringify({ok:false,code:error?.code||'',message:error?.message||String(error)}));process.exitCode=2}",
+    ].join('\n'));
+    const runVerification=()=>new Promise((resolve,reject)=>{
+      const child=spawn(process.execPath,[verifyScript],{stdio:['ignore','pipe','pipe']});let stdout='',stderr='';
+      child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);
+      child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
+    });
+    let verification=await runVerification();
+    assert.equal(verification.code,0,verification.stderr||verification.stdout);
+    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.version,'6.3.289');
+    const legacyWorker=path.join(runtime,'pdfjs','legacy','build','pdf.worker.min.mjs'),originalWorker=await fs.readFile(legacyWorker);
+    await fs.appendFile(legacyWorker,'\n// integrity-test\n');
+    verification=await runVerification();
+    assert.equal(verification.code,2,verification.stderr||verification.stdout);
+    verified=JSON.parse(verification.stdout);assert.equal(verified.ok,false);assert.equal(verified.code,'PDFJS_NODE_INTEGRITY_MISMATCH');
+    await fs.writeFile(legacyWorker,originalWorker);
+    verification=await runVerification();
+    assert.equal(verification.code,0,verification.stderr||verification.stdout);
     const worker=path.join(runtime,'pdf-extract-worker.mjs');
     const result=await new Promise((resolve,reject)=>{
       const child=spawn(process.execPath,[worker],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';

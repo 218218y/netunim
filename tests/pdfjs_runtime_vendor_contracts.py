@@ -21,7 +21,7 @@ def archive_bytes() -> bytes:
     payloads = {
         "package/build/pdf.mjs": b"export const version='6.3.289'; class PageViewport { convertToViewportPoint(x, y){} }\n",
         "package/build/pdf.worker.min.mjs": b"// worker\n",
-        "package/legacy/build/pdf.mjs": b"export const version='6.3.289';\n",
+        "package/legacy/build/pdf.mjs": b"export const version='6.3.289'; function getDocument(src = {}){} class GlobalWorkerOptions {} const BinaryDataFactory = src.BinaryDataFactory;\n",
         "package/legacy/build/pdf.worker.min.mjs": b"// legacy worker\n",
         "package/web/pdf_viewer.mjs": b"class PDFFindController { get pageMatches(){} get pageMatchesLength(){} get selected(){} match(query, pageContent, pageIndex){} scrollMatchIntoView({}){} } export class PDFViewer { getPageView(index){} }\n",
         "package/web/pdf_viewer.css": b".pdfViewer{position:relative}\n",
@@ -84,6 +84,11 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
             viewer.write_text(source, encoding="utf-8")
             errors = RUNTIME.check_runtime(destination)
             self.assertTrue(any("API contract mismatch" in item and "selected" in item for item in errors))
+            RUNTIME.build_runtime(data, destination, expected_integrity=integrity)
+            legacy = destination / "legacy/build/pdf.mjs"
+            legacy.write_text(legacy.read_text(encoding="utf-8").replace("function getDocument(src = {})", "function getDocumentChanged(src = {})", 1), encoding="utf-8")
+            errors = RUNTIME.check_runtime(destination)
+            self.assertTrue(any("legacy/build/pdf.mjs" in item and "API contract mismatch" in item for item in errors))
 
     def test_integrity_mismatch_is_rejected_before_destination_changes(self):
         data = archive_bytes()

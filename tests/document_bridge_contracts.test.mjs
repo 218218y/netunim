@@ -83,7 +83,10 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/collectPdfFormFields/,'interactive PDF index must persist field page and rectangle metadata');
   assert.match(pdfIndex,/buildPdfFormMatchAnchors/,'interactive PDF index must map value hits back to field geometry');
   assert.match(pdfIndex,/pdfjs\/legacy\/build\/pdf\.mjs/,'Node bridge must prefer the PDF.js legacy build recommended for Node.js');
-  assert.match(pdfIndex,/pdfjs\/build\/pdf\.mjs/,'already-installed bridges retain a guarded modern-build fallback until the next runtime refresh');
+  assert.doesNotMatch(pdfIndex,/pdfjs\/build\/pdf\.mjs/,'Node extraction must fail fast instead of silently falling back to the browser modern build');
+  assert.match(pdfIndex,/PDFJS_NODE_LEGACY_RUNTIME_MISSING/,'missing Node legacy runtime must fail with a diagnosable error');
+  assert.match(pdfIndex,/PDFJS_NODE_INTEGRITY_MISMATCH/,'Node legacy runtime must be checked against the pinned vendor manifest');
+  assert.match(server,/verifyNodePdfJsRuntime\(\)/,'installer doctor must import and validate the Node legacy runtime before activation');
   assert.match(installer,/pdf_form_index\.mjs/);
   assert.match(installer,/pdf-index-policy\.mjs/);
   assert.match(installer,/pdf-extract-worker\.mjs/);
@@ -108,7 +111,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v30-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v31-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -120,8 +123,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=30/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=30/);
+  assert.match(lib,/BRIDGE_VERSION=31/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=31/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -389,9 +392,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=30/);
+  assert.match(lib,/BRIDGE_VERSION=31/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=30/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=31/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

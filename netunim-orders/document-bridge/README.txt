@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v30 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v31 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -30,7 +30,8 @@ Website modes
 2. Content search
    The Bridge builds an Everything content:"..." no-background-search: query.
    Interactive AcroForm PDFs also have a small local supplemental index. The
-   supplemental extractor uses the same bundled PDF.js runtime as the website,
+   supplemental extractor uses the pinned bundled PDF.js release, with the
+   legacy build required explicitly for Node.js (no modern-build fallback),
    reads logical page text plus text/choice form values directly from the PDF,
    and merges those matches with Everything results. It does not render pages to
    images and does not run OCR. This covers PDFs whose appearance streams use
@@ -164,6 +165,7 @@ Installation
 Run install_document_bridge.bat on each PC. The installer:
 - builds NetunimPreviewHost.exe locally;
 - upgrades the Bridge and stages the already-bundled local PDF.js runtime;
+- verifies the pinned PDF.js legacy hashes and required Node API before activation;
 - verifies ES/Everything;
 - starts Everything in background mode if required;
 - preserves the existing supplemental PDF index without scanning PDFs during
@@ -173,7 +175,7 @@ Run install_document_bridge.bat on each PC. The installer:
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
-  removes inactive runtimes only as best-effort maintenance after the new v30
+  removes inactive runtimes only as best-effort maintenance after the new v31
   runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import {contentMatchRanges,normalizeContentSearchOptions,normalizeSearchText} from './lib.mjs';
 
@@ -27,33 +28,39 @@ export class LocalPdfBinaryDataFactory{
 }
 
 let pdfJsPromise=null;
-function missingOptionalLegacyModule(error){return String(error?.code||'')==='ERR_MODULE_NOT_FOUND'||/Cannot find module|Failed to resolve module specifier/i.test(String(error?.message||''))}
 async function importNodePdfJs(){
-  try{
-    const pdfjs=await import('./pdfjs/legacy/build/pdf.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdfjs/legacy/build/pdf.worker.min.mjs',import.meta.url).href;
-    return pdfjs;
-  }catch(error){
-    if(!missingOptionalLegacyModule(error))throw error;
+  const moduleUrl=new URL('./pdfjs/legacy/build/pdf.mjs',import.meta.url),workerUrl=new URL('./pdfjs/legacy/build/pdf.worker.min.mjs',import.meta.url);
+  try{await Promise.all([fs.access(moduleUrl),fs.access(workerUrl)])}catch(error){
+    const runtimeError=new Error('The bundled PDF.js legacy runtime required by the Windows Document Bridge is missing. Reinstall the current Document Bridge runtime.');
+    runtimeError.code='PDFJS_NODE_LEGACY_RUNTIME_MISSING';runtimeError.cause=error;throw runtimeError;
   }
-  // Backward-compatible fallback for already-installed Bridge runtimes. New
-  // vendor installs include legacy/build, which PDF.js recommends for Node.js.
-  const originalWarn=console.warn;
-  try{
-    console.warn=(...args)=>{
-      if(args.length===1&&String(args[0])==='Warning: Please use the `legacy` build in Node.js environments.')return;
-      originalWarn(...args);
-    };
-    const pdfjs=await import('./pdfjs/build/pdf.mjs');
-    pdfjs.GlobalWorkerOptions.workerSrc=new URL('./pdfjs/build/pdf.worker.min.mjs',import.meta.url).href;
-    return pdfjs;
-  }finally{console.warn=originalWarn}
+  const pdfjs=await import(moduleUrl.href);
+  if(typeof pdfjs?.getDocument!=='function'||!pdfjs?.GlobalWorkerOptions){
+    const error=new Error('The bundled PDF.js legacy runtime does not expose the Node API surface required by the Document Bridge.');
+    error.code='PDFJS_NODE_API_MISMATCH';throw error;
+  }
+  pdfjs.GlobalWorkerOptions.workerSrc=workerUrl.href;
+  return pdfjs;
 }
 async function loadPdfJs(){
   if(pdfJsPromise)return pdfJsPromise;
   installNodePdfJsCompatibility();
   pdfJsPromise=importNodePdfJs().catch(error=>{pdfJsPromise=null;throw error});
   return pdfJsPromise;
+}
+async function verifyNodePdfJsIntegrity(){
+  const manifestUrl=new URL('./pdfjs/_runtime-manifest.txt',import.meta.url);let source='';
+  try{source=await fs.readFile(manifestUrl,'utf8')}catch(error){const runtimeError=new Error('The PDF.js runtime manifest required by the Windows Document Bridge is missing. Reinstall the current Document Bridge runtime.');runtimeError.code='PDFJS_NODE_MANIFEST_MISSING';runtimeError.cause=error;throw runtimeError}
+  const metadata=new Map(),digests=new Map();
+  for(const raw of source.split(/\r?\n/)){const line=raw.trim();if(!line)continue;const digestMatch=line.match(/^([0-9a-f]{64})  (.+)$/i);if(digestMatch){digests.set(digestMatch[2],digestMatch[1].toLowerCase());continue}const split=line.indexOf('=');if(split>0)metadata.set(line.slice(0,split),line.slice(split+1))}
+  if(metadata.get('package')!=='pdfjs-dist'||!metadata.get('version')){const error=new Error('The bundled PDF.js runtime manifest is invalid.');error.code='PDFJS_NODE_MANIFEST_INVALID';throw error}
+  for(const relative of ['legacy/build/pdf.mjs','legacy/build/pdf.worker.min.mjs']){const expected=digests.get(relative);if(!expected){const error=new Error(`The PDF.js runtime manifest does not contain ${relative}.`);error.code='PDFJS_NODE_MANIFEST_INVALID';throw error}const data=await fs.readFile(new URL(`./pdfjs/${relative}`,import.meta.url));const actual=createHash('sha256').update(data).digest('hex');if(actual!==expected){const error=new Error(`The bundled PDF.js Node runtime failed integrity verification: ${relative}.`);error.code='PDFJS_NODE_INTEGRITY_MISMATCH';throw error}}
+  return metadata.get('version');
+}
+export async function verifyNodePdfJsRuntime(){
+  const manifestVersion=await verifyNodePdfJsIntegrity(),pdfjs=await loadPdfJs(),version=String(pdfjs?.version||'');
+  if(version&&version!==manifestVersion){const error=new Error(`PDF.js Node runtime version ${version} does not match manifest version ${manifestVersion}.`);error.code='PDFJS_NODE_VERSION_MISMATCH';throw error}
+  return {ok:true,version:version||manifestVersion,build:String(pdfjs?.build||''),runtime:'legacy'};
 }
 
 function cleanPdfText(value){

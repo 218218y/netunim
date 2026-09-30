@@ -1,9 +1,9 @@
-"""Install and verify the pinned browser PDF.js runtime used by Orders.
+"""Install and verify the pinned PDF.js runtime used by the browser and Windows Bridge.
 
 The application is intentionally a native-ESM static site, so runtime libraries are
 vendored as public assets instead of being loaded from a CDN.  ``install`` downloads
 one exact npm tarball, verifies its published SHA-512 integrity, and atomically
-extracts only the browser files we deploy.  ``check`` is network-free and verifies
+extracts only the runtime files we deploy.  ``check`` is network-free and verifies
 the installed manifest and every vendored file digest.
 """
 from __future__ import annotations
@@ -41,6 +41,11 @@ OPTIONAL_FILES = set()
 API_CONTRACT_SNIPPETS = {
     "build/pdf.mjs": (
         "convertToViewportPoint(x, y)",
+    ),
+    "legacy/build/pdf.mjs": (
+        "function getDocument(src = {})",
+        "class GlobalWorkerOptions",
+        "const BinaryDataFactory = src.BinaryDataFactory",
     ),
     "web/pdf_viewer.mjs": (
         "class PDFFindController",
