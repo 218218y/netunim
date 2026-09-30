@@ -7,6 +7,15 @@ from browser_legacy_write_guard import install_business_v1_write_guard
 # would miss the birth path we need to protect before removing V1.
 for app in ['kupa', 'orders']:
     with BrowserSession(ROOT/f'netunim-{app}/site',app+'-v2-zero-write',auto_navigate=False) as browser:
+        # An unmarked browser may contain abandoned V1 data. The current
+        # local namespace must still be born from INITIAL_STATE, and the old
+        # outbox must never be replayed or used as the new source of truth.
+        legacy_key = 'kupa.browser.state.v1' if app == 'kupa' else 'orders.management.state.v1'
+        pending_key = 'kupa.shared.checks.pending.v1' if app == 'kupa' else 'orders.shared.checks.pending.v1'
+        browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': f"""
+          localStorage.setItem('{legacy_key}', JSON.stringify({{notes:[{{id:'obsolete-v1-note',content:'obsolete'}}],checks:[{{id:'obsolete-v1-check',amount:999}}]}}));
+          localStorage.setItem('{pending_key}', JSON.stringify({{generation:1,snapshot:[{{id:'obsolete-v1-check',amount:999}}]}}));
+        """})
         install_business_v1_write_guard(browser)
         browser._navigate()
         born=browser.evaluate("""(async()=>{
@@ -16,9 +25,10 @@ for app in ['kupa', 'orders']:
           const main=await storageShadow.cloudState(),shared=await sharedChecksV2.cloudState();
           const head=await storageShadow.recover();
           return {marker:marker?.version,mainProjection:head?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(head?.state||{},'checks'),mainBase:main?.base??null,sharedBase:shared?.base??null,
-            mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,writes:window.__legacyWrites};
+            mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
+            obsoleteNote:state.notes.some(row=>row.id==='obsolete-v1-note'),obsoleteCheck:state.checks.some(row=>row.id==='obsolete-v1-check'),writes:window.__legacyWrites};
         })()""".replace('APP',app))
-        assert born['marker']==2 and born['mainProjection']==2 and not born['mainHasChecks'] and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['writes'],born
+        assert born['marker']==2 and born['mainProjection']==2 and not born['mainHasChecks'] and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['obsoleteNote'] and not born['obsoleteCheck'] and not born['writes'],born
         result=browser.evaluate("""(async()=>{
           await appReady;
           if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');

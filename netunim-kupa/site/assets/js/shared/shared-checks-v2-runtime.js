@@ -78,7 +78,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   async function initializeLocal({state}={}){
     const store=context(),snapshot=canonical(state);
     if(identity!=='local')throw new Error('shared_checks_local_owner_required');
-    if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
     assertContext(store);
     let recovered;
     try{recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'})}

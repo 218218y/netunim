@@ -13,17 +13,6 @@ function loadChecksBase(){try{const raw=localStorage.getItem(CHECKS_BASE_KEY)||l
 
 function loadChecksBankEvents(){try{return normalizeSharedBankEvents(JSON.parse(localStorage.getItem(CHECKS_EVENTS_KEY)||'[]'))}catch(e){console.error('checks events load',e);return[]}}
 
-// Local birth takes checks from the selected Main snapshot. A stale cloud base
-// must not silently replace them; bank events have their own legacy key.
-function readLegacyLocalMigrationSource(mainState,{sourceFound=true}={}){
-  const raw=localStorage.getItem(CHECKS_EVENTS_KEY),events=raw===null?[]:JSON.parse(raw),checks=normalizeSharedChecks(mainState?.checks);
-  if(!sourceFound){
-    const base=loadChecksBase();
-    if(base?.length)throw new Error('shared_checks_local_birth_main_source_missing');
-  }
-  return {checks,bankEvents:normalizeSharedBankEvents(events)};
-}
-
 function readPendingCache(){try{const raw=localStorage.getItem(CHECKS_PENDING_KEY)||localStorage.getItem(LEGACY_CHECKS_PENDING_KEY);return JSON.parse(raw||'null')}catch(e){console.error('checks pending cache load',e);return null}}
 async function getChecksPending(){
   const observedCommit=checksSession.checksOutboxCommitPromise;await observedCommit;
@@ -47,5 +36,5 @@ async function verifyLegacyChecksClean(){
   return checksSession.checksOutboxCommitPromise===commit&&durable==null&&!checksPendingExists();
 }
 
-return { loadChecksBase, loadChecksBankEvents, readLegacyLocalMigrationSource, getChecksPending, checksPendingExists, verifyLegacyChecksClean };
+return { loadChecksBase, loadChecksBankEvents, getChecksPending, checksPendingExists, verifyLegacyChecksClean };
 }

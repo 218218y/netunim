@@ -61,13 +61,8 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       main:p.storageShadow,shared:p.sharedChecksV2,
       enableShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('orders_local_birth_shared_lock_required')},
       readSource:async()=>{
-        const source=await p.storageBrowser.readLegacyLocalMigrationSource();
-        const sharedState=p.storageChecks.readLegacyLocalMigrationSource(source.mainState,{sourceFound:source.sourceFound});
-        // The spreadsheet journal is independent of Main; preserve a legacy
-        // sheet before the frozen source is committed, including after retry.
-        await p.storageBrowser.captureLegacyWorkbookForMigration(source.legacyWorkbook);
-        const mainState=p.prepareV2Checkpoint(source.mainState);delete mainState.checks;
-        return {mainState,sharedState};
+        const mainState=p.prepareV2Checkpoint(INITIAL_STATE);delete mainState.checks;
+        return {mainState,sharedState:{checks:[],bankEvents:[]}};
       },
       quiesce:async()=>{
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
@@ -75,7 +70,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         const pending=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
         if(pending.length)await Promise.all(pending);
       },
-      verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
     });
     const fixedMain=identity=>createStorageV2Runtime({
       app:'orders',owner:()=>identity,primary:()=>tab.primaryTab,mode:()=> 'preparing',
@@ -89,7 +83,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         merge:(...args)=>p.syncChecks.mergeSharedChecks(...args),
         readRemote:()=>p.cloudTransport.readSharedChecksCloud(),
         rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-        verifyLegacyClean:()=>p.storageChecks.verifyLegacyChecksClean(),
+        verifyLegacyClean:()=>owner.current()==='local'?true:p.storageChecks.verifyLegacyChecksClean(),
       });
     };
     async function settleSource({sourceOwner}){
@@ -102,7 +96,9 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       await p.syncDocument.quiesceForStorageCutover();
       const pending=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
       if(pending.length)await Promise.all(pending);
-      if(await p.storageBrowser.verifyLegacyCloudCleanReadOnly()!==true||await p.storageChecks.verifyLegacyChecksClean()!==true)throw new Error('orders_transfer_legacy_pending');
+      // A marked local V2 source is authoritative. Retired V1 outboxes are
+      // unrelated to its journal and must not prevent transferring V2 data.
+      if(sourceOwner!=='local'&&(await p.storageBrowser.verifyLegacyCloudCleanReadOnly()!==true||await p.storageChecks.verifyLegacyChecksClean()!==true))throw new Error('orders_transfer_legacy_pending');
       const main=fixedMain(sourceOwner),shared=fixedShared(sourceOwner),mainRecovered=await main.recover(null),sharedRecovered=await shared.recover();
       if(!mainRecovered?.state||!sharedRecovered?.state)throw new Error('orders_transfer_source_checkpoint_missing');
       const mainCloud=await main.cloudState({validateBase:state=>assertValidOrderCloudState(state,'Orders transfer source cloud base')}),sharedCloud=await shared.cloudState();
@@ -123,7 +119,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
         projectMainState:state=>p.stateSnapshots.prepareCloudState(state),emptyMainState:()=>p.prepareV2Checkpoint(INITIAL_STATE),
         validateMainCloud:state=>assertValidOrderCloudState(state,'Orders detached target cloud state'),
         rpcMain:(...args)=>p.cloudTransport.rpcSaveV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-        verifyLegacyClean:async()=>await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
+        verifyLegacyClean:async()=>owner.current()==='local'||await p.storageBrowser.verifyLegacyCloudCleanReadOnly()===true&&await p.storageChecks.verifyLegacyChecksClean()===true,
       });
     }
     ownerTransfer=createStorageV2OwnerTransfer({
