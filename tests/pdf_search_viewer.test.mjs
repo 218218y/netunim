@@ -39,7 +39,7 @@ class TinyElement{
   getBoundingClientRect(){return {left:0,top:0,right:this.clientWidth,bottom:this.clientHeight,width:this.clientWidth,height:this.clientHeight}}
   scrollTo({top=0,left=0}={}){this.scrollTop=top;this.scrollLeft=left}
   matchesClass(name){return String(this.className||'').split(/\s+/).includes(name)}
-  querySelector(selector){if(selector===':scope > .document-pdf-form-overlay')return this.children.find(child=>child.matchesClass('document-pdf-form-overlay'))||null;return this.querySelectorAll(selector)[0]||null}
+  querySelector(selector){if(selector.startsWith(':scope > .')){const name=selector.slice(':scope > .'.length);return this.children.find(child=>child.matchesClass(name))||null}return this.querySelectorAll(selector)[0]||null}
   querySelectorAll(selector){const wanted=selector.split(',').map(part=>part.trim().replace(/^\./,'')).filter(Boolean),rows=[];const visit=node=>{for(const child of node.children){if(wanted.some(name=>child.matchesClass(name)))rows.push(child);visit(child)}};visit(this);return rows}
   closest(selector){if(selector!=='.page')return null;for(let node=this;node;node=node.parentElement)if(node.matchesClass('page'))return node;return null}
   classList={toggle:(name,on)=>{const set=new Set(String(this.className||'').split(/\s+/).filter(Boolean));on?set.add(name):set.delete(name);this.className=[...set].join(' ')},contains:name=>this.matchesClass(name),add:name=>{if(!this.matchesClass(name))this.className=`${this.className} ${name}`.trim()}};
@@ -48,6 +48,7 @@ class TinyElement{
 function fakeInteractiveRuntime(annotations,{annotationError=null}={}){
   const state={eventBus:null,findController:null};
   const pageRoot=new TinyElement('page');pageRoot.dataset.pageNumber='1';pageRoot.clientWidth=600;pageRoot.clientHeight=800;
+  const canvasWrapper=new TinyElement('canvasWrapper');canvasWrapper.clientWidth=600;canvasWrapper.clientHeight=800;pageRoot.append(canvasWrapper);
   const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
   const pdfPage={getAnnotations:async()=>{if(annotationError)throw annotationError;return annotations}};
   const pageView={id:1,div:pageRoot,pdfPage,viewport};
@@ -57,7 +58,7 @@ function fakeInteractiveRuntime(annotations,{annotationError=null}={}){
   class PDFViewer{constructor({container}){container.append(pageRoot);this.container=container}setDocument(document){this.document=document}getPageView(index){return index===0?pageView:null}set currentScaleValue(value){this.scale=value}update(){}}
   const pdfDocument={numPages:1,getPage:async()=>pdfPage,destroy:async()=>{}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{}};
-  return {state,pageRoot,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1},AnnotationEditorType:{DISABLE:-1},getDocument:()=>loadingTask,normalizeUnicode:value=>value},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
+  return {state,pageRoot,canvasWrapper,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1},AnnotationEditorType:{DISABLE:-1},getDocument:()=>loadingTask,normalizeUnicode:value=>value},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
 
 test('PDF find requests keep all matches highlighted and distinguish next from previous',()=>{
@@ -146,7 +147,7 @@ test('Bridge AcroForm anchors render and navigate even when browser annotation e
     getSelection:()=>null,
   };
   try{
-    const {state,pageRoot,runtime}=fakeInteractiveRuntime([]),host=fakeHost();
+    const {state,pageRoot,canvasWrapper,runtime}=fakeInteractiveRuntime([]),host=fakeHost();
     host.container.append=TinyElement.prototype.append.bind(host.container);
     host.container.children=[];host.container.className='document-pdfjs-container';host.container.querySelectorAll=TinyElement.prototype.querySelectorAll.bind(host.container);host.container.getBoundingClientRect=()=>({left:0,top:0,width:640,height:800,right:640,bottom:800});host.container.clientHeight=800;host.container.scrollTop=0;host.container.scrollLeft=0;host.container.scrollTo=()=>{};
     const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'ליבי',runtime});
@@ -161,12 +162,42 @@ test('Bridge AcroForm anchors render and navigate even when browser annotation e
     assert.equal(viewer.matchState().total,2);
     assert.equal(viewer.matchState().current,1,'the first external form match is selected automatically');
     assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'both occurrences share one field rectangle while remaining separate navigation matches');
+    assert.ok(canvasWrapper.querySelector(':scope > .document-pdf-form-overlay'),'the marker overlay is owned by PDF.js canvasWrapper rather than an unknown direct page child');
+    for(const child of [...pageRoot.children])if(child!==canvasWrapper)child.remove();
+    assert.equal(canvasWrapper.querySelectorAll('.document-pdf-form-match-marker').length,1,'PDF.js page cleanup can remove unknown page children without deleting the form highlight layer');
     const before=viewer.matchState().current;viewer.next();assert.notEqual(viewer.matchState().current,before,'navigation advances using external Bridge anchors');
     await viewer.destroy();
   }finally{globalThis.document=originalDocument}
 });
 
 
+
+
+test('empty Bridge geometry never erases form matches discovered by the browser viewer',async()=>{
+  const originalDocument=globalThis.document;
+  const listeners=new Map();
+  globalThis.document={
+    createElement:()=>new TinyElement(),
+    addEventListener:(name,handler)=>listeners.set(name,handler),
+    removeEventListener:name=>listeners.delete(name),
+    getSelection:()=>null,
+  };
+  try{
+    const annotations=[{id:'customer',fieldType:'Tx',fieldName:'customer',fieldValue:'needle',rect:[100,600,300,640]}];
+    const {pageRoot,runtime}=fakeInteractiveRuntime(annotations),host=fakeHost();
+    host.container.append=TinyElement.prototype.append.bind(host.container);
+    host.container.children=[];host.container.className='document-pdfjs-container';host.container.querySelectorAll=TinyElement.prototype.querySelectorAll.bind(host.container);host.container.getBoundingClientRect=()=>({left:0,top:0,width:640,height:800,right:640,bottom:800});host.container.clientHeight=800;host.container.scrollTop=0;host.container.scrollLeft=0;host.container.scrollTo=()=>{};
+    const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'needle',runtime});
+    await tick();await tick();
+    assert.equal(viewer.matchState().total,1);
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1);
+    const applied=await viewer.setExternalMatchInfo({formAnchorsAuthoritative:true,formAnchors:[],formAnchorsCapped:false});
+    assert.equal(applied,false,'an empty Bridge geometry payload is not authoritative over a working local annotation scan');
+    assert.equal(viewer.matchState().total,1,'the local form match survives an empty Bridge response');
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'the visible field highlight is not erased by the match-bar response');
+    await viewer.destroy();
+  }finally{globalThis.document=originalDocument}
+});
 
 test('authoritative Bridge rectangles stay highlighted even when browser annotation parsing fails',async()=>{
   const originalDocument=globalThis.document;

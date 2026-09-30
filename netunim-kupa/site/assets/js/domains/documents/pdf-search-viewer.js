@@ -142,8 +142,13 @@ function createPdfFormMatchMarker(model,{current=false,count=1}={}){const marker
 
 function ensurePdfFormOverlay(pageView){
   const page=pageView?.div;if(!page)return null;
-  let overlay=page.querySelector?.(':scope > .document-pdf-form-overlay')||null;
-  if(!overlay){overlay=document.createElement('div');overlay.className='document-pdf-form-overlay';overlay.dataset.pageNumber=String(Number(pageView?.id)||Number(page.dataset?.pageNumber)||'');page.append(overlay)}
+  // PDF.js deliberately removes unknown direct children of `.page` whenever a
+  // page is reset (scale/fit-width/render lifecycle). Keep our overlay inside
+  // canvasWrapper instead: PDF.js owns that layer and preserves it across the
+  // common CSS/scale reset path, while our marker remains above the canvas.
+  const owner=page.querySelector?.(':scope > .canvasWrapper')||null;if(!owner)return null;
+  let overlay=owner.querySelector?.(':scope > .document-pdf-form-overlay')||null;
+  if(!overlay){overlay=document.createElement('div');overlay.className='document-pdf-form-overlay';overlay.dataset.pageNumber=String(Number(pageView?.id)||Number(page.dataset?.pageNumber)||'');owner.append(overlay)}
   return overlay;
 }
 
@@ -347,7 +352,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const scheduleResize=({immediate=false}={})=>{if(destroyed)return;cancelScheduledResize();if(immediate){queueFrame(()=>fitToWidth());return}resizeTimer=setTimeout(()=>{resizeTimer=null;queueFrame(()=>fitToWidth())},90)};
   if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
   eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
-  function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.div?.querySelector?.(':scope > .document-pdf-form-overlay');if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
+  function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.div?.querySelector?.('.document-pdf-form-overlay');if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
   function scrollElementToCenter(element,{behavior='smooth'}={}){const rect=element?.getBoundingClientRect?.(),hostRect=container.getBoundingClientRect?.();if(!rect||!hostRect)return false;const top=container.scrollTop+(rect.top-hostRect.top)-(container.clientHeight/2)+(rect.height/2);container.scrollTo?.({top:Math.max(0,top),left:Math.max(0,container.scrollLeft||0),behavior});return true}
   function scrollCurrentFormMatch(entry,{behavior='smooth'}={}){if(!entry||destroyed)return false;const marker=formMarkerFor(entry);if(marker)return scrollElementToCenter(marker,{behavior});linkService.page=entry.pageNumber;return false}
   function refreshFormMarkerCurrent(){const current=currentFormEntry();for(const marker of container.querySelectorAll?.('.document-pdf-form-match-marker')||[]){const pageNumber=Number(marker.closest?.('.page')?.dataset?.pageNumber)||0;marker.classList.toggle('current',!!current&&pageNumber===current.pageNumber&&marker.dataset?.pdfFieldKey===current.fieldKey)}}
@@ -364,17 +369,22 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     const start=Math.max(0,Number(anchor?.start)||0),end=Math.max(start,Number(anchor?.end)||start),value=String(anchor?.value||''),snippet=anchor?.snippet&&typeof anchor.snippet==='object'?anchor.snippet:(value?buildTextMatchSnippet(value,{start,end}):null);
     return {kind:'form',pageNumber,pageIdx:pageNumber-1,annotationIndex:Math.max(0,Number(anchor?.annotationIndex)||index),fieldKey,fieldName:String(anchor?.fieldName||''),fieldType:String(anchor?.fieldType||''),rect,start,end,snippet,value};
   }
+  function mergeFormMatch(target,match,{preferIncoming=false}={}){
+    let fields=target.get(match.pageNumber);if(!fields){fields=new Map();target.set(match.pageNumber,fields)}
+    const rows=fields.get(match.fieldKey)||[],index=rows.findIndex(row=>Number(row.start)===Number(match.start)&&Number(row.end)===Number(match.end));
+    if(index<0)rows.push(match);else if(preferIncoming)rows[index]=match;fields.set(match.fieldKey,rows);return index<0||preferIncoming;
+  }
   async function applyExternalFormMatchInfo(info){
     if(destroyed||!interactiveForms||!hasFindQuery||info?.formAnchorsAuthoritative!==true||!Array.isArray(info?.formAnchors))return false;
-    externalFormMatchesApplied=true;formMatchesByPage.clear();
-    for(const [index,raw] of info.formAnchors.entries()){
-      const match=normalizedExternalFormMatch(raw,index);if(!match)continue;
-      let fields=formMatchesByPage.get(match.pageNumber);if(!fields){fields=new Map();formMatchesByPage.set(match.pageNumber,fields)}
-      const rows=fields.get(match.fieldKey)||[];rows.push(match);fields.set(match.fieldKey,rows);
-    }
-    formSearchCapped=!!info.formAnchorsCapped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return true;
+    const matches=info.formAnchors.map((raw,index)=>normalizedExternalFormMatch(raw,index)).filter(Boolean);
+    // An empty authoritative payload must never erase/cancel the viewer's own
+    // annotation scan. Everything can know that text matched even when the
+    // Bridge has no geometry for that particular PDF revision.
+    if(!matches.length)return false;
+    externalFormMatchesApplied=true;for(const match of matches)mergeFormMatch(formMatchesByPage,match,{preferIncoming:true});
+    formSearchCapped=formSearchCapped||!!info.formAnchorsCapped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return true;
   }
-  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed||externalFormMatchesApplied)return;formMatchesByPage.clear();for(const [pageNumber,fields] of scanned.matchesByPage)formMatchesByPage.set(pageNumber,fields);formSearchCapped=scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
+  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed)return;if(!externalFormMatchesApplied)formMatchesByPage.clear();for(const fields of scanned.matchesByPage.values())for(const matches of fields.values())for(const match of matches)mergeFormMatch(formMatchesByPage,match);formSearchCapped=formSearchCapped||scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
   try{
     loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
     pdfDocument=await loadingTask.promise;

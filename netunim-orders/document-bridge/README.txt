@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v29 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v30 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -126,11 +126,15 @@ Office preview size behind.
 
 Background PDF indexing
 -----------------------
-The supplemental index is incremental, not version-scoped. Installing a newer
-Bridge does NOT intentionally rebuild all PDFs. An entry is re-inspected only
-when Everything reports a changed size/date fingerprint or when it has never
-been inspected. Negative results (ordinary PDFs without AcroForm fields) are
-now cached too.
+The supplemental index is incremental and keeps an explicit extractor revision.
+Installing v30 revalidates older positive and negative PDF records once, so a
+PDF previously cached as non-interactive cannot stay permanently without form
+geometry after the extractor learns a newer form representation.
+
+After the one-time v30 extractor-revision migration, later runs remain
+incremental: an entry is re-inspected only when Everything reports a changed
+size/date fingerprint or when its extractor revision is stale. Current negative
+results (ordinary PDFs without supported AcroForm fields) are cached too.
 
 While an initial backlog exists, the Bridge processes only 8 PDFs per batch with
 one PDF extraction at a time, appends that batch to a small crash-safe journal,
@@ -161,7 +165,7 @@ Run install_document_bridge.bat on each PC. The installer:
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
-  removes inactive runtimes only as best-effort maintenance after the new v29
+  removes inactive runtimes only as best-effort maintenance after the new v30
   runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.

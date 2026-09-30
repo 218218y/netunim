@@ -67,8 +67,12 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/scope=everything-index\+interactive-pdf/);
   assert.match(server,/extractInteractivePdfText/);
   assert.match(server,/buildPdfFormMatchAnchors/,'interactive PDF preview matches must retain Bridge-known page geometry');
-  assert.match(server,/formAnchorsAuthoritative/,'viewer must know whether Bridge geometry is authoritative');
-  assert.match(server,/PDF_FORM_INDEX_SCHEMA=2/,'AcroForm geometry is a real persisted-index schema upgrade');
+  assert.match(server,/formAnchorsAuthoritative=formMatchInfo\.anchors\.length>0/,'an empty Bridge geometry payload must never suppress the browser PDF annotation fallback');
+  assert.match(server,/PDF_FORM_INDEX_SCHEMA=2/,'AcroForm geometry remains persisted in the supplemental index');
+  assert.match(server,/PDF_FORM_EXTRACTOR_REVISION=2/,'interactive PDF cache entries carry an extractor revision so old negative results are revalidated');
+  assert.match(server,/extractorCurrent&&cached&&!cached\.hasForm&&!cached\.failed/,'only current-extractor negative PDF records may suppress on-demand form reinspection');
+  assert.match(server,/existing\?\.fingerprint===fingerprint&&extractorCurrent&&geometryCurrent/,'unchanged legacy PDF records still enter the migration backlog when their extractor revision is stale');
+  assert.match(server,/previewTextCache\.delete\(key\)/,'form-index upgrades invalidate stale preview text cache entries');
   assert.match(server,/geometryCurrent=!existing\?\.hasForm\|\|Array\.isArray\(existing\.formFields\)/,'unchanged legacy interactive PDFs must be reindexed when geometry is missing');
   assert.match(server,/includePageText:!geometryOnly/,'legacy preview migration must recover geometry without re-reading every page text layer');
   assert.match(pdfIndex,/collectPdfFormFields/,'interactive PDF index must persist field page and rectangle metadata');
@@ -88,7 +92,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v29-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v30-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -100,8 +104,9 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=29/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=29/);
+  assert.match(lib,/BRIDGE_VERSION=30/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=30/);
+  assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -364,9 +369,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=29/);
+  assert.match(lib,/BRIDGE_VERSION=30/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=29/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=30/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

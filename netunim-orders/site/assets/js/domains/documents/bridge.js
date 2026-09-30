@@ -2,7 +2,7 @@ const BRIDGE_URL='http://127.0.0.1:8766';
 const TOKEN_KEY='netunim_document_bridge_token_v1';
 const LEGACY_TOKEN_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];
 const REQUEST_TIMEOUT_MS=25000;
-const EXPECTED_BRIDGE_VERSION=29;
+const EXPECTED_BRIDGE_VERSION=30;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 function requireBridgeVersion(value,purpose='לטעון את גרסת החיפוש הנכונה'){const version=Number(value)||0;if(version!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${version||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי ${purpose}.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED')}
@@ -47,7 +47,7 @@ export function createDomainsDocumentBridge(){
   const recent=({limit=150,scopePath='',signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit,scopePath:String(scopePath||'')},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const search=async(query,{mode='content',contentSearch={},scopePath='',limit=150,offset=0,sort={},signal=null}={})=>{const data=await request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',contentSearch,scopePath:String(scopePath||''),limit,offset:Math.max(0,Math.trunc(Number(offset)||0)),sort:{field:String(sort?.field||''),direction:String(sort?.direction||'')}},timeoutMs:REQUEST_TIMEOUT_MS,signal});requireBridgeVersion(data?.bridgeVersion);return data};
   const preview=id=>request('/documents/preview',{method:'POST',body:{id},timeoutMs:12000});
-  const matches=(id,{signal=null}={})=>request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});
+  const matches=async(id,{signal=null}={})=>{const data=await request('/documents/matches',{method:'POST',body:{id},timeoutMs:18000,signal});requireBridgeVersion(data?.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי');return data};
   const previewFile=(id,{signal=null}={})=>requestBlob('/documents/preview-file',{body:{id},timeoutMs:35000,signal});
   const nativePreview=(id,geometry)=>request('/documents/native-preview',{method:'POST',body:{id,geometry},timeoutMs:12000});
   const moveNativePreview=geometry=>request('/documents/native-preview/move',{method:'POST',body:{geometry},timeoutMs:3500});
