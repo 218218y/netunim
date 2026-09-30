@@ -86,6 +86,10 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.doesNotMatch(pdfIndex,/pdfjs\/build\/pdf\.mjs/,'Node extraction must fail fast instead of silently falling back to the browser modern build');
   assert.match(pdfIndex,/PDFJS_NODE_LEGACY_RUNTIME_MISSING/,'missing Node legacy runtime must fail with a diagnosable error');
   assert.match(pdfIndex,/PDFJS_NODE_INTEGRITY_MISMATCH/,'Node legacy runtime must be checked against the pinned vendor manifest');
+  assert.match(pdfIndex,/mode:'text-extraction-only'/,'Node PDF.js runtime must declare that it is used only for text/annotation extraction');
+  assert.match(pdfIndex,/shouldSuppressTextOnlyImportWarnings/,'known PDF.js optional-canvas warnings should be classified instead of leaking as installer errors');
+  assert.match(pdfIndex,/Cannot find module \'@napi-rs\/canvas\'/,'only the exact missing optional canvas package warning may be suppressed');
+  assert.doesNotMatch(pdfIndex,/console\.warn=\(\.\.\.args\)=>\{\}/,'PDF.js warnings must never be disabled wholesale');
   assert.match(server,/verifyNodePdfJsRuntime\(\)/,'installer doctor must import and validate the Node legacy runtime before activation');
   assert.match(installer,/pdf_form_index\.mjs/);
   assert.match(installer,/pdf-index-policy\.mjs/);
@@ -95,6 +99,11 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/PDF_FORM_MAINTENANCE_MAX_FILES=300/);
   assert.match(server,/PDF_FORM_MAINTENANCE_MAX_MS=15\*60\*1000/);
   assert.doesNotMatch(server,/schedulePdfFormIndexRefresh/,'the always-on listener must not schedule PDF parsing');
+  assert.match(installer,/\^24\\\.\(\\d\+\)\\\.\(\\d\+\)\$/,'Windows Bridge installer must target stable Node 24 releases only');
+  assert.match(installer,/Number\(m\[1\]\)>=11/,'Windows Bridge installer must require the Node 24 LTS line starting at 24.11');
+  assert.match(lib,/BRIDGE_NODE_MAJOR=24/);
+  assert.match(lib,/BRIDGE_NODE_MIN_MINOR=11/);
+  assert.match(server,/assertBridgeNodeVersion\(process\.versions\.node\)/,'Windows Bridge runtime must reject an unreviewed Node major after installation');
   assert.match(installer,/install_pdf_maintenance_task\.ps1/);
   const task=read('netunim-orders/document-bridge/install_pdf_maintenance_task.ps1');
   assert.match(task,/New-ScheduledTaskTrigger -Daily/);
@@ -111,7 +120,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v31-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v32-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -123,8 +132,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=31/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=31/);
+  assert.match(lib,/BRIDGE_VERSION=32/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=32/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -392,9 +401,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=31/);
+  assert.match(lib,/BRIDGE_VERSION=32/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=31/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=32/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

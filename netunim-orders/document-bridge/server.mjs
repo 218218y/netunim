@@ -8,7 +8,7 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
-  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
+  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_MAJOR,BRIDGE_NODE_MIN_MINOR,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
@@ -735,7 +735,7 @@ async function stopExisting(){
 async function printDoctor(){
   await init();const [{probe,diagnostics},pdfRuntime]=await Promise.all([diagnoseIndex({freshProbe:true}),verifyNodePdfJsRuntime()]);
   const executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
-  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Runtime: ${RUNTIME_ROOT}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: OK (PDF.js ${pdfRuntime.version||'unknown'} ${pdfRuntime.runtime} build)`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
+  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Runtime: ${RUNTIME_ROOT}`);console.log(`Node: ${process.versions.node} (target ${BRIDGE_NODE_MAJOR}.${BRIDGE_NODE_MIN_MINOR}+ LTS, ${BRIDGE_NODE_MAJOR}.x)`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: OK (PDF.js ${pdfRuntime.version||'unknown'} ${pdfRuntime.runtime} build, ${pdfRuntime.mode}; Node canvas rendering ${pdfRuntime.canvasRenderingAvailable?'available':'not bundled/not required'})`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
   console.log(`Files visible in Everything: ${diagnostics.fileCount===null?'ERROR':diagnostics.fileCount}`);console.log(`Files with indexed content: ${diagnostics.indexedContentCount===null?'ERROR':diagnostics.indexedContentCount}`);console.log(`ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`);if(diagnostics.error)console.log(`ES error: ${diagnostics.error}`);
   if(diagnostics.error||(diagnostics.fileCount>0&&!diagnostics.sampleOk)){const e=new Error('Everything/ES diagnostics failed.');e.code='INDEX_DIAGNOSTICS_FAILED';throw e}
   if(diagnostics.fileCount===0)console.log('WARNING: Everything currently sees no files. The website will mirror that empty Everything index.');
@@ -748,6 +748,7 @@ async function writeInstallSummary(){
 }
 
 async function main(){
+  if(process.platform==='win32')assertBridgeNodeVersion(process.versions.node);
   const arg=process.argv[2]||'';
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor();return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
     await init();await probeEverything({fresh:true,autoStart:true});

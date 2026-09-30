@@ -11,8 +11,8 @@ $output = Join-Path $appRoot 'pdf-maintenance-console.log'
 $nodeArgs = @($server, '--refresh-pdf-index')
 if ($Force) { $nodeArgs += '--force' }
 if ($MaxFiles -gt 0) { $nodeArgs += '--max-files=' + $MaxFiles }
-# Windows PowerShell 5.1 treats a native process's stderr as a PowerShell error.
-# PDF.js may report optional-canvas warnings there while extraction succeeds.
+# Windows PowerShell 5.1 can promote native-process stderr diagnostics to PowerShell errors.
+# Keep native stderr in the maintenance log and use the child process exit code as the authoritative result.
 $ErrorActionPreference = 'Continue'
 & $node @nodeArgs *> $output
 $workerExitCode = $LASTEXITCODE

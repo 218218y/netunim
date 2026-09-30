@@ -27,19 +27,46 @@ export class LocalPdfBinaryDataFactory{
   }
 }
 
-let pdfJsPromise=null;
+let pdfJsPromise=null,pdfJsCanvasRenderingAvailable=false;
+const PDFJS_TEXT_ONLY_IMPORT_WARNINGS=new Set([
+  'Warning: Cannot polyfill `DOMMatrix`, rendering may be broken.',
+  'Warning: Cannot polyfill `Path2D`, rendering may be broken.',
+]);
+function isMissingOptionalCanvasWarning(message){
+  return String(message||'').startsWith("Warning: Cannot load \"@napi-rs/canvas\" package: \"Error: Cannot find module '@napi-rs/canvas'");
+}
+function shouldSuppressTextOnlyImportWarnings(messages){
+  if(!messages.length)return true;
+  let missingCanvas=false;
+  for(const message of messages){
+    if(isMissingOptionalCanvasWarning(message)){missingCanvas=true;continue}
+    if(!PDFJS_TEXT_ONLY_IMPORT_WARNINGS.has(message))return false;
+  }
+  return missingCanvas&&PDFJS_TEXT_ONLY_IMPORT_WARNINGS.size===messages.filter(message=>PDFJS_TEXT_ONLY_IMPORT_WARNINGS.has(message)).length;
+}
+async function importPdfJsForTextExtraction(moduleUrl){
+  const originalWarn=console.warn,captured=[];let pdfjs=null,importError=null;
+  console.warn=(...args)=>captured.push(args);
+  try{pdfjs=await import(moduleUrl.href)}catch(error){importError=error}finally{console.warn=originalWarn}
+  const messages=captured.map(args=>args.map(value=>String(value)).join(' '));
+  const suppress=!importError&&shouldSuppressTextOnlyImportWarnings(messages);
+  if(!suppress)for(const args of captured)originalWarn(...args);
+  if(importError)throw importError;
+  return {pdfjs,canvasRenderingAvailable:messages.length===0,suppressedWarnings:suppress?messages:[]};
+}
 async function importNodePdfJs(){
   const moduleUrl=new URL('./pdfjs/legacy/build/pdf.mjs',import.meta.url),workerUrl=new URL('./pdfjs/legacy/build/pdf.worker.min.mjs',import.meta.url);
   try{await Promise.all([fs.access(moduleUrl),fs.access(workerUrl)])}catch(error){
     const runtimeError=new Error('The bundled PDF.js legacy runtime required by the Windows Document Bridge is missing. Reinstall the current Document Bridge runtime.');
     runtimeError.code='PDFJS_NODE_LEGACY_RUNTIME_MISSING';runtimeError.cause=error;throw runtimeError;
   }
-  const pdfjs=await import(moduleUrl.href);
+  const {pdfjs,canvasRenderingAvailable}=await importPdfJsForTextExtraction(moduleUrl);
   if(typeof pdfjs?.getDocument!=='function'||!pdfjs?.GlobalWorkerOptions){
     const error=new Error('The bundled PDF.js legacy runtime does not expose the Node API surface required by the Document Bridge.');
     error.code='PDFJS_NODE_API_MISMATCH';throw error;
   }
   pdfjs.GlobalWorkerOptions.workerSrc=workerUrl.href;
+  pdfJsCanvasRenderingAvailable=canvasRenderingAvailable;
   return pdfjs;
 }
 async function loadPdfJs(){
@@ -60,7 +87,7 @@ async function verifyNodePdfJsIntegrity(){
 export async function verifyNodePdfJsRuntime(){
   const manifestVersion=await verifyNodePdfJsIntegrity(),pdfjs=await loadPdfJs(),version=String(pdfjs?.version||'');
   if(version&&version!==manifestVersion){const error=new Error(`PDF.js Node runtime version ${version} does not match manifest version ${manifestVersion}.`);error.code='PDFJS_NODE_VERSION_MISMATCH';throw error}
-  return {ok:true,version:version||manifestVersion,build:String(pdfjs?.build||''),runtime:'legacy'};
+  return {ok:true,version:version||manifestVersion,build:String(pdfjs?.build||''),runtime:'legacy',mode:'text-extraction-only',canvasRenderingAvailable:pdfJsCanvasRenderingAvailable};
 }
 
 function cleanPdfText(value){

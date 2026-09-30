@@ -3,21 +3,21 @@ setlocal EnableExtensions DisableDelayedExpansion
 cd /d "%~dp0"
 
 where node >nul 2>nul || (
-  echo ERROR: Node.js was not found. Install Node.js 22.13 LTS or newer first.
+  echo ERROR: Node.js was not found. Install Node.js 24 LTS ^(24.11 or newer 24.x^) first.
   pause
   exit /b 1
 )
-node -e "const v=process.versions.node.split('.').map(Number);process.exit(((v[0]===22&&v[1]>=13)||v[0]>=24)?0:1)" >nul 2>nul
+node -e "const m=/^24\.(\d+)\.(\d+)$/.exec(process.versions.node);process.exit(m&&Number(m[1])>=11?0:1)" >nul 2>nul
 if not "%ERRORLEVEL%"=="0" (
-  echo ERROR: Document Bridge requires Node.js 22.13+ or Node.js 24+.
-  echo Node.js 23 is intentionally not supported on Windows.
+  echo ERROR: Document Bridge requires Node.js 24 LTS, version 24.11 or newer within the 24.x line.
+  echo Node.js 22 and Node.js 26 Current are intentionally not accepted for this Windows Bridge runtime.
   pause
   exit /b 1
 )
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
 set "LEGACYAPP=%APPROOT%\app"
-set "RUNTIMENAME=app-v31-%RANDOM%-%RANDOM%"
+set "RUNTIMENAME=app-v32-%RANDOM%-%RANDOM%"
 set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
 set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
@@ -78,7 +78,7 @@ node "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 node "%STAGING%\server.mjs" --doctor
 if not "%ERRORLEVEL%"=="0" goto :doctor_error
 
-rem Stop the current listener first. v31 activation is side-by-side, so a stale
+rem Stop the current listener first. v32 activation is side-by-side, so a stale
 rem Windows handle in an older runtime can never block installation of the new one.
 node "%STAGING%\server.mjs" --stop-existing
 if not "%ERRORLEVEL%"=="0" goto :stop_error

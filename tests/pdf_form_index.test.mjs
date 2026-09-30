@@ -102,7 +102,8 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     });
     let verification=await runVerification();
     assert.equal(verification.code,0,verification.stderr||verification.stdout);
-    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.version,'6.3.289');
+    assert.equal(verification.stderr,'','known optional-canvas PDF.js import warnings must not leak into installer/doctor stderr');
+    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.mode,'text-extraction-only');assert.equal(verified.version,'6.3.289');
     const legacyWorker=path.join(runtime,'pdfjs','legacy','build','pdf.worker.min.mjs'),originalWorker=await fs.readFile(legacyWorker);
     await fs.appendFile(legacyWorker,'\n// integrity-test\n');
     verification=await runVerification();
@@ -119,6 +120,31 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
       child.stdin.end(JSON.stringify({fullPath:pdf,includePageText:false}));
     });
     assert.equal(result.code,0,result.stderr||result.stdout);
+    assert.equal(result.stderr,'','short-lived text extraction must not emit optional-canvas rendering warnings');
     const response=JSON.parse(result.stdout);assert.equal(response.ok,true);assert.equal(response.result.hasForm,false);
+
+    const formObjects=[
+      '<< /Type /Catalog /Pages 2 0 R /AcroForm 5 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << >> /Annots [6 0 R] >>',
+      '<< /Length 0 >>\nstream\n\nendstream',
+      '<< /Fields [6 0 R] /NeedAppearances true >>',
+      '<< /Type /Annot /Subtype /Widget /FT /Tx /T (customer) /V (Interactive Value) /Rect [100 600 300 640] /P 3 0 R /F 4 >>',
+    ];
+    let formSource='%PDF-1.4\n';const formOffsets=[0];
+    for(const [index,body] of formObjects.entries()){formOffsets.push(Buffer.byteLength(formSource));formSource+=`${index+1} 0 obj\n${body}\nendobj\n`}
+    const formXref=Buffer.byteLength(formSource);formSource+=`xref\n0 ${formObjects.length+1}\n0000000000 65535 f \n`;
+    for(const offset of formOffsets.slice(1))formSource+=`${String(offset).padStart(10,'0')} 00000 n \n`;
+    formSource+=`trailer\n<< /Root 1 0 R /Size ${formObjects.length+1} >>\nstartxref\n${formXref}\n%%EOF\n`;
+    const interactivePdf=path.join(root,'interactive.pdf');await fs.writeFile(interactivePdf,formSource);
+    const interactiveResult=await new Promise((resolve,reject)=>{
+      const child=spawn(process.execPath,[worker],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';
+      child.stdout.on('data',part=>stdout+=part);child.stderr.on('data',part=>stderr+=part);
+      child.on('error',reject);child.on('close',code=>resolve({code,stdout,stderr}));
+      child.stdin.end(JSON.stringify({fullPath:interactivePdf,includePageText:false}));
+    });
+    assert.equal(interactiveResult.code,0,interactiveResult.stderr||interactiveResult.stdout);
+    assert.equal(interactiveResult.stderr,'','interactive AcroForm text extraction must remain canvas-free and warning-free');
+    const interactiveResponse=JSON.parse(interactiveResult.stdout);assert.equal(interactiveResponse.ok,true);assert.equal(interactiveResponse.result.hasForm,true);assert.equal(interactiveResponse.result.formFieldCount,1);assert.equal(interactiveResponse.result.formText,'Interactive Value');assert.deepEqual(interactiveResponse.result.formFields[0].rect,[100,600,300,640]);
   }finally{await fs.rm(root,{recursive:true,force:true})}
 });

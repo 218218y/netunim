@@ -1,12 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
+  bridgeNodeVersionSupported,buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {pdfIndexNeedsInspection} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
+
+
+test('Windows Bridge Node runtime contract targets the Node 24 LTS line',()=>{
+  assert.equal(bridgeNodeVersionSupported('24.11.0'),true);
+  assert.equal(bridgeNodeVersionSupported('24.18.0'),true);
+  assert.equal(bridgeNodeVersionSupported('24.21.0'),true);
+  assert.equal(bridgeNodeVersionSupported('24.10.0'),false);
+  assert.equal(bridgeNodeVersionSupported('22.22.0'),false);
+  assert.equal(bridgeNodeVersionSupported('26.0.0'),false);
+  assert.equal(bridgeNodeVersionSupported('not-a-version'),false);
+});
 
 test('local document delete requires confirmation and invalidates only returned result ids',async()=>{
   const calls=[],button={disabled:false,isConnected:true};

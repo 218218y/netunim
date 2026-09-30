@@ -2,12 +2,27 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=31;
+export const BRIDGE_VERSION=32;
+export const BRIDGE_NODE_MAJOR=24;
+export const BRIDGE_NODE_MIN_MINOR=11;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
 export const DEFAULT_RESULT_LIMIT=150;
 export const RESULT_TTL_MS=10*60*1000;
+
+export function bridgeNodeVersionSupported(value){
+  const match=String(value??'').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);if(!match)return false;
+  const major=Number(match[1]),minor=Number(match[2]);
+  return major===BRIDGE_NODE_MAJOR&&minor>=BRIDGE_NODE_MIN_MINOR;
+}
+
+export function assertBridgeNodeVersion(value=process.versions.node){
+  if(bridgeNodeVersionSupported(value))return String(value);
+  const error=new Error(`Document Bridge requires Node.js ${BRIDGE_NODE_MAJOR}.${BRIDGE_NODE_MIN_MINOR}+ LTS within the Node ${BRIDGE_NODE_MAJOR}.x line; found ${String(value||'unknown')}.`);
+  error.code='NODE_RUNTIME_UNSUPPORTED';throw error;
+}
+
 export const DEFAULT_ALLOWED_ORIGINS=[
   'https://bargig-furniture.com',
   'https://*.bargig-furniture.com',

@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v31 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v32 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -125,6 +125,22 @@ prevents another preview host or a monitor/DPI transition from leaving a stale
 Office preview size behind.
 
 
+Node runtime baseline
+---------------------
+The Windows Document Bridge is standardized on Node.js 24 LTS, version 24.11
+or newer within the 24.x line. The installer and runtime reject Node 22 and
+unreviewed future major versions instead of silently changing the production
+JavaScript runtime underneath the Bridge. Node 24.11 is the first Node 24 LTS
+release; current PCs using Node 24.18 are inside this supported line.
+
+The PDF.js legacy Node build probes for @napi-rs/canvas during module import.
+Netunim's Node PDF path is intentionally text/annotation extraction only and
+never calls page.render(). PDF.js 6.3.289 therefore does not need native canvas
+for this workload. The Bridge suppresses only the exact optional-canvas import
+warnings emitted for a missing @napi-rs/canvas package; any different PDF.js
+warning is still printed. The installer doctor verifies the real text-only
+legacy runtime before activation.
+
 Scheduled PDF maintenance
 -------------------------
 The Bridge listener never scans PDFs on startup, warm or search. Windows Task
@@ -175,7 +191,7 @@ Run install_document_bridge.bat on each PC. The installer:
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
-  removes inactive runtimes only as best-effort maintenance after the new v31
+  removes inactive runtimes only as best-effort maintenance after the new v32
   runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.

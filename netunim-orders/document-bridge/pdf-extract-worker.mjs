@@ -1,4 +1,7 @@
 import {extractInteractivePdfText} from './pdf_form_index.mjs';
+import {assertBridgeNodeVersion} from './lib.mjs';
+
+if(process.platform==='win32')assertBridgeNodeVersion(process.versions.node);
 
 let input='';
 for await(const chunk of process.stdin){
