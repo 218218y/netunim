@@ -43,7 +43,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,runFina
 
   return createGlobalDocumentSearch({
     documentBridge,
-    siteSearch:raw=>searchKupaGlobalEntries(indexedEntries(),raw),
+    siteSearch:(raw,options)=>searchKupaGlobalEntries(indexedEntries(),raw,options),
     siteResultMeta,
     navigateSiteItem,
     confirmDialog,

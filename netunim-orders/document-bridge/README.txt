@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v22 - Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v23 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -148,9 +148,19 @@ Content-search match highlighting
 Highlighting is intentionally computed only for the single selected result. The main Everything result list is never rescanned for snippets.
 
 - Text previews highlight the selected content-search phrase directly in the preview.
-- Content-search PDFs use the bundled local PDF.js viewer. Its find controller highlights every match and the match arrows select and scroll to the previous/next occurrence. The browser-native PDF iframe remains only a fallback if the controlled viewer cannot initialize.
+- Content-search PDFs use the bundled local PDF.js viewer. Normal page-text matches use the PDF.js find controller. Interactive AcroForm text/choice values are searched separately from their logical /V values and merged into the same match sequence, while the PDF-authored appearance stream remains the visible source. Matching form fields receive the same persistent/current highlighting and the match arrows scroll through page-text and form-field matches as one sequence. The browser-native PDF iframe remains only a fallback if the controlled viewer cannot initialize.
 - Office filename previews keep the Windows IPreviewHandler surface for layout fidelity. Content-search DOCX-family files use the local docx-preview runtime; Excel workbooks use the local SheetJS runtime in a Web Worker; plain text uses the browser DOM. These controlled viewers highlight all matches and the same match arrows scroll to the active result. Legacy DOC/RTF content falls back to Everything-extracted text because browser DOCX renderers cannot faithfully parse the old binary Word format.
 - Match text is cached in memory for a short period by file path + size + modified time, with a small bounded cache. No snippets or file content are uploaded.
+
+Paged search results
+--------------------
+Normal file/content searches return 150 results in the first batch. The website requests
+additional 150-result pages only when the user approaches the bottom of the result pane.
+The local API carries an explicit offset and hasMore flag; filename search pages Everything
+directly, while content search re-merges Everything + interactive-PDF supplemental results
+up to the requested window before slicing so cross-source ordering and de-duplication remain
+correct. A 5000-result per-query safety ceiling prevents one UI search from allocating an
+unbounded result set.
 
 
 חיפוש כללי ריק: ה-Bridge מחזיר עד 150 קבצים אחרונים ישירות מאינדקס Everything, ממוינים לפי Date Modified, ללא סריקת דיסק.

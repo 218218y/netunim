@@ -148,3 +148,26 @@ test('Drive preview respects canDownload=false and does not fetch file content',
   }finally{globalThis.fetch=previousFetch}
 });
 
+
+test('Google Drive search pages from a 150-capable window and reports more rows without returning them eagerly',async()=>{
+  const supaFetch=async()=>({ok:true,status:200,json:async()=>({access_token:'access-123',expires_in:3600,scope:'https://www.googleapis.com/auth/drive.readonly'})});
+  const previousFetch=globalThis.fetch;
+  globalThis.fetch=async url=>{
+    const parsed=new URL(String(url));
+    if(parsed.pathname.endsWith('/files'))return {ok:true,status:200,text:async()=>JSON.stringify({files:[
+      {id:'a',name:'A.pdf',mimeType:'application/pdf'},
+      {id:'b',name:'B.pdf',mimeType:'application/pdf'},
+      {id:'c',name:'C.pdf',mimeType:'application/pdf'},
+      {id:'d',name:'D.pdf',mimeType:'application/pdf'},
+    ]})};
+    throw new Error(`unexpected Drive URL ${url}`);
+  };
+  try{
+    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    const data=await drive.search('pdf',{mode:'everything',limit:2,offset:1});
+    assert.deepEqual(data.results.map(row=>row.id),['b','c']);
+    assert.equal(data.offset,1);
+    assert.equal(data.limit,2);
+    assert.equal(data.hasMore,true);
+  }finally{globalThis.fetch=previousFetch}
+});

@@ -2,11 +2,11 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=22;
+export const BRIDGE_VERSION=23;
 export const MAX_QUERY_CHARS=240;
-export const MAX_RESULTS=120;
+export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
-export const DEFAULT_RESULT_LIMIT=60;
+export const DEFAULT_RESULT_LIMIT=150;
 export const RESULT_TTL_MS=10*60*1000;
 export const DEFAULT_ALLOWED_ORIGINS=[
   'https://bargig-furniture.com',
@@ -246,10 +246,10 @@ export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutM
   return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults,offset}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
 }
 
-export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath=''}){
+export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath=''}){
   const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode,contentSearch);
   if(!search)throw new TypeError('Search query must contain at least two characters');
-  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath});
+  return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath});
 }
 
 export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='' }={}){

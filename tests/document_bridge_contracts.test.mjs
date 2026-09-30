@@ -74,8 +74,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=22/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=22/);
+  assert.match(lib,/BRIDGE_VERSION=23/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=23/);
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -181,12 +181,23 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(client,/hideNativePreview/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:60/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:DOCUMENT_RESULT_BATCH,offset:0/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path/);
   assert.match(folderScope,/supportsFolderScope/);
   assert.match(folderScope,/documentBridge\.selectFolder\(\)/);
   assert.match(contentOptions,/MATCH_MODES=new Set\(\['phrase','all','any','proximity'\]\)/);
   assert.match(ui,/const RECENT_DOCUMENT_LIMIT=150/);
+  assert.match(ui,/const SITE_RESULT_BATCH=150/);
+  assert.match(ui,/const DOCUMENT_RESULT_BATCH=150/);
+  assert.match(ui,/const DOCUMENT_RESULT_MAX=5000/);
+  assert.match(ui,/function loadMoreDocumentResults\(requestedMode=''\)/);
+  assert.match(ui,/offset=before\.rows\.length/);
+  assert.match(ui,/data-site-load-more/);
+  assert.match(ui,/data-document-load-more/);
+  assert.match(ui,/maybeLoadMoreDocumentResults\(\)/);
+  assert.match(server,/body\.offset/);
+  assert.match(server,/hasMore/);
+  assert.match(client,/limit=150,offset=0/);
   assert.match(ui,/label:'קבצים אחרונים'/);
 
   assert.match(client,/const recent=\(\{limit=150,scopePath='',signal=null\}=\{\}\)=>/);
@@ -218,8 +229,11 @@ test('preview stays local: filename Office preview stays native while content se
   const css=read('shared/global-document-search.css');
   assert.match(pdfViewer,/PDFFindController/);
   assert.match(pdfViewer,/highlightAll:true/);
-  assert.match(pdfViewer,/next\(\)\{dispatch\('again',false\)\}/);
-  assert.match(pdfViewer,/previous\(\)\{dispatch\('again',true\)\}/);
+  assert.match(pdfViewer,/next\(\)\{if\(combinedReady\)return goCombined\(combinedIndex\+1\);dispatch\('again',false\)\}/);
+  assert.match(pdfViewer,/previous\(\)\{if\(combinedReady\)return goCombined\(combinedIndex-1\);dispatch\('again',true\)\}/);
+  assert.match(pdfViewer,/findPdfFormFieldMatches/);
+  assert.match(pdfViewer,/buildCombinedMatches/);
+  assert.match(css,/document-pdf-form-match-marker/);
   assert.match(pdfViewer,/updatefindmatchescount/);
   assert.match(pdfViewer,/currentScaleValue='page-width'/);
   assert.match(pdfViewer,/ResizeObserver/);
@@ -293,7 +307,7 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentContentOptions\.value\(\)/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:60/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:DOCUMENT_RESULT_BATCH,offset:0/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path/);
   assert.match(folderScope,/supportsFolderScope/);
   assert.match(folderScope,/documentBridge\.selectFolder\(\)/);
@@ -322,9 +336,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=22/);
+  assert.match(lib,/BRIDGE_VERSION=23/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=22/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=23/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

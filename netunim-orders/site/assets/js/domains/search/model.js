@@ -71,7 +71,7 @@ function entryRank(entry,queryNormalized){
   return 4
 }
 
-export function searchGlobalEntries(entries,query,{limitPerGroup=60}={}){
+export function searchGlobalEntries(entries,query,{limitPerGroup=150}={}){
   const queryNormalized=normalizeGlobalSearchText(query),queryCompact=compactSearchText(query),tokens=queryNormalized.split(' ').filter(Boolean);
   if(!queryNormalized)return{query:'',total:0,groups:GROUPS.map(group=>({...group,total:0,items:[]}))};
   const matches=(Array.isArray(entries)?entries:[]).filter(entry=>matchEntry(entry,queryCompact,tokens)).map((entry,index)=>({...entry,_rank:entryRank(entry,queryNormalized),_index:index}));

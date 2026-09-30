@@ -92,3 +92,11 @@ test('local search markup is accessible and does not own domain filtering logic'
   assert.match(html,/data-input="demo-search"/);
   assert.match(html,/class="local-search wide"/);
 });
+
+
+test('Kupa global search defaults to 150 visible rows per group before progressive rendering expands it',()=>{
+ const entries=Array.from({length:180},(_,i)=>({group:'notes',kind:'note',id:`n${i}`,context:'פתק',badge:'פתק',title:`חיפוש ברירת מחדל ${i}`,subtitle:'',meta:[],searchText:'חיפוש ברירת מחדל'}));
+ const group=searchKupaGlobalEntries(entries,'חיפוש ברירת מחדל').groups.find(x=>x.key==='notes');
+ assert.equal(group.total,180);
+ assert.equal(group.items.length,150);
+});

@@ -98,27 +98,30 @@ test('PDF inventory query pages only PDF files from the Everything database',()=
   assert.equal(args[args.indexOf('--')+1],'ext:pdf');
 });
 
-test('recent files query allows 150 results without raising normal search limits',()=>{
+test('document search defaults to 150 results and supports bounded paging beyond the first batch',()=>{
   assert.equal(RECENT_RESULT_LIMIT,150);
   const args=buildEsRecentFilesArgs({limit:999,instance:'1.5a'});
   assert.ok(args.includes('/a-d'));
   assert.equal(args[args.indexOf('-max-results')+1],'150');
   assert.equal(args[args.indexOf('-sort')+1],'date-modified-descending');
   assert.equal(args[args.indexOf('--')+1],'*');
-  const normal=buildEsSearchArgs({query:'קובץ',mode:'everything',limit:999});
-  assert.equal(normal[normal.indexOf('-max-results')+1],'120');
+  const normal=buildEsSearchArgs({query:'קובץ',mode:'everything',limit:999,offset:300});
+  assert.equal(normal[normal.indexOf('-max-results')+1],'999');
+  assert.equal(normal[normal.indexOf('-offset')+1],'300');
   const scopedRecent=buildEsRecentFilesArgs({limit:25,scopePath:'Y:\\Orders'});
   assert.deepEqual(scopedRecent.slice(scopedRecent.indexOf('-path'),scopedRecent.indexOf('-path')+2),['-path','Y:\\Orders']);
   const rows=Array.from({length:160},(_,index)=>({fullPath:`C:\\recent\\${index}.txt`,name:`${index}.txt`,modified:new Date(2026,0,1,0,index).toISOString()}));
-  assert.equal(mergeDocumentResults([rows],999).length,120,'normal result merging keeps the existing 120-result ceiling');
-  assert.equal(mergeDocumentResults([rows],999,RECENT_RESULT_LIMIT).length,150,'recent-file merging has its own 150-result ceiling');
+  assert.equal(mergeDocumentResults([rows],150).length,150,'the first normal result batch is 150 rows');
+  assert.equal(mergeDocumentResults([rows],999).length,160,'normal merging can retain later batches instead of hard-capping at 120');
+  assert.equal(mergeDocumentResults([rows],999,RECENT_RESULT_LIMIT).length,150,'recent-file merging keeps its dedicated 150-result ceiling');
 });
 
 test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
-  const args=buildEsSearchArgs({query:'יבמות',mode:'everything',limit:999,timeoutMs:1,instance:'1.5a'});
+  const args=buildEsSearchArgs({query:'יבמות',mode:'everything',limit:999,offset:150,timeoutMs:1,instance:'1.5a'});
   assert.deepEqual(args.slice(0,7),['-argv','-cp','65001','-ipc3','-instance','1.5a','-timeout']);
   assert.ok(args.includes('-json'));
-  assert.equal(args[args.indexOf('-max-results')+1],'120');
+  assert.equal(args[args.indexOf('-max-results')+1],'999');
+  assert.equal(args[args.indexOf('-offset')+1],'150');
   assert.equal(args.includes('-n'),false);
   assert.equal(args.includes('-search'),false);
   assert.equal(args[args.indexOf('--')+1],'יבמות');

@@ -41,7 +41,7 @@ export function createUiGlobalSearch({documentBridge=null,searchRevision,model,u
 
   return createGlobalDocumentSearch({
     documentBridge,
-    siteSearch:raw=>searchGlobalEntries(indexedEntries(),raw),
+    siteSearch:(raw,options)=>searchGlobalEntries(indexedEntries(),raw,options),
     siteResultMeta,
     navigateSiteItem,
     confirmDialog,

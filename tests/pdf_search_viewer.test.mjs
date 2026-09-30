@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,joinPdfTextSelectionSegments,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
@@ -13,9 +13,9 @@ function fakeRuntime(){
   const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0,documentOptions:null};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
   class PDFLinkService{constructor(){state.linkService=this}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
-  class PDFFindController{constructor(options){this.options=options;state.findController=this}}
-  class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
-  const pdfDocument={destroy:async()=>{state.documentDestroyed=true}};
+  class PDFFindController{constructor(options){this.options=options;this.pageMatches=[];this.pageMatchesLength=[];this.selected={pageIdx:-1,matchIdx:-1};this._scrollMatches=false;state.findController=this}}
+  class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}getPageView(){return null}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
+  const pdfDocument={numPages:1,getPage:async()=>({getAnnotations:async()=>[]}),destroy:async()=>{state.documentDestroyed=true}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{state.loadingDestroyed=true}};
   return {state,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1,ENABLE_FORMS:2},AnnotationEditorType:{DISABLE:-1},getDocument:options=>{state.documentOptions=options;return loadingTask}},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
@@ -45,6 +45,26 @@ test('local PDF form copy layer maps text widgets without changing their authore
   assert.deepEqual([model.left,model.top,model.width,model.height].map(value=>Math.round(value*100)/100),[50,8.75,33.33,3.75]);
   assert.equal(copyablePdfTextFieldModel({fieldType:'Btn',fieldValue:'x',rect:[0,0,10,10]},viewport),null,'non-text widgets are never exposed as text controls');
   assert.equal(copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'secret',password:true,rect:[0,0,10,10]},viewport),null,'password fields are never exposed');
+});
+
+
+
+test('interactive PDF form values participate in highlight navigation without changing the PDF appearance',()=>{
+  const annotations=[
+    {id:'name',fieldType:'Tx',fieldName:'שם',fieldValue:'ליבי מאיר ליבי',rect:[10,10,100,30]},
+    {id:'details',fieldType:'Tx',fieldName:'פרוט',fieldValue:'מיטה אלגנס ומזרונים',rect:[10,40,200,100],multiLine:true},
+    {id:'choice',fieldType:'Ch',fieldName:'בחירה',fieldValue:['זהב','לבן'],rect:[10,110,100,130]},
+    {id:'secret',fieldType:'Tx',fieldValue:'ליבי',password:true,rect:[10,140,100,160]},
+  ];
+  const phrase=findPdfFormFieldMatches(annotations,1,'ליבי',{matchMode:'phrase'});
+  assert.equal(phrase.matches.length,2,'every occurrence inside an AcroForm text value becomes a navigable match');
+  assert.deepEqual(phrase.matches.map(row=>[row.fieldKey,row.start,row.end]),[['id:name',0,4],['id:name',10,14]]);
+  assert.equal(phrase.matches[0].snippet.match,'ליבי');
+  const all=findPdfFormFieldMatches(annotations,1,'מיטה מזרונים',{matchMode:'all'});
+  assert.deepEqual(all.matches.map(row=>row.snippet.match),['מיטה','מזרונים'],'all-words search highlights each contributing term after the document qualifies');
+  const choice=findPdfFormFieldMatches(annotations,1,'זהב',{matchMode:'phrase'});
+  assert.equal(choice.matches.length,1,'choice field values are searchable too');
+  assert.equal(findPdfFormFieldMatches(annotations,1,'secret',{matchMode:'phrase'}).matches.length,0,'password fields never enter search/highlight results');
 });
 
 test('PDF text copy reconstructs visual word gaps without inserting spaces between glyph fragments',()=>{
@@ -116,8 +136,8 @@ test('controlled PDF viewer uses PDFFindController, local support assets and rea
   assert.equal(findEvents.at(-2).payload.findPrevious,false);
   assert.equal(findEvents.at(-1).payload.findPrevious,true);
   state.eventBus.dispatch('updatefindmatchescount',{matchesCount:{current:3,total:8}});
-  assert.deepEqual(updates.at(-1),{current:3,total:8});
-  assert.deepEqual(controller.matchState(),{current:3,total:8});
+  assert.deepEqual(updates.at(-1),{current:3,total:8,snippet:null,capped:false,location:''});
+  assert.deepEqual(controller.matchState(),{current:3,total:8,snippet:null,capped:false,location:''});
   await controller.destroy();
   assert.equal(state.loadingDestroyed,true);
   assert.equal(state.documentDestroyed,true);

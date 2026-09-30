@@ -302,16 +302,20 @@ async function supplementalPdfText(fullPath,stat){
   try{const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES});if(extracted.hasForm&&extracted.text)return trimPreviewText(extracted.text)}catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
   return null;
 }
-async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath=''){
+async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0){
   const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),normalizedScope=normalizeSearchScopePath(scopePath),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
-  const boundedLimit=Math.min(MAX_RESULTS,Number(limit)||DEFAULT_RESULT_LIMIT);
-  const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));
-  let supplemental=[];
-  if(normalizedMode==='content'){await ensurePdfFormIndexReady();supplemental=searchPdfFormIndex(query,normalizedContentSearch,normalizedScope,boundedLimit)}
-  pruneResults();const merged=mergeDocumentResults([rows,supplemental],boundedLimit).map(row=>publicResult(row,{query,mode:normalizedMode,contentSearch:normalizedContentSearch}));
-  await appendLog(`SEARCH mode=${normalizedMode} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(normalizedScope)} results=${merged.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,results:merged,elapsedMs,partial:false,rootErrors:[]};
+  const pageOffset=Math.max(0,Math.min(MAX_RESULTS,Math.trunc(Number(offset)||0))),available=Math.max(0,MAX_RESULTS-pageOffset),boundedLimit=Math.min(available,Math.max(1,Math.trunc(Number(limit)||DEFAULT_RESULT_LIMIT)));
+  if(!boundedLimit)return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,offset:pageOffset,limit:0,results:[],hasMore:false,maxResults:MAX_RESULTS,elapsedMs:0,partial:false,rootErrors:[]};
+  const wanted=Math.min(MAX_RESULTS,pageOffset+boundedLimit+1);let rows=[],supplemental=[],elapsedMs=0,pageRows=[],hasMore=false;
+  if(normalizedMode==='everything'){
+    const result=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:Math.min(boundedLimit+1,available),offset:pageOffset,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));rows=result.rows;elapsedMs=result.elapsedMs;pageRows=rows.slice(0,boundedLimit);hasMore=rows.length>boundedLimit&&pageOffset+boundedLimit<MAX_RESULTS;
+  }else{
+    const result=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:wanted,offset:0,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));rows=result.rows;elapsedMs=result.elapsedMs;await ensurePdfFormIndexReady();supplemental=searchPdfFormIndex(query,normalizedContentSearch,normalizedScope,wanted);const merged=mergeDocumentResults([rows,supplemental],wanted,MAX_RESULTS);pageRows=merged.slice(pageOffset,pageOffset+boundedLimit);hasMore=merged.length>pageOffset+pageRows.length&&pageOffset+boundedLimit<MAX_RESULTS;
+  }
+  pruneResults();const results=pageRows.map(row=>publicResult(row,{query,mode:normalizedMode,contentSearch:normalizedContentSearch}));
+  await appendLog(`SEARCH mode=${normalizedMode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(normalizedScope)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,offset:pageOffset,limit:boundedLimit,results,hasMore,maxResults:MAX_RESULTS,elapsedMs,partial:false,rootErrors:[]};
 }
 async function recentDocuments(limit,scopePath=''){
   const normalizedScope=normalizeSearchScopePath(scopePath),boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
@@ -525,7 +529,7 @@ async function handle(req,res){
     if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});schedulePdfFormIndexRefresh(0);sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
     if(req.method==='POST'&&req.url==='/documents/select-folder'){const result=await selectSearchFolder();sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit,body.scopePath);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath);sendJson(req,res,200,result,config);return}
+    if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath,body.offset);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview'){const body=await readJson(req),result=await previewDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/matches'){const body=await readJson(req),result=await previewMatches(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/preview-file'){const body=await readJson(req),result=await readBinaryPreview(body.id);sendBinary(req,res,200,result,config);return}
