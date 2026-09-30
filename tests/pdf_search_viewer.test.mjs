@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,pdfFieldKey,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 class FakeEventBus{
   constructor(){this.listeners=new Map();this.dispatched=[]}
@@ -44,11 +45,11 @@ class TinyElement{
   classList={toggle:(name,on)=>{const set=new Set(String(this.className||'').split(/\s+/).filter(Boolean));on?set.add(name):set.delete(name);this.className=[...set].join(' ')},contains:name=>this.matchesClass(name),add:name=>{if(!this.matchesClass(name))this.className=`${this.className} ${name}`.trim()}};
 }
 
-function fakeInteractiveRuntime(annotations){
+function fakeInteractiveRuntime(annotations,{annotationError=null}={}){
   const state={eventBus:null,findController:null};
   const pageRoot=new TinyElement('page');pageRoot.dataset.pageNumber='1';pageRoot.clientWidth=600;pageRoot.clientHeight=800;
   const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
-  const pdfPage={getAnnotations:async()=>annotations};
+  const pdfPage={getAnnotations:async()=>{if(annotationError)throw annotationError;return annotations}};
   const pageView={id:1,div:pageRoot,pdfPage,viewport};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
   class PDFLinkService{constructor(){this.page=1}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
@@ -79,6 +80,16 @@ test('local PDF form copy layer maps text widgets without changing their authore
 });
 
 
+
+
+
+test('anonymous AcroForm widgets use the same stable page key in browser and Bridge geometry',()=>{
+  const annotation={fieldType:'Tx',fieldName:'שם ללא מזהה',fieldValue:'ליבי',rect:[100,600,300,640]};
+  const browserKey=pdfFieldKey(annotation,2,3);
+  const bridgeField=collectPdfFormFields([{}, {}, annotation],3)[0];
+  assert.equal(browserKey,'field:3:2:שם ללא מזהה:100,600,300,640');
+  assert.equal(bridgeField.fieldKey,browserKey);
+});
 
 test('interactive PDF form values participate in highlight navigation without changing the PDF appearance',()=>{
   const annotations=[
@@ -151,6 +162,34 @@ test('Bridge AcroForm anchors render and navigate even when browser annotation e
     assert.equal(viewer.matchState().current,1,'the first external form match is selected automatically');
     assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'both occurrences share one field rectangle while remaining separate navigation matches');
     const before=viewer.matchState().current;viewer.next();assert.notEqual(viewer.matchState().current,before,'navigation advances using external Bridge anchors');
+    await viewer.destroy();
+  }finally{globalThis.document=originalDocument}
+});
+
+
+
+test('authoritative Bridge rectangles stay highlighted even when browser annotation parsing fails',async()=>{
+  const originalDocument=globalThis.document;
+  const listeners=new Map();
+  globalThis.document={
+    createElement:()=>new TinyElement(),
+    addEventListener:(name,handler)=>listeners.set(name,handler),
+    removeEventListener:name=>listeners.delete(name),
+    getSelection:()=>null,
+  };
+  try{
+    const {pageRoot,runtime}=fakeInteractiveRuntime([],{annotationError:new Error('annotation layer failed')}),host=fakeHost();
+    host.container.append=TinyElement.prototype.append.bind(host.container);
+    host.container.children=[];host.container.className='document-pdfjs-container';host.container.querySelectorAll=TinyElement.prototype.querySelectorAll.bind(host.container);host.container.getBoundingClientRect=()=>({left:0,top:0,width:640,height:800,right:640,bottom:800});host.container.clientHeight=800;host.container.scrollTop=0;host.container.scrollLeft=0;host.container.scrollTo=()=>{};
+    const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'needle',runtime});
+    await tick();
+    const applied=await viewer.setExternalMatchInfo({formAnchorsAuthoritative:true,formAnchors:[
+      {pageNumber:1,annotationIndex:0,fieldKey:'field:1:0:customer:100,600,300,640',fieldName:'customer',fieldType:'Tx',rect:[100,600,300,640],start:0,end:6,value:'needle',snippet:{before:'',match:'needle',after:'',leading:false,trailing:false}},
+    ],formAnchorsCapped:false});
+    assert.equal(applied,true);
+    assert.equal(viewer.matchState().total,1);
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'Bridge geometry paints before and independently of getAnnotations()');
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-copy-field').length,0,'copy controls may be unavailable without suppressing the highlight marker');
     await viewer.destroy();
   }finally{globalThis.document=originalDocument}
 });

@@ -33,7 +33,8 @@ const STRUCTURED_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
-const PDF_FORM_INDEX_SCHEMA=1;
+const PDF_FORM_INDEX_SCHEMA=2;
+const PDF_FORM_INDEX_LEGACY_SCHEMAS=new Set([1,PDF_FORM_INDEX_SCHEMA]);
 const PDF_FORM_INDEX_PAGE_SIZE=250;
 const PDF_FORM_INDEX_REFRESH_MS=60*1000;
 const PDF_FORM_INDEX_CONCURRENCY=1;
@@ -240,7 +241,7 @@ function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entr
 async function loadPdfFormIndex(){
   if(pdfFormIndexLoaded)return;
   const stored=await readJsonFile(PDF_FORM_INDEX_PATH,null);pdfFormIndex.clear();
-  if(stored?.schema===PDF_FORM_INDEX_SCHEMA&&Array.isArray(stored.entries))for(const raw of stored.entries){const entry=normalizePdfIndexEntry(raw);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}
+  if(PDF_FORM_INDEX_LEGACY_SCHEMAS.has(Number(stored?.schema))&&Array.isArray(stored.entries))for(const raw of stored.entries){const entry=normalizePdfIndexEntry(raw);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}
   let journal='';try{journal=await fs.readFile(PDF_FORM_INDEX_JOURNAL_PATH,'utf8')}catch{}
   if(journal)for(const line of journal.split(/\r?\n/)){if(!line.trim())continue;try{const record=JSON.parse(line);if(record?.op==='remove'){pdfFormIndex.delete(pdfIndexKey(record.fullPath));pdfFormIndexJournalUpdates+=1;continue}if(record?.op==='upsert'){const entry=normalizePdfIndexEntry(record.entry);if(entry){pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry);pdfFormIndexJournalUpdates+=1}}}catch{}}
   pdfFormIndexPending=Math.max(0,Number(stored?.pending)||0);pdfFormIndexInventoryCount=Math.max(0,Number(stored?.pdfCount)||0);
@@ -273,7 +274,7 @@ async function rebuildPdfFormIndexBacklog({signal=null}={}){
   const seen=new Set(),changed=[];let removed=0;
   for(const row of rows){
     const key=pdfIndexKey(row.fullPath),fingerprint=pdfIndexFingerprint(row);seen.add(key);
-    const existing=pdfFormIndex.get(key);if(existing?.fingerprint===fingerprint)continue;
+    const existing=pdfFormIndex.get(key),geometryCurrent=!existing?.hasForm||Array.isArray(existing.formFields)&&existing.formFields.length>0;if(existing?.fingerprint===fingerprint&&geometryCurrent)continue;
     changed.push({...row,fingerprint});
   }
   const removalRecords=[];for(const [key,entry] of [...pdfFormIndex.entries()])if(!seen.has(key)){pdfFormIndex.delete(key);removalRecords.push({op:'remove',fullPath:entry.fullPath});removed+=1}
@@ -355,10 +356,16 @@ async function supplementalPdfData(fullPath,stat){
   if(cached?.hasForm&&cached.text&&cached.formFields?.length)return {...trimPreviewText(cached.text),formFields:normalizePdfFormFields(cached.formFields)};
   if(cached&&!cached.hasForm&&!cached.failed)return null;
   try{
-    const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES});
-    if(extracted.hasForm&&extracted.text){
-      const formFields=normalizePdfFormFields(extracted.formFields),data={...trimPreviewText(extracted.text),formFields};
-      if(cached?.hasForm&&cached.fingerprint){const updated={...cached,text:extracted.text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:''};pdfFormIndex.set(key,updated);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}])}
+    // v28 indexes can already contain the searchable AcroForm text but not the
+    // page/rectangle metadata needed by the preview. Re-reading all page text on
+    // click is unnecessary and can time out on large PDFs; recover only the form
+    // annotations and keep the proven cached search text. Background indexing will
+    // later compact the migrated entry into the current schema.
+    const geometryOnly=!!(cached?.hasForm&&cached.text&&!cached.formFields?.length);
+    const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES,includePageText:!geometryOnly});
+    if(extracted.hasForm&&extracted.formFields?.length){
+      const formFields=normalizePdfFormFields(extracted.formFields),text=geometryOnly?cached.text:extracted.text,data={...trimPreviewText(text),formFields};
+      if(cached?.fingerprint){const updated={...cached,hasForm:true,text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:''};pdfFormIndex.set(key,updated);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}])}
       return data;
     }
   }catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}

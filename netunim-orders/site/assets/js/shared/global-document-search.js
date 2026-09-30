@@ -9,7 +9,7 @@ import {documentResultsTableHtml,previewDetailsHtml,previewMatchBarPresentation,
 import {createDocumentSearchFolderScope} from '../ui/document-search-folder-scope.js';
 import {createDocumentContentSearchOptions} from '../ui/document-search-content-options.js';
 import {appendUniqueDocumentRows,createDocumentSearchLanes} from '../ui/document-search-pipeline.js';
-import {nextDocumentSort,normalizeDocumentSort,sortedDocumentRows} from '../domains/documents/document-result-sort.js';
+import {DOCUMENT_SORT_FIELDS,nextDocumentSort,normalizeDocumentSort,sortedDocumentRows} from '../domains/documents/document-result-sort.js';
 
 const SITE_RESULT_BATCH=150;
 const SITE_RESULT_MAX=5000;

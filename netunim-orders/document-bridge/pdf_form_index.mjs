@@ -124,7 +124,7 @@ export function textContentToLogicalText(content){
 function abortError(){const error=new Error('Interactive PDF extraction aborted');error.name='AbortError';error.code='ABORT_ERR';return error}
 function throwIfAborted(signal){if(signal?.aborted)throw abortError()}
 
-export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null}={}){
+export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null,includePageText=true}={}){
   throwIfAborted(signal);
   const stat=await fs.stat(fullPath);
   throwIfAborted(signal);
@@ -157,7 +157,7 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
       throwIfAborted(signal);
       const page=await withinBounds(document.getPage(pageNumber));
       const pageAnnotations=await withinBounds(page.getAnnotations({intent:'display'}));
-      pages.push(page);formFields.push(...collectPdfFormFields(pageAnnotations,pageNumber));
+      if(includePageText)pages.push(page);formFields.push(...collectPdfFormFields(pageAnnotations,pageNumber));
     }
     if(!formFields.length)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:''};
     const formText=collectPdfFormValues(formFields.map(field=>({fieldType:field.fieldType,fieldValue:field.values}))).join('\n');

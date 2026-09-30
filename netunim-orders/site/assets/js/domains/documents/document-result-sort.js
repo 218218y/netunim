@@ -1,4 +1,4 @@
-const DOCUMENT_SORT_FIELDS=new Set(['name','path','size','modified']);
+export const DOCUMENT_SORT_FIELDS=new Set(['name','path','size','modified']);
 
 export function defaultDocumentSortDirection(field){return field==='size'||field==='modified'?'desc':'asc'}
 

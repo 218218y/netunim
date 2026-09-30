@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=28;
+export const BRIDGE_VERSION=29;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
