@@ -30,9 +30,11 @@ set "CONFIGWASNEW=no"
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs start_document_bridge.bat) do (
+for %%F in (server.mjs lib.mjs pdf_form_index.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
+if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul
+xcopy /E /I /Y "%~dp0..\site\assets\vendor\pdfjs" "%STAGING%\pdfjs" >nul || goto :stage_error
 
 echo Building local Windows Preview Handler host...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build_native_preview.ps1" -Source "%~dp0native_preview_host.cs" -Output "%STAGING%\NetunimPreviewHost.exe"
@@ -55,6 +57,11 @@ if not exist "%CONFIG%" goto :stage_error
 echo Ensuring Everything is running in background mode - no search window...
 node "%STAGING%\server.mjs" --ensure-everything
 if not "%ERRORLEVEL%"=="0" goto :everything_error
+
+echo Warming local interactive PDF text index...
+echo The installer checks only a small recent batch; the full index continues in the background after startup.
+node "%STAGING%\server.mjs" --refresh-pdf-index --install-warmup
+if not "%ERRORLEVEL%"=="0" goto :pdf_index_error
 
 rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
 
@@ -109,6 +116,15 @@ echo.
 echo ERROR: Could not install/verify the official Everything ES command-line client.
 echo Detailed log: %APPROOT%\install-es.log
 call :restore_config
+if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
+pause
+exit /b 1
+
+:pdf_index_error
+call :restore_config
+echo.
+echo ERROR: The interactive PDF text index could not be prepared.
+echo The current Bridge installation was preserved. See: %APPROOT%\bridge.log
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1

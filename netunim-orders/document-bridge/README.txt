@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v20 - shared Everything search + modern Windows folder picker + DPI-correct native preview
+NETUNIM Document Bridge v22 - Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -29,6 +29,20 @@ Website modes
 
 2. Content search
    The Bridge builds an Everything content:"..." no-background-search: query.
+   Interactive AcroForm PDFs also have a small local supplemental index. The
+   supplemental extractor uses the same bundled PDF.js runtime as the website,
+   reads logical page text plus text/choice form values directly from the PDF,
+   and merges those matches with Everything results. It does not render pages to
+   images and does not run OCR. This covers PDFs whose appearance streams use
+   legacy Hebrew encodings that a Windows PDF iFilter may omit or expose in
+   visual/reversed order.
+
+   The supplement is cached at:
+     %LOCALAPPDATA%\NetunimDocumentBridge\pdf-form-index.json
+   Only PDFs already present in Everything are considered, and unchanged PDFs
+   are not reparsed. PDF.js auxiliary CMap/font/WASM resources are read directly
+   from local files with Unicode-safe Windows path handling, so Hebrew Windows
+   user/profile names do not break standard-font loading.
 
 Unicode
 -------
@@ -100,9 +114,12 @@ Installation
 ------------
 Run install_document_bridge.bat on each PC. The installer:
 - builds NetunimPreviewHost.exe locally;
-- upgrades the Bridge;
+- upgrades the Bridge and stages the already-bundled local PDF.js runtime;
 - verifies ES/Everything;
 - starts Everything in background mode if required;
+- warms only a small batch of recently changed PDFs during installation so setup
+  cannot be held up by a large PDF collection; the complete supplemental scan
+  continues automatically in the Bridge background process after startup;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 

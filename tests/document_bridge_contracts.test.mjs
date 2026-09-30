@@ -36,6 +36,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const lib=read('netunim-orders/document-bridge/lib.mjs');
+  const pdfIndex=read('netunim-orders/document-bridge/pdf_form_index.mjs');
+  const client=read('shared/document-search/domains/documents/bridge.js');
   assert.match(installer,/--ensure-everything/);
   assert.doesNotMatch(installer,/configure_document_bridge\.ps1/);
   assert.match(server,/scope=everything-index/);
@@ -60,6 +62,20 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/RECENT scope=everything-index scopePath=.* files-only=true sort=date-modified-descending/);
   assert.match(server,/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
+  assert.match(server,/refreshPdfFormIndex/);
+  assert.match(server,/searchPdfFormIndex/);
+  assert.match(server,/scope=everything-index\+interactive-pdf/);
+  assert.match(server,/extractInteractivePdfText/);
+  assert.match(installer,/pdf_form_index\.mjs/);
+  assert.match(installer,/assets\\vendor\\pdfjs/);
+  assert.match(installer,/--refresh-pdf-index --install-warmup/);
+  assert.match(server,/PDF_FORM_INDEX_INSTALL_WARMUP=8/);
+  assert.match(server,/pending in background/);
+  assert.match(pdfIndex,/fileURLToPath/);
+  assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
+  assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
+  assert.match(lib,/BRIDGE_VERSION=22/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=22/);
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -306,9 +322,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=20/);
+  assert.match(lib,/BRIDGE_VERSION=22/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=20/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=22/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=20;
+export const BRIDGE_VERSION=22;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=120;
 export const RECENT_RESULT_LIMIT=150;
@@ -170,6 +170,10 @@ function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,ma
   return {needle,search,ranges,capped};
 }
 
+export function contentSearchMatches(value,query,options={}){
+  return contentMatchRanges(String(value??''),query,{...options,maxMatches:5000}).ranges.length>0;
+}
+
 export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000,matchMode='phrase',proximityWords=0}={}){
   const source=String(value??'').replace(/\u0000/g,''),needle=normalizeSearchText(query);
   if(!source||needle.length<2)return {query:needle,count:0,snippets:[],capped:false};
@@ -229,16 +233,17 @@ function commonEsPrefix({timeoutMs=15000,instance=''}){
   return ['-argv','-cp','65001','-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
-function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS}){
+function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS,offset=0}){
   const ceiling=Math.max(1,Number(maxResults)||MAX_RESULTS);
   const count=Math.max(1,Math.min(ceiling,Number(limit)||DEFAULT_RESULT_LIMIT));
-  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count)];
+  const start=Math.max(0,Math.trunc(Number(offset)||0));
+  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count),...(start?['-offset',String(start)]:[])];
 }
 
-export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS,scopePath=''}){
+export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS,scopePath='',offset=0}){
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
   const scope=normalizeSearchScopePath(scopePath);
-  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults,offset}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
 }
 
 export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath=''}){
@@ -249,6 +254,11 @@ export function buildEsSearchArgs({query,mode='everything',contentSearch={},limi
 
 export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='' }={}){
   return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath});
+}
+
+export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath=''}={}){
+  const pageSize=Math.max(1,Math.min(1000,Math.trunc(Number(limit)||250)));
+  return buildEsRawSearchArgs({search:'ext:pdf',limit:pageSize,offset,timeoutMs,instance,filesOnly:true,maxResults:1000,scopePath});
 }
 
 export function buildExactFullPathQuery(fullPath){

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsRecentFilesArgs,buildEsSearchArgs,mergeDocumentResults,RECENT_RESULT_LIMIT,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,contentSearchMatches,mergeDocumentResults,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
@@ -77,6 +77,25 @@ test('preview match extraction follows advanced content-search semantics',()=>{
   assert.equal(close.count,1);
   assert.equal(close.snippets[0].match,'מה אחד שני שלומך');
   assert.equal(buildContentMatchInfo(text,'מה שלומך',{matchMode:'proximity',proximityWords:1}).count,0);
+});
+
+
+test('interactive PDF supplemental matching uses the same content-search semantics as Everything mode controls',()=>{
+  const value='שם לקוח ליבי מאיר טלפון 0533161179 כתובת בני ברק';
+  assert.equal(contentSearchMatches(value,'ליבי מאיר',{matchMode:'phrase'}),true);
+  assert.equal(contentSearchMatches(value,'ליבי כתובת',{matchMode:'all'}),true);
+  assert.equal(contentSearchMatches(value,'ליבי חסר',{matchMode:'all'}),false);
+  assert.equal(contentSearchMatches(value,'ליבי חסר',{matchMode:'any'}),true);
+  assert.equal(contentSearchMatches(value,'ליבי טלפון',{matchMode:'proximity',proximityWords:2}),true);
+  assert.equal(contentSearchMatches(value,'053-3161179',{matchMode:'phrase'}),true);
+});
+
+test('PDF inventory query pages only PDF files from the Everything database',()=>{
+  const args=buildEsPdfInventoryArgs({limit:250,offset:500,instance:'1.5a'});
+  assert.ok(args.includes('/a-d'));
+  assert.equal(args[args.indexOf('-max-results')+1],'250');
+  assert.equal(args[args.indexOf('-offset')+1],'500');
+  assert.equal(args[args.indexOf('--')+1],'ext:pdf');
 });
 
 test('recent files query allows 150 results without raising normal search limits',()=>{

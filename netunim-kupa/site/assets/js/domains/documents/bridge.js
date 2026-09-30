@@ -2,7 +2,7 @@ const BRIDGE_URL='http://127.0.0.1:8766';
 const TOKEN_KEY='netunim_document_bridge_token_v1';
 const LEGACY_TOKEN_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];
 const REQUEST_TIMEOUT_MS=25000;
-const EXPECTED_BRIDGE_VERSION=20;
+const EXPECTED_BRIDGE_VERSION=22;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 function requireBridgeVersion(value,purpose='לטעון את גרסת החיפוש הנכונה'){const version=Number(value)||0;if(version!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${version||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי ${purpose}.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED')}
