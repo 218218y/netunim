@@ -54,6 +54,20 @@ def run(db):
     snapshot('2026-08-13');assert checks()[0]['status']!='נפרע','Wait through all three additional banking days'
     snapshot('2026-08-14');assert checks()[0]['status']=='נפרע' and not checks()[0].get('bankReview')
     assert [h['phase'] for h in checks()[0]['bankHistory']]==['deposited','deposited','cleared']
+    # This assertion is about client authority, not the independent 60-day quiet-history
+    # retention policy. Keep the server-owned events recent before simulating the old
+    # browser so the test cannot start exercising retention merely because wall-clock
+    # time has advanced beyond these intentionally historical banking dates.
+    # check_notification_retention.py owns the exact 59/60-day boundary contract.
+    db.sql("""begin;
+set local app.check_bank_reconcile='1';
+update public.shared_checks_documents d
+set state=jsonb_set(d.state,'{checks,0,bankHistory}',coalesce((
+  select jsonb_agg(h.value||jsonb_build_object('recordedAt',clock_timestamp()) order by h.ordinality)
+  from jsonb_array_elements(d.state->'checks'->0->'bankHistory') with ordinality h(value,ordinality)
+),'[]'::jsonb),true)
+where d.owner_id="""+quote(OWNER)+""" and d.document_name='main';
+commit""")
     rows=checks();history=rows[0].pop('bankHistory');rows[0]['bankMatch']['autoConfirmed']=False;save(rows)
     assert checks()[0]['bankHistory']==history and checks()[0]['bankMatch']['autoConfirmed'],'Older clients cannot erase history or override server confirmation'
     rows=checks();rows[0]['bankHistory']=[{'eventId':'forged'}];save(rows);assert checks()[0]['bankHistory']==history
