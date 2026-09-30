@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
+import {pdfIndexNeedsInspection} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
@@ -96,6 +97,24 @@ test('PDF inventory query pages only PDF files from the Everything database',()=
   assert.equal(args[args.indexOf('-max-results')+1],'250');
   assert.equal(args[args.indexOf('-offset')+1],'500');
   assert.equal(args[args.indexOf('--')+1],'ext:pdf');
+  const incremental=buildEsPdfInventoryArgs({modifiedSince:'2026-09-29'});
+  assert.equal(incremental[incremental.indexOf('--')+1],'ext:pdf dm:>=2026-09-29');
+  assert.throws(()=>buildEsPdfInventoryArgs({modifiedSince:'today | content:secret'}),/Invalid PDF inventory checkpoint date/);
+  assert.equal(documentExtension('C:\\archive\\.pdf'),'pdf');
+  assert.equal(parseEsJson(JSON.stringify({results:[{name:'.pdf',path:'C:\\archive',size:1}]}))[0].extension,'pdf');
+});
+
+test('PDF maintenance skips current negative and geometry-only records, and backs off failures',()=>{
+  const now=Date.UTC(2026,8,30),revisions={detectionRevision:2,searchTextRevision:2};
+  const needs=(entry,fingerprint='10:date')=>pdfIndexNeedsInspection(entry,fingerprint,now,revisions);
+  assert.equal(needs(null),true);
+  assert.equal(needs({fingerprint:'10:date',hasForm:false,detectionRevision:2}),false);
+  assert.equal(needs({fingerprint:'10:date',hasForm:false,detectionRevision:1}),true);
+  assert.equal(needs({fingerprint:'10:date',hasForm:true,detectionRevision:2,searchTextRevision:2,formFields:[]}),false);
+  assert.equal(needs({fingerprint:'10:date',hasForm:true,detectionRevision:2,searchTextRevision:1}),true);
+  assert.equal(needs({fingerprint:'10:date',failed:true,retryAfter:'2026-10-01T00:00:00Z'}),false);
+  assert.equal(needs({fingerprint:'10:date',failed:true,retryAfter:'2026-09-29T00:00:00Z'}),true);
+  assert.equal(needs({fingerprint:'10:date',hasForm:false,detectionRevision:2},'11:date'),true);
 });
 
 test('document search defaults to 150 results and supports bounded paging beyond the first batch',()=>{

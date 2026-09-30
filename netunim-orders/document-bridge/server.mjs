@@ -9,10 +9,11 @@ import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
-  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
+  buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES} from './pdf_form_index.mjs';
+import {localCheckpointDay,pdfIndexNeedsInspection} from './pdf-index-policy.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -33,22 +34,25 @@ const STRUCTURED_PREVIEW_MAX_BYTES=64*1024*1024;
 const TEXT_PREVIEW_MAX_CHARS=600000;
 const PREVIEW_TEXT_CACHE_TTL_MS=10*60*1000;
 const PREVIEW_TEXT_CACHE_MAX=24;
-const PDF_FORM_INDEX_SCHEMA=2;
-const PDF_FORM_INDEX_LEGACY_SCHEMAS=new Set([1,PDF_FORM_INDEX_SCHEMA]);
-const PDF_FORM_EXTRACTOR_REVISION=2;
+const PDF_FORM_INDEX_SCHEMA=3;
+const PDF_FORM_INDEX_LEGACY_SCHEMAS=new Set([1,2,PDF_FORM_INDEX_SCHEMA]);
+const PDF_FORM_DETECTION_REVISION=2;
+const PDF_FORM_SEARCH_TEXT_REVISION=2;
+const PDF_FORM_GEOMETRY_REVISION=1;
 const PDF_FORM_INDEX_PAGE_SIZE=250;
-const PDF_FORM_INDEX_REFRESH_MS=60*1000;
-const PDF_FORM_INDEX_CONCURRENCY=1;
-const PDF_FORM_INDEX_BACKGROUND_BATCH=8;
-const PDF_FORM_INDEX_BACKLOG_DELAY_MS=5000;
-const PDF_FORM_INDEX_INVENTORY_REFRESH_MS=5*60*1000;
-const PDF_FORM_INDEX_USER_QUIET_MS=4000;
-const PDF_FORM_INDEX_COMPACT_EVERY=500;
+const PDF_FORM_MAINTENANCE_INTERVAL_MS=20*60*60*1000;
+const PDF_FORM_RECONCILE_INTERVAL_MS=7*24*60*60*1000;
+const PDF_FORM_RETRY_MS=24*60*60*1000;
+const PDF_FORM_MAINTENANCE_MAX_FILES=300;
+const PDF_FORM_MAINTENANCE_MAX_MS=15*60*1000;
+const PDF_FORM_MAINTENANCE_PATH=path.join(APP_ROOT,'pdf-form-maintenance.json');
+const PDF_FORM_INDEX_LOCK_PATH=path.join(APP_ROOT,'pdf-form-index.lock');
+const PDF_FORM_MAINTENANCE_LOCK_PATH=path.join(APP_ROOT,'pdf-form-maintenance.lock');
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
 const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png'],['jpg','image/jpeg'],['jpeg','image/jpeg'],['gif','image/gif'],['webp','image/webp'],['bmp','image/bmp'],['svg','image/svg+xml']]);
 const STRUCTURED_PREVIEW_MIME=new Map([['docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['docm','application/vnd.ms-word.document.macroEnabled.12'],['dotx','application/vnd.openxmlformats-officedocument.wordprocessingml.template'],['dotm','application/vnd.ms-word.template.macroEnabled.12'],['xls','application/vnd.ms-excel'],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],['xlsm','application/vnd.ms-excel.sheet.macroEnabled.12'],['xlsb','application/vnd.ms-excel.sheet.binary.macroEnabled.12'],['xlt','application/vnd.ms-excel'],['xltx','application/vnd.openxmlformats-officedocument.spreadsheetml.template'],['xltm','application/vnd.ms-excel.template.macroEnabled.12']]);
 let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
-let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshTimer=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,pdfFormIndexInventoryAt=0,pdfFormIndexJournalUpdates=0,lastDocumentSearchAt=0,shuttingDown=false;
+let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
 let pdfFormIndexBacklog=[];
 const pdfFormIndex=new Map();
 const nativePreviewPending=new Map();
@@ -207,7 +211,7 @@ async function diagnoseIndex({freshProbe=false}={}){
 }
 
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
-function publicResult(row,{query='',mode='everything',contentSearch={}}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
+function publicResult(row,{query='',mode='everything',contentSearch={}}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,attributes:row.attributes||'',query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
 async function runEverythingJson(buildArgs,{signal=null}={}){
   const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
   const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000,signal});
@@ -236,111 +240,171 @@ function normalizePdfFormFields(fields){return (Array.isArray(fields)?fields:[])
 function normalizePdfIndexEntry(entry){
   const fullPath=String(entry?.fullPath||'');if(!fullPath)return null;
   const hasForm=typeof entry.hasForm==='boolean'?entry.hasForm:(Math.max(0,Number(entry.formFieldCount)||0)>0||!!String(entry.text||'')),formFields=normalizePdfFormFields(entry.formFields);
-  return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),extractorRevision:Math.max(0,Number(entry.extractorRevision)||0),hasForm,text:String(entry.text||''),formFields,formFieldCount:Math.max(formFields.length,Math.max(0,Number(entry.formFieldCount)||0)),failed:!!entry.failed,error:String(entry.error||'')};
+  const legacyRevision=Math.max(0,Number(entry.extractorRevision)||0);
+  return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,fileMtimeMs:Number(entry.fileMtimeMs)||0,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),detectionRevision:Math.max(0,Number(entry.detectionRevision)||legacyRevision),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||legacyRevision),geometryRevision:Math.max(0,Number(entry.geometryRevision)||((hasForm&&formFields.length)?legacyRevision:0)),hasForm,text:String(entry.text||''),formFields,formFieldCount:Math.max(formFields.length,Math.max(0,Number(entry.formFieldCount)||0)),failed:!!entry.failed,error:String(entry.error||''),retryAfter:String(entry.retryAfter||''),retryCount:Math.max(0,Number(entry.retryCount)||0)};
 }
-function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,attributes:entry.attributes||'',fingerprint:entry.fingerprint,extractorRevision:Math.max(0,Number(entry.extractorRevision)||0),hasForm:!!entry.hasForm,text:entry.text||'',formFields:normalizePdfFormFields(entry.formFields),formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||''}}
-async function loadPdfFormIndex(){
-  if(pdfFormIndexLoaded)return;
-  const stored=await readJsonFile(PDF_FORM_INDEX_PATH,null);pdfFormIndex.clear();
+function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,fileMtimeMs:entry.fileMtimeMs||0,attributes:entry.attributes||'',fingerprint:entry.fingerprint,detectionRevision:Math.max(0,Number(entry.detectionRevision)||0),searchTextRevision:Math.max(0,Number(entry.searchTextRevision)||0),geometryRevision:Math.max(0,Number(entry.geometryRevision)||0),hasForm:!!entry.hasForm,text:entry.text||'',formFields:normalizePdfFormFields(entry.formFields),formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||'',retryAfter:entry.retryAfter||'',retryCount:entry.retryCount||0}}
+async function withFileLock(lockPath,task,{waitMs=10000,staleMs=10*60*1000}={}){
+  await ensureRoot();const deadline=Date.now()+waitMs,ownerPath=path.join(lockPath,'owner.json');
+  while(true){
+    try{await fs.mkdir(lockPath)}catch(error){
+      if(error?.code!=='EEXIST')throw error;
+      const stat=await fs.stat(lockPath).catch(()=>null);
+      const owner=await readJsonFile(ownerPath,null),pid=Number(owner?.pid);
+      let ownerAlive=false;
+      if(Number.isInteger(pid)&&pid>0)try{process.kill(pid,0);ownerAlive=true}catch(checkError){ownerAlive=checkError?.code==='EPERM'}
+      if(stat&&((owner&&!ownerAlive)||(Date.now()-stat.mtimeMs>staleMs)||(!owner&&Date.now()-stat.mtimeMs>30000))){
+        await fs.unlink(ownerPath).catch(()=>{});
+        const removed=await fs.rmdir(lockPath).then(()=>true).catch(()=>false);
+        if(removed)continue;
+      }
+      if(Date.now()>=deadline)throw new Error(`Timed out waiting for ${path.basename(lockPath)}`);
+      await new Promise(resolve=>setTimeout(resolve,80));
+      continue;
+    }
+    try{await fs.writeFile(ownerPath,JSON.stringify({pid:process.pid,startedAt:new Date().toISOString()}),'utf8')}catch(error){await fs.rmdir(lockPath).catch(()=>{});throw error}
+    break;
+  }
+  try{return await task()}finally{await fs.unlink(ownerPath).catch(()=>{});await fs.rmdir(lockPath).catch(()=>{})}
+}
+async function pdfIndexSignature(){
+  const stats=await Promise.all([PDF_FORM_INDEX_PATH,PDF_FORM_INDEX_JOURNAL_PATH].map(file=>fs.stat(file).catch(()=>null)));
+  return stats.map(stat=>stat?`${stat.size}:${stat.mtimeMs}`:'missing').join('|');
+}
+async function readPdfIndexFiles(){
+  const stored=await readJsonFile(PDF_FORM_INDEX_PATH,null);
+  if(await existsFile(PDF_FORM_INDEX_PATH)&&(!stored||!PDF_FORM_INDEX_LEGACY_SCHEMAS.has(Number(stored.schema))||!Array.isArray(stored.entries)))throw new Error('PDF index snapshot is invalid or newer than this Bridge; leaving it untouched');
+  pdfFormIndex.clear();
   if(PDF_FORM_INDEX_LEGACY_SCHEMAS.has(Number(stored?.schema))&&Array.isArray(stored.entries))for(const raw of stored.entries){const entry=normalizePdfIndexEntry(raw);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}
   let journal='';try{journal=await fs.readFile(PDF_FORM_INDEX_JOURNAL_PATH,'utf8')}catch{}
-  if(journal)for(const line of journal.split(/\r?\n/)){if(!line.trim())continue;try{const record=JSON.parse(line);if(record?.op==='remove'){pdfFormIndex.delete(pdfIndexKey(record.fullPath));pdfFormIndexJournalUpdates+=1;continue}if(record?.op==='upsert'){const entry=normalizePdfIndexEntry(record.entry);if(entry){pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry);pdfFormIndexJournalUpdates+=1}}}catch{}}
+  if(journal)for(const line of journal.split(/\r?\n/)){if(!line.trim())continue;try{const record=JSON.parse(line);if(record?.op==='remove'){pdfFormIndex.delete(pdfIndexKey(record.fullPath));continue}if(record?.op==='upsert'){const entry=normalizePdfIndexEntry(record.entry);if(entry)pdfFormIndex.set(pdfIndexKey(entry.fullPath),entry)}}catch{}}
   pdfFormIndexPending=Math.max(0,Number(stored?.pending)||0);pdfFormIndexInventoryCount=Math.max(0,Number(stored?.pdfCount)||0);
   const storedUpdated=Date.parse(String(stored?.updatedAt||''));pdfFormIndexLastRefresh=Number.isFinite(storedUpdated)?storedUpdated:0;
-  pdfFormIndexLoaded=true;
+  pdfFormIndexLoaded=true;pdfFormIndexSignature=await pdfIndexSignature();
+}
+async function loadPdfFormIndex(){
+  if(pdfFormIndexLoaded&&pdfFormIndexSignature===await pdfIndexSignature())return;
+  await withFileLock(PDF_FORM_INDEX_LOCK_PATH,async()=>{if(!pdfFormIndexLoaded||pdfFormIndexSignature!==await pdfIndexSignature())await readPdfIndexFiles()});
 }
 async function appendPdfIndexJournal(records){
-  if(!records.length)return;await ensureRoot();await fs.appendFile(PDF_FORM_INDEX_JOURNAL_PATH,records.map(record=>JSON.stringify(record)).join('\n')+'\n','utf8');pdfFormIndexJournalUpdates+=records.length;
+  if(!records.length)return;
+  await withFileLock(PDF_FORM_INDEX_LOCK_PATH,async()=>{await fs.appendFile(PDF_FORM_INDEX_JOURNAL_PATH,records.map(record=>JSON.stringify(record)).join('\n')+'\n','utf8')});
 }
 async function compactPdfFormIndex({pending=pdfFormIndexPending,pdfCount=pdfFormIndexInventoryCount}={}){
-  pdfFormIndexPending=Math.max(0,Number(pending)||0);pdfFormIndexInventoryCount=Math.max(0,Number(pdfCount)||0);
-  const entries=[...pdfFormIndex.values()].map(serializePdfIndexEntry);
-  await writeJsonFile(PDF_FORM_INDEX_PATH,{schema:PDF_FORM_INDEX_SCHEMA,updatedAt:new Date().toISOString(),pdfCount:pdfFormIndexInventoryCount,pending:pdfFormIndexPending,entries});
-  await fs.writeFile(PDF_FORM_INDEX_JOURNAL_PATH,'','utf8');pdfFormIndexJournalUpdates=0;
+  await withFileLock(PDF_FORM_INDEX_LOCK_PATH,async()=>{
+    await readPdfIndexFiles();pdfFormIndexPending=Math.max(0,Number(pending)||0);pdfFormIndexInventoryCount=Math.max(0,Number(pdfCount)||0);
+    const entries=[...pdfFormIndex.values()].map(serializePdfIndexEntry);
+    await writeJsonFile(PDF_FORM_INDEX_PATH,{schema:PDF_FORM_INDEX_SCHEMA,updatedAt:new Date().toISOString(),pdfCount:pdfFormIndexInventoryCount,pending:pdfFormIndexPending,entries});
+    await fs.writeFile(PDF_FORM_INDEX_JOURNAL_PATH,'','utf8');pdfFormIndexLastRefresh=Date.now();pdfFormIndexSignature=await pdfIndexSignature();
+  });
 }
-async function listEverythingPdfs({signal=null}={}){
-  const rows=[];let offset=0;
+async function listEverythingPdfs({signal=null,modifiedSince='',verifyComplete=false}={}){
+  const rows=[];let offset=0,expected=null,probe=null,config=null;
+  if(verifyComplete){config=await loadConfig();probe=await probeEverything({autoStart:true});expected=await countIndex(probe,config,'ext:pdf')}
   while(true){
-    if(shuttingDown)break;
-    const page=await runEverythingJson((config,probe)=>buildEsPdfInventoryArgs({limit:PDF_FORM_INDEX_PAGE_SIZE,offset,timeoutMs:config.searchTimeoutMs,instance:probe.instance}),{signal});
+    if(shuttingDown||signal?.aborted)throw new Error('PDF inventory interrupted');
+    const page=await runEverythingJson((config,probe)=>buildEsPdfInventoryArgs({limit:PDF_FORM_INDEX_PAGE_SIZE,offset,timeoutMs:config.searchTimeoutMs,instance:probe.instance,modifiedSince}),{signal});
     rows.push(...page.rows.filter(row=>row.extension==='pdf'&&!row.isDirectory));
     if(page.rows.length<PDF_FORM_INDEX_PAGE_SIZE)break;
-    offset+=page.rows.length;if(offset>250000)break;
+    offset+=page.rows.length;
+  }
+  if(verifyComplete){
+    const finalCount=await countIndex(probe,config,'ext:pdf'),unique=new Set(rows.map(row=>pdfIndexKey(row.fullPath))).size;
+    if(expected!==finalCount||unique!==finalCount)throw new Error(`PDF inventory changed during paging (before=${expected}, after=${finalCount}, unique=${unique}); reconciliation deferred`);
   }
   return rows;
 }
 function isAbortError(error){return error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR'}
-async function rebuildPdfFormIndexBacklog({signal=null}={}){
-  const rows=await listEverythingPdfs({signal});if(shuttingDown)return {pdfCount:rows.length,changed:pdfFormIndexBacklog.length,removed:0};
+async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=''}={}){
+  const rows=await listEverythingPdfs({signal,modifiedSince:full?'':modifiedSince,verifyComplete:full});
   const seen=new Set(),changed=[];let removed=0;
   for(const row of rows){
     const key=pdfIndexKey(row.fullPath),fingerprint=pdfIndexFingerprint(row);seen.add(key);
-    const existing=pdfFormIndex.get(key),extractorCurrent=Number(existing?.extractorRevision)===PDF_FORM_EXTRACTOR_REVISION,geometryCurrent=!existing?.hasForm||Array.isArray(existing.formFields)&&existing.formFields.length>0;if(existing?.fingerprint===fingerprint&&extractorCurrent&&geometryCurrent)continue;
+    const existing=pdfFormIndex.get(key);if(!pdfIndexNeedsInspection(existing,fingerprint,Date.now(),{detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION}))continue;
     changed.push({...row,fingerprint});
   }
-  const removalRecords=[];for(const [key,entry] of [...pdfFormIndex.entries()])if(!seen.has(key)){pdfFormIndex.delete(key);removalRecords.push({op:'remove',fullPath:entry.fullPath});removed+=1}
-  pdfFormIndexBacklog=changed;pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=rows.length;pdfFormIndexInventoryAt=Date.now();
+  if(!full)for(const entry of pdfFormIndex.values())if(entry.failed&&!seen.has(pdfIndexKey(entry.fullPath))&&pdfIndexNeedsInspection(entry,entry.fingerprint,Date.now(),{detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION}))changed.push({...entry});
+  changed.sort((a,b)=>(Date.parse(b.modified)||0)-(Date.parse(a.modified)||0)||a.fullPath.localeCompare(b.fullPath));
+  const removalRecords=[];
+  if(full){
+    if(pdfFormIndex.size>100&&rows.length<pdfFormIndex.size/2)throw new Error(`PDF inventory unexpectedly shrank from ${pdfFormIndex.size} to ${rows.length}; keeping cached entries`);
+    for(const [key,entry] of [...pdfFormIndex.entries()])if(!seen.has(key)){pdfFormIndex.delete(key);removalRecords.push({op:'remove',fullPath:entry.fullPath});removed+=1}
+  }
+  pdfFormIndexBacklog=changed;pdfFormIndexPending=changed.length;pdfFormIndexInventoryCount=full?rows.length:pdfFormIndexInventoryCount;
   if(removalRecords.length)await appendPdfIndexJournal(removalRecords);
   return {pdfCount:rows.length,changed:changed.length,removed};
 }
-function shouldRefreshPdfInventory(){
-  if(!pdfFormIndexInventoryAt)return true;
-  const age=Date.now()-pdfFormIndexInventoryAt;
-  return pdfFormIndexBacklog.length?age>=PDF_FORM_INDEX_INVENTORY_REFRESH_MS:age>=PDF_FORM_INDEX_REFRESH_MS;
-}
-async function refreshPdfFormIndex({maxChanged=PDF_FORM_INDEX_BACKGROUND_BATCH,onProgress=null}={}){
+async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,onProgress=null,force=false,reason='scheduled'}={}){
   if(shuttingDown)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexPending,processed:0,pending:pdfFormIndexPending,indexed:0,failed:0,removed:0,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:0};
   if(pdfFormIndexRefreshPromise)return pdfFormIndexRefreshPromise;
   const controller=new AbortController();pdfFormIndexRefreshAbortController=controller;
+  const limitTimer=setTimeout(()=>controller.abort(),PDF_FORM_MAINTENANCE_MAX_MS);limitTimer.unref?.();
   const task=(async()=>{
-    await loadPdfFormIndex();const started=Date.now();let removed=0,indexed=0,failed=0,processed=0,aborted=false;
-    if(shouldRefreshPdfInventory()){const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal});removed=inventory.removed}
+    await loadPdfFormIndex();const started=Date.now(),cpuStarted=process.cpuUsage();let removed=0,indexed=0,failed=0,processed=0,aborted=false,bytesRead=0;
+    const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+    if(!force&&!maintenance.lastFailureAt&&Number(maintenance.lastResult?.pending)===0&&Date.parse(String(maintenance.lastSuccessfulAt||''))>started-PDF_FORM_MAINTENANCE_INTERVAL_MS)return {skipped:true,reason:'not-due',pending:pdfFormIndexPending,processed:0};
+    maintenance.lastAttemptAt=new Date(started).toISOString();await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
+    const full=!maintenance.lastReconcileAt||started-Date.parse(maintenance.lastReconcileAt)>=PDF_FORM_RECONCILE_INTERVAL_MS||!maintenance.lastIncrementalScanAt;
+    const modifiedSince=full?'':localCheckpointDay(maintenance.lastIncrementalScanAt);
+    const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal,full,modifiedSince});removed=inventory.removed;
     if(shuttingDown||controller.signal.aborted)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexBacklog.length,processed:0,pending:pdfFormIndexBacklog.length,indexed,failed,removed,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:Date.now()-started};
     const changedBefore=pdfFormIndexBacklog.length,boundedMax=Number.isFinite(Number(maxChanged))?Math.max(0,Math.trunc(Number(maxChanged))):changedBefore;
-    const selected=pdfFormIndexBacklog.splice(0,boundedMax),journalRecords=[];
+    const selected=pdfFormIndexBacklog.splice(0,boundedMax);
     if(typeof onProgress==='function')onProgress({phase:'start',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed:0,indexed,failed});
     for(const row of selected){
-      if(shuttingDown||controller.signal.aborted){aborted=true;break}
+      if(shuttingDown||controller.signal.aborted||Date.now()-started>=PDF_FORM_MAINTENANCE_MAX_MS){aborted=true;break}
       const key=pdfIndexKey(row.fullPath);
       try{
-        const extracted=await extractInteractivePdfText(row.fullPath,{maxBytes:PDF_FORM_MAX_BYTES,signal:controller.signal});
-        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,extractorRevision:PDF_FORM_EXTRACTOR_REVISION,hasForm:!!extracted.hasForm,text:extracted.hasForm?extracted.text:'',formFields:extracted.hasForm?normalizePdfFormFields(extracted.formFields):[],formFieldCount:extracted.hasForm?extracted.formFieldCount:0,failed:false,error:''};pdfFormIndex.set(key,entry);previewTextCache.delete(key);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});
+        const extracted=await extractInteractivePdfText(row.fullPath,{maxBytes:PDF_FORM_MAX_BYTES,signal:controller.signal,onBytesRead:count=>{bytesRead+=count}});
+        const fileStat=await fs.stat(row.fullPath).catch(()=>null);
+        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,fileMtimeMs:fileStat?.mtimeMs||0,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:PDF_FORM_GEOMETRY_REVISION,hasForm:!!extracted.hasForm,text:extracted.hasForm?extracted.text:'',formFields:extracted.hasForm?normalizePdfFormFields(extracted.formFields):[],formFieldCount:extracted.hasForm?extracted.formFieldCount:0,failed:false,error:'',retryAfter:'',retryCount:0};pdfFormIndex.set(key,entry);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(entry)}]);
         if(extracted.hasForm)indexed+=1;
       }catch(error){
         if(isAbortError(error)||shuttingDown||controller.signal.aborted){aborted=true;break}
-        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,extractorRevision:PDF_FORM_EXTRACTOR_REVISION,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:true,error:String(error?.message||error)};pdfFormIndex.set(key,entry);previewTextCache.delete(key);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});failed+=1;
+        const previous=pdfFormIndex.get(key),retryCount=previous?.fingerprint===row.fingerprint?Math.min(8,(previous.retryCount||0)+1):1;
+        const retryMs=/No password given/i.test(String(error?.message||''))?30*PDF_FORM_RETRY_MS:Math.min(7*PDF_FORM_RETRY_MS,PDF_FORM_RETRY_MS*2**(retryCount-1));
+        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:0,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:true,error:String(error?.message||error),retryAfter:new Date(Date.now()+retryMs).toISOString(),retryCount};pdfFormIndex.set(key,entry);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(entry)}]);failed+=1;
         await appendLog(`PDF_FORM_INDEX_FILE_FAILED path=${JSON.stringify(row.fullPath)} error=${JSON.stringify(String(error?.message||error))}`);
       }
       processed+=1;if(typeof onProgress==='function')onProgress({phase:'file',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed,indexed,failed,name:row.name});
     }
     if(processed<selected.length)pdfFormIndexBacklog.unshift(...selected.slice(processed));
-    if(journalRecords.length)await appendPdfIndexJournal(journalRecords);
     const pending=pdfFormIndexBacklog.length;pdfFormIndexPending=pending;
-    if(pdfFormIndexJournalUpdates>=PDF_FORM_INDEX_COMPACT_EVERY||pending===0)await compactPdfFormIndex({pending,pdfCount:pdfFormIndexInventoryCount});pdfFormIndexLastRefresh=Date.now();
+    await compactPdfFormIndex({pending,pdfCount:pdfFormIndexInventoryCount});
+    if(!aborted&&pending===0){maintenance.lastIncrementalScanAt=new Date(started).toISOString();if(full)maintenance.lastReconcileAt=new Date(started).toISOString();maintenance.lastSuccessfulAt=new Date().toISOString()}
+    delete maintenance.lastFailureAt;delete maintenance.lastFailure;
+    maintenance.lastResult={reason,full,modifiedSince,pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,bytesRead,elapsedMs:Date.now()-started};await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
     const interactive=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length;
-    await appendLog(`PDF_FORM_INDEX_REFRESH pdfs=${pdfFormIndexInventoryCount} changed=${changedBefore} selected=${selected.length} processed=${processed} pending=${pending} inspected=${pdfFormIndex.size} interactive=${interactive} indexed=${indexed} failed=${failed} removed=${removed} aborted=${aborted} elapsedMs=${Date.now()-started}`);
-    return {pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,processed,pending,indexed,failed,removed,cached:pdfFormIndex.size,interactive,aborted,elapsedMs:Date.now()-started};
+    const cpu=process.cpuUsage(cpuStarted),elapsedMs=Date.now()-started;
+    await appendLog(`PDF_FORM_INDEX_MAINTENANCE trigger=${reason} mode=${full?'reconcile':'incremental'} pdfs=${inventory.pdfCount} changed=${changedBefore} processed=${processed} pending=${pending} inspected=${pdfFormIndex.size} interactive=${interactive} indexed=${indexed} failed=${failed} removed=${removed} bytesRead=${bytesRead} cpuMs=${Math.round((cpu.user+cpu.system)/1000)} aborted=${aborted} elapsedMs=${elapsedMs}`);
+    return {pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,cached:pdfFormIndex.size,interactive,aborted,bytesRead,cpuMs:Math.round((cpu.user+cpu.system)/1000),elapsedMs};
   })();
   pdfFormIndexRefreshPromise=task;
-  try{return await task}finally{if(pdfFormIndexRefreshPromise===task)pdfFormIndexRefreshPromise=null;if(pdfFormIndexRefreshAbortController===controller)pdfFormIndexRefreshAbortController=null}
-}
-function schedulePdfFormIndexRefresh(delayMs=1000){
-  if(shuttingDown)return;
-  if(pdfFormIndexRefreshTimer)clearTimeout(pdfFormIndexRefreshTimer);
-  pdfFormIndexRefreshTimer=setTimeout(async()=>{
-    if(shuttingDown)return;
-    const sinceSearch=Date.now()-lastDocumentSearchAt;
-    if(lastDocumentSearchAt&&sinceSearch<PDF_FORM_INDEX_USER_QUIET_MS){schedulePdfFormIndexRefresh(PDF_FORM_INDEX_USER_QUIET_MS-sinceSearch+500);return}
-    let nextDelay=PDF_FORM_INDEX_REFRESH_MS;
-    try{const result=await refreshPdfFormIndex({maxChanged:PDF_FORM_INDEX_BACKGROUND_BATCH});if(result.pending>0)nextDelay=PDF_FORM_INDEX_BACKLOG_DELAY_MS}catch(error){if(!isAbortError(error)&&!shuttingDown)await appendLog(`PDF_FORM_INDEX_REFRESH_FAILED ${error?.code||'ERROR'} ${error?.message||error}`)}finally{if(!shuttingDown)schedulePdfFormIndexRefresh(nextDelay)}
-  },Math.max(0,delayMs));
-  pdfFormIndexRefreshTimer.unref?.();
+  try{return await task}catch(error){
+    const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+    maintenance.lastFailureAt=new Date().toISOString();maintenance.lastFailure=String(error?.message||error);
+    await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
+    await appendLog(`PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} error=${JSON.stringify(maintenance.lastFailure)}`);
+    throw error;
+  }finally{clearTimeout(limitTimer);if(pdfFormIndexRefreshPromise===task)pdfFormIndexRefreshPromise=null;if(pdfFormIndexRefreshAbortController===controller)pdfFormIndexRefreshAbortController=null}
 }
 async function preparePdfFormIndexForSearch(){
-  await loadPdfFormIndex();
-  const cold=!pdfFormIndexLastRefresh;
-  if(cold&&!pdfFormIndexRefreshPromise)schedulePdfFormIndexRefresh(PDF_FORM_INDEX_BACKLOG_DELAY_MS);
-  return {partial:cold||pdfFormIndexPending>0||!!pdfFormIndexRefreshPromise};
+  try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
+  return {partial:!pdfFormIndexLastRefresh||pdfFormIndexPending>0};
+}
+async function extractPdfOnDemand(fullPath,{includePageText=true}={}){
+  return await new Promise((resolve,reject)=>{
+    const child=spawn(process.execPath,[path.join(RUNTIME_ROOT,'pdf-extract-worker.mjs')],{cwd:APP_ROOT,windowsHide:true,stdio:['pipe','pipe','pipe']});
+    let output='',errors='',finished=false;
+    const finish=(error,result)=>{if(finished)return;finished=true;clearTimeout(timer);if(error)reject(error);else resolve(result)};
+    const timer=setTimeout(()=>{child.kill();finish(new Error('PDF on-demand extraction timed out'))},25000);
+    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+    child.stdout.on('data',chunk=>{output+=chunk;if(output.length>32*1024*1024){child.kill();finish(new Error('PDF worker output too large'))}});
+    child.stderr.on('data',chunk=>{if(errors.length<4096)errors+=chunk});
+    child.on('error',finish);
+    child.on('close',code=>{try{const response=JSON.parse(output.trim());if(!response.ok)throw new Error(response.error||errors||'PDF extraction failed');finish(null,response.result)}catch(error){finish(new Error(`PDF worker exited ${code}: ${error.message}`))}});
+    child.stdin.end(JSON.stringify({fullPath,includePageText}));
+  });
 }
 function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
   const results=[];
@@ -352,36 +416,38 @@ function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
   results.sort((a,b)=>compareDocumentRows(a,b,sort));
   return results.slice(0,Math.max(1,Number(limit)||DEFAULT_RESULT_LIMIT));
 }
-async function supplementalPdfData(fullPath,stat){
-  await loadPdfFormIndex();const key=pdfIndexKey(fullPath),cached=pdfFormIndex.get(key),extractorCurrent=Number(cached?.extractorRevision)===PDF_FORM_EXTRACTOR_REVISION;
-  if(extractorCurrent&&cached?.hasForm&&cached.text&&cached.formFields?.length)return {...trimPreviewText(cached.text),formFields:normalizePdfFormFields(cached.formFields)};
+async function supplementalPdfData(row,stat){
+  const fullPath=row.fullPath;
+  try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return null}
+  const key=pdfIndexKey(fullPath),cached=pdfFormIndex.get(key),detectionCurrent=Number(cached?.detectionRevision)===PDF_FORM_DETECTION_REVISION;
+  const cachedDate=Number(cached?.fileMtimeMs)||Date.parse(String(cached?.modified||'')),fingerprintCurrent=!!cached&&Number(cached.size)===stat.size&&Number.isFinite(cachedDate)&&Math.abs(cachedDate-stat.mtimeMs)<1000;
+  if(fingerprintCurrent&&cached?.hasForm&&cached.text&&cached.formFields?.length&&Number(cached.searchTextRevision)>=PDF_FORM_SEARCH_TEXT_REVISION&&Number(cached.geometryRevision)>=PDF_FORM_GEOMETRY_REVISION)return {...trimPreviewText(cached.text),formFields:normalizePdfFormFields(cached.formFields)};
   // A negative result from an older extractor is not authoritative. Earlier
   // releases persisted `hasForm:false` without an extractor revision, which can
   // leave an interactive PDF permanently searchable only through Everything and
   // therefore without page rectangles for preview highlighting. Re-open such a
-  // file once on demand and let the background index persist the new verdict.
-  if(extractorCurrent&&cached&&!cached.hasForm&&!cached.failed)return null;
+  // file once on demand and persist the new verdict immediately.
+  if(fingerprintCurrent&&detectionCurrent&&cached&&!cached.hasForm&&!cached.failed)return null;
   try{
     // v28 indexes can already contain the searchable AcroForm text but not the
     // page/rectangle metadata needed by the preview. Re-reading all page text on
     // click is unnecessary and can time out on large PDFs; recover only the form
-    // annotations and keep the proven cached search text. Background indexing will
-    // later compact the migrated entry into the current schema.
-    const geometryOnly=!!(cached?.hasForm&&cached.text&&!cached.formFields?.length);
-    const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES,includePageText:!geometryOnly});
+    // annotations and keep the proven cached search text. Scheduled maintenance
+    // later compacts the journal into the current schema.
+    const geometryOnly=!!(fingerprintCurrent&&cached?.hasForm&&cached.text&&Number(cached.searchTextRevision)>=PDF_FORM_SEARCH_TEXT_REVISION&&(!cached.formFields?.length||Number(cached.geometryRevision)<PDF_FORM_GEOMETRY_REVISION));
+    const extracted=await extractPdfOnDemand(fullPath,{includePageText:!geometryOnly});
     if(extracted.hasForm&&extracted.formFields?.length){
       const formFields=normalizePdfFormFields(extracted.formFields),text=geometryOnly?cached.text:extracted.text,data={...trimPreviewText(text),formFields};
-      if(cached?.fingerprint){const updated={...cached,extractorRevision:PDF_FORM_EXTRACTOR_REVISION,hasForm:true,text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:''};pdfFormIndex.set(key,updated);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}])}
+      const base=fingerprintCurrent?cached:{...row,fullPath,name:row.name||path.win32.basename(fullPath),relativePath:row.relativePath||path.win32.dirname(fullPath),modified:row.modified||stat.mtime.toISOString(),size:stat.size,attributes:row.attributes||'',fingerprint:pdfIndexFingerprint({size:stat.size,modified:row.modified||stat.mtime.toISOString()})};
+      const updated={...base,fileMtimeMs:stat.mtimeMs,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:geometryOnly?cached.searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:PDF_FORM_GEOMETRY_REVISION,hasForm:true,text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:'',retryAfter:'',retryCount:0};pdfFormIndex.set(key,updated);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}]);
       return data;
     }
-    if(cached?.fingerprint){
-      const updated={...cached,extractorRevision:PDF_FORM_EXTRACTOR_REVISION,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:false,error:''};pdfFormIndex.set(key,updated);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}]);
-    }
+    const base=fingerprintCurrent?cached:{...row,fullPath,name:row.name||path.win32.basename(fullPath),relativePath:row.relativePath||path.win32.dirname(fullPath),modified:row.modified||stat.mtime.toISOString(),size:stat.size,attributes:row.attributes||'',fingerprint:pdfIndexFingerprint({size:stat.size,modified:row.modified||stat.mtime.toISOString()})};
+    const updated={...base,fileMtimeMs:stat.mtimeMs,detectionRevision:PDF_FORM_DETECTION_REVISION,searchTextRevision:PDF_FORM_SEARCH_TEXT_REVISION,geometryRevision:0,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:false,error:'',retryAfter:'',retryCount:0};pdfFormIndex.set(key,updated);previewTextCache.delete(key);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}]);
   }catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
   return null;
 }
 async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={}){
-  lastDocumentSearchAt=Date.now();
   const normalizedMode=normalizeDocumentSearchMode(mode),normalizedContentSearch=normalizeContentSearchOptions(contentSearch),normalizedScope=normalizeSearchScopePath(scopePath),normalizedSort=normalizeDocumentSort(sort),everythingQuery=buildDocumentQuery(query,normalizedMode,normalizedContentSearch);
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
   const pageOffset=Math.max(0,Math.min(MAX_RESULTS,Math.trunc(Number(offset)||0))),available=Math.max(0,MAX_RESULTS-pageOffset),boundedLimit=Math.min(available,Math.max(1,Math.trunc(Number(limit)||DEFAULT_RESULT_LIMIT)));
@@ -397,7 +463,6 @@ async function searchDocuments(query,limit,mode='everything',contentSearch={},sc
   return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,sort:normalizedSort,offset:pageOffset,limit:boundedLimit,results,hasMore,maxResults:MAX_RESULTS,elapsedMs,partial,rootErrors:[]};
 }
 async function recentDocuments(limit,scopePath=''){
-  lastDocumentSearchAt=Date.now();
   const normalizedScope=normalizeSearchScopePath(scopePath),boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));
   const {rows,elapsedMs}=await runEverythingJson((config,probe)=>buildEsRecentFilesArgs({limit:boundedLimit,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));
   pruneResults();const results=mergeDocumentResults([rows],boundedLimit,RECENT_RESULT_LIMIT).map(row=>publicResult(row,{query:'',mode:'everything'}));
@@ -464,7 +529,7 @@ function normalizePreviewGeometry(value){
 }
 async function openNativePreview(id,geometry){
   const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('לתיקייה אין Windows Preview Handler של מסמך.');e.code='NATIVE_PREVIEW_NOT_FILE';throw e}
-  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),officeKind=officePreviewKind(extension);if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
+  const extension=documentExtension(row.fullPath),officeKind=officePreviewKind(extension);if(!officeKind){const e=new Error('תצוגת Windows המקורית מופעלת כרגע למסמכי Office בלבד.');e.code='NATIVE_PREVIEW_UNSUPPORTED';throw e}
   const box=normalizePreviewGeometry(geometry),encoded=Buffer.from(row.fullPath,'utf8').toString('base64');
   const response=await nativePreviewCommand('OPEN',[encoded,box.x,box.y,box.width,box.height],9000);await appendLog(`NATIVE_PREVIEW_OPEN kind=${officeKind} geometry=${box.x},${box.y},${box.width}x${box.height} handler=${JSON.stringify(response)} path=${JSON.stringify(row.fullPath)}`);return {ok:true,kind:'native',officeKind};
 }
@@ -501,12 +566,12 @@ function prunePreviewTextCache(){
   while(previewTextCache.size>PREVIEW_TEXT_CACHE_MAX)previewTextCache.delete(previewTextCache.keys().next().value);
 }
 async function searchablePreviewText(row,stat){
-  prunePreviewTextCache();const key=String(row.fullPath||'').toLocaleLowerCase('en-US'),extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase(),fingerprint=`${Number(stat.size)||0}:${Number(stat.mtimeMs)||0}${extension==='pdf'?`:pdf-extractor-${PDF_FORM_EXTRACTOR_REVISION}`:''}`;
+  prunePreviewTextCache();const key=String(row.fullPath||'').toLocaleLowerCase('en-US'),extension=documentExtension(row.fullPath),fingerprint=`${Number(stat.size)||0}:${Number(stat.mtimeMs)||0}${extension==='pdf'?`:pdf-search-${PDF_FORM_SEARCH_TEXT_REVISION}:geometry-${PDF_FORM_GEOMETRY_REVISION}`:''}`;
   const cached=previewTextCache.get(key);if(cached&&cached.fingerprint===fingerprint){cached.at=Date.now();previewTextCache.delete(key);previewTextCache.set(key,cached);return cached.data}
   let data=null;
   if(TEXT_EXTENSIONS.has(extension)){const direct=await readTextPreview(row.fullPath,stat);data={...direct,source:'file'}}
   else if(extension==='pdf'){
-    const [everythingText,pdfData]=await Promise.all([readEverythingContentPreview(row.fullPath),supplementalPdfData(row.fullPath,stat)]);
+    const [everythingText,pdfData]=await Promise.all([readEverythingContentPreview(row.fullPath),supplementalPdfData(row,stat)]);
     if(pdfData?.text)data={...pdfData,source:'pdfjs-acroform'};else if(everythingText?.text)data={...everythingText,source:'everything-content'};
   }else{const extracted=await readEverythingContentPreview(row.fullPath);if(extracted)data={...extracted,source:'everything-content'}}
   if(data){previewTextCache.set(key,{fingerprint,at:Date.now(),data});prunePreviewTextCache()}
@@ -517,13 +582,13 @@ async function previewMatches(id){
   if(row.mode!=='content'||query.length<2||stat.isDirectory())return {ok:true,bridgeVersion:BRIDGE_VERSION,active:false,query:'',count:0,snippets:[]};
   const started=Date.now(),content=await searchablePreviewText(row,stat);
   if(!content?.text)return {ok:true,bridgeVersion:BRIDGE_VERSION,active:true,query,count:0,snippets:[],truncated:false,source:'unavailable',elapsedMs:Date.now()-started};
-  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
+  const extension=documentExtension(row.fullPath);
   const search=normalizeContentSearchOptions(row.contentSearch),matches=extension==='pdf'?buildContentMatchInfo(content.text,query,{...search,contextChars:96,maxSnippets:500,maxMatches:500}):buildContentMatchInfo(content.text,query,search);
   const canBuildFormAnchors=extension==='pdf'&&Array.isArray(content.formFields),formMatchInfo=canBuildFormAnchors?buildPdfFormMatchAnchors(content.formFields,query,search,5000):{anchors:[],capped:false},formAnchorsAuthoritative=formMatchInfo.anchors.length>0;
   await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} formAnchors=${formMatchInfo.anchors.length} authoritative=${formAnchorsAuthoritative} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
   return {ok:true,bridgeVersion:BRIDGE_VERSION,active:true,...matches,formAnchors:formMatchInfo.anchors,formAnchorsCapped:formMatchInfo.capped,formAnchorsAuthoritative,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
 }
-function previewMetadata(row,stat){const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
+function previewMetadata(row,stat){const extension=documentExtension(row.fullPath);return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
 async function previewDocument(id){
   const {row,stat}=await resolveResult(id),meta=previewMetadata(row,stat);
   if(stat.isDirectory())return {ok:true,kind:'folder',...meta};
@@ -543,7 +608,7 @@ async function previewDocument(id){
 }
 async function readBinaryPreview(id){
   const {row,stat}=await resolveResult(id);if(stat.isDirectory()){const e=new Error('תיקייה אינה קובץ לתצוגה מקדימה.');e.code='PREVIEW_NOT_FILE';throw e}
-  const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
+  const extension=documentExtension(row.fullPath);
   const mime=BINARY_PREVIEW_MIME.get(extension)||STRUCTURED_PREVIEW_MIME.get(extension);if(!mime){const e=new Error('סוג הקובץ אינו נתמך בתצוגה בינארית.');e.code='PREVIEW_UNSUPPORTED';throw e}
   const limit=STRUCTURED_PREVIEW_MIME.has(extension)?STRUCTURED_PREVIEW_MAX_BYTES:BINARY_PREVIEW_MAX_BYTES;
   if(stat.size>limit){const e=new Error('הקובץ גדול מדי לתצוגה מקדימה מהירה.');e.code='PREVIEW_TOO_LARGE';throw e}
@@ -582,10 +647,10 @@ async function revealDocument(id){
   return {ok:true,type:stat.isDirectory()?'folder':'file'};
 }
 
-function invalidateResultPath(fullPath){
+async function invalidateResultPath(fullPath){
   const target=String(fullPath||'').toLocaleLowerCase('en-US'),invalidatedIds=[];
   for(const [resultId,result] of requestResults){if(String(result.fullPath||'').toLocaleLowerCase('en-US')!==target)continue;requestResults.delete(resultId);invalidatedIds.push(resultId)}
-  previewTextCache.delete(target);if(pdfFormIndex.delete(target))schedulePdfFormIndexRefresh(250);
+  previewTextCache.delete(target);await loadPdfFormIndex();if(pdfFormIndex.delete(target))await appendPdfIndexJournal([{op:'remove',fullPath}]);
   return invalidatedIds;
 }
 
@@ -597,7 +662,7 @@ async function deleteDocument(id){
   const script='Add-Type -AssemblyName Microsoft.VisualBasic; $p=$env:NETUNIM_DELETE_TARGET; $ui=[Microsoft.VisualBasic.FileIO.UIOption]::OnlyErrorDialogs; $recycle=[Microsoft.VisualBasic.FileIO.RecycleOption]::SendToRecycleBin; $cancel=[Microsoft.VisualBasic.FileIO.UICancelOption]::ThrowException; if([System.IO.Directory]::Exists($p)){[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($p,$ui,$recycle,$cancel)}elseif([System.IO.File]::Exists($p)){[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($p,$ui,$recycle,$cancel)}else{throw "Target no longer exists."}';
   await execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true,timeout:30000,env});
   let missing=false;try{await fs.stat(row.fullPath)}catch(error){if(error?.code==='ENOENT')missing=true;else throw error}if(!missing){const e=new Error('Windows לא אישר שהקובץ נמחק.');e.code='DELETE_TARGET_REMAINS';throw e}
-  const invalidatedIds=invalidateResultPath(row.fullPath);
+  const invalidatedIds=await invalidateResultPath(row.fullPath);
   await appendLog(`DELETE type=${stat.isDirectory()?'folder':'file'} recycle=SendToRecycleBin invalidated=${invalidatedIds.length} path=${JSON.stringify(row.fullPath)}`);
   return {ok:true,type:stat.isDirectory()?'folder':'file',invalidatedIds};
 }
@@ -611,9 +676,10 @@ async function handle(req,res){
   try{
     if(req.method==='GET'&&req.url==='/status'){
       const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
-      await loadPdfFormIndex();const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length;sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:diagnostics.error||'',interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():''}},config);return;
+      let pdfIndexError='';try{await loadPdfFormIndex()}catch(error){pdfIndexError=String(error?.message||error)}
+      const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}},config);return;
     }
-    if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});schedulePdfFormIndexRefresh(PDF_FORM_INDEX_BACKLOG_DELAY_MS);sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
+    if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
     if(req.method==='POST'&&req.url==='/documents/select-folder'){const result=await selectSearchFolder();sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit,body.scopePath);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath,body.offset,body.sort);sendJson(req,res,200,result,config);return}
@@ -626,7 +692,7 @@ async function handle(req,res){
     if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/reveal'){const body=await readJson(req),result=await revealDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/delete'){const body=await readJson(req),result=await deleteDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/shutdown'){shuttingDown=true;if(pdfFormIndexRefreshTimer)clearTimeout(pdfFormIndexRefreshTimer);pdfFormIndexRefreshTimer=null;pdfFormIndexRefreshAbortController?.abort();await stopNativePreview();sendJson(req,res,200,{ok:true,pid:process.pid},config);const activeRefresh=pdfFormIndexRefreshPromise;setTimeout(async()=>{if(activeRefresh)await Promise.race([activeRefresh.catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1200))]);server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);setTimeout(()=>{process.exit(0)},2500).unref?.();return}
+    if(req.method==='POST'&&req.url==='/shutdown'){shuttingDown=true;await stopNativePreview();sendJson(req,res,200,{ok:true,pid:process.pid},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);setTimeout(()=>{process.exit(0)},2500).unref?.();return}
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);
   }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
 }
@@ -686,15 +752,16 @@ async function main(){
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor();return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
     await init();await probeEverything({fresh:true,autoStart:true});
     const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value)));
-    const maxChanged=maxArg?Math.max(0,Number(maxArg.split('=')[1])||0):PDF_FORM_INDEX_BACKGROUND_BATCH;
+    const maxChanged=maxArg?Math.max(0,Number(maxArg.split('=')[1])||0):PDF_FORM_MAINTENANCE_MAX_FILES;
     let lastPrinted=0;
-    const result=await refreshPdfFormIndex({maxChanged,onProgress:progress=>{
+    const result=await withFileLock(PDF_FORM_MAINTENANCE_LOCK_PATH,()=>refreshPdfFormIndex({maxChanged,force:extraArgs.includes('--force'),reason:extraArgs.includes('--force')?'manual':'scheduled',onProgress:progress=>{
       if(progress.phase==='start'){console.log(`Interactive PDF index scan: ${progress.pdfCount} PDF files, ${progress.changed} need inspection; processing ${progress.selected} now.`);return}
       if(progress.processed===progress.selected||progress.processed-lastPrinted>=4){lastPrinted=progress.processed;console.log(`Interactive PDF index progress: ${progress.processed}/${progress.selected}`)}
-    }});
+    }}),{staleMs:60*60*1000});
+    if(result.skipped){console.log('Interactive PDF maintenance is not due yet.');return}
     console.log(`Interactive PDF index: ${result.cached} inspected cache entries, ${result.interactive} interactive PDFs, ${result.processed}/${result.changed} inspected now, ${result.pending} pending, ${result.failed} failed`);return
   }if(arg==='--print-token'){console.log(await ensureToken());return}if(arg==='--stop-existing'){await stopExisting();return}if(arg==='--check-running'){await checkRunning();return}if(arg==='--write-install-summary'){await writeInstallSummary();return}
   if(process.platform!=='win32')throw new Error('Document Bridge is intended for Windows.');
-  await init();server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{await appendLog(`UNHANDLED ${error?.stack||error}`);try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}})});server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));server.listen(BRIDGE_PORT,'127.0.0.1',()=>{appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);probeEverything({fresh:true,autoStart:true}).then(probe=>{appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`);schedulePdfFormIndexRefresh(PDF_FORM_INDEX_BACKLOG_DELAY_MS)}).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))});
+  await init();server=http.createServer((req,res)=>{handle(req,res).catch(async error=>{await appendLog(`UNHANDLED ${error?.stack||error}`);try{res.writeHead(500,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(safeError(error)))}catch{}})});server.on('error',error=>appendLog(`SERVER ${error?.code||''} ${error?.message||error}`));server.listen(BRIDGE_PORT,'127.0.0.1',()=>{appendLog(`START ${BRIDGE_SERVICE} v${BRIDGE_VERSION} node=${process.versions.node} on 127.0.0.1:${BRIDGE_PORT}`);probeEverything({fresh:true,autoStart:true}).then(probe=>appendLog(`EVERYTHING_READY version=${probe.everythingVersion} instance=${probe.instance||'(default)'}`)).catch(error=>appendLog(`EVERYTHING_BACKGROUND_START_FAILED ${error?.code||'ERROR'} ${error?.message||error}`))});
 }
 main().catch(async error=>{await appendLog(`FATAL ${error?.stack||error}`);console.error(error?.message||error);process.exitCode=1});

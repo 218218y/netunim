@@ -47,8 +47,8 @@ Website modes
      %LOCALAPPDATA%\NetunimDocumentBridge\pdf-form-index.journal.jsonl
    Only PDFs already present in Everything are considered. Both interactive and
    non-interactive PDFs are fingerprinted after inspection, so an unchanged PDF
-   is never reparsed merely because it has no form fields. Background discovery
-   advances in small persisted batches; completed work survives Bridge upgrades,
+   is never reparsed merely because it has no form fields. Scheduled maintenance
+   advances in bounded persisted runs; completed work survives Bridge upgrades,
    restarts and interrupted scans. PDF.js auxiliary CMap/font/WASM resources are read directly
    from local files with Unicode-safe Windows path handling, so Hebrew Windows
    user/profile names do not break standard-font loading.
@@ -58,8 +58,8 @@ Search latency
 Filename and content searches are independent request lanes. The website starts
 Everything filename search first and paints those rows as soon as they arrive;
 content search follows without blocking the filename results. Interactive-PDF
-index refresh is never awaited on the request path: the persisted index is used
-immediately and refresh continues in the background. Boolean supplemental-index
+index maintenance is never started on the search or warm request path: the persisted
+index is used immediately. Boolean supplemental-index
 filtering stops at the first qualifying match instead of materializing thousands
 of highlight ranges per PDF.
 
@@ -124,25 +124,34 @@ prevents another preview host or a monitor/DPI transition from leaving a stale
 Office preview size behind.
 
 
-Background PDF indexing
------------------------
-The supplemental index is incremental and keeps an explicit extractor revision.
-Installing v30 revalidates older positive and negative PDF records once, so a
-PDF previously cached as non-interactive cannot stay permanently without form
-geometry after the extractor learns a newer form representation.
+Scheduled PDF maintenance
+-------------------------
+The Bridge listener never scans PDFs on startup, warm or search. Windows Task
+Scheduler starts a separate short-lived Node process daily at 12:00, after a
+missed start when Windows permits, with low priority and AC power required.
+Each run handles at most 300 changed PDFs or 15 minutes, whichever comes first.
+The process exits when the run finishes. A second run cannot overlap the first.
 
-After the one-time v30 extractor-revision migration, later runs remain
-incremental: an entry is re-inspected only when Everything reports a changed
-size/date fingerprint or when its extractor revision is stale. Current negative
-results (ordinary PDFs without supported AcroForm fields) are cached too.
+Everything's date-modified filter supplies daily incremental candidates with a
+one-day overlap. A full metadata inventory is performed initially and every
+seven days to find older/backdated files, renames and deletions. No PDF content
+is read during metadata comparison. A checkpoint advances only after the candidate
+set is complete, so unfinished work is reconsidered at the next scheduled run.
 
-While an initial backlog exists, the Bridge processes only 8 PDFs per batch with
-one PDF extraction at a time, appends that batch to a small crash-safe journal,
-then yields before the next batch. The journal is compacted into the main snapshot
-periodically, so progress survives interruption without rewriting a large JSON file
-after every PDF. Active user searches take priority and postpone the next background batch.
-This prevents a large Y:\ network archive from monopolizing CPU/network and means
-a restart loses at most the current small batch rather than the entire scan.
+The persisted index has independent detection, search-text and geometry revisions.
+Missing geometry is recovered only when that PDF is previewed; it does not add
+the whole library to the maintenance queue. Unchanged negative results remain
+cached. Failed PDFs use increasing retry delays from one to seven days; password
+protected files wait 30 days. A changed fingerprint is inspected immediately.
+Every inspected record is journaled before the next file, and a file lock
+protects journal/snapshot changes from concurrent preview enrichment.
+
+Run maintenance manually if needed:
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NetunimDocumentBridge\run_pdf_maintenance.ps1" -Force
+The runner reads the active runtime name from active-runtime.txt. The manual run uses the
+same 300-file and 15-minute limits unless -MaxFiles N is supplied. The status
+endpoint exposes the last attempt, successful run and result counters; bridge.log
+records trigger, bytes read, CPU time and elapsed time.
 
 Everything background process
 -----------------------------
@@ -158,8 +167,7 @@ Run install_document_bridge.bat on each PC. The installer:
 - verifies ES/Everything;
 - starts Everything in background mode if required;
 - preserves the existing supplemental PDF index without scanning PDFs during
-  installation; after the new Bridge is healthy, background inspection resumes
-  from the persisted fingerprints in small low-concurrency batches;
+  installation and registers daily AC-only PDF maintenance;
 - stops the current Bridge listener before activation and then switches to a
   side-by-side versioned runtime through active-runtime.txt. The installer never
   renames or deletes the currently active runtime as a prerequisite for success,

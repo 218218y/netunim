@@ -291,9 +291,17 @@ export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=1500
   return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
 }
 
-export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath=''}={}){
+export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath='',modifiedSince=''}={}){
   const pageSize=Math.max(1,Math.min(1000,Math.trunc(Number(limit)||250)));
-  return buildEsRawSearchArgs({search:'ext:pdf',limit:pageSize,offset,timeoutMs,instance,filesOnly:true,maxResults:1000,scopePath});
+  const since=String(modifiedSince||'').trim();
+  if(since&&!/^\d{4}-\d{2}-\d{2}$/.test(since))throw new Error('Invalid PDF inventory checkpoint date');
+  return buildEsRawSearchArgs({search:`ext:pdf${since?` dm:>=${since}`:''}`,limit:pageSize,offset,timeoutMs,instance,filesOnly:true,maxResults:1000,scopePath});
+}
+
+export function documentExtension(fullPath){
+  const name=path.win32.basename(String(fullPath||''));
+  const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
+  return extension||(/^\.[^.]+$/.test(name)?name.slice(1).toLowerCase():'');
 }
 
 export function buildExactFullPathQuery(fullPath){
@@ -334,7 +342,7 @@ export function parseEsJson(stdout){
     const modified=text(field(row,['date modified','date-modified','datemodified','date_modified','dm']));
     const sizeRaw=field(row,['size']);
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
-    const extension=path.win32.extname(name).replace(/^\./,'').toLowerCase();
+    const extension=documentExtension(name);
     const attributes=text(field(row,['attributes','attribs','attrib']));
     const isDirectory=attributes.toUpperCase().includes('D')||/directory/i.test(attributes);
     return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};

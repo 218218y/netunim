@@ -2,7 +2,7 @@ package=pdfjs-dist
 version=6.3.289
 source=https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.3.289.tgz
 integrity=sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw==
-files=290
+files=292
 
 495588717f62303a839e91a5343deebf1b41f52e2f9f6361e73dee6ea6a4355e  build/pdf.mjs
 8ab0e5e30031b4a06ecfddd5ae9562f0227f830ee7ec9ed1a968b134243d2386  build/pdf.worker.min.mjs
@@ -180,6 +180,8 @@ b9ad1c0c09ff14bca52f9a28a9767eb857ad0e8946e64ba14c7387a7eb69866a  cmaps/V.bcmap
 bf9a8c30228939568d54f435aca41aa56fa5850e9a0bfc76cc75dc5569403e7f  image_decoders/pdf.image_decoders.min.mjs
 45830292c647dce3144c6fc11757a892b082204c1d7f7e627ca622bdbc04b069  image_decoders/pdf.image_decoders.mjs
 94b7b000ad4ea66f190f33b2047e205cb5a7e59061d7873e18267c964ae9c631  image_decoders/pdf.image_decoders.mjs.map
+91e29f812c593904e8d48d022db5ddf93e3443575d4765ac9bfbb42494cfbd8d  legacy/build/pdf.mjs
+a33cfe728c584fdba4fcc1fd54bcdc2f9f2f13889ddbb5b2bd1d0f8cbe49b84e  legacy/build/pdf.worker.min.mjs
 0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594  LICENSE
 845c752392b6c914fb989c75a08b7792b88f542d2499042ef2889f8c814a16ed  standard_fonts/FoxitDingbats.pfb
 b6c8fe53f134b8b6d4578cd2d544df4cee9624c4efa8d51a560fb40ea296101b  standard_fonts/FoxitFixed.pfb

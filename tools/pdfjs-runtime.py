@@ -31,16 +31,13 @@ MANIFEST_NAME = "_runtime-manifest.txt"
 REQUIRED_FILES = {
     "build/pdf.mjs",
     "build/pdf.worker.min.mjs",
+    "legacy/build/pdf.mjs",
+    "legacy/build/pdf.worker.min.mjs",
     "web/pdf_viewer.mjs",
     "web/pdf_viewer.css",
     "LICENSE",
 }
-OPTIONAL_FILES = {
-    # PDF.js recommends the legacy build for Node.js. The Windows Document Bridge
-    # prefers these files when present, while browser previews keep using build/.
-    "legacy/build/pdf.mjs",
-    "legacy/build/pdf.worker.min.mjs",
-}
+OPTIONAL_FILES = set()
 API_CONTRACT_SNIPPETS = {
     "build/pdf.mjs": (
         "convertToViewportPoint(x, y)",

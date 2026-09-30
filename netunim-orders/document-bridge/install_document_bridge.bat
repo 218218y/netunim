@@ -34,7 +34,7 @@ set "CONFIGWASNEW=no"
 if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 mkdir "%STAGING%" >nul 2>nul || goto :stage_error
-for %%F in (server.mjs lib.mjs pdf_form_index.mjs start_document_bridge.bat) do (
+for %%F in (server.mjs lib.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-extract-worker.mjs start_document_bridge.bat) do (
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul
@@ -70,7 +70,7 @@ node "%STAGING%\server.mjs" --ensure-everything
 if not "%ERRORLEVEL%"=="0" goto :everything_error
 
 echo Preserving local interactive PDF text index...
-echo Existing PDF index progress is reused; background inspection resumes only after the new Bridge starts.
+echo Existing PDF index progress is reused; scheduled maintenance runs separately from the Bridge.
 
 rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
 rem The new runtime is validated before the old runtime is stopped.
@@ -94,14 +94,18 @@ if errorlevel 1 goto :activate_error
 move /Y "%ACTIVETMP%" "%ACTIVEFILE%" >nul || goto :activate_error
 copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || goto :activate_error
 copy /Y "%~dp0configure_document_bridge.bat" "%APPROOT%\configure_document_bridge.bat" >nul || goto :activate_error
+copy /Y "%~dp0run_pdf_maintenance.ps1" "%APPROOT%\run_pdf_maintenance.ps1" >nul || goto :activate_error
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
 node "%RUNTIME%\server.mjs" --check-running
 if not "%ERRORLEVEL%"=="0" goto :activate_error
 
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "%~dp0install_pdf_maintenance_task.ps1" -AppRoot "%APPROOT%"
+if not "%ERRORLEVEL%"=="0" goto :activate_error
+
 node "%RUNTIME%\server.mjs" --write-install-summary >nul
 if not "%ERRORLEVEL%"=="0" goto :activate_error
-if exist "%APPROOT%\bridge-token.txt" type "%APPROOT%\bridge-token.txt" | clip
+if exist "%APPROOT%\bridge-token.txt" type "%APPROOT%\bridge-token.txt" | clip >nul 2>nul
 
 if exist "%CONFIGBACKUP%" del /Q "%CONFIGBACKUP%" >nul 2>nul
 if exist "%ACTIVEBACKUP%" del /Q "%ACTIVEBACKUP%" >nul 2>nul

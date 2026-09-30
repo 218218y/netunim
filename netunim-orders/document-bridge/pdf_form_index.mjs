@@ -135,13 +135,14 @@ export function textContentToLogicalText(content){
 function abortError(){const error=new Error('Interactive PDF extraction aborted');error.name='AbortError';error.code='ABORT_ERR';return error}
 function throwIfAborted(signal){if(signal?.aborted)throw abortError()}
 
-export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null,includePageText=true}={}){
+export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null,includePageText=true,onBytesRead=null}={}){
   throwIfAborted(signal);
   const stat=await fs.stat(fullPath);
   throwIfAborted(signal);
   if(!stat.isFile())return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'not-file'};
   if(stat.size>maxBytes)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'too-large'};
   const data=new Uint8Array(await fs.readFile(fullPath,signal?{signal}:undefined));
+  if(typeof onBytesRead==='function')onBytesRead(data.byteLength);
   throwIfAborted(signal);
   const pdfjs=await loadPdfJs();
   const task=pdfjs.getDocument({
