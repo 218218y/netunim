@@ -12,7 +12,7 @@ import {
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
-import {extractInteractivePdfText,PDF_FORM_MAX_BYTES} from './pdf_form_index.mjs';
+import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES} from './pdf_form_index.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -224,12 +224,19 @@ function pdfIndexInScope(fullPath,scopePath){
   const relative=path.win32.relative(scopePath,fullPath);
   return relative===''||(!relative.startsWith('..\\')&&relative!=='..'&&!path.win32.isAbsolute(relative));
 }
+function normalizePdfFormField(field){
+  const rect=Array.isArray(field?.rect)&&field.rect.length===4?field.rect.map(Number):null,values=Array.isArray(field?.values)?field.values.map(value=>String(value||'')).filter(Boolean):[];
+  if(!rect||!rect.every(Number.isFinite)||!values.length)return null;
+  const pageNumber=Math.max(1,Number(field?.pageNumber)||1),annotationIndex=Math.max(0,Number(field?.annotationIndex)||0),fieldName=String(field?.fieldName||''),fieldKey=String(field?.fieldKey||'')||`field:${pageNumber}:${annotationIndex}:${fieldName}:${rect.join(',')}`;
+  return {pageNumber,annotationIndex,fieldKey,fieldName,fieldType:String(field?.fieldType||''),rect,values,multiLine:!!field?.multiLine};
+}
+function normalizePdfFormFields(fields){return (Array.isArray(fields)?fields:[]).map(normalizePdfFormField).filter(Boolean)}
 function normalizePdfIndexEntry(entry){
   const fullPath=String(entry?.fullPath||'');if(!fullPath)return null;
-  const hasForm=typeof entry.hasForm==='boolean'?entry.hasForm:(Math.max(0,Number(entry.formFieldCount)||0)>0||!!String(entry.text||''));
-  return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),hasForm,text:String(entry.text||''),formFieldCount:Math.max(0,Number(entry.formFieldCount)||0),failed:!!entry.failed,error:String(entry.error||'')};
+  const hasForm=typeof entry.hasForm==='boolean'?entry.hasForm:(Math.max(0,Number(entry.formFieldCount)||0)>0||!!String(entry.text||'')),formFields=normalizePdfFormFields(entry.formFields);
+  return {fullPath,name:String(entry.name||path.win32.basename(fullPath)),relativePath:String(entry.relativePath||path.win32.dirname(fullPath)),modified:String(entry.modified||''),size:Number.isFinite(Number(entry.size))?Number(entry.size):null,extension:'pdf',attributes:String(entry.attributes||''),isDirectory:false,rootId:'everything',rootLabel:'Everything',fingerprint:String(entry.fingerprint||''),hasForm,text:String(entry.text||''),formFields,formFieldCount:Math.max(formFields.length,Math.max(0,Number(entry.formFieldCount)||0)),failed:!!entry.failed,error:String(entry.error||'')};
 }
-function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,attributes:entry.attributes||'',fingerprint:entry.fingerprint,hasForm:!!entry.hasForm,text:entry.text||'',formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||''}}
+function serializePdfIndexEntry(entry){return {fullPath:entry.fullPath,name:entry.name,relativePath:entry.relativePath,modified:entry.modified,size:entry.size,attributes:entry.attributes||'',fingerprint:entry.fingerprint,hasForm:!!entry.hasForm,text:entry.text||'',formFields:normalizePdfFormFields(entry.formFields),formFieldCount:entry.formFieldCount||0,failed:!!entry.failed,error:entry.error||''}}
 async function loadPdfFormIndex(){
   if(pdfFormIndexLoaded)return;
   const stored=await readJsonFile(PDF_FORM_INDEX_PATH,null);pdfFormIndex.clear();
@@ -295,11 +302,11 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_INDEX_BACKGROUND_BATCH,o
       const key=pdfIndexKey(row.fullPath);
       try{
         const extracted=await extractInteractivePdfText(row.fullPath,{maxBytes:PDF_FORM_MAX_BYTES,signal:controller.signal});
-        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,hasForm:!!extracted.hasForm,text:extracted.hasForm?extracted.text:'',formFieldCount:extracted.hasForm?extracted.formFieldCount:0,failed:false,error:''};pdfFormIndex.set(key,entry);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});
+        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,hasForm:!!extracted.hasForm,text:extracted.hasForm?extracted.text:'',formFields:extracted.hasForm?normalizePdfFormFields(extracted.formFields):[],formFieldCount:extracted.hasForm?extracted.formFieldCount:0,failed:false,error:''};pdfFormIndex.set(key,entry);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});
         if(extracted.hasForm)indexed+=1;
       }catch(error){
         if(isAbortError(error)||shuttingDown||controller.signal.aborted){aborted=true;break}
-        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,hasForm:false,text:'',formFieldCount:0,failed:true,error:String(error?.message||error)};pdfFormIndex.set(key,entry);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});failed+=1;
+        const entry={...row,rootId:'everything',rootLabel:'Everything',fingerprint:row.fingerprint,hasForm:false,text:'',formFields:[],formFieldCount:0,failed:true,error:String(error?.message||error)};pdfFormIndex.set(key,entry);journalRecords.push({op:'upsert',entry:serializePdfIndexEntry(entry)});failed+=1;
         await appendLog(`PDF_FORM_INDEX_FILE_FAILED path=${JSON.stringify(row.fullPath)} error=${JSON.stringify(String(error?.message||error))}`);
       }
       processed+=1;if(typeof onProgress==='function')onProgress({phase:'file',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed,indexed,failed,name:row.name});
@@ -343,11 +350,18 @@ function searchPdfFormIndex(query,contentSearch,scopePath,limit,sort={}){
   results.sort((a,b)=>compareDocumentRows(a,b,sort));
   return results.slice(0,Math.max(1,Number(limit)||DEFAULT_RESULT_LIMIT));
 }
-async function supplementalPdfText(fullPath,stat){
+async function supplementalPdfData(fullPath,stat){
   await loadPdfFormIndex();const key=pdfIndexKey(fullPath),cached=pdfFormIndex.get(key);
-  if(cached?.hasForm&&cached.text)return trimPreviewText(cached.text);
+  if(cached?.hasForm&&cached.text&&cached.formFields?.length)return {...trimPreviewText(cached.text),formFields:normalizePdfFormFields(cached.formFields)};
   if(cached&&!cached.hasForm&&!cached.failed)return null;
-  try{const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES});if(extracted.hasForm&&extracted.text)return trimPreviewText(extracted.text)}catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
+  try{
+    const extracted=await extractInteractivePdfText(fullPath,{maxBytes:PDF_FORM_MAX_BYTES});
+    if(extracted.hasForm&&extracted.text){
+      const formFields=normalizePdfFormFields(extracted.formFields),data={...trimPreviewText(extracted.text),formFields};
+      if(cached?.hasForm&&cached.fingerprint){const updated={...cached,text:extracted.text,formFields,formFieldCount:extracted.formFieldCount||formFields.length,failed:false,error:''};pdfFormIndex.set(key,updated);await appendPdfIndexJournal([{op:'upsert',entry:serializePdfIndexEntry(updated)}])}
+      return data;
+    }
+  }catch(error){await appendLog(`PDF_FORM_PREVIEW_FAILED path=${JSON.stringify(fullPath)} error=${JSON.stringify(String(error?.message||error))}`)}
   return null;
 }
 async function searchDocuments(query,limit,mode='everything',contentSearch={},scopePath='',offset=0,sort={}){
@@ -476,8 +490,8 @@ async function searchablePreviewText(row,stat){
   const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();let data=null;
   if(TEXT_EXTENSIONS.has(extension)){const direct=await readTextPreview(row.fullPath,stat);data={...direct,source:'file'}}
   else if(extension==='pdf'){
-    const [everythingText,pdfText]=await Promise.all([readEverythingContentPreview(row.fullPath),supplementalPdfText(row.fullPath,stat)]);
-    if(pdfText?.text)data={...pdfText,source:'pdfjs-acroform'};else if(everythingText?.text)data={...everythingText,source:'everything-content'};
+    const [everythingText,pdfData]=await Promise.all([readEverythingContentPreview(row.fullPath),supplementalPdfData(row.fullPath,stat)]);
+    if(pdfData?.text)data={...pdfData,source:'pdfjs-acroform'};else if(everythingText?.text)data={...everythingText,source:'everything-content'};
   }else{const extracted=await readEverythingContentPreview(row.fullPath);if(extracted)data={...extracted,source:'everything-content'}}
   if(data){previewTextCache.set(key,{fingerprint,at:Date.now(),data});prunePreviewTextCache()}
   return data;
@@ -489,8 +503,9 @@ async function previewMatches(id){
   if(!content?.text)return {ok:true,active:true,query,count:0,snippets:[],truncated:false,source:'unavailable',elapsedMs:Date.now()-started};
   const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();
   const search=normalizeContentSearchOptions(row.contentSearch),matches=extension==='pdf'?buildContentMatchInfo(content.text,query,{...search,contextChars:96,maxSnippets:500,maxMatches:500}):buildContentMatchInfo(content.text,query,search);
-  await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
-  return {ok:true,active:true,...matches,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
+  const formAnchorsAuthoritative=extension==='pdf'&&Array.isArray(content.formFields),formMatchInfo=formAnchorsAuthoritative?buildPdfFormMatchAnchors(content.formFields,query,search,5000):{anchors:[],capped:false};
+  await appendLog(`PREVIEW_MATCHES count=${matches.count} snippets=${matches.snippets.length} formAnchors=${formMatchInfo.anchors.length} authoritative=${formAnchorsAuthoritative} source=${content.source} elapsedMs=${Date.now()-started} path=${JSON.stringify(row.fullPath)}`);
+  return {ok:true,active:true,...matches,formAnchors:formMatchInfo.anchors,formAnchorsCapped:formMatchInfo.capped,formAnchorsAuthoritative,truncated:!!content.truncated,source:content.source,elapsedMs:Date.now()-started};
 }
 function previewMetadata(row,stat){const extension=path.win32.extname(row.fullPath).replace(/^\./,'').toLowerCase();return {name:path.win32.basename(row.fullPath),path:path.win32.dirname(row.fullPath),fullPath:row.fullPath,extension,size:Number(stat.size)||0,isDirectory:stat.isDirectory(),modified:stat.mtime?.toISOString?.()||''}}
 async function previewDocument(id){

@@ -20,3 +20,14 @@ export function previewDetailsHtml(data){const rows=[[data.isDirectory?'סוג':
 export function previewTextLabel(data){return data.source==='office-text-fallback'?'טקסט שחולץ ממסמך Office':data.source==='everything-content'?'טקסט שחולץ על־ידי Everything':data.source==='google-drive-content'?'קובץ טקסט מ-Google Drive':'קובץ טקסט'}
 function compactContext(value,{tail=false,limit=42}={}){const clean=String(value||'').replace(/\s+/g,' ').trim();if(clean.length<=limit)return clean;return tail?`…${clean.slice(-limit).replace(/^\S*\s?/,'')||clean.slice(-limit)}`:`${clean.slice(0,limit).replace(/\s?\S*$/,'')||clean.slice(0,limit)}…`}
 export function snippetHtml(snippet,fallbackMatch=''){if(!snippet)return '';const before=compactContext(snippet.before,{tail:true,limit:34}),after=compactContext(snippet.after,{limit:42});return `<span class="document-preview-match-before">${snippet.leading&&!before.startsWith('…')?'…':''}${esc(before)}</span><mark class="document-preview-match-term">${esc(snippet.match||fallbackMatch)}</mark><span class="document-preview-match-after">${esc(after)}${snippet.trailing&&!after.endsWith('…')?'…':''}</span>`}
+
+export function previewMatchBarPresentation(info,{viewerState={},index=0,query=''}={}){
+  if(!info?.active)return null;
+  const state=viewerState||{},externalCurrent=Math.max(0,Number(state.current)||0),externalTotal=Math.max(0,Number(state.total)||0),snippets=Array.isArray(info.snippets)?info.snippets:[];
+  const requestedIndex=externalCurrent?externalCurrent-1:Number(index)||0,safeIndex=snippets.length?Math.max(0,Math.min(snippets.length-1,requestedIndex)):0,snippet=state.snippet||snippets[safeIndex]||null;
+  const total=externalTotal||Number(info.count)||snippets.length;
+  if(!total)return {index:0,total:0,html:'<div class="document-preview-match-loading muted">לא נמצאו התאמות ניתנות להצגה במסמך.</div>'};
+  const countLabel=state.capped||info.capped?`${total}+`:String(total),position=`${externalCurrent||safeIndex+1}/${total}`,location=state.location?`<span class="document-preview-match-location">${esc(state.location)}</span>`:'';
+  const html=`<div class="document-preview-match-summary"><b>${esc(countLabel)} התאמות</b>${location}${info.truncated?'<span>בתצוגה החלקית</span>':''}</div><div class="document-preview-match-context">${snippet?snippetHtml(snippet,query):'<span class="document-preview-match-empty">הקובץ תאם לחיפוש, אך לא ניתן להפיק קטע הקשר.</span>'}</div>${total>1?`<div class="document-preview-match-nav"><button type="button" data-preview-match-prev aria-label="התאמה קודמת">‹</button><span>${esc(position)}</span><button type="button" data-preview-match-next aria-label="התאמה הבאה">›</button></div>`:''}`;
+  return {index:safeIndex,total,html};
+}

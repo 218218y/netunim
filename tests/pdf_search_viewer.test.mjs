@@ -123,6 +123,38 @@ test('AcroForm matches become visible and navigable without waiting for native P
   }finally{globalThis.document=originalDocument}
 });
 
+
+
+test('Bridge AcroForm anchors render and navigate even when browser annotation extraction cannot rediscover the value',async()=>{
+  const originalDocument=globalThis.document;
+  const listeners=new Map();
+  globalThis.document={
+    createElement:()=>new TinyElement(),
+    addEventListener:(name,handler)=>listeners.set(name,handler),
+    removeEventListener:name=>listeners.delete(name),
+    getSelection:()=>null,
+  };
+  try{
+    const {state,pageRoot,runtime}=fakeInteractiveRuntime([]),host=fakeHost();
+    host.container.append=TinyElement.prototype.append.bind(host.container);
+    host.container.children=[];host.container.className='document-pdfjs-container';host.container.querySelectorAll=TinyElement.prototype.querySelectorAll.bind(host.container);host.container.getBoundingClientRect=()=>({left:0,top:0,width:640,height:800,right:640,bottom:800});host.container.clientHeight=800;host.container.scrollTop=0;host.container.scrollLeft=0;host.container.scrollTo=()=>{};
+    const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'ליבי',runtime});
+    await tick();
+    assert.equal(viewer.matchState().total,0,'the local browser scan intentionally sees no form value in this fixture');
+    const applied=await viewer.setExternalMatchInfo({formAnchorsAuthoritative:true,formAnchors:[
+      {pageNumber:1,annotationIndex:0,fieldKey:'id:name',fieldName:'שם',fieldType:'Tx',rect:[100,600,300,640],start:0,end:4,value:'ליבי מאיר ליבי',snippet:{before:'',match:'ליבי',after:' מאיר ליבי',leading:false,trailing:false}},
+      {pageNumber:1,annotationIndex:0,fieldKey:'id:name',fieldName:'שם',fieldType:'Tx',rect:[100,600,300,640],start:10,end:14,value:'ליבי מאיר ליבי',snippet:{before:'ליבי מאיר ',match:'ליבי',after:'',leading:false,trailing:false}},
+    ],formAnchorsCapped:false});
+    assert.equal(applied,true);
+    assert.deepEqual(state.findController.pageMatches,[],'native PDF text search is still unresolved, proving the Bridge geometry is what drives this path');
+    assert.equal(viewer.matchState().total,2);
+    assert.equal(viewer.matchState().current,1,'the first external form match is selected automatically');
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'both occurrences share one field rectangle while remaining separate navigation matches');
+    const before=viewer.matchState().current;viewer.next();assert.notEqual(viewer.matchState().current,before,'navigation advances using external Bridge anchors');
+    await viewer.destroy();
+  }finally{globalThis.document=originalDocument}
+});
+
 test('PDF text copy reconstructs visual word gaps without inserting spaces between glyph fragments',()=>{
   const rect=(left,right,top=10,bottom=22)=>({left,right,top,bottom});
   assert.equal(joinPdfTextSelectionSegments([

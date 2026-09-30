@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
+import {contentMatchRanges,normalizeContentSearchOptions,normalizeSearchText} from './lib.mjs';
 
 export const PDF_FORM_MAX_BYTES=64*1024*1024;
 export const PDF_FORM_EXTRACT_TIMEOUT_MS=12*1000;
@@ -67,6 +68,48 @@ export function collectPdfFormValues(annotations=[]){
   return values;
 }
 
+function normalizedPdfRect(rect){
+  if(!Array.isArray(rect)||rect.length!==4)return null;
+  const values=rect.map(Number);return values.every(Number.isFinite)?values:null;
+}
+
+export function collectPdfFormFields(annotations=[],pageNumber=1){
+  const fields=[];
+  for(const [annotationIndex,annotation] of annotations.entries()){
+    if(!annotation||annotation.password||!['Tx','Ch'].includes(String(annotation.fieldType||'')))continue;
+    const values=annotationValues(annotation).map(cleanPdfText).filter(Boolean),rect=normalizedPdfRect(annotation.rect);
+    if(!values.length||!rect)continue;
+    const id=String(annotation.id||'').trim(),fieldName=String(annotation.fieldName||'');
+    fields.push({pageNumber:Math.max(1,Number(pageNumber)||1),annotationIndex,fieldKey:id?`id:${id}`:`field:${Math.max(1,Number(pageNumber)||1)}:${annotationIndex}:${fieldName}:${rect.join(',')}`,fieldName,fieldType:String(annotation.fieldType||''),rect,values,multiLine:!!annotation.multiLine});
+  }
+  return fields;
+}
+
+function formFieldSnippet(value,range,{contextChars=96}={}){
+  const source=String(value||''),context=Math.max(24,Math.min(180,Number(contextChars)||96)),start=Math.max(0,range.index-context),end=Math.min(source.length,range.index+range.length+context),clean=part=>String(part??'').replace(/\s+/g,' ');
+  return {before:clean(source.slice(start,range.index)).trimStart(),match:source.slice(range.index,range.index+range.length),after:clean(source.slice(range.index+range.length,end)).trimEnd(),leading:start>0,trailing:end<source.length};
+}
+
+export function buildPdfFormMatchAnchors(formFields=[],query,contentSearch={},maxMatches=5000){
+  const needle=normalizeSearchText(query),search=normalizeContentSearchOptions(contentSearch),highlightSearch=search.matchMode==='all'?{...search,matchMode:'any'}:search,limit=Math.max(1,Math.min(20000,Number(maxMatches)||5000)),anchors=[];let capped=false;
+  if(needle.length<2)return {anchors,capped:false};
+  for(const field of formFields||[]){
+    const rect=normalizedPdfRect(field?.rect),pageNumber=Math.max(1,Number(field?.pageNumber)||1),fieldKey=String(field?.fieldKey||''),values=Array.isArray(field?.values)?field.values:[field?.value];
+    if(!rect||!fieldKey)continue;
+    for(const raw of values){
+      const value=cleanPdfText(raw);if(!value)continue;
+      const remaining=limit-anchors.length;if(remaining<=0){capped=true;break}
+      const found=contentMatchRanges(value,needle,{...highlightSearch,maxMatches:remaining});
+      for(const range of found.ranges)anchors.push({kind:'form',pageNumber,pageIdx:pageNumber-1,annotationIndex:Math.max(0,Number(field.annotationIndex)||0),fieldKey,fieldName:String(field.fieldName||''),fieldType:String(field.fieldType||''),rect:[...rect],start:range.index,end:range.index+range.length,snippet:formFieldSnippet(value,range),value});
+      capped=capped||found.capped;
+      if(anchors.length>=limit){capped=true;break}
+    }
+    if(anchors.length>=limit)break;
+  }
+  anchors.sort((a,b)=>a.pageIdx-b.pageIdx||a.annotationIndex-b.annotationIndex||a.start-b.start);
+  return {anchors,capped};
+}
+
 export function textContentToLogicalText(content){
   const parts=[];
   for(const item of content?.items||[]){
@@ -85,8 +128,8 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
   throwIfAborted(signal);
   const stat=await fs.stat(fullPath);
   throwIfAborted(signal);
-  if(!stat.isFile())return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',size:Number(stat.size)||0,skipped:'not-file'};
-  if(stat.size>maxBytes)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',size:Number(stat.size)||0,skipped:'too-large'};
+  if(!stat.isFile())return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'not-file'};
+  if(stat.size>maxBytes)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:'too-large'};
   const data=new Uint8Array(await fs.readFile(fullPath,signal?{signal}:undefined));
   throwIfAborted(signal);
   const pdfjs=await loadPdfJs();
@@ -109,16 +152,15 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
   const withinBounds=promise=>Promise.race(signal?[promise,timeoutPromise,abortPromise]:[promise,timeoutPromise]);
   try{
     document=await withinBounds(task.promise);
-    const pages=[],annotations=[];
+    const pages=[],formFields=[];
     for(let pageNumber=1;pageNumber<=document.numPages;pageNumber+=1){
       throwIfAborted(signal);
       const page=await withinBounds(document.getPage(pageNumber));
       const pageAnnotations=await withinBounds(page.getAnnotations({intent:'display'}));
-      pages.push(page);annotations.push(...pageAnnotations);
+      pages.push(page);formFields.push(...collectPdfFormFields(pageAnnotations,pageNumber));
     }
-    const formAnnotations=annotations.filter(annotation=>annotation&&!annotation.password&&['Tx','Ch'].includes(String(annotation.fieldType||'')));
-    if(!formAnnotations.length)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',size:Number(stat.size)||0,skipped:''};
-    const formText=collectPdfFormValues(formAnnotations).join('\n');
+    if(!formFields.length)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',formFields:[],size:Number(stat.size)||0,skipped:''};
+    const formText=collectPdfFormValues(formFields.map(field=>({fieldType:field.fieldType,fieldValue:field.values}))).join('\n');
     const pageParts=[];
     for(const page of pages){
       throwIfAborted(signal);
@@ -127,7 +169,7 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
     }
     const pageText=pageParts.join('\n\n').trim();
     const text=[pageText,formText].filter(Boolean).join('\n\n').trim();
-    return {hasForm:true,formFieldCount:formAnnotations.length,text,formText,pageText,size:Number(stat.size)||0,skipped:''};
+    return {hasForm:true,formFieldCount:formFields.length,text,formText,pageText,formFields,size:Number(stat.size)||0,skipped:''};
   }finally{
     if(timeoutHandle)clearTimeout(timeoutHandle);
     if(abortReject)signal?.removeEventListener?.('abort',abortReject);

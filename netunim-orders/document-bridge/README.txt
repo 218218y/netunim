@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v27 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v28 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -35,7 +35,11 @@ Website modes
    and merges those matches with Everything results. It does not render pages to
    images and does not run OCR. This covers PDFs whose appearance streams use
    legacy Hebrew encodings that a Windows PDF iFilter may omit or expose in
-   visual/reversed order.
+   visual/reversed order. For interactive fields the index also keeps the PDF
+   page number and widget rectangle. /documents/matches returns those anchors to
+   the controlled PDF.js preview, so highlighting, first-match auto-scroll and
+   next/previous navigation do not depend on the browser rediscovering the same
+   AcroForm value a second time.
 
    The supplement snapshot is cached at:
      %LOCALAPPDATA%\NetunimDocumentBridge\pdf-form-index.json
@@ -157,7 +161,7 @@ Run install_document_bridge.bat on each PC. The installer:
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
-  removes inactive runtimes only as best-effort maintenance after the new v27
+  removes inactive runtimes only as best-effort maintenance after the new v28
   runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.

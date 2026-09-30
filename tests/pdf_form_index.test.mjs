@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {collectPdfFormValues,extractInteractivePdfText,LocalPdfBinaryDataFactory,textContentToLogicalText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
+import {buildPdfFormMatchAnchors,collectPdfFormFields,collectPdfFormValues,extractInteractivePdfText,LocalPdfBinaryDataFactory,textContentToLogicalText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 test('AcroForm extraction keeps logical Hebrew field values and ignores passwords',()=>{
   const values=collectPdfFormValues([
@@ -16,6 +16,23 @@ test('AcroForm extraction keeps logical Hebrew field values and ignores password
     {fieldType:'Tx',fieldName:'duplicate',fieldValue:'ליבי מאיר'},
   ]);
   assert.deepEqual(values,['ליבי מאיר','מצליח 5 קומה 5 בני ברק','אפשרות א','אפשרות ב']);
+});
+
+
+
+test('AcroForm index keeps page geometry and turns field-value hits into authoritative preview anchors',()=>{
+  const fields=collectPdfFormFields([
+    {id:'name',fieldType:'Tx',fieldName:'שם',fieldValue:'ליבי מאיר ליבי',rect:[100,600,300,640]},
+    {id:'secret',fieldType:'Tx',fieldName:'סוד',fieldValue:'ליבי',password:true,rect:[100,500,300,540]},
+  ],3);
+  assert.deepEqual(fields,[{pageNumber:3,annotationIndex:0,fieldKey:'id:name',fieldName:'שם',fieldType:'Tx',rect:[100,600,300,640],values:['ליבי מאיר ליבי'],multiLine:false}]);
+  const info=buildPdfFormMatchAnchors(fields,'ליבי',{matchMode:'phrase'},20);
+  assert.equal(info.capped,false);
+  assert.deepEqual(info.anchors.map(anchor=>[anchor.pageNumber,anchor.fieldKey,anchor.start,anchor.end,anchor.rect]),[
+    [3,'id:name',0,4,[100,600,300,640]],
+    [3,'id:name',10,14,[100,600,300,640]],
+  ]);
+  assert.equal(info.anchors[0].snippet.match,'ליבי');
 });
 
 test('PDF.js page-text reconstruction preserves spaces and explicit line breaks',()=>{

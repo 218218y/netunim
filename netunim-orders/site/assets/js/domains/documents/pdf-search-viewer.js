@@ -81,17 +81,21 @@ function normalizedFieldValue(annotation){
 
 function searchablePdfField(annotation){return !annotation?.password&&[PDF_TEXT_FIELD,PDF_CHOICE_FIELD].includes(String(annotation?.fieldType||''))&&!!normalizedFieldValue(annotation)}
 function pdfFieldKey(annotation,index=0){const id=String(annotation?.id||'').trim();if(id)return `id:${id}`;return `field:${String(annotation?.fieldName||'')}|${(annotation?.rect||[]).join(',')}|${index}`}
-function pdfFieldRectModel(annotation,viewport,index=0){
-  const value=normalizedFieldValue(annotation);
-  if(!viewport||!searchablePdfField(annotation)||!Array.isArray(annotation.rect)||annotation.rect.length!==4)return null;
-  const converted=viewport.convertToViewportRectangle?.(annotation.rect);
-  if(!Array.isArray(converted)||converted.length!==4)return null;
-  const width=Math.abs(Number(viewport.width)||0),height=Math.abs(Number(viewport.height)||0);
-  if(width<=0||height<=0)return null;
+function normalizedPdfRect(rect){if(!Array.isArray(rect)||rect.length!==4)return null;const values=rect.map(Number);return values.every(Number.isFinite)?values:null}
+function pdfRectGeometry(rect,viewport){
+  const source=normalizedPdfRect(rect);if(!viewport||!source)return null;
+  const converted=viewport.convertToViewportRectangle?.(source);if(!Array.isArray(converted)||converted.length!==4)return null;
+  const width=Math.abs(Number(viewport.width)||0),height=Math.abs(Number(viewport.height)||0);if(width<=0||height<=0)return null;
   const [x1,y1,x2,y2]=converted.map(Number),left=Math.min(x1,x2),top=Math.min(y1,y2),right=Math.max(x1,x2),bottom=Math.max(y1,y2);
   if(![left,top,right,bottom].every(Number.isFinite)||right<=left||bottom<=top)return null;
-  return {value,fieldKey:pdfFieldKey(annotation,index),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize:Math.max(0,Number(annotation.defaultAppearanceData?.fontSize)||0),left:100*left/width,top:100*top/height,width:100*(right-left)/width,height:100*(bottom-top)/height};
+  return {left:100*left/width,top:100*top/height,width:100*(right-left)/width,height:100*(bottom-top)/height};
 }
+function pdfFieldRectModel(annotation,viewport,index=0){
+  const value=normalizedFieldValue(annotation),geometry=pdfRectGeometry(annotation?.rect,viewport);
+  if(!geometry||!searchablePdfField(annotation))return null;
+  return {value,fieldKey:pdfFieldKey(annotation,index),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize:Math.max(0,Number(annotation.defaultAppearanceData?.fontSize)||0),...geometry};
+}
+function pdfFormMatchRectModel(match,viewport){const geometry=pdfRectGeometry(match?.rect,viewport);return geometry?{fieldKey:String(match?.fieldKey||''),...geometry}:null}
 
 export function copyablePdfTextFieldModel(annotation,viewport,index=0){const model=pdfFieldRectModel(annotation,viewport,index);return model?.fieldType===PDF_TEXT_FIELD?model:null}
 
@@ -102,7 +106,7 @@ export function findPdfFormFieldMatches(annotations,pageNumber,query,contentSear
     if(!searchablePdfField(annotation))continue;
     const value=normalizedFieldValue(annotation),remaining=limit-rows.length;if(remaining<=0){capped=true;break}
     const found=findTextMatchOffsets(value,query,{...highlightSearch,maxMatches:remaining});
-    for(const match of found.matches)rows.push({kind:'form',pageNumber:Number(pageNumber)||1,pageIdx:Math.max(0,(Number(pageNumber)||1)-1),annotationIndex,fieldKey:pdfFieldKey(annotation,annotationIndex),fieldName:String(annotation.fieldName||''),start:match.start,end:match.end,snippet:buildTextMatchSnippet(value,match),value});
+    for(const match of found.matches)rows.push({kind:'form',pageNumber:Number(pageNumber)||1,pageIdx:Math.max(0,(Number(pageNumber)||1)-1),annotationIndex,fieldKey:pdfFieldKey(annotation,annotationIndex),fieldName:String(annotation.fieldName||''),fieldType:String(annotation.fieldType||''),rect:normalizedPdfRect(annotation.rect),start:match.start,end:match.end,snippet:buildTextMatchSnippet(value,match),value});
     capped=capped||found.capped;if(rows.length>=limit){capped=true;break}
   }
   return {matches:rows,capped};
@@ -150,12 +154,12 @@ async function renderCopyablePdfFields(pageView,{isCurrent=()=>true,formMatchesB
   if(!isCurrent()||pageView.div!==page)return 0;
   const root=ensurePdfFormOverlay(pageView);if(!root)return 0;
   root.replaceChildren();
+  for(const [fieldKey,fieldMatches] of formMatchesByField?.entries?.()||[]){
+    const markerModel=pdfFormMatchRectModel(fieldMatches?.[0],viewport);if(markerModel)root.append(createPdfFormMatchMarker(markerModel,{current:fieldKey===currentFormFieldKey,count:fieldMatches.length}));
+  }
   let added=0;
   for(const [annotationIndex,annotation] of (annotations||[]).entries()){
-    const rectModel=pdfFieldRectModel(annotation,viewport,annotationIndex);if(!rectModel)continue;
-    const fieldMatches=formMatchesByField?.get?.(rectModel.fieldKey)||[];
-    if(fieldMatches.length)root.append(createPdfFormMatchMarker(rectModel,{current:rectModel.fieldKey===currentFormFieldKey,count:fieldMatches.length}));
-    if(rectModel.fieldType!==PDF_TEXT_FIELD)continue;
+    const rectModel=pdfFieldRectModel(annotation,viewport,annotationIndex);if(!rectModel||rectModel.fieldType!==PDF_TEXT_FIELD)continue;
     root.append(createCopyablePdfField(rectModel));added+=1;
   }
   return added;
@@ -307,7 +311,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
   linkService.setViewer(pdfViewer);
   let destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedRefreshQueued=false;
-  let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1;
+  let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1,externalFormMatchesApplied=false;
   const formMatchesByPage=new Map(),copyFieldGeneration=new Map();
   const removeCopyHandler=installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||((value)=>value));
   const normalizeViewerState=value=>({current:Math.max(0,Number(value?.current)||0),total:Math.max(0,Number(value?.total)||0),snippet:value?.snippet||null,capped:!!value?.capped,location:String(value?.location||'')});
@@ -340,7 +344,22 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   function buildCombinedMatches(){const rows=[];if(findController&&pdfDocument){for(let pageIdx=0;pageIdx<pdfDocument.numPages;pageIdx+=1){const pageMatches=Array.isArray(findController.pageMatches?.[pageIdx])?findController.pageMatches[pageIdx]:[];for(let matchIdx=0;matchIdx<pageMatches.length;matchIdx+=1)rows.push({kind:'text',pageIdx,pageNumber:pageIdx+1,matchIdx,sortGroup:0,sortIndex:Number(pageMatches[matchIdx])||matchIdx})}}for(const fields of formMatchesByPage.values()){for(const fieldMatches of fields.values())for(const match of fieldMatches)rows.push({...match,sortGroup:1,sortIndex:match.annotationIndex*100000+match.start})}rows.sort((a,b)=>a.pageIdx-b.pageIdx||a.sortGroup-b.sortGroup||a.sortIndex-b.sortIndex);return rows}
   function refreshCombinedNavigation({navigateInitial=false}={}){if(destroyed||!hasFindQuery||!formSearchReady)return false;const previousKey=combinedEntryKey(combinedIndex>=0?combinedMatches[combinedIndex]:null),selected=findController?.selected;combinedMatches=buildCombinedMatches();combinedReady=true;let nextIndex=previousKey?combinedMatches.findIndex(row=>combinedEntryKey(row)===previousKey):-1;if(nextIndex<0&&selected?.pageIdx>=0&&selected?.matchIdx>=0)nextIndex=combinedMatches.findIndex(row=>row.kind==='text'&&row.pageIdx===selected.pageIdx&&row.matchIdx===selected.matchIdx);if(nextIndex<0)nextIndex=combinedMatches.length?0:-1;const currentChanged=nextIndex!==combinedIndex||combinedEntryKey(combinedMatches[nextIndex])!==previousKey;combinedIndex=nextIndex;refreshFormMarkerCurrent();if(navigateInitial&&combinedIndex>=0)goCombined(combinedIndex,{behavior:'auto'});else if(currentChanged||navigateInitial)emit(combinedState());return true}
   function scheduleCombinedRefresh(){if(destroyed||!hasFindQuery||!formSearchReady||combinedRefreshQueued)return;combinedRefreshQueued=true;queueMicrotask(()=>{combinedRefreshQueued=false;refreshCombinedNavigation()})}
-  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed)return;formMatchesByPage.clear();for(const [pageNumber,fields] of scanned.matchesByPage)formMatchesByPage.set(pageNumber,fields);formSearchCapped=scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
+  function normalizedExternalFormMatch(anchor,index=0){
+    const pageNumber=Math.max(1,Number(anchor?.pageNumber)||1),rect=normalizedPdfRect(anchor?.rect),fieldKey=String(anchor?.fieldKey||'').trim();if(!rect||!fieldKey)return null;
+    const start=Math.max(0,Number(anchor?.start)||0),end=Math.max(start,Number(anchor?.end)||start),value=String(anchor?.value||''),snippet=anchor?.snippet&&typeof anchor.snippet==='object'?anchor.snippet:(value?buildTextMatchSnippet(value,{start,end}):null);
+    return {kind:'form',pageNumber,pageIdx:pageNumber-1,annotationIndex:Math.max(0,Number(anchor?.annotationIndex)||index),fieldKey,fieldName:String(anchor?.fieldName||''),fieldType:String(anchor?.fieldType||''),rect,start,end,snippet,value};
+  }
+  async function applyExternalFormMatchInfo(info){
+    if(destroyed||!interactiveForms||!hasFindQuery||info?.formAnchorsAuthoritative!==true||!Array.isArray(info?.formAnchors))return false;
+    externalFormMatchesApplied=true;formMatchesByPage.clear();
+    for(const [index,raw] of info.formAnchors.entries()){
+      const match=normalizedExternalFormMatch(raw,index);if(!match)continue;
+      let fields=formMatchesByPage.get(match.pageNumber);if(!fields){fields=new Map();formMatchesByPage.set(match.pageNumber,fields)}
+      const rows=fields.get(match.fieldKey)||[];rows.push(match);fields.set(match.fieldKey,rows);
+    }
+    formSearchCapped=!!info.formAnchorsCapped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return true;
+  }
+  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed||externalFormMatchesApplied)return;formMatchesByPage.clear();for(const [pageNumber,fields] of scanned.matchesByPage)formMatchesByPage.set(pageNumber,fields);formSearchCapped=scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
   try{
     loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
     pdfDocument=await loadingTask.promise;
@@ -352,6 +371,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     previous(){if(combinedReady&&combinedMatches.length)return goCombined(combinedIndex-1);dispatch('again',true)},
     resize(options={}){scheduleResize(options);if(combinedReady&&currentFormEntry())queueMicrotask(()=>scrollCurrentFormMatch(currentFormEntry(),{behavior:'auto'}))},
     matchState(){return combinedReady&&combinedMatches.length?combinedState():{...lastState}},
+    setExternalMatchInfo(info){return applyExternalFormMatchInfo(info)},
     async destroy(){
       if(destroyed)return;destroyed=true;removeCopyHandler();copyFieldGeneration.clear();formMatchesByPage.clear();cancelScheduledResize();resizeObserver?.disconnect?.();resizeObserver=null;
       try{pdfViewer.setDocument(null)}catch{}

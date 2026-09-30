@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=27;
+export const BRIDGE_VERSION=28;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
@@ -141,7 +141,7 @@ export function buildContentQuery(value,options={}){
   return `content:"${everythingLiteral(normalized)}" no-background-search:`;
 }
 
-function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,maxMatches=5000}={}){
+export function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,maxMatches=5000}={}){
   const needle=normalizeSearchText(query),search=normalizeContentSearchOptions({matchMode,proximityWords}),terms=contentTerms(needle);
   if(!source||needle.length<2)return {needle,search,ranges:[],capped:false};
   const haystack=source.toLocaleLowerCase('he-IL'),limit=Math.max(1,Math.min(20000,Number(maxMatches)||5000));
