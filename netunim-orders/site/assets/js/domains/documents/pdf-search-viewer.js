@@ -20,6 +20,14 @@ let stylesheetPromise=null;
 
 function runtimeUrl(relative){return new URL(relative,import.meta.url).href}
 
+function installPdfJsBrowserCompatibility(){
+  if(typeof Promise.try!=='function')Object.defineProperty(Promise,'try',{configurable:true,writable:true,value:function(callback,...args){return new Promise(resolve=>resolve(callback(...args)))}});
+  if(typeof Uint8Array.prototype.toHex!=='function')Object.defineProperty(Uint8Array.prototype,'toHex',{configurable:true,writable:true,value:function(){return Array.from(this,byte=>byte.toString(16).padStart(2,'0')).join('')}});
+  if(typeof Math.sumPrecise!=='function')Object.defineProperty(Math,'sumPrecise',{configurable:true,writable:true,value:function(values){let total=0;for(const value of values)total+=Number(value)||0;return total}});
+  if(typeof Map.prototype.getOrInsert!=='function')Object.defineProperty(Map.prototype,'getOrInsert',{configurable:true,writable:true,value:function(key,value){if(this.has(key))return this.get(key);this.set(key,value);return value}});
+  if(typeof Map.prototype.getOrInsertComputed!=='function')Object.defineProperty(Map.prototype,'getOrInsertComputed',{configurable:true,writable:true,value:function(key,callback){if(this.has(key))return this.get(key);const value=callback(key);this.set(key,value);return value}});
+}
+
 function ensureViewerStylesheet(){
   if(stylesheetPromise)return stylesheetPromise;
   const href=runtimeUrl(PDF_SEARCH_RUNTIME.css);
@@ -45,6 +53,7 @@ export function buildPdfFindRequest(query,{type='',findPrevious=false}={}){
 async function loadRuntime(){
   if(runtimePromise)return runtimePromise;
   runtimePromise=(async()=>{
+    installPdfJsBrowserCompatibility();
     // Keep both imports literal and local: the repository module-graph contract can
     // verify them statically, while the browser still downloads PDF.js lazily only
     // when a local PDF preview is opened.
@@ -82,11 +91,21 @@ function normalizedFieldValue(annotation){
 function searchablePdfField(annotation){return !annotation?.password&&[PDF_TEXT_FIELD,PDF_CHOICE_FIELD].includes(String(annotation?.fieldType||''))&&!!normalizedFieldValue(annotation)}
 export function pdfFieldKey(annotation,index=0,pageNumber=1){const id=String(annotation?.id||'').trim();if(id)return `id:${id}`;const rect=normalizedPdfRect(annotation?.rect)||[];return `field:${Math.max(1,Number(pageNumber)||1)}:${Math.max(0,Number(index)||0)}:${String(annotation?.fieldName||'')}:${rect.join(',')}`}
 function normalizedPdfRect(rect){if(!Array.isArray(rect)||rect.length!==4)return null;const values=rect.map(Number);return values.every(Number.isFinite)?values:null}
+function pdfViewportPoint(viewport,x,y){
+  const px=Number(x),py=Number(y);if(!viewport||!Number.isFinite(px)||!Number.isFinite(py))return null;
+  if(typeof viewport.convertToViewportPoint==='function'){const point=viewport.convertToViewportPoint(px,py);if(Array.isArray(point)&&point.length>=2&&point.slice(0,2).every(Number.isFinite))return point.slice(0,2)}
+  const transform=Array.isArray(viewport.transform)?viewport.transform:null;if(!transform||transform.length<6)return null;
+  const values=transform.slice(0,6).map(Number);if(!values.every(Number.isFinite))return null;
+  const [a,b,c,d,e,f]=values;return [a*px+c*py+e,b*px+d*py+f];
+}
 function pdfRectGeometry(rect,viewport){
   const source=normalizedPdfRect(rect);if(!viewport||!source)return null;
-  const converted=viewport.convertToViewportRectangle?.(source);if(!Array.isArray(converted)||converted.length!==4)return null;
+  // PDF.js 6.x exposes point conversion, not the removed convertToViewportRectangle API.
+  // Mapping the two opposite corners is sufficient because PageViewport only applies
+  // scale/translation plus right-angle rotation/axis flips.
+  const first=pdfViewportPoint(viewport,source[0],source[1]),second=pdfViewportPoint(viewport,source[2],source[3]);if(!first||!second)return null;
   const width=Math.abs(Number(viewport.width)||0),height=Math.abs(Number(viewport.height)||0);if(width<=0||height<=0)return null;
-  const [x1,y1,x2,y2]=converted.map(Number),left=Math.min(x1,x2),top=Math.min(y1,y2),right=Math.max(x1,x2),bottom=Math.max(y1,y2);
+  const [x1,y1]=first,[x2,y2]=second,left=Math.min(x1,x2),top=Math.min(y1,y2),right=Math.max(x1,x2),bottom=Math.max(y1,y2);
   if(![left,top,right,bottom].every(Number.isFinite)||right<=left||bottom<=top)return null;
   return {left:100*left/width,top:100*top/height,width:100*(right-left)/width,height:100*(bottom-top)/height};
 }

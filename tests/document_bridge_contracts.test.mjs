@@ -265,6 +265,10 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(pdfViewer,/findPdfFormFieldMatches/);
   assert.match(pdfViewer,/buildCombinedMatches/);
   assert.match(pdfViewer,/ensurePdfFormOverlay/);
+  assert.match(pdfViewer,/convertToViewportPoint/);
+  assert.doesNotMatch(pdfViewer,/\.convertToViewportRectangle\b/);
+  assert.match(pdfViewer,/installPdfJsBrowserCompatibility/);
+  assert.match(pdfViewer,/Map\.prototype\.getOrInsertComputed/);
   assert.match(pdfViewer,/eventBus\.on\('pagerendered',renderFormLayerForEvent\)/);
   assert.match(css,/document-pdf-form-match-marker/);
   assert.match(pdfViewer,/updatefindmatchescount/);

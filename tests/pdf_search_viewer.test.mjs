@@ -49,7 +49,7 @@ function fakeInteractiveRuntime(annotations,{annotationError=null}={}){
   const state={eventBus:null,findController:null};
   const pageRoot=new TinyElement('page');pageRoot.dataset.pageNumber='1';pageRoot.clientWidth=600;pageRoot.clientHeight=800;
   const canvasWrapper=new TinyElement('canvasWrapper');canvasWrapper.clientWidth=600;canvasWrapper.clientHeight=800;pageRoot.append(canvasWrapper);
-  const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
+  const viewport={width:600,height:800,transform:[1,0,0,-1,0,800],convertToViewportPoint:(x,y)=>[x,800-y]};
   const pdfPage={getAnnotations:async()=>{if(annotationError)throw annotationError;return annotations}};
   const pageView={id:1,div:pageRoot,pdfPage,viewport};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
@@ -69,7 +69,7 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
 });
 
 test('local PDF form copy layer maps text widgets without changing their authored appearance',()=>{
-  const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
+  const viewport={width:600,height:800,transform:[1,0,0,-1,0,800],convertToViewportPoint:(x,y)=>[x,800-y]};
   const model=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'ליבי מאיר',fieldName:'שם',rect:[300,700,500,730],multiLine:false,defaultAppearanceData:{fontSize:14}},viewport);
   assert.equal(model.value,'ליבי מאיר');
   assert.equal(model.fieldName,'שם');
@@ -78,6 +78,16 @@ test('local PDF form copy layer maps text widgets without changing their authore
   assert.deepEqual([model.left,model.top,model.width,model.height].map(value=>Math.round(value*100)/100),[50,8.75,33.33,3.75]);
   assert.equal(copyablePdfTextFieldModel({fieldType:'Btn',fieldValue:'x',rect:[0,0,10,10]},viewport),null,'non-text widgets are never exposed as text controls');
   assert.equal(copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'secret',password:true,rect:[0,0,10,10]},viewport),null,'password fields are never exposed');
+});
+
+test('AcroForm geometry follows the PDF.js 6 PageViewport API and transform fallback',()=>{
+  const modernViewport={width:600,height:800,transform:[1,0,0,-1,0,800],convertToViewportPoint:(x,y)=>[x,800-y]};
+  assert.equal('convertToViewportRectangle' in modernViewport,false,'the regression fixture matches PDF.js 6.x, where rectangle conversion no longer exists');
+  const modern=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'needle',rect:[100,600,300,640]},modernViewport);
+  assert.deepEqual([modern.left,modern.top,modern.width,modern.height].map(value=>Math.round(value*100)/100),[16.67,20,33.33,5]);
+  const transformOnly={width:600,height:800,transform:[1,0,0,-1,0,800]};
+  const fallback=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'needle',rect:[100,600,300,640]},transformOnly);
+  assert.deepEqual([fallback.left,fallback.top,fallback.width,fallback.height].map(value=>Math.round(value*100)/100),[16.67,20,33.33,5],'the transform fallback protects geometry if the point helper is unavailable');
 });
 
 
