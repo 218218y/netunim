@@ -143,6 +143,10 @@
     {
       "version": "20260929093000",
       "name": "storage_writer_operation_contract"
+    },
+    {
+      "version": "20260930122000",
+      "name": "check_bank_no_match_after_due_date"
     }
   ]
 }

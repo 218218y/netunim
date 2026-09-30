@@ -1,6 +1,6 @@
 import {immutableProjection} from '../shared/revision-selector.js';
 import {withFinanceDerivations} from '../shared/finance-derivations.js';
-import {checkBankReviewItems,checkBankReviewCard} from '../shared/check-bank-review.js';
+import {checkBankReviewItems,checkBankReviewCard,checkBankNoMatchIsActionable} from '../shared/check-bank-review.js';
 import {esc} from '../core/values.js';
 import {money} from '../core/money.js';
 import {checkDateFmt,checkTodayISO} from '../core/dates.js';
@@ -26,7 +26,7 @@ function bankAlertCard(item){
     ?[bankWhen(item.date),item.bankReference?`אסמכתא ${item.bankReference}`:''].filter(Boolean)
     :[item.lastSeenAt?`נראתה לאחרונה ${bankWhen(item.lastSeenAt)}`:'',item.missingSince?`חסרה מאז ${bankWhen(item.missingSince)}`:''].filter(Boolean);
   const detail=returned?(item.reason?`סיבת ההחזרה: ${item.reason}`:item.description):item.description;
-  return `<div class="alert-center-card bank-warning ${returned?'bank-returned-warning':'bank-missing-warning'} alert-center-bank-card"><button type="button" class="alert-center-bank-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">בנק · חשבון ${esc(item.account)}</div><div class="alert-center-card-title"><span>${esc(title)}</span><strong>${money(item.amount)}</strong></div><p>${esc(detail)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-bank-actions"><button type="button" class="alert-center-card-dismiss" data-action="dismiss-bank-alert" data-click-arg0="${esc(item.id)}">${returned?'הסר / אל תראה שוב':'אישרתי — הסר מהיסטוריה חכמה'}</button></div></div>`;
+  return `<div class="alert-center-card bank-warning ${returned?'bank-returned-warning':'bank-missing-warning'} alert-center-bank-card"><button type="button" class="alert-center-bank-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">בנק · חשבון ${esc(item.account)}</div><div class="alert-center-card-title"><span>${esc(title)}</span><strong>${money(item.amount)}</strong></div><p>${esc(detail)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-bank-actions"><button type="button" class="alert-center-card-dismiss" data-action="dismiss-bank-alert" data-click-arg0="${esc(item.id)}">${returned?'אישור · הסר התראה':'בדקתי · הסר התראה'}</button></div></div>`;
 }
 
 function noteAlertCard(item){
@@ -39,10 +39,10 @@ function alertCard(item){
   if(item.kind==='bank_returned_cheque'||item.kind==='bank_missing')return bankAlertCard(item);
   if(item.kind==='note_reminder')return noteAlertCard(item);
   const actionAttrs=`type="button" class="alert-center-card ${item.kind==='cashflow'?'cashflow-warning':'check-warning'} alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"`;
-  if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}${item.breachDate?` · מועד צפוי: ${esc(checkDateFmt(item.breachDate))}`:''}</p><small>התחזית מחושבת מיתרת העו״ש האחרונה, פחות חיובי האשראי וההוצאות של אותו חשבון, ובתוספת צ׳קים מאותו חשבון שעדיין בקופה ונכנסים עד מועד החריגה. הבדיקה מכסה עד סוף החודש הנוכחי או עד תאריך התחזית הרגילה, המאוחר מביניהם.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
-  const dueText=item.isToday?`מועד ההפקדה הוא היום · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
+  if(item.kind==='cashflow')return `<button ${actionAttrs}><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">עו״ש תזרימי · חשבון ${esc(item.account)}</div><div class="alert-center-card-title">יתרה צפויה <strong>${money(item.projected)}</strong></div><p>${esc(cashflowReason(item))}${item.breachDate?` · מועד צפוי: ${esc(checkDateFmt(item.breachDate))}`:''}</p><small>התחזית מבוססת על יתרת העו״ש ועל החיובים והתקבולים הצפויים בחשבון עד מועד החריגה.</small></div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button>`;
+  const dueText=item.isToday?`הגיע זמן להפקיד · ${checkDateFmt(item.dueDate)}`:`מועד ההפקדה עבר · ${checkDateFmt(item.dueDate)}`;
   const facts=[item.checkNumber?`מס׳ צ׳ק ${item.checkNumber}`:'',item.note?item.note:''].filter(Boolean);
-  return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} שממתין להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">הופקד</button></div></div>`;
+  return `<div class="alert-center-card check-warning alert-center-check-card"><button type="button" class="alert-center-check-open alert-center-card-action" data-action="open-alert-target" data-click-arg0="${esc(item.id)}"><div class="alert-center-card-icon" aria-hidden="true">!</div><div class="alert-center-card-main"><div class="alert-center-card-kicker">צ׳ק ${esc(item.account||'עסקי')} להפקדה</div><div class="alert-center-card-title"><span>${esc(item.name||'ללא שם')}</span><strong>${money(item.amount)}</strong></div><p>${esc(dueText)}</p>${facts.length?`<small>${facts.map(esc).join(' · ')}</small>`:''}</div><span class="alert-center-card-open" aria-hidden="true">פתח</span></button><div class="alert-center-check-actions"><button type="button" class="alert-center-card-deposit" data-action="mark-alert-check-deposited" data-click-arg0="${esc(item.checkId)}">סמן כהופקד</button></div></div>`;
 }
 
 export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDerivations,model,financeSnapshot,modal,closeModal=()=>{},navigateToChecks=()=>{},navigateToCashflow=()=>{},navigateToBank=navigateToCashflow,navigateToNote=()=>{},markCheckDeposited=()=>false,dismissBankWarning=async()=>false,dismissNoteReminder=async()=>false}){
@@ -61,7 +61,7 @@ export function createUiAlertCenter({alertsRevision,runFinance=withFinanceDeriva
     const bankCheckItems=checkBankReviewItems(model?.state?.checks);
     const explainedChecks=new Set(bankCheckItems.map(item=>item.checkId));
     for(const check of model?.state?.checks||[]){
-      if(check.bankMatch?.phase==='overdue'&&check.bankReview===check.bankMatch.eventId)explainedChecks.add(check.id);
+      if(check.bankMatch?.phase==='overdue'&&checkBankNoMatchIsActionable(check.bankMatch)&&check.bankReview===check.bankMatch.eventId)explainedChecks.add(check.id);
     }
     return [
       ...(snapshot.bankAlertsReady===true?bankWarningItems(snapshot.bank):[]),

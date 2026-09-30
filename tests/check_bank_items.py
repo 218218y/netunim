@@ -259,7 +259,9 @@ def run(db):
 
     reset([check('Due',550),check('Future',200)])
     rows=checks();rows[1]['dueDate']='2026-08-15';save(rows);snapshot()
-    assert checks()[0]['bankMatch']['phase']=='overdue' and 'bankMatch' not in checks()[1]
+    assert 'bankMatch' not in checks()[0] and 'bankMatch' not in checks()[1], 'The due date itself is still a deposit reminder, not a bank no-match incident'
+    snapshot('2026-08-03')
+    assert checks()[0]['bankMatch']['phase']=='overdue' and checks()[0]['bankMatch']['observedDate']=='2026-08-03' and 'bankMatch' not in checks()[1]
     rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];save(rows)
     assert checks()[0]['bankReview']==checks()[0]['bankMatch']['eventId'],'Acknowledgement preserves the absence evidence'
     snapshot('2026-08-03')
@@ -268,6 +270,12 @@ def run(db):
     assert checks()[0]['bankMatch']['phase']=='unverified' and not checks()[0].get('bankAutomationDisabled')
     tx('later-arrival',550,[item('111',550)],day='2026-08-03');snapshot('2026-08-03')
     assert checks()[0]['bankMatch']['phase']=='deposited'
+
+    reset([check('Manual due',300)])
+    rows=checks();rows[0]['status']='הופקד - במעקב';save(rows);snapshot()
+    assert 'bankMatch' not in checks()[0], 'A manually deposited cheque is not called unverified on its due date'
+    snapshot('2026-08-03')
+    assert checks()[0]['bankMatch']['phase']=='unverified' and checks()[0]['bankMatch']['observedDate']=='2026-08-03', 'Manual deposit becomes unverified only after the due date passes without a bank match'
 
     # Live Hapoalim contract, 2026-09-20: three checks deposited together first appear as
     # separate TODAY/pending rows. In this exact direct-deposit presentation the temporary

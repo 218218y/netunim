@@ -8,7 +8,7 @@ import {createUiAlertCenter} from '../netunim-orders/site/assets/js/ui/alert-cen
 const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amount:300,status:'הופקד - במעקב',dueDate:'2026-08-01',depositDate:'2026-08-03',bankMatch:{phase:'deposited',eventId:'17:deposited',transactionId:17,description:'הפק.שיק בסלולר',date:'2026-08-03',amount:1000,checkIds:['c1','c2'],previousStatus:'בקופה',previousDepositDate:null}});
 {
   const c=sample();c.bankMatch.autoConfirmed=true;c.bankHistory=[{...c.bankMatch}];
-  assert.match(checkBankActivityMarkup([c]),/אישור והסרת ההודעה/);
+  assert.match(checkBankActivityMarkup([c]),/הסר הודעה/);
   c.bankHistory.unshift({...c.bankMatch,eventId:'old-proposal',autoConfirmed:false});
   assert.equal(removableCheckBankEvents(c,{bulk:true}).length,2,'A fully confirmed deposit can remove its old proposal in the same bulk action');
   c.bankHistory.shift();
@@ -50,11 +50,11 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.equal(checkBankReviewMarkup([c]),'');assert.match(checkBankStatusMarkup(c),/אושרה אוטומטית/);
   c.bankHistory=[{...c.bankMatch,recordedAt:'2026-08-03T12:00:00Z',checkName:c.name,checkAmount:300}];
   let html=checkBankActivityMarkup([c],'ביתי');assert.match(html,/הודעות ופעולות אוטומטיות בבנק \(צ׳ק אחד\)/);
-  assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>|מאשר את ההתאמה|role="status"/);
+  assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>|אשר התאמה|role="status"/);
   assert.match(html,/ההתאמה שגויה/,'A quiet current association can still be inspected and rejected');
   c.bankMatch={...c.bankMatch,phase:'cleared',eventId:'17:cleared'};
   assert.equal(checkBankReviewItems([c]).length,0,'Routine settlement is a notification, not a warning');
-  html=checkBankActivityMarkup([c],'ביתי');assert.match(html,/בבנק \(צ׳ק אחד\)/);assert.match(html,/סומן נפרע/);assert.match(html,/מהלך המעקב בצ׳ק/);assert.doesNotMatch(html,/ההתאמה שגויה/,'Historical associations cannot reject the current state');
+  html=checkBankActivityMarkup([c],'ביתי');assert.match(html,/בבנק \(צ׳ק אחד\)/);assert.match(html,/סומן כנפרע/);assert.match(html,/מהלך המעקב בצ׳ק/);assert.doesNotMatch(html,/ההתאמה שגויה/,'Historical associations cannot reject the current state');
   for(const phase of ['returned','missing']){
     c.bankMatch={...c.bankMatch,phase,eventId:'17:'+phase};assert.equal(checkBankReviewItems([c]).length,1,'Adverse incidents remain actionable even after certain matching');
   }
@@ -63,7 +63,7 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
 }
 {
   const c=sample();assert.equal(checkBankReviewItems([c]).length,1);
-  const html=checkBankReviewMarkup([c]);assert.match(html,/קבוצה של 2 צ׳קים/);assert.match(html,/מאשר את ההתאמה/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
+  const html=checkBankReviewMarkup([c]);assert.match(html,/קבוצה של 2 צ׳קים/);assert.match(html,/אשר התאמה/);assert.match(html,/&lt;script&gt;/);assert.doesNotMatch(html,/<script>/);
   assert.equal(checkBankReviewMarkup([c],'עסקי'),'');
   assert.equal(applyCheckBankReview([c],c.id,'stale-event','accept'),false);
   assert.equal(applyCheckBankReview([c],c.id,c.bankMatch.eventId,'accept'),true);
@@ -77,13 +77,13 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.equal(c.status,'בקופה');assert.equal(c.depositDate,null);assert.equal(c.bankAutomationDisabled,true);assert.equal(checkBankReviewItems([c]).length,0);
   const ambiguous={...sample(),bankMatch:{phase:'ambiguous',eventId:'a'}};
   assert.equal(applyCheckBankReview([ambiguous],ambiguous.id,'a','reject'),false);
-  assert.doesNotMatch(checkBankReviewMarkup([ambiguous]),/מאשר את ההתאמה/);
+  assert.doesNotMatch(checkBankReviewMarkup([ambiguous]),/אשר התאמה/);
 }
 {
   const c=sample();c.bankMatch={...c.bankMatch,phase:'missing',warning:'batch_missing',remainder:{kind:'reduced',originalAmount:1000,observedAmount:700,missingAmount:300,missingMembers:[{id:'c1',name:'Alice <unsafe>',amount:300,checkNumber:'123'}]}};
   const html=checkBankReviewMarkup([c]);
   assert.match(html,/Alice &lt;unsafe&gt;/);assert.match(html,/ההפקדה המקורית: 1000/);assert.match(html,/נותר מההפקדה: 700/);assert.match(html,/חסר: 300/);
-  assert.doesNotMatch(html,/מאשר את ההתאמה/,'absence inferred from a group does not authorize clearance');
+  assert.doesNotMatch(html,/אשר התאמה/,'absence inferred from a group does not authorize clearance');
 }
 {
   const c=sample();c.bankMatch={...c.bankMatch,provisional:true,matchMethod:'number',bankItem:{checkNumber:'111',amount:300,bankNumber:'12',branchNumber:'100',accountNumber:'<unsafe>'}};
@@ -105,7 +105,7 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
   assert.match(checkBankStatusMarkup(c),/ממתין לאימות סופי/);
   let html=checkBankActivityMarkup([c],'ביתי');
   assert.match(html,/זוהתה הפקדה ממתינה לפי מספר הצ׳ק/);assert.match(html,/זיהוי זמני/);assert.match(html,/אין צורך באישור ידני/);
-  assert.doesNotMatch(html,/מאשר את ההתאמה|נדרש אישור ידני/);
+  assert.doesNotMatch(html,/אשר התאמה|נדרש אישור ידני/);
   assert.match(html,/ההתאמה שגויה/,'The informational activity remains rejectable if the bank association is actually wrong');
   const pending={...c.bankMatch,recordedAt:'2026-09-20T01:00:00Z',checkName:c.name,checkAmount:c.amount,checkNumber:c.checkNumber,checkAccount:c.account};
   c.bankHistory=[pending];
@@ -116,18 +116,30 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
 }
 {
   const c=sample();c.bankMatch={phase:'unverified',eventId:'no-bank:c1',date:'2026-08-03',observedDate:'2026-08-05'};
-  const html=checkBankReviewMarkup([c]);assert.match(html,/סומן הופקד ידנית/);assert.match(html,/סנכרון מלא מ־2026-08-05/);
-  assert.doesNotMatch(html,/undefined|מאשר את ההתאמה/);
+  const html=checkBankReviewMarkup([c]);assert.match(html,/סומן כהופקד/);assert.match(html,/סנכרון בנק: 2026-08-05/);
+  assert.doesNotMatch(html,/undefined|אשר התאמה/);
 }
 {
-  const c={...sample(),status:'בקופה',bankMatch:{phase:'overdue',eventId:'due:one',date:'2026-08-03',observedDate:'2026-08-05'}};
+  const c={...sample(),status:'בקופה',dueDate:'2026-08-03',bankMatch:{phase:'overdue',eventId:'due:early',date:'2026-08-03',observedDate:'2026-08-03'}};
   const center=createUiAlertCenter({model:{state:{checks:[c]}},financeSnapshot:()=>({})});
-  assert.equal(center.currentAlerts('2026-08-05').length,1,'One check must not have duplicate due and bank absence cards');
+  const dueDay=center.currentAlerts('2026-08-03');
+  assert.equal(dueDay.length,1,'A same-day bank snapshot must not replace the ordinary deposit reminder');
+  assert.equal(dueDay[0].kind,'check_due');
+  assert.equal(checkBankReviewMarkup([c]),'','Premature same-day no-match metadata is never shown as a bank warning');
+  assert.equal(checkBankStatusMarkup(c),'');
+  assert.match(checkBankActivityMarkup([c]),/בבנק \(0 צ׳קים\)/,'Premature absence is also omitted from bank activity history');
+
+  c.bankMatch={phase:'overdue',eventId:'due:one',date:'2026-08-03',observedDate:'2026-08-04'};
+  const nextDay=center.currentAlerts('2026-08-04');
+  assert.equal(nextDay.length,1,'After the due date, one bank no-match warning replaces the generic reminder');
+  assert.equal(nextDay[0].kind,'check_bank');
+  let html=checkBankReviewMarkup([c]);
+  assert.match(html,/מועד ההפקדה עבר · לא נמצאה הפקדה בבנק/);assert.match(html,/ייתכן שהצ׳ק עדיין לא הופקד/);assert.match(html,/>הסר התראה<\/button>/);assert.match(html,/עדכן סטטוס צ׳ק/);
   applyCheckBankReview([c],c.id,c.bankMatch.eventId,'accept');
-  assert.equal(center.currentAlerts('2026-08-06').length,0,'Acknowledging unchanged absence must not resurrect the generic due warning');
+  assert.equal(center.currentAlerts('2026-08-05').length,0,'Acknowledging unchanged mature absence must not resurrect the generic due warning');
   c.bankMatch={...c.bankMatch,phase:'missing',transactionId:17,eventId:'missing:new'};
   assert.match(checkBankReviewMarkup([c]),/נעלמה מתנועות הבנק/);
-  assert.equal(center.currentAlerts('2026-08-06').length,1,'A new real disappearance remains visible');
+  assert.equal(center.currentAlerts('2026-08-05').length,1,'A new real disappearance remains visible');
 }
 for(const create of [ordersEditor,kupaEditor]){
   const c=sample(),model={state:{checks:[c]}},messages=[];
@@ -148,7 +160,7 @@ for(const create of [ordersEditor,kupaEditor]){
 }
 {
   const make=(id,name,events,current)=>({id,name,account:'עסקי',amount:500,status:current.phase==='cleared'?'נפרע':'הופקד - במעקב',checkNumber:id,bankHistory:events,bankMatch:current});
-  const overdue=(id,name)=>({phase:'overdue',eventId:`${id}:overdue`,date:'2026-09-19',observedDate:'2026-09-19',recordedAt:'2026-09-19T09:00:00Z',checkName:name,checkAmount:500,checkNumber:id,checkAccount:'עסקי'});
+  const overdue=(id,name)=>({phase:'overdue',eventId:`${id}:overdue`,date:'2026-09-19',observedDate:'2026-09-20',recordedAt:'2026-09-20T08:00:00Z',checkName:name,checkAmount:500,checkNumber:id,checkAccount:'עסקי'});
   const pending=(id,name)=>({phase:'deposited',eventId:`${id}:pending`,transactionId:Number(id),accountKey:'business',date:'2026-09-20',recordedAt:'2026-09-20T09:00:00Z',description:'הפק שיק-ע.ישיר',amount:500,provisional:true,provisionalReference:true,bankItem:{checkNumber:id,amount:500},checkName:name,checkAmount:500,checkNumber:id,checkAccount:'עסקי'});
   const cleared={phase:'cleared',eventId:'400:cleared',transactionId:400,accountKey:'business',date:'2026-09-19',recordedAt:'2026-09-19T11:00:00Z',checkName:'גלניר שכירות',checkAmount:500,checkNumber:'400',checkAccount:'עסקי'};
   const deposit={phase:'deposited',eventId:'400:deposit',transactionId:400,accountKey:'business',date:'2026-09-15',recordedAt:'2026-09-15T11:00:00Z',description:'הפקדה',amount:500,autoConfirmed:true,checkName:'גלניר שכירות',checkAmount:500,checkNumber:'400',checkAccount:'עסקי'};
@@ -157,7 +169,7 @@ for(const create of [ordersEditor,kupaEditor]){
   const html=checkBankActivityMarkup(checks);
   assert.match(html,/בבנק \(4 צ׳קים\)/,'Eight raw milestones across four cheques render as four top-level activity groups');
   assert.equal((html.match(/class="check-bank-activity-item"/g)||[]).length,4);
-  assert.match(html,/רוזין/);assert.match(html,/הגיע מועד ההפקדה/);assert.match(html,/ממתין לאימות סופי/);assert.match(html,/סומן נפרע/);
+  assert.match(html,/רוזין/);assert.match(html,/מועד ההפקדה עבר/);assert.match(html,/ממתין לאימות סופי/);assert.match(html,/סומן כנפרע/);
 }
 {
   const checks=Array.from({length:60},(_,i)=>{const c=sample(),event={...c.bankMatch,eventId:`history:${i}`,phase:'cleared',recordedAt:`2026-08-${String(i%28+1).padStart(2,'0')}`};return {...c,id:`c${i}`,name:`Cheque ${i}`,bankMatch:event,bankHistory:[event]}});
