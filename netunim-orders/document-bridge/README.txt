@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v23 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v24 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -43,6 +43,16 @@ Website modes
    are not reparsed. PDF.js auxiliary CMap/font/WASM resources are read directly
    from local files with Unicode-safe Windows path handling, so Hebrew Windows
    user/profile names do not break standard-font loading.
+
+Search latency
+--------------
+Filename and content searches are independent request lanes. The website starts
+Everything filename search first and paints those rows as soon as they arrive;
+content search follows without blocking the filename results. Interactive-PDF
+index refresh is never awaited on the request path: the persisted index is used
+immediately and refresh continues in the background. Boolean supplemental-index
+filtering stops at the first qualifying match instead of materializing thousands
+of highlight ranges per PDF.
 
 Unicode
 -------

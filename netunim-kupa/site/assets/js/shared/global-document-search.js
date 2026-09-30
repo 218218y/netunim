@@ -1,6 +1,5 @@
 import {esc} from '../core/values.js';
 import {createDocumentResultMenu,deleteLocalDocumentResult} from '../ui/document-result-menu.js';
-import {createSearchScheduler} from './search-scheduler.js';
 import {createPdfSearchViewer,preloadPdfSearchRuntime} from '../domains/documents/pdf-search-viewer.js';
 import {buildPdfPreviewSrc} from '../domains/documents/pdf-text-fragments.js';
 import {createTextSearchViewer} from '../domains/documents/text-search-viewer.js';
@@ -9,8 +8,8 @@ import {createSpreadsheetSearchViewer} from '../domains/documents/spreadsheet-se
 import {documentResultsTableHtml,previewDetailsHtml,previewTextLabel,safeCloudViewUrl,snippetHtml} from '../ui/document-search-view.js';
 import {createDocumentSearchFolderScope} from '../ui/document-search-folder-scope.js';
 import {createDocumentContentSearchOptions} from '../ui/document-search-content-options.js';
+import {appendUniqueDocumentRows,createDocumentSearchLanes} from '../ui/document-search-pipeline.js';
 
-const DOCUMENT_SEARCH_DELAY_MS=200;
 const SITE_RESULT_BATCH=150;
 const SITE_RESULT_MAX=5000;
 const DOCUMENT_RESULT_BATCH=150;
@@ -31,10 +30,12 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   let documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')},recentDocumentState=emptyRecentDocumentState();
   const byId=id=>document.getElementById(id);
   const refs=()=>({trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),contentOptions:byId('globalSearchContentOptions'),contentMatchMode:byId('globalSearchContentMatchMode'),proximityWrap:byId('globalSearchProximityWrap'),proximityWords:byId('globalSearchProximityWords'),folderScope:byId('globalSearchFolderScope'),folderPick:byId('globalSearchFolderPick'),folderLabel:byId('globalSearchFolderLabel'),folderClear:byId('globalSearchFolderClear'),preview:byId('globalSearchDocumentPreview'),previewBody:byId('globalSearchPreviewBody'),previewMatches:byId('globalSearchPreviewMatches'),splitter:byId('globalSearchDocumentSplitter')});
-  const scheduledDocumentRender=createSearchScheduler(value=>runDocumentSearch(value),{delay:DOCUMENT_SEARCH_DELAY_MS});
+  const documentSearchLanes=createDocumentSearchLanes(runDocumentSearchMode);
 
   function emptyDocumentState(mode){return{mode,status:'idle',rows:[],error:null,elapsedMs:0,hasMore:false,loadingMore:false}}
   function emptyRecentDocumentState(){return{status:'idle',rows:[],error:null,elapsedMs:0,loadedAt:0}}
+  const cancelScheduledDocumentSearches=()=>documentSearchLanes.cancel();
+  const abortDocumentModeSearches=()=>documentSearchLanes.abortAll();
   function warmDocumentSearchBridge(){if(!documentBridge?.warm||!documentBridge.getToken?.())return null;const now=Date.now();if(documentWarmPromise)return documentWarmPromise;if(now-documentWarmAt<DOCUMENT_BRIDGE_WARM_TTL_MS)return null;documentWarmAt=now;documentWarmPromise=Promise.resolve(documentBridge.warm()).catch(()=>null).finally(()=>{documentWarmPromise=null});return documentWarmPromise}
   function isGoogleDriveSource(){return documentBridge?.provider==='google-drive'}
   function documentResultProvider(id=selectedDocumentId){return documentBridge?.providerFor?.(id)||(isGoogleDriveSource()?'google-drive':'everything')}
@@ -205,22 +206,18 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');recentDocumentState={...emptyRecentDocumentState(),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults('')}
     finally{if(documentAbort===controller)documentAbort=null}
   }
-  async function runDocumentSearch(value=''){
-    const raw=String(value||'').trim(),sequence=documentSequence;if(!raw||raw!==activeQuery)return;const modes=requestedDocumentModes().filter(mode=>documentStates[mode].status==='loading');if(!modes.length)return;
-    const controller=new AbortController();documentAbort=controller;
-    await Promise.all(modes.map(async mode=>{
-      try{
-        const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit:DOCUMENT_RESULT_BATCH,offset:0,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const rows=Array.isArray(data.results)?data.results:[];documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw);
-      }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');documentStates[mode]={...emptyDocumentState(mode),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults(raw)}
-    }));
-    if(documentAbort===controller)documentAbort=null;
+  async function runDocumentSearchMode(value='',mode='everything'){
+    const raw=String(value||'').trim(),sequence=documentSequence;if(!raw||raw!==activeQuery||!includesDocumentMode(mode)||documentStates[mode]?.status!=='loading')return;
+    const controller=documentSearchLanes.begin(mode);
+    try{
+      const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit:DOCUMENT_RESULT_BATCH,offset:0,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const rows=Array.isArray(data.results)?data.results:[];documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false,partial:!!data.partial};renderCombinedResults(raw);
+    }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');documentStates[mode]={...emptyDocumentState(mode),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults(raw)}
+    finally{documentSearchLanes.clear(mode,controller)}
   }
-  function stableDocumentRowKey(row){const provider=String(row?.sourceProvider||row?.rootId||''),path=String(row?.relativePath||''),name=String(row?.name||'');return `${provider}|${path}|${name}`.toLocaleLowerCase('en-US')}
-  function appendDocumentRows(existing,incoming){const rows=[...(Array.isArray(existing)?existing:[])],seen=new Set(rows.map(stableDocumentRowKey));for(const row of Array.isArray(incoming)?incoming:[]){const key=stableDocumentRowKey(row);if(!key||seen.has(key))continue;seen.add(key);rows.push(row)}return rows}
   async function loadMoreDocumentResults(requestedMode=''){
     const raw=String(activeQuery||'').trim(),sequence=documentSequence;if(!raw||documentPageAbort)return;const modes=requestedDocumentModes().filter(mode=>(!requestedMode||mode===requestedMode)&&documentStates[mode].status==='done'&&documentStates[mode].hasMore&&!documentStates[mode].loadingMore&&documentStates[mode].rows.length<DOCUMENT_RESULT_MAX);if(!modes.length)return;
     const controller=new AbortController();documentPageAbort=controller;for(const mode of modes)documentStates[mode]={...documentStates[mode],loadingMore:true};renderCombinedResults(raw);
-    await Promise.all(modes.map(async mode=>{const before=documentStates[mode],offset=before.rows.length,limit=Math.min(DOCUMENT_RESULT_BATCH,DOCUMENT_RESULT_MAX-offset);try{const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit,offset,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const incoming=Array.isArray(data.results)?data.results:[],rows=appendDocumentRows(before.rows,incoming),madeProgress=rows.length>before.rows.length;documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
+    await Promise.all(modes.map(async mode=>{const before=documentStates[mode],offset=before.rows.length,limit=Math.min(DOCUMENT_RESULT_BATCH,DOCUMENT_RESULT_MAX-offset);try{const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit,offset,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const incoming=Array.isArray(data.results)?data.results:[],rows=appendUniqueDocumentRows(before.rows,incoming),madeProgress=rows.length>before.rows.length;documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
     if(documentPageAbort===controller)documentPageAbort=null;queueMicrotask(()=>maybeLoadMoreDocumentResults());
   }
   function loadMoreSiteResults(){if(!activeQuery||!includesSite()||siteResultLimit>=SITE_RESULT_MAX)return false;siteResultLimit=Math.min(SITE_RESULT_MAX,siteResultLimit+SITE_RESULT_BATCH);renderCombinedResults(activeQuery);queueMicrotask(()=>maybeLoadMoreDocumentResults());return true}
@@ -231,24 +228,24 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     if(input)input.placeholder=filter==='site'?'חפש באתר…':filter==='files'?'חפש קובץ או תיקייה…':filter==='content'?'חפש טקסט בתוך תוכן הקבצים…':'חפש באתר, בקבצים ובתוכן…';
     documentContentOptions.update();documentFolderScope.update();
   }
-  function setFilter(next){const normalized=SEARCH_FILTERS.has(next)?next:'all';if(filter===normalized)return;hideDocumentContextMenu();filter=normalized;siteResultLimit=SITE_RESULT_BATCH;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;documentPageAbort?.abort();documentPageAbort=null;resetDocumentPreview();updateFilterUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
+  function setFilter(next){const normalized=SEARCH_FILTERS.has(next)?next:'all';if(filter===normalized)return;hideDocumentContextMenu();filter=normalized;siteResultLimit=SITE_RESULT_BATCH;cancelScheduledDocumentSearches();documentSequence+=1;documentAbort?.abort();documentAbort=null;abortDocumentModeSearches();documentPageAbort?.abort();documentPageAbort=null;resetDocumentPreview();updateFilterUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
   function setMode(next){setFilter(next==='documents'?'files':'site')}
   function renderResults(value=''){
     hideDocumentContextMenu();
-    const raw=String(value||'').trim();scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;documentPageAbort?.abort();documentPageAbort=null;if(raw!==activeQuery){activeQuery=raw;siteResultLimit=SITE_RESULT_BATCH;resetDocumentPreview()}
+    const raw=String(value||'').trim();cancelScheduledDocumentSearches();documentSequence+=1;documentAbort?.abort();documentAbort=null;abortDocumentModeSearches();documentPageAbort?.abort();documentPageAbort=null;if(raw!==activeQuery){activeQuery=raw;siteResultLimit=SITE_RESULT_BATCH;resetDocumentPreview()}
     if(!raw){documentStates={everything:emptyDocumentState('everything'),content:emptyDocumentState('content')};const shouldLoadRecent=prepareRecentDocuments();renderCombinedResults('');if(shouldLoadRecent)runRecentDocuments(documentSequence);return}
-    const shouldSearchDocuments=prepareDocumentStates(raw);renderCombinedResults(raw);if(shouldSearchDocuments)scheduledDocumentRender(raw);
+    const shouldSearchDocuments=prepareDocumentStates(raw);renderCombinedResults(raw);if(shouldSearchDocuments){if(documentStates.everything.status==='loading')documentSearchLanes.schedule('everything',raw);if(documentStates.content.status==='loading')documentSearchLanes.schedule('content',raw)}
   }
   function open(){const {backdrop,input,trigger}=refs();if(!backdrop)return;hideDocumentContextMenu();backdrop.hidden=false;backdrop.setAttribute('aria-hidden','false');trigger?.setAttribute('aria-expanded','true');warmDocumentSearchBridge();updateFilterUi();renderResults(input?.value||'');requestAnimationFrame(()=>input?.focus())}
-  function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;hideDocumentContextMenu();scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;documentPageAbort?.abort();documentPageAbort=null;resetDocumentPreview();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
+  function close({restoreFocus=true}={}){const {backdrop,trigger}=refs();if(!backdrop)return;hideDocumentContextMenu();cancelScheduledDocumentSearches();documentSequence+=1;documentAbort?.abort();documentAbort=null;abortDocumentModeSearches();documentPageAbort?.abort();documentPageAbort=null;resetDocumentPreview();backdrop.hidden=true;backdrop.setAttribute('aria-hidden','true');trigger?.setAttribute('aria-expanded','false');if(restoreFocus)requestAnimationFrame(()=>trigger?.focus())}
   function toggle(){const {backdrop}=refs();if(!backdrop)return;backdrop.hidden?open():close()}
-  function flushCurrent(){return scheduledDocumentRender.flush()}
+  function flushCurrent(){return documentSearchLanes.flush()}
 
   function openResult(key){const item=resultByKey.get(key);if(!item)return;close({restoreFocus:false});navigateSiteItem?.(item)}
   async function openDocumentResult(id,button){if(!documentBridge||!id)return;const previous=button?.disabled;if(button)button.disabled=true;try{await documentBridge.openDocument(id)}catch(error){const {meta}=refs();if(meta)meta.textContent=error?.message||'פתיחת הקובץ נכשלה'}finally{if(button)button.disabled=!!previous}}
   async function revealDocumentResult(id,button){if(!documentBridge?.revealDocument||!id)return;const previous=button?.disabled;if(button)button.disabled=true;try{await documentBridge.revealDocument(id)}catch(error){const {meta}=refs();if(meta)meta.textContent=error?.message||'פתיחת מיקום הקובץ נכשלה'}finally{if(button)button.disabled=!!previous}}
   function removeDeletedDocumentResults(ids){
-    const removed=new Set((Array.isArray(ids)?ids:[ids]).map(String).filter(Boolean));if(!removed.size)return;scheduledDocumentRender.cancel();documentSequence+=1;documentAbort?.abort();documentAbort=null;
+    const removed=new Set((Array.isArray(ids)?ids:[ids]).map(String).filter(Boolean));if(!removed.size)return;cancelScheduledDocumentSearches();documentSequence+=1;documentAbort?.abort();documentAbort=null;abortDocumentModeSearches();
     const strip=rows=>(Array.isArray(rows)?rows:[]).filter(row=>!removed.has(String(row?.id||''))),settle=state=>state.status==='loading'?{...state,status:'done'}:state;
     recentDocumentState=settle({...recentDocumentState,rows:strip(recentDocumentState.rows),loadedAt:0});for(const mode of ['everything','content'])documentStates[mode]=settle({...documentStates[mode],rows:strip(documentStates[mode].rows)});
     if(removed.has(String(selectedDocumentId||'')))resetDocumentPreview();const raw=String(refs().input?.value||'').trim();raw?renderCombinedResults(raw):renderRecentDocuments();

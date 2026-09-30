@@ -33,7 +33,6 @@ const PREVIEW_TEXT_CACHE_MAX=24;
 const PDF_FORM_INDEX_SCHEMA=1;
 const PDF_FORM_INDEX_PAGE_SIZE=250;
 const PDF_FORM_INDEX_REFRESH_MS=60*1000;
-const PDF_FORM_INDEX_INITIAL_WAIT_MS=1800;
 const PDF_FORM_INDEX_CONCURRENCY=2;
 const PDF_FORM_INDEX_INSTALL_WARMUP=8;
 const TEXT_EXTENSIONS=new Set(['txt','log','md','markdown','csv','tsv','json','xml','yaml','yml','ini','cfg','conf','sql','js','mjs','cjs','ts','tsx','jsx','css','scss','less','html','htm']);
@@ -281,10 +280,11 @@ function schedulePdfFormIndexRefresh(delayMs=1000){
   pdfFormIndexRefreshTimer=setTimeout(async()=>{try{await refreshPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_REFRESH_FAILED ${error?.code||'ERROR'} ${error?.message||error}`)}finally{schedulePdfFormIndexRefresh(PDF_FORM_INDEX_REFRESH_MS)}},Math.max(0,delayMs));
   pdfFormIndexRefreshTimer.unref?.();
 }
-async function ensurePdfFormIndexReady(){
+async function preparePdfFormIndexForSearch(){
   await loadPdfFormIndex();
-  const active=pdfFormIndexRefreshPromise||(!pdfFormIndexLastRefresh?refreshPdfFormIndex():null);
-  if(!pdfFormIndex.size&&active)await Promise.race([active,new Promise(resolve=>setTimeout(resolve,PDF_FORM_INDEX_INITIAL_WAIT_MS))]);
+  const cold=!pdfFormIndexLastRefresh;
+  if(cold&&!pdfFormIndexRefreshPromise)schedulePdfFormIndexRefresh(0);
+  return {partial:cold||!!pdfFormIndexRefreshPromise};
 }
 function searchPdfFormIndex(query,contentSearch,scopePath,limit){
   const results=[];
@@ -307,15 +307,15 @@ async function searchDocuments(query,limit,mode='everything',contentSearch={},sc
   if(!everythingQuery){const e=new Error(normalizedMode==='content'?'יש להקליד לפחות שני תווים לחיפוש בתוכן הקבצים.':'יש להקליד לפחות תו אחד לחיפוש ב-Everything.');e.code='QUERY_TOO_SHORT';throw e}
   const pageOffset=Math.max(0,Math.min(MAX_RESULTS,Math.trunc(Number(offset)||0))),available=Math.max(0,MAX_RESULTS-pageOffset),boundedLimit=Math.min(available,Math.max(1,Math.trunc(Number(limit)||DEFAULT_RESULT_LIMIT)));
   if(!boundedLimit)return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,offset:pageOffset,limit:0,results:[],hasMore:false,maxResults:MAX_RESULTS,elapsedMs:0,partial:false,rootErrors:[]};
-  const wanted=Math.min(MAX_RESULTS,pageOffset+boundedLimit+1);let rows=[],supplemental=[],elapsedMs=0,pageRows=[],hasMore=false;
+  const wanted=Math.min(MAX_RESULTS,pageOffset+boundedLimit+1);let rows=[],supplemental=[],elapsedMs=0,pageRows=[],hasMore=false,partial=false;
   if(normalizedMode==='everything'){
     const result=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:Math.min(boundedLimit+1,available),offset:pageOffset,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));rows=result.rows;elapsedMs=result.elapsedMs;pageRows=rows.slice(0,boundedLimit);hasMore=rows.length>boundedLimit&&pageOffset+boundedLimit<MAX_RESULTS;
   }else{
-    const result=await runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:wanted,offset:0,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope}));rows=result.rows;elapsedMs=result.elapsedMs;await ensurePdfFormIndexReady();supplemental=searchPdfFormIndex(query,normalizedContentSearch,normalizedScope,wanted);const merged=mergeDocumentResults([rows,supplemental],wanted,MAX_RESULTS);pageRows=merged.slice(pageOffset,pageOffset+boundedLimit);hasMore=merged.length>pageOffset+pageRows.length&&pageOffset+boundedLimit<MAX_RESULTS;
+    const [result,indexState]=await Promise.all([runEverythingJson((config,probe)=>buildEsSearchArgs({query,mode:normalizedMode,contentSearch:normalizedContentSearch,limit:wanted,offset:0,timeoutMs:config.searchTimeoutMs,instance:probe.instance,scopePath:normalizedScope})),preparePdfFormIndexForSearch()]);rows=result.rows;elapsedMs=result.elapsedMs;supplemental=searchPdfFormIndex(query,normalizedContentSearch,normalizedScope,wanted);const merged=mergeDocumentResults([rows,supplemental],wanted,MAX_RESULTS);pageRows=merged.slice(pageOffset,pageOffset+boundedLimit);hasMore=merged.length>pageOffset+pageRows.length&&pageOffset+boundedLimit<MAX_RESULTS;partial=indexState.partial;
   }
   pruneResults();const results=pageRows.map(row=>publicResult(row,{query,mode:normalizedMode,contentSearch:normalizedContentSearch}));
-  await appendLog(`SEARCH mode=${normalizedMode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(normalizedScope)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
-  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,offset:pageOffset,limit:boundedLimit,results,hasMore,maxResults:MAX_RESULTS,elapsedMs,partial:false,rootErrors:[]};
+  await appendLog(`SEARCH mode=${normalizedMode} offset=${pageOffset} limit=${boundedLimit} hasMore=${hasMore} partial=${partial} contentSearch=${JSON.stringify(normalizedContentSearch)} scope=everything-index+interactive-pdf scopePath=${JSON.stringify(normalizedScope)} results=${results.length} everythingResults=${rows.length} pdfSupplemental=${supplemental.length} elapsedMs=${elapsedMs} input=${JSON.stringify(String(query||''))} everythingQuery=${JSON.stringify(everythingQuery)}`);
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,query:String(query||'').trim(),mode:normalizedMode,contentSearch:normalizedContentSearch,scopePath:normalizedScope,offset:pageOffset,limit:boundedLimit,results,hasMore,maxResults:MAX_RESULTS,elapsedMs,partial,rootErrors:[]};
 }
 async function recentDocuments(limit,scopePath=''){
   const normalizedScope=normalizeSearchScopePath(scopePath),boundedLimit=Math.min(RECENT_RESULT_LIMIT,Math.max(1,Number(limit)||RECENT_RESULT_LIMIT));

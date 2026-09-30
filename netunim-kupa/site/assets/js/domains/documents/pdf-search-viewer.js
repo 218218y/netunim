@@ -108,6 +108,25 @@ export function findPdfFormFieldMatches(annotations,pageNumber,query,contentSear
   return {matches:rows,capped};
 }
 
+export async function collectPdfFormSearchMatches(pdfDocument,query,contentSearch={},maxMatches=PDF_FORM_MATCH_LIMIT,{isCancelled=()=>false}={}){
+  const matchesByPage=new Map();let remaining=Math.max(1,Math.min(PDF_FORM_MATCH_LIMIT,Number(maxMatches)||PDF_FORM_MATCH_LIMIT)),capped=false;
+  const pages=Math.max(0,Number(pdfDocument?.numPages)||0);
+  for(let pageNumber=1;pageNumber<=pages&&remaining>0;pageNumber+=1){
+    if(isCancelled())break;
+    try{
+      const page=await pdfDocument.getPage(pageNumber),annotations=await page.getAnnotations({intent:'display'}),found=findPdfFormFieldMatches(annotations,pageNumber,query,contentSearch,remaining);
+      if(found.matches.length){
+        const fields=new Map();
+        for(const match of found.matches){const list=fields.get(match.fieldKey)||[];list.push(match);fields.set(match.fieldKey,list)}
+        matchesByPage.set(pageNumber,fields);remaining-=found.matches.length;
+      }
+      capped=capped||found.capped;
+    }catch{}
+  }
+  if(remaining<=0)capped=true;
+  return {matchesByPage,capped};
+}
+
 function applyFieldGeometry(element,model){element.style.left=`${model.left}%`;element.style.top=`${model.top}%`;element.style.width=`${model.width}%`;element.style.height=`${model.height}%`}
 function createCopyablePdfField(model){
   const field=document.createElement(model.multiLine?'textarea':'input');
@@ -117,12 +136,20 @@ function createCopyablePdfField(model){
 }
 function createPdfFormMatchMarker(model,{current=false,count=1}={}){const marker=document.createElement('span');marker.className=`document-pdf-form-match-marker${current?' current':''}`;marker.dataset.pdfFieldKey=model.fieldKey;marker.dataset.matchCount=String(Math.max(1,Number(count)||1));marker.setAttribute('aria-hidden','true');applyFieldGeometry(marker,model);return marker}
 
+function ensurePdfFormOverlay(pageView){
+  const page=pageView?.div;if(!page)return null;
+  let overlay=page.querySelector?.(':scope > .document-pdf-form-overlay')||null;
+  if(!overlay){overlay=document.createElement('div');overlay.className='document-pdf-form-overlay';overlay.dataset.pageNumber=String(Number(pageView?.id)||Number(page.dataset?.pageNumber)||'');page.append(overlay)}
+  return overlay;
+}
+
 async function renderCopyablePdfFields(pageView,{isCurrent=()=>true,formMatchesByField=null,currentFormFieldKey=''}={}){
-  const root=pageView?.annotationLayer?.div,pdfPage=pageView?.pdfPage,viewport=pageView?.viewport;
-  if(!root||!pdfPage?.getAnnotations||!viewport)return 0;
+  const page=pageView?.div,pdfPage=pageView?.pdfPage,viewport=pageView?.viewport;
+  if(!page||!pdfPage?.getAnnotations||!viewport)return 0;
   const annotations=await pdfPage.getAnnotations({intent:'display'});
-  if(!isCurrent()||pageView.annotationLayer?.div!==root)return 0;
-  root.querySelectorAll?.('.document-pdf-copy-field,.document-pdf-form-match-marker').forEach(field=>field.remove());
+  if(!isCurrent()||pageView.div!==page)return 0;
+  const root=ensurePdfFormOverlay(pageView);if(!root)return 0;
+  root.replaceChildren();
   let added=0;
   for(const [annotationIndex,annotation] of (annotations||[]).entries()){
     const rectModel=pdfFieldRectModel(annotation,viewport,annotationIndex);if(!rectModel)continue;
@@ -279,18 +306,20 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   if(pdfjsLib.AnnotationEditorType?.DISABLE!==undefined)viewerOptions.annotationEditorMode=pdfjsLib.AnnotationEditorType.DISABLE;
   const pdfViewer=new pdfjsViewer.PDFViewer(viewerOptions);
   linkService.setViewer(pdfViewer);
-  let destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedPoll=null;
+  let destroyed=false,loadingTask=null,pdfDocument=null,lastState={current:0,total:0},pagesReady=false,lastFitWidth=0,resizeTimer=null,resizeFrame=null,resizeObserver=null,combinedRefreshQueued=false;
   let formSearchReady=!hasFindQuery||!interactiveForms,formSearchCapped=false,combinedReady=false,combinedMatches=[],combinedIndex=-1;
   const formMatchesByPage=new Map(),copyFieldGeneration=new Map();
   const removeCopyHandler=installPdfCopyHandler(container,pdfjsLib.normalizeUnicode||((value)=>value));
   const normalizeViewerState=value=>({current:Math.max(0,Number(value?.current)||0),total:Math.max(0,Number(value?.total)||0),snippet:value?.snippet||null,capped:!!value?.capped,location:String(value?.location||'')});
   const emit=value=>{const next=normalizeViewerState(value);if(next.current===lastState.current&&next.total===lastState.total&&next.snippet===lastState.snippet&&next.location===lastState.location&&next.capped===lastState.capped)return;lastState=next;onMatchState?.(next)};
-  const nativeMatchState=value=>{if(combinedReady)return;emit(normalizeMatchCount(value))};
+  const hasFormMatches=()=>{for(const fields of formMatchesByPage.values())for(const matches of fields.values())if(matches.length)return true;return false};
+  const nativeMatchState=value=>{if(formSearchReady&&hasFormMatches())return;emit(normalizeMatchCount(value))};
   if(hasFindQuery){eventBus.on('updatefindmatchescount',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()});eventBus.on('updatefindcontrolstate',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()})}
   const currentFormEntry=()=>combinedIndex>=0&&combinedMatches[combinedIndex]?.kind==='form'?combinedMatches[combinedIndex]:null;
   const pageFieldMatches=pageNumber=>formMatchesByPage.get(Number(pageNumber)||0)||null;
-  async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.annotationLayer?.div)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).catch(()=>{})}}
-  if(interactiveForms)eventBus.on('annotationlayerrendered',event=>{const pageNumber=Number(event?.pageNumber)||0,generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(event?.source,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})});
+  async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).catch(()=>{})}}
+  const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
+  if(interactiveForms){eventBus.on('pagerendered',renderFormLayerForEvent);eventBus.on('annotationlayerrendered',renderFormLayerForEvent)}
   const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
@@ -299,7 +328,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const scheduleResize=({immediate=false}={})=>{if(destroyed)return;cancelScheduledResize();if(immediate){queueFrame(()=>fitToWidth());return}resizeTimer=setTimeout(()=>{resizeTimer=null;queueFrame(()=>fitToWidth())},90)};
   if(typeof ResizeObserver==='function'){resizeObserver=new ResizeObserver(()=>scheduleResize());resizeObserver.observe(container)}
   eventBus.on('pagesinit',()=>{if(destroyed)return;pagesReady=true;lastFitWidth=0;fitToWidth({force:true});dispatch('',false)});
-  function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.annotationLayer?.div;if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
+  function formMarkerFor(entry){const pageView=pdfViewer.getPageView?.(entry.pageNumber-1),root=pageView?.div?.querySelector?.(':scope > .document-pdf-form-overlay');if(!root)return null;return [...(root.querySelectorAll?.('.document-pdf-form-match-marker')||[])].find(marker=>marker.dataset?.pdfFieldKey===entry.fieldKey)||null}
   function scrollElementToCenter(element,{behavior='smooth'}={}){const rect=element?.getBoundingClientRect?.(),hostRect=container.getBoundingClientRect?.();if(!rect||!hostRect)return false;const top=container.scrollTop+(rect.top-hostRect.top)-(container.clientHeight/2)+(rect.height/2);container.scrollTo?.({top:Math.max(0,top),left:Math.max(0,container.scrollLeft||0),behavior});return true}
   function scrollCurrentFormMatch(entry,{behavior='smooth'}={}){if(!entry||destroyed)return false;const marker=formMarkerFor(entry);if(marker)return scrollElementToCenter(marker,{behavior});linkService.page=entry.pageNumber;return false}
   function refreshFormMarkerCurrent(){const current=currentFormEntry();for(const marker of container.querySelectorAll?.('.document-pdf-form-match-marker')||[]){const pageNumber=Number(marker.closest?.('.page')?.dataset?.pageNumber)||0;marker.classList.toggle('current',!!current&&pageNumber===current.pageNumber&&marker.dataset?.pdfFieldKey===current.fieldKey)}}
@@ -307,11 +336,11 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   function clearNativeTextSelection(){if(!findController?.selected)return;const selected=findController.selected,previousPage=Number(selected.pageIdx);selected.pageIdx=-1;selected.matchIdx=-1;if(previousPage>=0)eventBus.dispatch('updatetextlayermatches',{source:findController,pageIndex:previousPage})}
   function combinedState(){const entry=combinedIndex>=0?combinedMatches[combinedIndex]:null;return {current:entry?combinedIndex+1:0,total:combinedMatches.length,snippet:entry?.snippet||null,capped:formSearchCapped,location:entry?`עמוד ${entry.pageNumber}`:''}}
   function goCombined(index,{behavior='smooth'}={}){if(!combinedReady||!combinedMatches.length){emit(combinedState());return combinedState()}combinedIndex=(Number(index)%combinedMatches.length+combinedMatches.length)%combinedMatches.length;const entry=combinedMatches[combinedIndex];if(entry.kind==='form'){clearNativeTextSelection();refreshFormMarkerCurrent();if(!scrollCurrentFormMatch(entry,{behavior}))queueMicrotask(()=>refreshRenderedFormLayers())}else{refreshFormMarkerCurrent();selectNativeTextMatch(entry)}const state=combinedState();emit(state);return state}
-  function nativeMatchesReady(){if(!hasFindQuery||!findController||!pdfDocument)return true;const matches=findController.pageMatches||[];for(let index=0;index<pdfDocument.numPages;index+=1)if(!Array.isArray(matches[index]))return false;return true}
-  function buildCombinedMatches(){const rows=[];if(findController&&pdfDocument){for(let pageIdx=0;pageIdx<pdfDocument.numPages;pageIdx+=1){const pageMatches=findController.pageMatches?.[pageIdx]||[];for(let matchIdx=0;matchIdx<pageMatches.length;matchIdx+=1)rows.push({kind:'text',pageIdx,pageNumber:pageIdx+1,matchIdx,sortGroup:0,sortIndex:Number(pageMatches[matchIdx])||matchIdx})}}for(const [pageNumber,fields] of formMatchesByPage){for(const fieldMatches of fields.values())for(const match of fieldMatches)rows.push({...match,sortGroup:1,sortIndex:match.annotationIndex*100000+match.start})}rows.sort((a,b)=>a.pageIdx-b.pageIdx||a.sortGroup-b.sortGroup||a.sortIndex-b.sortIndex);return rows}
-  function finalizeCombinedNavigation(){if(destroyed||combinedReady||!hasFindQuery||!formSearchReady||!nativeMatchesReady())return false;combinedMatches=buildCombinedMatches();combinedReady=true;if(combinedPoll!==null){clearTimeout(combinedPoll);combinedPoll=null}const selected=findController?.selected;let initial=0;if(selected?.pageIdx>=0&&selected?.matchIdx>=0){const found=combinedMatches.findIndex(row=>row.kind==='text'&&row.pageIdx===selected.pageIdx&&row.matchIdx===selected.matchIdx);if(found>=0)initial=found}combinedIndex=combinedMatches.length?initial:-1;refreshRenderedFormLayers().finally(()=>{if(combinedIndex>=0)goCombined(combinedIndex,{behavior:'auto'});else emit(combinedState())});return true}
-  function scheduleCombinedRefresh(){if(destroyed||combinedReady||!hasFindQuery)return;if(finalizeCombinedNavigation())return;if(combinedPoll!==null)return;combinedPoll=setTimeout(()=>{combinedPoll=null;scheduleCombinedRefresh()},80)}
-  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;scheduleCombinedRefresh();return}let remaining=PDF_FORM_MATCH_LIMIT;for(let pageNumber=1;pageNumber<=pdfDocument.numPages&&remaining>0;pageNumber+=1){if(destroyed)return;try{const page=await pdfDocument.getPage(pageNumber),annotations=await page.getAnnotations({intent:'display'}),found=findPdfFormFieldMatches(annotations,pageNumber,needle,search,remaining);if(found.matches.length){const fields=new Map();for(const match of found.matches){const list=fields.get(match.fieldKey)||[];list.push(match);fields.set(match.fieldKey,list)}formMatchesByPage.set(pageNumber,fields);remaining-=found.matches.length}formSearchCapped=formSearchCapped||found.capped}catch{}if(remaining<=0)formSearchCapped=true}formSearchReady=true;await refreshRenderedFormLayers();scheduleCombinedRefresh()}
+  function combinedEntryKey(entry){return entry?.kind==='form'?`form:${entry.pageIdx}:${entry.fieldKey}:${entry.start}:${entry.end}`:entry?.kind==='text'?`text:${entry.pageIdx}:${entry.matchIdx}`:''}
+  function buildCombinedMatches(){const rows=[];if(findController&&pdfDocument){for(let pageIdx=0;pageIdx<pdfDocument.numPages;pageIdx+=1){const pageMatches=Array.isArray(findController.pageMatches?.[pageIdx])?findController.pageMatches[pageIdx]:[];for(let matchIdx=0;matchIdx<pageMatches.length;matchIdx+=1)rows.push({kind:'text',pageIdx,pageNumber:pageIdx+1,matchIdx,sortGroup:0,sortIndex:Number(pageMatches[matchIdx])||matchIdx})}}for(const fields of formMatchesByPage.values()){for(const fieldMatches of fields.values())for(const match of fieldMatches)rows.push({...match,sortGroup:1,sortIndex:match.annotationIndex*100000+match.start})}rows.sort((a,b)=>a.pageIdx-b.pageIdx||a.sortGroup-b.sortGroup||a.sortIndex-b.sortIndex);return rows}
+  function refreshCombinedNavigation({navigateInitial=false}={}){if(destroyed||!hasFindQuery||!formSearchReady)return false;const previousKey=combinedEntryKey(combinedIndex>=0?combinedMatches[combinedIndex]:null),selected=findController?.selected;combinedMatches=buildCombinedMatches();combinedReady=true;let nextIndex=previousKey?combinedMatches.findIndex(row=>combinedEntryKey(row)===previousKey):-1;if(nextIndex<0&&selected?.pageIdx>=0&&selected?.matchIdx>=0)nextIndex=combinedMatches.findIndex(row=>row.kind==='text'&&row.pageIdx===selected.pageIdx&&row.matchIdx===selected.matchIdx);if(nextIndex<0)nextIndex=combinedMatches.length?0:-1;const currentChanged=nextIndex!==combinedIndex||combinedEntryKey(combinedMatches[nextIndex])!==previousKey;combinedIndex=nextIndex;refreshFormMarkerCurrent();if(navigateInitial&&combinedIndex>=0)goCombined(combinedIndex,{behavior:'auto'});else if(currentChanged||navigateInitial)emit(combinedState());return true}
+  function scheduleCombinedRefresh(){if(destroyed||!hasFindQuery||!formSearchReady||combinedRefreshQueued)return;combinedRefreshQueued=true;queueMicrotask(()=>{combinedRefreshQueued=false;refreshCombinedNavigation()})}
+  async function collectFormSearchMatches(){if(!interactiveForms||!hasFindQuery||!pdfDocument){formSearchReady=true;refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh();return}const scanned=await collectPdfFormSearchMatches(pdfDocument,needle,search,PDF_FORM_MATCH_LIMIT,{isCancelled:()=>destroyed});if(destroyed)return;formMatchesByPage.clear();for(const [pageNumber,fields] of scanned.matchesByPage)formMatchesByPage.set(pageNumber,fields);formSearchCapped=scanned.capped;formSearchReady=true;await refreshRenderedFormLayers();refreshCombinedNavigation({navigateInitial:true});scheduleCombinedRefresh()}
   try{
     loadingTask=pdfjsLib.getDocument(await documentRuntimeOptions({url,blob,data}));
     pdfDocument=await loadingTask.promise;
@@ -319,12 +348,12 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
     pdfViewer.setDocument(pdfDocument);linkService.setDocument(pdfDocument,null);void collectFormSearchMatches();
   }catch(error){host.innerHTML='';throw error}
   return {
-    next(){if(combinedReady)return goCombined(combinedIndex+1);dispatch('again',false)},
-    previous(){if(combinedReady)return goCombined(combinedIndex-1);dispatch('again',true)},
+    next(){if(combinedReady&&combinedMatches.length)return goCombined(combinedIndex+1);dispatch('again',false)},
+    previous(){if(combinedReady&&combinedMatches.length)return goCombined(combinedIndex-1);dispatch('again',true)},
     resize(options={}){scheduleResize(options);if(combinedReady&&currentFormEntry())queueMicrotask(()=>scrollCurrentFormMatch(currentFormEntry(),{behavior:'auto'}))},
-    matchState(){return combinedReady?combinedState():{...lastState}},
+    matchState(){return combinedReady&&combinedMatches.length?combinedState():{...lastState}},
     async destroy(){
-      if(destroyed)return;destroyed=true;removeCopyHandler();copyFieldGeneration.clear();formMatchesByPage.clear();cancelScheduledResize();if(combinedPoll!==null){clearTimeout(combinedPoll);combinedPoll=null}resizeObserver?.disconnect?.();resizeObserver=null;
+      if(destroyed)return;destroyed=true;removeCopyHandler();copyFieldGeneration.clear();formMatchesByPage.clear();cancelScheduledResize();resizeObserver?.disconnect?.();resizeObserver=null;
       try{pdfViewer.setDocument(null)}catch{}
       try{linkService.setDocument(null,null)}catch{}
       try{await loadingTask?.destroy?.()}catch{}

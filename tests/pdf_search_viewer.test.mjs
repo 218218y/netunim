@@ -28,6 +28,37 @@ function fakeHost(fields=[]){
 const tick=()=>new Promise(resolve=>setTimeout(resolve,8));
 
 
+
+class TinyElement{
+  constructor(className=''){this.className=className;this.children=[];this.parentElement=null;this.style={};this.dataset={};this.attributes=new Map();this.clientWidth=640;this.clientHeight=800;this.scrollTop=0;this.scrollLeft=0;this.value=''}
+  append(child){child.parentElement=this;this.children.push(child);return child}
+  replaceChildren(...children){for(const child of this.children)child.parentElement=null;this.children=[];for(const child of children)this.append(child)}
+  remove(){if(!this.parentElement)return;this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null}
+  setAttribute(name,value){this.attributes.set(name,String(value))}
+  getBoundingClientRect(){return {left:0,top:0,right:this.clientWidth,bottom:this.clientHeight,width:this.clientWidth,height:this.clientHeight}}
+  scrollTo({top=0,left=0}={}){this.scrollTop=top;this.scrollLeft=left}
+  matchesClass(name){return String(this.className||'').split(/\s+/).includes(name)}
+  querySelector(selector){if(selector===':scope > .document-pdf-form-overlay')return this.children.find(child=>child.matchesClass('document-pdf-form-overlay'))||null;return this.querySelectorAll(selector)[0]||null}
+  querySelectorAll(selector){const wanted=selector.split(',').map(part=>part.trim().replace(/^\./,'')).filter(Boolean),rows=[];const visit=node=>{for(const child of node.children){if(wanted.some(name=>child.matchesClass(name)))rows.push(child);visit(child)}};visit(this);return rows}
+  closest(selector){if(selector!=='.page')return null;for(let node=this;node;node=node.parentElement)if(node.matchesClass('page'))return node;return null}
+  classList={toggle:(name,on)=>{const set=new Set(String(this.className||'').split(/\s+/).filter(Boolean));on?set.add(name):set.delete(name);this.className=[...set].join(' ')},contains:name=>this.matchesClass(name),add:name=>{if(!this.matchesClass(name))this.className=`${this.className} ${name}`.trim()}};
+}
+
+function fakeInteractiveRuntime(annotations){
+  const state={eventBus:null,findController:null};
+  const pageRoot=new TinyElement('page');pageRoot.dataset.pageNumber='1';pageRoot.clientWidth=600;pageRoot.clientHeight=800;
+  const viewport={width:600,height:800,convertToViewportRectangle:rect=>[rect[0],800-rect[1],rect[2],800-rect[3]]};
+  const pdfPage={getAnnotations:async()=>annotations};
+  const pageView={id:1,div:pageRoot,pdfPage,viewport};
+  class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
+  class PDFLinkService{constructor(){this.page=1}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
+  class PDFFindController{constructor(){this.pageMatches=[];this.selected={pageIdx:-1,matchIdx:-1};state.findController=this}}
+  class PDFViewer{constructor({container}){container.append(pageRoot);this.container=container}setDocument(document){this.document=document}getPageView(index){return index===0?pageView:null}set currentScaleValue(value){this.scale=value}update(){}}
+  const pdfDocument={numPages:1,getPage:async()=>pdfPage,destroy:async()=>{}};
+  const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{}};
+  return {state,pageRoot,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1},AnnotationEditorType:{DISABLE:-1},getDocument:()=>loadingTask,normalizeUnicode:value=>value},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
+}
+
 test('PDF find requests keep all matches highlighted and distinguish next from previous',()=>{
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
   assert.equal(buildPdfFindRequest('needle',{type:'again',findPrevious:true}).findPrevious,true);
@@ -65,6 +96,31 @@ test('interactive PDF form values participate in highlight navigation without ch
   const choice=findPdfFormFieldMatches(annotations,1,'זהב',{matchMode:'phrase'});
   assert.equal(choice.matches.length,1,'choice field values are searchable too');
   assert.equal(findPdfFormFieldMatches(annotations,1,'secret',{matchMode:'phrase'}).matches.length,0,'password fields never enter search/highlight results');
+});
+
+test('AcroForm matches become visible and navigable without waiting for native PDF text search',async()=>{
+  const originalDocument=globalThis.document;
+  const listeners=new Map();
+  globalThis.document={
+    createElement:()=>new TinyElement(),
+    addEventListener:(name,handler)=>listeners.set(name,handler),
+    removeEventListener:name=>listeners.delete(name),
+    getSelection:()=>null,
+  };
+  try{
+    const annotations=[{id:'name',fieldType:'Tx',fieldName:'שם',fieldValue:'ליבי מאיר ליבי',rect:[100,600,300,640]}];
+    const {state,pageRoot,runtime}=fakeInteractiveRuntime(annotations),host=fakeHost();
+    host.container.append=TinyElement.prototype.append.bind(host.container);
+    host.container.children=[];host.container.className='document-pdfjs-container';host.container.querySelectorAll=TinyElement.prototype.querySelectorAll.bind(host.container);host.container.getBoundingClientRect=()=>({left:0,top:0,width:640,height:800,right:640,bottom:800});host.container.clientHeight=800;host.container.scrollTop=0;host.container.scrollLeft=0;host.container.scrollTo=()=>{};
+    const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'ליבי',runtime});
+    await tick();await tick();
+    assert.deepEqual(state.findController.pageMatches,[],'native text search is intentionally still unresolved in this regression fixture');
+    assert.equal(viewer.matchState().total,2,'form matches are available immediately instead of waiting for PDFFindController page matches');
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-form-match-marker').length,1,'a stable page-owned overlay marks the matching AcroForm field');
+    assert.equal(pageRoot.querySelectorAll('.document-pdf-copy-field').length,1,'the copy layer shares the stable page-owned overlay');
+    const before=viewer.matchState().current;viewer.next();assert.notEqual(viewer.matchState().current,before,'next navigation advances between AcroForm occurrences');
+    await viewer.destroy();
+  }finally{globalThis.document=originalDocument}
 });
 
 test('PDF text copy reconstructs visual word gaps without inserting spaces between glyph fragments',()=>{

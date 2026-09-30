@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {buildGlobalSearchEntries,normalizeGlobalSearchText,searchGlobalData,searchGlobalEntries} from '../netunim-orders/site/assets/js/domains/search/model.js';
 
 const state={
@@ -77,4 +78,18 @@ test('Orders global search defaults to 150 visible rows per group before progres
  const group=searchGlobalEntries(entries,'חיפוש ברירת מחדל').groups.find(x=>x.key==='notes');
  assert.equal(group.total,180);
  assert.equal(group.items.length,150);
+});
+
+
+test('document filename search is dispatched ahead of slower content search and each request has its own abort lane',()=>{
+ const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8'),pipeline=fs.readFileSync(new URL('../shared/document-search/ui/document-search-pipeline.js',import.meta.url),'utf8');
+ const fileDelay=Number(pipeline.match(/DOCUMENT_FILE_SEARCH_DELAY_MS=(\d+)/)?.[1]);
+ const contentDelay=Number(pipeline.match(/DOCUMENT_CONTENT_SEARCH_DELAY_MS=(\d+)/)?.[1]);
+ assert.ok(Number.isFinite(fileDelay)&&Number.isFinite(contentDelay)&&fileDelay<contentDelay,'filename search must start before content search');
+ assert.match(pipeline,/createSearchScheduler\(value=>run\(value,'everything'\)/);
+ assert.match(pipeline,/createSearchScheduler\(value=>run\(value,'content'\)/);
+ assert.match(pipeline,/const aborts=\{everything:null,content:null\}/,'fast filename results must not be held behind or cancelled by the slower content request');
+ assert.match(source,/documentSearchLanes\.schedule\('everything',raw\)/);
+ assert.match(source,/documentSearchLanes\.schedule\('content',raw\)/);
+ assert.doesNotMatch(source,/Promise\.all\(modes\.map\([^)]*documentBridge\.search/s,'initial file/content requests must not wait for one shared Promise.all barrier');
 });

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=23;
+export const BRIDGE_VERSION=24;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
@@ -171,7 +171,13 @@ function contentMatchRanges(source,query,{matchMode='phrase',proximityWords=0,ma
 }
 
 export function contentSearchMatches(value,query,options={}){
-  return contentMatchRanges(String(value??''),query,{...options,maxMatches:5000}).ranges.length>0;
+  const source=String(value??''),needle=normalizeSearchText(query),search=normalizeContentSearchOptions(options),terms=contentTerms(needle);
+  if(!source||needle.length<2)return false;
+  const phonePattern=phoneSearchRegex(needle);if(phonePattern)return new RegExp(phonePattern,'u').test(source);
+  const haystack=source.toLocaleLowerCase('he-IL');
+  if(search.matchMode==='proximity'&&terms.length>1)return new RegExp(buildContentProximityRegex(terms.map(term=>term.toLocaleLowerCase('he-IL')),search.proximityWords),'u').test(haystack);
+  if(search.matchMode==='all'||search.matchMode==='any'){const unique=[...new Set(terms.map(term=>term.toLocaleLowerCase('he-IL')))];return search.matchMode==='all'?unique.every(term=>haystack.includes(term)):unique.some(term=>haystack.includes(term))}
+  return haystack.includes(needle.toLocaleLowerCase('he-IL'));
 }
 
 export function buildContentMatchInfo(value,query,{contextChars=90,maxSnippets=12,maxMatches=5000,matchMode='phrase',proximityWords=0}={}){

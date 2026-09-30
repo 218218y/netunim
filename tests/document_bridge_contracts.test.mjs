@@ -71,11 +71,14 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/--refresh-pdf-index --install-warmup/);
   assert.match(server,/PDF_FORM_INDEX_INSTALL_WARMUP=8/);
   assert.match(server,/pending in background/);
+  assert.match(server,/preparePdfFormIndexForSearch/);
+  assert.doesNotMatch(server,/PDF_FORM_INDEX_INITIAL_WAIT_MS/,'content requests must never wait on a full PDF-form index refresh');
+  assert.doesNotMatch(lib,/contentMatchRanges\(String\(value\?\?''\),query,\{\.\.\.options,maxMatches:5000\}\)\.ranges\.length>0/,'supplemental-index filtering must stop at boolean match semantics instead of materializing highlight ranges');
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=23/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=23/);
+  assert.match(lib,/BRIDGE_VERSION=24/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=24/);
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -229,10 +232,12 @@ test('preview stays local: filename Office preview stays native while content se
   const css=read('shared/global-document-search.css');
   assert.match(pdfViewer,/PDFFindController/);
   assert.match(pdfViewer,/highlightAll:true/);
-  assert.match(pdfViewer,/next\(\)\{if\(combinedReady\)return goCombined\(combinedIndex\+1\);dispatch\('again',false\)\}/);
-  assert.match(pdfViewer,/previous\(\)\{if\(combinedReady\)return goCombined\(combinedIndex-1\);dispatch\('again',true\)\}/);
+  assert.match(pdfViewer,/next\(\)\{if\(combinedReady&&combinedMatches\.length\)return goCombined\(combinedIndex\+1\);dispatch\('again',false\)\}/);
+  assert.match(pdfViewer,/previous\(\)\{if\(combinedReady&&combinedMatches\.length\)return goCombined\(combinedIndex-1\);dispatch\('again',true\)\}/);
   assert.match(pdfViewer,/findPdfFormFieldMatches/);
   assert.match(pdfViewer,/buildCombinedMatches/);
+  assert.match(pdfViewer,/ensurePdfFormOverlay/);
+  assert.match(pdfViewer,/eventBus\.on\('pagerendered',renderFormLayerForEvent\)/);
   assert.match(css,/document-pdf-form-match-marker/);
   assert.match(pdfViewer,/updatefindmatchescount/);
   assert.match(pdfViewer,/currentScaleValue='page-width'/);
@@ -336,9 +341,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=23/);
+  assert.match(lib,/BRIDGE_VERSION=24/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=23/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=24/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });
