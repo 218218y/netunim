@@ -68,17 +68,26 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/extractInteractivePdfText/);
   assert.match(installer,/pdf_form_index\.mjs/);
   assert.match(installer,/assets\\vendor\\pdfjs/);
-  assert.match(installer,/--refresh-pdf-index --install-warmup/);
-  assert.match(server,/PDF_FORM_INDEX_INSTALL_WARMUP=8/);
-  assert.match(server,/pending in background/);
+  assert.doesNotMatch(installer,/--refresh-pdf-index --install-warmup/,'installer must never block on PDF indexing');
+  assert.match(server,/PDF_FORM_INDEX_BACKGROUND_BATCH=8/);
+  assert.match(server,/PDF_FORM_INDEX_CONCURRENCY=1/);
+  assert.match(server,/hasForm:!!extracted\.hasForm/,'ordinary PDFs must be negatively cached after inspection');
+  assert.match(server,/pending:pdfFormIndexPending/,'incremental progress must be persisted across restarts');
+  assert.match(server,/pdf-form-index\.journal\.jsonl/,'incremental PDF inspection progress must be journaled without rewriting the whole snapshot every batch');
+  assert.match(server,/PDF_FORM_INDEX_COMPACT_EVERY=500/);
+  assert.match(server,/PDF_FORM_INDEX_INVENTORY_REFRESH_MS=5\*60\*1000/,'a large backlog must not re-enumerate the complete PDF inventory before every small batch');
+  assert.match(server,/INSTALL_STOP_FORCE/,'upgrades must be able to terminate an old Bridge that closed the port but kept indexing');
+  assert.match(server,/taskkill\.exe/);
+  assert.match(installer,/Preserving local interactive PDF text index/);
+  assert.match(installer,/:move_dir_with_retry/);
   assert.match(server,/preparePdfFormIndexForSearch/);
   assert.doesNotMatch(server,/PDF_FORM_INDEX_INITIAL_WAIT_MS/,'content requests must never wait on a full PDF-form index refresh');
   assert.doesNotMatch(lib,/contentMatchRanges\(String\(value\?\?''\),query,\{\.\.\.options,maxMatches:5000\}\)\.ranges\.length>0/,'supplemental-index filtering must stop at boolean match semantics instead of materializing highlight ranges');
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=24/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=24/);
+  assert.match(lib,/BRIDGE_VERSION=25/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=25/);
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -341,9 +350,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=24/);
+  assert.match(lib,/BRIDGE_VERSION=25/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=24/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=25/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

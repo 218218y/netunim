@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {collectPdfFormValues,LocalPdfBinaryDataFactory,textContentToLogicalText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
+import {collectPdfFormValues,extractInteractivePdfText,LocalPdfBinaryDataFactory,textContentToLogicalText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 test('AcroForm extraction keeps logical Hebrew field values and ignores passwords',()=>{
   const values=collectPdfFormValues([
@@ -36,4 +36,10 @@ test('local PDF.js binary data loader resolves percent-encoded Unicode file URLs
     const data=await factory.fetch({kind:'standardFontDataUrl',filename:'font.bin'});
     assert.deepEqual([...data],[1,2,3,255]);
   }finally{await fs.rm(root,{recursive:true,force:true})}
+});
+
+
+test('interactive PDF extraction honors an already-aborted shutdown signal before touching the file',async()=>{
+  const controller=new AbortController();controller.abort();
+  await assert.rejects(()=>extractInteractivePdfText(path.join(os.tmpdir(),'does-not-need-to-exist.pdf'),{signal:controller.signal}),error=>error?.name==='AbortError'&&error?.code==='ABORT_ERR');
 });

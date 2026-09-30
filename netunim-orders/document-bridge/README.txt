@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v24 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v25 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -37,10 +37,15 @@ Website modes
    legacy Hebrew encodings that a Windows PDF iFilter may omit or expose in
    visual/reversed order.
 
-   The supplement is cached at:
+   The supplement snapshot is cached at:
      %LOCALAPPDATA%\NetunimDocumentBridge\pdf-form-index.json
-   Only PDFs already present in Everything are considered, and unchanged PDFs
-   are not reparsed. PDF.js auxiliary CMap/font/WASM resources are read directly
+   Incremental progress is appended to:
+     %LOCALAPPDATA%\NetunimDocumentBridge\pdf-form-index.journal.jsonl
+   Only PDFs already present in Everything are considered. Both interactive and
+   non-interactive PDFs are fingerprinted after inspection, so an unchanged PDF
+   is never reparsed merely because it has no form fields. Background discovery
+   advances in small persisted batches; completed work survives Bridge upgrades,
+   restarts and interrupted scans. PDF.js auxiliary CMap/font/WASM resources are read directly
    from local files with Unicode-safe Windows path handling, so Hebrew Windows
    user/profile names do not break standard-font loading.
 
@@ -114,6 +119,23 @@ The browser also forces a geometry resync when its window regains focus. This
 prevents another preview host or a monitor/DPI transition from leaving a stale
 Office preview size behind.
 
+
+Background PDF indexing
+-----------------------
+The supplemental index is incremental, not version-scoped. Installing a newer
+Bridge does NOT intentionally rebuild all PDFs. An entry is re-inspected only
+when Everything reports a changed size/date fingerprint or when it has never
+been inspected. Negative results (ordinary PDFs without AcroForm fields) are
+now cached too.
+
+While an initial backlog exists, the Bridge processes only 8 PDFs per batch with
+one PDF extraction at a time, appends that batch to a small crash-safe journal,
+then yields before the next batch. The journal is compacted into the main snapshot
+periodically, so progress survives interruption without rewriting a large JSON file
+after every PDF. Active user searches take priority and postpone the next background batch.
+This prevents a large Y:\ network archive from monopolizing CPU/network and means
+a restart loses at most the current small batch rather than the entire scan.
+
 Everything background process
 -----------------------------
 Everything.exe is started automatically with -startup when needed. A visible
@@ -127,9 +149,12 @@ Run install_document_bridge.bat on each PC. The installer:
 - upgrades the Bridge and stages the already-bundled local PDF.js runtime;
 - verifies ES/Everything;
 - starts Everything in background mode if required;
-- warms only a small batch of recently changed PDFs during installation so setup
-  cannot be held up by a large PDF collection; the complete supplemental scan
-  continues automatically in the Bridge background process after startup;
+- preserves the existing supplemental PDF index without scanning PDFs during
+  installation; after the new Bridge is healthy, background inspection resumes
+  from the persisted fingerprints in small low-concurrency batches;
+- stops an older Bridge before swapping runtime folders and, after a verified
+  graceful shutdown request, terminates a stale old Node process if it kept
+  running an index job and still holds the previous app directory;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 

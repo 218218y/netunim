@@ -78,11 +78,17 @@ export function textContentToLogicalText(content){
   return parts.join('').replace(/[ \t]+\n/g,'\n').replace(/\n[ \t]+/g,'\n').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
 }
 
-export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS}={}){
+function abortError(){const error=new Error('Interactive PDF extraction aborted');error.name='AbortError';error.code='ABORT_ERR';return error}
+function throwIfAborted(signal){if(signal?.aborted)throw abortError()}
+
+export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_BYTES,timeoutMs=PDF_FORM_EXTRACT_TIMEOUT_MS,signal=null}={}){
+  throwIfAborted(signal);
   const stat=await fs.stat(fullPath);
+  throwIfAborted(signal);
   if(!stat.isFile())return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',size:Number(stat.size)||0,skipped:'not-file'};
   if(stat.size>maxBytes)return {hasForm:false,formFieldCount:0,text:'',formText:'',pageText:'',size:Number(stat.size)||0,skipped:'too-large'};
-  const data=new Uint8Array(await fs.readFile(fullPath));
+  const data=new Uint8Array(await fs.readFile(fullPath,signal?{signal}:undefined));
+  throwIfAborted(signal);
   const pdfjs=await loadPdfJs();
   const task=pdfjs.getDocument({
     data,
@@ -96,16 +102,18 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
     standardFontDataUrl:new URL('./pdfjs/standard_fonts/',import.meta.url).href,
     wasmUrl:new URL('./pdfjs/wasm/',import.meta.url).href,
   });
-  let document=null,timeoutHandle=null;
+  let document=null,timeoutHandle=null,abortReject=null;
   const boundedTimeout=Math.max(1000,Math.min(60000,Number(timeoutMs)||PDF_FORM_EXTRACT_TIMEOUT_MS));
   const timeoutPromise=new Promise((_,reject)=>{timeoutHandle=setTimeout(()=>{const error=new Error(`Interactive PDF extraction timed out after ${boundedTimeout} ms`);error.code='PDF_FORM_EXTRACT_TIMEOUT';try{Promise.resolve(task.destroy()).catch(()=>{})}catch{}reject(error)},boundedTimeout);timeoutHandle.unref?.()});
-  const withinTimeout=promise=>Promise.race([promise,timeoutPromise]);
+  const abortPromise=new Promise((_,reject)=>{abortReject=()=>{try{Promise.resolve(task.destroy()).catch(()=>{})}catch{}reject(abortError())};signal?.addEventListener?.('abort',abortReject,{once:true})});
+  const withinBounds=promise=>Promise.race(signal?[promise,timeoutPromise,abortPromise]:[promise,timeoutPromise]);
   try{
-    document=await withinTimeout(task.promise);
+    document=await withinBounds(task.promise);
     const pages=[],annotations=[];
     for(let pageNumber=1;pageNumber<=document.numPages;pageNumber+=1){
-      const page=await withinTimeout(document.getPage(pageNumber));
-      const pageAnnotations=await withinTimeout(page.getAnnotations({intent:'display'}));
+      throwIfAborted(signal);
+      const page=await withinBounds(document.getPage(pageNumber));
+      const pageAnnotations=await withinBounds(page.getAnnotations({intent:'display'}));
       pages.push(page);annotations.push(...pageAnnotations);
     }
     const formAnnotations=annotations.filter(annotation=>annotation&&!annotation.password&&['Tx','Ch'].includes(String(annotation.fieldType||'')));
@@ -113,7 +121,8 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
     const formText=collectPdfFormValues(formAnnotations).join('\n');
     const pageParts=[];
     for(const page of pages){
-      const logical=textContentToLogicalText(await withinTimeout(page.getTextContent({includeMarkedContent:false,disableNormalization:false})));
+      throwIfAborted(signal);
+      const logical=textContentToLogicalText(await withinBounds(page.getTextContent({includeMarkedContent:false,disableNormalization:false})));
       if(logical)pageParts.push(logical);
     }
     const pageText=pageParts.join('\n\n').trim();
@@ -121,6 +130,7 @@ export async function extractInteractivePdfText(fullPath,{maxBytes=PDF_FORM_MAX_
     return {hasForm:true,formFieldCount:formAnnotations.length,text,formText,pageText,size:Number(stat.size)||0,skipped:''};
   }finally{
     if(timeoutHandle)clearTimeout(timeoutHandle);
+    if(abortReject)signal?.removeEventListener?.('abort',abortReject);
     try{await task.destroy()}catch{}
   }
 }

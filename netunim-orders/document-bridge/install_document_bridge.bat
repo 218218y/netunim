@@ -58,10 +58,8 @@ echo Ensuring Everything is running in background mode - no search window...
 node "%STAGING%\server.mjs" --ensure-everything
 if not "%ERRORLEVEL%"=="0" goto :everything_error
 
-echo Warming local interactive PDF text index...
-echo The installer checks only a small recent batch; the full index continues in the background after startup.
-node "%STAGING%\server.mjs" --refresh-pdf-index --install-warmup
-if not "%ERRORLEVEL%"=="0" goto :pdf_index_error
+echo Preserving local interactive PDF text index...
+echo Existing PDF index progress is reused; background inspection resumes only after the new Bridge starts.
 
 rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
 
@@ -74,8 +72,12 @@ node "%STAGING%\server.mjs" --stop-existing
 if not "%ERRORLEVEL%"=="0" goto :stop_error
 
 if exist "%APPBACKUP%" rmdir /S /Q "%APPBACKUP%" >nul 2>nul
-if exist "%APPDIR%" move "%APPDIR%" "%APPBACKUP%" >nul || goto :activate_error
-move "%STAGING%" "%APPDIR%" >nul || goto :activate_error
+if exist "%APPDIR%" (
+  call :move_dir_with_retry "%APPDIR%" "%APPBACKUP%"
+  if errorlevel 1 goto :activate_error
+)
+call :move_dir_with_retry "%STAGING%" "%APPDIR%"
+if errorlevel 1 goto :activate_error
 
 copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || goto :activate_error
 copy /Y "%~dp0configure_document_bridge.bat" "%APPROOT%\configure_document_bridge.bat" >nul || goto :activate_error
@@ -120,15 +122,6 @@ if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
 
-:pdf_index_error
-call :restore_config
-echo.
-echo ERROR: The interactive PDF text index could not be prepared.
-echo The current Bridge installation was preserved. See: %APPROOT%\bridge.log
-if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
-pause
-exit /b 1
-
 :everything_error
 call :restore_config
 echo.
@@ -166,6 +159,10 @@ echo.
 echo ERROR: The existing Document Bridge could not be stopped safely.
 echo The current installation and configuration were preserved.
 echo Runtime log: %APPROOT%\bridge.log
+if exist "%APPDIR%\server.mjs" (
+  node "%APPDIR%\server.mjs" --check-running >nul 2>nul
+  if errorlevel 1 start "" wscript.exe "%AUTOSTART%"
+)
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
@@ -181,13 +178,23 @@ exit /b 1
 call :restore_config
 node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
 if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
-if exist "%APPDIR%" move "%APPDIR%" "%APPFAILED%" >nul 2>nul
-if exist "%APPBACKUP%" move "%APPBACKUP%" "%APPDIR%" >nul 2>nul
+if exist "%APPDIR%" call :move_dir_with_retry "%APPDIR%" "%APPFAILED%"
+if exist "%APPBACKUP%" call :move_dir_with_retry "%APPBACKUP%" "%APPDIR%"
 if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
 echo ERROR: New Document Bridge did not start correctly. Previous runtime/configuration was restored when available.
 echo See: %APPROOT%\bridge.log
 echo Console log: %APPROOT%\bridge-console.log
 pause
+exit /b 1
+
+:move_dir_with_retry
+set "MOVE_SOURCE=%~1"
+set "MOVE_TARGET=%~2"
+for /L %%R in (1,1,12) do (
+  move "%MOVE_SOURCE%" "%MOVE_TARGET%" >nul 2>nul && exit /b 0
+  >nul 2>nul timeout /t 1 /nobreak
+)
+echo ERROR: Could not move "%MOVE_SOURCE%" to "%MOVE_TARGET%" after waiting for file handles to close.
 exit /b 1
 
 :restore_config
