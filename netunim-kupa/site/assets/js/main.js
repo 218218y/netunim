@@ -957,7 +957,7 @@ const uiActions=createUiActions({
 });
 
 
-window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('חזרה רשת — מסנכרן…','saving');uiStatus.setCloudHeaderStatus('syncing','ענן: חזרה רשת…');setTimeout(syncDocument.cloudPoll,250)}domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
+window.addEventListener('online',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(()=>void syncDocument.resumeAfterReconnect(),250);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 window.addEventListener('offline',()=>{if(!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase'){uiStatus.setSaveStatus('אופליין — שינויים יישמרו מקומית','saving');uiStatus.setCloudHeaderStatus('offline','ענן: אופליין')}});
 document.addEventListener('visibilitychange',()=>{if(document.hidden||!tab.primaryTab||session.storageProtocolBlocked)return;if(session.connectionMode==='supabase')setTimeout(syncDocument.cloudPoll,100);domainsBankController.maybeAutoRefreshBankBalance();domainsCreditController.maybeAutoRefreshCreditSync()});
 uiSidebar.bind();

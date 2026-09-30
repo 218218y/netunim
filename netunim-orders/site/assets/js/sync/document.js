@@ -202,33 +202,58 @@ async function requestCloudSave(message='השינויים סונכרנו',{legac
 
 async function restorePendingAgainstCloud(row){const durable=await getCloudPending(),pendingRaw=durable?.snapshot||loadCloudPendingState()||((session.cloudSaveRequested||!!(session.lastCloudState&&!sameOrderCloudData(model.state,session.lastCloudState)))?clone(model.state):null);if(!pendingRaw)return false;const pending=normalizeState(clone(pendingRaw)),remote=normalizeState(clone(row.state||{})),base=durable?.baseState?normalizeState(clone(durable.baseState)):session.lastCloudState?normalizeState(clone(session.lastCloudState)):null;applyOrderCloudState(pending);if(durable?.conflict){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;localSnapshot();setCloud('ענן: התנגשות — נדרשת הכרעה','error');return true}session.cloudRevision=Number(row.revision||0);session.cloudUpdatedAt=row.updated_at||session.cloudUpdatedAt;if(!base){session.cloudConflictBlocked=true;setCloud('ענן: נדרש שחזור','error');localSnapshot();toast('נמצאו שינויים מקומיים שלא סונכרנו, אך חסרה גרסת הבסיס. הנתונים המקומיים נשמרו ולא נדרסו.');return true}const merged=merge3(base,pending,remote,{deleteIntents:durable?.deleteIntents||{}});if(merged.conflicts.length){session.cloudConflictBlocked=true;session.cloudSaveRequested=false;markCloudPending(prepareCloudState(pending),'',{baseRevision:durable?.baseRevision,baseState:durable?.baseState,conflict:structuredSyncConflict({domain:'orders',conflicts:merged.conflicts,base,local:pending,remote,generation:durable?.generation,baseRevision:durable?.baseRevision,currentRemoteRevision:row.revision})});await session.ordersOutboxCommitPromise;setCloud('ענן: התנגשות','error');localSnapshot();toast('נמצאו שינויים מקומיים ועדכון ענן באותה רשומה. שום נתון לא נדרס.');return true}applyOrderCloudState(merged.state);session.lastCloudState=clone(remote);try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)};localSnapshot();markCloudPending(prepareCloudState(model.state),'',{baseRevision:Number(row.revision),baseState:prepareCloudState(remote),deleteIntents:durable?.deleteIntents||{}});session.localGeneration=Math.max(session.localGeneration,1);session.cloudSaveRequested=true;await requestCloudSave('שינויים מקומיים שוחזרו וסונכרנו');return true}
 
+function markCloudPollSynced(){setCloud('ענן: מסונכרן','synced');refreshCloudTimestamp();return true}
+function markCloudPollFailure(error){
+  const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
+  if(!navigator.onLine)setCloud('ענן: אופליין','offline');
+  else if(transient)setCloud('ענן: ממתין להתאוששות');
+  else setCloud('ענן: שגיאת סנכרון','error');
+  if(transient)console.warn('orders cloud poll deferred',error?.message||error);else console.error(error);
+  return false
+}
+
 async function cloudPoll(){
-  if(storageV2PreparationActive())return;
-  if(!tab.primaryTab)return;if(!cloudEnabled()||session.cloudBusy||!navigator.onLine)return;
-  if(cloudHasLocalWork()){await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return}
+  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||session.cloudBusy||!navigator.onLine)return false;
+  if(cloudHasLocalWork()){const saved=await requestCloudSave('סונכרנו שינויים מקומיים ועדכון מרחוק');await pollSharedChecks();return saved}
   let dataApiReadOk=false;
   try{
     session.cloudBusy=true;
-    const pollGeneration=Number(session.localGeneration||0),localBefore=prepareCloudState(model.state),meta=await readCloudMeta();dataApiReadOk=true;if(!meta)return;
+    const pollGeneration=Number(session.localGeneration||0),localBefore=prepareCloudState(model.state),meta=await readCloudMeta();dataApiReadOk=true;
+    if(!meta){setCloud('ענן: מסמך לא נמצא','error');return false}
     const metaRevision=Number(meta.revision||0);
-    if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;refreshCloudTimestamp();return}
-    const row=await readCloud();if(!row)return;if(Number(row.revision||0)<=session.cloudRevision)return;
+    if(metaRevision<=session.cloudRevision){session.cloudUpdatedAt=meta.updated_at||session.cloudUpdatedAt;return markCloudPollSynced()}
+    const row=await readCloud();
+    if(!row){setCloud('ענן: מסמך לא נמצא','error');return false}
+    if(Number(row.revision||0)<=session.cloudRevision){session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;return markCloudPollSynced()}
     // A user edit may arrive while the GET is in flight. Never replace that
     // newer local head with a remote row fetched from the earlier generation.
-    if(Number(session.localGeneration||0)!==pollGeneration||cloudHasLocalWork()||!sameOrderCloudData(model.state,localBefore)){session.cloudSaveRequested=true;return}
+    if(Number(session.localGeneration||0)!==pollGeneration||cloudHasLocalWork()||!sameOrderCloudData(model.state,localBefore)){session.cloudSaveRequested=true;setCloud('ענן: מסנכרן…');return false}
     const rowRevision=Number(row.revision||0),meaningful=!sameOrderCloudData(model.state,row.state);
     session.cloudRevision=rowRevision;session.cloudUpdatedAt=row.updated_at||meta.updated_at||session.cloudUpdatedAt;
     if(!meaningful){
       session.lastCloudState=prepareCloudState(row.state||model.state);
       if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);else try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}
-      refreshCloudTimestamp();setCloud('ענן: מסונכרן','synced');return
+      return markCloudPollSynced()
     }
     applyOrderCloudState(row.state);session.lastCloudState=prepareCloudState(model.state);
     if(storageV2CloudOutboxActive())await adoptStorageV2CloudHead(rowRevision,model.state);else{try{localStorage.setItem(CLOUD_BASE_KEY,JSON.stringify(session.lastCloudState))}catch(error){console.error('cloud base mirror',error)}localSnapshot()}
     try{if(files.dirHandle)await writeStateToFolder()}catch(localError){console.error('local backup/mirror',localError)}
-    setCloud('ענן: מסונכרן','synced');render();toast('התקבל עדכון מהענן')
-  }catch(e){const normalized=normalizeCloudError(e);if(['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind))console.warn('orders cloud poll deferred',e?.message||e);else console.error(e)}
+    markCloudPollSynced();render();toast('התקבל עדכון מהענן');return true
+  }catch(error){return markCloudPollFailure(error)}
   finally{session.cloudBusy=false;if(dataApiReadOk){await pollSharedChecks();await refreshKupaReadout({renderIfChanged:true})}}
+}
+
+async function resumeAfterReconnect(){
+  if(storageV2PreparationActive()||!tab.primaryTab||!cloudEnabled()||!navigator.onLine)return false;
+  if(session.cloudBusy)return trackedCloudPoll();
+  setCloud('ענן: חזרה רשת…');
+  try{
+    if(cloudHasLocalWork()){
+      const saved=await requestCloudSave('שינויים ממתינים סונכרנו');
+      if(!saved&&cloudHasLocalWork())return false;
+    }
+    return await trackedCloudPoll()
+  }catch(error){return markCloudPollFailure(error)}
 }
 
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
@@ -241,5 +266,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { saveCloudSnapshot, requestCloudSave, requestStorageV2CloudSave, restorePendingAgainstCloud, cloudPoll:trackedCloudPoll, startPolling,quiesceForStorageCutover,refreshForMorningRecovery };
+return { saveCloudSnapshot, requestCloudSave, requestStorageV2CloudSave, restorePendingAgainstCloud, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startPolling,quiesceForStorageCutover,refreshForMorningRecovery };
 }

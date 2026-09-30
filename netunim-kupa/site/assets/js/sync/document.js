@@ -227,31 +227,48 @@ async function persistSupabaseState(snapshot,msg,generation=session.localGenerat
   finally{session.cloudWriteBusy=false;session.cloudSyncBusy=false}
 }
 
+function markCloudPollSynced(){setSaveStatus?.('מסונכרן לענן','ok');setCloudHeaderStatus?.('synced','ענן: מסונכרן');return true}
+function markCloudPollFailure(error){
+  const normalized=normalizeCloudError(error),transient=['network','timeout','service_unavailable','rate_limited'].includes(normalized.kind);
+  if(!navigator.onLine){setSaveStatus?.('אופליין — שינויים יישמרו מקומית','saving');setCloudHeaderStatus?.('offline','ענן: אופליין')}
+  else if(transient){setSaveStatus?.('ממתין לחידוש חיבור הענן','saving');setCloudHeaderStatus?.('syncing','ענן: ממתין להתאוששות')}
+  else{setSaveStatus?.('בדיקת הענן נכשלה','error');setCloudHeaderStatus?.('conflict','ענן: שגיאת סנכרון')}
+  if(transient)console.warn('cloud poll deferred',error?.message||error);else console.error('cloud poll',error);
+  return false
+}
+
 async function cloudPoll(){
-  if(storageV2PreparationActive())return;
-  if(!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return;
-  if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return}
+  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
+  if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return false}
   let v2=await refreshStorageV2CloudState();
   if(storageV2CloudOutboxActive()){
-    if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return}
-    if(v2?.pending||v2?.flight){await requestStorageV2CloudSave();await pollSharedChecks();return}
+    if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}
+    if(v2?.pending||v2?.flight){const saved=await requestStorageV2CloudSave();await pollSharedChecks();return saved}
   }
-  const pending=await getCloudPending();if(pending){if(pending.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return}await reconcileCloudPending();await pollSharedChecks();return}
-  if(session.cloudConflictPending){await pollSharedChecks();return}
+  const pending=await getCloudPending();if(pending){if(pending.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}const saved=await reconcileCloudPending();await pollSharedChecks();return saved}
+  if(session.cloudConflictPending){await pollSharedChecks();return false}
   const pollGeneration=Number(session.localGeneration||0),localBefore=prepareKupaCloudState(model.state);
   try{
-    session.cloudSyncBusy=true;const row=await readSupabaseDocument();if(!row)return;
+    session.cloudSyncBusy=true;const row=await readSupabaseDocument();
+    if(!row){setSaveStatus('מסמך הענן אינו זמין','error');setCloudHeaderStatus('auth','ענן: מסמך לא נמצא');return false}
     v2=await refreshStorageV2CloudState();const pendingAfterRead=await getCloudPending(),localAdvanced=Number(session.localGeneration||0)!==pollGeneration||!!pendingAfterRead||!!(v2?.pending||v2?.flight)||!jsonEq(localBefore,prepareKupaCloudState(model.state));
-    if(localAdvanced){session.cloudSyncBusy=false;if(storageV2CloudOutboxActive())await requestStorageV2CloudSave();else if(pendingAfterRead)await reconcileCloudPending(row);return}
-    const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0);if(!(kupaChanged||financeChanged))return;
+    if(localAdvanced){session.cloudSyncBusy=false;if(storageV2CloudOutboxActive())await requestStorageV2CloudSave();else if(pendingAfterRead)await reconcileCloudPending(row);return false}
+    const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0);if(!(kupaChanged||financeChanged))return markCloudPollSynced();
     const base=v2?.base?.state||lastSavedCloudState(),clean=!!base&&jsonEq(prepareKupaCloudState(model.state),base);
-    if(clean){await applyCloudRow(row);toast(kupaChanged?'התקבל עדכון ממחשב אחר':'התקבל עדכון פיננסי ממקור אחר');return}
+    if(clean){await applyCloudRow(row);toast(kupaChanged?'התקבל עדכון ממחשב אחר':'התקבל עדכון פיננסי ממקור אחר');return true}
     if(kupaChanged){
-      if(storageV2CloudOutboxActive()){const conflict={kind:'storage-v2-dirty-head',domain:'kupa',message:'המצב המקומי שונה מבסיס הענן ללא journal ממתין',baseRevision:Number(v2?.base?.revision||session.dbRevision||0),currentRemoteRevision:Number(row.revision||0),at:new Date().toISOString()};await setStorageV2CloudControl({conflict});session.cloudConflictPending=true;setSaveStatus('התנגשות אחסון מקומי — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return}
-      stageCloudPendingLocal(prepareKupaCloudState(model.state),'שינוי מקומי ממתין',session.dbRevision,base||prepareKupaCloudState(model.state),session.localGeneration,false);session.cloudSyncBusy=false;await reconcileCloudPending(row);return
+      if(storageV2CloudOutboxActive()){const conflict={kind:'storage-v2-dirty-head',domain:'kupa',message:'המצב המקומי שונה מבסיס הענן ללא journal ממתין',baseRevision:Number(v2?.base?.revision||session.dbRevision||0),currentRemoteRevision:Number(row.revision||0),at:new Date().toISOString()};await setStorageV2CloudControl({conflict});session.cloudConflictPending=true;setSaveStatus('התנגשות אחסון מקומי — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
+      stageCloudPendingLocal(prepareKupaCloudState(model.state),'שינוי מקומי ממתין',session.dbRevision,base||prepareKupaCloudState(model.state),session.localGeneration,false);session.cloudSyncBusy=false;await reconcileCloudPending(row);return false
     }
-    await applyFinanceOnlyRow(row)
-  }catch(e){console.error('cloud poll',e)}finally{session.cloudSyncBusy=false;await Promise.all([pollSharedChecks(),refreshOrdersFinanceSummary({renderIfChanged:true})])}
+    await applyFinanceOnlyRow(row);return markCloudPollSynced()
+  }catch(error){return markCloudPollFailure(error)}finally{session.cloudSyncBusy=false;await Promise.all([pollSharedChecks(),refreshOrdersFinanceSummary({renderIfChanged:true})])}
+}
+
+async function resumeAfterReconnect(){
+  if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
+  if(session.cloudSyncBusy||session.cloudWriteBusy)return trackedCloudPoll();
+  setSaveStatus('חזרה רשת — מסנכרן…','saving');setCloudHeaderStatus('syncing','ענן: חזרה רשת…');
+  try{return await trackedCloudPoll()}catch(error){return markCloudPollFailure(error)}
 }
 
 function trackedCloudPoll(){if(cloudPollPromise)return cloudPollPromise;cloudPollPromise=cloudPoll().finally(()=>{cloudPollPromise=null});return cloudPollPromise}
@@ -266,5 +283,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { applyCloudRow, loadSupabaseState, rpcSaveCloud, rpcSaveCloudV2, reconcileCloudPending, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, startCloudPolling,quiesceForStorageCutover };
+return { applyCloudRow, loadSupabaseState, rpcSaveCloud, rpcSaveCloudV2, reconcileCloudPending, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,quiesceForStorageCutover };
 }
