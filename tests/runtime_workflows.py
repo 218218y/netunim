@@ -40,8 +40,8 @@ flows={
  checkTab='deposited';renderChecks();click('mark-cleared');await saved();assert(state.checks[0].status==='נפרע'&&bankCurrentBalance()===1000,'cleared preserves authoritative bank balance');
  const auto=state.checks[0];auto.status='הופקד - במעקב';auto.depositDate='2026-09-11';auto.bankMatch={phase:'deposited',eventId:'bank:deposited',transactionId:91,description:'הפק.שיק בסלולר',amount:200,date:'2026-09-11',checkIds:[auto.id],previousStatus:'בקופה',previousDepositDate:null};
  checkTab='open';setPage('checks');assert(!element('#checkBankAlerts').hidden,'Kupa global check warning');
- element('#checkBankAlerts').click();assert(element('#modal').textContent.includes('מאשר את ההתאמה'),'Kupa evidence modal');
- element('#modal [data-action="review-check-bank"][data-click-arg2="accept"]').click();await saved();assert(auto.bankReview==='bank:deposited'&&auto.status==='הופקד - במעקב','Kupa confirmation persists without clearing');
+ element('#checkBankAlerts').click();const reviewModal=element('#modal'),reviewAction=reviewModal.querySelector('[data-action="review-check-bank"][data-click-arg2="accept"]');assert(reviewModal.textContent.includes('הפק.שיק בסלולר')&&reviewAction,'Kupa evidence modal exposes the bank evidence and confirmation action');
+ reviewAction.click();await saved();assert(auto.bankReview==='bank:deposited'&&auto.status==='הופקד - במעקב','Kupa confirmation persists without clearing');
  openCheckModal(auto.id);fill({fStatus:'נפרע'});saveModal();await saved();assert(state.checks[0].depositDate==='2026-09-11','Kupa status edit preserves the actual bank deposit date');
  state.checks[0].status='הופקד - במעקב';
  state.checks[0].bankMatch={...auto.bankMatch,eventId:'bank:again'};setPage('checks');element('[data-action="review-check-bank"][data-click-arg2="reject"]').click();await saved();assert(state.checks[0].status==='בקופה'&&state.checks[0].bankAutomationDisabled,'Kupa rejection restores pending manual check');

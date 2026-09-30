@@ -133,6 +133,9 @@ def run(db):
     # A number edit must discard an old absence advisory, never restore a stale
     # acknowledgement through an OR-precedence error in metadata protection.
     reset([check('Advisory edit',550,'111')]);snapshot()
+    assert 'bankMatch' not in checks()[0], 'Editing an advisory must start from the due-date reminder, before any bank absence incident exists'
+    snapshot('2026-08-03')
+    assert checks()[0]['bankMatch']['phase']=='overdue', 'The editable absence advisory starts only after the due date has passed'
     rows=checks();rows[0]['bankReview']=rows[0]['bankMatch']['eventId'];rows[0]['checkNumber']='222';save(rows)
     assert 'bankMatch' not in checks()[0] and not checks()[0].get('bankAutomationDisabled')
     tx('corrected-number',550,[item('222',550)]);snapshot('2026-08-03')
