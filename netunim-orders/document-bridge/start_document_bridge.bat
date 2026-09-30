@@ -1,5 +1,6 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-cd /d "%~dp0"
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
-node server.mjs >> "%APPROOT%\bridge-console.log" 2>&1
+if not exist "%APPROOT%" mkdir "%APPROOT%" >nul 2>nul
+cd /d "%APPROOT%"
+node "%~dp0server.mjs" >> "%APPROOT%\bridge-console.log" 2>&1

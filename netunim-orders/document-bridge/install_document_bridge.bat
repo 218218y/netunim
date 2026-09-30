@@ -16,10 +16,14 @@ if not "%ERRORLEVEL%"=="0" (
 )
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
-set "APPDIR=%APPROOT%\app"
-set "STAGING=%APPROOT%\app-staging"
-set "APPBACKUP=%APPROOT%\app-rollback"
-set "APPFAILED=%APPROOT%\app-failed-install"
+set "LEGACYAPP=%APPROOT%\app"
+set "RUNTIMENAME=app-v26-%RANDOM%-%RANDOM%"
+set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
+set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
+set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
+set "ACTIVEBACKUP=%APPROOT%\active-runtime.before-install.txt"
+set "ACTIVETMP=%APPROOT%\active-runtime.new.txt"
+set "ACTIVEWASNEW=no"
 set "STARTUP=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
 set "AUTOSTART=%STARTUP%\NetunimDocumentBridge.vbs"
 set "SUMMARY=%APPROOT%\INSTALLATION-LOG.txt"
@@ -50,6 +54,13 @@ if exist "%CONFIG%" (
   set "CONFIGWASNEW=yes"
 )
 
+if exist "%ACTIVEBACKUP%" del /Q "%ACTIVEBACKUP%" >nul 2>nul
+if exist "%ACTIVEFILE%" (
+  copy /Y "%ACTIVEFILE%" "%ACTIVEBACKUP%" >nul || goto :stage_error
+) else (
+  set "ACTIVEWASNEW=yes"
+)
+
 node "%STAGING%\server.mjs" --init
 if not "%ERRORLEVEL%"=="0" goto :stage_error
 if not exist "%CONFIG%" goto :stage_error
@@ -62,36 +73,42 @@ echo Preserving local interactive PDF text index...
 echo Existing PDF index progress is reused; background inspection resumes only after the new Bridge starts.
 
 rem Search scope is the complete Everything index. Configure indexed locations in Everything itself.
-
-rem Write the key/diagnostics before the doctor too, so failures are easy to inspect.
+rem The new runtime is validated before the old runtime is stopped.
 node "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 node "%STAGING%\server.mjs" --doctor
 if not "%ERRORLEVEL%"=="0" goto :doctor_error
 
+rem Stop the current listener first. v26 activation is side-by-side, so a stale
+rem Windows handle in an older runtime can never block installation of the new one.
 node "%STAGING%\server.mjs" --stop-existing
 if not "%ERRORLEVEL%"=="0" goto :stop_error
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop_runtime_helpers.ps1" -AppRoot "%APPROOT%" >nul 2>nul
 
-if exist "%APPBACKUP%" rmdir /S /Q "%APPBACKUP%" >nul 2>nul
-if exist "%APPDIR%" (
-  call :move_dir_with_retry "%APPDIR%" "%APPBACKUP%"
-  if errorlevel 1 goto :activate_error
-)
-call :move_dir_with_retry "%STAGING%" "%APPDIR%"
+rem Promote only the new staging directory. Never rename/delete the active runtime
+rem as part of activation: Windows may legally keep executable/current-directory
+rem handles alive for a short time after shutdown.
+call :move_dir_with_retry "%STAGING%" "%RUNTIME%"
 if errorlevel 1 goto :activate_error
 
+> "%ACTIVETMP%" echo %RUNTIMENAME%
+move /Y "%ACTIVETMP%" "%ACTIVEFILE%" >nul || goto :activate_error
 copy /Y "%~dp0launch_hidden.vbs" "%AUTOSTART%" >nul || goto :activate_error
 copy /Y "%~dp0configure_document_bridge.bat" "%APPROOT%\configure_document_bridge.bat" >nul || goto :activate_error
 start "" wscript.exe "%AUTOSTART%"
 timeout /t 2 /nobreak >nul
-node "%APPDIR%\server.mjs" --check-running
+node "%RUNTIME%\server.mjs" --check-running
 if not "%ERRORLEVEL%"=="0" goto :activate_error
 
-node "%APPDIR%\server.mjs" --write-install-summary >nul
+node "%RUNTIME%\server.mjs" --write-install-summary >nul
 if not "%ERRORLEVEL%"=="0" goto :activate_error
 if exist "%APPROOT%\bridge-token.txt" type "%APPROOT%\bridge-token.txt" | clip
 
-if exist "%APPBACKUP%" rmdir /S /Q "%APPBACKUP%" >nul 2>nul
 if exist "%CONFIGBACKUP%" del /Q "%CONFIGBACKUP%" >nul 2>nul
+if exist "%ACTIVEBACKUP%" del /Q "%ACTIVEBACKUP%" >nul 2>nul
+
+rem Old runtimes are cleanup-only. Failure to delete one must never roll back a
+rem healthy installation; a stale Windows handle will disappear on its own later.
+call :cleanup_inactive_runtimes "%RUNTIMENAME%"
 
 echo.
 echo ============================================================
@@ -109,6 +126,7 @@ exit /b 0
 echo.
 echo ERROR: Could not build the local Windows Preview Handler host.
 echo This component is required for fast native Office previews.
+call :restore_state
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
@@ -117,13 +135,13 @@ exit /b 1
 echo.
 echo ERROR: Could not install/verify the official Everything ES command-line client.
 echo Detailed log: %APPROOT%\install-es.log
-call :restore_config
+call :restore_state
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
 
 :everything_error
-call :restore_config
+call :restore_state
 echo.
 echo ERROR: Everything could not be started in background mode.
 echo The installer looked for the installed Everything.exe and used the official -startup mode.
@@ -133,19 +151,10 @@ if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
 
-:config_error
-call :restore_config
-echo.
-echo ERROR: Document Bridge configuration could not be prepared.
-echo The previous configuration was restored.
-if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
-pause
-exit /b 1
-
 :doctor_error
 node "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 if exist "%SUMMARY%" start "" notepad.exe "%SUMMARY%"
-call :restore_config
+call :restore_state
 echo.
 echo ERROR: Document search diagnostics failed.
 echo The previous configuration was restored. See the opened INSTALLATION-LOG.txt.
@@ -154,33 +163,29 @@ pause
 exit /b 1
 
 :stop_error
-call :restore_config
+call :restore_state
 echo.
 echo ERROR: The existing Document Bridge could not be stopped safely.
 echo The current installation and configuration were preserved.
 echo Runtime log: %APPROOT%\bridge.log
-if exist "%APPDIR%\server.mjs" (
-  node "%APPDIR%\server.mjs" --check-running >nul 2>nul
-  if errorlevel 1 start "" wscript.exe "%AUTOSTART%"
-)
+start "" wscript.exe "%AUTOSTART%"
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
 
 :stage_error
-call :restore_config
+call :restore_state
 echo ERROR: Could not prepare Document Bridge. The current installation was preserved.
 if exist "%STAGING%" rmdir /S /Q "%STAGING%" >nul 2>nul
 pause
 exit /b 1
 
 :activate_error
-call :restore_config
-node "%APPDIR%\server.mjs" --stop-existing >nul 2>nul
-if exist "%APPFAILED%" rmdir /S /Q "%APPFAILED%" >nul 2>nul
-if exist "%APPDIR%" call :move_dir_with_retry "%APPDIR%" "%APPFAILED%"
-if exist "%APPBACKUP%" call :move_dir_with_retry "%APPBACKUP%" "%APPDIR%"
-if exist "%APPDIR%" start "" wscript.exe "%AUTOSTART%"
+rem If the new listener did start, stop it before switching the active marker back.
+node "%RUNTIME%\server.mjs" --stop-existing >nul 2>nul
+call :restore_state
+start "" wscript.exe "%AUTOSTART%"
+if exist "%RUNTIME%" rmdir /S /Q "%RUNTIME%" >nul 2>nul
 echo ERROR: New Document Bridge did not start correctly. Previous runtime/configuration was restored when available.
 echo See: %APPROOT%\bridge.log
 echo Console log: %APPROOT%\bridge-console.log
@@ -194,14 +199,31 @@ for /L %%R in (1,1,12) do (
   move "%MOVE_SOURCE%" "%MOVE_TARGET%" >nul 2>nul && exit /b 0
   >nul 2>nul timeout /t 1 /nobreak
 )
-echo ERROR: Could not move "%MOVE_SOURCE%" to "%MOVE_TARGET%" after waiting for file handles to close.
+echo ERROR: Could not activate new runtime "%MOVE_TARGET%" after waiting for staging handles to close.
 exit /b 1
 
-:restore_config
+:cleanup_inactive_runtimes
+set "KEEP_RUNTIME=%~1"
+for /D %%D in ("%APPROOT%\app-v*") do (
+  if /I not "%%~nxD"=="%KEEP_RUNTIME%" rmdir /S /Q "%%~fD" >nul 2>nul
+)
+rem Legacy v25-and-earlier runtime may still have a transient Windows handle.
+rem Cleanup is best effort only and never affects successful activation.
+if exist "%LEGACYAPP%" rmdir /S /Q "%LEGACYAPP%" >nul 2>nul
+exit /b 0
+
+:restore_state
 if exist "%CONFIGBACKUP%" (
   copy /Y "%CONFIGBACKUP%" "%CONFIG%" >nul 2>nul
   del /Q "%CONFIGBACKUP%" >nul 2>nul
 ) else if /I "%CONFIGWASNEW%"=="yes" (
   del /Q "%CONFIG%" >nul 2>nul
 )
+if exist "%ACTIVEBACKUP%" (
+  copy /Y "%ACTIVEBACKUP%" "%ACTIVEFILE%" >nul 2>nul
+  del /Q "%ACTIVEBACKUP%" >nul 2>nul
+) else if /I "%ACTIVEWASNEW%"=="yes" (
+  del /Q "%ACTIVEFILE%" >nul 2>nul
+)
+if exist "%ACTIVETMP%" del /Q "%ACTIVETMP%" >nul 2>nul
 exit /b 0

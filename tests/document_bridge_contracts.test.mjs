@@ -80,14 +80,21 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/taskkill\.exe/);
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
+  assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
+  assert.match(installer,/app-v26-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
+  assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
+  assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
+  assert.match(server,/cwd:APP_ROOT/,'child processes must not inherit the runtime directory as their current directory');
+  assert.match(server,/runEs\(esPath,args,\{timeout=18000,signal=null\}/,'ES inventory work must be abortable during shutdown');
   assert.match(server,/preparePdfFormIndexForSearch/);
   assert.doesNotMatch(server,/PDF_FORM_INDEX_INITIAL_WAIT_MS/,'content requests must never wait on a full PDF-form index refresh');
   assert.doesNotMatch(lib,/contentMatchRanges\(String\(value\?\?''\),query,\{\.\.\.options,maxMatches:5000\}\)\.ranges\.length>0/,'supplemental-index filtering must stop at boolean match semantics instead of materializing highlight ranges');
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=25/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=25/);
+  assert.match(lib,/BRIDGE_VERSION=26/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=26/);
 });
 
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
@@ -350,9 +357,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=25/);
+  assert.match(lib,/BRIDGE_VERSION=26/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=25/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=26/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

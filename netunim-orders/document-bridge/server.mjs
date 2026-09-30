@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto,{timingSafeEqual} from 'node:crypto';
 import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
+import {fileURLToPath} from 'node:url';
 import {
   BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,contentSearchMatches,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentSearchMode,normalizeSearchScopePath,normalizeSearchText,
@@ -15,6 +16,7 @@ import {extractInteractivePdfText,PDF_FORM_MAX_BYTES} from './pdf_form_index.mjs
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
+const RUNTIME_ROOT=fileURLToPath(new URL('.',import.meta.url));
 const CONFIG_PATH=path.join(APP_ROOT,'config.json');
 const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
@@ -22,7 +24,7 @@ const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
-const NATIVE_PREVIEW_HOST=path.join(APP_ROOT,'app','NetunimPreviewHost.exe');
+const NATIVE_PREVIEW_HOST=path.join(RUNTIME_ROOT,'NetunimPreviewHost.exe');
 const requestResults=new Map();
 const previewTextCache=new Map();
 const TEXT_PREVIEW_MAX_BYTES=1024*1024;
@@ -75,9 +77,9 @@ async function whereEs(){
   const e=new Error('es.exe לא נמצא. יש להריץ מחדש את מתקין Document Bridge.');e.code='ES_NOT_FOUND';throw e;
 }
 function instanceArgs(instance){return instance?['-instance',instance]:[]}
-async function runEs(esPath,args,{timeout=18000}={}){
-  try{return await execFile(esPath,args,{encoding:'utf8',windowsHide:true,timeout,maxBuffer:16*1024*1024})}
-  catch(error){const e=new Error(String(error?.stderr||error?.message||'ES failed').trim()||'ES failed');e.code=`ES_EXIT_${Number.isFinite(Number(error?.code))?Number(error.code):'ERROR'}`;e.exitCode=Number(error?.code);e.stderr=String(error?.stderr||'');throw e}
+async function runEs(esPath,args,{timeout=18000,signal=null}={}){
+  try{return await execFile(esPath,args,{encoding:'utf8',windowsHide:true,timeout,maxBuffer:16*1024*1024,cwd:APP_ROOT,...(signal?{signal}:{})})}
+  catch(error){if(error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR')throw error;const e=new Error(String(error?.stderr||error?.message||'ES failed').trim()||'ES failed');e.code=`ES_EXIT_${Number.isFinite(Number(error?.code))?Number(error.code):'ERROR'}`;e.exitCode=Number(error?.code);e.stderr=String(error?.stderr||'');throw e}
 }
 function instanceCandidates(config){return [...new Set([config.everythingInstance,'','1.5a'].filter(value=>value!==undefined&&value!==null))]}
 async function probeRunningInstances(config,esPath){
@@ -154,7 +156,7 @@ async function startEverythingBackground(config,esPath){
     const instance=config.everythingInstance||(/1\.5a/i.test(executable)?'1.5a':'');
     const args=[...instanceArgs(instance),'-startup','-first-instance'];
     await appendLog(`EVERYTHING_START exe=${executable} instance=${instance||'(default)'}`);
-    const child=spawn(executable,args,{detached:true,windowsHide:true,stdio:'ignore'});child.unref();
+    const child=spawn(executable,args,{detached:true,windowsHide:true,stdio:'ignore',cwd:APP_ROOT});child.unref();
     const probe=await waitForEverything({...config,everythingInstance:instance},esPath,15000);
     const latest=await loadConfig();
     if(latest.everythingExecutable!==executable||latest.everythingInstance!==probe.instance){latest.everythingExecutable=executable;latest.everythingInstance=probe.instance;await saveConfig(latest)}
@@ -204,9 +206,9 @@ async function diagnoseIndex({freshProbe=false}={}){
 
 function pruneResults(){const now=Date.now();for(const [id,row] of requestResults)if(row.expiresAt<=now)requestResults.delete(id)}
 function publicResult(row,{query='',mode='everything',contentSearch={}}={}){const id=crypto.randomUUID();requestResults.set(id,{fullPath:row.fullPath,query:String(query||''),mode:normalizeDocumentSearchMode(mode),contentSearch:normalizeContentSearchOptions(contentSearch),expiresAt:Date.now()+RESULT_TTL_MS});return {id,name:row.name,relativePath:row.relativePath,modified:row.modified,size:row.size,extension:row.extension,attributes:row.attributes||'',isDirectory:!!row.isDirectory,rootId:'everything',rootLabel:'Everything'}}
-async function runEverythingJson(buildArgs){
+async function runEverythingJson(buildArgs,{signal=null}={}){
   const config=await loadConfig();let probe=await probeEverything({autoStart:true});const started=Date.now();
-  const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000});
+  const runSearch=currentProbe=>runEs(currentProbe.esPath,buildArgs(config,currentProbe),{timeout:config.searchTimeoutMs+5000,signal});
   let output;
   try{output=await runSearch(probe)}catch(error){
     if(error?.exitCode!==8)throw error;
@@ -247,11 +249,11 @@ async function compactPdfFormIndex({pending=pdfFormIndexPending,pdfCount=pdfForm
   await writeJsonFile(PDF_FORM_INDEX_PATH,{schema:PDF_FORM_INDEX_SCHEMA,updatedAt:new Date().toISOString(),pdfCount:pdfFormIndexInventoryCount,pending:pdfFormIndexPending,entries});
   await fs.writeFile(PDF_FORM_INDEX_JOURNAL_PATH,'','utf8');pdfFormIndexJournalUpdates=0;
 }
-async function listEverythingPdfs(){
+async function listEverythingPdfs({signal=null}={}){
   const rows=[];let offset=0;
   while(true){
     if(shuttingDown)break;
-    const page=await runEverythingJson((config,probe)=>buildEsPdfInventoryArgs({limit:PDF_FORM_INDEX_PAGE_SIZE,offset,timeoutMs:config.searchTimeoutMs,instance:probe.instance}));
+    const page=await runEverythingJson((config,probe)=>buildEsPdfInventoryArgs({limit:PDF_FORM_INDEX_PAGE_SIZE,offset,timeoutMs:config.searchTimeoutMs,instance:probe.instance}),{signal});
     rows.push(...page.rows.filter(row=>row.extension==='pdf'&&!row.isDirectory));
     if(page.rows.length<PDF_FORM_INDEX_PAGE_SIZE)break;
     offset+=page.rows.length;if(offset>250000)break;
@@ -259,8 +261,8 @@ async function listEverythingPdfs(){
   return rows;
 }
 function isAbortError(error){return error?.name==='AbortError'||String(error?.code||'')==='ABORT_ERR'}
-async function rebuildPdfFormIndexBacklog(){
-  const rows=await listEverythingPdfs();if(shuttingDown)return {pdfCount:rows.length,changed:pdfFormIndexBacklog.length,removed:0};
+async function rebuildPdfFormIndexBacklog({signal=null}={}){
+  const rows=await listEverythingPdfs({signal});if(shuttingDown)return {pdfCount:rows.length,changed:pdfFormIndexBacklog.length,removed:0};
   const seen=new Set(),changed=[];let removed=0;
   for(const row of rows){
     const key=pdfIndexKey(row.fullPath),fingerprint=pdfIndexFingerprint(row);seen.add(key);
@@ -283,7 +285,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_INDEX_BACKGROUND_BATCH,o
   const controller=new AbortController();pdfFormIndexRefreshAbortController=controller;
   const task=(async()=>{
     await loadPdfFormIndex();const started=Date.now();let removed=0,indexed=0,failed=0,processed=0,aborted=false;
-    if(shouldRefreshPdfInventory()){const inventory=await rebuildPdfFormIndexBacklog();removed=inventory.removed}
+    if(shouldRefreshPdfInventory()){const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal});removed=inventory.removed}
     if(shuttingDown||controller.signal.aborted)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexBacklog.length,processed:0,pending:pdfFormIndexBacklog.length,indexed,failed,removed,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:Date.now()-started};
     const changedBefore=pdfFormIndexBacklog.length,boundedMax=Number.isFinite(Number(maxChanged))?Math.max(0,Math.trunc(Number(maxChanged))):changedBefore;
     const selected=pdfFormIndexBacklog.splice(0,boundedMax),journalRecords=[];
@@ -413,7 +415,7 @@ async function ensureNativePreviewProcess(){
   if(nativePreviewProcess&&!nativePreviewProcess.killed&&nativePreviewProcess.exitCode===null)return nativePreviewProcess;
   if(!(await existsFile(NATIVE_PREVIEW_HOST))){const e=new Error('רכיב Windows Preview Handler לא הותקן. הרץ מחדש את מתקין Document Bridge.');e.code='NATIVE_PREVIEW_HOST_MISSING';throw e}
   nativePreviewBuffer='';
-  const child=spawn(NATIVE_PREVIEW_HOST,[],{windowsHide:true,stdio:['pipe','pipe','pipe']});nativePreviewProcess=child;
+  const child=spawn(NATIVE_PREVIEW_HOST,[],{windowsHide:true,stdio:['pipe','pipe','pipe'],cwd:APP_ROOT});nativePreviewProcess=child;
   child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');child.stdout.on('data',handleNativePreviewOutput);child.stderr.on('data',data=>appendLog(`NATIVE_PREVIEW_STDERR ${JSON.stringify(String(data||'').trim())}`));
   child.on('error',error=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host failed: ${error.message}`),{code:'NATIVE_PREVIEW_HOST_FAILED'}))});
   child.on('exit',(code,signal)=>{if(nativePreviewProcess===child)nativePreviewProcess=null;rejectNativePreviewPending(Object.assign(new Error(`Windows Preview Handler host exited (${code??signal??'unknown'}).`),{code:'NATIVE_PREVIEW_HOST_EXITED'}))});
@@ -449,7 +451,13 @@ async function selectSearchFolder(){
   await appendLog(`SEARCH_SCOPE_PICK path=${JSON.stringify(normalized)}`);
   return {ok:true,bridgeVersion:BRIDGE_VERSION,cancelled:false,path:normalized,label};
 }
-async function stopNativePreview(){const child=nativePreviewProcess;if(!child)return;try{await nativePreviewCommand('EXIT',[],1500)}catch{}try{child.kill()}catch{}nativePreviewProcess=null}
+async function stopNativePreview(){
+  const child=nativePreviewProcess;if(!child)return;const pid=Number(child.pid)||0;
+  try{await nativePreviewCommand('EXIT',[],1500)}catch{}
+  if(pid&&!(await waitForProcessExit(pid,1200))){try{child.kill()}catch{};await waitForProcessExit(pid,800)}
+  if(pid&&await processAlive(pid)){await appendLog(`NATIVE_PREVIEW_FORCE_STOP pid=${pid}`);await forceStopProcessTree(pid);await waitForProcessExit(pid,1500)}
+  nativePreviewProcess=null;
+}
 async function readEverythingContentPreview(fullPath){
   try{
     const config=await loadConfig(),probe=await probeEverything({autoStart:true});
@@ -630,7 +638,7 @@ async function stopExisting(){
 async function printDoctor(){
   await init();const {probe,diagnostics}=await diagnoseIndex({freshProbe:true});
   const executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
-  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: ${(await existsFile(new URL('./pdfjs/build/pdf.mjs',import.meta.url)))?'OK':'MISSING'}`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
+  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Runtime: ${RUNTIME_ROOT}`);console.log(`Node: ${process.versions.node}`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: ${(await existsFile(new URL('./pdfjs/build/pdf.mjs',import.meta.url)))?'OK':'MISSING'}`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
   console.log(`Files visible in Everything: ${diagnostics.fileCount===null?'ERROR':diagnostics.fileCount}`);console.log(`Files with indexed content: ${diagnostics.indexedContentCount===null?'ERROR':diagnostics.indexedContentCount}`);console.log(`ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`);if(diagnostics.error)console.log(`ES error: ${diagnostics.error}`);
   if(diagnostics.error||(diagnostics.fileCount>0&&!diagnostics.sampleOk)){const e=new Error('Everything/ES diagnostics failed.');e.code='INDEX_DIAGNOSTICS_FAILED';throw e}
   if(diagnostics.fileCount===0)console.log('WARNING: Everything currently sees no files. The website will mirror that empty Everything index.');
@@ -638,7 +646,7 @@ async function printDoctor(){
 async function writeInstallSummary(){
   const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='';
   try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'','Search scope: COMPLETE EVERYTHING INDEX + INTERACTIVE PDF SUPPLEMENT','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','Interactive AcroForm PDFs are additionally parsed locally with the bundled PDF.js runtime so field values and logical page text remain searchable even when the Windows PDF iFilter omits/reorders them.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI and merge a local cached supplement only for interactive AcroForm PDFs.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
+  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Runtime: ${RUNTIME_ROOT}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'','Search scope: COMPLETE EVERYTHING INDEX + INTERACTIVE PDF SUPPLEMENT','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','Interactive AcroForm PDFs are additionally parsed locally with the bundled PDF.js runtime so field values and logical page text remain searchable even when the Windows PDF iFilter omits/reorders them.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI and merge a local cached supplement only for interactive AcroForm PDFs.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
 
