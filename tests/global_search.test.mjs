@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {buildGlobalSearchEntries,normalizeGlobalSearchText,searchGlobalData,searchGlobalEntries} from '../netunim-orders/site/assets/js/domains/search/model.js';
+import {documentResultsTableHtml} from '../netunim-orders/site/assets/js/ui/document-search-view.js';
 
 const state={
  suppliers:[{id:'S1',name:'אלפא רהיטים',note:'ספק ראשי'}],
@@ -92,4 +93,20 @@ test('document filename search is dispatched ahead of slower content search and 
  assert.match(source,/documentSearchLanes\.schedule\('everything',raw\)/);
  assert.match(source,/documentSearchLanes\.schedule\('content',raw\)/);
  assert.doesNotMatch(source,/Promise\.all\(modes\.map\([^)]*documentBridge\.search/s,'initial file/content requests must not wait for one shared Promise.all barrier');
+});
+
+
+test('document result headers expose accessible two-way sorting controls',()=>{
+ const html=documentResultsTableHtml([{id:'1',name:'A.txt',relativePath:'C:\\Docs',size:10,modified:'2026-09-30T10:00:00Z'}],'everything',{sortScope:'everything',sort:{field:'size',direction:'desc'}});
+ for(const field of ['name','path','size','modified'])assert.match(html,new RegExp(`data-document-sort-field=\"${field}\"`));
+ assert.match(html,/data-document-sort-scope="everything"/);
+ assert.match(html,/data-document-sort-field="size"[^>]*aria-label="[^"]*בסדר יורד/);
+ assert.match(html,/aria-sort="descending"/);
+});
+
+test('global document search passes sorting through paged file and content requests',()=>{
+ const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8');
+ assert.match(source,/sort:documentSorts\[mode\]/);
+ assert.match(source,/applyDocumentSort\(sortButton\.dataset\.documentSortScope,sortButton\.dataset\.documentSortField\)/);
+ assert.match(source,/recentDocumentSort=nextDocumentSort/);
 });

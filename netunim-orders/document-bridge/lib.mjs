@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=26;
+export const BRIDGE_VERSION=27;
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
@@ -239,27 +239,56 @@ function commonEsPrefix({timeoutMs=15000,instance=''}){
   return ['-argv','-cp','65001','-ipc3',...(instance?['-instance',String(instance)]:[]),'-timeout',String(timeout)];
 }
 
-function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS,offset=0}){
+const DOCUMENT_SORT_FIELDS=new Set(['name','path','size','modified']);
+const DOCUMENT_SORT_DIRECTIONS=new Set(['asc','desc']);
+const EVERYTHING_SORT_NAMES={name:'name',path:'path',size:'size',modified:'date-modified'};
+
+export function normalizeDocumentSort(value={}){
+  const field=DOCUMENT_SORT_FIELDS.has(String(value?.field||'').toLowerCase())?String(value.field).toLowerCase():'modified';
+  const fallbackDirection=(field==='size'||field==='modified')?'desc':'asc';
+  const direction=DOCUMENT_SORT_DIRECTIONS.has(String(value?.direction||'').toLowerCase())?String(value.direction).toLowerCase():fallbackDirection;
+  return {field,direction};
+}
+
+export function compareDocumentRows(a,b,sort={}){
+  const {field,direction}=normalizeDocumentSort(sort),factor=direction==='desc'?-1:1;
+  let result=0;
+  if(field==='size'){
+    const left=Number(a?.size),right=Number(b?.size),l=Number.isFinite(left)?left:-1,r=Number.isFinite(right)?right:-1;result=l-r;
+  }else if(field==='modified'){
+    const left=Date.parse(a?.modified||''),right=Date.parse(b?.modified||''),l=Number.isFinite(left)?left:0,r=Number.isFinite(right)?right:0;result=l-r;
+  }else{
+    const left=field==='path'?String(a?.relativePath||a?.fullPath||''):String(a?.name||''),right=field==='path'?String(b?.relativePath||b?.fullPath||''):String(b?.name||'');
+    result=left.localeCompare(right,'he',{numeric:true,sensitivity:'base'});
+  }
+  if(result)return result*factor;
+  const pathResult=String(a?.fullPath||'').localeCompare(String(b?.fullPath||''),'he',{numeric:true,sensitivity:'base'});
+  return pathResult*factor;
+}
+
+function everythingSortName(sort={}){const normalized=normalizeDocumentSort(sort);return `${EVERYTHING_SORT_NAMES[normalized.field]}-${normalized.direction==='desc'?'descending':'ascending'}`}
+
+function displayArgs({limit=DEFAULT_RESULT_LIMIT,maxResults=MAX_RESULTS,offset=0,sort={}}){
   const ceiling=Math.max(1,Number(maxResults)||MAX_RESULTS);
   const count=Math.max(1,Math.min(ceiling,Number(limit)||DEFAULT_RESULT_LIMIT));
   const start=Math.max(0,Math.trunc(Number(offset)||0));
-  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort','date-modified-descending','-max-results',String(count),...(start?['-offset',String(start)]:[])];
+  return ['-json','-no-folder-append-path-separator','-date-format','3','-size-format','1','-no-digit-grouping','-name','-path-column','-size','-date-modified','-attributes','-sort',everythingSortName(sort),'-max-results',String(count),...(start?['-offset',String(start)]:[])];
 }
 
-export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS,scopePath='',offset=0}){
+export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutMs=15000,instance='',filesOnly=false,maxResults=MAX_RESULTS,scopePath='',offset=0,sort={}}){
   if(!String(search??'').trim())throw new TypeError('Search expression is required');
   const scope=normalizeSearchScopePath(scopePath);
-  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults,offset}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
+  return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults,offset,sort}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
 }
 
-export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath=''}){
+export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath='',sort={}}){
   const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode,contentSearch);
   if(!search)throw new TypeError('Search query must contain at least two characters');
-  return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath});
+  return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath,sort});
 }
 
 export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='' }={}){
-  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath});
+  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
 }
 
 export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath=''}={}){

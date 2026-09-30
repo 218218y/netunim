@@ -171,3 +171,24 @@ test('Google Drive search pages from a 150-capable window and reports more rows 
     assert.equal(data.hasMore,true);
   }finally{globalThis.fetch=previousFetch}
 });
+
+test('Google Drive mirrors document header sorting where the API supports it and locally orders size/path fallbacks',async()=>{
+  const supaFetch=async()=>({ok:true,status:200,json:async()=>({access_token:'access-123',expires_in:3600,scope:'https://www.googleapis.com/auth/drive.readonly'})});
+  const previousFetch=globalThis.fetch,calls=[];
+  globalThis.fetch=async url=>{
+    const parsed=new URL(String(url));calls.push(parsed);
+    if(parsed.pathname.endsWith('/files'))return {ok:true,status:200,text:async()=>JSON.stringify({files:[
+      {id:'big',name:'B.txt',mimeType:'text/plain',modifiedTime:'2026-09-29T10:00:00Z',size:'20',fileExtension:'txt',capabilities:{canDownload:true}},
+      {id:'small',name:'A.txt',mimeType:'text/plain',modifiedTime:'2026-09-30T10:00:00Z',size:'10',fileExtension:'txt',capabilities:{canDownload:true}},
+    ]})};
+    throw new Error(`unexpected Drive URL ${url}`);
+  };
+  try{
+    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    await drive.search('txt',{mode:'everything',sort:{field:'name',direction:'desc'}});
+    assert.equal(calls.at(-1).searchParams.get('orderBy'),'name_natural desc');
+    const bySize=await drive.search('txt',{mode:'everything',sort:{field:'size',direction:'asc'}});
+    assert.equal(calls.at(-1).searchParams.get('orderBy'),'modifiedTime desc','Drive size sorting gathers a bounded result set before applying exact file-size ordering');
+    assert.deepEqual(bySize.results.map(row=>row.id),['small','big']);
+  }finally{globalThis.fetch=previousFetch}
+});

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,contentSearchMatches,mergeDocumentResults,RECENT_RESULT_LIMIT,
+  buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
@@ -114,6 +114,28 @@ test('document search defaults to 150 results and supports bounded paging beyond
   assert.equal(mergeDocumentResults([rows],150).length,150,'the first normal result batch is 150 rows');
   assert.equal(mergeDocumentResults([rows],999).length,160,'normal merging can retain later batches instead of hard-capping at 120');
   assert.equal(mergeDocumentResults([rows],999,RECENT_RESULT_LIMIT).length,150,'recent-file merging keeps its dedicated 150-result ceiling');
+});
+
+test('Everything sorting accepts the four result columns with Everything-like first directions',()=>{
+  assert.deepEqual(normalizeDocumentSort({field:'name'}),{field:'name',direction:'asc'});
+  assert.deepEqual(normalizeDocumentSort({field:'path'}),{field:'path',direction:'asc'});
+  assert.deepEqual(normalizeDocumentSort({field:'size'}),{field:'size',direction:'desc'});
+  assert.deepEqual(normalizeDocumentSort({field:'modified'}),{field:'modified',direction:'desc'});
+  assert.deepEqual(normalizeDocumentSort({field:'bad',direction:'sideways'}),{field:'modified',direction:'desc'});
+  for(const [sort,expected] of [
+    [{field:'name',direction:'asc'},'name-ascending'],
+    [{field:'name',direction:'desc'},'name-descending'],
+    [{field:'path',direction:'asc'},'path-ascending'],
+    [{field:'size',direction:'desc'},'size-descending'],
+    [{field:'modified',direction:'asc'},'date-modified-ascending'],
+  ]){const args=buildEsSearchArgs({query:'קובץ',sort});assert.equal(args[args.indexOf('-sort')+1],expected)}
+  const rows=[
+    {name:'ב.txt',relativePath:'Y:\\Z',fullPath:'Y:\\Z\\ב.txt',size:10,modified:'2026-09-29T00:00:00Z'},
+    {name:'א.txt',relativePath:'Y:\\A',fullPath:'Y:\\A\\א.txt',size:20,modified:'2026-09-30T00:00:00Z'},
+  ];
+  assert.equal([...rows].sort((a,b)=>compareDocumentRows(a,b,{field:'name',direction:'asc'}))[0].name,'א.txt');
+  assert.equal([...rows].sort((a,b)=>compareDocumentRows(a,b,{field:'size',direction:'desc'}))[0].size,20);
+  assert.equal([...rows].sort((a,b)=>compareDocumentRows(a,b,{field:'modified',direction:'asc'}))[0].modified,'2026-09-29T00:00:00Z');
 });
 
 test('ES invocation forces Unicode argv parsing and UTF-8 pipe output',()=>{
