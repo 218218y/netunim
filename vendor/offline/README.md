@@ -29,6 +29,32 @@ npm run offline:update     update allowed versions, redownload transactionally, 
 npm run offline:clean      remove the current generated cache entry and legacy .offline state
 ```
 
+Do not run `offline:download` and `offline:update` back-to-back: `offline:update` already performs a complete
+transactional vendor refresh. Choose the flow that matches the maintenance you want:
+
+```text
+# Update local npm dependencies + Wrangler, then synchronize the existing offline policy:
+npm run deps:update
+npm run wrangler:update
+npm run offline:download
+npm run offline:check
+
+# Comprehensive maintenance, including the pinned Python offline test dependency:
+npm run deps:update
+npm run wrangler:update
+npm run offline:update
+npm run offline:check
+
+# Offline-toolchain-only maintenance (no normal node_modules refresh required):
+npm run wrangler:update
+npm run offline:update
+npm run offline:check
+```
+
+`offline:update` may repeat an npm lockfile resolution after `deps:update`, but it does so without lifecycle scripts
+and is the command that also advances the allowed Python dependency before refreshing the vendor. The redundant step
+in the old four-command sequence was `offline:download` immediately before `offline:update`.
+
 `test:chat` is deliberately not a deployment gate. If the host browser is unavailable or policy-blocked, it runs
 only the deterministic non-browser suites and prints that the runtime suites were skipped. `test:offline`,
 `python tests/run_all.py`, `verify.bat` and deployment preflight remain strict and never downgrade to core-only.
@@ -53,3 +79,11 @@ intact on purpose so another repair copy pinned to an older revision is not brok
 The refresh process stages the entire next vendor first. Existing verified files are reused, missing/changed files
 are downloaded, every npm archive is checked against `package-lock.json`, Node/Python archives are hash-checked,
 and only then is `vendor/offline` replaced. Old archives are deleted only after the new complete set is valid.
+
+The manifest deliberately does **not** hash the raw bytes of `package-lock.json`. Windows/npm/Git may serialize the
+same JSON with CRLF versus LF (or harmless whitespace/key-order differences), which used to make a correct vendor
+look stale even when every package path, version, registry URL and integrity value was identical. Schema v2 stores a
+canonical semantic SHA-256 of the exact lock-derived npm closure instead. A formatting-only rewrite therefore stays
+valid, while any real dependency change still invalidates the vendor and requires `offline:download`/`offline:update`.
+`tools/offline-deps.json` is likewise fingerprinted from canonical JSON semantics, and JSON files written by this
+tool are emitted as deterministic UTF-8 + LF on every operating system.

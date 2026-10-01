@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import io
 import json
@@ -199,10 +200,46 @@ ok(expected_roots <= lock_paths, 'offline deps: every declared npm development d
 ok(all(item['url'].startswith('https://registry.npmjs.org/') and item['integrity'].startswith('sha') for item in targets), 'offline deps: npm archives are sourced from lockfile URLs with integrity metadata')
 ok(len(targets) < 100, f'offline deps: focused npm closure stays small ({len(targets)} archives; no Vite/React/TypeScript toolchain copied)')
 
+manifest = json.loads((ROOT / 'vendor/offline/manifest.json').read_text(encoding='utf-8'))
+ok(manifest.get('schema') == 2, 'offline deps: manifest uses semantic dependency metadata schema v2')
+ok(manifest.get('npm') == targets, 'offline deps: manifest npm entries exactly match the current lock-derived closure')
+ok(
+    manifest.get('npmClosureSha256') == module.npm_closure_sha256(lock),
+    'offline deps: manifest fingerprints the semantic npm closure instead of raw package-lock bytes',
+)
+ok(
+    manifest.get('configSemanticSha256') == module.config_semantic_sha256(config),
+    'offline deps: config freshness uses canonical JSON semantics instead of platform line endings',
+)
+
+# Re-serializing the same lock with LF versus CRLF must not invalidate the
+# offline vendor. This reproduces the Windows/Linux false-stale regression.
+lock_text_lf = json.dumps(lock, ensure_ascii=False, indent=2) + '\n'
+lock_text_crlf = lock_text_lf.replace('\n', '\r\n')
+lock_from_lf = json.loads(lock_text_lf)
+lock_from_crlf = json.loads(lock_text_crlf)
+ok(
+    module.npm_closure_sha256(lock_from_lf) == module.npm_closure_sha256(lock_from_crlf),
+    'offline deps: LF/CRLF package-lock serialization produces the same dependency fingerprint',
+)
+
+changed_lock = copy.deepcopy(lock)
+changed_entry = next(
+    entry for path, entry in changed_lock.get('packages', {}).items()
+    if path.startswith('node_modules/') and isinstance(entry, dict) and isinstance(entry.get('version'), str)
+)
+changed_entry['version'] = changed_entry['version'] + '-contract-change'
+ok(
+    module.npm_closure_sha256(changed_lock) != module.npm_closure_sha256(lock),
+    'offline deps: a real dependency change still invalidates the semantic fingerprint',
+)
+
 ok('tempfile.mkdtemp(prefix=".offline-stage-"' in source and 'os.replace(stage, VENDOR)' in source, 'offline deps: vendor refresh is staged before atomic replacement')
 ok('shutil.rmtree(backup, ignore_errors=True)' in source and 'refresh_vendor()' in source, 'offline deps: superseded archives are removed only after a complete refresh')
 ok('original_lock = LOCK_PATH.read_bytes()' in source and 'LOCK_PATH.write_bytes(original_lock)' in source, 'offline deps: failed online update rolls back dependency metadata')
 ok('npm", "update", "--package-lock-only"' in source or '"update", "--package-lock-only"' in source, 'offline deps: update refreshes the lockfile without lifecycle-script installation')
+ok('canonical_json_sha256' in source and 'npmClosureSha256' in source and 'packageLockSha256' not in source, 'offline deps: freshness no longer depends on raw package-lock bytes')
+ok('temp.write_bytes(payload)' in source, 'offline deps: generated JSON metadata uses deterministic LF bytes on Windows and Linux')
 ok('Chrome/Chromium itself is **not** vendored' in readme and 'policy can make' in readme, 'offline deps: system browser boundary and host-policy limitation are documented explicitly')
 ok('Wrangler is also excluded' in readme, 'offline deps: deployment-only Wrangler is excluded from the verification vendor')
 ok('NETUNIM_OFFLINE_CACHE_DIR' in source and 'Path.home() / ".cache" / "netunim" / "offline"' in source and 'must be an absolute path' in source, 'offline deps: generated Linux tools default to a stable external cache and overrides are unambiguous')

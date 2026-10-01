@@ -1,13 +1,13 @@
 {
-  "schema": 1,
+  "schema": 2,
   "profile": "chat-linux-x64-glibc",
   "platform": {
     "system": "Linux",
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "packageLockSha256": "b6cd25b5bd2e54ea4135bc4f893fbb1c5a0a542bbb2cd1574f09d1e0a2c1a1e6",
-  "configSha256": "a12b604bebba526ec4254c2a8d38cabe924f076990303032716cc703d5bffec8",
+  "npmClosureSha256": "773dc2b81787765b2e3baf65d468da9afc6da2068efc9532c208785f6a87ad02",
+  "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
     "file": "node/node-v24.21.0-linux-x64.tar.xz",

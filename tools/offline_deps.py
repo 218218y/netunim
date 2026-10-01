@@ -45,7 +45,11 @@ def read_json(path: Path):
 def write_json(path: Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".tmp")
-    temp.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # Write deterministic LF bytes on every platform.  Path.write_text() uses
+    # platform newline translation on Windows, which can otherwise make files
+    # produced by this tool differ byte-for-byte from Linux output.
+    payload = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    temp.write_bytes(payload)
     os.replace(temp, path)
 
 
@@ -57,12 +61,15 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def lock_sha256() -> str:
-    return hashlib.sha256(LOCK_PATH.read_bytes()).hexdigest()
-
-
-def config_sha256() -> str:
-    return hashlib.sha256(CONFIG_PATH.read_bytes()).hexdigest()
+def canonical_json_sha256(value) -> str:
+    """Hash JSON semantics, not platform-specific text formatting."""
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def npm_name(lock_path: str) -> str:
@@ -100,6 +107,15 @@ def npm_targets(lock: dict) -> list[dict]:
     if not targets:
         raise OfflineDepsError("package-lock.json contains no npm development packages")
     return targets
+
+
+def npm_closure_sha256(lock: dict) -> str:
+    """Fingerprint exactly the npm closure that the offline vendor consumes."""
+    return canonical_json_sha256(npm_targets(lock))
+
+
+def config_semantic_sha256(config: dict) -> str:
+    return canonical_json_sha256(config)
 
 
 def verify_integrity(path: Path, integrity: str) -> None:
@@ -154,19 +170,24 @@ def pypi_wheel(project: str, version: str, filename: str) -> tuple[str, str]:
 
 def manifest_for(stage: Path, config: dict, lock: dict) -> dict:
     node = config["node"]
+    targets = npm_targets(lock)
     result = {
-        "schema": 1,
+        "schema": 2,
         "profile": config["profile"],
         "platform": config["platform"],
-        "packageLockSha256": lock_sha256(),
-        "configSha256": config_sha256(),
+        # Do not hash package-lock.json bytes directly. npm and Git can rewrite
+        # line endings/whitespace across Windows and Linux without changing a
+        # single dependency.  The vendor is stale only when the lock-derived
+        # package closure changes semantically.
+        "npmClosureSha256": canonical_json_sha256(targets),
+        "configSemanticSha256": config_semantic_sha256(config),
         "node": {
             "version": node["version"],
             "file": f"node/{node['file']}",
             "url": node["url"],
             "sha256": node["sha256"],
         },
-        "npm": npm_targets(lock),
+        "npm": targets,
         "python": [],
     }
     for item in config["python"]:
@@ -235,9 +256,17 @@ def check_vendor(*, quiet: bool = False) -> dict:
     if not MANIFEST_PATH.is_file():
         raise OfflineDepsError("offline vendor is missing; run: npm run offline:download")
     manifest = read_json(MANIFEST_PATH)
-    if manifest.get("packageLockSha256") != lock_sha256():
-        raise OfflineDepsError("offline vendor is stale for package-lock.json; run: npm run offline:download")
-    if manifest.get("configSha256") != config_sha256():
+    if manifest.get("schema") != 2:
+        raise OfflineDepsError("offline vendor manifest schema is stale; run: npm run offline:download")
+    lock = read_json(LOCK_PATH)
+    current_targets = npm_targets(lock)
+    if (
+        manifest.get("npmClosureSha256") != canonical_json_sha256(current_targets)
+        or manifest.get("npm") != current_targets
+    ):
+        raise OfflineDepsError("offline vendor is stale for the npm dependency closure; run: npm run offline:download")
+    config = read_json(CONFIG_PATH)
+    if manifest.get("configSemanticSha256") != config_semantic_sha256(config):
         raise OfflineDepsError("offline vendor is stale for tools/offline-deps.json; run: npm run offline:download")
     node = manifest["node"]
     node_path = VENDOR / node["file"]
