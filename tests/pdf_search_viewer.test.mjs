@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,pdfFieldKey,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfFieldKey,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 class FakeEventBus{
@@ -14,7 +14,7 @@ function fakeRuntime(){
   const state={eventBus:null,viewer:null,linkService:null,findController:null,setDocumentCalls:0,scaleValues:[],updateCalls:0,documentOptions:null};
   class EventBus extends FakeEventBus{constructor(){super();state.eventBus=this}}
   class PDFLinkService{constructor(){state.linkService=this}setViewer(viewer){this.viewer=viewer}setDocument(document){this.document=document}}
-  class PDFFindController{constructor(options){this.options=options;this.pageMatches=[];this.pageMatchesLength=[];this.selected={pageIdx:-1,matchIdx:-1};this._scrollMatches=false;state.findController=this}}
+  class PDFFindController{constructor(options){this.options=options;this.pageMatches=[];this.pageMatchesLength=[];this.selected={pageIdx:-1,matchIdx:-1};this._scrollMatches=false;state.findController=this}match(query,pageContent){const queries=Array.isArray(query)?query:[query],rows=[];for(const value of queries){const needle=String(value||'');if(!needle)continue;let offset=0,index;while((index=String(pageContent||'').indexOf(needle,offset))>=0){rows.push({index,length:needle.length});offset=index+Math.max(1,needle.length)}}return rows.sort((a,b)=>a.index-b.index||b.length-a.length)}}
   class PDFViewer{constructor(options){this.options=options;state.viewer=this}setDocument(document){this.document=document;state.setDocumentCalls+=1}getPageView(){return null}set currentScaleValue(value){this.scale=value;state.scaleValues.push(value)}update(){state.updateCalls+=1}}
   const pdfDocument={numPages:1,getPage:async()=>({getAnnotations:async()=>[]}),destroy:async()=>{state.documentDestroyed=true}};
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{state.loadingDestroyed=true}};
@@ -60,6 +60,26 @@ function fakeInteractiveRuntime(annotations,{annotationError=null}={}){
   const loadingTask={promise:Promise.resolve(pdfDocument),destroy:async()=>{}};
   return {state,pageRoot,canvasWrapper,runtime:{pdfjsLib:{AnnotationMode:{ENABLE:1},AnnotationEditorType:{DISABLE:-1},getDocument:()=>loadingTask,normalizeUnicode:value=>value},pdfjsViewer:{EventBus,PDFLinkService,PDFFindController,PDFViewer}}};
 }
+
+test('PDF whole-word matching preserves PDF.js normalized matches before applying Netunim word boundaries',()=>{
+  const page='שָׁלוֹם מזרן מזר abc_def';
+  const nativeMatch=(query)=>{
+    if(query==='שלום')return [{index:0,length:7}]; // PDF.js matched through NFD combining marks.
+    if(query==='מזר')return [{index:8,length:3},{index:13,length:3}];
+    if(query==='abc')return [{index:17,length:3}];
+    return [];
+  };
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'שלום',page,0,{wordMatch:'whole'}),[{index:0,length:7}], 'native PDF.js normalization remains authoritative for glyph/text mapping');
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'מזר',page,0,{wordMatch:'whole'}),[{index:13,length:3}], 'a longer Hebrew token is filtered without discarding the real whole word');
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'abc',page,0,{wordMatch:'whole'}),[{index:17,length:3}], 'underscore keeps Everything-compatible punctuation semantics');
+});
+
+test('PDF ordered proximity reuses native normalized term coordinates, including whole-word mode',()=>{
+  const page='שָׁלוֹם אחד עוֹלם סוף';
+  const nativeMatch=(query)=>query==='שלום'?[{index:0,length:7}]:query==='עולם'?[{index:12,length:5}]:[];
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'שלום עולם',page,0,{matchMode:'proximity',proximityWords:1,wordMatch:'whole'}),[{index:0,length:17}]);
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'שלום עולם',page,0,{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}),[]);
+});
 
 test('PDF find requests keep all matches highlighted and distinguish next from previous',()=>{
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
@@ -366,6 +386,16 @@ test('PDF runtime loading keeps the application module graph static, local and d
 });
 
 
+test('controlled PDF whole-word search keeps PDF.js matching active and applies Netunim boundaries afterward',async()=>{
+  const whole=fakeRuntime(),host=fakeHost();
+  const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'מזר',contentSearch:{wordMatch:'whole'},runtime:whole.runtime});
+  whole.state.eventBus.dispatch('pagesinit',{});
+  const find=whole.state.eventBus.dispatched.find(event=>event.name==='find');
+  assert.equal(find.payload.entireWord,false,'PDF.js must not pre-filter with Intl.Segmenter before Netunim applies Everything-compatible boundaries');
+  assert.deepEqual(whole.state.findController.match('מזר','מזרן מזר',0),[{index:5,length:3}]);
+  await viewer.destroy();
+});
+
 test('controlled PDF preview uses term arrays for AND/OR and an exact ordered-proximity matcher',async()=>{
   const all=fakeRuntime(),allHost=fakeHost();
   const allViewer=await createPdfSearchViewer({host:allHost,data:new Uint8Array([37,80,68,70]),query:'מה שלומך',contentSearch:{matchMode:'all'},runtime:all.runtime});
@@ -377,7 +407,7 @@ test('controlled PDF preview uses term arrays for AND/OR and an exact ordered-pr
   const proximity=fakeRuntime(),proximityHost=fakeHost();
   const proximityViewer=await createPdfSearchViewer({host:proximityHost,data:new Uint8Array([37,80,68,70]),query:'מה שלומך',contentSearch:{matchMode:'proximity',proximityWords:2},runtime:proximity.runtime});
   assert.equal(typeof proximity.state.findController.match,'function');
-  assert.deepEqual(proximity.state.findController.match(null,'פתיחה מה אחד שני שלומך סוף',0),[{index:6,length:16}]);
-  assert.deepEqual(proximity.state.findController.match(null,'פתיחה מה אחד שני שלישי שלומך סוף',0),[]);
+  assert.deepEqual(proximity.state.findController.match('מה שלומך','פתיחה מה אחד שני שלומך סוף',0),[{index:6,length:16}]);
+  assert.deepEqual(proximity.state.findController.match('מה שלומך','פתיחה מה אחד שני שלישי שלומך סוף',0),[]);
   await proximityViewer.destroy();
 });

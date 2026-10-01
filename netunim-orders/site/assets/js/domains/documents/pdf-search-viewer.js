@@ -1,4 +1,4 @@
-import {buildTextMatchSnippet,buildViewerFindQuery,findTextMatchOffsets,normalizeContentSearch} from './document-search-navigator.js';
+import {buildTextMatchSnippet,buildViewerFindQuery,contentSearchTerms,findTextMatchOffsets,isWholeWordTextRange,normalizeContentSearch} from './document-search-navigator.js';
 const PDFJS_VERSION='6.3.289';
 const PDFJS_ROOT='../../../vendor/pdfjs/';
 
@@ -61,6 +61,43 @@ function ensureViewerStylesheet(){
     if(!existing){link.rel='stylesheet';link.href=href;link.dataset.pdfjsRuntime=PDFJS_VERSION;document.head.append(link)}
   }).catch(error=>{stylesheetPromise=null;throw error});
   return stylesheetPromise;
+}
+
+
+function pdfWholeWordMatches(matches,pageContent){
+  const source=String(pageContent??'');
+  return (Array.isArray(matches)?matches:[]).filter(match=>{const start=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0);return length>0&&isWholeWordTextRange(source,start,start+length)});
+}
+function pdfProximityGapMatches(pageContent,from,to,maxWords){
+  if(to<from)return false;
+  const gap=String(pageContent??'').slice(from,to),limit=Math.max(0,Math.min(50,Math.trunc(Number(maxWords)||0)));
+  if(!gap||!/^\s/u.test(gap)||!/\s$/u.test(gap))return false;
+  return gap.trim().split(/\s+/u).filter(Boolean).length<=limit;
+}
+export function matchPdfTextWithNativeNormalization(nativeMatch,query,pageContent,pageIndex,contentSearch={}){
+  if(typeof nativeMatch!=='function')return [];
+  const search=normalizeContentSearch(contentSearch),source=String(pageContent??'');
+  if(search.matchMode!=='proximity'){
+    const matches=nativeMatch(query,source,pageIndex);
+    return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[]);
+  }
+  const terms=contentSearchTerms(Array.isArray(query)?query.join(' '):query);
+  if(terms.length<2){const matches=nativeMatch(query,source,pageIndex);return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[])}
+  const byTerm=terms.map(term=>{const matches=nativeMatch(term,source,pageIndex);return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[])});
+  if(byTerm.some(matches=>!matches.length))return [];
+  const rows=[];let consumedUntil=-1;
+  for(const first of byTerm[0]){
+    const firstStart=Math.max(0,Number(first?.index)||0),firstLength=Math.max(0,Number(first?.length)||0),firstEnd=firstStart+firstLength;
+    if(!firstLength||firstStart<consumedUntil)continue;
+    let previousEnd=firstEnd,lastEnd=firstEnd,valid=true;
+    for(let termIndex=1;termIndex<byTerm.length;termIndex+=1){
+      const next=byTerm[termIndex].find(match=>{const start=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0);return length>0&&start>=previousEnd&&pdfProximityGapMatches(source,previousEnd,start,search.proximityWords)});
+      if(!next){valid=false;break}
+      const nextStart=Math.max(0,Number(next.index)||0),nextLength=Math.max(0,Number(next.length)||0);previousEnd=nextStart+nextLength;lastEnd=previousEnd;
+    }
+    if(valid){rows.push({index:firstStart,length:lastEnd-firstStart});consumedUntil=lastEnd}
+  }
+  return rows;
 }
 
 export function buildPdfFindRequest(query,{type='',findPrevious=false,entireWord=false}={}){
@@ -357,7 +394,9 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const eventBus=new pdfjsViewer.EventBus();
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
-  if(findController&&(search.matchMode==='proximity'||search.wordMatch==='whole')){findController.match=(_query,pageContent)=>findTextMatchOffsets(pageContent,needle,{...search,matchMode:search.matchMode==='all'?'any':search.matchMode,maxMatches:20000}).matches.map(match=>({index:match.start,length:match.end-match.start}))}
+  const nativeFindMatch=typeof findController?.match==='function'?findController.match.bind(findController):null;
+  const customPdfTextMatch=!!nativeFindMatch&&(search.matchMode==='proximity'||search.wordMatch==='whole');
+  if(customPdfTextMatch)findController.match=(findQueryValue,pageContent,pageIndex)=>matchPdfTextWithNativeNormalization(nativeFindMatch,findQueryValue,pageContent,pageIndex,search);
   const viewerOptions={container,eventBus,linkService,findController};
   // Preview is never an editor. Always paint the PDF-authored AcroForm appearance
   // streams so custom/legacy Hebrew fonts are rendered exactly as the PDF saved them.
@@ -382,7 +421,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).catch(()=>{})}}
   const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
   if(interactiveForms){eventBus.on('pagerendered',renderFormLayerForEvent);eventBus.on('annotationlayerrendered',renderFormLayerForEvent)}
-  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'});request.source=container;eventBus.dispatch('find',request)};
+  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'&&!customPdfTextMatch});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};
