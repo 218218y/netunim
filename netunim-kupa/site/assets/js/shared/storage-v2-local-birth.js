@@ -20,8 +20,8 @@ export async function verifyStorageV2LocalEngine({app,owner,db=createStorageJour
 
 // This marker describes the local storage engine only. It never fabricates a
 // cloud cursor, and a browser cache alone can never authorize a V2 writer.
-export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableShared=()=>{},readSource,quiesce=async()=>{},verifyLegacyClean,applyAuxiliary=async()=>{},verifyAuxiliary=async()=>true,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
-  if(!['orders','kupa'].includes(app)||[owner,primary,main?.initializeLocal,main?.recover,shared?.initializeLocal,shared?.recover,readSource,quiesce,verifyLegacyClean,applyAuxiliary,verifyAuxiliary].some(value=>typeof value!=='function'))throw new Error('storage_local_birth_configuration');
+export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableShared=()=>{},readSource,quiesce=async()=>{},applyAuxiliary=async()=>{},verifyAuxiliary=async()=>true,db=createStorageJournalDb(),storage=globalThis.localStorage,operationId=()=>globalThis.crypto?.randomUUID?.()}={}){
+  if(!['orders','kupa'].includes(app)||[owner,primary,main?.initializeLocal,main?.recover,shared?.initializeLocal,shared?.recover,readSource,quiesce,applyAuxiliary,verifyAuxiliary].some(value=>typeof value!=='function'))throw new Error('storage_local_birth_configuration');
   const scope=`${app}:local`,key=storageLocalEngineKey(app);
   let plan=null,running=null,freezing=false;
   const guard=()=>{if(owner()!=='local'||!primary())throw new Error('storage_local_birth_owner_changed')};
@@ -36,9 +36,6 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
     if(owner()!=='local'){plan=null;return null}
     const record=await db.readLocalBirth(scope);if(owner()!=='local')throw new Error('storage_local_birth_owner_changed');
     plan=record;return record&&structuredClone(record);
-  }
-  async function settledLegacy(){
-    if(await verifyLegacyClean()!==true)throw new Error('storage_local_birth_legacy_pending');
   }
   async function execute(){
     guard();let current=plan||await hydrate();if(!current)throw new Error('storage_local_birth_missing');
@@ -57,12 +54,11 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
         if(current.auxiliaryState!=null){await applyAuxiliary(current.auxiliaryState);if(await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified')}
         const mainState=(await main.recover(null))?.state,sharedState=(await shared.recover())?.state;
         if(!mainState||!sharedState||!equalSyncJson(mainState,current.mainState)||!equalSyncJson(sharedState,current.sharedState))throw new Error('storage_local_birth_parity_mismatch');
-        await settledLegacy();
         current=await db.advanceLocalBirth(scope,current.id,'shared-initialized','verified');plan=current;continue;
       }
       if(current.phase==='verified'){
         if(current.auxiliaryState!=null&&await verifyAuxiliary(current.auxiliaryState)!==true)throw new Error('storage_local_birth_auxiliary_unverified');
-        await settledLegacy();guard();await db.markLocalEngine(app);guard();cacheMarker();
+        guard();await db.markLocalEngine(app);guard();cacheMarker();
         current=await db.advanceLocalBirth(scope,current.id,'verified','complete');plan=current;continue;
       }
       throw new Error('storage_local_birth_phase_invalid');
@@ -86,7 +82,7 @@ export function createStorageV2LocalBirth({app,owner,primary,main,shared,enableS
       if(existing){if(existing.phase==='complete')throw new Error('storage_local_birth_marker_missing');return execute()}
       freezing=true;
       try{
-        await quiesce();guard();await settledLegacy();
+        await quiesce();guard();
         const source=await readSource();guard();
         if(!source?.mainState||!source?.sharedState)throw new Error('storage_local_birth_source_missing');
         assertStorageJson(source.mainState);assertStorageJson(source.sharedState);if(source.auxiliaryState!=null)assertStorageJson(source.auxiliaryState);

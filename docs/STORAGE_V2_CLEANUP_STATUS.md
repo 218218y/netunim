@@ -1,0 +1,9 @@
+# Storage V2 cleanup status
+
+The active account uses Storage V2 on both primary computers. The server's minimum writer protocol is 2 for Orders, Kupa, and Shared Checks. A read-only inventory on 2026-10-01 found one owner with business documents and no owner with protocol 1 in any of those three domains. This inventory describes the linked database at that time; it does not prove the projection version of any browser's local checkpoint.
+
+Fresh local storage now starts from the current initial state in Main V2 and an empty Shared Checks V2 state. It does not read V1 snapshots or pending outboxes. A durable local-birth plan created by an earlier build can still finish after a restart; V2 checkpoints that already exist must match the plan before a marker is written. Local V2 owner transfer treats the V2 journals as authoritative even if abandoned V1 pending keys remain in that browser. Account adoption without a local V2 marker remains cloud-authoritative and requires the server protocol check.
+
+The remaining client compatibility is substantial: old browser/outbox readers and disabled writers, Main projection-1 replay and migration, Shared shadow promotion, and legacy retirement. These should be removed only after proving the active V2 checkpoints can recover with projection 2 and confirming every startup, import, restore, and owner-transfer path uses the new model. Historical SQL migrations must remain unchanged; removal of public v1-v5 functions requires a new migration and a live dependency audit. The server protocol fence remains permanent.
+
+Do not infer that a protocol-2 server account makes an unverified local V2 journal safe to overwrite. A browser with an unfinished V2 boundary, flight, or owner transition still requires its normal durable recovery.

@@ -4,7 +4,6 @@ import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
 import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/storage-v2-local-birth.js';
-import {createLegacyLocalBirthSource} from '../storage/local-birth-source.js';
 import {createSpreadsheetStore} from '../shared/spreadsheet-store.js';
 import {migrateLegacySpreadsheet} from '../shared/spreadsheet-model.js';
 import {equalSyncJson} from '../shared/cloud-sync.js';
@@ -69,7 +68,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     await Promise.all([p.storageShadow.commitPromise,p.sharedChecksV2.commitPromise,p.files.browserStateWritePromise,p.files.storageV2CommitPromise,
       p.session.saveQueue,p.session.cloudSavePromise,p.session.cloudOutboxCommitPromise,p.checksSession.sharedChecksSavePromise,
       p.checksSession.sharedChecksPullPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean));
-    if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy||await verifyLegacyClean()!==true)throw new Error('kupa_transfer_source_unsettled');
+    if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy||sourceOwner!=='local'&&await verifyLegacyClean()!==true)throw new Error('kupa_transfer_source_unsettled');
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
     const normalization=detachedNormalization(),sourceMain=createStorageV2Runtime({app:'kupa',owner:()=>sourceOwner,primary:()=>tab.primaryTab,mode:()=> 'preparing',
@@ -96,7 +95,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
       readState:()=>detachedSharedState,applyState:value=>{detachedSharedState=structuredClone(value)},merge,
       readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-      verifyLegacyClean:()=>p.syncChecksState.verifyLegacyChecksClean()});
+      verifyLegacyClean:()=>owner.current()==='local'?true:p.syncChecksState.verifyLegacyChecksClean()});
     return createStorageV2DetachedTarget({app:'kupa',targetOwner,primary:()=>tab.primaryTab,main:targetMain,shared:targetShared,
       readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>normalization.prepareKupaCloudState(row.state),
       readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>({checks:row.state.checks,bankEvents:row.state.bankEvents}),
@@ -104,7 +103,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       projectMainState:state=>normalization.prepareKupaCloudState(state),emptyMainState:()=>normalization.normalizeState(INITIAL_STATE),
       validateMainCloud:value=>assertValidCloudState(value,'Kupa detached target'),
       rpcMain:(...args)=>p.syncDocument.rpcSaveCloudV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-      verifyLegacyClean:()=>verifyLegacyClean()});
+      verifyLegacyClean:()=>owner.current()==='local'?true:verifyLegacyClean()});
   }
   async function installTransferTargetView({mainState,sharedState,mainRevision,sharedRevision}){
     const p=requirePorts();
@@ -149,9 +148,8 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       main:p.storageShadow,shared:p.sharedChecksV2,
       enableShared:()=>{if(p.sharedChecksV2Composition.lockPreparation()||mode()==='primary')return;throw new Error('kupa_local_birth_shared_lock_required')},
       readSource:async()=>{
-        const source=await createLegacyLocalBirthSource({idbGet:(...args)=>p.storageIndexedDb.idbGet(...args),normalizeState:state=>p.stateNormalization.normalizeState(state)})();
-        const mainState=structuredClone(source.mainState);delete mainState.checks;
-        return {...source,mainState};
+        const mainState=p.stateNormalization.normalizeState(INITIAL_STATE);delete mainState.checks;
+        return {mainState,sharedState:{checks:[],bankEvents:[]}};
       },
       applyAuxiliary:async auxiliary=>{
         if(!auxiliary?.workbook)throw new Error('kupa_local_birth_workbook_missing');
@@ -168,7 +166,6 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
         await Promise.all([p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.session.cloudOutboxCommitPromise,p.checksSession.sharedChecksOutboxCommitPromise,p.checksSession.sharedChecksSavePromise,p.session.saveQueue].filter(Boolean));
       },
-      verifyLegacyClean,
     });
     ownerTransfer=createStorageV2OwnerTransfer({app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab,
       online:()=>globalThis.navigator?.onLine!==false,authOwner:()=>p.cloudAuth.loadSupaSession()?.user?.id||null,

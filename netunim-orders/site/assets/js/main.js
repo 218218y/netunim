@@ -1018,11 +1018,12 @@ const uiGlobalSearch=createUiGlobalSearch({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const initialOrdersLocal=storageBrowser.loadLocal();
-model.state=stateNormalization.normalizeState(initialOrdersLocal||structuredClone(INITIAL_STATE));
+// The visible model starts empty and is hydrated only from the verified V2
+// Main and Shared journals during boot. Retired V1 browser keys are inert.
+model.state=stateNormalization.normalizeState(structuredClone(INITIAL_STATE));
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
-checksSession.checksCloudBase=storageChecks.loadChecksBase()||structuredClone(model.state.checks||[]);
-checksSession.checksBankEvents=storageChecks.loadChecksBankEvents();
+checksSession.checksCloudBase=[];
+checksSession.checksBankEvents=[];
 bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);

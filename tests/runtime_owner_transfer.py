@@ -4,6 +4,7 @@ from browser_legacy_write_guard import install_business_v1_write_guard
 
 
 with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_navigate=False) as browser:
+    browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': '(()=>{const set=Storage.prototype.setItem;window.__seedObsoleteV1=(key,value)=>set.call(localStorage,key,value)})()'})
     install_business_v1_write_guard(browser)
     browser._navigate()
     result=browser.evaluate("""(async()=>{
@@ -29,6 +30,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
         checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]},operationId};return {r:{ok:true},row:structuredClone(checks)};
       };
       cloudTransport.rpcSaveSharedChecksV2=cloudTransport.rpcSaveSharedChecks;
+      window.__seedObsoleteV1('orders.shared.checks.pending.v1','{"generation":1}');
       const transfer=await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const marker=await createStorageJournalDb().readCutover('orders:fixture-account');
@@ -55,6 +57,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
 
 
 with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navigate=False) as browser:
+    browser.call('Page.addScriptToEvaluateOnNewDocument', {'source': '(()=>{const set=Storage.prototype.setItem;window.__seedObsoleteV1=(key,value)=>set.call(localStorage,key,value)})()'})
     install_business_v1_write_guard(browser)
     browser._navigate()
     result=browser.evaluate("""(async()=>{
@@ -80,6 +83,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
         checks={revision:1,state:{version:1,checks:structuredClone(rows),bankEvents:[]},operationId};return {r:{ok:true},row:structuredClone(checks)};
       };
       cloudTransport.rpcSaveSharedChecksV2=cloudTransport.rpcSaveSharedChecks;
+      window.__seedObsoleteV1('kupa.shared.checks.pending.v1','{"generation":1}');
       const transfer=await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const marker=await createStorageJournalDb().readCutover('kupa:fixture-account');

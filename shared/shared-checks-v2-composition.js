@@ -5,8 +5,9 @@ import {createStorageJournalDb} from './storage-journal-idb.js';
 import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
 
 // Application-specific ports are supplied by each composition root. Primary
-// starts only after the existing local V2 namespace and clean V1 head have
-// been verified; no displayed account state is promoted implicitly.
+// starts only after the durable V2 namespace has been verified. A local V2
+// birth does not inspect abandoned V1 data; account adoption verifies its
+// cloud heads before the displayed owner changes.
 export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
   const cutover=createStorageV2Cutover({app:site,owner,primary,db});
   const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2'||owner()==='local'&&localStorage.getItem(`netunim-storage-engine-version:${site}:local`)==='2';
@@ -32,9 +33,10 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   }
   async function recoverPrimary(){
     if(!cutoverRequested()&&!preparationRequested())return false;
-    // Fenced cloud adoption marks obsolete V1 pending inactive atomically with
-    // both V2 heads. Ordinary cutover still requires a clean legacy source.
-    if(!(cutoverRequested()&&await cutover.legacyInactive())&&await verifyLegacyClean()!==true)
+    // A durable account marker means Main and Shared were verified before
+    // activation. V1 pending left in this browser is no longer authoritative.
+    // An unmarked preparation must still prove its legacy source is clean.
+    if(owner()!=='local'&&!(cutoverRequested()&&await cutover.verify())&&await verifyLegacyClean()!==true)
       throw new Error('shared_checks_legacy_pending_unverified');
     const recovered=await runtime.recover();
     if(!recovered){if(preparationRequested())return false;throw new Error('shared_checks_primary_checkpoint_missing')}

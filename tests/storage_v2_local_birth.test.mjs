@@ -5,7 +5,7 @@ import {storageV2Mode} from '../shared/storage-v2-runtime.js';
 
 const clone=structuredClone;
 function fixture(){
-  let plan=null,marker=null,mainState=null,sharedState=null,failAfterMain=false,failAfterMarker=false,sourceReads=0,legacyClean=true;
+  let plan=null,marker=null,mainState=null,sharedState=null,failAfterMain=false,failAfterMarker=false,sourceReads=0;
   const cache=new Map(),app='orders',source={mainState:{notes:[{id:'n',content:'local'}]},sharedState:{checks:[{id:'c',amount:5}],bankEvents:[]}};
   const db={
     async readLocalBirth(){return clone(plan)},
@@ -17,8 +17,8 @@ function fixture(){
   const main={async initializeLocal(value){if(mainState)assert.deepEqual(mainState,value);mainState=clone(value)},async recover(){return mainState&&{state:clone(mainState)}}};
   const shared={async initializeLocal({state}){if(sharedState)assert.deepEqual(sharedState,state);sharedState=clone(state)},async recover(){return sharedState&&{state:clone(sharedState)}}};
   const storage={getItem:key=>cache.get(key)??null,setItem:(key,value)=>cache.set(key,value),removeItem:key=>cache.delete(key)};
-  const make=()=>createStorageV2LocalBirth({app,owner:()=> 'local',primary:()=>true,main,shared,enableShared:()=>{},readSource:async()=>{sourceReads++;return clone(source)},verifyLegacyClean:async()=>legacyClean,db,storage,operationId:()=> 'birth-1'});
-  return {make,cache,source,get plan(){return clone(plan)},get marker(){return clone(marker)},get sourceReads(){return sourceReads},set failAfterMain(value){failAfterMain=value},set failAfterMarker(value){failAfterMarker=value},set legacyClean(value){legacyClean=value}};
+  const make=()=>createStorageV2LocalBirth({app,owner:()=> 'local',primary:()=>true,main,shared,enableShared:()=>{},readSource:async()=>{sourceReads++;return clone(source)},db,storage,operationId:()=> 'birth-1'});
+  return {make,cache,source,get plan(){return clone(plan)},get marker(){return clone(marker)},get sourceReads(){return sourceReads},set failAfterMain(value){failAfterMain=value},set failAfterMarker(value){failAfterMarker=value}};
 }
 
 test('local birth freezes one source plan and resumes after a Main commit without rediscovery',async()=>{
@@ -44,12 +44,6 @@ test('legacy development mode keys cannot activate or downgrade Storage V2',()=>
   keys.set(storageLocalEngineKey('orders'),'2');
   keys.set('netunim-storage-v2-mode:orders','off');
   assert.equal(storageV2Mode('orders',storage,'local'),'primary');
-});
-
-test('legacy pending blocks birth before marking the engine',async()=>{
-  const f=fixture();f.legacyClean=false;
-  await assert.rejects(f.make().begin(),/storage_local_birth_legacy_pending/);
-  assert.equal(f.plan,null);assert.equal(f.marker,null);
 });
 
 test('restart completes a verified local birth after the durable marker committed',async()=>{

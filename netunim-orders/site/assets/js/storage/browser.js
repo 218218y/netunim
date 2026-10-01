@@ -3,8 +3,8 @@ import {beginMeasure} from '../shared/runtime-performance.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {detachLegacyOutbox} from '../shared/spreadsheet-cutover.js';
 import {clone} from '../core/values.js';
-import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY, INITIAL_STATE} from '../state/constants.js';
-import {acknowledgedGenerationMatches,compareOutboxFreshness,createOperationId,createOutboxRecord,equalSyncJson,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
+import {STORAGE_KEY, LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
+import {acknowledgedGenerationMatches,compareOutboxFreshness,createOperationId,createOutboxRecord,migrateOutboxRecord,outboxRetryForGeneration} from '../shared/cloud-sync.js';
 import {assertOrderEntityInvariants,assertValidOrderCloudState} from '../state/validation.js';
 
 const LOCAL_SYNC_STORE='sync';
@@ -62,22 +62,6 @@ async function readBrowserStateSnapshotStrict(){
   return new Promise((resolve,reject)=>{const request=db.transaction(LOCAL_STORE,'readonly').objectStore(LOCAL_STORE).get(LOCAL_STATE_KEY);request.onsuccess=()=>resolve(request.result||null);request.onerror=()=>reject(request.error)});
 }
 async function loadBrowserStateSnapshot(){try{return await readBrowserStateSnapshotStrict()}catch(e){console.error('browser state load',e);return null}}
-
-// The birth coordinator freezes this result in its durable plan. Reads must
-// neither repair a V1 mirror nor turn a failed IndexedDB read into an empty app.
-async function readLegacyLocalMigrationSource(){
-  const raw=localStorage.getItem(STORAGE_KEY),local=raw===null?null:JSON.parse(raw);
-  const record=await readBrowserStateSnapshotStrict();
-  const durable=record?.payload||null;
-  for(const value of [local,durable])if(value!==null&&(!value||typeof value!=='object'||Array.isArray(value)))throw new Error('orders_local_birth_legacy_source_invalid');
-  const localSeq=Number(local?._meta?.localSnapshotSeq||0),durableSeq=Number(durable?._meta?.localSnapshotSeq||0);
-  if(!Number.isSafeInteger(localSeq)||localSeq<0||!Number.isSafeInteger(durableSeq)||durableSeq<0)throw new Error('orders_local_birth_legacy_sequence_invalid');
-  if(local&&durable&&localSeq===durableSeq&&!equalSyncJson(local,durable))throw new Error('orders_local_birth_legacy_source_diverged');
-  const selected=!local||durableSeq>localSeq?durable||local:local;
-  return {mainState:normalizeState(clone(selected||INITIAL_STATE)),sourceFound:!!selected,snapshotSeq:Math.max(localSeq,durableSeq),legacyWorkbook:selected?.notesSheet||null};
-}
-
-async function captureLegacyWorkbookForMigration(source){await captureLegacyWorkbook(source)}
 
 async function verifyLegacyCloudCleanReadOnly(){
   const commit=session.ordersOutboxCommitPromise||Promise.resolve();await commit;
@@ -261,5 +245,5 @@ async function replaceStorageV2CurrentState(state=model.state){const result=awai
 async function adoptStorageV2CloudHead(revision,state=model.state){const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
 async function resetStorageV2CloudHead(revision,state=model.state){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 reset cloud head');const result=await storageV2.resetCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 reset cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});session.cloudConflictBlocked=false;const ackSeq=Number(result?.ackSeq||0),base={version:2,owner:v2CloudStateCache?.base?.owner,epoch:result?.epoch,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq};await refreshStorageV2CloudStateAfterCommit('cloud reset',resetStorageV2CloudState(Number(result?.seq||0),base));return result}
 
-return { loadLocal, localSnapshot, openLocalStateDb, idbSyncPut, idbSyncGet, idbSyncDelete, deleteLegacyBusinessRecords, loadBrowserStateSnapshot, readLegacyLocalMigrationSource, captureLegacyWorkbookForMigration, verifyLegacyCloudCleanReadOnly, recoverLocalV2State, recoverReadOnlyV2State, restoreBrowserStateReadOnly, restoreBrowserStateFallback, markCloudPending, getCloudPending, cloudPendingExists, legacyCloudPendingExists, verifyLegacyCloudClean, clearCloudPending, loadCloudPendingState, invalidateCloudPendingHead, storageV2CloudOutboxActive, refreshStorageV2CloudState, initializeStorageV2UploadLocalHead, initializeStorageV2BootstrapHead, initializeStorageV2CloudCursor, materializeStorageV2CloudFlight, acknowledgeStorageV2CloudFlight, rejectStorageV2CloudFlight, setStorageV2CloudControl, clearStorageV2CloudControl, replaceStorageV2AuthoritativeState, replaceStorageV2CurrentState, adoptStorageV2CloudHead, resetStorageV2CloudHead, get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()} };
+return { loadLocal, localSnapshot, openLocalStateDb, idbSyncPut, idbSyncGet, idbSyncDelete, deleteLegacyBusinessRecords, loadBrowserStateSnapshot, verifyLegacyCloudCleanReadOnly, recoverLocalV2State, recoverReadOnlyV2State, restoreBrowserStateReadOnly, restoreBrowserStateFallback, markCloudPending, getCloudPending, cloudPendingExists, legacyCloudPendingExists, verifyLegacyCloudClean, clearCloudPending, loadCloudPendingState, invalidateCloudPendingHead, storageV2CloudOutboxActive, refreshStorageV2CloudState, initializeStorageV2UploadLocalHead, initializeStorageV2BootstrapHead, initializeStorageV2CloudCursor, materializeStorageV2CloudFlight, acknowledgeStorageV2CloudFlight, rejectStorageV2CloudFlight, setStorageV2CloudControl, clearStorageV2CloudControl, replaceStorageV2AuthoritativeState, replaceStorageV2CurrentState, adoptStorageV2CloudHead, resetStorageV2CloudHead, get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()} };
 }
