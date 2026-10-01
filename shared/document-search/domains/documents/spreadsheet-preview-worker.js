@@ -1,12 +1,19 @@
 let loadError='';
 try{importScripts('../../../vendor/document-viewers/xlsx/xlsx.full.min.js')}catch(error){loadError=String(error?.message||error)}
-let workbook=null,sheets=[],matches=[],query='',contentSearch={matchMode:'phrase',proximityWords:0};
-const MAX_MATCHES=5000,FULL_AREA_LIMIT=24000,MAX_ROWS=90,MAX_COLS=36,CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
+
+let workbook=null,sheets=[],matches=[],query='',contentSearch={matchMode:'phrase',wordMatch:'partial',proximityWords:0};
+const MAX_MATCHES=5000,FULL_AREA_LIMIT=24000,MAX_ROWS=90,MAX_COLS=36;
+const CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
+const CONTENT_WORD_MATCHES=new Set(['partial','whole']);
+const CONTENT_WORD_CHAR=/[\p{L}\p{N}\p{M}]/u;
+
 function lower(value){return String(value??'').toLocaleLowerCase('he-IL')}
-function normalizeSearch(value={}){const source=value&&typeof value==='object'?value:{};return {matchMode:CONTENT_MATCH_MODES.has(source.matchMode)?source.matchMode:'phrase',proximityWords:Math.max(0,Math.min(50,Math.trunc(Number(source.proximityWords)||0)))}}
+function normalizeSearch(value={}){const source=value&&typeof value==='object'?value:{};return {matchMode:CONTENT_MATCH_MODES.has(source.matchMode)?source.matchMode:'phrase',wordMatch:CONTENT_WORD_MATCHES.has(source.wordMatch)?source.wordMatch:'partial',proximityWords:Math.max(0,Math.min(50,Math.trunc(Number(source.proximityWords)||0)))}}
 function terms(value){return String(value??'').replace(/\s+/g,' ').trim().split(' ').map(term=>term.trim()).filter(Boolean).slice(0,16)}
 function regexLiteral(value){return String(value??'').replace(/[\\^$.*+?()[\]{}|]/g,'\\$&')}
-function proximityPattern(values,distance){const gap=`(?:\\s+\\S+){0,${distance}}\\s+`;return values.map(regexLiteral).join(gap)}
+function wholeWordRegexPart(value){return `(?<![\\p{L}\\p{N}\\p{M}])${regexLiteral(value)}(?![\\p{L}\\p{N}\\p{M}])`}
+function wholeWordRange(source,start,end){const before=start>0?source[start-1]:'',after=end<source.length?source[end]:'';return (!before||!CONTENT_WORD_CHAR.test(before))&&(!after||!CONTENT_WORD_CHAR.test(after))}
+function proximityPattern(values,distance,{wholeWords=false}={}){const gap=`(?:\\s+\\S+){0,${distance}}\\s+`,render=wholeWords?wholeWordRegexPart:regexLiteral;return values.map(render).join(gap)}
 const PHONE_QUERY_IGNORED=/[\s\u002d\u2010-\u2015\u2212\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 function phoneSearchDigits(value){const raw=String(value??'').trim();if(!raw)return '';const digits=raw.replace(PHONE_QUERY_IGNORED,'');return /^\d{7,15}$/.test(digits)?digits:''}
 function phoneSearchPattern(value){const digits=phoneSearchDigits(value);if(!digits)return '';const separator='(?:\\s|[-‐‑‒–—―−])?',variants=[];for(const prefixLength of [2,3])if(digits.length>prefixLength)variants.push(`${regexLiteral(digits.slice(0,prefixLength))}${separator}${regexLiteral(digits.slice(prefixLength))}`);return variants.length===1?variants[0]:`(?:${variants.join('|')})`}
@@ -14,14 +21,36 @@ function snippet(text,start,end){const context=56,a=Math.max(0,start-context),b=
 function cellAt(ws,r,c){if(ws?.['!data'])return ws['!data']?.[r]?.[c]||null;if(Array.isArray(ws))return ws?.[r]?.[c]||null;return ws?.[globalThis.XLSX.utils.encode_cell({r,c})]||null}
 function cellText(cell){if(!cell)return '';if(cell.w!=null)return String(cell.w);if(cell.v==null)return '';return cell.v instanceof Date?cell.v.toLocaleString('he-IL'):String(cell.v)}
 function usedRange(ws){try{return ws?.['!ref']?globalThis.XLSX.utils.decode_range(ws['!ref']):{s:{r:0,c:0},e:{r:0,c:0}}}catch{return {s:{r:0,c:0},e:{r:0,c:0}}}}
-function rangesFor(text){const source=String(text??''),needle=String(query||'').replace(/\s+/g,' ').trim(),search=normalizeSearch(contentSearch),wanted=terms(needle),hay=lower(source),rows=[];if(!source||needle.length<2)return rows;
-  const phonePattern=phoneSearchPattern(needle);if(phonePattern){const regex=new RegExp(phonePattern,'gu');let match;while((match=regex.exec(source))&&rows.length<MAX_MATCHES){rows.push({start:match.index,end:match.index+match[0].length,term:''});if(!match[0].length)regex.lastIndex+=1}return rows}
-  if(search.matchMode==='proximity'&&wanted.length>1){const regex=new RegExp(proximityPattern(wanted.map(lower),search.proximityWords),'gu');let match;while((match=regex.exec(hay))&&rows.length<MAX_MATCHES){rows.push({start:match.index,end:match.index+match[0].length,term:''});if(!match[0].length)regex.lastIndex+=1}return rows}
-  if((search.matchMode==='all'||search.matchMode==='any')&&wanted.length>1){for(const term of [...new Set(wanted.map(lower))]){let offset=0;while(offset<=hay.length-term.length&&rows.length<MAX_MATCHES){const index=hay.indexOf(term,offset);if(index<0)break;rows.push({start:index,end:index+term.length,term});offset=index+Math.max(1,term.length)}}return rows.sort((a,b)=>a.start-b.start||(b.end-b.start)-(a.end-a.start))}
-  const target=lower(needle);let offset=0;while(offset<=hay.length-target.length&&rows.length<MAX_MATCHES){const index=hay.indexOf(target,offset);if(index<0)break;rows.push({start:index,end:index+target.length,term:target});offset=index+Math.max(1,target.length)}return rows}
-function scan(){matches=[];const search=normalizeSearch(contentSearch),required=new Set(terms(query).map(lower)),foundTerms=new Set();sheets=workbook.SheetNames.map((name,index)=>{const ws=workbook.Sheets[name],range=usedRange(ws),area=(range.e.r-range.s.r+1)*(range.e.c-range.s.c+1);let nonEmpty=0;
-  for(let r=range.s.r;r<=range.e.r;r++)for(let c=range.s.c;c<=range.e.c;c++){const text=cellText(cellAt(ws,r,c));if(!text)continue;nonEmpty++;if(matches.length>=MAX_MATCHES)continue;for(const rangeMatch of rangesFor(text)){if(rangeMatch.term)foundTerms.add(rangeMatch.term);matches.push({sheet:index,row:r,col:c,text,start:rangeMatch.start,end:rangeMatch.end,snippet:snippet(text,rangeMatch.start,rangeMatch.end)});if(matches.length>=MAX_MATCHES)break}}
-  return {name,index,range,area,nonEmpty,full:area<=FULL_AREA_LIMIT&&range.e.r-range.s.r<800&&range.e.c-range.s.c<160}});
+
+function rangesFor(text){
+  const source=String(text??''),needle=String(query||'').replace(/\s+/g,' ').trim(),search=normalizeSearch(contentSearch),wanted=terms(needle),hay=lower(source),rows=[],whole=search.wordMatch==='whole';
+  if(!source||needle.length<2)return rows;
+  const phonePattern=phoneSearchPattern(needle);
+  if(phonePattern){
+    const regex=new RegExp(phonePattern,'gu');let match;
+    while((match=regex.exec(source))&&rows.length<MAX_MATCHES){if(!whole||wholeWordRange(source,match.index,match.index+match[0].length))rows.push({start:match.index,end:match.index+match[0].length,term:''});if(!match[0].length)regex.lastIndex+=1}
+    return rows;
+  }
+  if(search.matchMode==='proximity'&&wanted.length>1){
+    const regex=new RegExp(proximityPattern(wanted.map(lower),search.proximityWords,{wholeWords:whole}),'gu');let match;
+    while((match=regex.exec(hay))&&rows.length<MAX_MATCHES){rows.push({start:match.index,end:match.index+match[0].length,term:''});if(!match[0].length)regex.lastIndex+=1}
+    return rows;
+  }
+  if((search.matchMode==='all'||search.matchMode==='any')&&wanted.length>1){
+    for(const term of [...new Set(wanted.map(lower))]){let offset=0;while(offset<=hay.length-term.length&&rows.length<MAX_MATCHES){const index=hay.indexOf(term,offset);if(index<0)break;if(!whole||wholeWordRange(source,index,index+term.length))rows.push({start:index,end:index+term.length,term});offset=index+Math.max(1,term.length)}}
+    return rows.sort((a,b)=>a.start-b.start||(b.end-b.start)-(a.end-a.start));
+  }
+  const target=lower(needle);let offset=0;
+  while(offset<=hay.length-target.length&&rows.length<MAX_MATCHES){const index=hay.indexOf(target,offset);if(index<0)break;if(!whole||wholeWordRange(source,index,index+target.length))rows.push({start:index,end:index+target.length,term:target});offset=index+Math.max(1,target.length)}
+  return rows;
+}
+
+function scan(){
+  matches=[];const search=normalizeSearch(contentSearch),required=new Set(terms(query).map(lower)),foundTerms=new Set();
+  sheets=workbook.SheetNames.map((name,index)=>{const ws=workbook.Sheets[name],range=usedRange(ws),area=(range.e.r-range.s.r+1)*(range.e.c-range.s.c+1);let nonEmpty=0;
+    for(let r=range.s.r;r<=range.e.r;r++)for(let c=range.s.c;c<=range.e.c;c++){const text=cellText(cellAt(ws,r,c));if(!text)continue;nonEmpty++;if(matches.length>=MAX_MATCHES)continue;for(const rangeMatch of rangesFor(text)){if(rangeMatch.term)foundTerms.add(rangeMatch.term);matches.push({sheet:index,row:r,col:c,text,start:rangeMatch.start,end:rangeMatch.end,snippet:snippet(text,rangeMatch.start,rangeMatch.end)});if(matches.length>=MAX_MATCHES)break}}
+    return {name,index,range,area,nonEmpty,full:area<=FULL_AREA_LIMIT&&range.e.r-range.s.r<800&&range.e.c-range.s.c<160};
+  });
   if(search.matchMode==='all'&&required.size>1&&[...required].some(term=>!foundTerms.has(term)))matches=[];
   matches.forEach((match,index)=>{match.navIndex=index});
 }

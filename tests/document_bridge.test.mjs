@@ -66,10 +66,32 @@ test('content search supports Everything 1.5 phrase, AND, OR and ordered word-di
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'any'}),'content:<"מה"|"שלומך"> no-background-search:');
   assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:10}),'regex:content:"מה(?:\\s+\\S+){0,10}\\s+שלומך" no-background-search:');
   assert.equal(buildContentQuery('a+b c?',{matchMode:'proximity',proximityWords:3}),'regex:content:"a\\+b(?:\\s+\\S+){0,3}\\s+c\\?" no-background-search:');
+  assert.equal(buildContentQuery('מזר',{wordMatch:'whole'}),'whole-words:content:"מזר" no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'all',wordMatch:'whole'}),'whole-words:content:<"מה" "שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'any',wordMatch:'whole'}),'whole-words:content:<"מה"|"שלומך"> no-background-search:');
+  assert.equal(buildContentQuery('מה שלומך',{matchMode:'proximity',proximityWords:2,wordMatch:'whole'}),'regex:content:"(?<![\\p{L}\\p{N}\\p{M}])מה(?![\\p{L}\\p{N}\\p{M}])(?:\\s+\\S+){0,2}\\s+(?<![\\p{L}\\p{N}\\p{M}])שלומך(?![\\p{L}\\p{N}\\p{M}])" no-background-search:');
   assert.equal(buildContentQuery('a'),'');
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
+});
+
+test('whole-word content search excludes prefixes inside longer Hebrew, Latin and numeric tokens',()=>{
+  const text='מזר מזרן, מזר. cat catalog cat 123 1234';
+  assert.equal(buildContentMatchInfo(text,'מזר').count,3);
+  assert.deepEqual(buildContentMatchInfo(text,'מזר',{wordMatch:'whole'}).snippets.map(row=>row.match),['מזר','מזר']);
+  assert.equal(contentSearchMatches('מזרן','מזר',{wordMatch:'whole'}),false);
+  assert.equal(contentSearchMatches('מזרן','מזר',{wordMatch:'partial'}),true);
+  assert.equal(contentSearchMatches('catalog','cat',{wordMatch:'whole'}),false);
+  assert.equal(contentSearchMatches('cat!','cat',{wordMatch:'whole'}),true);
+  assert.equal(contentSearchMatches('1234','123',{wordMatch:'whole'}),false);
+  assert.equal(contentSearchMatches('123,','123',{wordMatch:'whole'}),true);
+  assert.equal(contentSearchMatches('abc_def','abc',{wordMatch:'whole'}),true,'Everything treats underscore as punctuation for whole-word matching by default');
+  assert.equal(contentSearchMatches('_0501234567_','0501234567',{wordMatch:'whole'}),true,'punctuation must delimit a whole phone token');
+  assert.equal(contentSearchMatches('x0501234567x','0501234567',{wordMatch:'whole'}),false,'letters must prevent a whole phone-token match');
+  assert.doesNotMatch(buildContentQuery('0501234567',{wordMatch:'whole'}),/\\b/,'Everything phone query must use the same Unicode word-boundary rule');
+  assert.equal(contentSearchMatches('מה שלומך123','מה שלומך',{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}),false);
+  assert.equal(contentSearchMatches('מה שלומך!','מה שלומך',{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}),true);
 });
 
 test('phone-like content searches match optional separator only after a 2- or 3-digit prefix',()=>{

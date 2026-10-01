@@ -62,19 +62,33 @@
         <kbd>Ctrl K</kbd>
       </label>
       <div class="global-search-options" id="globalSearchContentOptions" aria-label="אפשרויות חיפוש תוכן">
-        <label class="global-search-option-select" for="globalSearchContentMatchMode">
-          <select id="globalSearchContentMatchMode" aria-label="אופן התאמת חיפוש בתוכן">
-            <option value="phrase">ביטוי מדויק</option>
-            <option value="all">כל המילים</option>
-            <option value="any">מילה כלשהי</option>
-            <option value="proximity">קרבה לפי הסדר</option>
-          </select>
-        </label>
-        <label class="global-search-proximity" id="globalSearchProximityWrap" for="globalSearchProximityWords" hidden>
-          <span>עד</span>
-          <input id="globalSearchProximityWords" type="number" min="0" max="50" step="1" value="10" inputmode="numeric" aria-label="מספר מילים מרבי בין מילות החיפוש">
-          <span>מילים ביניהן</span>
-        </label>
+        <button class="global-search-options-button" id="globalSearchContentOptionsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="globalSearchContentOptionsMenu">
+          <span id="globalSearchContentModeLabel">ביטוי מדויק</span>
+          <span class="global-search-word-chip" id="globalSearchContentWordLabel" title="התאמת מילה">חלק</span>
+          <svg viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1.5 5 5 5-5"/></svg>
+        </button>
+        <div class="global-search-options-popover" id="globalSearchContentOptionsMenu" role="dialog" aria-label="אפשרויות חיפוש תוכן" hidden>
+          <div class="global-search-options-title"><b>אופן התאמה</b><small>בחר איך מילות החיפוש צריכות להופיע בתוך המסמך.</small></div>
+          <div class="global-search-mode-list" aria-label="אופן התאמה">
+            <button type="button" data-content-match-mode="phrase" aria-pressed="true"><span><b>ביטוי מדויק</b><small>כל הטקסט מופיע ברצף ובאותו סדר.</small></span><i>✓</i></button>
+            <button type="button" data-content-match-mode="all" aria-pressed="false"><span><b>כל המילים</b><small>כל המילים חייבות להופיע, בכל סדר ובכל מרחק.</small></span><i>✓</i></button>
+            <button type="button" data-content-match-mode="any" aria-pressed="false"><span><b>מילה כלשהי</b><small>מספיק שלפחות אחת ממילות החיפוש תופיע.</small></span><i>✓</i></button>
+            <button type="button" data-content-match-mode="proximity" aria-pressed="false"><span><b>קרבה לפי הסדר</b><small>המילים מופיעות לפי הסדר, עם מרחק מוגבל ביניהן.</small></span><i>✓</i></button>
+          </div>
+          <label class="global-search-proximity" id="globalSearchProximityWrap" for="globalSearchProximityWords" hidden>
+            <span>מרחק מרבי</span>
+            <input id="globalSearchProximityWords" type="number" min="0" max="50" step="1" value="10" inputmode="numeric" aria-label="מספר מילים מרבי בין מילות החיפוש">
+            <span>מילים בין כל שתי מילות חיפוש</span>
+          </label>
+          <div class="global-search-options-divider"></div>
+          <div class="global-search-word-section">
+            <div class="global-search-options-title"><b>התאמת מילה</b><small>האפשרות הזו פועלת יחד עם כל אחד מארבעת המצבים למעלה.</small></div>
+            <div class="global-search-word-toggle" role="group" aria-label="התאמת מילה שלמה או חלק ממילה">
+              <button type="button" data-content-word-match="partial" class="selected" aria-pressed="true"><b>חלק ממילה</b><small>למשל „מזר” ימצא גם „מזרן”.</small></button>
+              <button type="button" data-content-word-match="whole" aria-pressed="false"><b>מילה שלמה</b><small>„מזר” לא יתאים ל„מזרן”; רק מילה מלאה.</small></button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="global-search-folder-scope" id="globalSearchFolderScope" hidden>
         <button class="global-search-folder-pick" id="globalSearchFolderPick" type="button" title="מקד את חיפוש הקבצים והתוכן לתיקייה מסוימת">

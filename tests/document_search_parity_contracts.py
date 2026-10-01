@@ -29,7 +29,7 @@ kupa_html=(KUPA/'index.html').read_text(encoding='utf-8')
 assert search_dialog(orders_html)==search_dialog(kupa_html), 'Orders/Kupa advanced-search markup drifted'
 for html in (orders_html,kupa_html):
     assert './assets/js/shared/global-document-search.css' in html
-    for token in ('globalSearchFilterAll','globalSearchFilterSite','globalSearchFilterFiles','globalSearchFilterContent','globalSearchContentMatchMode','globalSearchFolderScope','globalSearchDocumentPreview','globalSearchDocumentSplitter'):
+    for token in ('globalSearchFilterAll','globalSearchFilterSite','globalSearchFilterFiles','globalSearchFilterContent','globalSearchContentOptionsButton','globalSearchContentOptionsMenu','globalSearchContentWordLabel','globalSearchFolderScope','globalSearchDocumentPreview','globalSearchDocumentSplitter'):
         assert token in html, token
 
 shared_shell=(ROOT/'shared/global-document-search.js').read_bytes()

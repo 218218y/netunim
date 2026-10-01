@@ -65,6 +65,7 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
   assert.equal(buildPdfFindRequest('needle',{type:'again',findPrevious:true}).findPrevious,true);
   assert.equal(buildPdfFindRequest('needle',{type:'again'}).type,'again');
+  assert.equal(buildPdfFindRequest('needle',{entireWord:true}).entireWord,true);
   assert.deepEqual(buildPdfFindRequest(['מה','שלומך']).query,['מה','שלומך']);
 });
 
@@ -117,6 +118,7 @@ test('interactive PDF form values participate in highlight navigation without ch
   assert.deepEqual(all.matches.map(row=>row.snippet.match),['מיטה','מזרונים'],'all-words search highlights each contributing term after the document qualifies');
   const choice=findPdfFormFieldMatches(annotations,1,'זהב',{matchMode:'phrase'});
   assert.equal(choice.matches.length,1,'choice field values are searchable too');
+  assert.equal(findPdfFormFieldMatches([{id:'mattress',fieldType:'Tx',fieldValue:'מזרן מזר',rect:[0,0,10,10]}],1,'מזר',{wordMatch:'whole'}).matches.length,1,'whole-word search does not highlight a prefix inside a longer form value');
   assert.equal(findPdfFormFieldMatches(annotations,1,'secret',{matchMode:'phrase'}).matches.length,0,'password fields never enter search/highlight results');
 });
 

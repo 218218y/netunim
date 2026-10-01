@@ -63,9 +63,9 @@ function ensureViewerStylesheet(){
   return stylesheetPromise;
 }
 
-export function buildPdfFindRequest(query,{type='',findPrevious=false}={}){
+export function buildPdfFindRequest(query,{type='',findPrevious=false,entireWord=false}={}){
   const value=Array.isArray(query)?query.map(item=>String(item||'')).filter(Boolean):String(query||'');
-  return {source:null,type,query:value,phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
+  return {source:null,type,query:value,phraseSearch:true,caseSensitive:false,entireWord:!!entireWord,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
 }
 
 async function loadRuntime(){
@@ -357,7 +357,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const eventBus=new pdfjsViewer.EventBus();
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
-  if(findController&&search.matchMode==='proximity'){findController.match=(_query,pageContent)=>findTextMatchOffsets(pageContent,needle,{...search,maxMatches:20000}).matches.map(match=>({index:match.start,length:match.end-match.start}))}
+  if(findController&&(search.matchMode==='proximity'||search.wordMatch==='whole')){findController.match=(_query,pageContent)=>findTextMatchOffsets(pageContent,needle,{...search,matchMode:search.matchMode==='all'?'any':search.matchMode,maxMatches:20000}).matches.map(match=>({index:match.start,length:match.end-match.start}))}
   const viewerOptions={container,eventBus,linkService,findController};
   // Preview is never an editor. Always paint the PDF-authored AcroForm appearance
   // streams so custom/legacy Hebrew fonts are rendered exactly as the PDF saved them.
@@ -382,7 +382,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).catch(()=>{})}}
   const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
   if(interactiveForms){eventBus.on('pagerendered',renderFormLayerForEvent);eventBus.on('annotationlayerrendered',renderFormLayerForEvent)}
-  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious});request.source=container;eventBus.dispatch('find',request)};
+  const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
   const measuredWidth=()=>Math.round(Number(container.clientWidth)||Number(container.getBoundingClientRect?.().width)||0);
   const fitToWidth=({force=false}={})=>{if(destroyed||!pagesReady)return false;const width=measuredWidth();if(width<80)return false;if(!force&&Math.abs(width-lastFitWidth)<2)return false;lastFitWidth=width;pdfViewer.currentScaleValue='page-width';pdfViewer.update?.();return true};

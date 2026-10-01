@@ -31,6 +31,19 @@ test('shared document navigator mirrors advanced content-search AND, OR and orde
 });
 
 
+test('shared document navigator keeps whole-word matching aligned with Bridge semantics',()=>{
+  const text='מזר מזרן, מזר. cat catalog cat';
+  assert.equal(findTextMatchOffsets(text,'מזר').matches.length,3);
+  const whole=findTextMatchOffsets(text,'מזר',{wordMatch:'whole'});
+  assert.deepEqual(whole.matches.map(row=>text.slice(row.start,row.end)),['מזר','מזר']);
+  assert.equal(findTextMatchOffsets(text,'cat',{wordMatch:'whole'}).matches.length,2);
+  assert.equal(findTextMatchOffsets('abc_def','abc',{wordMatch:'whole'}).matches.length,1,'punctuation boundaries stay aligned with Everything whole-word matching');
+  assert.equal(findTextMatchOffsets('מה שלומך123','מה שלומך',{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}).matches.length,0);
+  assert.equal(findTextMatchOffsets('מה שלומך!','מה שלומך',{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}).matches.length,1);
+  assert.equal(findTextMatchOffsets('מזרן כרית','מזר כרית',{matchMode:'all',wordMatch:'whole'}).matches.length,0);
+  assert.equal(findTextMatchOffsets('מזרן כרית','מזר כרית',{matchMode:'any',wordMatch:'whole'}).matches.length,1);
+});
+
 test('shared document navigator keeps phone-number separator variants aligned with content search',()=>{
   const text='0501234567 | 050-1234567 | 050 1234567 | 05-01234567 | 050-123-4567';
   const result=findTextMatchOffsets(text,'050-1234567');

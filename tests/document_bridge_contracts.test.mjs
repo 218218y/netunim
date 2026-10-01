@@ -120,7 +120,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v32-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v33-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -132,8 +132,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=32/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=32/);
+  assert.match(lib,/BRIDGE_VERSION=33/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=33/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -337,17 +337,20 @@ test('unified search uses a full-screen header search, four result filters and a
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
-  assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentMatchMode/);
+  assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentOptionsButton/);
   assert.match(html,/globalSearchFolderScope[\s\S]*globalSearchFolderPick[\s\S]*globalSearchFolderLabel[\s\S]*globalSearchFolderClear/);
-  assert.match(css,/global-search-option-select select\{width:auto;min-width:0/);
-  assert.doesNotMatch(css,/global-search-option-select select\{min-width:122px/);
+  assert.match(css,/global-search-options-button\{/);
+  assert.match(css,/global-search-options-popover\{position:fixed/);
+  assert.match(css,/global-search-word-toggle/);
   assert.match(css,/global-search-folder-scope/);
   assert.match(ui,/createDocumentSearchFolderScope/);
   assert.match(folderScope,/let path='',label=''/);
   assert.match(folderScope,/async function choose\(\)/);
   assert.match(folderScope,/function clear\(\)/);
   assert.match(contentOptions,/createDocumentContentSearchOptions/);
-  assert.match(html,/globalSearchContentMatchMode[\s\S]*value="phrase"[\s\S]*value="all"[\s\S]*value="any"[\s\S]*value="proximity"/);
+  assert.match(contentOptions,/wordMatch/);
+  assert.match(html,/globalSearchContentOptionsMenu[\s\S]*data-content-match-mode="phrase"[\s\S]*data-content-match-mode="all"[\s\S]*data-content-match-mode="any"[\s\S]*data-content-match-mode="proximity"/);
+  assert.match(html,/data-content-word-match="partial"[\s\S]*data-content-word-match="whole"/);
   assert.match(html,/globalSearchProximityWords/);
   assert.doesNotMatch(html,/global-search-statusbar/);
   assert.match(html,/globalSearchMeta[^>]*global-search-live-status|global-search-live-status[^>]*globalSearchMeta/);
@@ -401,9 +404,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=32/);
+  assert.match(lib,/BRIDGE_VERSION=33/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=32/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=33/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

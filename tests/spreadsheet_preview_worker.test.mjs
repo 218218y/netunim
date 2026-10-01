@@ -55,6 +55,17 @@ test('spreadsheet worker highlights advanced AND, OR and ordered proximity match
 });
 
 
+test('spreadsheet worker can switch independently between partial-token and whole-word matching',()=>{
+  const workbook={SheetNames:['Sheet1'],Sheets:{Sheet1:{'!ref':'A1:A1','!data':[[{v:'מזר מזרן, מזר',w:'מזר מזרן, מזר'}]]}}};
+  assert.equal(runWorkerOpen(workbook,'מזר',{wordMatch:'partial'}).matches.length,3);
+  const whole=runWorkerOpen(workbook,'מזר',{wordMatch:'whole'});
+  assert.equal(whole.matches.length,2);
+  assert.deepEqual(Array.from(whole.matches,match=>match.snippet.match),['מזר','מזר']);
+  const underscore={SheetNames:['Sheet1'],Sheets:{Sheet1:{'!ref':'A1:A1','!data':[[{v:'abc_def',w:'abc_def'}]]}}};
+  assert.equal(runWorkerOpen(underscore,'abc',{wordMatch:'whole'}).matches.length,1);
+  assert.equal(runWorkerOpen(workbook,'מזר כרית',{matchMode:'all',wordMatch:'whole'}).matches.length,0);
+});
+
 test('spreadsheet worker highlights phone-number variants with one optional prefix separator',()=>{
   const workbook={SheetNames:['Sheet1'],Sheets:{Sheet1:{'!ref':'A1:A1','!data':[[{v:'0501234567 050-1234567 050 1234567 05-01234567 050-123-4567',w:'0501234567 050-1234567 050 1234567 05-01234567 050-123-4567'}]]}}};
   const opened=runWorkerOpen(workbook,'050 1234567');

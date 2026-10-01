@@ -17,7 +17,7 @@ if not "%ERRORLEVEL%"=="0" (
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
 set "LEGACYAPP=%APPROOT%\app"
-set "RUNTIMENAME=app-v32-%RANDOM%-%RANDOM%"
+set "RUNTIMENAME=app-v33-%RANDOM%-%RANDOM%"
 set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
 set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
@@ -78,7 +78,7 @@ node "%STAGING%\server.mjs" --write-install-summary >nul 2>nul
 node "%STAGING%\server.mjs" --doctor
 if not "%ERRORLEVEL%"=="0" goto :doctor_error
 
-rem Stop the current listener first. v32 activation is side-by-side, so a stale
+rem Stop the current listener first. v33 activation is side-by-side, so a stale
 rem Windows handle in an older runtime can never block installation of the new one.
 node "%STAGING%\server.mjs" --stop-existing
 if not "%ERRORLEVEL%"=="0" goto :stop_error
