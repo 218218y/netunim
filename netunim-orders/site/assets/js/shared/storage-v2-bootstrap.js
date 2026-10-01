@@ -3,7 +3,7 @@ import {assertStorageJson} from './storage-journal-model.js';
 
 export const STORAGE_BOOTSTRAP_PHASES=Object.freeze(['prepared','main-initialized','shared-initialized','main-synced','shared-synced','verified','complete']);
 const VALID_APPS=new Set(['orders','kupa']);
-const TRANSFER_INTENTS=new Set(['upload-local','load-account','account-switch','first-cloud']);
+const TRANSFER_INTENTS=new Set(['upload-local','load-account','account-switch','first-cloud','legacy-upgrade']);
 const NEXT_PHASE=new Map(STORAGE_BOOTSTRAP_PHASES.slice(0,-1).map((phase,index)=>[phase,STORAGE_BOOTSTRAP_PHASES[index+1]]));
 
 function copy(value){return value==null?value:structuredClone(value)}
@@ -71,18 +71,21 @@ export async function createStorageV2BootstrapGroup({app,owner,sourceOwner='loca
   const target=identity(owner),source=identity(sourceOwner),transfer=String(transferIntent||'').trim(),groupId=String(id||cryptoImpl?.randomUUID?.()||'').trim();if(!groupId)throw new Error('storage_bootstrap_id_unavailable');
   if(!TRANSFER_INTENTS.has(transfer))throw new Error('storage_bootstrap_transfer_intent_required');
   if(transfer==='upload-local'&&source!=='local')throw new Error('storage_bootstrap_source_owner_invalid');
-  if(transfer==='first-cloud'&&source!==target)throw new Error('storage_bootstrap_source_owner_invalid');
+  if(['first-cloud','legacy-upgrade'].includes(transfer)&&source!==target)throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='load-account'&&source!=='local')throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='account-switch'&&(source==='local'||source===target))throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='upload-local'&&mainRemote)throw new Error('storage_bootstrap_upload_target_exists');
   if(['load-account','account-switch'].includes(transfer)&&!mainRemote)throw new Error('storage_bootstrap_main_remote_missing');
-  const uploadIntent=transfer==='upload-local'?'upload-local':transfer==='first-cloud'?'upload-owner':null;
+  const uploadIntent=transfer==='upload-local'?'upload-local':['first-cloud','legacy-upgrade'].includes(transfer)?'upload-owner':null;
   const main=await sidePlan('main',mainSource,mainRemote,groupId,cryptoImpl,uploadIntent),shared=await sidePlan('shared',sharedSource,sharedRemote,groupId,cryptoImpl,uploadIntent),createdAt=String(typeof now==='function'?now():now);
-  // During first-cloud activation an already-existing cloud document must match
-  // the frozen source exactly. Account load/switch are intentionally excluded:
-  // their remote document is the requested authority.
-  if(main.remoteExists&&transfer==='first-cloud'&&main.sourceHash!==main.remoteHash)throw new Error('storage_bootstrap_main_reconciliation_required');
-  if(shared.remoteExists&&['upload-local','first-cloud'].includes(transfer)&&shared.sourceHash!==shared.remoteHash)throw new Error('storage_bootstrap_shared_reconciliation_required');
+  // During an in-place migration the V1 head was just drained. Therefore an
+  // already-existing cloud document must be exactly the source we are freezing.
+  // Treating a divergent remote Main as authoritative here would create a V2
+  // checkpoint whose visible state differs from its cloud base without a pending
+  // operation, silently dropping the local delta. Account load/switch are
+  // intentionally excluded: their remote document is the requested authority.
+  if(main.remoteExists&&['first-cloud','legacy-upgrade'].includes(transfer)&&main.sourceHash!==main.remoteHash)throw new Error('storage_bootstrap_main_reconciliation_required');
+  if(shared.remoteExists&&['upload-local','first-cloud','legacy-upgrade'].includes(transfer)&&shared.sourceHash!==shared.remoteHash)throw new Error('storage_bootstrap_shared_reconciliation_required');
   const planHash=await sha256({app:site,owner:target,sourceOwner:source,transferIntent:transfer,main,shared},cryptoImpl);
   return assertStorageV2BootstrapGroup({version:2,scope:`${site}:${target}`,id:groupId,app:site,owner:target,sourceOwner:source,transferIntent:transfer,phase:'prepared',planHash,main,shared,createdAt,updatedAt:createdAt});
 }

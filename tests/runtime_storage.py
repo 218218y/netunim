@@ -1,6 +1,6 @@
 """Real IndexedDB transactions, journal recovery, fault injection and byte scaling."""
 import json
-from browser_harness import BrowserSession, ROOT
+from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as browser:
     result=browser.evaluate(r"""(async()=>{

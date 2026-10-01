@@ -49,9 +49,9 @@ test('bootstrap local upload may create only actually missing documents and refu
   await assert.rejects(createStorageV2BootstrapGroup({app:'orders',owner:'account-B',sourceOwner:'local',transferIntent:'upload-local',...sources,...remotes,id:'local-existing',cryptoImpl:webcrypto}),/upload_target_exists/);
 });
 
-test('first-cloud stops on divergence and legacy upgrade is no longer a valid transfer intent',async()=>{
+test('in-place first-cloud/legacy upgrade stops on a divergent existing Main document',async()=>{
   await assert.rejects(createStorageV2BootstrapGroup({app:'orders',owner:'account-A',sourceOwner:'account-A',transferIntent:'first-cloud',...sources,mainRemote:remotes.mainRemote,sharedRemote:matchingSharedRemote,id:'main-divergence-first',cryptoImpl:webcrypto}),/main_reconciliation_required/);
-  await assert.rejects(createStorageV2BootstrapGroup({app:'orders',owner:'account-A',sourceOwner:'account-A',transferIntent:'legacy-upgrade',...sources,mainRemote:matchingMainRemote,sharedRemote:matchingSharedRemote,id:'unsupported-intent',cryptoImpl:webcrypto}),/storage_bootstrap_transfer_intent_required/);
+  await assert.rejects(createStorageV2BootstrapGroup({app:'orders',owner:'account-A',sourceOwner:'account-A',transferIntent:'legacy-upgrade',...sources,mainRemote:remotes.mainRemote,sharedRemote:matchingSharedRemote,id:'main-divergence-legacy',cryptoImpl:webcrypto}),/main_reconciliation_required/);
 });
 
 test('bootstrap stops instead of silently replacing divergent existing Shared Checks',async()=>{

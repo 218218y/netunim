@@ -6,7 +6,6 @@ import {createSyncDocument as createKupaSyncDocument} from '../netunim-kupa/site
 import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
-Object.defineProperty(globalThis,'localStorage',{value:{getItem:()=>null,setItem:()=>{},removeItem:()=>{}},configurable:true});
 const noop=()=>{};
 
 function ordersFixture({primaryTab=true,readCloudMeta=async()=>({revision:7,updated_at:'2026-09-30T08:00:00Z'})}={}){
@@ -24,13 +23,12 @@ function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocumen
   const statuses=[],saveStatuses=[],model={state:{}},normalization=createKupaNormalization({model});model.state=normalization.normalizeState({});
   const session={localGeneration:0,dbRevision:9,financeRevision,financeUpdatedAt:null,connectionMode:'supabase',backendReady:true,cloudConflictPending:false,cloudSyncBusy:false,cloudWriteBusy:false,serverInfo:{lastSavedAt:null},cloudDocumentName:'main'};
   const cloudState=normalization.prepareKupaCloudState(model.state),read=readSupabaseDocument||(async()=>({revision:9,financeRevision:rowFinanceRevision,state:structuredClone(cloudState),coreUpdatedAt:'2026-09-30T08:00:00Z'}));
-  const v2State={seq:0,base:{version:2,revision:9,state:structuredClone(cloudState),ackSeq:0},pending:false,flight:null,control:null};
   const api=createKupaSyncDocument({
     hideConnectScreen:noop,reportError:noop,model,session,checksSession:{},tab:{primaryTab:true},prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
     setSaveStatus:(...args)=>saveStatuses.push(args),setConnectedStatus:noop,setCloudHeaderStatus:(...args)=>statuses.push(args),persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:read,supaRest:async()=>{},
     putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:()=>({state:cloudState,conflicts:[]}),rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
-    toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,refreshStorageV2CloudState:async()=>structuredClone(v2State),storageV2CloudOutboxActive:()=>true,replaceStorageV2CurrentState:async()=>true,
+    stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,refreshStorageV2CloudState:async()=>null,storageV2CloudOutboxActive:()=>false,
   });
   return {api,statuses,saveStatuses,session};
 }
@@ -63,11 +61,10 @@ test('Kupa reconnect settles a successful no-change poll and its save indicator'
 });
 
 test('Kupa finance-only poll also closes reconnect status after applying the newer finance revision',async()=>{
-  const {api,statuses,saveStatuses,session}=kupaFixture({financeRevision:2,rowFinanceRevision:3});
+  const {api,statuses,saveStatuses}=kupaFixture({financeRevision:2,rowFinanceRevision:3});
   assert.equal(await api.resumeAfterReconnect(),true);
   assert.deepEqual(statuses.at(-1),['synced','ענן: מסונכרן']);
   assert.deepEqual(saveStatuses.at(-1),['מסונכרן לענן','ok']);
-  if(session.cloudPollTimer)clearTimeout(session.cloudPollTimer);
 });
 
 test('Kupa reconnect replaces a failed online probe with explicit recovery state',async()=>{

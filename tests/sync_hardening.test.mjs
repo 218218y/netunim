@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {assertEntityCollection} from '../shared/data-invariants.js';
+import {compareOutboxFreshness,createOutboxRecord} from '../shared/cloud-sync.js';
 import {createRestoreGroup,createRestoreGroupStore,executeRestoreGroup,resumeRestoreGroup} from '../shared/restore-groups.js';
 import {assertOrderEntityInvariants} from '../netunim-orders/site/assets/js/state/validation.js';
 import {assertKupaEntityInvariants} from '../netunim-kupa/site/assets/js/state/validation.js';
@@ -9,8 +10,9 @@ import {normalizeSharedChecks} from '../netunim-kupa/site/assets/js/domains/chec
 import {createUiBulk} from '../netunim-kupa/site/assets/js/ui/bulk.js';
 import {createDomainsRecordsCommands} from '../netunim-kupa/site/assets/js/domains/records/commands.js';
 import {createSyncMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
+import {createSyncPending} from '../netunim-kupa/site/assets/js/sync/pending.js';
+import {createStoragePending,migrateKupaOutboxRecord} from '../netunim-kupa/site/assets/js/storage/pending.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
-import {legacyCardMigrationConflict,migrateLegacyCards3Way} from '../netunim-kupa/site/assets/js/sync/legacy-card-migration.js';
 
 class StorageMock{
   constructor(){this.items=new Map()}
@@ -52,6 +54,18 @@ test('single Kupa deletion declares intent for main records and Shared Checks',a
   }
 });
 
+function bulkRetryFixture(){
+  Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
+  let cached=null;const session={dbRevision:4,localGeneration:7,cloudOutboxCommitPromise:null,cloudConflictPending:false,cloudDocumentName:'main'};
+  const pending=createSyncPending({session,prepareKupaCloudState:value=>structuredClone(value),setSaveStatus(){},setCloudHeaderStatus(){},loadCloudPendingSync:()=>cached,persistCloudPendingSync:value=>(cached=structuredClone(value),true),putCloudPending:async value=>{cached=structuredClone(value)},lastSavedCloudState:()=>({credits:[{id:'C'}]}),getCloudPending:async()=>cached,rebaseKupaCloudProgress:(base,local)=>local});
+  return {pending,get cached(){return cached}};
+}
+
+test('bulk delete intent survives a failed write retry',()=>{
+  const fixture=bulkRetryFixture(),snapshot={credits:[]};fixture.pending.stageCloudPendingLocal(snapshot,'bulk',4,{credits:[{id:'C'}]},7,false,undefined,{credits:['C']},{mutationType:'bulk-delete'});
+  const operationId=fixture.cached.operationId,retried=fixture.pending.stageCloudPendingLocal(snapshot,'retry',4,{credits:[{id:'C'}]},7,false,{attempts:1},undefined,{});assert.deepEqual(retried.deleteIntents,{credits:['C']});assert.equal(retried.operationId,operationId);
+});
+
 test('conflict during bulk deletion is surfaced and never overwritten silently',()=>{
   const merge=createSyncMerge({normalizeState:value=>value,prepareKupaCloudState:value=>value}),base={credits:[{id:'C',amount:1}]},local={credits:[]},remote={credits:[{id:'C',amount:2}]};
   const result=merge.mergeState3Way(base,local,remote,{deleteIntents:{credits:['C']}});assert.deepEqual(result.conflicts,['credits:C']);assert.deepEqual(result.state.credits,[]);
@@ -61,11 +75,10 @@ function legacyKupaState(cards){return {version:4,businessName:'legacy',checks:[
 function legacyCard(name,chargeDay=10){return {name,account:'עסקי',chargeDay,active:true}}
 function legacyMerge(){const normalization=createStateNormalization({model:{}});return {normalization,merge:createSyncMerge({normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState})}}
 
-test('ID-less card edit receives one stable lineage ID before current V2 merge',()=>{
+test('pre-v5 pending card edit keeps one lineage ID across base, snapshot and ID-less remote',()=>{
   const {merge}=legacyMerge(),base=legacyKupaState([legacyCard('VISA',10)]),local=legacyKupaState([legacyCard('VISA',15)]),remote=structuredClone(base);
-  const migrated=migrateLegacyCards3Way(base,local,remote);
-  assert.deepEqual(migrated.conflicts,[]);
-  const result=merge.mergeKupaCloudState3Way(migrated.base,migrated.local,migrated.remote,{deleteIntents:{cards:migrated.localDeletedIds}});
+  const pending=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  const result=merge.mergeKupaCloudState3Way(pending.baseState,pending.snapshot,remote,{deleteIntents:pending.deleteIntents});
   assert.deepEqual(result.conflicts,[]);assert.equal(result.state.cards.length,1);assert.equal(result.state.cards[0].chargeDay,15);assert.equal(result.state.cards[0].id,'CARD-LEGACY-0');
 });
 
@@ -81,24 +94,48 @@ test('legacy card addition receives a distinct ID without changing inherited IDs
   assert.deepEqual(result.conflicts,[]);assert.deepEqual(result.state.cards.map(card=>card.id),['CARD-LEGACY-0','CARD-LOCAL-LEGACY-1']);
 });
 
-test('concurrent edit of the same ID-less card becomes a record conflict, never a duplicate',()=>{
+test('concurrent edit of the same legacy card becomes a record conflict, never a duplicate',()=>{
   const {merge}=legacyMerge(),base=legacyKupaState([legacyCard('VISA',10)]),local=legacyKupaState([legacyCard('VISA',15)]),remote=legacyKupaState([legacyCard('VISA',20)]);
-  const migrated=migrateLegacyCards3Way(base,local,remote);
-  assert.deepEqual(migrated.conflicts,[]);
-  const result=merge.mergeKupaCloudState3Way(migrated.base,migrated.local,migrated.remote,{deleteIntents:{cards:migrated.localDeletedIds}});
+  const pending=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  const result=merge.mergeKupaCloudState3Way(pending.baseState,pending.snapshot,remote,{deleteIntents:pending.deleteIntents});
   assert.deepEqual(result.conflicts,['cards:CARD-LEGACY-0']);assert.equal(result.state.cards.length,0);
 });
 
-test('ambiguous ID-less card lineage fails closed with an explicit migration conflict',()=>{
+test('ambiguous legacy structural migration fails closed with an explicit migration conflict',()=>{
   const duplicate=legacyCard('VISA'),base=legacyKupaState([duplicate,duplicate]),local=legacyKupaState([duplicate]),remote=structuredClone(base);
-  const migrated=migrateLegacyCards3Way(base,local,remote),conflict=legacyCardMigrationConflict(migrated.conflicts);
-  assert.equal(conflict.kind,'legacy-card-migration-conflict');assert.ok(conflict.conflicts.length>0);assert.equal(migrated.base.cards.some(card=>card.id),false);
+  const migrated=migrateKupaOutboxRecord({schemaVersion:3,generation:2,baseRevision:7,baseState:base,snapshot:local},{domain:'kupa',documentName:'main'});
+  assert.equal(migrated.conflict.kind,'legacy-card-migration-conflict');assert.deepEqual(migrated.deleteIntents,{});assert.equal(migrated.baseState.cards.some(card=>card.id),false);
+});
+
+test('restart durably upgrades a pre-v5 pending base and snapshot before remote reconcile',async()=>{
+  const storage=new StorageMock();Object.defineProperty(globalThis,'localStorage',{value:storage,configurable:true});
+  const raw={schemaVersion:3,domain:'kupa',documentName:'main',operationId:'kupa:legacy',generation:9,mutationSeq:9,baseRevision:4,baseState:legacyKupaState([legacyCard('VISA',10)]),snapshot:legacyKupaState([legacyCard('VISA',15)]),createdAt:'2026-09-01T00:00:00Z',updatedAt:'2026-09-01T00:01:00Z'};
+  const idb=new Map([['cloud-pending-v3',raw]]),make=()=>createStoragePending({session:{localGeneration:0,dbRevision:4,cloudOutboxCommitPromise:null,cloudDocumentName:'main'},idbGet:async(_store,key)=>structuredClone(idb.get(key)??null),idbPut:async(_store,key,value)=>idb.set(key,structuredClone(value)),idbDelete:async(_store,key)=>idb.delete(key)});
+  const first=await make().getCloudPending(),second=await make().getCloudPending();
+  assert.equal(first.schemaVersion,4);assert.equal(first.baseState.cards[0].id,'CARD-LEGACY-0');assert.equal(first.snapshot.cards[0].id,'CARD-LEGACY-0');assert.equal(first.snapshot.cards[0].chargeDay,15);assert.deepEqual(second,first);
 });
 
 test('an embedded card ID is preserved after every mutable field changes',()=>{
   const {normalization}=legacyMerge(),state=legacyKupaState([{...legacyCard('VISA',10),id:'CARD-PERSISTED'}]),changed=structuredClone(state);
   changed.cards[0]={id:'CARD-PERSISTED',name:'AMEX',account:'ביתי',chargeDay:28,active:false};
   assert.equal(normalization.normalizeState(changed).cards[0].id,'CARD-PERSISTED');
+});
+
+test('outbox freshness uses generation then mutationSeq, never wall-clock time',()=>{
+  const oldClock=createOutboxRecord({domain:'orders',generation:9,mutationSeq:20,operationId:'same',snapshot:{value:'new'},createdAt:'2030-01-01T00:00:00Z',updatedAt:'1990-01-01T00:00:00Z'});
+  const newClock=createOutboxRecord({domain:'orders',generation:9,mutationSeq:19,operationId:'same',snapshot:{value:'old'},createdAt:'1990-01-01T00:00:00Z',updatedAt:'2999-01-01T00:00:00Z'});
+  assert.ok(compareOutboxFreshness(oldClock,newClock)>0);
+  const invalidTime={...newClock,mutationSeq:21,updatedAt:'not-a-time'};assert.ok(compareOutboxFreshness(invalidTime,oldClock)>0);
+  const newerPayload={...oldClock,mutationSeq:21,snapshot:{value:'newer'}};assert.ok(compareOutboxFreshness(newerPayload,oldClock)>0);
+});
+
+test('LocalStorage and IndexedDB disagreement is repaired from deterministic mutationSeq ordering',async()=>{
+  const storage=new StorageMock();Object.defineProperty(globalThis,'localStorage',{value:storage,configurable:true});
+  const local=createOutboxRecord({domain:'kupa',generation:12,mutationSeq:30,operationId:'same',snapshot:{value:'local-old'},updatedAt:'2999-01-01T00:00:00Z'});
+  const durable=createOutboxRecord({domain:'kupa',generation:12,mutationSeq:31,operationId:'same',snapshot:{value:'idb-new'},updatedAt:'invalid'}),writes=[];
+  const api=createStoragePending({session:{localGeneration:0,dbRevision:1,cloudOutboxCommitPromise:null,cloudDocumentName:'main'},idbGet:async(_store,key)=>key==='cloud-pending-v3'?durable:null,idbPut:async(_store,key,value)=>writes.push([key,structuredClone(value)]),idbDelete:async()=>{}});
+  assert.equal(api.persistCloudPendingSync(local),true);const chosen=await api.getCloudPending();
+  assert.equal(chosen.snapshot.value,'idb-new');assert.equal(JSON.parse(storage.getItem('kupa.cloud.pending.local.v1')).snapshot.value,'idb-new');assert.equal(writes.at(-1)[1].mutationSeq,31);
 });
 
 function memoryRestoreStore(){

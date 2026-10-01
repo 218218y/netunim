@@ -11,7 +11,6 @@ function memoryDb(){
   return {
     async load(){return clone({checkpoints,metadata,journal,bases,flights,controls})},
     async install(_owner,checkpoint,writer,{expectedEpoch=null}={}){assert.equal(metadata?.epoch??null,expectedEpoch);const data=readStorageRecord(checkpoint);checkpoints=clone(checkpoint);metadata={epoch:data.epoch,seq:data.seq,writer};journal=[];bases=null;flights=null;controls=null},
-    async initializeCloudHead(_owner,checkpoint,base,writer,entry=null){if(metadata)throw new Error('storage_initialization_exists');const data=readStorageRecord(checkpoint);checkpoints=clone(checkpoint);bases=clone(base);journal=entry?[clone(entry)]:[];metadata={epoch:data.epoch,seq:entry?readStorageRecord(entry).seq:data.seq,writer};flights=null;controls=null},
     async claim(_owner,epoch,writer){assert.equal(metadata.epoch,epoch);metadata={...metadata,writer}},
     async append(_owner,epoch,writer,record){scoped(epoch,writer);const data=readStorageRecord(record);assert.equal(data.seq,metadata.seq+1);journal.push(clone(record));metadata={...metadata,seq:data.seq}},
     async compact(_owner,epoch,writer,checkpoint){scoped(epoch,writer);checkpoints=clone(checkpoint);const seq=readStorageRecord(checkpoint).seq,ack=bases?readStorageRecord(bases).ackSeq:seq;journal=journal.filter(row=>row.data.seq>Math.min(seq,ack))},
@@ -33,17 +32,18 @@ const state=(checks=[],bankEvents=[])=>({checks,bankEvents});
 const check=(id,status='open')=>({id,status,amount:100});
 const put=(id,mode='replace',index=0)=>({type:'put',collection:'checks',id,mode,index});
 const del=id=>({type:'delete',collection:'checks',id});
-const initializeCloud=(store,revision,snapshot,sourceOwner='account-A')=>store.initializeCloudHead(revision,snapshot,{intent:'cloud-authoritative',sourceOwner});
 
-test('Shared Checks V2 accepts only current explicit initialization intents',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('C')]);
-  await assert.rejects(store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'}),/transfer_intent_required/);
-  await initializeCloud(store,7,base);
-  const cloud=await store.cloudState();assert.equal(cloud.base.revision,7);assert.deepEqual(Object.keys(cloud.base.state),['checks','bankEvents']);
+test('Shared Checks V2 refuses a cursor until legacy pending is drained and the visible state matches the cloud',async()=>{
+  const f=fixture(),store=f.create();await assert.rejects(store.open({migrationState:state([check('C')])}),/transfer_intent_required/);await store.open({migrationState:state([check('C')]),migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  await assert.rejects(store.captureCloudCursor(7,state([check('C')])),/legacy_pending_unverified/);
+  await assert.rejects(store.captureCloudCursor(7,state([check('other')]),{legacyPendingClean:true}),/cursor_state_mismatch/);
+  await store.captureCloudCursor(7,{version:1,...state([check('C')])},{legacyPendingClean:true});
+  assert.equal((await store.cloudState()).base.revision,7);
+  assert.deepEqual(Object.keys((await store.cloudState()).base.state),['checks','bankEvents'],'server envelope metadata is outside the canonical Shared Checks document');
 });
 
 test('Shared Checks V2 keeps a deposited flight immutable across a later edit, ACK, restart and compaction',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await initializeCloud(store,10,base);
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(10,base,{legacyPendingClean:true});
   const deposited=state([check('A','deposited'),check('B')]);const first=store.append([put('A')],deposited,{generation:1,surface:'checks.deposit'});await first.committed;
   const flight=await store.materializeFlight({operationId:'flight-deposit'});assert.equal(flight.endSeq,1);assert.equal(flight.snapshot.checks[0].status,'deposited');
   const later=state([check('A','deposited'),check('B','cleared')]);const second=store.append([put('B')],later,{generation:2,surface:'checks.clear'});await second.committed;
@@ -58,7 +58,7 @@ test('Shared Checks V2 keeps a deposited flight immutable across a later edit, A
 });
 
 test('Shared Checks V2 retains explicit deletion through compaction and rotates a confirmed conflict flight',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await initializeCloud(store,3,base);
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(3,base,{legacyPendingClean:true});
   const afterDelete=state([check('B')]);const write=store.append([del('A')],afterDelete,{generation:1,mutationType:'delete',deleteIds:['A']});await write.committed;
   await store.compact();const first=await store.materializeFlight({operationId:'delete-flight'});assert.deepEqual(first.deleteIntents,{checks:['A']});
   await store.rejectAndRebase(first.operationId,4,state([check('A','remote'),check('B')]),{currentState:afterDelete,expectedSeq:1,control:{conflict:{kind:'same-check'}}});
@@ -69,7 +69,8 @@ test('Shared Checks V2 retains explicit deletion through compaction and rotates 
 
 test('Shared Checks V2 restart after rebase retains an unrelated remote check and bank event',async()=>{
   const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);
-  await initializeCloud(store,7,base);
+  await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  await store.captureCloudCursor(7,base,{legacyPendingClean:true});
   const local=state([check('A','deposited'),check('B')]);await store.append([put('A')],local,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'old-check-flight'});
   const remote=state([check('A'),check('B','cleared')],[{seq:8,checkId:'B',kind:'clear'}]);
@@ -84,14 +85,14 @@ test('Shared Checks V2 restart after rebase retains an unrelated remote check an
 });
 
 test('Shared Checks V2 rejects deletes without matching explicit intents or with a still-visible check',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A')]);await initializeCloud(store,1,base);
+  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
   assert.throws(()=>store.append([del('A')],state([])),/delete_intents_mismatch/);
   assert.throws(()=>store.append([del('A')],base,{deleteIds:['A']}),/delete_still_visible/);
   assert.equal(store.seq,0);
 });
 
 test('Shared Checks V2 retries the exact immutable flight after a lost ACK and refuses a stale ACK checkpoint',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A')]);await initializeCloud(store,7,base);
+  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(7,base,{legacyPendingClean:true});
   const next=state([check('A','deposited')]);await store.append([put('A')],next,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'lost-ack'}),restarted=f.create();await restarted.open();
   assert.deepEqual(await restarted.materializeFlight({operationId:'new-id-must-not-be-used'}),flight);
@@ -104,21 +105,27 @@ test('Shared Checks V2 retries the exact immutable flight after a lost ACK and r
 });
 
 test('Shared Checks V2 allows IDB durability after emergency quota failure and fences an old owner',async()=>{
-  let account='A';const f=fixture({owner:()=>account,emergency:emergencyStore({failWrites:true})}),store=f.create(),base=state([check('C')]);await initializeCloud(store,1,base,'A');
+  let account='A';const f=fixture({owner:()=>account,emergency:emergencyStore({failWrites:true})}),store=f.create(),base=state([check('C')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'A'});
   const changed=state([check('C','deposited')]),write=store.append([put('C')],changed,{generation:1});assert.equal(write.emergencyDurable,false);await write.committed;
   const restarted=f.create();assert.equal((await restarted.open()).state.checks[0].status,'deposited');
   account='B';assert.throws(()=>store.append([put('C')],changed),/owner_changed/);
   await assert.rejects(restarted.cloudState(),/owner_changed/);
 });
 
-test('Shared Checks V2 rejects shadow roles and never overwrites an existing primary head',async()=>{
+test('Shared Checks V2 never promotes a shadow checkpoint or transfers account A data into account B implicitly',async()=>{
   const db=memoryDb(),emergency=emergencyStore(),owner=()=> 'A',seed=state([check('A')]);
-  assert.throws(()=>createSharedChecksStorageV2({owner,primary:()=>true,role:'shadow',db,emergency}),/storage_role_invalid/);
-  const primary=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});await primary.initializeCloudHead(4,seed,{intent:'cloud-authoritative',sourceOwner:'A'});
-  const restarted=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});
-  await assert.rejects(restarted.initializeCloudHead(5,state([check('other')]),{intent:'cloud-authoritative',sourceOwner:'A'}),/storage_initialization_exists/);
-  assert.deepEqual((await restarted.open()).state,seed);
+  const shadow=createSharedChecksStorageV2({owner,primary:()=>true,role:'shadow',db,emergency});
+  await shadow.open({migrationState:seed,migrationIntent:'shadow-observation',sourceOwner:'A'});
+  await assert.rejects(shadow.captureCloudCursor(1,seed,{legacyPendingClean:true}),/shadow_cloud_write_forbidden/);
+  await assert.rejects(shadow.materializeFlight({operationId:'forbidden'}),/shadow_cloud_write_forbidden/);
+  const primary=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});
+  await assert.rejects(primary.open(),/role_mismatch/);
+  assert.equal(primary.ready,false);
+  assert.throws(()=>primary.append([put('A')],seed),/not_open/);
+  await assert.rejects(primary.promoteVerifiedShadow(seed),/promotion_not_verified/);
+  const promoted=await primary.promoteVerifiedShadow(seed,{legacyPendingClean:true});
+  assert.equal(promoted.appMetadata.storageRole,'shared-checks-primary');
+  const restarted=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});assert.deepEqual((await restarted.open()).state,seed);
   const separate=createSharedChecksStorageV2({owner:()=> 'B',primary:()=>true,db:memoryDb(),emergency});
-  await assert.rejects(separate.initializeCloudHead(1,seed,{intent:'cloud-authoritative',sourceOwner:'A'}),/transfer_intent_required/);
+  await assert.rejects(separate.open({migrationState:seed,migrationIntent:'legacy-upgrade',sourceOwner:'A'}),/transfer_intent_required/);
 });
-

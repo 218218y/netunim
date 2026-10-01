@@ -104,10 +104,9 @@ ok(all(column in lower for column in (
    "operation ledger stores forensic metadata without business payload duplication")
 
 cloud_sync = (ROOT / "shared/cloud-sync.js").read_text(encoding="utf-8")
-journal_model = (ROOT / "shared/storage-journal-model.js").read_text(encoding="utf-8")
-ok("createOutboxRecord" not in cloud_sync and "compareOutboxFreshness" not in cloud_sync
-   and "bySeq" in journal_model and "operation.seq!==seq+1" in journal_model and "storage_journal_gap_or_duplicate" in journal_model,
-   "V2 journal ordering is sequence-based and the retired dual-store outbox ordering model is absent")
+ok("mutationSeq" in cloud_sync and "generationDelta" in cloud_sync and "sequenceDelta" in cloud_sync
+   and "Date.parse(a?.updatedAt" not in cloud_sync,
+   "dual-store outbox ordering is deterministic under clock rollback")
 
 bulk = (KUPA / "site/assets/js/ui/bulk.js").read_text(encoding="utf-8")
 ok("deletedIds:ids" in bulk and "deleteIntents:{[collection]:ids}" in bulk
@@ -115,11 +114,11 @@ ok("deletedIds:ids" in bulk and "deleteIntents:{[collection]:ids}" in bulk
    "Kupa checks/credits/cash/rights bulk deletion forwards exact IDs")
 card_merge = (KUPA / "site/assets/js/sync/merge.js").read_text(encoding="utf-8")
 card_migration = (KUPA / "site/assets/js/sync/legacy-card-migration.js").read_text(encoding="utf-8")
+card_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
 ok("out.cards=mergeRecordArray" in card_merge and "migrateLegacyCards3Way" in card_merge
    and "stableLegacyPositionId" in card_migration and "legacy-card-migration-conflict" in card_migration
-   and "migrateLegacyCardPair" not in card_migration
-   and not (KUPA / "site/assets/js/storage/pending.js").exists(),
-   "Kupa card lineage migration remains in three-way merge while retired V1 pending migration is absent")
+   and "migrateLegacyCardPair" in card_pending,
+   "Kupa cards use lineage-aware one-time IDs, durable outbox migration and explicit ambiguity conflicts")
 
 kupa_validation = (KUPA / "site/assets/js/state/validation.js").read_text(encoding="utf-8")
 kupa_entity_declaration = kupa_validation.split("KUPA_ENTITY_COLLECTIONS=", 1)[1].split(");", 1)[0]

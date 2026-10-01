@@ -29,15 +29,15 @@ test('unknown operations and implicit deletes are never accepted',()=>{
   assert.throws(()=>applyStoredOperation({notes:[]},operation(1,[{type:'delete',collection:'notes',id:'n'}]),schema));
   assert.throws(()=>sealStorageRecord({value:NaN}));assert.throws(()=>sealStorageRecord({value:undefined}));
 });
-test('Main V2 rejects every journal operation that targets the retired embedded checks collection',()=>{
+test('Main V2 refuses new check operations while old checkpoints remain replayable until projection migration',()=>{
   for(const app of ['orders','kupa']){
-    const mainSchema=STORAGE_SCHEMAS[app],check={type:'put',collection:'checks',mode:'insert',id:'C1',index:0,record:{id:'C1'}},oldEntry=sealStorageRecord(operation(1,[check]));
+    const mainSchema=STORAGE_SCHEMAS[app],check={type:'put',collection:'checks',mode:'insert',id:'C1',index:0,record:{id:'C1'}};
     assert.equal(mainSchema.collections.includes('checks'),false);
     assert.throws(()=>validateStoredOperation(operation(1,[check]),mainSchema),/storage_invalid_collection/);
-    const oldProjection=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{checks:[]},appMetadata:{storageRole:'primary'}});
-    assert.throws(()=>replayStorageJournal(oldProjection,[oldEntry],mainSchema),/storage_invalid_collection/);
-    const currentProjection=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{},appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
-    assert.throws(()=>replayStorageJournal(currentProjection,[oldEntry],mainSchema),/storage_invalid_collection/);
+    const legacy=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{checks:[]},appMetadata:{storageRole:'primary'}}),oldEntry=sealStorageRecord(operation(1,[check]));
+    assert.deepEqual(replayStorageJournal(legacy,[oldEntry],mainSchema).state.checks,[{id:'C1'}]);
+    const migrated=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:1,state:{},appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
+    assert.throws(()=>replayStorageJournal(migrated,[oldEntry],mainSchema),/storage_invalid_collection/);
   }
 });
 test('full-state replacement requires an explicit durable import or cloud normalization boundary',()=>{

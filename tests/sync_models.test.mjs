@@ -11,6 +11,7 @@ import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/a
 import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
+import {CLOUD_BASE_KEY as ORDERS_CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createLifecycle as orderLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
@@ -136,11 +137,11 @@ test('Orders rebase and empty fields follow the record conflict contract',()=>{
  const rebased=om.merge3(base,local,remote,{preferLocalConflicts:true});
  assert.equal(rebased.state.notes[0].content,'');assert.ok(rebased.conflicts.length);
 });
-test('shared check transport validates revisions and preserves the v6 RPC request contract',async()=>{
+test('shared check transport validates revisions and preserves RPC request contract',async()=>{
  const calls=[];
  const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
  assert.equal((await api.rpcSaveSharedChecks([check],7,'test:checks:1',['C2'])).row.revision,8);
- assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v6');
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v5');
  assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_audit','p_deleted_check_ids','p_document_name','p_expected_revision','p_operation_id','p_state']);
  assert.equal(calls[0][1].p_expected_revision,7);assert.equal(calls[0][1].p_operation_id,'test:checks:1');assert.equal(calls[0][1].p_state.version,1);assert.deepEqual(calls[0][1].p_deleted_check_ids,['C2']);
  await assert.rejects(api.rpcSaveSharedChecks([check],-1,'test:checks:2'));
@@ -161,7 +162,7 @@ test('Orders cloud open renders the verified Orders core before secondary checks
  Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
  const store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(k,v)=>store.set(k,String(v)),getItem:k=>store.get(k)??null,removeItem:k=>store.delete(k)},configurable:true});
  const order=[];const model={state:{checks:[]}},session={cloudRevision:0,cloudUpdatedAt:null,lastCloudState:null,cloudConflictBlocked:false},checksSession={},ui={};
- const api=orderUiCloud({model,files:{dirHandle:null},tab:{primaryTab:true},session,checksSession,ui,modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>{},authPassword:async()=>{},localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},setCloud:()=>{},showSecondaryTabGuard:()=>{},prepareCloudState:()=>({suppliers:[]}),render:()=>order.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,updated_at:'2026-08-27T10:00:00Z',state:{suppliers:[]}}),storageOwnerCurrent:()=> 'account',storageV2PrimaryRequested:()=>true,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:3,state:{suppliers:[]},ackSeq:0},pending:false,flight:null,control:null}),adoptStorageV2CloudHead:async()=>true,applyOrderCloudState:()=>{},refreshKupaReadout:async opts=>{order.push('kupa');assert.deepEqual(opts,{force:true,renderIfChanged:true});return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:()=>order.push('poll'),saveSession:()=>{},renderSettings:()=>{}});
+ const api=orderUiCloud({model,files:{dirHandle:null},tab:{primaryTab:true},session,checksSession,ui,modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>{},authPassword:async()=>{},localSnapshot:()=>{},markCloudPending:()=>{},clearCloudPending:()=>{},setCloud:()=>{},showSecondaryTabGuard:()=>{},prepareCloudState:()=>({suppliers:[]}),render:()=>order.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,updated_at:'2026-08-27T10:00:00Z',state:{suppliers:[]}}),applyOrderCloudState:()=>{},refreshKupaReadout:async opts=>{order.push('kupa');assert.deepEqual(opts,{force:true,renderIfChanged:true});return true},syncSharedChecksFromCloud:async()=>{order.push('checks');return true},requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:()=>order.push('poll'),saveSession:()=>{},renderSettings:()=>{}});
  await api.openCloud();assert.deepEqual(order,['render','checks','kupa','poll']);
  order.length=0;await api.openCloud({hydrateSecondary:false,manageStatus:false});assert.deepEqual(order,['render','poll'],'startup core open must not wait for checks or finance');
 });
@@ -235,10 +236,10 @@ test('Kupa main merge protects expenses, notes and ledgers from implicit deletio
  const intentional=km.mergeState3Way(base,stale,base,{deleteIntents:{credits:['CR'],cash:['C'],rights:['R'],notes:['N'],expenses:['E']}});assert.deepEqual(intentional.conflicts,[]);for(const key of ['credits','cash','rights','notes','expenses'])assert.equal(intentional.state[key].length,0,key+' explicit delete is honored');
 });
 
-test('Orders transport sends explicit delete intents and audit through the v6 document RPC',async()=>{
+test('Orders transport sends explicit delete intents and audit through the v5 document RPC',async()=>{
  const calls=[];const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:10,state:{}}])}}});
  await api.rpcSave({suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],notes:[],inventoryItems:[],inventoryCategoryOrder:[],inventoryEvents:[],warehouseOrders:[]},9,'orders:test:v4',{transactions:['T1']});
- assert.equal(calls[0][0],'/rest/v1/rpc/save_order_management_document_v6');assert.deepEqual(calls[0][1].p_delete_intents,{transactions:['T1']});assert.deepEqual(calls[0][1].p_audit,{});
+ assert.equal(calls[0][0],'/rest/v1/rpc/save_order_management_document_v5');assert.deepEqual(calls[0][1].p_delete_intents,{transactions:['T1']});assert.deepEqual(calls[0][1].p_audit,{});
 });
 
 test('Orders cloud poll silently advances a revision when remote business data already equals local state',async()=>{
@@ -286,5 +287,5 @@ test('Orders V2 cloud open adopts the remote head without writing a full legacy 
  const writes=[],store=new Map();Object.defineProperty(globalThis,'localStorage',{value:{setItem:(key,value)=>{writes.push(key);store.set(key,String(value))},getItem:key=>store.get(key)??null,removeItem:key=>store.delete(key)},configurable:true});
  const model={state:{checks:[]}},session={cloudRevision:0,cloudConflictBlocked:false},adoptions=[];
  const api=orderUiCloud({model,files:{},tab:{primaryTab:true},session,checksSession:{},ui:{},modal:noop,supaConfigured:()=>true,toast:noop,closeModal:noop,authPassword:async()=>{},localSnapshot:()=>{throw new Error('V1 snapshot used')},markCloudPending:noop,clearCloudPending:noop,setCloud:noop,showSecondaryTabGuard:noop,prepareCloudState:()=>({suppliers:[]}),render:noop,writeStateToFolder:async()=>{},loadSession:()=>({access_token:'x'}),readCloud:async()=>({revision:3,state:{suppliers:[]}}),applyOrderCloudState:noop,refreshKupaReadout:async()=>true,syncSharedChecksFromCloud:async()=>true,requestCloudSave:async()=>true,restorePendingAgainstCloud:async()=>false,startPolling:noop,saveSession:noop,renderSettings:noop,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:2},pending:false,flight:null}),adoptStorageV2CloudHead:async(revision)=>adoptions.push(revision)});
- assert.equal(await api.openCloud({hydrateSecondary:false,startPoll:false}),true);assert.deepEqual(adoptions,[3]);assert.equal(writes.includes('orders.supabase.base.v1'),false,'cloud adoption must never recreate the retired V1 base key');
+ assert.equal(await api.openCloud({hydrateSecondary:false,startPoll:false}),true);assert.deepEqual(adoptions,[3]);assert.equal(writes.includes(ORDERS_CLOUD_BASE_KEY),false);
 });
