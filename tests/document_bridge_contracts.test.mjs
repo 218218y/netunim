@@ -38,7 +38,12 @@ test('manual PDF refresh is a separate search action backed by the short-lived m
   const client=read('shared/document-search/domains/documents/bridge.js');
   const source=read('shared/document-search/domains/documents/search-source.js');
   for(const html of [orders,kupa]){
-    assert.match(html,/<\/div>\s*<div class="global-search-pdf-refresh-wrap">[\s\S]*globalSearchPdfRefresh/,'the action must sit outside the filter tablist');
+    const inputIndex=html.indexOf('id="globalSearchInput"');
+    const menuIndex=html.indexOf('id="globalSearchContentOptionsMenu"');
+    const folderIndex=html.indexOf('id="globalSearchFolderScope"');
+    const refreshIndex=html.indexOf('id="globalSearchPdfRefresh"');
+    const wholeWordIndex=html.indexOf('data-content-word-match="whole"');
+    assert.ok(inputIndex>=0&&menuIndex>inputIndex&&refreshIndex>wholeWordIndex&&refreshIndex<folderIndex,'PDF refresh must live at the end of the content-options popover, not in the search header row');
     assert.match(html,/globalSearchPdfRefreshStatus[^>]*role="status"[^>]*aria-live="polite"/);
   }
   assert.match(server,/documents\/pdf-index\/status/);
@@ -374,6 +379,11 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(html,/globalSearchContentOptionsMenu[\s\S]*data-content-match-mode="phrase"[\s\S]*data-content-match-mode="all"[\s\S]*data-content-match-mode="any"[\s\S]*data-content-match-mode="proximity"/);
   assert.match(html,/data-content-word-match="partial"[\s\S]*data-content-word-match="whole"/);
   assert.match(html,/globalSearchProximityWords/);
+  const headerBeforeInput=html.slice(html.indexOf('global-search-head'),html.indexOf('id="globalSearchInput"'));
+  const optionsMenuSlice=html.slice(html.indexOf('id="globalSearchContentOptionsMenu"'),html.indexOf('id="globalSearchFolderScope"'));
+  assert.doesNotMatch(headerBeforeInput,/globalSearchPdfRefresh/);
+  assert.match(optionsMenuSlice,/data-content-word-match="whole"[\s\S]*globalSearchPdfRefresh[\s\S]*globalSearchPdfRefreshStatus/);
+  assert.match(css,/global-search-pdf-refresh-wrap\{display:grid;grid-template-columns:auto minmax\(0,1fr\)/);
   assert.doesNotMatch(html,/global-search-statusbar/);
   assert.match(html,/globalSearchMeta[^>]*global-search-live-status|global-search-live-status[^>]*globalSearchMeta/);
   assert.doesNotMatch(html,/global-search-filterbar/);

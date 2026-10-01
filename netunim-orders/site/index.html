@@ -60,12 +60,6 @@
         <button id="globalSearchFilterFiles" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש קבצים</button>
         <button id="globalSearchFilterContent" class="global-search-filter" type="button" role="tab" aria-selected="false">חיפוש תוכן</button>
       </div>
-      <div class="global-search-pdf-refresh-wrap">
-        <button class="global-search-pdf-refresh" id="globalSearchPdfRefresh" type="button" aria-label="רענן אינדקס PDF עכשיו" title="בדוק כעת קובצי PDF חדשים או שהשתנו" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.8 9a7 7 0 0 1 12.1-2L20 12M4 12l2.1 5a7 7 0 0 0 12.1-2"/></svg><span>רענן PDF</span>
-        </button>
-        <span class="global-search-pdf-refresh-status" id="globalSearchPdfRefreshStatus" role="status" aria-live="polite" hidden></span>
-      </div>
       <label class="global-search-input-wrap" for="globalSearchInput">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z"/></svg>
         <input id="globalSearchInput" type="search" autocomplete="off" placeholder="חפש באתר, בקבצים ובתוכן…">
@@ -97,6 +91,13 @@
               <button type="button" data-content-word-match="partial" class="selected" aria-pressed="true"><b>חלק ממילה</b><small>למשל „מזר” ימצא גם „מזרן”.</small></button>
               <button type="button" data-content-word-match="whole" aria-pressed="false"><b>מילה שלמה</b><small>„מזר” לא יתאים ל„מזרן”; רק מילה מלאה.</small></button>
             </div>
+          </div>
+          <div class="global-search-options-divider"></div>
+          <div class="global-search-pdf-refresh-wrap" aria-label="תחזוקת אינדקס PDF">
+            <button class="global-search-pdf-refresh" id="globalSearchPdfRefresh" type="button" aria-label="רענן אינדקס PDF עכשיו" title="בדוק כעת קובצי PDF חדשים או שהשתנו" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.8 9a7 7 0 0 1 12.1-2L20 12M4 12l2.1 5a7 7 0 0 0 12.1-2"/></svg><span>רענן PDF</span>
+            </button>
+            <span class="global-search-pdf-refresh-status" id="globalSearchPdfRefreshStatus" role="status" aria-live="polite" hidden></span>
           </div>
         </div>
       </div>
