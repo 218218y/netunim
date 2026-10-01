@@ -53,6 +53,7 @@ const BINARY_PREVIEW_MIME=new Map([['pdf','application/pdf'],['png','image/png']
 const STRUCTURED_PREVIEW_MIME=new Map([['docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['docm','application/vnd.ms-word.document.macroEnabled.12'],['dotx','application/vnd.openxmlformats-officedocument.wordprocessingml.template'],['dotm','application/vnd.ms-word.template.macroEnabled.12'],['xls','application/vnd.ms-excel'],['xlsx','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],['xlsm','application/vnd.ms-excel.sheet.macroEnabled.12'],['xlsb','application/vnd.ms-excel.sheet.binary.macroEnabled.12'],['xlt','application/vnd.ms-excel'],['xltx','application/vnd.openxmlformats-officedocument.spreadsheetml.template'],['xltm','application/vnd.ms-excel.template.macroEnabled.12']]);
 let server=null,cachedProbe=null,cachedEsPath='',everythingProbePromise=null,everythingStartPromise=null,nativePreviewProcess=null,nativePreviewBuffer='',nativePreviewSequence=0;
 let pdfFormIndexLoaded=false,pdfFormIndexRefreshPromise=null,pdfFormIndexRefreshAbortController=null,pdfFormIndexLastRefresh=0,pdfFormIndexPending=0,pdfFormIndexInventoryCount=0,shuttingDown=false,pdfFormIndexSignature='';
+let manualPdfMaintenanceChild=null,manualPdfMaintenance=null,manualPdfMaintenanceStartPromise=null,pdfMaintenanceStopRequested=false;
 let pdfFormIndexBacklog=[];
 const pdfFormIndex=new Map();
 const nativePreviewPending=new Map();
@@ -267,6 +268,57 @@ async function withFileLock(lockPath,task,{waitMs=10000,staleMs=10*60*1000}={}){
   }
   try{return await task()}finally{await fs.unlink(ownerPath).catch(()=>{});await fs.rmdir(lockPath).catch(()=>{})}
 }
+async function activePdfMaintenanceLock(){
+  const stat=await fs.stat(PDF_FORM_MAINTENANCE_LOCK_PATH).catch(()=>null);
+  if(!stat)return false;
+  const owner=await readJsonFile(path.join(PDF_FORM_MAINTENANCE_LOCK_PATH,'owner.json'),null),pid=Number(owner?.pid);
+  if(Number.isInteger(pid)&&pid>0){try{process.kill(pid,0);return true}catch(error){return error?.code==='EPERM'}}
+  return !owner&&Date.now()-stat.mtimeMs<30000;
+}
+async function sendMaintenanceIpc(message){
+  if(!process.send||!process.connected)return;
+  await new Promise(resolve=>process.send(message,()=>resolve()));
+}
+async function pdfMaintenanceStatus(){
+  const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+  const manual=manualPdfMaintenance,running=!!manual?.running||await activePdfMaintenanceLock();
+  return {ok:true,bridgeVersion:BRIDGE_VERSION,running,source:manual?.running?'manual':running?'scheduled':'',cancelable:!!manual?.running&&!manual.stopRequested&&!!manualPdfMaintenanceChild?.connected,stopRequested:!!manual?.running&&!!manual.stopRequested,phase:manual?.running?manual.phase||'starting':'',progress:manual?.running?manual.progress||null:null,lastRun:!manual?.running?manual?.result||null:null,lastError:!manual?.running?manual?.error||'':'',lastResult:maintenance.lastResult||null,lastFailure:maintenance.lastFailure||''};
+}
+async function startManualPdfMaintenance(){
+  if(manualPdfMaintenanceStartPromise)return manualPdfMaintenanceStartPromise;
+  const task=(async()=>{
+    if(manualPdfMaintenance?.running||await activePdfMaintenanceLock())return pdfMaintenanceStatus();
+    const child=spawn(process.execPath,[fileURLToPath(import.meta.url),'--refresh-pdf-index','--force'],{cwd:APP_ROOT,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']});
+    const run={running:true,stopRequested:false,phase:'starting',progress:null,result:null,error:'',startedAt:new Date().toISOString()};
+    manualPdfMaintenanceChild=child;manualPdfMaintenance=run;
+    child.on('message',message=>{
+      if(manualPdfMaintenance!==run||!message||typeof message!=='object')return;
+      if(message.type==='pdf-maintenance-progress'){run.phase=message.progress?.phase||'scan';run.progress=message.progress||null}
+      if(message.type==='pdf-maintenance-result'){run.result=message.result||null;run.phase=run.result?.aborted?'stopped':'finished'}
+    });
+    child.on('error',error=>{run.error=String(error?.message||error)});
+    child.on('exit',(code,signal)=>{
+      run.running=false;run.finishedAt=new Date().toISOString();
+      if(code!==0&&!run.error)run.error=`עדכון אינדקס PDF נכשל (${signal||code}).`;
+      if(run.stopRequested&&!run.error)run.phase='stopped';
+      if(manualPdfMaintenanceChild===child)manualPdfMaintenanceChild=null;
+    });
+    await appendLog(`PDF_FORM_INDEX_MANUAL_START pid=${child.pid||0}`);
+    return pdfMaintenanceStatus();
+  })();
+  manualPdfMaintenanceStartPromise=task;
+  try{return await task}finally{if(manualPdfMaintenanceStartPromise===task)manualPdfMaintenanceStartPromise=null}
+}
+async function stopManualPdfMaintenance(){
+  const child=manualPdfMaintenanceChild,run=manualPdfMaintenance;
+  if(!run?.running||!child?.connected)return pdfMaintenanceStatus();
+  if(!run.stopRequested){
+    await new Promise((resolve,reject)=>child.send({type:'stop-pdf-maintenance'},error=>error?reject(error):resolve()));
+    run.stopRequested=true;run.phase='stopping';
+    await appendLog(`PDF_FORM_INDEX_MANUAL_STOP_REQUESTED pid=${child.pid||0}`);
+  }
+  return pdfMaintenanceStatus();
+}
 async function pdfIndexSignature(){
   const stats=await Promise.all([PDF_FORM_INDEX_PATH,PDF_FORM_INDEX_JOURNAL_PATH].map(file=>fs.stat(file).catch(()=>null)));
   return stats.map(stat=>stat?`${stat.size}:${stat.mtimeMs}`:'missing').join('|');
@@ -335,7 +387,7 @@ async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=
   return {pdfCount:rows.length,changed:changed.length,removed};
 }
 async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,onProgress=null,force=false,reason='scheduled'}={}){
-  if(shuttingDown)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexPending,processed:0,pending:pdfFormIndexPending,indexed:0,failed:0,removed:0,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:0};
+  if(shuttingDown||pdfMaintenanceStopRequested)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexPending,processed:0,pending:pdfFormIndexPending,indexed:0,failed:0,removed:0,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:0};
   if(pdfFormIndexRefreshPromise)return pdfFormIndexRefreshPromise;
   const controller=new AbortController();pdfFormIndexRefreshAbortController=controller;
   const limitTimer=setTimeout(()=>controller.abort(),PDF_FORM_MAINTENANCE_MAX_MS);limitTimer.unref?.();
@@ -347,7 +399,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
     const full=!maintenance.lastReconcileAt||started-Date.parse(maintenance.lastReconcileAt)>=PDF_FORM_RECONCILE_INTERVAL_MS||!maintenance.lastIncrementalScanAt;
     const modifiedSince=full?'':localCheckpointDay(maintenance.lastIncrementalScanAt);
     const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal,full,modifiedSince});removed=inventory.removed;
-    if(shuttingDown||controller.signal.aborted)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexBacklog.length,processed:0,pending:pdfFormIndexBacklog.length,indexed,failed,removed,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:Date.now()-started};
+    if(shuttingDown||controller.signal.aborted){const error=new Error('PDF maintenance stopped');error.code='ABORT_ERR';throw error}
     const changedBefore=pdfFormIndexBacklog.length,boundedMax=Number.isFinite(Number(maxChanged))?Math.max(0,Math.trunc(Number(maxChanged))):changedBefore;
     const selected=pdfFormIndexBacklog.splice(0,boundedMax);
     if(typeof onProgress==='function')onProgress({phase:'start',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed:0,indexed,failed});
@@ -373,7 +425,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
     await compactPdfFormIndex({pending,pdfCount:pdfFormIndexInventoryCount});
     if(!aborted&&pending===0){maintenance.lastIncrementalScanAt=new Date(started).toISOString();if(full)maintenance.lastReconcileAt=new Date(started).toISOString();maintenance.lastSuccessfulAt=new Date().toISOString()}
     delete maintenance.lastFailureAt;delete maintenance.lastFailure;
-    maintenance.lastResult={reason,full,modifiedSince,pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,bytesRead,elapsedMs:Date.now()-started};await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
+    maintenance.lastResult={reason,full,modifiedSince,pdfCount:inventory.pdfCount,changed:changedBefore,processed,pending,indexed,failed,removed,bytesRead,aborted,elapsedMs:Date.now()-started};await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
     const interactive=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length;
     const cpu=process.cpuUsage(cpuStarted),elapsedMs=Date.now()-started;
     await appendLog(`PDF_FORM_INDEX_MAINTENANCE trigger=${reason} mode=${full?'reconcile':'incremental'} pdfs=${inventory.pdfCount} changed=${changedBefore} processed=${processed} pending=${pending} inspected=${pdfFormIndex.size} interactive=${interactive} indexed=${indexed} failed=${failed} removed=${removed} bytesRead=${bytesRead} cpuMs=${Math.round((cpu.user+cpu.system)/1000)} aborted=${aborted} elapsedMs=${elapsedMs}`);
@@ -382,6 +434,13 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
   pdfFormIndexRefreshPromise=task;
   try{return await task}catch(error){
     const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
+    if(controller.signal.aborted||isAbortError(error)){
+      const result={aborted:true,processed:0,pending:pdfFormIndexPending,elapsedMs:Date.now()-Date.parse(maintenance.lastAttemptAt||new Date().toISOString())};
+      maintenance.lastResult={reason, ...result};delete maintenance.lastFailureAt;delete maintenance.lastFailure;
+      await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
+      await appendLog(`PDF_FORM_INDEX_MAINTENANCE_STOPPED trigger=${reason} pending=${result.pending}`);
+      return result;
+    }
     maintenance.lastFailureAt=new Date().toISOString();maintenance.lastFailure=String(error?.message||error);
     await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
     await appendLog(`PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} error=${JSON.stringify(maintenance.lastFailure)}`);
@@ -680,6 +739,9 @@ async function handle(req,res){
       const interactivePdfCount=[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,esVersion:probe.esVersion,everythingVersion:probe.everythingVersion,everythingExecutable:probe.everythingExecutable||'',instance:probe.instance,index:{fileCount:diagnostics.fileCount,indexedContentCount:diagnostics.indexedContentCount,sampleOk:diagnostics.sampleOk,error:[diagnostics.error,pdfIndexError].filter(Boolean).join('; '),interactivePdfCount,inspectedPdfCount:pdfFormIndex.size,interactivePdfPending:pdfFormIndexPending,interactivePdfUpdatedAt:pdfFormIndexLastRefresh?new Date(pdfFormIndexLastRefresh).toISOString():'',maintenanceLastAttemptAt:maintenance.lastAttemptAt||'',maintenanceLastSuccessfulAt:maintenance.lastSuccessfulAt||'',maintenanceLastFailureAt:maintenance.lastFailureAt||'',maintenanceLastFailure:maintenance.lastFailure||'',maintenanceLastResult:maintenance.lastResult||null}},config);return;
     }
     if(req.method==='POST'&&req.url==='/documents/warm'){const probe=await probeEverything({autoStart:true});sendJson(req,res,200,{ok:true,service:BRIDGE_SERVICE,version:BRIDGE_VERSION,everythingVersion:probe.everythingVersion,instance:probe.instance},config);return}
+    if(req.method==='GET'&&req.url==='/documents/pdf-index/status'){sendJson(req,res,200,await pdfMaintenanceStatus(),config);return}
+    if(req.method==='POST'&&req.url==='/documents/pdf-index/start'){sendJson(req,res,200,await startManualPdfMaintenance(),config);return}
+    if(req.method==='POST'&&req.url==='/documents/pdf-index/stop'){sendJson(req,res,200,await stopManualPdfMaintenance(),config);return}
     if(req.method==='POST'&&req.url==='/documents/select-folder'){const result=await selectSearchFolder();sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/recent'){const body=await readJson(req),result=await recentDocuments(body.limit,body.scopePath);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/search'){const body=await readJson(req),result=await searchDocuments(body.query,body.limit,body.mode,body.contentSearch,body.scopePath,body.offset,body.sort);sendJson(req,res,200,result,config);return}
@@ -692,7 +754,7 @@ async function handle(req,res){
     if(req.method==='POST'&&req.url==='/documents/open'){const body=await readJson(req),result=await openDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/reveal'){const body=await readJson(req),result=await revealDocument(body.id);sendJson(req,res,200,result,config);return}
     if(req.method==='POST'&&req.url==='/documents/delete'){const body=await readJson(req),result=await deleteDocument(body.id);sendJson(req,res,200,result,config);return}
-    if(req.method==='POST'&&req.url==='/shutdown'){shuttingDown=true;await stopNativePreview();sendJson(req,res,200,{ok:true,pid:process.pid},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);setTimeout(()=>{process.exit(0)},2500).unref?.();return}
+    if(req.method==='POST'&&req.url==='/shutdown'){shuttingDown=true;await stopManualPdfMaintenance().catch(()=>{});await stopNativePreview();sendJson(req,res,200,{ok:true,pid:process.pid},config);setTimeout(()=>{server?.close(async()=>{await appendLog('STOP graceful shutdown complete');process.exitCode=0})},20);setTimeout(()=>{process.exit(0)},2500).unref?.();return}
     sendJson(req,res,404,{ok:false,code:'NOT_FOUND',message:'נתיב לא קיים'},config);
   }catch(error){await appendLog(`${req.method} ${req.url} ${error?.code||'ERROR'} ${error?.message||error}`);const status=error?.code==='QUERY_TOO_SHORT'?400:error?.code==='RESULT_EXPIRED'?410:503;sendJson(req,res,status,safeError(error),config)}
 }
@@ -751,14 +813,18 @@ async function main(){
   if(process.platform==='win32')assertBridgeNodeVersion(process.versions.node);
   const arg=process.argv[2]||'';
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor();return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
+    if(process.send)process.on('message',message=>{if(message?.type==='stop-pdf-maintenance'){pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}});
     await init();await probeEverything({fresh:true,autoStart:true});
     const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value)));
     const maxChanged=maxArg?Math.max(0,Number(maxArg.split('=')[1])||0):PDF_FORM_MAINTENANCE_MAX_FILES;
     let lastPrinted=0;
     const result=await withFileLock(PDF_FORM_MAINTENANCE_LOCK_PATH,()=>refreshPdfFormIndex({maxChanged,force:extraArgs.includes('--force'),reason:extraArgs.includes('--force')?'manual':'scheduled',onProgress:progress=>{
+      if(process.send)void sendMaintenanceIpc({type:'pdf-maintenance-progress',progress});
       if(progress.phase==='start'){console.log(`Interactive PDF index scan: ${progress.pdfCount} PDF files, ${progress.changed} need inspection; processing ${progress.selected} now.`);return}
       if(progress.processed===progress.selected||progress.processed-lastPrinted>=4){lastPrinted=progress.processed;console.log(`Interactive PDF index progress: ${progress.processed}/${progress.selected}`)}
-    }}),{staleMs:60*60*1000});
+    }}),{waitMs:process.send?0:10000,staleMs:60*60*1000});
+    await sendMaintenanceIpc({type:'pdf-maintenance-result',result});
+    if(process.send&&process.connected)process.disconnect();
     if(result.skipped){console.log('Interactive PDF maintenance is not due yet.');return}
     console.log(`Interactive PDF index: ${result.cached} inspected cache entries, ${result.interactive} interactive PDFs, ${result.processed}/${result.changed} inspected now, ${result.pending} pending, ${result.failed} failed`);return
   }if(arg==='--print-token'){console.log(await ensureToken());return}if(arg==='--stop-existing'){await stopExisting();return}if(arg==='--check-running'){await checkRunning();return}if(arg==='--write-install-summary'){await writeInstallSummary();return}

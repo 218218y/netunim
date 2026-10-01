@@ -2,7 +2,7 @@ const BRIDGE_URL='http://127.0.0.1:8766';
 const TOKEN_KEY='netunim_document_bridge_token_v1';
 const LEGACY_TOKEN_KEYS=['netunim_orders_document_bridge_token_v1','netunim_kupa_document_bridge_token_v1'];
 const REQUEST_TIMEOUT_MS=25000;
-const EXPECTED_BRIDGE_VERSION=33;
+const EXPECTED_BRIDGE_VERSION=34;
 
 function bridgeError(message,code='DOCUMENT_BRIDGE_ERROR',extra={}){const error=new Error(message);error.code=code;error.httpStatus=Number(extra?.httpStatus)||0;error.rootErrors=Array.isArray(extra?.rootErrors)?extra.rootErrors:[];return error}
 function requireBridgeVersion(value,purpose='לטעון את גרסת החיפוש הנכונה'){const version=Number(value)||0;if(version!==EXPECTED_BRIDGE_VERSION)throw bridgeError(`Document Bridge פעיל בגרסה ${version||'ישנה'} במקום ${EXPECTED_BRIDGE_VERSION}. הרץ מחדש את install_document_bridge.bat כדי ${purpose}.`,'DOCUMENT_BRIDGE_UPGRADE_REQUIRED')}
@@ -43,6 +43,10 @@ export function createDomainsDocumentBridge(){
   const health=()=>request('/health',{auth:false,timeoutMs:2500});
   const status=()=>request('/status',{timeoutMs:5000});
   const warm=()=>request('/documents/warm',{method:'POST',body:{},timeoutMs:8000});
+  const pdfIndexRequest=async(path,options,purpose)=>{try{const data=await request(path,options);requireBridgeVersion(data?.bridgeVersion,purpose);return data}catch(error){if(error?.code==='NOT_FOUND'||error?.httpStatus===404)throw bridgeError('Document Bridge במחשב זה ישן. הרץ מחדש את install_document_bridge.bat כדי להשתמש ברענון ה-PDF.','DOCUMENT_BRIDGE_UPGRADE_REQUIRED');throw error}};
+  const pdfIndexStatus=()=>pdfIndexRequest('/documents/pdf-index/status',{timeoutMs:5000},'להציג את מצב רענון ה-PDF');
+  const startPdfIndex=()=>pdfIndexRequest('/documents/pdf-index/start',{method:'POST',body:{},timeoutMs:8000},'להפעיל רענון PDF ידני');
+  const stopPdfIndex=()=>pdfIndexRequest('/documents/pdf-index/stop',{method:'POST',body:{},timeoutMs:8000},'לעצור רענון PDF ידני');
   const selectFolder=async()=>{try{const runtime=await health();requireBridgeVersion(runtime?.version,'לקבל את בורר התיקיות החדש של Windows');const data=await request('/documents/select-folder',{method:'POST',body:{},timeoutMs:125000});requireBridgeVersion(data?.bridgeVersion,'לקבל את בורר התיקיות החדש של Windows');return data}catch(error){if(error?.code==='NOT_FOUND'||error?.httpStatus===404)throw bridgeError('Document Bridge במחשב זה ישן. הרץ מחדש את install_document_bridge.bat מהגרסה המעודכנת.','DOCUMENT_BRIDGE_UPGRADE_REQUIRED');throw error}};
   const recent=({limit=150,scopePath='',signal=null}={})=>request('/documents/recent',{method:'POST',body:{limit,scopePath:String(scopePath||'')},timeoutMs:REQUEST_TIMEOUT_MS,signal});
   const search=async(query,{mode='content',contentSearch={},scopePath='',limit=150,offset=0,sort={},signal=null}={})=>{const data=await request('/documents/search',{method:'POST',body:{query:String(query||''),mode:mode==='content'?'content':'everything',contentSearch,scopePath:String(scopePath||''),limit,offset:Math.max(0,Math.trunc(Number(offset)||0)),sort:{field:String(sort?.field||''),direction:String(sort?.direction||'')}},timeoutMs:REQUEST_TIMEOUT_MS,signal});requireBridgeVersion(data?.bridgeVersion);return data};
@@ -56,5 +60,5 @@ export function createDomainsDocumentBridge(){
   const fileAction=async(path,id,timeoutMs)=>{try{return await request(path,{method:'POST',body:{id},timeoutMs})}catch(error){if(error?.code==='NOT_FOUND'||error?.httpStatus===404)throw bridgeError('Document Bridge במחשב זה ישן. הרץ מחדש את install_document_bridge.bat מהגרסה המעודכנת.','DOCUMENT_BRIDGE_UPGRADE_REQUIRED');throw error}};
   const revealDocument=id=>fileAction('/documents/reveal',id,7000);
   const deleteDocument=id=>fileAction('/documents/delete',id,35000);
-  return {provider:'everything',providerLabel:'Everything',getToken,setToken,health,status,warm,selectFolder,recent,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument,revealDocument,deleteDocument};
+  return {provider:'everything',providerLabel:'Everything',getToken,setToken,health,status,warm,pdfIndexStatus,startPdfIndex,stopPdfIndex,selectFolder,recent,search,preview,matches,previewFile,nativePreview,moveNativePreview,hideNativePreview,openDocument,revealDocument,deleteDocument};
 }

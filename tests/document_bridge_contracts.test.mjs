@@ -32,6 +32,28 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(headers,/connect-src[^\n]*http:\/\/127\.0\.0\.1:8766/);
 });
 
+test('manual PDF refresh is a separate search action backed by the short-lived maintenance worker',()=>{
+  const orders=read('netunim-orders/site/index.html'),kupa=read('netunim-kupa/site/index.html');
+  const server=read('netunim-orders/document-bridge/server.mjs');
+  const client=read('shared/document-search/domains/documents/bridge.js');
+  const source=read('shared/document-search/domains/documents/search-source.js');
+  for(const html of [orders,kupa]){
+    assert.match(html,/<\/div>\s*<div class="global-search-pdf-refresh-wrap">[\s\S]*globalSearchPdfRefresh/,'the action must sit outside the filter tablist');
+    assert.match(html,/globalSearchPdfRefreshStatus[^>]*role="status"[^>]*aria-live="polite"/);
+  }
+  assert.match(server,/documents\/pdf-index\/status/);
+  assert.match(server,/documents\/pdf-index\/start/);
+  assert.match(server,/documents\/pdf-index\/stop/);
+  assert.match(server,/spawn\(process\.execPath,\[fileURLToPath\(import\.meta\.url\),'--refresh-pdf-index','--force'\]/);
+  assert.match(server,/manualPdfMaintenance\?\.running\|\|await activePdfMaintenanceLock\(\)/);
+  assert.match(server,/pdfFormIndexRefreshAbortController\?\.abort\(\)/);
+  assert.match(server,/await compactPdfFormIndex\(\{pending,pdfCount:pdfFormIndexInventoryCount\}\)/);
+  assert.match(client,/pdfIndexRequest\('\/documents\/pdf-index\/start'/);
+  assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
+  assert.match(source,/get supportsPdfIndexRefresh/);
+  assert.match(source,/return localBridge\.startPdfIndex\(\)/);
+});
+
 test('bridge searches the complete Everything index and forces Unicode ES transport',()=>{
   const installer=read('netunim-orders/document-bridge/install_document_bridge.bat');
   const server=read('netunim-orders/document-bridge/server.mjs');
@@ -120,7 +142,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v33-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v34-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -132,8 +154,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=33/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=33/);
+  assert.match(lib,/BRIDGE_VERSION=34/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=34/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -404,9 +426,9 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=33/);
+  assert.match(lib,/BRIDGE_VERSION=34/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=33/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=34/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });
