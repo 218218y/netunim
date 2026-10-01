@@ -8,7 +8,7 @@ import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
 // starts only after the durable V2 namespace has been verified. A local V2
 // birth does not inspect abandoned V1 data; account adoption verifies its
 // cloud heads before the displayed owner changes.
-export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,verifyLegacyClean,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
+export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
   const cutover=createStorageV2Cutover({app:site,owner,primary,db});
   const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2'||owner()==='local'&&localStorage.getItem(`netunim-storage-engine-version:${site}:local`)==='2';
   const preparationRequested=()=>!!preparing()&&!cutoverRequested();
@@ -18,7 +18,7 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>cutoverRequested()?'primary':preparationRequested()?'preparing':'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
     applyState:value=>{model.state.checks=value.checks;checksSession[eventsKey]=value.bankEvents;domainRevisions.touch('checks')},
-    merge,readRemote,rpc,verifyLegacyClean,createStorage:options=>createSharedChecksStorageV2({...options,db})});
+    merge,readRemote,rpc,createStorage:options=>createSharedChecksStorageV2({...options,db})});
   const boundary=createStorageV2Boundary({owner,primary,main,shared:runtime,validateMainCloud,db});
   main.setBoundaryGate?.(()=>boundary.locked);
   runtime.setBoundaryGate(()=>boundary.locked);
@@ -26,18 +26,9 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
     if(!preparationRequested()||!primary())return false;
     return true;
   }
-  async function enablePreparation(){
-    if(!lockPreparation())return false;
-    if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
-    return true;
-  }
+  async function enablePreparation(){return lockPreparation()}
   async function recoverPrimary(){
     if(!cutoverRequested()&&!preparationRequested())return false;
-    // A durable account marker means Main and Shared were verified before
-    // activation. V1 pending left in this browser is no longer authoritative.
-    // An unmarked preparation must still prove its legacy source is clean.
-    if(owner()!=='local'&&!(cutoverRequested()&&await cutover.verify())&&await verifyLegacyClean()!==true)
-      throw new Error('shared_checks_legacy_pending_unverified');
     const recovered=await runtime.recover();
     if(!recovered){if(preparationRequested())return false;throw new Error('shared_checks_primary_checkpoint_missing')}
     const interrupted=await boundary.pending();

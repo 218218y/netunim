@@ -1,10 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
-import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
-import {createSyncPending} from '../netunim-kupa/site/assets/js/sync/pending.js';
-import {createSyncDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
-import {createSyncMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
 import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {createStorageBrowser as kupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
@@ -17,66 +12,6 @@ import {configurePerformance,beginMeasure,performanceSummary,clearPerformance} f
 import {supplierRenderModelData,supplierViewRowsData,balanceRowsData,supplierYearContextData} from '../netunim-orders/site/assets/js/domains/suppliers/model.js';
 
 const noop=()=>{},clone=structuredClone;
-function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
-function fixture({send=async body=>({revision:body.p_expected_revision+1,state:body.p_state}),beforeRead=noop}={}){
-  const model={},normalizer=createStateNormalization({model});model.state=normalizer.normalizeState({notes:[{id:'A',content:'base'},{id:'B',content:'keep'}]});
-  const session={localGeneration:0,dbRevision:10,connectionMode:'supabase',backendReady:true,serverInfo:{},saveQueue:Promise.resolve(),lastSavedSnapshot:JSON.stringify(normalizer.prepareKupaCloudState(model.state))};
-  const ls=new Map(),db=new Map(),snapshots=[],sent=[];let stages=0,renders=0;
-  globalThis.localStorage={getItem:key=>ls.get(key)??null,setItem:(key,value)=>ls.set(key,value),removeItem:key=>ls.delete(key)};
-  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
-  const storage=createStoragePending({session,idbPut:async(s,k,v)=>db.set(k,clone(v)),idbGet:async(s,k)=>{await beforeRead();return clone(db.get(k))},idbDelete:async(s,k)=>db.delete(k)});
-  const deps={...normalizer,...storage,model,session,tab:{primaryTab:true},files:{},checksSession:{},setSaveStatus:noop,setCloudHeaderStatus:noop,setConnectedStatus:noop,toast:noop,showSecondaryTabGuard:noop,reportError:noop,render:()=>{renders++},backupSnapshotToComputer:async()=>{},persistImmediateBrowserSnapshot:state=>{snapshots.push(clone(state));return true},lastSavedCloudState:()=>JSON.parse(session.lastSavedSnapshot)};
-  const merger=createSyncMerge(deps),pending=createSyncPending({...deps,...merger});
-  const stageCloudPendingLocal=(...args)=>{stages++;return pending.stageCloudPendingLocal(...args)};
-  const document=createSyncDocument({...deps,...merger,...pending,stageCloudPendingLocal,pollSharedChecks:async()=>{},readSupabaseDocument:async()=>null,supaRest:async(path,options)=>{const body=JSON.parse(options.body);sent.push(body);const row=await send(body);return {ok:true,text:async()=>JSON.stringify(row)}}});
-  const api=createStoragePersistence({...deps,...merger,stageCloudPendingLocal,persistSupabaseState:document.persistSupabaseState});
-  return {model,session,snapshots,sent,api,storage,document,get stages(){return stages},get renders(){return renders}};
-}
-
-test('Kupa burst durably stages every edit, sends the latest once, retains explicit deletion, and does not render on an unchanged ACK',async()=>{
-  const f=fixture(),promises=[];
-  for(let i=1;i<=7;i++){f.model.state.notes[0].content=String(i);if(i===3)f.model.state.notes.pop();promises.push(f.api.saveState('',i===3?{deleteIntents:{notes:['B']}}:{}));assert.equal(f.snapshots.at(-1).notes[0].content,String(i))}
-  assert.equal(f.stages,7,'each action stages synchronously');
-  assert.ok((await Promise.all(promises)).every(Boolean));
-  assert.equal(f.sent.length,1);assert.equal(f.stages,7,'writer reuses the durable record');
-  assert.equal(f.sent[0].p_state.notes[0].content,'7');assert.deepEqual(f.sent[0].p_delete_intents,{notes:['B']});
-  assert.equal(f.renders,0);assert.equal(await f.storage.getCloudPending(),null);
-});
-
-test('Kupa changes during an in-flight RPC coalesce without overwriting newer local edits',async()=>{
-  const gate=deferred(),started=deferred();let calls=0;
-  const f=fixture({send:async body=>{if(++calls===1){started.resolve();await gate.promise}return {revision:body.p_expected_revision+1,state:body.p_state}}});
-  f.model.state.notes[0].content='first';const saving=f.api.saveState();await started.promise;
-  for(let i=2;i<=7;i++){f.model.state.notes[0].content=String(i);f.api.saveState()}
-  gate.resolve();assert.equal(await saving,true);
-  assert.equal(f.sent.length,2);assert.equal(f.sent.at(-1).p_state.notes[0].content,'7');
-  assert.equal(f.model.state.notes[0].content,'7');assert.equal(await f.storage.getCloudPending(),null);
-  assert.notEqual(f.sent[0].p_operation_id,f.sent[1].p_operation_id);assert.equal(f.sent[1].p_expected_revision,11);
-});
-
-test('Kupa verified outbox head avoids redundant durable reads after a successful stage',async()=>{
-  let reads=0;const f=fixture({beforeRead:()=>{reads++}});
-  f.model.state.notes[0].content='verified-head';
-  assert.equal(await f.api.saveState(),true);
-  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'verified-head');
-  assert.equal(reads,0,'the writer reuses the just-committed in-memory head instead of rereading IndexedDB');
-  assert.equal(await f.storage.getCloudPending(),null);assert.equal(reads,0);
-});
-
-test('Kupa offline burst stays durable and resumes from the latest pending record',async()=>{
-  const f=fixture();navigator.onLine=false;
-  for(let i=0;i<5;i++){f.model.state.notes[0].content=String(i);f.api.saveState()}
-  assert.equal(await f.session.saveQueue,false);assert.equal(f.sent.length,0);
-  assert.equal(f.renders,0,'offline persistence updates sync status without rebuilding an unchanged business view');
-  assert.equal((await f.storage.getCloudPending()).snapshot.notes[0].content,'4');
-  navigator.onLine=true;assert.equal(await f.document.persistSupabaseState(f.model.state,'',f.session.localGeneration),true);
-  assert.equal(f.sent.length,1);assert.equal(f.sent[0].p_state.notes[0].content,'4');assert.equal(f.stages,5);assert.equal(f.renders,0);
-});
-
-test('Kupa authoritative changes still render, while plain ACKs preserve the screen',async()=>{
-  const f=fixture({send:async body=>{const state=clone(body.p_state);state.notes[1].content='remote';return {revision:11,state}}});
-  assert.equal(await f.api.saveState(),true);assert.equal(f.renders,1);assert.equal(f.model.state.notes[1].content,'remote');
-});
 
 test('Kupa local mutation owners refresh their own view without relying on persistence renders',async t=>{
   const previousDocument=globalThis.document;t.after(()=>{globalThis.document=previousDocument});
@@ -124,26 +59,6 @@ test('IndexedDB connection shares concurrent opens and recovers from failure, ve
   c.onclose();assert.notEqual(await open(),c);assert.equal(opens,4);
 });
 
-test('Kupa cloud writer waits for the existing file queue when storage mode changes',async()=>{
-  const f=fixture(),fileSave=deferred();f.session.saveQueue=fileSave.promise;
-  const saving=f.api.saveState();await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(f.sent.length,0);assert.equal(f.stages,1,'durability does not wait for the old file queue');
-  fileSave.resolve(true);assert.equal(await saving,true);assert.equal(f.sent.length,1);
-});
-
-test('Kupa ACK still applies normalization even when the canonical cloud projection is unchanged',async()=>{
-  const f=fixture();f.model.state.cash.push({id:'C',date:'2026-09-18',type:'הכנסה',description:'cash',amount:'10'});
-  assert.equal(await f.api.saveState(),true);assert.equal(f.model.state.cash[0].amount,10);assert.equal(f.renders,1);
-});
-
-test('Kupa writer normalizes legacy durable snapshots once before sending without restaging them',async()=>{
-  const f=fixture(),legacy=clone(f.model.state);delete legacy.rights;delete legacy.cashflowSettings;
-  await f.storage.putCloudPending({schemaVersion:4,domain:'kupa',documentName:'main',operationId:'legacy',generation:1,mutationSeq:1,baseRevision:10,baseState:legacy,snapshot:legacy,updatedAt:new Date().toISOString()});
-  f.session.localGeneration=1;
-  assert.equal(await f.document.persistSupabaseState(legacy,'',1),true);assert.equal(f.stages,0);
-  assert.deepEqual(f.sent[0].p_state.rights,[]);assert.equal('checks' in f.sent[0].p_state,false);assert.equal('creditSync' in f.sent[0].p_state,false);
-});
-
 test('V2 snapshot sequence never reads or writes the legacy full-state cache',()=>{
   let reads=0,writes=0;const sequences=[];
   globalThis.localStorage={getItem:()=>{reads++;return null},setItem:()=>{writes++}};
@@ -175,16 +90,6 @@ test('backup ACK fast path skips directory scans but retains the latest payload 
     assert.equal(scans,initialScans);assert.equal(writes,1);assert.equal(files.pendingAutoBackupPayload.notes[0].content,'latest');
     files.backupsDirHandle=directory();assert.ok(await api.backupSnapshotToComputer());assert.ok(scans>initialScans);assert.equal(writes,2);
   }finally{api.clearPendingAutomaticBackup()}
-});
-
-test('Orders ACK with a newer pending generation writes the rebased local snapshot only once',async()=>{
-  const {createSyncDocument:createOrdersSyncDocument}=await import('../netunim-orders/site/assets/js/sync/document.js');
-  const cloneValue=structuredClone,snapshot={notes:[{id:'A',content:'sent'}]},newer={schemaVersion:4,domain:'orders',documentName:'suppliers',operationId:'newer',generation:2,mutationSeq:2,baseRevision:10,baseState:cloneValue(snapshot),snapshot:{notes:[{id:'A',content:'newer'}]},deleteIntents:{}};
-  const model={state:cloneValue(newer.snapshot)},session={localGeneration:2,cloudRevision:10,lastCloudState:cloneValue(snapshot),ordersOutboxCommitPromise:Promise.resolve(),cloudConflictBlocked:false};let localWrites=0,staged=0;
-  globalThis.localStorage={setItem:noop,getItem:()=>null,removeItem:noop};
-  const api=createOrdersSyncDocument({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:cloneValue,localSnapshot:()=>{localWrites++;return true},markCloudPending:()=>{staged++;session.ordersOutboxCommitPromise=Promise.resolve();return true},getCloudPending:async()=>cloneValue(newer),clearCloudPending:async()=>true,toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>cloneValue(value),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>({r:{ok:true},row:{revision:11,operation_revision:10,state:cloneValue(snapshot),updated_at:'2026-09-18T00:00:00Z'}}),merge3:(_base,local)=>({state:cloneValue(local),conflicts:[]}),applyOrderCloudState:value=>{model.state=cloneValue(value)},cloudPendingExists:()=>true,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>true,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop});
-  assert.equal(await api.saveCloudSnapshot(snapshot,1,{...newer,generation:1,operationId:'sent-op',snapshot:cloneValue(snapshot),baseState:cloneValue(snapshot)}),true);
-  assert.equal(staged,1);assert.equal(localWrites,1,'successful rebase snapshot is not serialized twice in the same ACK');
 });
 
 test('performance diagnostics are opt-in, bounded and resettable',()=>{

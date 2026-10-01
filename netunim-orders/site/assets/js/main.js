@@ -8,7 +8,6 @@ import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createStorageChecks} from './storage/checks.js';
 import {createDomainsSuppliersSelectors} from './domains/suppliers/selectors.js';
 import {createDomainsSuppliersCommands} from './domains/suppliers/commands.js';
 import {createDomainsSuppliersNavigation} from './domains/suppliers/navigation.js';
@@ -118,17 +117,15 @@ const stateNormalization=createStateNormalization({
 // Journal checkpoints must be deterministic: a new savedAt on every replay
 // would make a frozen local-birth source fail parity after a crash.
 const prepareV2Checkpoint=state=>{const business=structuredClone(state);delete business._meta;const snapshot=stateSelectors.prepareState(business);delete snapshot._meta.savedAt;return snapshot};
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:prepareV2Checkpoint});
+const mainStorageV2=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:prepareV2Checkpoint});
 const storageBrowser=createStorageBrowser({
-  storageV2:storageShadow,
-  legacyWriteAllowed:storageV2Coordinator.legacyWriteAllowed,
+  storageV2:mainStorageV2,
   externalWorkbooks:true,
   captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   model,
   files,
   session,
   prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });
 const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
@@ -140,16 +137,11 @@ const restoreGroupStore=createRestoreGroupStore({
   remove:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
 
-const storageChecks=createStorageChecks({
-  checksSession,
-  model,
-  idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
-});
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:mainStorageV2,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverSharedAndMigrate();
+const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({
@@ -215,18 +207,14 @@ const storagePersistence=createStoragePersistence({
   ui,
   domainRevisions,
   showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
   ...storageV2Cloud,
-  storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
-  setSave:(...args)=>uiStatus.setSave(...args),
+  storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk,
   syncFolderAccessButton:(...args)=>uiFolderStatus.syncFolderAccessButton(...args),
   folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
   folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
   requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
-  cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
   toast:(...args)=>uiStatus.toast(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
   folderPermissionPending:(...args)=>uiFolderStatus.folderPermissionPending(...args),
@@ -235,7 +223,7 @@ const storagePersistence=createStoragePersistence({
   checksHaveLocalWork:(...args)=>stateSnapshots.checksHaveLocalWork(...args),
   loadSession:(...args)=>cloudAuth.loadSession(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
-  storageV2:storageShadow,
+  storageV2:mainStorageV2,
 });
 
 const stateSnapshots=createStateSnapshots({
@@ -245,9 +233,6 @@ const stateSnapshots=createStateSnapshots({
   session,
   checksSession,
   prepareState:(...args)=>stateSelectors.prepareState(...args),
-  cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
-  checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });
 
@@ -325,7 +310,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
+const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
@@ -533,7 +518,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:storageShadow,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:mainStorageV2,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,
@@ -580,7 +565,6 @@ const cloudTransport=createCloudTransport({
 
 
 const syncMerge=createSyncMerge({
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
 });
 
 const syncChecks=composeChecksSync({model,files,checksSession,tab,uiStatus,domainsBankCache,storageFiles,cloudAuth,sharedChecksV2});
@@ -655,25 +639,16 @@ const syncDocument=createSyncDocument({
   session,
   ui,
   tab,
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
-  localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-  markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
-  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-  clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
   toast:(...args)=>uiStatus.toast(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
   prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
   writeStateToFolder:(...args)=>storageFiles.writeStateToFolder(...args),
   readCloud:(...args)=>cloudTransport.readCloud(...args),
   rpcSave:(...args)=>cloudTransport.rpcSave(...args),
-  rpcSaveV2:(...args)=>cloudTransport.rpcSaveV2(...args),
   merge3:(...args)=>syncMerge.merge3(...args),
   applyOrderCloudState:(...args)=>stateSnapshots.applyOrderCloudState(...args),
   composeOrderCloudState:(...args)=>stateSnapshots.composeOrderCloudState(...args),
-  cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
-  setSave:(...args)=>uiStatus.setSave(...args),
   cloudEnabled:(...args)=>cloudAuth.cloudEnabled(...args),
-  loadCloudPendingState:(...args)=>storageBrowser.loadCloudPendingState(...args),
   sameOrderCloudData:(...args)=>stateSnapshots.sameOrderCloudData(...args),
   cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
   render:(...args)=>uiNavigation.render(...args),
@@ -687,13 +662,13 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,storageChecks,syncDocument,syncChecks,model,session,checksSession,files,
+  storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
-  cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
+  cloudTransport,cloudAuth,mainStorageV2,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 
 const uiCloud=composeCloudUi({
-  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
+  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
   cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings:()=>uiSettings,getCalendarController:()=>domainsCalendarController,
   domainsFinanceController,storageV2Coordinator,storageV2Cloud,
 });
@@ -760,20 +735,13 @@ const lifecycle=createLifecycle({
   session,
   checksSession,
   domainRevisions,
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
   recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
   recoverReadOnlyV2State:(...args)=>storageBrowser.recoverReadOnlyV2State(...args),
   restoreBrowserStateReadOnly:(...args)=>storageBrowser.restoreBrowserStateReadOnly(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
-  markCloudPending:(...args)=>storageBrowser.markCloudPending(...args),
-  getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-  loadCloudPendingState:(...args)=>storageBrowser.loadCloudPendingState(...args),
   ...storageV2Cloud,
   cloudHasLocalWork:(...args)=>stateSnapshots.cloudHasLocalWork(...args),
-  getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
-  checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
-  setSave:(...args)=>uiStatus.setSave(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
   beginStartupSync:(...args)=>uiStatus.beginStartupSync(...args),
   setStartupDomain:(...args)=>uiStatus.setStartupDomain(...args),
@@ -1021,7 +989,7 @@ model.state=stateNormalization.normalizeState(structuredClone(INITIAL_STATE));
 supplierUi.currentSupplierId=domainsSuppliersSelectors.orderedSuppliers()[0]?.id||null;
 checksSession.checksCloudBase=[];
 checksSession.checksBankEvents=[];
-bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:storageShadow,sharedChecksV2});
+bindOrdersRuntimeEvents({uiModal,uiNavigation,domainsSuppliersNavigation,cloudAuth,uiStatus,syncChecks,tab,session,domainsCustomers,domainsFinanceController,stateSnapshots,syncDocument,uiFolders,uiAlertCenter,uiTabGuard,storageV2:mainStorageV2,sharedChecksV2});
 const startupUiActions=wrapMutationActions(uiActions,(domain)=>uiStatus.guardStartupMutation(domain));
 uiEvents.bindActionEvents(document.getElementById('main'),startupUiActions);
 bindDismissibleDetails(document);

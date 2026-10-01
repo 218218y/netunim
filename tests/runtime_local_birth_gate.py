@@ -22,21 +22,21 @@ for app in ['kupa', 'orders']:
           await appReady;
           const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
           const marker=await createStorageJournalDb().readLocalEngine('APP');
-          const main=await storageShadow.cloudState(),shared=await sharedChecksV2.cloudState();
-          const head=await storageShadow.recover();
+          const main=await mainStorageV2.cloudState(),shared=await sharedChecksV2.cloudState();
+          const head=await mainStorageV2.recover();
           return {marker:marker?.version,mainProjection:head?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(head?.state||{},'checks'),mainBase:main?.base??null,sharedBase:shared?.base??null,
-            mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
+            mainReady:mainStorageV2.primaryReady,sharedReady:sharedChecksV2.primaryReady,
             obsoleteNote:state.notes.some(row=>row.id==='obsolete-v1-note'),obsoleteCheck:state.checks.some(row=>row.id==='obsolete-v1-check'),writes:window.__legacyWrites};
         })()""".replace('APP',app))
         assert born['marker']==2 and born['mainProjection']==2 and not born['mainHasChecks'] and born['mainBase'] is None and born['sharedBase'] is None and born['mainReady'] and born['sharedReady'] and not born['obsoleteNote'] and not born['obsoleteCheck'] and not born['writes'],born
         result=browser.evaluate("""(async()=>{
           await appReady;
-          if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');
+          if(!mainStorageV2.primaryReady||!sharedChecksV2.primaryReady)throw Error('V2 cutover heads did not recover');
           const note={id:'v2-gate-note',content:'durable',createdAt:'2026-09-23',updatedAt:'2026-09-23'};
           state.notes.push(note);
           const operation={type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note};
           SAVE;
-          await storageShadow.commitPromise;
+          await mainStorageV2.commitPromise;
           const check={id:'v2-gate-check',amount:100};state.checks.push(check);
           const checkWrite=sharedChecksV2.persist([{type:'put',collection:'checks',id:check.id,mode:'insert',index:state.checks.length-1,record:check}],{surface:'test.zero-v1'});
           await checkWrite.committed;

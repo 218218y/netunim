@@ -104,8 +104,9 @@ ok("if(item.key)coalesced.delete(item.key)" not in shared
 ok("crypto?.randomUUID" in shared
    and "getOutboxRetryDelay" in shared
    and "createOutboxRetryScheduler" in shared
-   and "outboxRetryForGeneration" in shared,
-   "shared outbox owns UUID generation, durable not-before calculation and single-timer scheduling")
+   and "createOutboxRecord" not in shared
+   and "migrateOutboxRecord" not in shared,
+   "shared sync utility retains V2 retry scheduling but exposes no retired V1 outbox-record model")
 
 for label, site in (("Orders", ORDERS), ("Kupa", KUPA)):
     auth = (site / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
@@ -116,12 +117,21 @@ for label, site in (("Orders", ORDERS), ("Kupa", KUPA)):
        f"{label}: generic Data API 429 honors Retry-After while PT429 remains app contention")
 
 for label, site in (("Orders transport", ORDERS), ("Kupa transport", KUPA)):
-    source = "\n".join((
-        (site / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8"),
-        (site / "site/assets/js/sync/document.js").read_text(encoding="utf-8"),
-    ))
-    ok("_v5" in source and "p_operation_id" in source and "p_audit" in source,
-       f"{label}: operation-aware v5 RPC transport preserves idempotency and audit metadata")
+    transport = (site / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
+    document = (site / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+    constants = (site / "site/assets/js/state/constants.js").read_text(encoding="utf-8")
+    source = "\n".join((transport, document, constants))
+    main_v6 = (
+        "CLOUD_RPC='save_order_management_document'" in constants and "${CLOUD_RPC}_v6" in transport
+        if label.startswith("Orders") else "save_kupa_document_v6" in document
+    )
+    ok(main_v6
+       and "SHARED_CHECKS_RPC='save_shared_checks_document'" in constants
+       and "${SHARED_CHECKS_RPC}_v6" in transport
+       and "p_operation_id" in source and "p_audit" in source
+       and "save_order_management_document_v5" not in source
+       and "save_shared_checks_document_v5" not in source,
+       f"{label}: production Main/Shared storage writers are operation-aware v6 only")
 for label, path in (("Orders document", ORDERS / "site/assets/js/sync/document.js"),
                     ("Kupa document", KUPA / "site/assets/js/sync/document.js")):
     source = path.read_text(encoding="utf-8")
@@ -137,20 +147,18 @@ for label, path in (("Orders checks", ORDERS / "site/assets/js/sync/checks.js"),
        f"{label}: Shared V2 journal owns retry and the UI serializes pull/save")
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
-orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
-kupa_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
+kupa_browser = (KUPA / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
 kupa_checks = (KUPA / "site/assets/js/sync/checks-state.js").read_text(encoding="utf-8")
-for label, source in (("Orders", orders_storage), ("Kupa", kupa_pending)):
-    ok("migrateOutboxRecord" in source and "acknowledgedGenerationMatches" in source
-       and ("schemaVersion" not in source or "OUTBOX" in source),
-       f"{label}: durable pending supports migration and generation-exact ACK")
-for label, source in (("Orders checks", orders_checks), ("Kupa checks", kupa_checks)):
-    reader = "getSharedChecksPending" if label == "Kupa checks" else "getChecksPending"
-    ok("migrateOutboxRecord" in source and reader in source,
-       f"{label}: old pending remains readable")
-    ok("idbPut" not in source and "writePendingCache" not in source
-       and "acknowledgedGenerationMatches" not in source,
-       f"{label}: old pending reader cannot repair or ACK V1")
+retirement = (ROOT / "shared/storage-v2-legacy-retirement.js").read_text(encoding="utf-8")
+ok(not (ORDERS / "site/assets/js/storage/checks.js").exists()
+   and not (KUPA / "site/assets/js/storage/pending.js").exists()
+   and not (KUPA / "site/assets/js/sync/pending.js").exists(),
+   "V1 Main/Shared outbox modules are absent from the production tree")
+ok(all(symbol not in orders_storage + kupa_browser + kupa_checks for symbol in (
+       "migrateOutboxRecord", "getChecksPending", "getSharedChecksPending", "putCloudPending", "markCloudPending")),
+   "active browser/checks adapters expose no V1 pending migration or reader API")
+ok("LEGACY_BUSINESS_KEYS" in retirement and "deleteRecords" in retirement and "storage.removeItem" in retirement,
+   "retired V1 business records remain cleanup-only behind the verified V2 retirement gate")
 
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):

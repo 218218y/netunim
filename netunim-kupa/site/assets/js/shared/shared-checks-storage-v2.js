@@ -27,7 +27,7 @@ function canonicalState(state){validateSharedChecksState(state);return {checks:s
 // this store owns local durability and the exact pending cloud payload.
 export function createSharedChecksStorageV2({owner,primary,role='primary',validate=validateSharedChecksState,createJournal=createStorageJournal,db,emergency,operationId,now}={}){
   if(typeof owner!=='function'||typeof primary!=='function')throw new Error('shared_checks_storage_configuration');
-  if(!['primary','shadow'].includes(role))throw new Error('shared_checks_storage_role_invalid');
+  if(role!=='primary')throw new Error('shared_checks_storage_role_invalid');
   const identity=String(owner()||'').trim();
   if(!identity)throw new Error('shared_checks_owner_required');
   const scopedOwner=`${identity}:shared-checks`,database=db||createStorageJournalDb();
@@ -36,45 +36,33 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   let trusted=false;
   const assertOwner=()=>{if(!primary())throw new Error('storage_secondary_tab');if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed')};
   const assertTrusted=()=>{assertOwner();if(!trusted)throw new Error('shared_checks_storage_not_open')};
-  const assertCloudWriter=()=>{assertTrusted();if(role!=='primary')throw new Error('shared_checks_shadow_cloud_write_forbidden')};
+  const assertCloudWriter=()=>assertTrusted();
 
   async function recoverReadOnly(){
     if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
     const stored=await database.load(scopedOwner);
-    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
+    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
     const recovered=await journal.recover();
     if(String(owner()||'').trim()!==identity)throw new Error('shared_checks_owner_changed');
-    if(recovered?.appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
+    if(recovered?.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
     return recovered;
   }
   async function open({migrationState=null,migrationIntent=null,sourceOwner=null}={}){
     assertOwner();const stored=await database.load(scopedOwner);
-    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');
+    if(stored.checkpoints&&readStorageRecord(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');
     const recovered=await journal.open();
-    if(recovered){if(recovered.appMetadata?.storageRole!==`shared-checks-${role}`)throw new Error('shared_checks_storage_role_mismatch');trusted=true;return recovered}
+    if(recovered){if(recovered.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');trusted=true;return recovered}
     if(migrationState===null)return null;
     const source=String(sourceOwner||'').trim(),sameOwner=source===identity;
-    if(!sameOwner||(role==='shadow'?migrationIntent!=='shadow-observation':!['legacy-upgrade','cloud-authoritative'].includes(migrationIntent)&&!(identity==='local'&&migrationIntent==='local-birth')))throw new Error('shared_checks_owner_transfer_intent_required');
+    if(!sameOwner||identity!=='local'||migrationIntent!=='local-birth')throw new Error('shared_checks_owner_transfer_intent_required');
     validate(migrationState);
-    await journal.install(canonicalState(migrationState),{expectedEpoch:null,appMetadata:{storageRole:`shared-checks-${role}`,migrationIntent,sourceOwner:source}});
+    await journal.install(canonicalState(migrationState),{expectedEpoch:null,appMetadata:{storageRole:'shared-checks-primary',migrationIntent,sourceOwner:source}});
     trusted=true;return journal.recover();
   }
-  async function promoteVerifiedShadow(authoritativeState,{legacyPendingClean=false}={}){
-    assertOwner();if(role!=='primary'||!legacyPendingClean)throw new Error('shared_checks_promotion_not_verified');
-    const canonical=canonicalState(authoritativeState);validate(canonical);
-    const stored=await database.load(scopedOwner);
-    if(!stored.checkpoints||readStorageRecord(stored.checkpoints).appMetadata?.storageRole!=='shared-checks-shadow')throw new Error('shared_checks_shadow_checkpoint_missing');
-    const recovered=await journal.open();
-    if(!recovered||recovered.appMetadata?.storageRole!=='shared-checks-shadow'||!equalSyncJson(recovered.state,canonical))throw new Error('shared_checks_shadow_parity_mismatch');
-    const cloud=await journal.cloudState();
-    if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_shadow_cloud_state_invalid');
-    await journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:'shared-checks-primary',migrationIntent:'verified-shadow-promotion',sourceOwner:identity}});
-    trusted=true;return journal.recover();
-  }
-  async function initializeCloudHead(revision,state,{intent,sourceOwner,legacyPendingClean=false,bootstrapOperationId=''}={}){
-    assertOwner();if(role!=='primary'||!legacyPendingClean)throw new Error('shared_checks_initialization_not_verified');
+  async function initializeCloudHead(revision,state,{intent,sourceOwner,bootstrapOperationId=''}={}){
+    assertOwner();
     const source=String(sourceOwner||'').trim(),canonical=canonicalState(state);
-    const validIntent=(intent==='upload-local'&&source==='local')||(intent==='upload-owner'&&source===identity)||(['cloud-authoritative','legacy-upgrade'].includes(intent)&&source===identity);
+    const validIntent=(intent==='upload-local'&&source==='local')||(intent==='upload-owner'&&source===identity)||(intent==='cloud-authoritative'&&source===identity);
     if(!validIntent)throw new Error('shared_checks_owner_transfer_intent_required');
     const bootstrap=['upload-local','upload-owner'].includes(intent);
     if(bootstrap&&(revision!==0||canonical.bankEvents.length))throw new Error('shared_checks_bootstrap_invalid');
@@ -87,10 +75,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
       const existing=await journal.open(),cloud=await journal.cloudState();
       const idempotent=!!existing&&existing.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&existing.appMetadata?.migrationIntent===intent&&existing.appMetadata?.sourceOwner===source&&cloud?.base?.revision===revision&&equalSyncJson(existing.state,canonical);
       if(idempotent)recovered=existing;
-      else{
-        if(!existing||existing.appMetadata?.storageRole==='shared-checks-primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(existing.state,canonical))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
-        recovered=await journal.initializeCloudHead(revision,initial,{changes,appMetadata:metadata,replaceExistingState:canonical});
-      }
+      else throw new Error('shared_checks_bootstrap_existing_head_mismatch');
     }
     assertOwner();trusted=true;return recovered;
   }
@@ -113,8 +98,8 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     });
     return journal.append(changes,{generation,surface,mutationType,deleteIntents:{checks:[...explicitDeletes]}});
   }
-  async function captureCloudCursor(revision,authoritativeState,{legacyPendingClean=false}={}){
-    assertCloudWriter();if(!legacyPendingClean)throw new Error('shared_checks_legacy_pending_unverified');
+  async function captureCloudCursor(revision,authoritativeState){
+    assertCloudWriter();
     const canonical=canonicalState(authoritativeState);validate(canonical);
     const current=await journal.recover();
     if(!current||!equalSyncJson(current.state,canonical))throw new Error('shared_checks_cursor_state_mismatch');
@@ -149,7 +134,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     if(!state.base||state.flight||state.pending||state.control?.conflict)throw new Error('shared_checks_cloud_pending');
     return journal.adoptCloudHead(revision,authoritative,authoritative);
   }
-  async function replaceAuthoritativeState(state,{boundaryId=null}={}){assertTrusted();const canonical=canonicalState(state);validate(canonical);return journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:`shared-checks-${role}`,...boundaryId?{boundaryId}:{}}})}
+  async function replaceAuthoritativeState(state,{boundaryId=null}={}){assertTrusted();const canonical=canonicalState(state);validate(canonical);return journal.replaceAuthoritativeState(canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
   async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision}={}){
     assertCloudWriter();return journal.replaceLocalWithPending(canonicalState(state),{boundaryId,expectedSeq,expectedBaseRevision,deleteCollections:['checks']});
   }
@@ -158,7 +143,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     return journal.replaceLocalAuthoritativeState(canonicalState(state),{boundaryId,expectedSeq});
   }
   async function resetCloudHead(revision,state,{boundaryId=null}={}){assertCloudWriter();const canonical=canonicalState(state);validate(canonical);return journal.resetCloudHead(revision,canonical,canonical,{appMetadata:{storageRole:'shared-checks-primary',...boundaryId?{boundaryId}:{}}})}
-  return {recoverReadOnly,open,promoteVerifiedShadow,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
+  return {recoverReadOnly,open,initializeCloudHead,append,captureCloudCursor,cloudState,materializeFlight,acknowledge,rejectAndRebase,adoptCloudHead,
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,recover:()=>{assertTrusted();return journal.recover()},compact:()=>{assertTrusted();return journal.compact()},setCloudControl:value=>{assertCloudWriter();return journal.setCloudControl(value)},clearCloudControl:()=>{assertCloudWriter();return journal.clearCloudControl()},
     get ready(){return trusted&&journal.ready},get owner(){return identity},get seq(){return journal.seq}};
 }

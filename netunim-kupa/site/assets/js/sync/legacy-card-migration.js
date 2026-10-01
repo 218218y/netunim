@@ -110,26 +110,6 @@ function ensureAssignedIdsUnique(rows,label,conflicts){
 function stateCards(source){return Array.isArray(source?.cards)?source.cards:[]}
 function hasLegacyCards(source){return stateCards(source).some(row=>!existingId(row).id)}
 
-export function migrateLegacyCardPair(baseState,branchState,{branchLabel='local'}={}){
-  const base=clone(baseState||{}),branch=clone(branchState||{}),baseCards=stateCards(base),branchCards=stateCards(branch);
-  const hadLegacyIdentity=hasLegacyCards(base)||hasLegacyCards(branch),pair=pairLineage(baseCards,branchCards,branchLabel),conflicts=[...pair.conflicts];
-  if(conflicts.length)return {base,branch,conflicts,localDeletedIds:[],hadLegacyIdentity};
-  for(let baseIndex=0;baseIndex<baseCards.length;baseIndex++){
-    const branchIndex=pair.baseToBranch.get(baseIndex),members=[baseCards[baseIndex]];
-    if(branchIndex!==undefined)members.push(branchCards[branchIndex]);
-    const id=chooseCanonicalId(members,stableLegacyPositionId('CARD',baseIndex),conflicts,`base:${baseIndex}`);
-    if(!id)continue;assign(baseCards,baseIndex,id);if(branchIndex!==undefined)assign(branchCards,branchIndex,id);
-  }
-  for(const branchIndex of pair.unmatchedBranch){
-    const id=chooseCanonicalId([branchCards[branchIndex]],stableLegacyPositionId(`CARD-${branchLabel.toUpperCase()}`,branchIndex),conflicts,`${branchLabel}:${branchIndex}`);
-    if(id)assign(branchCards,branchIndex,id);
-  }
-  ensureAssignedIdsUnique(baseCards,'base',conflicts);ensureAssignedIdsUnique(branchCards,branchLabel,conflicts);
-  base.cards=baseCards;branch.cards=branchCards;
-  const localDeletedIds=hadLegacyIdentity&&!conflicts.length?pair.unmatchedBase.map(index=>baseCards[index].id):[];
-  return {base,branch,conflicts,localDeletedIds,hadLegacyIdentity};
-}
-
 export function migrateLegacyCards3Way(baseState,localState,remoteState){
   const base=clone(baseState||{}),local=clone(localState||{}),remote=clone(remoteState||{});
   const baseCards=stateCards(base),localCards=stateCards(local),remoteCards=stateCards(remote);

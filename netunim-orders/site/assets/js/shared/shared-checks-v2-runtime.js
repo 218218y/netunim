@@ -7,9 +7,9 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.
 // In particular, an authentication change is never a migration instruction.
-export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,verifyLegacyClean,site,
+export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
-  if([owner,primary,readState,applyState,merge,readRemote,rpc,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
+  if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
@@ -61,13 +61,9 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   async function initialize({state,revision,intent,sourceOwner,bootstrapOperationId=''}={}){
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
-    // The verifier must read the durable V1 outbox as well as memory and the
-    // synchronous cache. A failed IDB read is not evidence of a clean head.
-    if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
     assertContext(store);
-    if(intent==='legacy-upgrade'&&!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
     let recovered;
-    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,legacyPendingClean:true,bootstrapOperationId})}
+    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,bootstrapOperationId})}
     catch(error){
       if(error?.message!=='storage_initialization_exists'||!String(bootstrapOperationId||'').trim())throw error;
       recovered=await store.open();const cloud=await store.cloudState();
@@ -79,30 +75,10 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=context(),snapshot=canonical(state);
     if(identity!=='local')throw new Error('shared_checks_local_owner_required');
     assertContext(store);
-    let recovered;
-    try{recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'})}
-    catch(error){
-      if(error?.message!=='shared_checks_storage_role_mismatch')throw error;
-      recovered=await store.promoteVerifiedShadow(snapshot,{legacyPendingClean:true});
-    }
+    const recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'});
     if(!recovered||!equalSyncJson(canonical(recovered.state),snapshot))throw new Error('shared_checks_local_birth_parity_mismatch');
     const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
     assertContext(store);active=true;cursorReady=false;diagnostics.initializations++;applyState(snapshot);return recovered;
-  }
-  async function promote({state,revision,sourceOwner}={}){
-    const store=context(),snapshot=canonical(state);
-    if(sourceOwner!==identity||await verifyLegacyClean()!==true)throw new Error('shared_checks_promotion_not_verified');
-    assertContext(store);if(!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
-    // The stored role prevents an older shadow checkpoint from being opened
-    // as a primary head without verified parity.
-    assertContext(store);
-    let recovered;
-    try{recovered=await store.open()}catch(error){if(error.message!=='shared_checks_storage_role_mismatch')throw error;recovered=await store.promoteVerifiedShadow(snapshot,{legacyPendingClean:true})}
-    assertContext(store);
-    if(!recovered||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_shadow_parity_mismatch');
-    const cloud=await store.cloudState();assertContext(store);
-    if(!cloud.base)await store.captureCloudCursor(revision,snapshot,{legacyPendingClean:true});
-    assertContext(store);active=true;cursorReady=true;return publish(store);
   }
   function persist(operations,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[],storageBoundary=''}={}){
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
@@ -205,7 +181,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=storage;await commits;assertContext(store);
     const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
   }
-  return {recover,recoverReadOnly,initialize,initializeLocal,promote,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
+  return {recover,recoverReadOnly,initialize,initializeLocal,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
     async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;return cloud},
     async flush(){await commits;return true},

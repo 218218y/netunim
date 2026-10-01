@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncDocument} from '../netunim-orders/site/assets/js/sync/document.js';
-import {CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 
 const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}
@@ -32,13 +31,13 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
 test('Orders V2 keeps the exact immutable flight across a lost ACK retry',async()=>{
   let calls=0;const f=fixture({rpcSave:async(snapshot,expected)=>{if(++calls===1)throw new TypeError('Failed to fetch');return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}}});
   assert.equal(await f.api.requestCloudSave('first'),false);assert.equal(f.sent.length,1);const firstId=f.sent[0].operationId;assert.ok(f.getState().flight,'lost ACK must keep the durable flight');
-  assert.equal(await f.api.requestCloudSave('retry'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 ACK must not mirror a full cloud base to localStorage');
+  assert.equal(await f.api.requestCloudSave('retry'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);assert.equal(f.legacyWrites.includes('orders.supabase.base.v1'),false,'V2 ACK must not mirror its cloud base to LocalStorage');
 });
 
 test('Orders V2 confirmed revision conflict rejects the old flight and rotates operation id after rebase',async()=>{
   let calls=0;const remote={notes:[{id:'A',content:'remote'}]};
   const f=fixture({readCloud:async()=>({revision:11,state:clone(remote)}),merge3:(_base,_local,remoteState)=>({state:{notes:[{id:'A',content:`merged-${remoteState.notes[0].content}`}]},conflicts:[]}),rpcSave:async(snapshot,expected)=>{if(++calls===1)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}}});
-  assert.equal(await f.api.requestCloudSave('sync'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.rejects[0].operationId,f.sent[0].operationId);assert.equal(f.rejects[0].currentState.notes[0].content,'merged-remote');assert.equal(f.rejects[0].expectedSeq,1);assert.equal(f.acks[0].operationId,f.sent[1].operationId);assert.equal(f.model.state.notes[0].content,'merged-remote');assert.equal(f.legacyWrites.includes(CLOUD_BASE_KEY),false,'V2 rebase must keep its cloud base in IndexedDB');
+  assert.equal(await f.api.requestCloudSave('sync'),true);assert.equal(f.sent.length,2);assert.equal(f.sent[0].expected,10);assert.equal(f.sent[1].expected,11);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.rejects.length,1);assert.equal(f.rejects[0].operationId,f.sent[0].operationId);assert.equal(f.rejects[0].currentState.notes[0].content,'merged-remote');assert.equal(f.rejects[0].expectedSeq,1);assert.equal(f.acks[0].operationId,f.sent[1].operationId);assert.equal(f.model.state.notes[0].content,'merged-remote');assert.equal(f.legacyWrites.includes('orders.supabase.base.v1'),false,'V2 rebase must keep its cloud base in IndexedDB');
 });
 
 test('Orders V2 blocks cloud send when a new edit lands during rebase commit',async()=>{

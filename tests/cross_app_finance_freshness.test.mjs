@@ -111,11 +111,13 @@ const savedBase=normalization.prepareKupaCloudState({...structuredClone(dirtyMod
 const financeOnlyRemote=structuredClone(savedBase);financeOnlyRemote.cash=[];financeOnlyRemote.bank={...financeOnlyRemote.bank,currentBalance:4321,updatedAt:fresh,source:'hapoalim',bankSyncAt:fresh,feed:{version:4,provider:'hapoalim',accountNumber:'1-2',balance:4321,syncedAt:fresh,transactions:[]}};financeOnlyRemote.creditSync={version:3,mode:'synced',syncedAt:fresh,profiles:[],errors:[],cardMappings:{}};
 const dirtySession={connectionMode:'supabase',backendReady:true,dbRevision:8,financeRevision:3,financeUpdatedAt:null,cloudSyncBusy:false,cloudWriteBusy:false,cloudConflictPending:false};
 let dirtyRenders=0;
+const dirtyV2={seq:1,base:{version:2,revision:8,state:structuredClone(savedBase),ackSeq:1},pending:false,flight:null,control:null};
 const dirtySync=createSyncDocument({
   model:dirtyModel,session:dirtySession,checksSession:{},tab:{primaryTab:true},
   prepareKupaCloudState:(...args)=>normalization.prepareKupaCloudState(...args),applyKupaCloudState:(...args)=>normalization.applyKupaCloudState(...args),
-  getCloudPending:async()=>null,readSupabaseDocument:async()=>({revision:8,financeRevision:4,financeUpdatedAt:fresh,state:structuredClone(financeOnlyRemote)}),
-  lastSavedCloudState:()=>structuredClone(savedBase),persistImmediateBrowserSnapshot:()=>{},render:()=>{dirtyRenders++},pollSharedChecks:async()=>{},
+  readSupabaseDocument:async()=>({revision:8,financeRevision:4,financeUpdatedAt:fresh,state:structuredClone(financeOnlyRemote)}),
+  refreshStorageV2CloudState:async()=>structuredClone(dirtyV2),storageV2CloudOutboxActive:()=>true,replaceStorageV2CurrentState:async()=>true,
+  render:()=>{dirtyRenders++},pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
 });
 await dirtySync.cloudPoll();
 assert.equal(dirtyModel.state.cash[0].id,'local-cash','finance-only polling must not overwrite an unsaved local Kupa edit with the remote Kupa payload');
@@ -131,14 +133,15 @@ const persistModel={state:{version:4,businessName:'קופה',checks:[],credits:[
 const persistNormalization=createStateNormalization({model:persistModel});persistModel.state=persistNormalization.normalizeState(persistModel.state);
 const persistedBase=persistNormalization.prepareKupaCloudState({...structuredClone(persistModel.state),expenses:[]});
 const persistSession={connectionMode:'supabase',backendReady:true,dbRevision:4,financeRevision:9,financeUpdatedAt:fresh,cloudSyncBusy:false,cloudWriteBusy:false,cloudConflictPending:false,cloudDocumentName:'main',localGeneration:1,lastSavedSnapshot:JSON.stringify(persistedBase),serverInfo:{}};
-let pendingPersist=null,persistRenders=0,persistRpcRevision=4;
+let persistRenders=0,persistRpcRevision=4,persistV2={seq:1,base:{version:2,revision:4,state:structuredClone(persistedBase),ackSeq:0},pending:true,flight:null,control:null};
 const persistSync=createSyncDocument({
   model:persistModel,session:persistSession,checksSession:{},tab:{primaryTab:true},
   prepareKupaCloudState:(...args)=>persistNormalization.prepareKupaCloudState(...args),applyKupaCloudState:(...args)=>persistNormalization.applyKupaCloudState(...args),
-  getCloudPending:async()=>pendingPersist,stageCloudPendingLocal:(snapshot,msg,baseRevision,baseState,generation,conflict=false)=>(pendingPersist={snapshot:structuredClone(snapshot),msg,baseRevision,baseState:structuredClone(baseState),generation,conflict,operationId:`test:kupa:${generation}`}),
-  clearCloudPending:async()=>{pendingPersist=null;return true},rebaseNewerPending:async()=>false,lastSavedCloudState:()=>structuredClone(persistedBase),
-  supaRest:async(path,{body})=>{assert.match(path,/save_kupa_document/);const payload=JSON.parse(body);return {ok:true,text:async()=>JSON.stringify({revision:++persistRpcRevision,state:payload.p_state,updated_at:'2026-09-01T04:05:00.000Z'})}},
-  persistImmediateBrowserSnapshot:()=>{},backupSnapshotToComputer:async()=>{},render:()=>{persistRenders++},toast:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},reportError:()=>{},pollSharedChecks:async()=>{},
+  refreshStorageV2CloudState:async()=>structuredClone(persistV2),storageV2CloudOutboxActive:()=>true,storageV2CommitPromise:()=>Promise.resolve(),
+  materializeStorageV2CloudFlight:async()=>{persistV2.flight??={operationId:'test:kupa:1',baseRevision:4,startSeq:1,endSeq:1,snapshot:persistNormalization.prepareKupaCloudState(persistModel.state),deleteIntents:{},generation:1,mutationType:'edit',surface:'kupa'};return structuredClone(persistV2.flight)},
+  acknowledgeStorageV2CloudFlight:async(operationId,revision,state,{currentState}={})=>{assert.equal(operationId,persistV2.flight?.operationId);persistV2={seq:1,base:{version:2,revision,state:structuredClone(state),ackSeq:1},pending:false,flight:null,control:null};return structuredClone(persistV2)},
+  supaRest:async(path,{body})=>{assert.match(path,/save_kupa_document_v6/);const payload=JSON.parse(body);return {ok:true,text:async()=>JSON.stringify({revision:++persistRpcRevision,state:payload.p_state,updated_at:'2026-09-01T04:05:00.000Z'})}},
+  backupSnapshotToComputer:async()=>{},render:()=>{persistRenders++},toast:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},reportError:()=>{},pollSharedChecks:async()=>{},
 });
 const expenseSnapshot=persistNormalization.prepareKupaCloudState(persistModel.state);
 assert.equal(await persistSync.persistSupabaseState(expenseSnapshot,'ההוצאה נשמרה',1),true);

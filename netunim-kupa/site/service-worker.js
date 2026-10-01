@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-e7099f439aff';
+const CACHE='kupa-app-shell-esm-543c96d96522';
 const SHELL=[
   './',
   './index.html',
@@ -110,7 +110,6 @@ const SHELL=[
   './assets/js/shared/shared-checks-storage-v2.js',
   './assets/js/shared/shared-checks-v2-composition.js',
   './assets/js/shared/shared-checks-v2-runtime.js',
-  './assets/js/shared/spreadsheet-cutover.js',
   './assets/js/shared/spreadsheet-model.js',
   './assets/js/shared/spreadsheet-store.js',
   './assets/js/shared/spreadsheet-sync.js',
@@ -145,7 +144,6 @@ const SHELL=[
   './assets/js/storage/browser.js',
   './assets/js/storage/files.js',
   './assets/js/storage/indexed-db.js',
-  './assets/js/storage/pending.js',
   './assets/js/storage/persistence.js',
   './assets/js/storage/tab-lock.js',
   './assets/js/storage/v2-cloud-ports.js',
@@ -155,7 +153,6 @@ const SHELL=[
   './assets/js/sync/legacy-card-migration.js',
   './assets/js/sync/merge-records.js',
   './assets/js/sync/merge.js',
-  './assets/js/sync/pending.js',
   './assets/js/sync/recovery.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/backup.js',

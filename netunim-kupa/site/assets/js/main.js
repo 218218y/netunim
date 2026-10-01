@@ -11,7 +11,6 @@ import {createUiConnection} from './ui/connection.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
-import {createStoragePending} from './storage/pending.js';
 import {createStorageBrowser} from './storage/browser.js';
 import {createSyncChecksState} from './sync/checks-state.js';
 import {createStorageTabLock} from './storage/tab-lock.js';
@@ -24,7 +23,6 @@ import {createCloudAuth} from './cloud/auth.js';
 import {createCloudTransport} from './cloud/transport.js';
 import {createSyncChecks} from './sync/checks.js';
 import {createSyncMerge} from './sync/merge.js';
-import {createSyncPending} from './sync/pending.js';
 import {createSyncDocument} from './sync/document.js';
 import {composeCloudUi} from './composition/cloud.js';
 import {createUiDateEditor} from './ui/date-editor.js';
@@ -125,27 +123,14 @@ const storageIndexedDb=createStorageIndexedDb({
 });
 const captureLegacyWorkbook=(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args);
 
-const storagePending=createStoragePending({
-  externalWorkbooks:true,captureLegacyWorkbook,
-  legacyWriteAllowed:()=>storageV2Coordinator.pendingLegacyWriteAllowed(storageShadow),
-  session,
-  idbPut:(...args)=>storageIndexedDb.idbPut(...args),
-  idbGet:(...args)=>storageIndexedDb.idbGet(...args),
-  idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
-});
-
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
+const mainStorageV2=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
-  storageV2:storageShadow,
-  legacyCloudPendingExists:(...args)=>storagePending.cloudPendingExistsSync(...args),
-  legacyCloudHeadVerifiedClean:(...args)=>storagePending.cloudPendingHeadVerifiedCleanSync(...args),
-  verifyLegacyCloudPending:(...args)=>storagePending.getCloudPending(...args),
+  storageV2:mainStorageV2,
   model,
   session,
   files,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
 const storageV2Cloud=storageV2Coordinator.createCloudPorts(storageBrowser);
 
@@ -162,14 +147,13 @@ const syncChecksState=createSyncChecksState({
   model,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  idbGet:(...args)=>storageIndexedDb.idbGet(...args),
 });
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:mainStorageV2,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverSharedAndMigrate();
+const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const storageTabLock=createStorageTabLock({
@@ -190,13 +174,8 @@ const syncRecovery=createSyncRecovery({
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
   ...storageV2Cloud,
-  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
-  getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   loadBrowserState:(...args)=>storageBrowser.loadBrowserState(...args),
   loadBrowserStateReadOnly:(...args)=>storageBrowser.loadBrowserStateReadOnly(...args),
-  loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
-  loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
-  sharedChecksPendingExists:(...args)=>syncChecksState.sharedChecksPendingExists(...args),
   startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
   render:(...args)=>uiNavigation.render(...args),
   domainRevisions,
@@ -219,9 +198,9 @@ const storagePersistence=createStoragePersistence({
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
   captureLegacyWorkbook,
-  storageV2Primary:()=>storageShadow.primaryReady,
-  recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
-  storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
+  storageV2Primary:()=>mainStorageV2.primaryReady,
+  recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
+  storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk,
   ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
@@ -239,10 +218,7 @@ const storagePersistence=createStoragePersistence({
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
-  lastSavedCloudState:(...args)=>syncChecksState.lastSavedCloudState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-  stageCloudPendingLocal:(...args)=>syncPending.stageCloudPendingLocal(...args),
-  getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   saveSharedChecksToCloud:(...args)=>syncChecks.saveSharedChecksToCloud(...args),
   render:(...args)=>uiNavigation.render(...args),
   lastSavedState:(...args)=>syncChecksState.lastSavedState(...args),
@@ -276,7 +252,6 @@ const uiFolders=createUiFolders({
 
 const cloudAuth=createCloudAuth({
   session,
-  idbGet:(...args)=>storageIndexedDb.idbGet(...args),
   idbPut:(...args)=>storageIndexedDb.idbPut(...args),
   idbDelete:(...args)=>storageIndexedDb.idbDelete(...args),
   supaProjectRef:(...args)=>uiStatus.supaProjectRef(...args),
@@ -323,19 +298,6 @@ const syncMerge=createSyncMerge({
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
 });
 
-const syncPending=createSyncPending({
-  session,
-  prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-  setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
-  setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  loadCloudPendingSync:(...args)=>storagePending.loadCloudPendingSync(...args),
-  persistCloudPendingSync:(...args)=>storagePending.persistCloudPendingSync(...args),
-  putCloudPending:(...args)=>storagePending.putCloudPending(...args),
-  lastSavedCloudState:(...args)=>syncChecksState.lastSavedCloudState(...args),
-  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
-  rebaseKupaCloudProgress:(...args)=>syncMerge.rebaseKupaCloudProgress(...args),
-});
-
 const syncDocument=createSyncDocument({
   hideConnectScreen:(...args)=>uiStatus.hideConnectScreen(...args),
   reportError:(...args)=>uiStatus.reportError(...args),
@@ -348,24 +310,15 @@ const syncDocument=createSyncDocument({
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   setCloudHeaderStatus:(...args)=>uiStatus.setCloudHeaderStatus(...args),
-  persistImmediateBrowserSnapshot:(...args)=>storageBrowser.persistImmediateBrowserSnapshot(...args),
-  loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
-  loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
   listBackups:(...args)=>storageBackup.listBackups(...args),
   backupSnapshotToComputer:(...args)=>storageBackup.backupSnapshotToComputer(...args),
   saveState:(...args)=>storagePersistence.saveState(...args),
   syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
   render:(...args)=>uiNavigation.render(...args),
-  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
   readSupabaseDocument:(...args)=>cloudTransport.readSupabaseDocument(...args),
   supaRest:(...args)=>cloudAuth.supaRest(...args),
-  putCloudPending:(...args)=>storagePending.putCloudPending(...args),
-  clearCloudPending:(...args)=>storagePending.clearCloudPending(...args),
   mergeKupaCloudState3Way:(...args)=>syncMerge.mergeKupaCloudState3Way(...args),
-  rebaseNewerPending:(...args)=>syncPending.rebaseNewerPending(...args),
-  lastSavedCloudState:(...args)=>syncChecksState.lastSavedCloudState(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-  stageCloudPendingLocal:(...args)=>syncPending.stageCloudPendingLocal(...args),
   toast:(...args)=>uiStatus.toast(...args),
   pollSharedChecks:(...args)=>syncChecks.pollSharedChecks(...args),
   refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
@@ -377,16 +330,16 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storagePending,syncChecksState,storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
+  storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   storageIndexedDb,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
-  cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
+  cloudTransport,cloudAuth,mainStorageV2,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 
 const uiCloud=composeCloudUi({
-  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,storagePending,syncDocument,uiStatus,cloudAuth,
-  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation:()=>uiNavigation,
+  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
+  getUiModal:()=>uiModal,uiConnection,stateNormalization,syncRecovery,cloudTransport,getUiNavigation:()=>uiNavigation,
 });
 
 const uiDateEditor=createUiDateEditor({
@@ -730,8 +683,8 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 const uiBackup=createUiBackup({
   ...storageV2Cloud,
   storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
-  storageV2LocalPrimary:()=>storageShadow.primaryReady,
-  recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
+  storageV2LocalPrimary:()=>mainStorageV2.primaryReady,
+  recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
   storageOwnerCurrent:()=>storageOwner.current(),
   model,
   session,
@@ -746,8 +699,6 @@ const uiBackup=createUiBackup({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   stateFromPayload:(...args)=>stateNormalization.stateFromPayload(...args),
   persistSupabaseState:(...args)=>syncDocument.persistSupabaseState(...args),
-  getCloudPending:(...args)=>storagePending.getCloudPending(...args),
-  getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
   restoreGroupStore,
   stageRestoreGroup:(...args)=>cloudTransport.stageRestoreGroup(...args),
   applyRestoreGroup:(...args)=>cloudTransport.applyRestoreGroup(...args),
@@ -824,10 +775,6 @@ const lifecycle=createLifecycle({
   setSaveStatus:(...args)=>uiStatus.setSaveStatus(...args),
   setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),
   requestPersistentBrowserStorage:(...args)=>storageBrowser.requestPersistentBrowserStorage(...args),
-  loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
-  loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
-  getSharedChecksPending:(...args)=>syncChecksState.getSharedChecksPending(...args),
-  sharedChecksPendingExists:(...args)=>syncChecksState.sharedChecksPendingExists(...args),
   showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
   acquirePrimaryTabLock:(...args)=>storageTabLock.acquirePrimaryTabLock(...args),
   chooseFolder:(...args)=>uiFolders.chooseFolder(...args),
@@ -966,7 +913,7 @@ bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.close
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab||session.storageProtocolBlocked)return;
-  if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
+  if(mainStorageV2.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
 });
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);

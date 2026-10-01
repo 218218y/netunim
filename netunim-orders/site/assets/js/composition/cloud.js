@@ -1,7 +1,7 @@
 import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
-  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,storageBrowser,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
+  model,files,tab,session,checksSession,ui,uiModal,cloudAuth,uiStatus,uiTabGuard,stateSnapshots,uiNavigation,storageFiles,
   cloudTransport,domainsBankCache,syncChecks,syncDocument,getUiSettings,getCalendarController,domainsFinanceController,storageV2Coordinator,storageV2Cloud,
 }){
   if(typeof getUiSettings!=='function'||typeof getCalendarController!=='function')throw new Error('orders_cloud_ui_ports_required');
@@ -19,9 +19,6 @@ export function composeCloudUi({
     closeModal:(...args)=>uiModal.closeModal(...args),
     authPassword:(...args)=>cloudAuth.authPassword(...args),
     authPasswordForLocalReset:(...args)=>cloudAuth.authPasswordForLocalReset(...args),
-    localSnapshot:(...args)=>storageBrowser.localSnapshot(...args),
-    getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-    clearCloudPending:(...args)=>storageBrowser.clearCloudPending(...args),
     setCloud:(...args)=>uiStatus.setCloud(...args),
     showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
     prepareCloudState:(...args)=>stateSnapshots.prepareCloudState(...args),
@@ -35,7 +32,6 @@ export function composeCloudUi({
     refreshKupaReadout:(...args)=>domainsBankCache.refreshKupaReadout(...args),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     requestCloudSave:(...args)=>syncDocument.requestCloudSave(...args),
-    restorePendingAgainstCloud:(...args)=>syncDocument.restorePendingAgainstCloud(...args),
     startPolling:(...args)=>syncDocument.startPolling(...args),
     saveSession:(...args)=>cloudAuth.saveSession(...args),
     renderSettings:(...args)=>getUiSettings().renderSettings(...args),

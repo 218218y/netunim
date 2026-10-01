@@ -1,15 +1,7 @@
 export const INITIAL_STATE={"_meta":{"format":"order-management-portable","schemaVersion":4,"app":"ניהול הזמנות · אתר מאובטח","excelCatchup20260825":{"siteSeed":"empty"}},"version":4,"businessName":"ניהול הזמנות","suppliers":[],"transactions":[],"customerDebts":[],"customerOrders":[],"serviceCalls":[],"inventoryItems":[],"inventoryCategoryOrder":[],"inventoryEvents":[],"warehouseOrders":[],"checks":[],"notes":[],"importAudit":{},"stage2Audit":{}};
-export const STORAGE_KEY='orders.management.state.v1';
 export const CLOUD_SESSION_KEY='orders.supabase.session.v1';
 export const CLOUD_EMAIL_KEY='orders.supabase.email.v1';
 export const CLOUD_AUTO_KEY='orders.supabase.auto.v1';
-export const CLOUD_BASE_KEY='orders.supabase.base.v1';
-export const CLOUD_PENDING_KEY='orders.supabase.pending.v1';
-export const CHECKS_BASE_KEY='orders.shared.checks.base.v1';
-export const CHECKS_EVENTS_KEY='orders.shared.checks.bank-events.v1';
-export const CHECKS_PENDING_KEY='orders.shared.checks.pending.v1';
-export const LEGACY_CHECKS_BASE_KEY='orders.kupa.checks.base.v1';
-export const LEGACY_CHECKS_PENDING_KEY='orders.kupa.checks.pending.v1';
 export const CLOUD_DOC='suppliers';
 export const CLOUD_TABLE='order_management_documents';
 export const CLOUD_RPC='save_order_management_document';
