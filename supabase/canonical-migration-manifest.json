@@ -183,5 +183,10 @@
     "version": "20260930122000",
     "name": "check_bank_no_match_after_due_date",
     "sha256": "cda7ad22ae0724b2a1b2774c15942e87c277a1b304df9325b2491799e3f2fb90"
+  },
+  {
+    "version": "20261001012000",
+    "name": "check_cleared_deposit_evidence_retention",
+    "sha256": "d7e3f18d5ec57c0ea07f8000c89806118dbcb4428374616e0154b3072c0e7b09"
   }
 ]

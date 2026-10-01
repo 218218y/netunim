@@ -75,6 +75,51 @@ commit""")
     assert checks()[0]['bankMatch']['phase']=='missing' and not checks()[0]['bankMatch'].get('autoConfirmed')
     assert checks()[0]['bankHistory'][-1]['phase']=='missing'
 
+    # Clearing maturity is durable for the same claimed deposit cycle. A transient
+    # cheque-detail endpoint failure may raise a diagnostic warning, but it must not
+    # turn an already-cleared cheque back into a fresh three-day waiting period. A
+    # real archive disappearance still alerts; reappearance restores the prior clear
+    # immediately, and a proven return still wins over the maturity marker.
+    reset([check('Cleared survives enrichment outage',550,'111')])
+    mature_deposit=tx('mature-enrichment',550,[item('111',550)]);snapshot();snapshot('2026-08-10')
+    matured=checks()[0];assert matured['status']=='נפרע' and matured['bankMatch']['phase']=='cleared'
+    matured_date=matured['clearedDate']
+    db.sql("update public.bank_transactions set check_details='{}' where id="+mature_deposit);snapshot('2026-08-11')
+    degraded=checks()[0]
+    assert degraded['status']=='נפרע' and degraded['clearedDate']==matured_date
+    assert degraded['bankMatch']['phase']=='cleared' and degraded['bankMatch']['warning']=='details_unavailable_after_clear'
+    assert degraded['bankMatch']['settledEvidenceDate']==matured_date
+    restored_details={'checkItems':[item('111',550)],'checkNumbers':['111'],'checkCount':1}
+    db.sql("update public.bank_transactions set check_details="+quote(json.dumps(restored_details))+"::jsonb where id="+mature_deposit);snapshot('2026-08-12')
+    restored=checks()[0]
+    assert restored['status']=='נפרע' and restored['clearedDate']==matured_date and restored['bankMatch']['phase']=='cleared'
+    assert 'warning' not in restored['bankMatch'],'Restored structured details must clear only the transient diagnostic, not restart maturity'
+    db.sql("update public.bank_transactions set presence_state='missing' where id="+mature_deposit);snapshot('2026-08-13')
+    vanished=checks()[0];assert vanished['bankMatch']['phase']=='missing' and vanished['status']!='נפרע'
+    assert vanished['bankMatch']['settledEvidenceDate']==matured_date
+    db.sql("update public.bank_transactions set presence_state='present' where id="+mature_deposit);snapshot('2026-08-14')
+    reappeared=checks()[0]
+    assert reappeared['status']=='נפרע' and reappeared['clearedDate']==matured_date and reappeared['bankMatch']['phase']=='cleared','The same deposit reappearing after a real absence restores its prior maturity immediately'
+    tx('return-after-maturity-restore',-550,[item('111',550)],day='2026-08-15',description='החזרת שיק');snapshot('2026-08-15')
+    assert checks()[0]['status']=='חזר' and checks()[0]['bankMatch']['phase']=='returned','A proven cheque return must still override durable clearing maturity'
+
+    # Upgrade repair for the exact pre-migration failure: the old reconciler already
+    # reopened a cleared cheque after details_unavailable, then a good refresh built a
+    # clean deposited match with a fresh completedSeenDate. History must recover the
+    # prior maturity instead of waiting three more bank days.
+    reset([check('Legacy details outage repair',550,'111')])
+    legacy_deposit=tx('legacy-maturity-repair',550,[item('111',550)]);snapshot();snapshot('2026-08-10')
+    legacy_rows=checks();legacy_cleared=legacy_rows[0];legacy_date=legacy_cleared['clearedDate'];legacy_match=dict(legacy_cleared['bankMatch'])
+    legacy_match.pop('settledEvidenceDate',None)
+    legacy_warning={**legacy_match,'phase':'deposited','warning':'details_unavailable','eventId':'legacy-details-loss','recordedAt':'2026-08-11T12:00:00Z','checkStatus':'הופקד - במעקב'}
+    legacy_current={**legacy_match,'phase':'deposited','eventId':'legacy-details-restored','completedSeenDate':'2026-08-12','autoConfirmed':True}
+    legacy_rows[0]['status']='הופקד - במעקב';legacy_rows[0]['clearedDate']=None;legacy_rows[0]['bankMatch']=legacy_current;legacy_rows[0]['bankHistory']=[*legacy_rows[0]['bankHistory'],legacy_warning]
+    db.sql("begin;set local app.check_bank_reconcile='1';update public.shared_checks_documents set state=jsonb_set(state,'{checks}',"+quote(json.dumps(legacy_rows))+"::jsonb,true);commit")
+    snapshot('2026-08-12')
+    repaired=checks()[0]
+    assert repaired['status']=='נפרע' and repaired['clearedDate']==legacy_date and repaired['bankMatch']['phase']=='cleared'
+    assert repaired['bankMatch']['settledEvidenceDate']==legacy_date,'Reviewed history must repair checks already reopened by the old details-unavailable bug'
+
     reset([check('Fallback still reviewed',550)])
     tx('fallback-review',550,[item('111',550)]);snapshot();snapshot('2026-08-10')
     assert not checks()[0]['bankMatch']['autoConfirmed'] and checks()[0]['status']=='הופקד - במעקב','Amount-only association cannot auto-confirm itself'

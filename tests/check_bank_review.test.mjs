@@ -59,6 +59,9 @@ const sample=()=>({id:'c1',name:'<script>bad()</script>',account:'ביתי',amou
     c.bankMatch={...c.bankMatch,phase,eventId:'17:'+phase};assert.equal(checkBankReviewItems([c]).length,1,'Adverse incidents remain actionable even after certain matching');
   }
   c.bankMatch={...c.bankMatch,phase:'deposited',warning:'possible_return'};assert.equal(checkBankReviewItems([c]).length,1,'Warnings always override a previous certainty flag');
+  c.status='נפרע';c.clearedDate='2026-08-10';c.bankMatch={...c.bankMatch,phase:'cleared',warning:'details_unavailable_after_clear',settledEvidenceDate:'2026-08-10'};
+  html=checkBankReviewMarkup([c]);assert.match(html,/כבר הוכח כנפרע בעבר/);assert.doesNotMatch(html,/3 ימי עסקים בנקאיים נוספים/,'A transient details outage after settlement must not tell the user that clearing restarts');
+  assert.match(checkBankStatusMarkup(c),/סומן כנפרע/);
   assert.doesNotMatch(checkBankActivityMarkup([c],'עסקי'),/&lt;script&gt;/,'Activity respects account selection');
 }
 {

@@ -147,6 +147,10 @@
     {
       "version": "20260930122000",
       "name": "check_bank_no_match_after_due_date"
+    },
+    {
+      "version": "20261001012000",
+      "name": "check_cleared_deposit_evidence_retention"
     }
   ]
 }
