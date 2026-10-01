@@ -5,6 +5,7 @@ import {createSyncChecksState} from '../netunim-kupa/site/assets/js/sync/checks-
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
 import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
 import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
+import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_LEGACY_SNAPSHOT_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {BROWSER_STATE_KEY as KUPA_LEGACY_SNAPSHOT_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
@@ -18,6 +19,23 @@ import {createOrdersStorageV2Coordinator} from '../netunim-orders/site/assets/js
 import {createKupaStorageV2Coordinator} from '../netunim-kupa/site/assets/js/composition/storage-v2.js';
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
+
+test('Orders rejected secondary edit reloads V2 instead of reading a V1 snapshot',()=>{
+  const previousLocation=Object.getOwnPropertyDescriptor(globalThis,'location');
+  const previousStorage=globalThis.localStorage;
+  let guardCalls=0,reloads=0;
+  Object.defineProperty(globalThis,'location',{configurable:true,value:{reload:()=>{reloads++}}});
+  globalThis.localStorage={getItem:()=>{throw new Error('V1 snapshot read')}};
+  try{
+    const persistence=createOrdersPersistence({model:{state:{}},tab:{primaryTab:false},session:{},
+      showSecondaryTabGuard:()=>{guardCalls++}});
+    assert.equal(persistence.rejectSecondaryMutation(),true);
+    assert.equal(guardCalls,1);assert.equal(reloads,1);
+  }finally{
+    if(previousLocation)Object.defineProperty(globalThis,'location',previousLocation);else delete globalThis.location;
+    if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;
+  }
+});
 
 test('ordinary startup cannot enable V1 writers in an unmarked browser',()=>{
   for(const create of [createOrdersStorageV2Coordinator,createKupaStorageV2Coordinator]){
