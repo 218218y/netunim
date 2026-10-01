@@ -228,7 +228,10 @@ test('the breakdown and expense view show provenance and overdue status without 
   assert.ok(!/data-click-arg0="bank-recurring:/.test(html));
 });
 
-test('Kupa refresh persists recognized bank sources across a rolling snapshot and reload',async()=>{
+test('Kupa refresh persists recognized bank sources across a rolling snapshot and reload',async t=>{
+  // The bridge snapshot and the forecast are both dated September 20; keep the
+  // controller's wall clock on that date so this historical case stays stable.
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-20T12:00:00Z')});
   const model={state:state()},saved=[];
   const controller=createDomainsBankController({model,session:{connectionMode:'local'},checksSession:{},sharedChecksHaveLocalWork:()=>false,
     saveState:async()=>{saved.push(structuredClone(model.state));return true},syncSharedChecksFromCloud:async()=>true,sharedChecksObservedSequence:()=>0,toast:()=>{},render:()=>{},
