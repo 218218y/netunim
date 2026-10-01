@@ -5,10 +5,10 @@ import {assertValidCloudState} from './state/validation.js';
 import {normalizeSharedBankEvents, normalizeSharedChecks, checkUrgency} from './domains/checks/model.js';
 import {rawCreditSchedule, creditSchedule, inactiveCreditExpired, creditProgress} from './domains/credit/model.js';
 import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
-import {checkStorageAccountStartup} from './shared/storage-v2-server-protocol.js';
+import {checkLegacyAccountStartup} from './shared/storage-v2-server-protocol.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,openBrowserStateFallback=async()=>false,openBrowserStateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,openBrowserStateFallback=async()=>false,openBrowserStateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, checksSession, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
 function runtimeSelfCheck(){
   const required={assertValidCloudState,normalizeSharedChecks,prepareKupaCloudState,saveChecksState,saveSharedChecksToCloud,syncSharedChecksFromCloud,pollSharedChecks,num,money,dateFmt,todayISO,localISO,dObj,daysFromToday,monthKey,monthLabel,addMonthsISO,checkDateParts,checkDateEditorMarkup,checkDateEditorValue,commitCheckDateEditor,setCheckDateValue,normalizeCheckModalDates,uid,activeChecks,depositedChecks,cashBalance,checksBalance,depositedBalance,checkUrgency,rawCreditSchedule,creditSchedule,inactiveCreditExpired,creditProgress,pendingInstallments,allInstallments,monthSumInstallments,expenseOccurrencesForMonth,monthSumExpenses,bankBaseBalance,bankAdjustments,bankAdjustmentsTotal,bankCurrentBalance,bankAsOfDate,sharedChecksObservedSequence,normalizeSharedBankEvents,monthKeysBetween,nextCreditCycle,modalFormSnapshot,armModalDraftGuard,modalHasUnsavedDraft,clearModalDraftGuard,openLastFolder};
   const missing=Object.entries(required).filter(([,fn])=>typeof fn!=='function').map(([name])=>name);
@@ -38,7 +38,7 @@ async function boot(){
   await hydrateStorageOwner();
   const restoredAuth=await restoreSupaSession();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkStorageAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
+  let protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
       await recoverFencedAccount();
@@ -49,8 +49,8 @@ async function boot(){
   }
   if(!protocol.allowed){
     session.storageProtocolBlocked=true;
-    const oldBrowser=protocol.reason==='server-v2',unsupportedProtocol=protocol.reason==='protocol-unsupported';
-    setConnectUI({title:unsupportedProtocol?'גרסת האחסון של החשבון אינה נתמכת':oldBrowser?'ממתין לשחזור Storage V2 מהענן':'נדרש אימות אחסון בענן',text:unsupportedProtocol?'החשבון בענן אינו בפרוטוקול Storage V2 הנתמך. העריכה בגרסה זו חסומה ויש לטפל בחשבון לפני פתיחה מחדש.':oldBrowser?'יש לפתוח טאב ראשי עם חיבור תקין כדי לטעון את נתוני החשבון מהענן. אם נמצא מעבר V2 שלא הושלם, העריכה תישאר נעולה לבדיקה.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
+    const oldBrowser=protocol.reason==='server-v2',upgradeRequired=protocol.reason==='upgrade-required';
+    setConnectUI({title:upgradeRequired?'נדרש שדרוג החשבון ל־Storage V2':oldBrowser?'ממתין לשחזור Storage V2 מהענן':'נדרש אימות אחסון בענן',text:upgradeRequired?'החשבון בענן עדיין בפרוטוקול אחסון ישן. העריכה בגרסה זו חסומה עד לשדרוג החשבון ל־Storage V2.':oldBrowser?'יש לפתוח טאב ראשי עם חיבור תקין כדי לטעון את נתוני החשבון מהענן. אם נמצא מעבר V2 שלא הושלם, העריכה תישאר נעולה לבדיקה.':'יש להתחבר לחשבון ולהיות מקוון כדי לאמת את מצב האחסון לפני עריכה במכשיר זה.',showCloud:!oldBrowser});
     return;
   }
   session.storageProtocolBlocked=false;
@@ -99,8 +99,8 @@ async function boot(){
   await restoreRememberedBackupTarget();
   await persistentStoragePromise;
 
-  // Main and Shared are separate V2 journals. Recover Shared before any
-  // offline or cloud-capability exit can expose writable business data.
+  // Main's checkpoint still carries a legacy checks copy. Hydrate its Shared
+  // owner before any offline or cloud-capability exit can show business data.
   if((cutoverActive||localEngineActive)){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(localEngineActive){session.startupCloudHydrating=false;if(await tryAutoOpenRemembered())return;showFirstRun();return}
   if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;return}
@@ -109,7 +109,7 @@ async function boot(){
   if(cutoverActive&&!sharedPrimary){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   try{await resumeIncompleteRestore()}catch(error){console.error('restore group startup recovery',error);setCloudHeaderStatus('conflict','ענן: שחזור ממתין')}
-  if(!sharedPrimary)throw new Error('shared_checks_v2_primary_required');
+  if(!sharedPrimary){checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();const checksOutbox=await getSharedChecksPending();if(checksOutbox?.snapshot)model.state.checks=normalizeSharedChecks(checksOutbox.snapshot);if(checksOutbox||sharedChecksPendingExists()){checksSession.sharedChecksGeneration=Math.max(checksSession.sharedChecksGeneration,Number(checksOutbox?.generation||1));checksSession.sharedChecksSaveRequested=true}}
   let autoOpened=false;
   try{autoOpened=await tryAutoOpenSupabase()}finally{session.startupCloudHydrating=false}
   if(autoOpened)return;

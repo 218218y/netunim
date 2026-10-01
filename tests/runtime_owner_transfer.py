@@ -9,11 +9,11 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
     browser._navigate()
     result=browser.evaluate("""(async()=>{
       await appReady;
-      if(!mainStorageV2.primaryReady||!sharedChecksV2.primaryReady)throw Error('local V2 birth missing');
+      if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('local V2 birth missing');
       const note={id:'transfer-note',content:'durable local note'};
       state.notes.push(note);
       storagePersistence.scheduleSave('transfer fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}],surface:'test.owner-transfer'});
-      await mainStorageV2.commitPromise;
+      await storageShadow.commitPromise;
       const check={id:'transfer-check',amount:123};state.checks.push(check);
       await sharedChecksV2.persist([{type:'put',collection:'checks',id:check.id,mode:'insert',index:state.checks.length-1,record:check}],{surface:'test.owner-transfer'}).committed;
       let main=null,checks=null;
@@ -44,11 +44,11 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
                     'mainNote':'durable local note','sharedCheck':123,
                     'visibleNote':'durable local note','visibleCheck':123,'legacyWrites':[]},result
     browser._navigate()
-    recovered=browser.evaluate("""(async()=>{await appReady;const main=await mainStorageV2.recover();return {
+    recovered=browser.evaluate("""(async()=>{await appReady;const main=await storageShadow.recover();return {
       owner:storageOwner.current(),note:state.notes.find(row=>row.id==='transfer-note')?.content,
       check:state.checks.find(row=>row.id==='transfer-check')?.amount,
       mainProjection:main?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(main?.state||{},'checks'),
-      mainReady:mainStorageV2.primaryReady,sharedReady:sharedChecksV2.primaryReady,
+      mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
       legacyWrites:window.__legacyWrites
     }})()""")
     assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered
@@ -62,11 +62,11 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
     browser._navigate()
     result=browser.evaluate("""(async()=>{
       await appReady;
-      if(!mainStorageV2.primaryReady||!sharedChecksV2.primaryReady)throw Error('local V2 birth missing');
+      if(!storageShadow.primaryReady||!sharedChecksV2.primaryReady)throw Error('local V2 birth missing');
       const note={id:'transfer-note',content:'durable local note'};
       state.notes.push(note);
       await storagePersistence.saveState('transfer fixture',{domains:['notes'],operations:[{type:'put',collection:'notes',id:note.id,mode:'insert',index:state.notes.length-1,record:note}],surface:'test.owner-transfer'});
-      await mainStorageV2.commitPromise;
+      await storageShadow.commitPromise;
       const check={id:'transfer-check',amount:123};state.checks.push(check);
       await sharedChecksV2.persist([{type:'put',collection:'checks',id:check.id,mode:'insert',index:state.checks.length-1,record:check}],{surface:'test.owner-transfer'}).committed;
       let main=null,checks=null;
@@ -97,11 +97,11 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
                     'mainNote':'durable local note','sharedCheck':123,
                     'visibleNote':'durable local note','visibleCheck':123,'legacyWrites':[]},result
     browser._navigate()
-    recovered=browser.evaluate("""(async()=>{await appReady;const main=await mainStorageV2.recover();return {
+    recovered=browser.evaluate("""(async()=>{await appReady;const main=await storageShadow.recover();return {
       owner:storageOwner.current(),note:state.notes.find(row=>row.id==='transfer-note')?.content,
       check:state.checks.find(row=>row.id==='transfer-check')?.amount,
       mainProjection:main?.appMetadata?.mainProjectionVersion,mainHasChecks:Object.hasOwn(main?.state||{},'checks'),
-      mainReady:mainStorageV2.primaryReady,sharedReady:sharedChecksV2.primaryReady,
+      mainReady:storageShadow.primaryReady,sharedReady:sharedChecksV2.primaryReady,
       legacyWrites:window.__legacyWrites
     }})()""")
     assert recovered=={'owner':'fixture-account','note':'durable local note','check':123,'mainProjection':2,'mainHasChecks':False,'mainReady':True,'sharedReady':True,'legacyWrites':[]},recovered

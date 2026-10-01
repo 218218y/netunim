@@ -4,9 +4,11 @@ import {createStorageJournal} from '../shared/storage-journal.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {readStorageRecord,sealStorageRecord} from '../shared/storage-journal-model.js';
 import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
-import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
+import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_STORAGE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createStorageBrowser as createKupaStorageBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
-import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
+import {createStoragePending as createKupaStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
+import {createOutboxRecord} from '../shared/cloud-sync.js';
+import {INITIAL_STATE as KUPA_INITIAL_STATE,BROWSER_STATE_KEY as KUPA_STORAGE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
 
 const clone=structuredClone;
 test('Storage V2 captures ACK and rebase checkpoints before waiting for an older journal commit',async()=>{
@@ -53,40 +55,100 @@ function memoryDb(){
 const schema={collections:['notes'],fields:[]};
 const put=(id,text)=>({type:'put',collection:'notes',mode:'replace',id,record:{id,text}});
 
+test('Main projection atomically drops its old check copy while preserving the cloud revision',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:kupa';
+  const validate=value=>{assert.ok(Array.isArray(value.notes));if(Object.hasOwn(value,'checks'))assert.ok(Array.isArray(value.checks))};
+  const makeJournal=options=>createStorageJournal({...options,db,emergency});
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'N1'}],checks:[{id:'old-copy'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  await old.captureCloudCursor(17,{project:state=>({notes:state.notes})});
+  const makeRuntime=()=>createStorageV2Runtime({app:'kupa',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,prepareCheckpoint:state=>({...clone(state),checks:clone(state.checks||[])}),createJournal:makeJournal});
+  const runtime=makeRuntime();assert.ok(await runtime.recover());
+  assert.equal(await runtime.migrateMainProjection({checks:[{id:'authoritative'}]}),true);
+  const recovered=await runtime.recover(),cloud=await runtime.cloudState();
+  assert.equal(Object.hasOwn(recovered.state,'checks'),false);
+  assert.equal(recovered.appMetadata.mainProjectionVersion,2);
+  assert.equal(recovered.appMetadata.mainChecksDiverged,true);
+  assert.equal(cloud.base.revision,17);assert.equal(cloud.pending,false);assert.equal(cloud.base.ackSeq,cloud.seq);
+  await runtime.replaceCurrentState({notes:[{id:'N1'}],checks:[{id:'never-copy'}]});
+  const restarted=makeRuntime(),afterRestart=await restarted.recover();
+  assert.equal(Object.hasOwn(afterRestart.state,'checks'),false);
+  assert.equal(await restarted.migrateMainProjection({checks:[{id:'authoritative'}]}),true);
+});
 
-test('Main V2 recovers only projection 2 checkpoints',async()=>{
+test('Main projection waits for an unacknowledged journal instead of discarding local edits',async()=>{
   const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
-  const journal=createStorageJournal({owner,schema,validate,db,emergency});
-  await journal.install({notes:[{id:'N1'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(3,{project:state=>({notes:state.notes})});
   const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
-  const recovered=await runtime.recover();
-  assert.equal(recovered.source,'v2');assert.equal(recovered.appMetadata.mainProjectionVersion,2);assert.deepEqual(recovered.state.notes,[{id:'N1'}]);
+  await runtime.recover();const written=runtime.persist({notes:[{id:'new'}],checks:[]},{operations:[{type:'put',collection:'notes',id:'new',mode:'insert',index:0}]});await written.committed;
+  assert.equal(await runtime.migrateMainProjection({checks:[]}),false);
+  assert.equal((await runtime.recover()).state.notes[0].id,'new');
+  assert.equal((await runtime.cloudState()).pending,true);
 });
 
-test('Main V2 fails closed on missing or projection 1 metadata instead of migrating it',async()=>{
-  for(const version of [undefined,1]){
-    const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
-    const journal=createStorageJournal({owner,schema,validate,db,emergency});
-    const appMetadata={storageRole:'primary'};if(version!==undefined)appMetadata.mainProjectionVersion=version;
-    await journal.install({notes:[{id:'old'}]},{expectedEpoch:null,appMetadata});
-    const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
-    assert.equal(await runtime.recover(),null);assert.equal(runtime.diagnostics.recoveryFailure,'fatal');assert.equal(runtime.diagnostics.lastError,'storage_main_projection_unsupported');
-  }
+test('Main projection does not erase an edit committed after its clean-head preflight',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(5,{project:state=>({notes:state.notes})});
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();
+  const reset=db.resetCloudHead;
+  db.resetCloudHead=async(...args)=>{
+    const head=await db.load(owner),epoch=head.metadata.epoch,writer=head.metadata.writer;
+    const edit=sealStorageRecord({version:2,owner,epoch,seq:head.metadata.seq+1,generation:1,operationId:'concurrent-edit',at:new Date().toISOString(),surface:'test',mutationType:'edit',changes:[{type:'put',collection:'notes',id:'new',mode:'insert',index:0,record:{id:'new'}}],deleteIntents:{}},{kind:'journal'});
+    await db.append(owner,epoch,writer,edit);
+    return reset(...args);
+  };
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/storage_main_projection_head_changed/);
+  const retained=await db.load(owner);
+  assert.equal(retained.metadata.seq,1);
+  assert.equal(readStorageRecord(retained.journal[0]).operationId,'concurrent-edit');
+  const restarted=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  assert.equal((await restarted.recover()).state.notes[0].id,'new');
 });
 
-test('Main V2 fails closed when a checkpoint still contains Shared Checks business state',async()=>{
-  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:kupa',validate=value=>{assert.ok(Array.isArray(value.notes));if(Object.hasOwn(value,'checks'))assert.ok(Array.isArray(value.checks))};
-  const journal=createStorageJournal({owner,schema,validate,db,emergency});
-  await journal.install({notes:[],checks:[{id:'legacy-copy'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
-  const runtime=createStorageV2Runtime({app:'kupa',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
-  assert.equal(await runtime.recover(),null);assert.equal(runtime.diagnostics.recoveryFailure,'fatal');assert.equal(runtime.diagnostics.lastError,'storage_main_projection_invalid');
+test('Main projection does not erase a same-sequence checkpoint replacement',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[],checks:[]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(5,{project:state=>({notes:state.notes})});
+  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();
+  const reset=db.resetCloudHead;
+  db.resetCloudHead=async(...args)=>{
+    const head=await db.load(owner),checkpoint=readStorageRecord(head.checkpoints);
+    checkpoint.state.notes=[{id:'replacement'}];
+    await db.replaceCheckpoint(owner,head.metadata.epoch,head.metadata.writer,sealStorageRecord(checkpoint,{kind:'checkpoint'}));
+    return reset(...args);
+  };
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/storage_main_projection_head_changed/);
+  const restarted=createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  assert.equal((await restarted.recover()).state.notes[0].id,'replacement');
 });
 
-test('fresh local Main is born as projection 2 and never persists checks',async()=>{
-  const db=memoryDb(),emergency=emergencyStore(),validate=value=>assert.ok(Array.isArray(value.notes));
-  const runtime=createStorageV2Runtime({app:'orders',owner:()=> 'local',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
-  const recovered=await runtime.initializeLocal({notes:[{id:'N'}],checks:[{id:'must-not-copy'}]});
-  assert.equal(recovered.appMetadata.mainProjectionVersion,2);assert.equal(recovered.appMetadata.storageRole,'primary');assert.equal(Object.hasOwn(recovered.state,'checks'),false);
+test('Main projection recovers a committed migration after a post-commit crash',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='account-A:orders',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'N1'}],checks:[{id:'stale'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});await old.captureCloudCursor(9,{project:state=>({notes:state.notes})});
+  const makeRuntime=()=>createStorageV2Runtime({app:'orders',owner:()=> 'account-A',primary:()=>true,mode:()=> 'primary',validate,createJournal:options=>createStorageJournal({...options,db,emergency})});
+  const runtime=makeRuntime();await runtime.recover();
+  const reset=db.resetCloudHead;db.resetCloudHead=async(...args)=>{await reset(...args);throw new Error('process-terminated-after-commit')};
+  await assert.rejects(runtime.migrateMainProjection({checks:[]}),/process-terminated-after-commit/);
+  db.resetCloudHead=reset;
+  const restarted=makeRuntime(),recovered=await restarted.recover();
+  assert.equal(recovered.appMetadata.mainProjectionVersion,2);
+  assert.equal(Object.hasOwn(recovered.state,'checks'),false);
+  assert.equal((await restarted.cloudState()).base.revision,9);
+});
+
+test('local Main projection uses an atomic local epoch without inventing a cloud cursor',async()=>{
+  const db=memoryDb(),emergency=emergencyStore(),owner='local:kupa',validate=value=>assert.ok(Array.isArray(value.notes));
+  const old=createStorageJournal({owner,schema:{collections:['notes'],legacyCollections:['notes','checks'],fields:[]},validate,db,emergency});
+  await old.install({notes:[{id:'local'}],checks:[{id:'old'}]},{expectedEpoch:null,appMetadata:{storageRole:'primary'}});
+  const runtime=createStorageV2Runtime({app:'kupa',owner:()=> 'local',primary:()=>true,mode:()=> 'primary',validate,prepareCheckpoint:state=>({...clone(state),checks:clone(state.checks||[])}),createJournal:options=>createStorageJournal({...options,db,emergency})});
+  await runtime.recover();assert.equal(await runtime.migrateMainProjection({checks:[{id:'shared'}]}),true);
+  assert.equal(Object.hasOwn((await runtime.recover()).state,'checks'),false);
+  assert.equal((await runtime.cloudState()).base,null);
 });
 
 test('local V2 import keeps cloud revision, survives restart, and sends deleted IDs in one flight',async()=>{
@@ -237,6 +299,110 @@ test('Storage V2 recovers a transition edit from the new epoch after reset commi
 
 
 
+test('browser adapters skip the full V1 compatibility snapshot when a transition edit has V2 emergency durability',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    for(const kind of ['orders','kupa']){
+      let afterLegacyCalls=0;const storageV2={persist:()=>({handled:true,emergencyDurable:true,transitioning:true,committed:Promise.resolve(true),seq:1}),afterLegacy:()=>{afterLegacyCalls++}};
+      if(kind==='orders'){
+        const state=clone(ORDERS_INITIAL_STATE),files={browserStateWritePromise:Promise.resolve(true)},session={localSnapshotSeq:0,cloudRevision:7,storageV2CloudPending:false};const browser=createOrdersStorageBrowser({storageV2,model:{state},files,session,prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+        assert.equal(browser.localSnapshot(state,{operations:[{type:'set',field:'__unused',value:true}]}),true);assert.equal(storage.getItem(ORDERS_STORAGE_KEY),null);
+      }else{
+        const state=clone(KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,dbRevision:7,storageV2CloudPending:false};const browser=createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+        assert.equal(browser.persistImmediateBrowserSnapshot(state,7,{operations:[{type:'set',field:'__unused',value:true}]}),true);assert.equal(storage.getItem(KUPA_STORAGE_KEY),null);
+      }
+      assert.equal(afterLegacyCalls,0);
+      while(storage.length)storage.removeItem(storage.key(0));
+    }
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('a V2 transition without emergency durability is not reported as locally safe and never writes a V1 mirror',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    for(const kind of ['orders','kupa']){
+      const state=clone(kind==='orders'?ORDERS_INITIAL_STATE:KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,cloudRevision:7,dbRevision:7,storageV2CloudPending:false};
+      const storageV2={cutoverActive:true,persist:()=>({handled:true,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1})};
+      const browser=kind==='orders'
+        ?createOrdersStorageBrowser({storageV2,model:{state},files,session,prepareState:clone,prepareCloudState:clone,normalizeState:clone})
+        :createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+      const saved=kind==='orders'?browser.localSnapshot(state,{operations:[{type:'set',field:'__unused',value:true}]}):browser.persistImmediateBrowserSnapshot(state,7,{operations:[{type:'set',field:'__unused',value:true}]});
+      assert.equal(saved,false);
+      assert.equal(storage.getItem(kind==='orders'?ORDERS_STORAGE_KEY:KUPA_STORAGE_KEY),null);
+      await files.storageV2CommitPromise;
+    }
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('a cut-over account reads its V2 cursor without reopening an obsolete V1 outbox',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    storage.setItem('orders.supabase.pending.v1','stale');
+    const state={seq:4,base:{revision:8,ackSeq:4,state:{}},pending:false,flight:null,control:null};
+    const v2={cutoverActive:true,primaryReady:true,cloudState:async()=>state};
+    const orders=createOrdersStorageBrowser({storageV2:v2,model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0,storageV2CloudPending:false},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    assert.equal(await orders.refreshStorageV2CloudState(),state);
+    assert.equal(orders.storageV2CloudOutboxActive(),true);
+    assert.equal(orders.cloudPendingExists(),false,'obsolete V1 pending is not active work after cutover');
+    let legacyReads=0;
+    const kupa=createKupaStorageBrowser({storageV2:v2,verifyLegacyCloudPending:async()=>{legacyReads++;throw new Error('legacy-read')},legacyCloudHeadVerifiedClean:()=>false,legacyCloudPendingExists:()=>true,model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0,storageV2CloudPending:false},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    assert.equal(await kupa.refreshStorageV2CloudState(),state);
+    assert.equal(kupa.storageV2CloudOutboxActive(),true);
+    assert.equal(legacyReads,0);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('browser adapters expose no V1 snapshot writer and require a ready V2 journal',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const orders=createOrdersStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    assert.equal(orders.queueBrowserStateSnapshot,undefined);
+    assert.equal(orders.persistBrowserStateSnapshot,undefined);
+    assert.throws(()=>orders.localSnapshot(),/storage_v2_write_unavailable/);
+    await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
+    const kupa=createKupaStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    assert.equal(kupa.persistBrowserStateSync,undefined);
+    assert.equal(kupa.queueBrowserStateIdb,undefined);
+    assert.throws(()=>kupa.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
+    assert.equal(storage.length,0);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+
+
+test('Cloud V2 cutover waits for durable V1 outbox verification and drains an IndexedDB-only Kupa pending record',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const session={cloudDocumentName:'main',dbRevision:10,localGeneration:1,localSnapshotSeq:0,storageV2CloudPending:false,cloudOutboxCached:null,cloudOutboxCommitPromise:Promise.resolve(),cloudDurabilityDegraded:false},durable=new Map(),deleted=[];
+    const pendingRecord=createOutboxRecord({domain:'kupa',documentName:'main',generation:1,mutationSeq:1,baseRevision:10,baseState:{notes:[]},snapshot:{notes:[{id:'legacy-only'}]}});durable.set('cloud-pending-v3',pendingRecord);
+    const pending=createKupaStoragePending({session,idbPut:async(_store,key,value)=>{durable.set(key,clone(value));return true},idbGet:async(_store,key)=>clone(durable.get(key)??null),idbDelete:async(_store,key)=>{deleted.push(key);durable.delete(key);return true}});
+    assert.equal(pending.cloudPendingExistsSync(),false,'LocalStorage alone does not reveal the durable-only pending record');assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),false,'unverified legacy head is never considered clean');
+    let captures=0;const cloudBase={version:2,owner:'kupa:test',epoch:'epoch-1',revision:10,state:clone(KUPA_INITIAL_STATE),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base:cloudBase,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return cloudBase}};
+    const browser=createKupaStorageBrowser({storageV2,legacyCloudPendingExists:()=>pending.cloudPendingExistsSync(),legacyCloudHeadVerifiedClean:()=>pending.cloudPendingHeadVerifiedCleanSync(),verifyLegacyCloudPending:()=>pending.getCloudPending(),model:{state:clone(KUPA_INITIAL_STATE)},session,files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),false,'V2 is gated before durable legacy verification');assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0);assert.ok(await pending.getCloudPending(),'IndexedDB-only legacy pending is recovered instead of bypassed');assert.equal(browser.storageV2CloudOutboxActive(),false);
+    assert.equal(await pending.clearCloudPending(1),true);assert.ok(deleted.includes('cloud-pending-v3'));assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),true);assert.ok(await browser.initializeStorageV2CloudCursor(10));assert.equal(captures,1);assert.equal(browser.storageV2CloudOutboxActive(),true,'V2 activates only after durable V1 drain is verified clean');
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Kupa Cloud V2 refuses cutover when the durable V1 head cannot be verified',async()=>{
+  const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
+  try{
+    const session={cloudDocumentName:'main',dbRevision:10,localGeneration:1,localSnapshotSeq:0,storageV2CloudPending:false,cloudOutboxCached:null,cloudOutboxCommitPromise:Promise.resolve(),cloudDurabilityDegraded:false};
+    const pending=createKupaStoragePending({session,idbPut:async()=>true,idbGet:async()=>{throw new Error('injected durable read failure')},idbDelete:async()=>true});
+    let captures=0;const cloudBase={version:2,owner:'kupa:test',epoch:'epoch-1',revision:10,state:clone(KUPA_INITIAL_STATE),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base:cloudBase,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return cloudBase}};
+    const browser=createKupaStorageBrowser({storageV2,legacyCloudPendingExists:()=>pending.cloudPendingExistsSync(),legacyCloudHeadVerifiedClean:()=>pending.cloudPendingHeadVerifiedCleanSync(),verifyLegacyCloudPending:()=>pending.getCloudPending(),model:{state:clone(KUPA_INITIAL_STATE)},session,files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    await browser.refreshStorageV2CloudState();assert.equal(pending.cloudPendingHeadVerifiedCleanSync(),false);assert.equal(browser.storageV2CloudOutboxActive(),false);assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0,'cursor is not captured after a failed durable legacy-head read');
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
+});
+
+test('Orders Cloud V2 refuses cutover when the durable V1 head cannot be verified',async()=>{
+  const previousStorage=globalThis.localStorage,previousIndexedDb=globalThis.indexedDB,storage=emergencyStore();globalThis.localStorage=storage;delete globalThis.indexedDB;
+  try{
+    let captures=0;const state=clone(ORDERS_INITIAL_STATE),session={localSnapshotSeq:0,localGeneration:1,cloudRevision:10,lastCloudState:clone(state),storageV2CloudPending:false,ordersOutboxCached:null,ordersOutboxCommitPromise:Promise.resolve()},base={version:2,owner:'orders:test',epoch:'epoch-1',revision:10,state:clone(state),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return base}};
+    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareState:clone,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),false,'an unverified legacy head cannot activate V2');assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0,'cursor is not captured after a failed durable legacy-head read');assert.equal(browser.storageV2CloudOutboxActive(),false);
+  }finally{if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;if(previousIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=previousIndexedDb}
+});
+
 test('cloud reset keeps the newest visible state in V2 without a transition compatibility snapshot',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
@@ -244,7 +410,7 @@ test('cloud reset keeps the newest visible state in V2 without a transition comp
     const cloudProject=value=>{const next=clone(value);delete next.checks;return next},remote=cloudProject(model.state),storageV2={primaryReady:true,resetCloudHead:async()=>{startReset();await released;return {epoch:'epoch-new',seq:1,ackSeq:0,revision:12}},persist:()=>({handled:true,emergencyDurable:true,transitioning:true,committed:Promise.resolve(true),seq:1}),cloudState:async()=>({seq:1,base:{version:2,owner:'kupa:test',epoch:'epoch-new',revision:12,state:clone(remote),projection:'cloud',ackSeq:0},flight:null,control:null,pending:true,pendingDeleteIntents:{},pendingGeneration:1,pendingMutationType:'edit',pendingSurface:'kupa',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'})};
     const browser=createKupaStorageBrowser({storageV2,model,files,session,normalizeState:clone,prepareKupaCloudState:cloudProject,idbPut:async()=>true,idbGet:async()=>null});
     const reset=browser.resetStorageV2CloudHead(12,clone(model.state));await started;model.state.notes=[{id:'during-reset',content:'latest-visible-state',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];session.localGeneration=1;assert.equal(browser.persistImmediateBrowserSnapshot(model.state,12,{operations:[{type:'set',field:'__unused',value:true}]}),true);releaseReset();await reset;await files.browserStateWritePromise;
-    assert.equal(storage.length,0,'the durable V2 reset and edit do not write a browser business snapshot');assert.equal(session.storageV2CloudPending,true);assert.equal(session.cloudConflictPending,false);
+    assert.equal(storage.getItem(KUPA_STORAGE_KEY),null,'the durable V2 reset and edit do not write a full V1 snapshot');assert.equal(session.storageV2CloudPending,true);assert.equal(session.cloudConflictPending,false);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
@@ -254,7 +420,7 @@ test('transition without a ready V2 writer cannot create a compatibility snapsho
     let afterLegacyCalls=0;const state=clone(KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,dbRevision:9,storageV2CloudPending:false},storageV2={persist:()=>({handled:false,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1}),afterLegacy:()=>{afterLegacyCalls++}};
     const browser=createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(state,9,{operations:[{type:'set',field:'__unused',value:true}]}),/storage_v2_write_unavailable/);
-    assert.equal(afterLegacyCalls,0);assert.equal(storage.length,0);assert.equal(files.browserStateWritePromise,undefined);
+    assert.equal(afterLegacyCalls,0);assert.equal(storage.getItem(KUPA_STORAGE_KEY),null);assert.equal(files.browserStateWritePromise,undefined);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 

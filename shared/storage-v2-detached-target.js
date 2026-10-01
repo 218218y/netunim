@@ -16,13 +16,13 @@ const revision=row=>Number.isSafeInteger(Number(row?.revision))&&Number(row.revi
 export function createStorageV2DetachedTarget({
   app,targetOwner,primary,main,shared,readMainRemote,projectMainRemote,
   readSharedRemote,projectSharedRemote,composeMainState,projectMainState,
-  emptyMainState,validateMainCloud,rpcMain,rpcShared,
+  emptyMainState,validateMainCloud,rpcMain,rpcShared,verifyLegacyClean,
   bootstrapCoordinator=null,cutoverMarker=null,
 }={}){
   if(!['orders','kupa'].includes(app)||!String(targetOwner||'').trim()||targetOwner==='local'||
     [primary,main?.recover,main?.initializeCloudHead,main?.initializeFirstCloudHead,main?.cloudState,main?.materializeFlight,main?.acknowledgeFlight,
       shared?.recover,shared?.initialize,shared?.sync,shared?.cloudState,readMainRemote,projectMainRemote,readSharedRemote,projectSharedRemote,
-      composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
+      composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared,verifyLegacyClean].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
   const owner=()=>targetOwner,guard=()=>{if(!primary())throw new Error('storage_transfer_target_primary_required')};
   const bootstrap=bootstrapCoordinator||createStorageV2BootstrapCoordinator({app,owner,primary});
   const cutover=cutoverMarker||createStorageV2Cutover({app,owner,primary});
@@ -44,7 +44,12 @@ export function createStorageV2DetachedTarget({
     return true;
   }
   async function alreadyShared(side,cloudState){
-    const recovered=await shared.recover();
+    let recovered;
+    try{recovered=await shared.recover()}catch(error){
+      // A verified shadow checkpoint may still need promotion by initialize().
+      if(error?.message==='shared_checks_storage_role_mismatch')return false;
+      throw error;
+    }
     guard();if(!recovered)return false;
     const cloud=await shared.cloudState();guard();
     if(!cloud?.base||cloud.flight||cloud.control||cloud.pending||cloud.base.revision!==side.remoteRevision||
@@ -70,7 +75,8 @@ export function createStorageV2DetachedTarget({
       if(side.intent!=='upload-local'||await readMainRemote())throw new Error('storage_transfer_main_upload_target_changed');
       const original=ctx.source.main.fullState;
       if(!original||!equalSyncJson(projectMainState(original),ctx.source.main.state))throw new Error('storage_transfer_main_source_full_missing');
-      // Shared Checks is the sole authority for checks during owner transfer.
+      // Main checkpoints still carry a transitional checks copy. Shared is the
+      // sole authority, including when that copy lagged before the transfer.
       const full={...copy(original),checks:copy(sharedState(ctx.source.shared.state).checks)};
       const empty=emptyMainState(),base=projectMainState(empty);validateMainCloud(base);
       await main.initializeFirstCloudHead(empty,full,{sourceOwner:'local',cloudState:base,validateBase:validateMainCloud,appMetadata:{bootstrapOperationId:side.operationId}});
@@ -152,6 +158,6 @@ export function createStorageV2DetachedTarget({
     }
     return {clean:true,mainRevision:revision(mainRow),sharedRevision:revision(sharedRow),mainState:copy(mainRecovered.state),sharedState:sharedState(sharedRecovered.state)};
   }
-  async function mark(){guard();await verify();await cutover.mark();guard();return true}
+  async function mark(){guard();await verify();await cutover.mark({verifyLegacyClean});guard();return true}
   return {load,prepare,resume,verify,mark,verifyMarker:()=>cutover.verify()};
 }

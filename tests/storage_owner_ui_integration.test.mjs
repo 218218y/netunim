@@ -14,7 +14,7 @@ function installGlobals(){
   return ()=>{for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}};
 }
 
-function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false,v2=true}={}){
+function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false,v2=false}={}){
   const events=[];let owner='local',reservation=null;const model={state:{rows:['local']}},session={localGeneration:0},checksSession={};
   const ui=createOrdersUiCloud({
     model,files:{},tab:{primaryTab:true},session,checksSession,ui:{},modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>events.push('close'),authPassword:async()=>{},
@@ -31,19 +31,19 @@ function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t
   return {ui,events,model,session,get owner(){return owner}};
 }
 
-test('Orders local -> existing account uses the detached V2 owner transfer before rendering',async()=>{
+test('Orders local -> existing account reserves, hydrates Main+Shared, adopts owner, then renders',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness();assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),true);assert.equal(h.owner,'B');
-    assert.ok(h.events.includes('transfer:load-account'));
-    assert.ok(h.events.indexOf('transfer:load-account')<h.events.indexOf('render'));
-    assert.equal(h.events.includes('read-main'),false,'UI must not bypass the detached V2 transfer with a direct legacy-style load');
+    assert.ok(h.events.indexOf('reserve:load-account')<h.events.indexOf('apply-main'));
+    assert.ok(h.events.indexOf('sync-shared')<h.events.indexOf('adopt:load-account'));
+    assert.ok(h.events.indexOf('adopt:load-account')<h.events.indexOf('render'));
   }finally{cleanup()}
 });
 
-test('Orders local owner is not activated or rendered when detached V2 preparation fails',async()=>{
+test('Orders local owner is not adopted or rendered when Shared preparation fails',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness({sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);assert.equal(h.owner,'local');
-    assert.ok(h.events.includes('transfer:load-account'));assert.equal(h.events.includes('render'),false);if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    assert.equal(h.events.some(x=>x.startsWith('adopt:')),false);assert.equal(h.events.includes('render'),false);if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
   }finally{cleanup()}
 });
 

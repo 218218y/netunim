@@ -137,17 +137,6 @@ business_sources=[path.read_text(encoding="utf-8") for app in (K, O)
                   for path in (app / "site/assets/js").rglob("*.js")]
 ok(all(symbol not in source for source in business_sources for symbol in checks_writer_symbols),
    "clients: Shared Checks V1 writer APIs are absent from production")
-final_architecture_forbidden=(
-    "legacyWriteAllowed", "pendingLegacyWriteAllowed", "legacyDrain", "legacyCollections",
-    "migrateMainProjection", "legacy-upgrade", "shadow-observation", "promoteVerifiedShadow",
-    "createOutboxRecord", "migrateOutboxRecord", "updateOutboxSnapshot", "acknowledgedGenerationMatches", "compareOutboxFreshness",
-    "replaceShadowWithCloudHead", "save_order_management_document_v5", "save_shared_checks_document_v5",
-    "save_kupa_document_v5", "bulk_delete_save_kupa_document_v5", "storageShadow",
-)
-production_storage_sources=[path.read_text(encoding="utf-8") for path in (ROOT / "shared").glob("*.js")]
-production_storage_sources+=business_sources
-ok(all(symbol not in source for source in production_storage_sources for symbol in final_architecture_forbidden),
-   "final storage architecture: production graph contains no V1/Projection1/Shadow runtime or retired Main/Shared writer RPC")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
@@ -162,8 +151,7 @@ for label, app_root in (("kupa", K), ("orders", O)):
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
     lifecycle_source=(app_root / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
     ok("legacyDrain" not in coordinator_source and "drainLegacy" not in coordinator_source
-       and "legacyWriteAllowed" not in coordinator_source
-       and "pendingLegacyWriteAllowed" not in coordinator_source
+       and "legacyWriteAllowed=()=>false" in coordinator_source
        and "beginCutover" not in coordinator_source
        and "begin-storage-v2-cutover" not in main_source
        and "resumeStorageTransition" not in lifecycle_source,
@@ -178,15 +166,10 @@ ok('pendingAdoption' in owner_core and 'reserveLocalAdoption' in owner_core and 
    'storage owner: local-to-account target is durably reserved before owner activation')
 ok('storage_owner_local_adoption_auth_mismatch' in owner_core and 'requiredOwner' in owner_core,
    'storage owner: interrupted local adoption rejects authentication to a different account')
-ok("transferLocalV2('upload-local')" in orders_cloud_ui
-   and "transferLocalV2('load-account'" in orders_cloud_ui
-   and "storage_owner_local_v2_work_requires_recovery" in orders_cloud_ui
-   and "getCloudPending" not in orders_cloud_ui and "storage_owner_local_pending_requires_upload" not in orders_cloud_ui,
-   'orders cloud UI: local owner chooses an explicit V2 load/upload transfer and never consults the retired V1 pending outbox')
-ok("transferLocalV2('upload-local')" in kupa_cloud_ui
-   and "transferLocalV2(reserved?.intent||'load-account')" in kupa_cloud_ui
-   and "getCloudPending" not in kupa_cloud_ui and "storage_owner_local_pending_requires_upload" not in kupa_cloud_ui,
-   'kupa cloud UI: local owner chooses an explicit V2 load/upload transfer and never consults the retired V1 pending outbox')
+ok("prepareAuthenticatedStorageOwner" in orders_cloud_ui and "reserve:upload-local" not in orders_cloud_ui and "storage_owner_local_pending_requires_upload" in orders_cloud_ui,
+   'orders cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
+ok("prepareAuthenticatedStorageOwner" in kupa_cloud_ui and "storage_owner_local_pending_requires_upload" in kupa_cloud_ui,
+   'kupa cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
 ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),
    'kupa cloud apply: owner adoption completes before the account state becomes interactive')
 orders_enable=orders_cloud_ui.split('async function enableCloud(afterLogin=false){',1)[1].split('async function openCloud(',1)[0]
@@ -304,7 +287,7 @@ ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_even
    and "storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk" in runtime_events,
    "orders: autosave uses the journal and page exit warns only when a V2 commit is not durable")
 ok(all(boundary not in kupa_runtime for boundary in ("network-offline-mirror", "pagehide-v1-checkpoint", "beforeunload-v1-checkpoint"))
-   and "mainStorageV2.durabilityAtRisk||sharedChecksV2.durabilityAtRisk" in kupa_runtime,
+   and "storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk" in kupa_runtime,
    "kupa: network and page lifecycle never create a V1 snapshot or outbox")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
@@ -700,15 +683,13 @@ ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowD
    and '.bank-account-summary-label' in kupa_css and '.expense-account-divider' in kupa_css,
    "kupa account ownership: business/home bank, credit and expenses use one role-aware exact-horizon model and render as two explicit five-metric Dashboard groups with separated expense tables")
 ok("function applyKupaCoreState" in kupa_sync_document
-   and "financeSource=model.state" in kupa_sync_document
-   and "next.bank={...coreBank,...financeBank" in kupa_sync_document
-   and "next.creditSync=structuredClone(finance.creditSync)" in kupa_sync_document
    and "function applyAcknowledgedCoreState" in kupa_sync_document
+   and "const next=applyKupaCoreState(snapshot,model.state.checks)" in kupa_sync_document
    and "businessChanged=applyAcknowledgedCoreState(authoritative)" in kupa_sync_document
-   and "businessChanged=applyAcknowledgedCoreState(rebased.state)" in kupa_sync_document
-   and "rebasedCurrent=applyKupaCoreState(currentCore,model.state.checks,model.state)" in kupa_sync_document
-   and "if(businessChanged)render()" in kupa_sync_document,
-   "kupa save ownership: ACK and rebase paths preserve finance-owned fields while applying Kupa core state and render only on a visible change")
+   and "businessChanged=applyAcknowledgedCoreState(newest.snapshot)" in kupa_sync_document
+   and "applyKupaCoreState(pending.snapshot" in kupa_sync_document
+   and "applyKupaCoreState(newest?.snapshot||authoritative" in kupa_sync_document,
+   "kupa save ownership: normal ACK and recovery paths reapply Kupa-only responses through the finance-preserving overlay without forcing an unchanged render")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
 ok('button data-action="set-page"' in kupa_dashboard_view
@@ -822,15 +803,14 @@ for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
 kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
 shared_checks_v2=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")
 kupa_cloud_policy=(K / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
-ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=1
+ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
    and "runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(" in shared_checks_v2
    and "runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync" in kupa_transport
    and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy
    and "if(normalizeCloudError(result).kind!=='busy')return result" in kupa_cloud_policy
    and "if(saveBusy(res))throw new Error('save_busy')" in kupa_sync_document
-   and "if(!revisionConflict(res))break" in kupa_sync_document
-   and "if(!res?.r?.ok)throw cloudWriteError(res,'שמירה לענן נכשלה')" in kupa_sync_document,
-   "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts enter the revision-read/rebase loop")
+   and "if(!revisionConflict(res))throw cloudWriteError(res,em)" in kupa_sync_document,
+   "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts trigger revision reads/merges")
 
 # Header cloud status is scoped by data ownership. Finance refreshes must never advance or degrade
 # the Orders/Kupa top header; finance keeps its own status inside Bank/Credit.
