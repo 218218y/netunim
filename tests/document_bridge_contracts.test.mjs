@@ -509,6 +509,22 @@ test('orders service worker contains both current document search providers afte
   assert.match(sw,/\.\/assets\/js\/domains\/documents\/search-source\.js/);
 });
 
+test('Drive fallback keeps local Document Bridge pairing visible when the browser has no local key',()=>{
+  const source=read('shared/document-search/domains/documents/search-source.js');
+  const ui=read('shared/global-document-search.js');
+  const css=read('shared/global-document-search.css');
+  assert.match(source,/get localPairingRequired\(\)/);
+  assert.match(source,/!String\(localBridge\.getToken\?\.\(\)\|\|''\)\.trim\(\)/);
+  assert.match(ui,/function localDocumentPairingRequired\(\)/);
+  assert.match(ui,/function localDocumentPairingBannerVisible\(\)/);
+  assert.match(ui,/function localDocumentPairingHtml\(\)/);
+  assert.match(ui,/Google Drive יכול להמשיך לעבוד/);
+  assert.match(ui,/results\.innerHTML=`\$\{localDocumentPairingHtml\(\)\}<section class="global-search-source-section" data-search-source="recent"/);
+  assert.match(ui,/requestedDocumentModes\(\)\.length\?localDocumentPairingHtml\(\):''/);
+  assert.match(ui,/const intro=filter==='content'\?documentIntro\('content'\):scopeIntro\(\);results\.innerHTML=`\$\{requestedDocumentModes\(\)\.length\?localDocumentPairingHtml\(\):''\}\$\{intro\}`/);
+  assert.match(css,/document-search-local-pairing\{/);
+});
+
 test('document search rejects stale bridge runtimes instead of silently using a broken newer process',()=>{
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');

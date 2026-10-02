@@ -24,6 +24,34 @@ test('document search uses Drive on Android and prefers local Everything on Wind
   assert.equal(windows.getToken(),'local-token');
 });
 
+test('Windows keeps Drive available while exposing missing local Bridge pairing separately',()=>{
+  let localToken='';
+  const local={provider:'everything',getToken:()=>localToken,setToken:value=>(localToken=String(value||''))};
+  const drive={provider:'google-drive',getToken:()=> 'drive-managed'};
+  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:drive,userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'});
+  assert.equal(source.getToken(),'drive-managed','Drive readiness must not be mistaken for a local pairing token');
+  assert.equal(source.localToken,'');
+  assert.equal(source.localPairingRequired,true,'Windows UI must be able to offer the Bridge-key field even while Drive is usable');
+  source.setToken('new-local-key');
+  assert.equal(source.localToken,'new-local-key');
+  assert.equal(source.localPairingRequired,false);
+});
+
+test('Windows clears a stale local Bridge key after unauthorized response and exposes re-pairing while Drive continues',async()=>{
+  let localToken='stale-local-key';
+  const local={
+    provider:'everything',getToken:()=>localToken,setToken:value=>(localToken=String(value||'')),
+    search:async()=>{const error=new Error('Unauthorized');error.code='UNAUTHORIZED';throw error},
+  };
+  const drive={provider:'google-drive',getToken:()=> 'drive-managed',search:async()=>({ok:true,results:[{id:'g1',name:'Cloud.pdf'}]})};
+  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:drive,userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'});
+  const result=await source.search('cloud',{mode:'everything'});
+  assert.equal(result.results[0].id,'drive:g1');
+  assert.equal(source.provider,'google-drive');
+  assert.equal(source.localToken,'');
+  assert.equal(source.localPairingRequired,true,'stale pairing must turn into a visible local re-pairing request after Drive fallback');
+});
+
 test('Windows document search falls back to Drive and namespaces result ownership',async()=>{
   const local={
     provider:'everything',getToken:()=> 'local-token',
