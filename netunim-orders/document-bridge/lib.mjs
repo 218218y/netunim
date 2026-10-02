@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=34;
+export const BRIDGE_VERSION=35;
 export const BRIDGE_NODE_MAJOR=24;
 export const BRIDGE_NODE_MIN_MINOR=11;
 export const MAX_QUERY_CHARS=240;
@@ -259,6 +259,32 @@ function jsonRows(parsed){
   return Array.isArray(firstArray)?firstArray:[];
 }
 
+function explicitFolderFlag(value){
+  if(typeof value==='boolean')return value;
+  const raw=text(value);if(!raw)return null;
+  if(/^(?:true|yes|1)$/i.test(raw))return true;
+  if(/^(?:false|no|0)$/i.test(raw))return false;
+  return null;
+}
+
+function attributesDirectoryFlag(value){
+  const raw=text(value);if(!raw)return null;
+  let numeric=NaN;
+  if(/^0x[0-9a-f]+$/i.test(raw))numeric=Number.parseInt(raw.slice(2),16);
+  else if(/^\d+$/.test(raw))numeric=Number(raw);
+  if(Number.isSafeInteger(numeric))return (numeric&0x10)!==0;
+  return null;
+}
+
+function esRowIsDirectory(row,attributes){
+  const explicit=explicitFolderFlag(field(row,['is folder','is_folder','is-folder','isfolder']));
+  if(explicit!==null)return explicit;
+  const fromAttributes=attributesDirectoryFlag(attributes);
+  if(fromAttributes!==null)return fromAttributes;
+  const legacy=text(attributes);
+  return legacy.toUpperCase().includes('D')||/directory/i.test(legacy);
+}
+
 function commonEsPrefix({timeoutMs=15000,instance=''}){
   const timeout=Math.max(3000,Math.min(30000,Number(timeoutMs)||15000));
   // ES writes redirected/pipe output using its console code page. Force UTF-8
@@ -374,7 +400,7 @@ export function parseEsJson(stdout){
     const size=Number(String(sizeRaw??'').replace(/[,_\s]/g,''));
     const extension=documentExtension(name);
     const attributes=text(field(row,['attributes','attribs','attrib']));
-    const isDirectory=attributes.toUpperCase().includes('D')||/directory/i.test(attributes);
+    const isDirectory=esRowIsDirectory(row,attributes);
     return {name,fullPath,relativePath:parent,modified,size:Number.isFinite(size)?size:null,extension,attributes,isDirectory,rootId:'everything',rootLabel:'Everything'};
   }).filter(Boolean);
 }

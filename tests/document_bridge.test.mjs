@@ -256,11 +256,21 @@ test('preview query addresses one exact full path and requests Everything conten
   assert.equal(parseEsContentPreview(JSON.stringify({results:[{Name:'My File.docx',Content:'preview text'}]})),'preview text');
 });
 
-test('ES JSON parser identifies folder results from the attributes column',()=>{
-  const rows=parseEsJson(JSON.stringify({results:[{Name:'Folder',Path:'C:\\Docs',Attributes:'DA','Date Modified':'2026-09-25T12:00:00Z'}]}));
-  assert.equal(rows.length,1);
+test('ES JSON parser identifies folders from exported numeric attributes and explicit folder flags',()=>{
+  const rows=parseEsJson(JSON.stringify({results:[
+    {Name:'Numeric folder',Path:'C:\\Docs',Attributes:16,'Date Modified':'2026-09-25T12:00:00Z'},
+    {Name:'Hex folder',Path:'C:\\Docs',Attributes:'0x10','Date Modified':'2026-09-25T12:00:00Z'},
+    {Name:'Legacy folder',Path:'C:\\Docs',Attributes:'DA','Date Modified':'2026-09-25T12:00:00Z'},
+    {Name:'Explicit folder',Path:'C:\\Docs',Attributes:32,is_folder:1,'Date Modified':'2026-09-25T12:00:00Z'},
+    {Name:'File.txt',Path:'C:\\Docs',Attributes:32,'Date Modified':'2026-09-25T12:00:00Z'},
+  ]}));
+  assert.equal(rows.length,5);
   assert.equal(rows[0].isDirectory,true);
-  assert.equal(rows[0].attributes,'DA');
+  assert.equal(rows[0].attributes,'16');
+  assert.equal(rows[1].isDirectory,true);
+  assert.equal(rows[2].isDirectory,true);
+  assert.equal(rows[3].isDirectory,true);
+  assert.equal(rows[4].isDirectory,false);
 });
 
 test('global Everything result merging dedupes only identical paths',()=>{

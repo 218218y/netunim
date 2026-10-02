@@ -96,6 +96,12 @@ test('document filename search is dispatched ahead of slower content search and 
 });
 
 
+test('folder document results show the folder label instead of the generic file label',()=>{
+ const html=documentResultsTableHtml([{id:'folder-1',name:'Folder',relativePath:'Y:',size:4577*1024*1024,modified:'2026-09-30T04:59:00Z',isDirectory:true}],'everything');
+ assert.match(html,/<small>תיקייה<\/small>/);
+ assert.match(html,/document-result-size[^>]*>—<\/span>/);
+});
+
 test('document result headers expose accessible two-way sorting controls',()=>{
  const html=documentResultsTableHtml([{id:'1',name:'A.txt',relativePath:'C:\\Docs',size:10,modified:'2026-09-30T10:00:00Z'}],'everything',{sortScope:'everything',sort:{field:'size',direction:'desc'}});
  for(const field of ['name','path','size','modified'])assert.match(html,new RegExp(`data-document-sort-field=\"${field}\"`));
