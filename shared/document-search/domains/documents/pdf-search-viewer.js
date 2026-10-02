@@ -71,15 +71,42 @@ function pdfWholeWordMatches(matches,pageContent){
 function pdfProximityGapMatches(pageContent,from,to,maxWords){
   if(to<from)return false;
   const gap=String(pageContent??'').slice(from,to),limit=Math.max(0,Math.min(50,Math.trunc(Number(maxWords)||0)));
-  if(!gap||!/^\s/u.test(gap)||!/\s$/u.test(gap))return false;
+  // PDFFindController concatenates adjacent PDF text items without inserting a
+  // separator. Everything/the Bridge index the same visual boundary as whitespace.
+  // Treat a zero-length gap as zero intervening words so proximity navigation does
+  // not lose a real match merely because the PDF split the words into text items.
+  if(!gap)return true;
+  if(!/^\s/u.test(gap)||!/\s$/u.test(gap))return false;
   return gap.trim().split(/\s+/u).filter(Boolean).length<=limit;
+}
+function pdfLogicalPhraseMatches(nativeMatch,query,pageContent,pageIndex){
+  if(typeof query!=='string')return [];
+  const terms=contentSearchTerms(query),source=String(pageContent??'');if(terms.length<2)return [];
+  // Reuse PDF.js's own normalized matcher for every term (case, punctuation and
+  // diacritics stay identical to the pinned runtime), then reconstruct a phrase
+  // when consecutive terms are separated only by whitespace or by the zero-width
+  // text-item boundary that PDFFindController omits from its flattened page text.
+  const byTerm=terms.map(term=>nativeMatch(term,source,pageIndex)).map(rows=>Array.isArray(rows)?rows:[]);if(byTerm.some(rows=>!rows.length))return [];
+  const matches=[];let consumedUntil=-1;
+  for(const first of byTerm[0]){
+    const firstStart=Math.max(0,Number(first?.index)||0),firstLength=Math.max(0,Number(first?.length)||0),firstEnd=firstStart+firstLength;if(!firstLength||firstStart<consumedUntil)continue;
+    let previousEnd=firstEnd,lastEnd=firstEnd,valid=true;
+    for(let termIndex=1;termIndex<byTerm.length;termIndex+=1){const next=byTerm[termIndex].find(match=>{const start=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0),gap=source.slice(previousEnd,start);return length>0&&start>=previousEnd&&(gap===''||/^\s+$/u.test(gap))});if(!next){valid=false;break}const start=Math.max(0,Number(next.index)||0),length=Math.max(0,Number(next.length)||0);previousEnd=start+length;lastEnd=previousEnd}
+    if(valid){matches.push({index:firstStart,length:lastEnd-firstStart});consumedUntil=lastEnd}
+  }
+  return matches;
+}
+function mergePdfMatches(...groups){
+  const rows=[];for(const group of groups)for(const match of Array.isArray(group)?group:[]){const index=Math.max(0,Number(match?.index)||0),length=Math.max(0,Number(match?.length)||0);if(length)rows.push({index,length})}
+  return rows.sort((a,b)=>a.index-b.index||b.length-a.length).filter((row,index,list)=>index===0||row.index!==list[index-1].index||row.length!==list[index-1].length);
 }
 export function matchPdfTextWithNativeNormalization(nativeMatch,query,pageContent,pageIndex,contentSearch={}){
   if(typeof nativeMatch!=='function')return [];
   const search=normalizeContentSearch(contentSearch),source=String(pageContent??'');
   if(search.matchMode!=='proximity'){
-    const matches=nativeMatch(query,source,pageIndex);
-    return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[]);
+    const nativeMatches=nativeMatch(query,source,pageIndex),logicalMatches=search.matchMode==='phrase'?pdfLogicalPhraseMatches(nativeMatch,query,source,pageIndex):[];
+    const matches=mergePdfMatches(nativeMatches,logicalMatches);
+    return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):matches;
   }
   const terms=contentSearchTerms(Array.isArray(query)?query.join(' '):query);
   if(terms.length<2){const matches=nativeMatch(query,source,pageIndex);return search.wordMatch==='whole'?pdfWholeWordMatches(matches,source):(Array.isArray(matches)?matches:[])}
@@ -395,7 +422,7 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
   const nativeFindMatch=typeof findController?.match==='function'?findController.match.bind(findController):null;
-  const customPdfTextMatch=!!nativeFindMatch&&(search.matchMode==='proximity'||search.wordMatch==='whole');
+  const customPdfTextMatch=!!nativeFindMatch&&(search.matchMode==='proximity'||search.wordMatch==='whole'||(search.matchMode==='phrase'&&contentSearchTerms(needle).length>1));
   if(customPdfTextMatch)findController.match=(findQueryValue,pageContent,pageIndex)=>matchPdfTextWithNativeNormalization(nativeFindMatch,findQueryValue,pageContent,pageIndex,search);
   const viewerOptions={container,eventBus,linkService,findController};
   // Preview is never an editor. Always paint the PDF-authored AcroForm appearance

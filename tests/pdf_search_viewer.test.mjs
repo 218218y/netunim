@@ -81,6 +81,22 @@ test('PDF ordered proximity reuses native normalized term coordinates, including
   assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'שלום עולם',page,0,{matchMode:'proximity',proximityWords:0,wordMatch:'whole'}),[]);
 });
 
+test('PDF exact phrases survive missing separators between adjacent PDF text items',()=>{
+  const page='alpha betaalphabeta alpha beta';
+  const nativeMatch=(query,source)=>{const needle=String(query||''),rows=[];let offset=0,index;while((index=String(source||'').indexOf(needle,offset))>=0){rows.push({index,length:needle.length});offset=index+Math.max(1,needle.length)}return rows};
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'alpha beta',page,0,{matchMode:'phrase'}),[
+    {index:0,length:10},
+    {index:10,length:9},
+    {index:20,length:10},
+  ],'native spaced matches and item-boundary-collapsed matches are merged without losing any highlight');
+});
+
+test('PDF proximity accepts a zero-length visual item boundary as zero intervening words',()=>{
+  const page='alphabeta';
+  const nativeMatch=query=>query==='alpha'?[{index:0,length:5}]:query==='beta'?[{index:5,length:4}]:[];
+  assert.deepEqual(matchPdfTextWithNativeNormalization(nativeMatch,'alpha beta',page,0,{matchMode:'proximity',proximityWords:0}),[{index:0,length:9}]);
+});
+
 test('PDF find requests keep all matches highlighted and distinguish next from previous',()=>{
   assert.deepEqual(buildPdfFindRequest('needle'),{source:null,type:'',query:'needle',phraseSearch:true,caseSensitive:false,entireWord:false,highlightAll:true,findPrevious:false,matchDiacritics:false});
   assert.equal(buildPdfFindRequest('needle',{type:'again',findPrevious:true}).findPrevious,true);
@@ -393,6 +409,13 @@ test('controlled PDF whole-word search keeps PDF.js matching active and applies 
   const find=whole.state.eventBus.dispatched.find(event=>event.name==='find');
   assert.equal(find.payload.entireWord,false,'PDF.js must not pre-filter with Intl.Segmenter before Netunim applies Everything-compatible boundaries');
   assert.deepEqual(whole.state.findController.match('מזר','מזרן מזר',0),[{index:5,length:3}]);
+  await viewer.destroy();
+});
+
+test('controlled PDF exact-phrase search installs the logical item-boundary matcher',async()=>{
+  const exact=fakeRuntime(),host=fakeHost();
+  const viewer=await createPdfSearchViewer({host,data:new Uint8Array([37,80,68,70]),query:'alpha beta',contentSearch:{matchMode:'phrase'},runtime:exact.runtime});
+  assert.deepEqual(exact.state.findController.match('alpha beta','alphabeta',0),[{index:0,length:9}], 'a phrase split into adjacent PDF text items remains highlightable');
   await viewer.destroy();
 });
 
