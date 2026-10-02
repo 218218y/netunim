@@ -212,6 +212,14 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
+test('private Node version verification captures native exit status before processing output',()=>{
+  const nodeInstaller=read('netunim-orders/document-bridge/install_node_runtime.ps1');
+  assert.doesNotMatch(nodeInstaller,/& \$NodePath[^\n]*\|\s*Select-Object/i,'Node version probing must not pipe the native process before reading its exit status');
+  assert.match(nodeInstaller,/\$reportedLines\s*=\s*@\(& \$NodePath -p 'process\.versions\.node' 2>\$null\)[\s\S]{0,160}\$nodeExitCode\s*=\s*\$LASTEXITCODE/,'Node version probing must capture stdout directly and snapshot LASTEXITCODE immediately');
+  assert.match(nodeInstaller,/if \(\$nodeExitCode -ne 0\)/,'Node version probing must reject a genuine native-process failure separately from a version mismatch');
+  assert.match(nodeInstaller,/if \(\$reported -ne \$version\)/,'Node version probing must compare the normalized reported version independently of process exit status');
+});
+
 test('Windows dependency installers avoid the PowerShell 8.3 TEMP cleanup failure',()=>{
   const nodeInstaller=read('netunim-orders/document-bridge/install_node_runtime.ps1');
   const esInstaller=read('netunim-orders/document-bridge/install_es.ps1');

@@ -34,9 +34,19 @@ function Assert-NodeBinary([string]$NodePath) {
   if ($actualHash -ne $expectedNodeSha256) {
     throw "SHA-256 mismatch for $NodePath. Expected $expectedNodeSha256 but got $actualHash"
   }
-  $reported = (& $NodePath -p 'process.versions.node' 2>$null | Select-Object -First 1)
-  if ($LASTEXITCODE -ne 0 -or ([string]$reported).Trim() -ne $version) {
-    throw "Pinned Node executable reported an unexpected version: $reported"
+  # Do not pipe a native process into Select-Object before reading its exit code.
+  # Windows PowerShell can leave $LASTEXITCODE unset/stale for native commands
+  # on the left side of a pipeline, which previously rejected a valid Node that
+  # had already printed the exact pinned version. Capture stdout directly, save
+  # the native exit code immediately, and only then inspect the first line.
+  $reportedLines = @(& $NodePath -p 'process.versions.node' 2>$null)
+  $nodeExitCode = $LASTEXITCODE
+  $reported = if ($reportedLines.Count -gt 0) { ([string]$reportedLines[0]).Trim() } else { '' }
+  if ($nodeExitCode -ne 0) {
+    throw "Pinned Node executable version probe failed with exit code $nodeExitCode. Output: $reported"
+  }
+  if ($reported -ne $version) {
+    throw "Pinned Node executable reported an unexpected version. Expected $version but got '$reported'"
   }
 }
 
