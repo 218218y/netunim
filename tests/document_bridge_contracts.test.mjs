@@ -184,6 +184,12 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/Next Run Time/);
   assert.match(server,/schedule active=/,'doctor must say whether the registered schedule is actually active');
   assert.doesNotMatch(server,/schtasks(?:\.exe)?/i,'Task Scheduler diagnostics must not spawn schtasks');
+  assert.match(server,/\[Console\]::OutputEncoding=New-Object System\.Text\.UTF8Encoding\(\$false\)/,'Windows PowerShell diagnostics must emit UTF-8 when Node decodes stdout as UTF-8');
+  assert.match(server,/NETUNIM_TASK_EXPECTED_RUNNER/,'expected Unicode runner path must cross the process boundary through the Windows Unicode environment block');
+  assert.match(server,/NETUNIM_TASK_EXPECTED_WORKDIR/,'expected Unicode working directory must cross the process boundary through the Windows Unicode environment block');
+  assert.match(server,/IndexOf\(\$expectedRunner,\[System\.StringComparison\]::OrdinalIgnoreCase\)/,'scheduled-task runner comparison must happen inside PowerShell before JSON serialization');
+  assert.doesNotMatch(server,/argumentsText\.includes\(expectedRunner/,'Node must not compare Unicode task paths after decoding Windows PowerShell stdout');
+  assert.match(server,/MISMATCH \(execute=\$\{task\.actionExecuteValid/,'doctor must identify which action component mismatched');
   assert.equal((server.match(/pdfMaintenanceTaskDiagnostics\(\)/g)||[]).length,3,'Task Scheduler probing must stay confined to the diagnostic helper, doctor and install summary');
   assert.match(server,/hasForm:!!extracted\.hasForm/,'ordinary PDFs must be negatively cached after inspection');
   assert.match(server,/pending:pdfFormIndexPending/,'incremental progress must be persisted across restarts');

@@ -813,31 +813,47 @@ function taskResultLabel(value){
   const numeric=Number(value);if(!Number.isFinite(numeric))return 'unknown';const unsigned=numeric>>>0;return `${Math.trunc(numeric)} (0x${unsigned.toString(16).toUpperCase().padStart(8,'0')})`;
 }
 async function pdfMaintenanceTaskDiagnostics(){
-  if(process.platform!=='win32')return {exists:false,unsupported:true,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,actionValid:false,scheduleActive:false,error:''};
+  if(process.platform!=='win32')return {exists:false,unsupported:true,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,actionExecuteValid:false,actionRunnerValid:false,actionWorkingDirectoryValid:false,actionValid:false,scheduleActive:false,error:''};
+  const expectedRunner=path.join(APP_ROOT,'run_pdf_maintenance.ps1');
   const script=[
     "$ErrorActionPreference='Stop'",
+    '[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding($false)',
     `$task=Get-ScheduledTask -TaskName '${PDF_MAINTENANCE_TASK_NAME}' -ErrorAction Stop`,
     `$info=Get-ScheduledTaskInfo -TaskName '${PDF_MAINTENANCE_TASK_NAME}' -ErrorAction Stop`,
     '$action=@($task.Actions)[0]',
     '$triggers=@($task.Triggers)',
+    '$expectedRunner=[string]$env:NETUNIM_TASK_EXPECTED_RUNNER',
+    "$expectedWorkingDirectory=([System.IO.Path]::GetFullPath([string]$env:NETUNIM_TASK_EXPECTED_WORKDIR)).TrimEnd('\\')",
+    '$executeLeaf=[System.IO.Path]::GetFileName([string]$action.Execute)',
+    '$arguments=[string]$action.Arguments',
+    "$registeredWorkingDirectory=([string]$action.WorkingDirectory).TrimEnd('\\')",
+    "$actualWorkingDirectory=if($registeredWorkingDirectory){([System.IO.Path]::GetFullPath($registeredWorkingDirectory)).TrimEnd('\\')}else{''}",
+    "$executeValid=($executeLeaf -ieq 'powershell.exe')",
+    '$runnerValid=($expectedRunner.Length -gt 0 -and $arguments.IndexOf($expectedRunner,[System.StringComparison]::OrdinalIgnoreCase) -ge 0)',
+    '$workingDirectoryValid=($actualWorkingDirectory -ieq $expectedWorkingDirectory)',
     "$lastRun=if($info.LastRunTime.Year -gt 1900){$info.LastRunTime.ToString('o')}else{''}",
     "$nextRun=if($info.NextRunTime.Year -gt 1900){$info.NextRunTime.ToString('o')}else{''}",
     "$triggerEnabled=(@($triggers | Where-Object { $_.Enabled -ne $false }).Count -gt 0)",
-    "[pscustomobject]@{state=[string]$task.State;enabled=([string]$task.State -ne 'Disabled');triggerEnabled=[bool]$triggerEnabled;lastRunTime=$lastRun;lastResult=[int64]$info.LastTaskResult;nextRunTime=$nextRun;missedRuns=[int]$info.NumberOfMissedRuns;execute=[string]$action.Execute;arguments=[string]$action.Arguments;workingDirectory=[string]$action.WorkingDirectory}|ConvertTo-Json -Compress",
+    "[pscustomobject]@{state=[string]$task.State;enabled=([string]$task.State -ne 'Disabled');triggerEnabled=[bool]$triggerEnabled;lastRunTime=$lastRun;lastResult=[int64]$info.LastTaskResult;nextRunTime=$nextRun;missedRuns=[int]$info.NumberOfMissedRuns;actionExecuteValid=[bool]$executeValid;actionRunnerValid=[bool]$runnerValid;actionWorkingDirectoryValid=[bool]$workingDirectoryValid}|ConvertTo-Json -Compress",
   ].join(';');
+  const env={...process.env,NETUNIM_TASK_EXPECTED_RUNNER:expectedRunner,NETUNIM_TASK_EXPECTED_WORKDIR:APP_ROOT};
   try{
-    const {stdout}=await execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024*1024});
-    const raw=JSON.parse(String(stdout||'').trim());const expectedRunner=path.join(APP_ROOT,'run_pdf_maintenance.ps1');
-    const executeLeaf=path.win32.basename(String(raw.execute||'')).toLocaleLowerCase('en-US'),argumentsText=String(raw.arguments||'').toLocaleLowerCase('en-US'),working=String(raw.workingDirectory||'');
-    const actionValid=executeLeaf==='powershell.exe'&&argumentsText.includes(expectedRunner.toLocaleLowerCase('en-US'))&&normalizedRuntimePath(working)===normalizedRuntimePath(APP_ROOT);
+    const {stdout}=await execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024*1024,env});
+    const raw=JSON.parse(String(stdout||'').trim());
+    const actionExecuteValid=raw.actionExecuteValid===true,actionRunnerValid=raw.actionRunnerValid===true,actionWorkingDirectoryValid=raw.actionWorkingDirectoryValid===true;
+    const actionValid=actionExecuteValid&&actionRunnerValid&&actionWorkingDirectoryValid;
     const enabled=raw.enabled===true,triggerEnabled=raw.triggerEnabled===true,nextRunTime=String(raw.nextRunTime||''),scheduleActive=enabled&&triggerEnabled&&!!nextRunTime&&actionValid;
-    return {exists:true,unsupported:false,state:String(raw.state||''),enabled,triggerEnabled,lastRunTime:String(raw.lastRunTime||''),lastResult:Number(raw.lastResult),nextRunTime,missedRuns:Math.max(0,Number(raw.missedRuns)||0),execute:String(raw.execute||''),arguments:String(raw.arguments||''),workingDirectory:working,actionValid,scheduleActive,error:''};
-  }catch(error){return {exists:false,unsupported:false,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,execute:'',arguments:'',workingDirectory:'',actionValid:false,scheduleActive:false,error:String(error?.stderr||error?.message||error).trim()}}
+    return {exists:true,unsupported:false,state:String(raw.state||''),enabled,triggerEnabled,lastRunTime:String(raw.lastRunTime||''),lastResult:Number(raw.lastResult),nextRunTime,missedRuns:Math.max(0,Number(raw.missedRuns)||0),actionExecuteValid,actionRunnerValid,actionWorkingDirectoryValid,actionValid,scheduleActive,error:''};
+  }catch(error){return {exists:false,unsupported:false,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,actionExecuteValid:false,actionRunnerValid:false,actionWorkingDirectoryValid:false,actionValid:false,scheduleActive:false,error:String(error?.stderr||error?.message||error).trim()}}
+}
+function taskActionDiagnosticLabel(task){
+  if(task.actionValid)return 'OK';
+  return `MISMATCH (execute=${task.actionExecuteValid?'ok':'bad'}; runner=${task.actionRunnerValid?'ok':'bad'}; cwd=${task.actionWorkingDirectoryValid?'ok':'bad'})`;
 }
 function printPdfMaintenanceTaskDiagnostics(task){
   if(task.unsupported){console.log('PDF maintenance Task Scheduler: unavailable on this platform');return}
   if(!task.exists){console.log(`PDF maintenance Task Scheduler: NOT INSTALLED${task.error?` (${task.error})`:''}`);return}
-  console.log(`PDF maintenance Task Scheduler: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${task.actionValid?'OK':'MISMATCH'}`);
+  console.log(`PDF maintenance Task Scheduler: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${taskActionDiagnosticLabel(task)}`);
   console.log(`  Last Run Time: ${task.lastRunTime||'never'}`);console.log(`  Last Result: ${taskResultLabel(task.lastResult)}`);console.log(`  Next Run Time: ${task.nextRunTime||'not scheduled'}`);console.log(`  Missed Runs: ${task.missedRuns}`);
 }
 
@@ -856,7 +872,7 @@ async function writeInstallSummary(){
   try{nodeRuntime=privateNodeRuntimeInfoSync({verifyHash:process.platform==='win32'})}catch(error){nodeRuntime={actualPath:process.execPath,sha256:'',error:String(error?.message||error)}}
   const task=await pdfMaintenanceTaskDiagnostics();
   try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const taskLines=task.unsupported?['PDF maintenance task: unavailable on this platform']:task.exists?[`PDF maintenance task: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${task.actionValid?'OK':'MISMATCH'}`,`   Last Run Time: ${task.lastRunTime||'never'}`,`   Last Result: ${taskResultLabel(task.lastResult)}`,`   Next Run Time: ${task.nextRunTime||'not scheduled'}`,`   Missed Runs: ${task.missedRuns}`]:[`PDF maintenance task: NOT INSTALLED${task.error?` (${task.error})`:''}`];
+  const taskLines=task.unsupported?['PDF maintenance task: unavailable on this platform']:task.exists?[`PDF maintenance task: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${taskActionDiagnosticLabel(task)}`,`   Last Run Time: ${task.lastRunTime||'never'}`,`   Last Result: ${taskResultLabel(task.lastResult)}`,`   Next Run Time: ${task.nextRunTime||'not scheduled'}`,`   Missed Runs: ${task.missedRuns}`]:[`PDF maintenance task: NOT INSTALLED${task.error?` (${task.error})`:''}`];
   const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Runtime: ${RUNTIME_ROOT}`,`Node version: ${process.versions.node} (pinned ${BRIDGE_NODE_VERSION})`,`Node executable: ${nodeRuntime.actualPath||process.execPath}`,`Node SHA-256: ${nodeRuntime.sha256?`${nodeRuntime.sha256} (verified)`:nodeRuntime.error||'not checked'}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'',...taskLines,'','Search scope: COMPLETE EVERYTHING INDEX + INTERACTIVE PDF SUPPLEMENT','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','Interactive AcroForm PDFs are additionally parsed locally with the bundled PDF.js legacy runtime for Node so field values and logical page text remain searchable even when the Windows PDF iFilter omits/reorders them.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,`Node installer log: ${path.join(APP_ROOT,'install-node.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI and merge a local cached supplement only for interactive AcroForm PDFs.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
