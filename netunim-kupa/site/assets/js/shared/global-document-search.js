@@ -49,6 +49,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function documentProviderLabel(){return String(documentBridge?.providerLabel||(isGoogleDriveSource()?'Google Drive':'Everything'))}
   function documentProviderNotice(){return String(documentBridge?.providerNotice||'')}
   function providerNoticeHtml(){const note=documentProviderNotice();return note?`<div class="document-provider-notice"><span>DRIVE</span>${esc(note)}</div>`:''}
+  function localBridgePairingReminder(){if(!documentBridge?.supportsLocalPairing||documentBridge?.localToken)return '';return `<div class="document-search-fallback-local document-search-local-pairing-reminder"><span>ה־Document Bridge מותקן, אבל הדפדפן הזה עדיין לא משויך למחשב המקומי.</span><div class="document-search-pair"><input id="globalSearchDocumentToken" type="password" autocomplete="off" spellcheck="false" placeholder="הדבק מפתח Document Bridge"><button type="button" data-document-pair>חבר מחשב</button></div><small>אפשר להמשיך זמנית דרך Google Drive; לאחר הזנת המפתח החיפוש המקומי ב־Everything יחזור להיות המקור הראשי.</small></div>`}
   function documentAuthError(error){const code=String(error?.code||'');return ['DOCUMENT_BRIDGE_NOT_PAIRED','UNAUTHORIZED','google_drive_not_connected','google_drive_reconnect_required','google_drive_auth_required'].includes(code)}
   function sourceLabel(mode){const base=mode==='content'?'חיפוש תוכן':'חיפוש קבצים';return `${base} · ${documentProviderLabel()}`}
   function includesSite(){return filter==='all'||filter==='site'}
@@ -174,7 +175,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:recentDocumentLabel(),hint:'לחיצה על כותרת ממיינת · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה',sortScope:'recent',sort:recentDocumentSort});
     else if(state.status==='done')body=`<div class="global-search-source-empty">${esc(recentDocumentEmptyLabel())} ב־${esc(documentProviderLabel())}.</div>`;
     else body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
-    results.innerHTML=`<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${providerNoticeHtml()}${body}</div></section>`;
+    results.innerHTML=`<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${providerNoticeHtml()}${state.status==='pairing'?'':localBridgePairingReminder()}${body}</div></section>`;
     setPreviewLayout(rows.length>0);if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
     if(meta)meta.textContent=state.status==='loading'?`טוען ${recentDocumentLabel()}…`:rows.length?`${rows.length} ${recentDocumentLabel()}`:state.status==='done'?recentDocumentEmptyLabel():'';
   }
@@ -182,7 +183,9 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     const {results}=refs();if(!results)return;documentContentOptions.update();documentFolderScope.update();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
     const sections=[];let siteTotal=0,documentTotal=0,loading=false;const hideEmptySources=filter==='all';
     if(includesSite()){const site=renderSiteSource(raw);siteTotal=site.total;if(!hideEmptySources||!site.settledEmpty)sections.push(site.html)}
-    for(const mode of requestedDocumentModes()){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading'||documentStates[mode].loadingMore;if(!hideEmptySources||!source.settledEmpty)sections.push(source.html)}
+    const documentModes=requestedDocumentModes(),hasPairingState=documentModes.some(mode=>documentStates[mode].status==='pairing'),localPairingReminder=hasPairingState?'':localBridgePairingReminder();
+    if(localPairingReminder)sections.push(`<section class="global-search-source-section document-search-local-pairing-section" data-search-source="local-pairing"><div class="global-search-source-body">${localPairingReminder}</div></section>`);
+    for(const mode of documentModes){const source=renderDocumentSource(mode,raw);documentTotal+=source.total;loading=loading||documentStates[mode].status==='loading'||documentStates[mode].loadingMore;if(!hideEmptySources||!source.settledEmpty)sections.push(source.html)}
     results.innerHTML=sections.join('')||(loading?'<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>מחפש…</div>':'<div class="global-search-source-empty">לא נמצאו תוצאות.</div>');
     const hasDocumentRows=requestedDocumentModes().some(mode=>documentStates[mode].rows.length>0);setPreviewLayout(hasDocumentRows);
     if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();

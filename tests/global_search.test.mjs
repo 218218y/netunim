@@ -124,3 +124,12 @@ test('global document search passes sorting through paged file and content reque
  assert.match(source,/applyDocumentSort\(sortButton\.dataset\.documentSortScope,sortButton\.dataset\.documentSortField\)/);
  assert.match(source,/recentDocumentSort=nextDocumentSort/);
 });
+
+
+test('Windows Drive fallback keeps local Bridge pairing visible when only the Drive credential exists',()=>{
+ const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8');
+ assert.match(source,/function localBridgePairingReminder\(\).*supportsLocalPairing.*localToken/s,'pairing reminder must use the local Bridge credential, not the aggregate Drive-or-local credential');
+ assert.match(source,/hasPairingState=documentModes\.some.*localBridgePairingReminder\(\)/s,'normal document rendering must expose one independent local-pairing recovery section while Drive fallback remains usable');
+ assert.match(source,/data-search-source="local-pairing"/,'local pairing recovery must be rendered as one standalone section, not duplicated per document lane');
+ assert.match(source,/data-search-source="recent".*localBridgePairingReminder\(\)/s,'empty-query recent documents must expose the same local pairing recovery');
+});
