@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "policy": "Fixtures are immutable regression inputs. Update hashes/expectations only in the same reviewed change as a deliberate corpus change. A PDF.js upgrade must pass this corpus before deployment.",
+  "cases": [
+    {
+      "file": "ordinary-text.pdf",
+      "kind": "ordinary",
+      "expect": {
+        "pages": 1,
+        "textIncludes": "NETUNIM PDF CORPUS ORDINARY 2026"
+      },
+      "sha256": "c1df359f3e741ad7778587fa91c8d3c4ffae383f6c904397048a1a30c6d910b7",
+      "bytes": 1445
+    },
+    {
+      "file": "acroform-hebrew-controls.pdf",
+      "kind": "acroform",
+      "expect": {
+        "pages": 1,
+        "hebrewValue": "שלום עולם",
+        "choiceValue": "אפשרות ב",
+        "checkboxChecked": true
+      },
+      "sha256": "48acd56ccb3b2c568f7aa3d53879fc1ec66d35f14d0471702d720d806da672fd",
+      "bytes": 7920
+    },
+    {
+      "file": "large-120-pages.pdf",
+      "kind": "large",
+      "expect": {
+        "pages": 120,
+        "lastPageTextIncludes": "NETUNIM LARGE PDF PAGE 120 OF 120"
+      },
+      "sha256": "a1afc10fed66cc0d527c615af6737f0b5bd08f3282ffd8d72023c8ce5b9bdab7",
+      "bytes": 81053
+    },
+    {
+      "file": "empty-one-page.pdf",
+      "kind": "empty",
+      "expect": {
+        "pages": 1,
+        "textEmpty": true
+      },
+      "sha256": "d35c0a7d61b159bbf5feb9205e9c77422e558148563b4946654a6c73b623600d",
+      "bytes": 465
+    },
+    {
+      "file": "corrupt-truncated.pdf",
+      "kind": "corrupt",
+      "expect": {
+        "reject": true
+      },
+      "sha256": "3b28c3b7feac6eaa82f2f4165e75910154bb20589bbb5e04396b6094db69b9fa",
+      "bytes": 108
+    },
+    {
+      "file": "password-protected.pdf",
+      "kind": "password",
+      "password": "netunim-test",
+      "expect": {
+        "pages": 1,
+        "textIncludes": "NETUNIM PASSWORD PDF SECRET CONTENT"
+      },
+      "sha256": "0ceb3c1ab1692da6bf405180fd33b48ce1021e5216f3219dd00c658abaf5395d",
+      "bytes": 2259
+    }
+  ],
+  "baselinePdfjsVersion": "6.3.289"
+}

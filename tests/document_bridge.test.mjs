@@ -9,11 +9,10 @@ import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/doc
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
 
-test('Windows Bridge Node runtime contract targets the Node 24 LTS line',()=>{
-  assert.equal(bridgeNodeVersionSupported('24.11.0'),true);
-  assert.equal(bridgeNodeVersionSupported('24.18.0'),true);
+test('Windows Bridge Node runtime contract is an exact reviewed pin',()=>{
   assert.equal(bridgeNodeVersionSupported('24.21.0'),true);
-  assert.equal(bridgeNodeVersionSupported('24.10.0'),false);
+  assert.equal(bridgeNodeVersionSupported('24.21.1'),false);
+  assert.equal(bridgeNodeVersionSupported('24.20.0'),false);
   assert.equal(bridgeNodeVersionSupported('22.22.0'),false);
   assert.equal(bridgeNodeVersionSupported('26.0.0'),false);
   assert.equal(bridgeNodeVersionSupported('not-a-version'),false);

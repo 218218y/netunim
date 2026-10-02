@@ -3,8 +3,8 @@ import path from 'node:path';
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
 export const BRIDGE_VERSION=37;
-export const BRIDGE_NODE_MAJOR=24;
-export const BRIDGE_NODE_MIN_MINOR=11;
+export const BRIDGE_NODE_VERSION='24.21.0';
+export const BRIDGE_NODE_WIN_X64_SHA256='ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32';
 export const MAX_QUERY_CHARS=240;
 export const MAX_RESULTS=5000;
 export const RECENT_RESULT_LIMIT=150;
@@ -12,14 +12,12 @@ export const DEFAULT_RESULT_LIMIT=150;
 export const RESULT_TTL_MS=10*60*1000;
 
 export function bridgeNodeVersionSupported(value){
-  const match=String(value??'').trim().match(/^(\d+)\.(\d+)\.(\d+)$/);if(!match)return false;
-  const major=Number(match[1]),minor=Number(match[2]);
-  return major===BRIDGE_NODE_MAJOR&&minor>=BRIDGE_NODE_MIN_MINOR;
+  return String(value??'').trim()===BRIDGE_NODE_VERSION;
 }
 
 export function assertBridgeNodeVersion(value=process.versions.node){
   if(bridgeNodeVersionSupported(value))return String(value);
-  const error=new Error(`Document Bridge requires Node.js ${BRIDGE_NODE_MAJOR}.${BRIDGE_NODE_MIN_MINOR}+ LTS within the Node ${BRIDGE_NODE_MAJOR}.x line; found ${String(value||'unknown')}.`);
+  const error=new Error(`Document Bridge requires the pinned private Node.js ${BRIDGE_NODE_VERSION} runtime; found ${String(value||'unknown')}.`);
   error.code='NODE_RUNTIME_UNSUPPORTED';throw error;
 }
 

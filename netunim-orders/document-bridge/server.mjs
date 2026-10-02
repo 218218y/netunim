@@ -8,7 +8,7 @@ import {execFile as execFileCb,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
 import {
-  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_MAJOR,BRIDGE_NODE_MIN_MINOR,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
+  BRIDGE_PORT,BRIDGE_SERVICE,BRIDGE_VERSION,BRIDGE_NODE_VERSION,BRIDGE_NODE_WIN_X64_SHA256,assertBridgeNodeVersion,DEFAULT_ALLOWED_ORIGINS,DEFAULT_RESULT_LIMIT,MAX_RESULTS,RECENT_RESULT_LIMIT,RESULT_TTL_MS,
   buildContentMatchInfo,buildDocumentQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRawSearchArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeContentSearchOptions,normalizeDocumentFileType,normalizeDocumentSearchMode,normalizeDocumentSort,normalizeSearchScopePath,normalizeSearchText,
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
@@ -22,6 +22,8 @@ const CONFIG_PATH=path.join(APP_ROOT,'config.json');
 const TOKEN_PATH=path.join(APP_ROOT,'bridge-token.txt');
 const LOG_PATH=path.join(APP_ROOT,'bridge.log');
 const SUMMARY_PATH=path.join(APP_ROOT,'INSTALLATION-LOG.txt');
+const NODE_RUNTIME_POINTER_PATH=path.join(APP_ROOT,'node-runtime.txt');
+const PDF_MAINTENANCE_TASK_NAME='NetunimDocumentBridgePdfMaintenance';
 const PDF_FORM_INDEX_PATH=path.join(APP_ROOT,'pdf-form-index.json');
 const PDF_FORM_INDEX_JOURNAL_PATH=path.join(APP_ROOT,'pdf-form-index.journal.jsonl');
 const TOOL_ES=path.join(APP_ROOT,'tools','es.exe');
@@ -75,6 +77,20 @@ async function loadConfig(){
 async function saveConfig(config){await writeJsonFile(CONFIG_PATH,{everythingInstance:String(config.everythingInstance||'').trim(),everythingExecutable:String(config.everythingExecutable||'').trim(),allowedOrigins:Array.isArray(config.allowedOrigins)&&config.allowedOrigins.length?config.allowedOrigins:DEFAULT_ALLOWED_ORIGINS,searchTimeoutMs:Math.max(3000,Math.min(30000,Number(config.searchTimeoutMs)||15000))})}
 async function init(){await ensureToken();const existing=await loadConfig();if(!fsSync.existsSync(CONFIG_PATH))await saveConfig(existing);return existing}
 async function existsFile(candidate){if(!candidate)return false;try{return (await fs.stat(candidate)).isFile()}catch{return false}}
+
+const PRIVATE_NODE_RUNTIME_PATTERN=/^node-v24\.21\.0-win-x64-[0-9]{8}-[0-9]{6}-[0-9]+-[0-9a-f]{8}$/i;
+function normalizedRuntimePath(value){return path.resolve(String(value||'')).replace(/[\\/]+$/,'').toLocaleLowerCase('en-US')}
+function privateNodeRuntimeInfoSync({verifyHash=false}={}){
+  assertBridgeNodeVersion(process.versions.node);
+  if(process.platform!=='win32')return {runtimeName:'',expectedPath:process.execPath,actualPath:process.execPath,sha256:'',verified:true};
+  let runtimeName='';try{runtimeName=fsSync.readFileSync(NODE_RUNTIME_POINTER_PATH,'utf8').replace(/^\uFEFF/,'').trim()}catch(error){const e=new Error('Private Node runtime pointer is missing. Reinstall Document Bridge.');e.code='NODE_RUNTIME_POINTER_MISSING';e.cause=error;throw e}
+  if(!PRIVATE_NODE_RUNTIME_PATTERN.test(runtimeName)){const e=new Error(`Private Node runtime pointer is invalid: ${runtimeName||'(empty)'}.`);e.code='NODE_RUNTIME_POINTER_INVALID';throw e}
+  const expectedPath=path.join(APP_ROOT,runtimeName,'node.exe'),actualPath=process.execPath;
+  if(!fsSync.existsSync(expectedPath)){const e=new Error(`Pinned private Node runtime is missing: ${expectedPath}`);e.code='NODE_RUNTIME_MISSING';throw e}
+  if(normalizedRuntimePath(expectedPath)!==normalizedRuntimePath(actualPath)){const e=new Error(`Document Bridge must run with its pinned private Node runtime. Expected ${expectedPath}; found ${actualPath}.`);e.code='NODE_RUNTIME_NOT_PRIVATE';throw e}
+  let sha256='';if(verifyHash){sha256=crypto.createHash('sha256').update(fsSync.readFileSync(actualPath)).digest('hex');if(sha256!==BRIDGE_NODE_WIN_X64_SHA256){const e=new Error(`Pinned private Node runtime failed SHA-256 verification: ${sha256}.`);e.code='NODE_RUNTIME_INTEGRITY_MISMATCH';throw e}}
+  return {runtimeName,expectedPath,actualPath,sha256,verified:!verifyHash||sha256===BRIDGE_NODE_WIN_X64_SHA256};
+}
 
 async function whereEs(){
   if(cachedEsPath)return cachedEsPath;
@@ -793,25 +809,62 @@ async function stopExisting(){
   try{await loopbackRequest('/health',{timeoutMs:500});const e=new Error('Existing Document Bridge listener is still active after shutdown.');e.code='SHUTDOWN_TIMEOUT';throw e}catch(error){if(['ECONNREFUSED','ECONNRESET','ETIMEDOUT'].includes(String(error?.code)))return;throw error}
 }
 
-async function printDoctor(){
-  await init();const [{probe,diagnostics},pdfRuntime]=await Promise.all([diagnoseIndex({freshProbe:true}),verifyNodePdfJsRuntime()]);
-  const executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
-  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Runtime: ${RUNTIME_ROOT}`);console.log(`Node: ${process.versions.node} (target ${BRIDGE_NODE_MAJOR}.${BRIDGE_NODE_MIN_MINOR}+ LTS, ${BRIDGE_NODE_MAJOR}.x)`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: OK (PDF.js ${pdfRuntime.version||'unknown'} ${pdfRuntime.runtime} build, ${pdfRuntime.mode}; Node canvas rendering ${pdfRuntime.canvasRenderingAvailable?'available':'not bundled/not required'})`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
+function taskResultLabel(value){
+  const numeric=Number(value);if(!Number.isFinite(numeric))return 'unknown';const unsigned=numeric>>>0;return `${Math.trunc(numeric)} (0x${unsigned.toString(16).toUpperCase().padStart(8,'0')})`;
+}
+async function pdfMaintenanceTaskDiagnostics(){
+  if(process.platform!=='win32')return {exists:false,unsupported:true,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,actionValid:false,scheduleActive:false,error:''};
+  const script=[
+    "$ErrorActionPreference='Stop'",
+    `$task=Get-ScheduledTask -TaskName '${PDF_MAINTENANCE_TASK_NAME}' -ErrorAction Stop`,
+    `$info=Get-ScheduledTaskInfo -TaskName '${PDF_MAINTENANCE_TASK_NAME}' -ErrorAction Stop`,
+    '$action=@($task.Actions)[0]',
+    '$triggers=@($task.Triggers)',
+    "$lastRun=if($info.LastRunTime.Year -gt 1900){$info.LastRunTime.ToString('o')}else{''}",
+    "$nextRun=if($info.NextRunTime.Year -gt 1900){$info.NextRunTime.ToString('o')}else{''}",
+    "$triggerEnabled=(@($triggers | Where-Object { $_.Enabled -ne $false }).Count -gt 0)",
+    "[pscustomobject]@{state=[string]$task.State;enabled=([string]$task.State -ne 'Disabled');triggerEnabled=[bool]$triggerEnabled;lastRunTime=$lastRun;lastResult=[int64]$info.LastTaskResult;nextRunTime=$nextRun;missedRuns=[int]$info.NumberOfMissedRuns;execute=[string]$action.Execute;arguments=[string]$action.Arguments;workingDirectory=[string]$action.WorkingDirectory}|ConvertTo-Json -Compress",
+  ].join(';');
+  try{
+    const {stdout}=await execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{encoding:'utf8',windowsHide:true,timeout:8000,maxBuffer:1024*1024});
+    const raw=JSON.parse(String(stdout||'').trim());const expectedRunner=path.join(APP_ROOT,'run_pdf_maintenance.ps1');
+    const executeLeaf=path.win32.basename(String(raw.execute||'')).toLocaleLowerCase('en-US'),argumentsText=String(raw.arguments||'').toLocaleLowerCase('en-US'),working=String(raw.workingDirectory||'');
+    const actionValid=executeLeaf==='powershell.exe'&&argumentsText.includes(expectedRunner.toLocaleLowerCase('en-US'))&&normalizedRuntimePath(working)===normalizedRuntimePath(APP_ROOT);
+    const enabled=raw.enabled===true,triggerEnabled=raw.triggerEnabled===true,nextRunTime=String(raw.nextRunTime||''),scheduleActive=enabled&&triggerEnabled&&!!nextRunTime&&actionValid;
+    return {exists:true,unsupported:false,state:String(raw.state||''),enabled,triggerEnabled,lastRunTime:String(raw.lastRunTime||''),lastResult:Number(raw.lastResult),nextRunTime,missedRuns:Math.max(0,Number(raw.missedRuns)||0),execute:String(raw.execute||''),arguments:String(raw.arguments||''),workingDirectory:working,actionValid,scheduleActive,error:''};
+  }catch(error){return {exists:false,unsupported:false,state:'',enabled:false,triggerEnabled:false,lastRunTime:'',lastResult:null,nextRunTime:'',missedRuns:0,execute:'',arguments:'',workingDirectory:'',actionValid:false,scheduleActive:false,error:String(error?.stderr||error?.message||error).trim()}}
+}
+function printPdfMaintenanceTaskDiagnostics(task){
+  if(task.unsupported){console.log('PDF maintenance Task Scheduler: unavailable on this platform');return}
+  if(!task.exists){console.log(`PDF maintenance Task Scheduler: NOT INSTALLED${task.error?` (${task.error})`:''}`);return}
+  console.log(`PDF maintenance Task Scheduler: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${task.actionValid?'OK':'MISMATCH'}`);
+  console.log(`  Last Run Time: ${task.lastRunTime||'never'}`);console.log(`  Last Result: ${taskResultLabel(task.lastResult)}`);console.log(`  Next Run Time: ${task.nextRunTime||'not scheduled'}`);console.log(`  Missed Runs: ${task.missedRuns}`);
+}
+
+async function printDoctor({allowUnreadyScheduledTask=false}={}){
+  await init();const [{probe,diagnostics},pdfRuntime,task]=await Promise.all([diagnoseIndex({freshProbe:true}),verifyNodePdfJsRuntime(),pdfMaintenanceTaskDiagnostics()]);
+  const nodeRuntime=privateNodeRuntimeInfoSync({verifyHash:process.platform==='win32'}),executable=probe.everythingExecutable||await findEverythingExecutable(await loadConfig());
+  console.log(`Document Bridge v${BRIDGE_VERSION}`);console.log(`Runtime: ${RUNTIME_ROOT}`);console.log(`Node: ${process.versions.node} (pinned private LTS ${BRIDGE_NODE_VERSION})`);console.log(`Node executable: ${nodeRuntime.actualPath}`);if(nodeRuntime.sha256)console.log(`Node SHA-256: ${nodeRuntime.sha256} (verified)`);console.log(`ES: ${probe.esVersion||'unknown'} (${probe.esPath})`);console.log(`Everything: ${probe.everythingVersion||'unknown'}${probe.instance?` [instance ${probe.instance}]`:''}`);console.log(`Everything background executable: ${executable}`);console.log(`Windows Preview Handler host: ${(await existsFile(NATIVE_PREVIEW_HOST))?'OK':'MISSING'}`);console.log(`Interactive PDF extractor: OK (PDF.js ${pdfRuntime.version||'unknown'} ${pdfRuntime.runtime} build, ${pdfRuntime.mode}; Node canvas rendering ${pdfRuntime.canvasRenderingAvailable?'available':'not bundled/not required'})`);console.log('Search scope: complete Everything index + local AcroForm/PDF text supplement');
+  printPdfMaintenanceTaskDiagnostics(task);
   console.log(`Files visible in Everything: ${diagnostics.fileCount===null?'ERROR':diagnostics.fileCount}`);console.log(`Files with indexed content: ${diagnostics.indexedContentCount===null?'ERROR':diagnostics.indexedContentCount}`);console.log(`ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`);if(diagnostics.error)console.log(`ES error: ${diagnostics.error}`);
+  if(!task.unsupported&&!allowUnreadyScheduledTask&&(!task.exists||!task.scheduleActive)){const e=new Error('PDF maintenance Task Scheduler diagnostics failed.');e.code='PDF_MAINTENANCE_TASK_DIAGNOSTICS_FAILED';throw e}
   if(diagnostics.error||(diagnostics.fileCount>0&&!diagnostics.sampleOk)){const e=new Error('Everything/ES diagnostics failed.');e.code='INDEX_DIAGNOSTICS_FAILED';throw e}
   if(diagnostics.fileCount===0)console.log('WARNING: Everything currently sees no files. The website will mirror that empty Everything index.');
 }
 async function writeInstallSummary(){
-  const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='';
+  const token=await ensureToken(),config=await loadConfig();let probe=null,diagnostics={fileCount:null,indexedContentCount:null,sampleOk:false,error:''},everythingExecutable='',nodeRuntime=null;
+  try{nodeRuntime=privateNodeRuntimeInfoSync({verifyHash:process.platform==='win32'})}catch(error){nodeRuntime={actualPath:process.execPath,sha256:'',error:String(error?.message||error)}}
+  const task=await pdfMaintenanceTaskDiagnostics();
   try{const data=await diagnoseIndex({freshProbe:true});probe=data.probe;diagnostics=data.diagnostics;everythingExecutable=probe.everythingExecutable||await findEverythingExecutable(config)}catch{}
-  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Runtime: ${RUNTIME_ROOT}`,`Node version: ${process.versions.node}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'','Search scope: COMPLETE EVERYTHING INDEX + INTERACTIVE PDF SUPPLEMENT','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','Interactive AcroForm PDFs are additionally parsed locally with the bundled PDF.js legacy runtime for Node so field values and logical page text remain searchable even when the Windows PDF iFilter omits/reorders them.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI and merge a local cached supplement only for interactive AcroForm PDFs.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
+  const taskLines=task.unsupported?['PDF maintenance task: unavailable on this platform']:task.exists?[`PDF maintenance task: ${task.state||'unknown'}; enabled=${task.enabled?'yes':'no'}; trigger enabled=${task.triggerEnabled?'yes':'no'}; schedule active=${task.scheduleActive?'yes':'no'}; action=${task.actionValid?'OK':'MISMATCH'}`,`   Last Run Time: ${task.lastRunTime||'never'}`,`   Last Result: ${taskResultLabel(task.lastResult)}`,`   Next Run Time: ${task.nextRunTime||'not scheduled'}`,`   Missed Runs: ${task.missedRuns}`]:[`PDF maintenance task: NOT INSTALLED${task.error?` (${task.error})`:''}`];
+  const lines=['NETUNIM DOCUMENT BRIDGE - INSTALLATION LOG','==========================================','','הקוד שצריך להדביק באתר:',token,'','באתר: Ctrl+K -> קבצים במחשב -> הדבק את הקוד שלמעלה פעם אחת.','',`Bridge version: ${BRIDGE_VERSION}`,`Runtime: ${RUNTIME_ROOT}`,`Node version: ${process.versions.node} (pinned ${BRIDGE_NODE_VERSION})`,`Node executable: ${nodeRuntime.actualPath||process.execPath}`,`Node SHA-256: ${nodeRuntime.sha256?`${nodeRuntime.sha256} (verified)`:nodeRuntime.error||'not checked'}`,`Local address: http://127.0.0.1:${BRIDGE_PORT}`,probe?`Everything: ${probe.everythingVersion||'unknown'}`:'Everything: status unavailable',`Everything background executable: ${everythingExecutable||'(not found)'}`,`Windows Preview Handler host: ${await existsFile(NATIVE_PREVIEW_HOST)?'OK':'MISSING'}`,'',...taskLines,'','Search scope: COMPLETE EVERYTHING INDEX + INTERACTIVE PDF SUPPLEMENT','The Bridge no longer maintains a separate folder allowlist. Whatever Everything indexes is searchable from the website.','Interactive AcroForm PDFs are additionally parsed locally with the bundled PDF.js legacy runtime for Node so field values and logical page text remain searchable even when the Windows PDF iFilter omits/reorders them.','','בדיקת האינדקס:',`   files visible in Everything: ${diagnostics.fileCount??'ERROR'}`,`   files with indexed content: ${diagnostics.indexedContentCount??'ERROR'}`,`   ES UTF-8 JSON parsing: ${diagnostics.fileCount>0?(diagnostics.sampleOk?'OK':'FAILED'):'not tested'}`,...(diagnostics.error?[`   error: ${diagnostics.error}`]:[]),'',`Runtime log: ${LOG_PATH}`,`Console log: ${path.join(APP_ROOT,'bridge-console.log')}`,`ES installer log: ${path.join(APP_ROOT,'install-es.log')}`,`Node installer log: ${path.join(APP_ROOT,'install-node.log')}`,'','ES is forced to UTF-8 output (-cp 65001) and Unicode argv parsing (-argv).','Search text is passed after -- to preserve Everything quotes; -max-results limits only the IPC viewport.','Everything.exe is started automatically in background mode (-startup) when needed. No search window is opened.','Searches use the same Everything index/database as the Everything UI and merge a local cached supplement only for interactive AcroForm PDFs.','Office previews use the Windows system IPreviewHandler associated with the file extension (the same preview layer Everything normally uses).','Files and extracted content stay on this computer and are not uploaded to the website or Supabase.'];
   await fs.writeFile(SUMMARY_PATH,lines.join('\r\n')+'\r\n','utf8');console.log(SUMMARY_PATH);
 }
 
 async function main(){
-  if(process.platform==='win32')assertBridgeNodeVersion(process.versions.node);
+  if(process.platform==='win32')privateNodeRuntimeInfoSync();
   const arg=process.argv[2]||'';
-  if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor();return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
+  if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor({allowUnreadyScheduledTask:process.argv.slice(3).includes('--allow-unready-task')});return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
     if(process.send)process.on('message',message=>{if(message?.type==='stop-pdf-maintenance'){pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}});
     await init();await probeEverything({fresh:true,autoStart:true});
     const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value)));

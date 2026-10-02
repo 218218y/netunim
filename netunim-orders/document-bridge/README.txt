@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v32 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v37 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -127,11 +127,31 @@ Office preview size behind.
 
 Node runtime baseline
 ---------------------
-The Windows Document Bridge is standardized on Node.js 24 LTS, version 24.11
-or newer within the 24.x line. The installer and runtime reject Node 22 and
-unreviewed future major versions instead of silently changing the production
-JavaScript runtime underneath the Bridge. Node 24.11 is the first Node 24 LTS
-release; current PCs using Node 24.18 are inside this supported line.
+The Windows Document Bridge does not depend on a machine-wide Node installation.
+The installer provisions the reviewed Windows x64 Node.js 24.21.0 executable into
+a versioned private runtime under %LOCALAPPDATA%\NetunimDocumentBridge and
+activates it through node-runtime.txt only after verification. The official
+node.exe is pinned to SHA-256:
+  ba4e6d110e8c1592a1ecd390f6b05f3da124b13871a5be62b341a07a853c6c32
+
+The download URL contains the exact release number; it never follows latest/LTS
+aliases. The official node-v24.21.0-win-x64.zip archive is pinned to SHA-256
+158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541; the
+extracted node.exe is independently pinned to the SHA-256 shown above. The
+installer first prefers a verified local archive next to the installer, in the
+user Downloads folder or under the Bridge downloads folder, then uses the exact
+official Node release URL with a bounded timeout. install_node_runtime.ps1 verifies
+both hashes and process.versions.node before changing node-runtime.txt. A failed Bridge upgrade
+restores the previous Node pointer and keeps the previous active Bridge runtime.
+After a successful health check, inactive private Node runtime directories are
+removed as best-effort cleanup.
+
+Normal startup, manual Bridge configuration and scheduled PDF maintenance all
+resolve node.exe through node-runtime.txt. They never use PATH, `where node` or
+`Get-Command node.exe`. On Windows, server.mjs also verifies that process.execPath
+is the exact private node.exe selected by the pointer; doctor/install diagnostics
+add a SHA-256 verification. A global Node installation is therefore not required
+on end-user PCs after this installer is used.
 
 The PDF.js legacy Node build probes for @napi-rs/canvas during module import.
 Netunim's Node PDF path is intentionally text/annotation extraction only and
@@ -140,6 +160,17 @@ for this workload. The Bridge suppresses only the exact optional-canvas import
 warnings emitted for a missing @napi-rs/canvas package; any different PDF.js
 warning is still printed. The installer doctor verifies the real text-only
 legacy runtime before activation.
+
+PDF.js regression corpus
+------------------------
+Every reviewed PDF.js runtime must pass `npm run pdfjs:check` before deployment.
+That command now verifies the pinned vendor bytes/API surface, synchronized site
+assets, and tests/fixtures/pdf-corpus through tests/pdfjs_corpus.test.mjs. The
+corpus is intentionally small and immutable and covers an ordinary text PDF, a
+Hebrew AcroForm with text/checkbox/select values, a 120-page PDF, an empty PDF,
+a deliberately corrupt/truncated PDF and a password-protected PDF. manifest.json
+pins every fixture by SHA-256 and byte count, so accidental fixture regeneration
+or line-ending rewriting fails the gate instead of silently changing the baseline.
 
 Scheduled PDF maintenance
 -------------------------
@@ -169,10 +200,18 @@ protects journal/snapshot changes from concurrent preview enrichment.
 
 Run maintenance manually if needed:
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NetunimDocumentBridge\run_pdf_maintenance.ps1" -Force
-The runner reads the active runtime name from active-runtime.txt. The manual run uses the
-same 300-file and 15-minute limits unless -MaxFiles N is supplied. The status
-endpoint exposes the last attempt, successful run and result counters; bridge.log
-records trigger, bytes read, CPU time and elapsed time.
+The runner reads both active-runtime.txt and node-runtime.txt, so the scheduled
+worker uses the same pinned private Node executable as the listener. The manual
+run uses the same 300-file and 15-minute limits unless -MaxFiles N is supplied.
+The status endpoint exposes the last attempt, successful run and result counters;
+bridge.log records trigger, bytes read, CPU time and elapsed time.
+
+`server.mjs --doctor` also queries Task Scheduler and prints State, enabled/trigger
+status, whether the schedule is active, Last Run Time, Last Result, Next Run Time
+and missed-run count. It validates that the registered action points to the
+expected run_pdf_maintenance.ps1 under the Bridge home. This Task Scheduler query
+is diagnostic-only (doctor/install summary); normal startup/search requests never
+run Get-ScheduledTask/Get-ScheduledTaskInfo or schtasks.
 
 Everything background process
 -----------------------------
@@ -183,9 +222,13 @@ client against the same local Everything instance/database.
 Installation
 ------------
 Run install_document_bridge.bat on each PC. The installer:
+- installs/reuses the exact private Node.js 24.21.0 runtime and verifies its pinned
+  SHA-256 before changing node-runtime.txt;
 - builds NetunimPreviewHost.exe locally;
 - upgrades the Bridge and stages the already-bundled local PDF.js runtime;
-- verifies the pinned PDF.js legacy hashes and required Node API before activation;
+- imports and validates the staged PDF.js legacy runtime during Bridge diagnostics.
+  PDF.js version changes are separately blocked by the repository verification gate
+  (`npm run pdfjs:check` and the normal JS test suite) unless the immutable corpus passes;
 - verifies ES/Everything;
 - starts Everything in background mode if required;
 - preserves the existing supplemental PDF index without scanning PDFs during
@@ -195,8 +238,8 @@ Run install_document_bridge.bat on each PC. The installer:
   renames or deletes the currently active runtime as a prerequisite for success,
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
-  removes inactive runtimes only as best-effort maintenance after the new v32
-  runtime has passed its health check;
+  removes inactive Bridge/Node runtimes only as best-effort maintenance after
+  the new v37 runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 
@@ -210,6 +253,8 @@ Console log:
   %LOCALAPPDATA%\NetunimDocumentBridge\bridge-console.log
 ES installer log:
   %LOCALAPPDATA%\NetunimDocumentBridge\install-es.log
+Node installer log:
+  %LOCALAPPDATA%\NetunimDocumentBridge\install-node.log
 
 Security
 --------

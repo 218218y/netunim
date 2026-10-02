@@ -21,8 +21,8 @@
     "test:offline": "python tools/offline_deps.py test",
     "test:chat": "python tools/offline_deps.py chat-test",
     "lint:offline": "python tools/offline_deps.py lint",
-    "pdfjs:install": "python tools/pdfjs-runtime.py install && python tools/sync-assets.py",
-    "pdfjs:check": "python tools/pdfjs-runtime.py check && python tools/sync-assets.py --check",
+    "pdfjs:install": "python tools/pdfjs-runtime.py install && python tools/sync-assets.py && node --test tests/pdfjs_corpus.test.mjs",
+    "pdfjs:check": "python tools/pdfjs-runtime.py check && python tools/sync-assets.py --check && node --test tests/pdfjs_corpus.test.mjs",
     "document-viewers:install": "python tools/document-viewers-runtime.py install && python tools/sync-assets.py",
     "document-viewers:check": "python tools/document-viewers-runtime.py check && python tools/sync-assets.py --check"
   },

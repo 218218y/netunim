@@ -65,6 +65,13 @@ Normal local setup:
   npm ci
   python tools/install-git-hooks.py
 
+PDF.js upgrade gate:
+  npm run pdfjs:check
+This verifies the pinned PDF.js runtime and synchronized assets, then runs the immutable
+tests/fixtures/pdf-corpus regression set (ordinary text, Hebrew AcroForm controls, large,
+empty, corrupt and password-protected PDFs). A PDF.js version change is not ready for
+deployment until this gate and the normal verifier both pass.
+
 The last command installs the repository-managed pre-commit hook. GitHub Desktop runs it automatically when
 creating a commit. The installer pins the verified absolute Python path, so this hook does not depend on GitHub
 Desktop successfully loading PATH from the configured shell. Rerun the installer if Python is moved or reinstalled.

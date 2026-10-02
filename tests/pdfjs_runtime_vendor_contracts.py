@@ -5,6 +5,7 @@ import base64
 import hashlib
 import importlib.util
 import io
+import json
 import tarfile
 import tempfile
 import unittest
@@ -102,10 +103,25 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
 
-    def test_git_never_rewrites_vendored_runtime_bytes(self):
+    def test_pdfjs_check_runs_the_immutable_regression_corpus(self):
+        package=json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        check_command=package["scripts"]["pdfjs:check"]
+        install_command=package["scripts"]["pdfjs:install"]
+        self.assertIn("tools/pdfjs-runtime.py check", check_command)
+        self.assertIn("tools/sync-assets.py --check", check_command)
+        self.assertIn("node --test tests/pdfjs_corpus.test.mjs", check_command)
+        self.assertIn("tools/pdfjs-runtime.py install", install_command)
+        self.assertIn("tools/sync-assets.py", install_command)
+        self.assertIn("node --test tests/pdfjs_corpus.test.mjs", install_command)
+        manifest=json.loads((ROOT / "tests/fixtures/pdf-corpus/manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["baselinePdfjsVersion"], RUNTIME.VERSION)
+        self.assertEqual({case["kind"] for case in manifest["cases"]}, {"ordinary", "acroform", "large", "empty", "corrupt", "password"})
+
+    def test_git_never_rewrites_vendored_runtime_or_corpus_bytes(self):
         attrs=(ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("netunim-orders/site/assets/vendor/pdfjs/** -text", attrs)
         self.assertIn("netunim-kupa/site/assets/vendor/pdfjs/** -text", attrs)
+        self.assertIn("tests/fixtures/pdf-corpus/*.pdf -text", attrs)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
