@@ -13,6 +13,7 @@ test('orders site exposes one unified search with site, file and content filters
   assert.doesNotMatch(html,/globalSearchSiteMode|globalSearchDocumentsMode|globalSearchDocumentNameMode|globalSearchDocumentContentMode/);
   assert.match(html,/globalSearchFilterAll[\s\S]*הכל<\/button>[\s\S]*globalSearchFilterSite[\s\S]*חיפוש באתר<\/button>[\s\S]*globalSearchFilterFiles[\s\S]*חיפוש קבצים<\/button>[\s\S]*globalSearchFilterContent[\s\S]*חיפוש תוכן<\/button>/);
   assert.match(html,/globalSearchFilterAll[^>]*class="global-search-filter active"[^>]*aria-selected="true"/);
+  assert.match(html,/id="globalSearchFileType"[\s\S]*value="all"[\s\S]*>הכל<[\s\S]*value="audio"[\s\S]*>אודיו<[\s\S]*value="documents"[\s\S]*>מסמכים<[\s\S]*value="folders"[\s\S]*>תיקיות<[\s\S]*value="images"[\s\S]*>תמונות<[\s\S]*value="video"[\s\S]*>וידאו<[\s\S]*value="pdf"[\s\S]*>PDF<[\s\S]*value="word"[\s\S]*>Word</);
   assert.match(html,/globalSearchDocumentPreview/);
   assert.doesNotMatch(html,/globalSearchPreviewTitle|globalSearchPreviewMeta|globalSearchPreviewOpen|פתח במחשב/);
   assert.match(html,/globalSearchPreviewMatches/);
@@ -22,6 +23,8 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(client,/mode==='content'\?'content':'everything'/);
   assert.match(client,/documents\/warm/);
   assert.match(client,/documents\/recent/);
+  assert.match(client,/recent=async\(\{limit=150,scopePath='',fileType='all',signal=null\}/);
+  assert.match(client,/fileType:String\(fileType\|\|'all'\)/);
   assert.match(client,/documents\/select-folder/);
   assert.match(client,/const selectFolder=async\(\)=>\{try\{const runtime=await health\(\);requireBridgeVersion/);
   assert.match(client,/documents\/preview/);
@@ -87,7 +90,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/documents\/recent/);
   assert.match(server,/documents\/select-folder/);
   assert.match(server,/PICK_FOLDER/);
-  assert.match(server,/RECENT scope=everything-index scopePath=.* files-only=true sort=date-modified-descending/);
+  assert.match(server,/RECENT scope=everything-index scopePath=.* fileType=\$\{normalizedFileType\} sort=date-modified-descending/);
   assert.match(server,/cachedEsPath/);
   assert.match(server,/listen\(BRIDGE_PORT,'127\.0\.0\.1'/);
   assert.match(server,/refreshPdfFormIndex/);
@@ -147,7 +150,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v35-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v36-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -159,8 +162,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=35/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=35/);
+  assert.match(lib,/BRIDGE_VERSION=36/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=36/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -267,7 +270,7 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(client,/hideNativePreview/);
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:DOCUMENT_RESULT_BATCH,offset:0/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,fileType:documentFileType\.value\(\),limit:DOCUMENT_RESULT_BATCH,offset:0/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path/);
   assert.match(folderScope,/supportsFolderScope/);
   assert.match(folderScope,/documentBridge\.selectFolder\(\)/);
@@ -284,9 +287,9 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(server,/body\.offset/);
   assert.match(server,/hasMore/);
   assert.match(client,/limit=150,offset=0/);
-  assert.match(ui,/label:'קבצים אחרונים'/);
+  assert.match(ui,/function recentDocumentLabel\(\).*?'פריטים אחרונים'.*?'תיקיות אחרונות'.*?'קבצים אחרונים'/s);
 
-  assert.match(client,/const recent=\(\{limit=150,scopePath='',signal=null\}=\{\}\)=>/);
+  assert.match(client,/const recent=async\(\{limit=150,scopePath='',fileType='all',signal=null\}=\{\}\)=>/);
   assert.match(server,/RECENT_RESULT_LIMIT/);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(ui,/function warmDocumentSearchBridge\(\)/);
@@ -364,7 +367,7 @@ test('unified search uses a full-screen header search, four result filters and a
   const folderScope=read('netunim-orders/site/assets/js/ui/document-search-folder-scope.js');
   const contentOptions=read('netunim-orders/site/assets/js/ui/document-search-content-options.js');
   assert.doesNotMatch(html,/id="globalSearchTitle"/);
-  assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchContentOptionsButton/);
+  assert.match(html,/global-search-head[\s\S]*globalSearchFilterAll[\s\S]*globalSearchFilterSite[\s\S]*globalSearchFilterFiles[\s\S]*globalSearchFilterContent[\s\S]*globalSearchInput[\s\S]*globalSearchFileType[\s\S]*globalSearchContentOptionsButton/);
   assert.match(html,/globalSearchFolderScope[\s\S]*globalSearchFolderPick[\s\S]*globalSearchFolderLabel[\s\S]*globalSearchFolderClear/);
   assert.match(css,/global-search-options-button\{/);
   assert.match(css,/global-search-options-popover\{position:fixed/);
@@ -407,12 +410,12 @@ test('unified search uses a full-screen header search, four result filters and a
   assert.match(ui,/filter='all'/);
   assert.match(ui,/requestedDocumentModes/);
   assert.match(ui,/documentContentOptions\.value\(\)/);
-  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,limit:DOCUMENT_RESULT_BATCH,offset:0/);
+  assert.match(ui,/documentBridge\.search\(raw,\{mode,contentSearch:mode==='content'\?documentContentOptions\.value\(\):undefined,scopePath:documentFolderScope\.path,fileType:documentFileType\.value\(\),limit:DOCUMENT_RESULT_BATCH,offset:0/);
   assert.match(ui,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path/);
   assert.match(folderScope,/supportsFolderScope/);
   assert.match(folderScope,/documentBridge\.selectFolder\(\)/);
   assert.match(contentOptions,/MATCH_MODES=new Set\(\['phrase','all','any','proximity'\]\)/);
-  assert.match(ui,/label:'קבצים אחרונים'/);
+  assert.match(ui,/function recentDocumentLabel\(\).*?'פריטים אחרונים'.*?'תיקיות אחרונות'.*?'קבצים אחרונים'/s);
   assert.match(ui,/RECENT_DOCUMENT_TTL_MS=15000/);
   assert.match(documentView,/documentIconKind/);
   assert.match(ui,/documentResultsTableHtml/);
@@ -436,9 +439,11 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=35/);
+  assert.match(lib,/BRIDGE_VERSION=36/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
+  assert.match(server,/normalizeDocumentFileType\(fileType\)/);
+  assert.match(server,/documentFileTypeIncludesPdf\(normalizedFileType\)\?searchPdfFormIndex/,'interactive-PDF supplemental results must obey the active type filter');
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=35/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=36/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });

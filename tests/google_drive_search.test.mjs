@@ -130,6 +130,30 @@ test('Windows failover does not hide ordinary local search errors',async()=>{
   assert.equal(source.provider,'everything');
 });
 
+test('Google Drive fallback applies the same file-type filter before paging recent, filename and content results',async()=>{
+  const supaFetch=async()=>({ok:true,status:200,json:async()=>({access_token:'access-123',expires_in:3600,scope:'https://www.googleapis.com/auth/drive.readonly'})});
+  const previousFetch=globalThis.fetch;
+  globalThis.fetch=async url=>{
+    const parsed=new URL(String(url));
+    if(parsed.pathname.endsWith('/files'))return {ok:true,status:200,text:async()=>JSON.stringify({files:[
+      {id:'folder',name:'Orders',mimeType:'application/vnd.google-apps.folder',modifiedTime:'2026-10-01T10:00:00Z'},
+      {id:'pdf',name:'Invoice.pdf',mimeType:'application/pdf',fileExtension:'pdf',modifiedTime:'2026-10-01T09:00:00Z'},
+      {id:'word',name:'Letter.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',fileExtension:'docx',modifiedTime:'2026-10-01T08:00:00Z'},
+      {id:'image',name:'Photo.jpg',mimeType:'image/jpeg',fileExtension:'jpg',modifiedTime:'2026-10-01T07:00:00Z'},
+    ]})};
+    throw new Error(`unexpected Drive URL ${url}`);
+  };
+  try{
+    const drive=createDomainsGoogleDriveSearch({supaFetch,locationRef:{href:'https://example.test/orders'},historyRef:{}});
+    assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'pdf'})).results.map(row=>row.id),['pdf']);
+    assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'word'})).results.map(row=>row.id),['word']);
+    assert.deepEqual((await drive.search('item',{mode:'everything',fileType:'folders'})).results.map(row=>row.id),['folder']);
+    assert.deepEqual((await drive.search('item',{mode:'content',fileType:'folders'})).results,[],'content search must never return folders');
+    assert.deepEqual((await drive.recent({fileType:'images'})).results.map(row=>row.id),['image']);
+    assert.deepEqual((await drive.recent({fileType:'all'})).results.map(row=>row.id),['folder','pdf','word','image'],'default recent view must keep both folders and files');
+  }finally{globalThis.fetch=previousFetch}
+});
+
 test('Drive preview respects canDownload=false and does not fetch file content',async()=>{
   const supaFetch=async()=>({ok:true,status:200,json:async()=>({access_token:'access-123',expires_in:3600,scope:'https://www.googleapis.com/auth/drive.readonly'})});
   const previousFetch=globalThis.fetch;let contentFetches=0;

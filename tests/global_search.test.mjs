@@ -96,6 +96,14 @@ test('document filename search is dispatched ahead of slower content search and 
 });
 
 
+test('global file-type filter affects document sources but never site search',()=>{
+ const source=fs.readFileSync(new URL('../shared/global-document-search.js',import.meta.url),'utf8'),filterModule=fs.readFileSync(new URL('../shared/document-search/ui/document-search-file-type.js',import.meta.url),'utf8');
+ assert.match(source,/createDocumentFileTypeFilter\(\{refs,isEnabled:\(\)=>filter!=='site'/,'site-only search must leave the file-type filter out of the site-search path');
+ assert.match(source,/documentBridge\.recent\(\{limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope\.path,fileType:documentFileType\.value\(\)/);
+ assert.match(source,/documentBridge\.search\(raw,\{mode,.*fileType:documentFileType\.value\(\)/);
+ assert.match(filterModule,/const FILE_TYPES=new Set\(\['all','audio','documents','folders','images','video','pdf','word'\]\)/);
+});
+
 test('folder document results show the folder label instead of the generic file label',()=>{
  const html=documentResultsTableHtml([{id:'folder-1',name:'Folder',relativePath:'Y:',size:4577*1024*1024,modified:'2026-09-30T04:59:00Z',isDirectory:true}],'everything');
  assert.match(html,/<small>תיקייה<\/small>/);

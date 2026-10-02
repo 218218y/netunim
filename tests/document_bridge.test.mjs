@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  bridgeNodeVersionSupported,buildContentMatchInfo,buildContentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,mergeDocumentResults,normalizeDocumentSort,RECENT_RESULT_LIMIT,
+  bridgeNodeVersionSupported,buildContentMatchInfo,buildContentQuery,buildDocumentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeEverythingFilter,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeDocumentFileType,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
 import {pdfIndexNeedsInspection} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
@@ -74,6 +74,30 @@ test('content search supports Everything 1.5 phrase, AND, OR and ordered word-di
   assert.equal(buildEverythingQuery('  יבמות   ext:pdf  '),'יבמות ext:pdf');
   assert.equal(buildEverythingQuery('a'),'a');
   assert.equal(normalizeSearchText('a\n b'),'a b');
+});
+
+test('document file-type filters use Everything-native syntax and apply before paging',()=>{
+  assert.equal(normalizeDocumentFileType('PDF'),'pdf');
+  assert.equal(normalizeDocumentFileType('unknown'),'all');
+  assert.equal(documentFileTypeEverythingFilter('audio'),'audio:');
+  assert.equal(documentFileTypeEverythingFilter('documents'),'doc:');
+  assert.equal(documentFileTypeEverythingFilter('folders'),'folder:');
+  assert.equal(documentFileTypeEverythingFilter('images'),'image:');
+  assert.equal(documentFileTypeEverythingFilter('video'),'video:');
+  assert.equal(documentFileTypeEverythingFilter('pdf'),'ext:pdf');
+  assert.equal(documentFileTypeEverythingFilter('word'),'ext:doc;docx;docm;dot;dotx;dotm;rtf');
+  assert.equal(buildDocumentQuery('foo | bar','everything',{},'pdf'),'ext:pdf <foo | bar>','file type must constrain the whole free-form Everything expression');
+  assert.equal(buildDocumentQuery('יבמות','content',{},'word'),'ext:doc;docx;docm;dot;dotx;dotm;rtf content:"יבמות" no-background-search:');
+  assert.equal(documentFileTypeIncludesPdf('all'),true);
+  assert.equal(documentFileTypeIncludesPdf('documents'),true);
+  assert.equal(documentFileTypeIncludesPdf('pdf'),true);
+  assert.equal(documentFileTypeIncludesPdf('word'),false);
+  assert.equal(documentFileTypeIncludesPdf('audio'),false);
+  const pdfArgs=buildEsSearchArgs({query:'foo | bar',mode:'everything',fileType:'pdf',limit:150});
+  assert.equal(pdfArgs[pdfArgs.indexOf('--')+1],'ext:pdf <foo | bar>');
+  const wordContentArgs=buildEsSearchArgs({query:'יבמות',mode:'content',fileType:'word',limit:150});
+  assert.ok(wordContentArgs.includes('/a-d'));
+  assert.equal(wordContentArgs[wordContentArgs.indexOf('--')+1],'ext:doc;docx;docm;dot;dotx;dotm;rtf content:"יבמות" no-background-search:');
 });
 
 test('whole-word content search excludes prefixes inside longer Hebrew, Latin and numeric tokens',()=>{
@@ -153,10 +177,15 @@ test('PDF maintenance skips current negative and geometry-only records, and back
 test('document search defaults to 150 results and supports bounded paging beyond the first batch',()=>{
   assert.equal(RECENT_RESULT_LIMIT,150);
   const args=buildEsRecentFilesArgs({limit:999,instance:'1.5a'});
-  assert.ok(args.includes('/a-d'));
+  assert.equal(args.includes('/a-d'),false,'default recent view must include both files and folders');
   assert.equal(args[args.indexOf('-max-results')+1],'150');
   assert.equal(args[args.indexOf('-sort')+1],'date-modified-descending');
   assert.equal(args[args.indexOf('--')+1],'*');
+  const recentFolders=buildEsRecentFilesArgs({limit:150,fileType:'folders'});
+  assert.equal(recentFolders[recentFolders.indexOf('--')+1],'folder:');
+  assert.equal(recentFolders.includes('/a-d'),false);
+  const recentPdf=buildEsRecentFilesArgs({limit:150,fileType:'pdf'});
+  assert.equal(recentPdf[recentPdf.indexOf('--')+1],'ext:pdf');
   const normal=buildEsSearchArgs({query:'קובץ',mode:'everything',limit:999,offset:300});
   assert.equal(normal[normal.indexOf('-max-results')+1],'999');
   assert.equal(normal[normal.indexOf('-offset')+1],'300');

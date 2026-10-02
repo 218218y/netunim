@@ -7,6 +7,7 @@ import {createDocxSearchViewer,preloadDocxSearchRuntime} from '../domains/docume
 import {createSpreadsheetSearchViewer} from '../domains/documents/spreadsheet-search-viewer.js';
 import {documentResultsTableHtml,previewDetailsHtml,previewMatchBarPresentation,previewTextLabel,safeCloudViewUrl} from '../ui/document-search-view.js';
 import {createDocumentSearchFolderScope} from '../ui/document-search-folder-scope.js';
+import {createDocumentFileTypeFilter} from '../ui/document-search-file-type.js';
 import {createDocumentIndexRefresh} from '../ui/document-index-refresh.js';
 import {globalSearchRefs} from '../ui/global-search-refs.js';
 import {createDocumentContentSearchOptions} from '../ui/document-search-content-options.js';
@@ -56,6 +57,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function includesRecentDocuments(){return filter==='all'||filter==='files'}
   const documentContentOptions=createDocumentContentSearchOptions({refs,isEnabled:()=>includesDocumentMode('content')&&!isGoogleDriveSource(),onChanged:()=>renderResults(refs().input?.value||'')});
   const documentFolderScope=createDocumentSearchFolderScope({documentBridge,getFilter:()=>filter,refs,onChanged:()=>{recentDocumentState=emptyRecentDocumentState();renderResults(refs().input?.value||'')},onCancelled:()=>renderCombinedResults(refs().input?.value||'')});
+  const documentFileType=createDocumentFileTypeFilter({refs,isEnabled:()=>filter!=='site',onChanged:()=>{recentDocumentState=emptyRecentDocumentState();resetDocumentPreview();renderResults(refs().input?.value||'')}});
   let pdfIndexRefresh=null;
   function getPdfIndexRefresh(){if(!pdfIndexRefresh){const {pdfRefreshButton,pdfRefreshStatus}=refs();pdfIndexRefresh=createDocumentIndexRefresh({bridge:documentBridge,button:pdfRefreshButton,status:pdfRefreshStatus,onCompleted:()=>renderResults(refs().input?.value||'')})}return pdfIndexRefresh}
   const documentMenu=createDocumentResultMenu({results:()=>refs().results,available:hasLocalDocumentActions,open:(...args)=>openDocumentResult(...args),reveal:(...args)=>revealDocumentResult(...args),remove:(...args)=>deleteDocumentResult(...args),select:(...args)=>selectDocumentResult(...args)});
@@ -160,19 +162,21 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     return {total:count,settledEmpty:state.status==='done'&&count===0,html:`<section class="global-search-source-section" data-search-source="${esc(mode)}">${header}<div class="global-search-source-body">${notice}${body}</div></section>`};
   }
   function updateMeta(siteTotal,documentTotal,loading){const {meta}=refs();if(!meta)return;const total=siteTotal+documentTotal;if(loading){meta.textContent=total?`${total} תוצאות עד כה · החיפוש דרך ${documentProviderLabel()} ממשיך…`:`מחפש דרך ${documentProviderLabel()}…`;return}meta.textContent=total?`${total} תוצאות`:'לא נמצאו תוצאות'}
+  function recentDocumentLabel(){const type=documentFileType.value();return type==='all'?'פריטים אחרונים':type==='folders'?'תיקיות אחרונות':'קבצים אחרונים'}
+  function recentDocumentEmptyLabel(){const type=documentFileType.value();return type==='all'?'לא נמצאו פריטים':type==='folders'?'לא נמצאו תיקיות':'לא נמצאו קבצים'}
   function renderRecentDocuments(){
     const {results,meta}=refs();if(!results)return;resultByKey=new Map();documentResultByKey=new Map();
     if(!includesRecentDocuments()){setPreviewLayout(false);if(meta)meta.textContent='';results.innerHTML=filter==='content'?documentIntro('content'):scopeIntro();return}
     const state=recentDocumentState,rows=sortedDocumentRows(state.rows,recentDocumentSort);let body='';
-    if(state.status==='loading')body=`<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים מ־${esc(documentProviderLabel())}…</div>`;
+    if(state.status==='loading')body=`<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען ${esc(recentDocumentLabel())} מ־${esc(documentProviderLabel())}…</div>`;
     else if(state.status==='pairing')body=documentPairing();
     else if(state.status==='unavailable'||state.status==='error')body=documentErrorHtml(state.error||{message:'רכיב החיפוש המקומי אינו זמין.'});
-    else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:'קבצים אחרונים',hint:'לחיצה על כותרת ממיינת · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה',sortScope:'recent',sort:recentDocumentSort});
-    else if(state.status==='done')body=`<div class="global-search-source-empty">לא נמצאו קבצים ב־${esc(documentProviderLabel())}.</div>`;
+    else if(state.status==='done'&&rows.length)body=renderDocumentTable(rows,'everything',{label:recentDocumentLabel(),hint:'לחיצה על כותרת ממיינת · לחיצה אחת לתצוגה · לחיצה כפולה לפתיחה',sortScope:'recent',sort:recentDocumentSort});
+    else if(state.status==='done')body=`<div class="global-search-source-empty">${esc(recentDocumentEmptyLabel())} ב־${esc(documentProviderLabel())}.</div>`;
     else body='<div class="global-search-source-progress"><span class="document-search-spinner">⌕</span>טוען קבצים אחרונים…</div>';
     results.innerHTML=`<section class="global-search-source-section" data-search-source="recent"><div class="global-search-source-body">${providerNoticeHtml()}${body}</div></section>`;
     setPreviewLayout(rows.length>0);if(selectedDocumentKey&&!documentResultByKey.has(selectedDocumentKey))resetDocumentPreview();
-    if(meta)meta.textContent=state.status==='loading'?'טוען קבצים אחרונים…':rows.length?`${rows.length} קבצים אחרונים`:state.status==='done'?'אין קבצים להצגה':'';
+    if(meta)meta.textContent=state.status==='loading'?`טוען ${recentDocumentLabel()}…`:rows.length?`${rows.length} ${recentDocumentLabel()}`:state.status==='done'?recentDocumentEmptyLabel():'';
   }
   function renderCombinedResults(value=''){
     const {results}=refs();if(!results)return;documentContentOptions.update();documentFolderScope.update();const raw=String(value||'').trim();resultByKey=new Map();documentResultByKey=new Map();if(!raw){renderRecentDocuments();return}
@@ -202,7 +206,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   async function runRecentDocuments(sequence){
     if(!documentBridge?.recent||sequence!==documentSequence||activeQuery)return;const controller=new AbortController();documentAbort=controller;
     try{
-      const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope.path,signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
+      const data=await documentBridge.recent({limit:RECENT_DOCUMENT_LIMIT,scopePath:documentFolderScope.path,fileType:documentFileType.value(),signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||activeQuery||!includesRecentDocuments())return;
       recentDocumentState={status:'done',rows:Array.isArray(data.results)?data.results:[],error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),loadedAt:Date.now()};renderCombinedResults('');
     }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');recentDocumentState={...emptyRecentDocumentState(),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults('')}
     finally{if(documentAbort===controller)documentAbort=null}
@@ -211,14 +215,14 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     const raw=String(value||'').trim(),sequence=documentSequence;if(!raw||raw!==activeQuery||!includesDocumentMode(mode)||documentStates[mode]?.status!=='loading')return;
     const controller=documentSearchLanes.begin(mode);
     try{
-      const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit:DOCUMENT_RESULT_BATCH,offset:0,sort:documentSorts[mode],signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const rows=Array.isArray(data.results)?data.results:[];documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false,partial:!!data.partial};renderCombinedResults(raw);
+      const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,fileType:documentFileType.value(),limit:DOCUMENT_RESULT_BATCH,offset:0,sort:documentSorts[mode],signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const rows=Array.isArray(data.results)?data.results:[];documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false,partial:!!data.partial};renderCombinedResults(raw);
     }catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;if(String(error?.code)==='UNAUTHORIZED')documentBridge.setToken?.('');documentStates[mode]={...emptyDocumentState(mode),status:documentAuthError(error)?'pairing':'error',error};renderCombinedResults(raw)}
     finally{documentSearchLanes.clear(mode,controller)}
   }
   async function loadMoreDocumentResults(requestedMode=''){
     const raw=String(activeQuery||'').trim(),sequence=documentSequence;if(!raw||documentPageAbort)return;const modes=requestedDocumentModes().filter(mode=>(!requestedMode||mode===requestedMode)&&documentStates[mode].status==='done'&&documentStates[mode].hasMore&&!documentStates[mode].loadingMore&&documentStates[mode].rows.length<DOCUMENT_RESULT_MAX);if(!modes.length)return;
     const controller=new AbortController();documentPageAbort=controller;for(const mode of modes)documentStates[mode]={...documentStates[mode],loadingMore:true};renderCombinedResults(raw);
-    await Promise.all(modes.map(async mode=>{const before=documentStates[mode],offset=before.rows.length,limit=Math.min(DOCUMENT_RESULT_BATCH,DOCUMENT_RESULT_MAX-offset);try{const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,limit,offset,sort:documentSorts[mode],signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const incoming=Array.isArray(data.results)?data.results:[],rows=appendUniqueDocumentRows(before.rows,incoming),madeProgress=rows.length>before.rows.length;documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
+    await Promise.all(modes.map(async mode=>{const before=documentStates[mode],offset=before.rows.length,limit=Math.min(DOCUMENT_RESULT_BATCH,DOCUMENT_RESULT_MAX-offset);try{const data=await documentBridge.search(raw,{mode,contentSearch:mode==='content'?documentContentOptions.value():undefined,scopePath:documentFolderScope.path,fileType:documentFileType.value(),limit,offset,sort:documentSorts[mode],signal:controller.signal});if(controller.signal.aborted||sequence!==documentSequence||raw!==activeQuery||!includesDocumentMode(mode))return;const incoming=Array.isArray(data.results)?data.results:[],rows=appendUniqueDocumentRows(before.rows,incoming),madeProgress=rows.length>before.rows.length;documentStates[mode]={mode,status:'done',rows,error:null,elapsedMs:Math.max(before.elapsedMs||0,Number(data.elapsedMs)||0),hasMore:!!data.hasMore&&madeProgress&&rows.length<DOCUMENT_RESULT_MAX,loadingMore:false};renderCombinedResults(raw)}catch(error){if(controller.signal.aborted||sequence!==documentSequence||error?.code==='DOCUMENT_BRIDGE_ABORTED'||raw!==activeQuery)return;documentStates[mode]={...before,loadingMore:false,hasMore:false,error};renderCombinedResults(raw)}}));
     if(documentPageAbort===controller)documentPageAbort=null;queueMicrotask(()=>maybeLoadMoreDocumentResults());
   }
   function applyDocumentSort(scope,field){
@@ -235,7 +239,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
   function updateFilterUi(){
     const {filterAll,filterSite,filterFiles,filterContent,input}=refs();const buttons=[[filterAll,'all'],[filterSite,'site'],[filterFiles,'files'],[filterContent,'content']];for(const [button,key] of buttons){button?.classList.toggle('active',filter===key);button?.setAttribute('aria-selected',filter===key?'true':'false')}
     if(input)input.placeholder=filter==='site'?'חפש באתר…':filter==='files'?'חפש קובץ או תיקייה…':filter==='content'?'חפש טקסט בתוך תוכן הקבצים…':'חפש באתר, בקבצים ובתוכן…';
-    documentContentOptions.update();documentFolderScope.update();
+    documentContentOptions.update();documentFolderScope.update();documentFileType.update();
   }
   function setFilter(next){const normalized=SEARCH_FILTERS.has(next)?next:'all';if(filter===normalized)return;hideDocumentContextMenu();filter=normalized;siteResultLimit=SITE_RESULT_BATCH;cancelScheduledDocumentSearches();documentSequence+=1;documentAbort?.abort();documentAbort=null;abortDocumentModeSearches();documentPageAbort?.abort();documentPageAbort=null;resetDocumentPreview();updateFilterUi();renderResults(refs().input?.value||'');requestAnimationFrame(()=>refs().input?.focus())}
   function setMode(next){setFilter(next==='documents'?'files':'site')}
@@ -277,6 +281,7 @@ export function createGlobalDocumentSearch({documentBridge=null,siteSearch,siteR
     const {trigger,backdrop,input,results,close:closeButton,filterAll,filterSite,filterFiles,filterContent,folderPick,folderClear,previewMatches,splitter,workspace}=refs();if(!trigger||!backdrop||!input||!results||!closeButton)return;
     trigger.addEventListener('click',toggle);closeButton.addEventListener('click',close);filterAll?.addEventListener('click',()=>setFilter('all'));filterSite?.addEventListener('click',()=>setFilter('site'));filterFiles?.addEventListener('click',()=>setFilter('files'));filterContent?.addEventListener('click',()=>setFilter('content'));folderPick?.addEventListener('click',()=>{void documentFolderScope.choose()});folderClear?.addEventListener('click',documentFolderScope.clear);input.addEventListener('input',()=>renderResults(input.value));
     documentContentOptions.bind();
+    documentFileType.bind();
     getPdfIndexRefresh().bind();
     input.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){flushCurrent();const first=results.querySelector('.global-search-result');if(first){event.preventDefault();first.focus()}}});
     results.addEventListener('keydown',event=>{if(!event.target.matches('.global-search-result'))return;if(event.key==='ArrowDown'||event.key==='ArrowUp'){const buttons=[...results.querySelectorAll('.global-search-result')],index=buttons.indexOf(event.target),next=event.key==='ArrowDown'?Math.min(buttons.length-1,index+1):Math.max(0,index-1);event.preventDefault();hideDocumentContextMenu();buttons[next]?.focus();if(buttons[next]?.dataset.documentResultId)selectDocumentResult(buttons[next].dataset.documentResultId,buttons[next],buttons[next].dataset.documentSearchMode)}else if(event.key==='Enter'&&event.target.dataset.documentResultId){event.preventDefault();hideDocumentContextMenu();openDocumentResult(event.target.dataset.documentResultId,event.target)}else if(event.key==='Delete'&&event.target.dataset.documentResultId&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&hasLocalDocumentActions()){event.preventDefault();void deleteDocumentResult(event.target.dataset.documentResultId,event.target,event.target.dataset.documentSearchMode)}else if((event.key==='ContextMenu'||(event.shiftKey&&event.key==='F10'))&&event.target.dataset.documentResultId&&hasLocalDocumentActions()){event.preventDefault();showDocumentContextMenu(event.target)}else if(event.key==='Escape'){if(hideDocumentContextMenu())event.preventDefault();else close()}});

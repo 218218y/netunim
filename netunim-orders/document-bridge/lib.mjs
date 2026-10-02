@@ -2,7 +2,7 @@ import path from 'node:path';
 
 export const BRIDGE_PORT=8766;
 export const BRIDGE_SERVICE='netunim-orders-document-bridge';
-export const BRIDGE_VERSION=35;
+export const BRIDGE_VERSION=36;
 export const BRIDGE_NODE_MAJOR=24;
 export const BRIDGE_NODE_MIN_MINOR=11;
 export const MAX_QUERY_CHARS=240;
@@ -104,6 +104,27 @@ export function normalizeSearchText(value){
 }
 
 export function normalizeDocumentSearchMode(value){return value==='content'?'content':'everything'}
+
+const DOCUMENT_FILE_TYPES=new Set(['all','audio','documents','folders','images','video','pdf','word']);
+const DOCUMENT_FILE_TYPE_FILTERS=Object.freeze({
+  all:'',
+  audio:'audio:',
+  documents:'doc:',
+  folders:'folder:',
+  images:'image:',
+  video:'video:',
+  pdf:'ext:pdf',
+  word:'ext:doc;docx;docm;dot;dotx;dotm;rtf',
+});
+export function normalizeDocumentFileType(value){const key=String(value||'').trim().toLowerCase();return DOCUMENT_FILE_TYPES.has(key)?key:'all'}
+export function documentFileTypeEverythingFilter(value){return DOCUMENT_FILE_TYPE_FILTERS[normalizeDocumentFileType(value)]||''}
+export function documentFileTypeIncludesPdf(value){return ['all','documents','pdf'].includes(normalizeDocumentFileType(value))}
+function applyDocumentFileType(search,fileType,{wrap=false}={}){
+  const expression=String(search||'').trim(),filter=documentFileTypeEverythingFilter(fileType);
+  if(!filter)return expression;
+  if(!expression||expression==='*')return filter;
+  return `${filter} ${wrap?`<${expression}>`:expression}`;
+}
 
 const CONTENT_MATCH_MODES=new Set(['phrase','all','any','proximity']);
 const CONTENT_WORD_MATCHES=new Set(['partial','whole']);
@@ -240,8 +261,9 @@ export function normalizeSearchScopePath(value){
 
 export function buildNameQuery(value){return buildEverythingQuery(value)}
 
-export function buildDocumentQuery(value,mode='everything',contentSearch={}){
-  return normalizeDocumentSearchMode(mode)==='content'?buildContentQuery(value,contentSearch):buildEverythingQuery(value);
+export function buildDocumentQuery(value,mode='everything',contentSearch={},fileType='all'){
+  const normalizedMode=normalizeDocumentSearchMode(mode),base=normalizedMode==='content'?buildContentQuery(value,contentSearch):buildEverythingQuery(value);
+  return applyDocumentFileType(base,fileType,{wrap:normalizedMode==='everything'});
 }
 
 function normalizedKey(value){return String(value??'').toLowerCase().replace(/[\s_-]+/g,'')}
@@ -337,14 +359,15 @@ export function buildEsRawSearchArgs({search,limit=DEFAULT_RESULT_LIMIT,timeoutM
   return [...commonEsPrefix({timeoutMs,instance}),...displayArgs({limit,maxResults,offset,sort}),...(filesOnly?['/a-d']:[]),...(scope?['-path',scope]:[]),'--',String(search)];
 }
 
-export function buildEsSearchArgs({query,mode='everything',contentSearch={},limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath='',sort={}}){
-  const normalizedMode=normalizeDocumentSearchMode(mode),search=buildDocumentQuery(query,normalizedMode,contentSearch);
+export function buildEsSearchArgs({query,mode='everything',contentSearch={},fileType='all',limit=DEFAULT_RESULT_LIMIT,offset=0,timeoutMs=15000,instance='',scopePath='',sort={}}){
+  const normalizedMode=normalizeDocumentSearchMode(mode),normalizedFileType=normalizeDocumentFileType(fileType),search=buildDocumentQuery(query,normalizedMode,contentSearch,normalizedFileType);
   if(!search)throw new TypeError('Search query must contain at least two characters');
   return buildEsRawSearchArgs({search,limit,offset,timeoutMs,instance,filesOnly:normalizedMode==='content',scopePath,sort});
 }
 
-export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='' }={}){
-  return buildEsRawSearchArgs({search:'*',limit,timeoutMs,instance,filesOnly:true,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
+export function buildEsRecentFilesArgs({limit=RECENT_RESULT_LIMIT,timeoutMs=15000,instance='',scopePath='',fileType='all'}={}){
+  const search=applyDocumentFileType('*',fileType);
+  return buildEsRawSearchArgs({search,limit,timeoutMs,instance,filesOnly:false,maxResults:RECENT_RESULT_LIMIT,scopePath,sort:{field:'modified',direction:'desc'}});
 }
 
 export function buildEsPdfInventoryArgs({limit=250,offset=0,timeoutMs=15000,instance='',scopePath='',modifiedSince=''}={}){

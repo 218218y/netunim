@@ -4,6 +4,7 @@ export function globalSearchRefs(){
   return {
     trigger:byId('globalSearchButton'),backdrop:byId('globalSearchBackdrop'),dialog:byId('globalSearchBackdrop')?.querySelector('.global-search-dialog'),workspace:byId('globalSearchWorkspace'),
     input:byId('globalSearchInput'),results:byId('globalSearchResults'),meta:byId('globalSearchMeta'),close:byId('globalSearchClose'),
+    fileTypeWrap:byId('globalSearchFileTypeWrap'),fileType:byId('globalSearchFileType'),
     filterAll:byId('globalSearchFilterAll'),filterSite:byId('globalSearchFilterSite'),filterFiles:byId('globalSearchFilterFiles'),filterContent:byId('globalSearchFilterContent'),
     pdfRefreshButton:byId('globalSearchPdfRefresh'),pdfRefreshStatus:byId('globalSearchPdfRefreshStatus'),
     contentOptions:byId('globalSearchContentOptions'),contentOptionsButton:byId('globalSearchContentOptionsButton'),contentOptionsMenu:byId('globalSearchContentOptionsMenu'),

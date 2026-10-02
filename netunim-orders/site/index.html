@@ -65,6 +65,19 @@
         <input id="globalSearchInput" type="search" autocomplete="off" placeholder="חפש באתר, בקבצים ובתוכן…">
         <kbd>Ctrl K</kbd>
       </label>
+      <div class="global-search-file-type" id="globalSearchFileTypeWrap">
+        <select id="globalSearchFileType" aria-label="סוג קובץ" title="סנן את תוצאות הקבצים, התוכן והפריטים האחרונים לפי סוג קובץ">
+          <option value="all">הכל</option>
+          <option value="audio">אודיו</option>
+          <option value="documents">מסמכים</option>
+          <option value="folders">תיקיות</option>
+          <option value="images">תמונות</option>
+          <option value="video">וידאו</option>
+          <option value="pdf">PDF</option>
+          <option value="word">Word</option>
+        </select>
+        <svg viewBox="0 0 12 8" aria-hidden="true"><path d="m1 1.5 5 5 5-5"/></svg>
+      </div>
       <div class="global-search-options" id="globalSearchContentOptions" aria-label="אפשרויות חיפוש תוכן">
         <button class="global-search-options-button" id="globalSearchContentOptionsButton" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="globalSearchContentOptionsMenu">
           <span id="globalSearchContentModeLabel">ביטוי מדויק</span>
