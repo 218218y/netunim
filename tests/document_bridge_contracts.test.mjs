@@ -212,6 +212,21 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
+test('Windows dependency installers avoid the PowerShell 8.3 TEMP cleanup failure',()=>{
+  const nodeInstaller=read('netunim-orders/document-bridge/install_node_runtime.ps1');
+  const esInstaller=read('netunim-orders/document-bridge/install_es.ps1');
+  for(const [name,script] of [['Node',nodeInstaller],['ES',esInstaller]]){
+    assert.doesNotMatch(script,/\$env:TEMP/i,`${name} installer scratch must not inherit an 8.3 TEMP path`);
+    assert.match(script,/\[System\.IO\.Directory\]::Delete\(\$[A-Za-z]+, \$true\)/,`${name} installer directory cleanup must bypass the PowerShell FileSystem provider`);
+    assert.match(script,/Cleanup warning for directory/,`${name} cleanup failure must be logged instead of masking install success or the original error`);
+    assert.match(script,/install failed before cleanup:/i,`${name} installer must preserve the primary failure before best-effort cleanup`);
+  }
+  assert.match(nodeInstaller,/Join-Path \$AppRoot \('node-download-staging-'/,'Node downloads must stage inside the private Bridge application root');
+  assert.match(esInstaller,/Join-Path \$AppRoot \('es-download-staging-'/,'ES downloads must stage inside the private Bridge application root');
+  assert.doesNotMatch(nodeInstaller,/(?:^|\n)\s*Remove-Item\b/m,'Node installer must not regress to provider-based cleanup of private runtime scratch');
+  assert.doesNotMatch(esInstaller,/(?:^|\n)\s*Remove-Item\b/m,'ES installer must not regress to provider-based cleanup of dependency scratch');
+});
+
 test('file and folder opening use the Windows graphical shell through UseShellExecute',()=>{
   const server=read('netunim-orders/document-bridge/server.mjs');
   assert.match(server,/System\.Diagnostics\.ProcessStartInfo/);

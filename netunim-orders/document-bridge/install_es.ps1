@@ -83,8 +83,26 @@ function Install-FromArchive([string]$archivePath, [string]$scratchRoot) {
   Write-InstallLog "Installed ES $installedVersion to $es"
 }
 
+function Remove-FileBestEffort([string]$path) {
+  if ([string]::IsNullOrWhiteSpace($path)) { return }
+  try {
+    if ([System.IO.File]::Exists($path)) { [System.IO.File]::Delete($path) }
+  } catch {
+    Write-InstallLog "Cleanup warning for file $path : $($_.Exception.Message)"
+  }
+}
+
+function Remove-DirectoryTreeBestEffort([string]$path) {
+  if ([string]::IsNullOrWhiteSpace($path)) { return }
+  try {
+    if ([System.IO.Directory]::Exists($path)) { [System.IO.Directory]::Delete($path, $true) }
+  } catch {
+    Write-InstallLog "Cleanup warning for directory $path : $($_.Exception.Message)"
+  }
+}
+
 function Download-WithTimeout([string]$url, [string]$destination, [int]$timeoutSec) {
-  if (Test-Path -LiteralPath $destination) { Remove-Item -Force -LiteralPath $destination }
+  if ([System.IO.File]::Exists($destination)) { [System.IO.File]::Delete($destination) }
 
   # Windows PowerShell 5.1 can otherwise negotiate legacy TLS defaults on some PCs.
   $oldSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
@@ -111,7 +129,7 @@ if (Test-Path -LiteralPath $es -PathType Leaf) {
   }
 }
 
-$tmp = Join-Path $env:TEMP ('netunim-es-' + [guid]::NewGuid().ToString('N'))
+$tmp = Join-Path $AppRoot ('es-download-staging-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
@@ -161,7 +179,7 @@ try {
       $errors.Add("$url -> $message")
       Write-Warning "Download source failed: $message"
       Write-InstallLog "Download source failed $url : $message"
-      if (Test-Path -LiteralPath $downloadPath) { Remove-Item -Force -LiteralPath $downloadPath -ErrorAction SilentlyContinue }
+      Remove-FileBestEffort $downloadPath
     }
   }
 
@@ -183,6 +201,12 @@ Source errors:
 $details
 "@
   throw $message
+} catch {
+  Write-InstallLog "ES install failed before cleanup: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  throw
 } finally {
-  Remove-Item -Recurse -Force -ErrorAction SilentlyContinue -LiteralPath $tmp
+  # Do not use Remove-Item for scratch cleanup: Windows PowerShell's FileSystem
+  # provider can fail on 8.3 TEMP paths for Unicode account names. System.IO
+  # also ensures a cleanup warning cannot replace the real install result.
+  Remove-DirectoryTreeBestEffort $tmp
 }

@@ -74,8 +74,26 @@ function Extract-NodeExecutable([string]$ArchivePath, [string]$DestinationPath) 
   } finally { $zip.Dispose() }
 }
 
+function Remove-FileBestEffort([string]$Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return }
+  try {
+    if ([System.IO.File]::Exists($Path)) { [System.IO.File]::Delete($Path) }
+  } catch {
+    Write-InstallLog "Cleanup warning for file $Path : $($_.Exception.Message)"
+  }
+}
+
+function Remove-DirectoryTreeBestEffort([string]$Path) {
+  if ([string]::IsNullOrWhiteSpace($Path)) { return }
+  try {
+    if ([System.IO.Directory]::Exists($Path)) { [System.IO.Directory]::Delete($Path, $true) }
+  } catch {
+    Write-InstallLog "Cleanup warning for directory $Path : $($_.Exception.Message)"
+  }
+}
+
 function Download-WithTimeout([string]$Url, [string]$Destination, [int]$TimeoutSec) {
-  if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force }
+  if ([System.IO.File]::Exists($Destination)) { [System.IO.File]::Delete($Destination) }
   $oldSecurityProtocol = [Net.ServicePointManager]::SecurityProtocol
   try {
     [Net.ServicePointManager]::SecurityProtocol = $oldSecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -104,7 +122,7 @@ $runtimeDirectory = Join-Path $AppRoot $runtimeName
 $tempDirectory = Join-Path $AppRoot ('node-runtime-staging-' + [Guid]::NewGuid().ToString('N'))
 $tempNode = Join-Path $tempDirectory 'node.exe'
 $tempPointer = Join-Path $AppRoot ('node-runtime.new.' + [Guid]::NewGuid().ToString('N') + '.txt')
-$downloadDirectory = Join-Path $env:TEMP ('netunim-node-' + [Guid]::NewGuid().ToString('N'))
+$downloadDirectory = Join-Path $AppRoot ('node-download-staging-' + [Guid]::NewGuid().ToString('N'))
 $downloadPath = Join-Path $downloadDirectory $asset
 
 try {
@@ -154,7 +172,9 @@ Diagnostics: $logPath
     }
   }
 
+  Write-InstallLog "Extracting node.exe from verified archive: $archivePath"
   Extract-NodeExecutable $archivePath $tempNode
+  Write-InstallLog "Extracted node.exe; verifying pinned SHA-256 and runtime version."
   Assert-NodeBinary $tempNode
   Write-InstallLog "Verified extracted node.exe SHA-256 and runtime version."
 
@@ -166,8 +186,15 @@ Diagnostics: $logPath
   Move-Item -LiteralPath $tempPointer -Destination $pointerPath -Force
   Write-InstallLog "Activated private Node runtime: $runtimeName"
   Write-Output (Join-Path $runtimeDirectory 'node.exe')
+} catch {
+  Write-InstallLog "Private Node install failed before cleanup: $($_.Exception.GetType().FullName): $($_.Exception.Message)"
+  throw
 } finally {
-  if (Test-Path -LiteralPath $tempPointer) { Remove-Item -LiteralPath $tempPointer -Force -ErrorAction SilentlyContinue }
-  if (Test-Path -LiteralPath $tempDirectory) { Remove-Item -LiteralPath $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue }
-  if (Test-Path -LiteralPath $downloadDirectory) { Remove-Item -LiteralPath $downloadDirectory -Recurse -Force -ErrorAction SilentlyContinue }
+  # Windows PowerShell's FileSystem provider is known to fail Remove-Item on some
+  # 8.3 TEMP paths (common with Unicode account names). Keep installer scratch
+  # under AppRoot and use System.IO cleanup so cleanup can never mask a verified
+  # install or the original installation error.
+  Remove-FileBestEffort $tempPointer
+  Remove-DirectoryTreeBestEffort $tempDirectory
+  Remove-DirectoryTreeBestEffort $downloadDirectory
 }

@@ -141,10 +141,14 @@ extracted node.exe is independently pinned to the SHA-256 shown above. The
 installer first prefers a verified local archive next to the installer, in the
 user Downloads folder or under the Bridge downloads folder, then uses the exact
 official Node release URL with a bounded timeout. install_node_runtime.ps1 verifies
-both hashes and process.versions.node before changing node-runtime.txt. A failed Bridge upgrade
-restores the previous Node pointer and keeps the previous active Bridge runtime.
-After a successful health check, inactive private Node runtime directories are
-removed as best-effort cleanup.
+both hashes and process.versions.node before changing node-runtime.txt. Installer scratch is
+created under the private Bridge AppRoot rather than $env:TEMP: Windows PowerShell's
+FileSystem provider can fail Remove-Item on 8.3 TEMP paths used by some Unicode account
+names. Scratch cleanup uses System.IO and is best-effort, so a cleanup failure is logged but
+can never replace the real installation result or its primary exception. A failed Bridge
+upgrade restores the previous Node pointer and keeps the previous active Bridge runtime.
+After a successful health check, inactive private Node runtime directories are removed as
+best-effort cleanup.
 
 Normal startup, manual Bridge configuration and scheduled PDF maintenance all
 resolve node.exe through node-runtime.txt. They never use PATH, `where node` or
