@@ -512,13 +512,15 @@ test('orders service worker contains both current document search providers afte
 test('Drive fallback keeps local Document Bridge pairing visible when the browser has no local key',()=>{
   const source=read('shared/document-search/domains/documents/search-source.js');
   const ui=read('shared/global-document-search.js');
+  const connectionView=read('shared/document-search/ui/document-search-connection-view.js');
   const css=read('shared/global-document-search.css');
   assert.match(source,/get localPairingRequired\(\)/);
   assert.match(source,/!String\(localBridge\.getToken\?\.\(\)\|\|''\)\.trim\(\)/);
-  assert.match(ui,/function localDocumentPairingRequired\(\)/);
-  assert.match(ui,/function localDocumentPairingBannerVisible\(\)/);
-  assert.match(ui,/function localDocumentPairingHtml\(\)/);
-  assert.match(ui,/Google Drive יכול להמשיך לעבוד/);
+  assert.match(ui,/documentLocalPairingHtml,documentPairingHtml/);
+  assert.match(ui,/function localDocumentPairingHtml\(\)\{return documentLocalPairingHtml\(\{required:documentBridge\?\.localPairingRequired,provider:documentBridge\?\.provider,hasToken:!!documentBridge\?\.getToken\?\.\(\)\}\)\}/);
+  assert.ok(connectionView.includes("if(!required||(provider!=='google-drive'&&!hasToken))return '';"));
+  assert.match(connectionView,/Google Drive יכול להמשיך לעבוד/);
+  assert.match(connectionView,/id="globalSearchDocumentToken"/);
   assert.match(ui,/results\.innerHTML=`\$\{localDocumentPairingHtml\(\)\}<section class="global-search-source-section" data-search-source="recent"/);
   assert.match(ui,/requestedDocumentModes\(\)\.length\?localDocumentPairingHtml\(\):''/);
   assert.match(ui,/const intro=filter==='content'\?documentIntro\('content'\):scopeIntro\(\);results\.innerHTML=`\$\{requestedDocumentModes\(\)\.length\?localDocumentPairingHtml\(\):''\}\$\{intro\}`/);
