@@ -13,7 +13,7 @@ import {
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
-import {localCheckpointDay,pdfIndexNeedsInspection} from './pdf-index-policy.mjs';
+import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan} from './pdf-index-policy.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -41,7 +41,7 @@ const PDF_FORM_SEARCH_TEXT_REVISION=2;
 const PDF_FORM_GEOMETRY_REVISION=1;
 const PDF_FORM_INDEX_PAGE_SIZE=250;
 const PDF_FORM_MAINTENANCE_INTERVAL_MS=20*60*60*1000;
-const PDF_FORM_RECONCILE_INTERVAL_MS=7*24*60*60*1000;
+const PDF_FORM_RECONCILE_INTERVAL_MS=PDF_FORM_MAINTENANCE_INTERVAL_MS;
 const PDF_FORM_RETRY_MS=24*60*60*1000;
 const PDF_FORM_MAINTENANCE_MAX_FILES=300;
 const PDF_FORM_MAINTENANCE_MAX_MS=15*60*1000;
@@ -396,8 +396,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
     const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
     if(!force&&!maintenance.lastFailureAt&&Number(maintenance.lastResult?.pending)===0&&Date.parse(String(maintenance.lastSuccessfulAt||''))>started-PDF_FORM_MAINTENANCE_INTERVAL_MS)return {skipped:true,reason:'not-due',pending:pdfFormIndexPending,processed:0};
     maintenance.lastAttemptAt=new Date(started).toISOString();await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance);
-    const full=!maintenance.lastReconcileAt||started-Date.parse(maintenance.lastReconcileAt)>=PDF_FORM_RECONCILE_INTERVAL_MS||!maintenance.lastIncrementalScanAt;
-    const modifiedSince=full?'':localCheckpointDay(maintenance.lastIncrementalScanAt);
+    const {full,modifiedSince}=pdfMaintenanceInventoryPlan({force,now:started,lastReconcileAt:maintenance.lastReconcileAt,lastIncrementalScanAt:maintenance.lastIncrementalScanAt,reconcileIntervalMs:PDF_FORM_RECONCILE_INTERVAL_MS});
     const inventory=await rebuildPdfFormIndexBacklog({signal:controller.signal,full,modifiedSince});removed=inventory.removed;
     if(shuttingDown||controller.signal.aborted){const error=new Error('PDF maintenance stopped');error.code='ABORT_ERR';throw error}
     const changedBefore=pdfFormIndexBacklog.length,boundedMax=Number.isFinite(Number(maxChanged))?Math.max(0,Math.trunc(Number(maxChanged))):changedBefore;

@@ -4,7 +4,7 @@ import {
   bridgeNodeVersionSupported,buildContentMatchInfo,buildContentQuery,buildDocumentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeEverythingFilter,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeDocumentFileType,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
-import {pdfIndexNeedsInspection} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
+import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
@@ -159,6 +159,16 @@ test('PDF inventory query pages only PDF files from the Everything database',()=
   assert.throws(()=>buildEsPdfInventoryArgs({modifiedSince:'today | content:secret'}),/Invalid PDF inventory checkpoint date/);
   assert.equal(documentExtension('C:\\archive\\.pdf'),'pdf');
   assert.equal(parseEsJson(JSON.stringify({results:[{name:'.pdf',path:'C:\\archive',size:1}]}))[0].extension,'pdf');
+});
+
+test('PDF maintenance inventory planning makes manual refresh authoritative and daily scans backdate-safe',()=>{
+  const now=Date.UTC(2026,9,2,9,0,0),interval=20*60*60*1000;
+  const recent=new Date(now-2*60*60*1000).toISOString(),old=new Date(now-24*60*60*1000).toISOString();
+  assert.deepEqual(pdfMaintenanceInventoryPlan({force:true,now,lastReconcileAt:recent,lastIncrementalScanAt:recent,reconcileIntervalMs:interval}),{full:true,modifiedSince:''},'manual force must inventory every PDF even when a recent reconciliation exists');
+  assert.deepEqual(pdfMaintenanceInventoryPlan({force:false,now,lastReconcileAt:old,lastIncrementalScanAt:old,reconcileIntervalMs:interval}),{full:true,modifiedSince:''},'the next due daily maintenance window must reconcile all PDF paths, not only recent mtimes');
+  const retry=pdfMaintenanceInventoryPlan({force:false,now,lastReconcileAt:recent,lastIncrementalScanAt:recent,reconcileIntervalMs:interval});
+  assert.equal(retry.full,false,'continuation work inside the same daily window may keep the fast incremental candidate query');
+  assert.match(retry.modifiedSince,/^2026-10-01$/);
 });
 
 test('PDF maintenance skips current negative and geometry-only records, and backs off failures',()=>{

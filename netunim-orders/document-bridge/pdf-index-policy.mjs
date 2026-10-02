@@ -11,3 +11,9 @@ export function localCheckpointDay(value){
   date.setDate(date.getDate()-1);
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
+
+export function pdfMaintenanceInventoryPlan({force=false,now=Date.now(),lastReconcileAt='',lastIncrementalScanAt='',reconcileIntervalMs=0}={}){
+  const reconcileAt=Date.parse(String(lastReconcileAt||'')),interval=Math.max(0,Number(reconcileIntervalMs)||0);
+  const full=!!force||!Number.isFinite(reconcileAt)||now-reconcileAt>=interval||!lastIncrementalScanAt;
+  return {full,modifiedSince:full?'':localCheckpointDay(lastIncrementalScanAt)};
+}

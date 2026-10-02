@@ -149,11 +149,15 @@ missed start when Windows permits, with low priority and AC power required.
 Each run handles at most 300 changed PDFs or 15 minutes, whichever comes first.
 The process exits when the run finishes. A second run cannot overlap the first.
 
-Everything's date-modified filter supplies daily incremental candidates with a
-one-day overlap. A full metadata inventory is performed initially and every
-seven days to find older/backdated files, renames and deletions. No PDF content
-is read during metadata comparison. A checkpoint advances only after the candidate
-set is complete, so unfinished work is reconsidered at the next scheduled run.
+Each normal daily maintenance window performs a full PDF metadata reconciliation
+against Everything so newly copied or moved PDFs are discovered even when their
+Date Modified value is old. Manual -Force refreshes always request the same full
+metadata reconciliation. No PDF content is read during metadata comparison;
+only new, changed, failed-due-for-retry or extractor-revision candidates are
+opened. The date-modified incremental query remains only for continuation runs
+inside the same maintenance window, with a one-day overlap. A checkpoint advances
+only after the candidate set is complete, so unfinished work is reconsidered at
+the next run.
 
 The persisted index has independent detection, search-text and geometry revisions.
 Missing geometry is recovered only when that PDF is previewed; it does not add

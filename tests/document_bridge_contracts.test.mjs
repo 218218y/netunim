@@ -143,14 +143,14 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(server,/hasForm:!!extracted\.hasForm/,'ordinary PDFs must be negatively cached after inspection');
   assert.match(server,/pending:pdfFormIndexPending/,'incremental progress must be persisted across restarts');
   assert.match(server,/pdf-form-index\.journal\.jsonl/,'incremental PDF inspection progress must be journaled without rewriting the whole snapshot every batch');
-  assert.match(server,/PDF_FORM_RECONCILE_INTERVAL_MS=7\*24\*60\*60\*1000/);
-  assert.match(server,/localCheckpointDay\(maintenance\.lastIncrementalScanAt\)/);
+  assert.match(server,/PDF_FORM_RECONCILE_INTERVAL_MS=PDF_FORM_MAINTENANCE_INTERVAL_MS/);
+  assert.match(server,/pdfMaintenanceInventoryPlan\(\{force,now:started/,'manual force and scheduled cadence must share the tested inventory planner');
   assert.match(server,/INSTALL_STOP_FORCE/,'upgrades must be able to terminate an old Bridge that closed the port but kept indexing');
   assert.match(server,/taskkill\.exe/);
   assert.match(installer,/Preserving local interactive PDF text index/);
   assert.match(installer,/:move_dir_with_retry/);
   assert.match(installer,/active-runtime\.txt/,'upgrades must activate a side-by-side runtime through an explicit pointer');
-  assert.match(installer,/app-v36-/,'new runtime must be versioned so old Windows handles cannot block activation');
+  assert.match(installer,/app-v37-/,'new runtime must be versioned so old Windows handles cannot block activation');
   assert.doesNotMatch(installer,/move \"%APPDIR%\"/,'installer must never rename the active runtime as a prerequisite for upgrade success');
   assert.match(installer,/stop_runtime_helpers\.ps1/,'installer should clean verified stale bridge helpers without depending on old runtime deletion');
   assert.match(server,/RUNTIME_ROOT=fileURLToPath/,'runtime-owned executables must resolve relative to the active versioned runtime');
@@ -162,8 +162,8 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(pdfIndex,/fileURLToPath/);
   assert.match(pdfIndex,/BinaryDataFactory:LocalPdfBinaryDataFactory/);
   assert.match(pdfIndex,/VerbosityLevel\?\.ERRORS/);
-  assert.match(lib,/BRIDGE_VERSION=36/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=36/);
+  assert.match(lib,/BRIDGE_VERSION=37/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=37/);
   assert.match(client,/requireBridgeVersion\(data\?\.bridgeVersion,'לקבל מיקומי התאמות בתוך PDF אינטראקטיבי'\)/,'preview-match geometry refuses a stale local Bridge runtime');
 });
 
@@ -439,11 +439,11 @@ test('document search rejects stale bridge runtimes instead of silently using a 
   const lib=read('netunim-orders/document-bridge/lib.mjs');
   const server=read('netunim-orders/document-bridge/server.mjs');
   const client=read('netunim-orders/site/assets/js/domains/documents/bridge.js');
-  assert.match(lib,/BRIDGE_VERSION=36/);
+  assert.match(lib,/BRIDGE_VERSION=37/);
   assert.match(server,/bridgeVersion:BRIDGE_VERSION/);
   assert.match(server,/normalizeDocumentFileType\(fileType\)/);
   assert.match(server,/documentFileTypeIncludesPdf\(normalizedFileType\)\?searchPdfFormIndex/,'interactive-PDF supplemental results must obey the active type filter');
   assert.match(server,/Number\(response\.data\?\.version\)!==BRIDGE_VERSION/);
-  assert.match(client,/EXPECTED_BRIDGE_VERSION=36/);
+  assert.match(client,/EXPECTED_BRIDGE_VERSION=37/);
   assert.match(client,/DOCUMENT_BRIDGE_UPGRADE_REQUIRED/);
 });
