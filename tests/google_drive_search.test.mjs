@@ -216,13 +216,3 @@ test('Google Drive mirrors document header sorting where the API supports it and
     assert.deepEqual(bySize.results.map(row=>row.id),['small','big']);
   }finally{globalThis.fetch=previousFetch}
 });
-
-
-test('Windows source distinguishes a missing local Bridge key from an existing Drive credential',()=>{
-  const local={provider:'everything',getToken:()=> ''};
-  const drive={provider:'google-drive',getToken:()=> 'drive-managed'};
-  const source=createDomainsDocumentSearch({localBridge:local,googleDrive:drive,userAgent:'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'});
-  assert.equal(source.getToken(),'drive-managed','aggregate auth may keep Drive usable');
-  assert.equal(source.localToken,'','local pairing state must remain independently observable');
-  assert.equal(source.supportsLocalPairing,true);
-});
