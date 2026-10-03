@@ -143,6 +143,12 @@ ok("from browser_harness import BrowserSession, ROOT" in workflows_source
    and "storageShadow.recover()" in workflows_source
    and "sharedChecksV2.recover()" in workflows_source,
    "browser workflows exercise durable Main and Shared V2 without a patched V1 fixture")
+two_profile_source=(ROOT / "tests/runtime_sync_two_computers.py").read_text(encoding="utf-8")
+ok("from browser_harness import BrowserSession, ROOT" in two_profile_source
+   and "LegacyBrowserSession" not in two_profile_source
+   and "rejectAndRebase" in two_profile_source
+   and "acknowledge" in two_profile_source,
+   "two-profile browser recovery uses V2 flights and rebases without a V1 outbox")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
