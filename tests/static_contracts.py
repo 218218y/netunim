@@ -150,7 +150,9 @@ for label, app_root in (("kupa", K), ("orders", O)):
     coordinator_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
     lifecycle_source=(app_root / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+    document_source=(app_root / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
     ok("legacyDrain" not in coordinator_source and "drainLegacy" not in coordinator_source
+       and "legacyDrain" not in document_source
        and "legacyWriteAllowed=()=>false" in coordinator_source
        and "beginCutover" not in coordinator_source
        and "begin-storage-v2-cutover" not in main_source

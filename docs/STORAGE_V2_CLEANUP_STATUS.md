@@ -6,4 +6,6 @@ Fresh local storage now starts from the current initial state in Main V2 and an 
 
 The remaining client compatibility is substantial: old browser/outbox readers and disabled writers, Main projection-1 replay and migration, Shared shadow promotion, and legacy retirement. These should be removed only after proving the active V2 checkpoints can recover with projection 2 and confirming every startup, import, restore, and owner-transfer path uses the new model. Historical SQL migrations must remain unchanged; removal of public v1-v5 functions requires a new migration and a live dependency audit. The server protocol fence remains permanent.
 
+The retired `legacyDrain` option has been removed from both document-sync entrypoints. The large-list browser performance suite now starts with the production Local V2 birth path and verifies inline edits from the V2 journal instead of a V1 browser snapshot. Other historical browser suites still use a disposable V1 fixture; they must gain equivalent V2 coverage before their production dependencies can be removed. No projection-1 replay or migration path was removed in this step.
+
 Do not infer that a protocol-2 server account makes an unverified local V2 journal safe to overwrite. A browser with an unfinished V2 boundary, flight, or owner transition still requires its normal durable recovery.
