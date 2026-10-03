@@ -1,5 +1,5 @@
 """Representative workflows through real controls, with actual offline persistence."""
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 import json
 from notes_workbook_workflow import run as notes_workbook_workflow
 from shared_workbook_workflow import run as shared_workbook_workflow
@@ -25,6 +25,8 @@ helpers=r"""
 flows={
 'kupa':r"""
  state=normalizeState({version:4,businessName:'workflow',checks:[],credits:[],cash:[],expenses:[],cards:[{name:'VISA',active:true,chargeDay:10}],bank:{currentBalance:1000,snapshotSeq:0,adjustments:[]}});
+ const kupaHead=await storageShadow.cloudState();
+ await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:kupaHead.seq});
  backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));sharedChecksBase=[];
  setPage('cash');click('open-cash-modal');fill({mDate:'2026-08-27',mDesc:'Cash receipt',mAmount:'120'});saveModal();await waitFor(()=>state.cash.length===1&&!!document.querySelector('[data-action="open-cash-modal-2"]'),'Cash save did not render');
  assert(state.cash.length===1&&state.cash[0].amount===120,'cash create');
@@ -68,13 +70,19 @@ flows={
 
 
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
- const hadOfflinePending=cloudPendingExistsSync();
- assert(!!loadBrowserStateSync(),'actual offline browser snapshot');
- assert(hadOfflinePending,'actual pending marker');
+ await Promise.all([storageShadow.commitPromise,sharedChecksV2.commitPromise]);
+ const savedMain=(await storageShadow.recover()).state;
+ const savedShared=(await sharedChecksV2.recover()).state;
+ assert(savedMain.cash.length===0&&savedMain.expenses.length===1,'actual offline Main V2 journal');
+ assert(savedShared.checks.length===1,'actual offline Shared Checks V2 journal');
+ assert(!localStorage.getItem('kupa.browser.state.v1'),'no V1 browser snapshot');
+ assert(!localStorage.getItem('kupa.shared.checks.pending.v1'),'no V1 Shared Checks outbox');
  return {cash:true,expense:true,credit:true,checks:true,depositClear:true,delete:true,offlinePersistence:true};
 """,
 'orders':r"""
  state=normalizeState({version:4,suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryEvents:[],warehouseOrders:[],notes:[],checks:[]});
+ const ordersHead=await storageShadow.cloudState();
+ await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:ordersHead.seq});
  switchView('settings');click('open-supplier-modal');fill({sName:'Flow supplier',sNote:'test'});saveModal();await saved();assert(state.suppliers.length===1,'supplier create');
  switchView('supplier');click('open-transaction-modal');const supplierField=element('#fSupplier').closest('.field'),actionField=element('#fAction').closest('.field'),debitInput=element('#fDebit'),creditInput=element('#fCredit');if(matchMedia('(min-width:901px)').matches)assert(Math.abs(supplierField.getBoundingClientRect().top-actionField.getBoundingClientRect().top)<2,'supplier and action share the first modal row');assert(debitInput.closest('.supplier-money-field.is-debit')&&creditInput.closest('.supplier-money-field.is-credit'),'supplier amount fields expose debit/credit intent');assert(getComputedStyle(debitInput).color!==getComputedStyle(creditInput).color,'supplier debit and credit inputs use distinct colors');fill({fAction:'Order',fDebit:'100'});saveModal();await saved();assert(state.transactions.length===1&&supplierBalance(state.suppliers[0].id)===-100,'supplier transaction');
  openTransactionModal(state.transactions[0].id);fill({fDebit:'80'});saveModal();await saved();assert(supplierBalance(state.suppliers[0].id)===-80,'transaction edit');
@@ -96,7 +104,13 @@ flows={
  openStockTransfer(item.id,'מחסן קטן');fill({transferTo:'מקלט',transferQty:'5'});saveModal();await saved();assert(state.inventoryEvents.filter(e=>e.type==='transfer').length===1,'transfer cannot consume reserved stock');closeModal();
  openStockAdjustmentModal(item.id,'מחסן גדול');fill({adjQty:'4',adjNote:'Physical count'});assert(element('#adjPreview').textContent.includes('-1'),'count previews delta');saveModal();await saved();
  balances=inventoryLocationStatsData(state,item.id);assert(balances['מחסן גדול'].onHand===4&&balances['מחסן קטן'].onHand===7,'count affects only selected warehouse');
- openStockAdjustmentModal(item.id,'מחסן גדול');fill({adjQty:'3',adjNote:'Concurrent count'});state.inventoryEvents.push({id:'COUNT-RACE',itemId:item.id,type:'receive',quantity:1,location:'מחסן גדול'});saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===5,'stale count requires renewed confirmation');saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===3,'renewed count applies current delta');
+ openStockAdjustmentModal(item.id,'מחסן גדול');fill({adjQty:'3',adjNote:'Concurrent count'});
+ state.inventoryEvents.push({id:'COUNT-RACE',itemId:item.id,type:'receive',quantity:1,location:'מחסן גדול'});
+ // Model a concurrent edit as a durable operation so later indexes replay correctly.
+ const raceWrite=storageShadow.persist(state,{operations:[{type:'put',collection:'inventoryEvents',id:'COUNT-RACE',mode:'insert',index:state.inventoryEvents.length-1}],surface:'test.workflow-race'});
+ assert(raceWrite.handled,'concurrent inventory edit is journaled');await raceWrite.committed;
+ saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===5,'stale count requires renewed confirmation');
+ saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===3,'renewed count applies current delta');
  const reservation=state.inventoryEvents.find(e=>e.type==='reserve');const waitingPickup=pickupReservation(reservation.id);state.inventoryEvents=state.inventoryEvents.map(e=>e.id===reservation.id?{...e,quantity:4}:e);await acceptStyledConfirm();await waitingPickup;assert(!state.inventoryEvents.find(e=>e.id===reservation.id).pickedAt,'remote edit during confirmation must not pick up a stale reservation');state.inventoryEvents.find(e=>e.id===reservation.id).quantity=3;
  pickupReservation(reservation.id);await acceptStyledConfirm();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן קטן'].onHand===4&&inventoryStats(item.id).reserved===0,'pickup debits reservation warehouse');
  setWarehouseTab('stock');const grouping=element('[data-change="inventory-grouping"]');grouping.value='location';grouping.dispatchEvent(new Event('change',{bubbles:true}));assert(document.querySelectorAll('[data-stock-bulk-id="'+item.id+'"]').length===2,'item appears in each warehouse with its own balance');
@@ -134,7 +148,13 @@ flows={
 
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
  switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');
- assert(!!loadLocal(),'actual browser snapshot');
+ await Promise.all([storageShadow.commitPromise,sharedChecksV2.commitPromise]);
+ const savedMain=(await storageShadow.recover()).state;
+ const savedShared=(await sharedChecksV2.recover()).state;
+ assert(savedMain.suppliers.length===1&&savedMain.transactions.length===0,'actual offline Main V2 journal');
+ assert(savedShared.checks.length===1,'actual offline Shared Checks V2 journal');
+ assert(!localStorage.getItem('orders.management.state.v1'),'no V1 browser snapshot');
+ assert(!localStorage.getItem('orders.shared.checks.pending.v1'),'no V1 Shared Checks outbox');
  return {suppliers:true,transactions:true,debts:true,service:true,inventory:true,partialReceipt:true,reservation:true,warehouse:true,checks:true,notes:true,delete:true};
 """
 }
