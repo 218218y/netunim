@@ -154,6 +154,10 @@ ok("from browser_harness import BrowserSession, ROOT" in storage_browser_source
    and "LegacyBrowserSession" not in storage_browser_source
    and "storage-v2-local-engine-idb-fixture" in storage_browser_source,
    "browser storage crash tests run against production V2 startup with isolated fault injection")
+ok(not (ROOT / "tests/runtime_sync_recovery.py").exists()
+   and "runtime_sync_recovery.py" not in (ROOT / "tests/verification_plan.py").read_text(encoding="utf-8")
+   and all(symbol in two_profile_source for symbol in ("navigator,'onLine'", "rejectAndRebase", "acknowledge")),
+   "retired V1 outbox recovery suite is replaced by V2 browser recovery coverage")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
