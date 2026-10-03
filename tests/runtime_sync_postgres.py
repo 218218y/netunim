@@ -4,7 +4,7 @@ import json
 import socket
 import threading
 
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT, _free_port, _RuntimeHTTPServer
+from browser_harness import BrowserSession, ROOT, _free_port, _RuntimeHTTPServer
 from isolated_sync_postgres import IsolatedPostgres, OWNER, quote
 
 
