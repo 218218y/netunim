@@ -1,6 +1,6 @@
 """Real IndexedDB transactions, journal recovery, fault injection and byte scaling."""
 import json
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 
 with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as browser:
     result=browser.evaluate(r"""(async()=>{
@@ -254,7 +254,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-local-engine-idb') as b
       const {createStorageJournal}=await import('./assets/js/shared/storage-journal.js');
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
       const {verifyStorageV2LocalEngine,storageLocalEngineKey}=await import('./assets/js/shared/storage-v2-local-birth.js');
-      const db=createStorageJournalDb(),scope='kupa:local',mainState={notes:[]},sharedState={checks:[],bankEvents:[]},stamp=new Date().toISOString();
+      const db=createStorageJournalDb({name:'storage-v2-local-engine-idb-fixture'}),scope='kupa:local',mainState={notes:[]},sharedState={checks:[],bankEvents:[]},stamp=new Date().toISOString();
       await db.initializeOwnerBinding('kupa','local');
       const plan={version:2,scope,app:'kupa',owner:'local',id:'local-birth-idb',phase:'prepared',mainState,sharedState,createdAt:stamp,updatedAt:stamp};
       await db.beginLocalBirth(scope,plan);

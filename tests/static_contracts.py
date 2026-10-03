@@ -149,6 +149,11 @@ ok("from browser_harness import BrowserSession, ROOT" in two_profile_source
    and "rejectAndRebase" in two_profile_source
    and "acknowledge" in two_profile_source,
    "two-profile browser recovery uses V2 flights and rebases without a V1 outbox")
+storage_browser_source=(ROOT / "tests/runtime_storage.py").read_text(encoding="utf-8")
+ok("from browser_harness import BrowserSession, ROOT" in storage_browser_source
+   and "LegacyBrowserSession" not in storage_browser_source
+   and "storage-v2-local-engine-idb-fixture" in storage_browser_source,
+   "browser storage crash tests run against production V2 startup with isolated fault injection")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
