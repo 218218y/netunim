@@ -3,7 +3,7 @@
 Only public DOM, browser storage and the small exported appReady lifecycle API
 are used. All data and cloud endpoints live in a disposable local test origin.
 """
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 import json
 from pwa_upgrade import test_worker_upgrade
 
@@ -12,9 +12,10 @@ def ready(browser):
     return browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
 
 
-fixtures = {
+# These old browser records are only input to the worker-upgrade test. The
+# production offline test below creates its data through Local V2 controls.
+legacy_fixtures = {
     'kupa': {
-        'kupa.supabase.session.v1': {'access_token':'test', 'expires_at':4102444800},
         'kupa.browser.state.v1': {'revision':3, 'savedAt':'2026-08-27T12:00:00Z', 'state':{
             'version':4, 'businessName':'PWA fixture', 'cash':[{'id':'PWA-CASH','date':'2026-08-27','description':'PWA cash recovery','amount':75}],
             'checks':[], 'credits':[], 'expenses':[], 'cards':[]}},
@@ -29,7 +30,7 @@ fixtures = {
     },
 }
 
-for label, fixture in fixtures.items():
+for label, fixture in legacy_fixtures.items():
     with BrowserSession(ROOT/f'netunim-{label}/site', label+'-pwa', instrument=False, service_worker=True) as browser:
         assert ready(browser)
         browser.ws.settimeout(20)
@@ -74,10 +75,30 @@ for label, fixture in fixtures.items():
             })()""")
             assert lazy_cached, 'PDF.js runtime request was not cached lazily'
 
-        # Seed once on the next navigation. Subsequent reloads have no seeding:
-        # they must use the real recovery path and keep pending intact.
-        source='for(const [key,value]of Object.entries('+json.dumps(fixture)+'))localStorage.setItem(key,JSON.stringify(value));'
-        ident=browser.call('Page.addScriptToEvaluateOnNewDocument',{'source':source})['result']['identifier']
+        # Save through the real Local V2 UI, then recover that committed edit
+        # across two offline navigations without seeding old browser snapshots.
+        seed=browser.evaluate("""(async()=>{
+          const app="""+json.dumps(label)+""",wait=async predicate=>{
+            for(let i=0;i<100;i++){if(await predicate())return true;await new Promise(resolve=>setTimeout(resolve,25))}
+            return false;
+          };
+          if(app==='kupa'){
+            document.querySelector('[data-page="cash"]').click();
+            document.querySelector('[data-action="open-cash-modal"]').click();
+            for(const [id,value] of Object.entries({mDate:'2026-08-27',mDesc:'PWA cash recovery',mAmount:'75'}))document.getElementById(id).value=value;
+          }else{
+            document.querySelector('[data-view="settings"]').click();
+            document.querySelector('[data-action="open-supplier-modal"]').click();
+            document.getElementById('sName').value='PWA supplier recovery';
+          }
+          document.querySelector('#modal [data-modal-save],#modal .btn.primary').click();
+          const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
+          const db=createStorageJournalDb(),owner='local:'+app;
+          const committed=await wait(async()=>Number((await db.load(owner)).metadata?.seq||0)>0);
+          return {committed,marker:localStorage.getItem('netunim-storage-engine-version:'+app+':local'),
+            oldSnapshot:localStorage.getItem(app==='kupa'?'kupa.browser.state.v1':'orders.management.state.v1')};
+        })()""")
+        assert seed=={'committed':True,'marker':'2','oldSnapshot':None},seed
         browser.call('Network.enable')
         network={'offline':True,'latency':0,'downloadThroughput':-1,'uploadThroughput':-1,'connectionType':'none'}
         response=browser.call('Network.emulateNetworkConditions',network)
@@ -85,7 +106,6 @@ for label, fixture in fixtures.items():
         response=browser.call('Network.overrideNetworkState',network)
         assert 'error' not in response,response
         browser._navigate()
-        browser.call('Page.removeScriptToEvaluateOnNewDocument',{'identifier':ident})
         browser.call('Network.overrideNetworkState',network)
         assert ready(browser)
         assert browser.evaluate("fetch('/offline-probe',{cache:'no-store'}).then(()=>false,()=>true)")
@@ -99,7 +119,8 @@ for label, fixture in fixtures.items():
               if(label==='kupa')document.querySelector('[data-page="cash"]').click();
               return {offline:!navigator.onLine,controlled:!!navigator.serviceWorker.controller,
                 recovered:document.body.textContent.includes(label==='kupa'?'PWA cash recovery':'PWA supplier recovery'),
-                pending:!!localStorage.getItem(label==='kupa'?'kupa.cloud.pending.local.v1':'orders.supabase.pending.v1')};
+                v2:localStorage.getItem('netunim-storage-engine-version:'+label+':local')==='2',
+                noLegacySnapshot:!localStorage.getItem(label==='kupa'?'kupa.browser.state.v1':'orders.management.state.v1')};
             })()""")
             assert all(result.values()), (label,reload_number,result)
 
@@ -114,10 +135,9 @@ for label, fixture in fixtures.items():
         keys=browser.evaluate('(async()=>{const out=[];for(const n of await caches.keys())for(const r of await (await caches.open(n)).keys())out.push(new URL(r.url).pathname);return out})()')
         assert not any('/rest/' in k or k.endswith('.json') for k in keys), keys
         errors=browser.drain_serious_errors()
-        # Programmatic navigation with pending work deliberately invokes the
-        # unload guard without a trusted gesture. Chrome refuses that dialog;
-        # local snapshots and pending must still survive (asserted above).
+        # Programmatic navigation can invoke the unload guard without a trusted
+        # gesture. The committed V2 journal must still survive (asserted above).
         errors=[e for e in errors if not e.startswith("Blocked attempt to show a 'beforeunload' confirmation panel")]
         assert not errors,errors
-        print('PASS',label,'native ESM,',len(application_js),'cached application modules, lazy vendor runtime, offline reload/recovery, pending, second-tab guard')
+        print('PASS',label,'native ESM,',len(application_js),'cached application modules, lazy vendor runtime, V2 offline recovery, second-tab guard')
     test_worker_upgrade(label, fixture)

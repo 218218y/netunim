@@ -1,4 +1,4 @@
-"""Upgrade a real legacy worker on the same origin; restart Chromium offline."""
+"""Upgrade a real legacy worker; old local V1 data stays non-authoritative."""
 import contextlib
 import hashlib
 import json
@@ -10,7 +10,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 
 
 class _DropConnection(socketserver.BaseRequestHandler):
@@ -39,7 +39,8 @@ class UpgradeBrowser(BrowserSession):
             '<!doctype html><html><head><meta charset="utf-8">'
             '<script defer src="./assets/app.js"></script></head>'
             '<body><main>Legacy classic shell</main></body></html>', encoding='utf-8')
-        seed = 'for(const [k,v]of Object.entries('+json.dumps(self.fixture)+'))localStorage.setItem(k,JSON.stringify(v));'
+        seed = ('for(const [k,v]of Object.entries('+json.dumps(self.fixture)+'))localStorage.setItem(k,JSON.stringify(v));'
+                "localStorage.setItem('pwa-test-preference','retained');")
         (prepared / 'assets/app.js').write_text(
             seed+"window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js'));", encoding='utf-8')
 
@@ -136,7 +137,6 @@ def test_worker_upgrade(label, fixture):
         })()""")
         assert 'external-assets' in old['name'], old
         assert not any('/assets/js/' in p for p in old['paths']), old
-        before = browser.evaluate('JSON.stringify({...localStorage})')
         browser.evaluate("""(async()=>{
           const cache=await caches.open('unrelated-cache');
           await cache.put('./assets/app.js',new Response("""+json.dumps(fake_app)+""",{headers:{'Content-Type':'text/javascript'}}));
@@ -178,7 +178,7 @@ def test_worker_upgrade(label, fixture):
         expected_entry_hash = hashlib.sha256((browser.release/'assets/app.js').read_bytes()).hexdigest()
         assert upgraded['entryHash'] == expected_entry_hash
         assert upgraded['mainHash'] == hashlib.sha256((browser.release/'assets/js/main.js').read_bytes()).hexdigest()
-        assert browser.evaluate('JSON.stringify({...localStorage})') == before
+        assert browser.evaluate("localStorage.getItem('pwa-test-preference')") == 'retained'
         browser.restart_offline()
         browser.evaluate("import('./assets/js/main.js').then(m=>m.appReady).then(()=>true)")
         recovered = browser.evaluate("""(async()=>{
@@ -190,10 +190,11 @@ def test_worker_upgrade(label, fixture):
             currentAsset:appHash==="""+json.dumps(expected_entry_hash)+""",
             currentIndex:!document.body.textContent.includes('UNRELATED_CACHE_INDEX'),
             unrelatedScript:!globalThis.__UNRELATED_CACHE_APP_JS_EXECUTED,
-            data:document.body.textContent.includes(kupa?'PWA cash recovery':'PWA supplier recovery'),
-            pending:!!localStorage.getItem(kupa?'kupa.cloud.pending.local.v1':'orders.supabase.pending.v1')};
+            oldDataIgnored:!document.body.textContent.includes(kupa?'PWA cash recovery':'PWA supplier recovery'),
+            v2:localStorage.getItem('netunim-storage-engine-version:'+(kupa?'kupa':'orders')+':local')==='2',
+            preference:localStorage.getItem('pwa-test-preference')==='retained'};
         })()""")
         assert all(recovered.values()), recovered
         errors=browser.drain_serious_errors()
         assert not errors, errors
-        print('PASS',label,'legacy SW upgrade, cache-scoped offline fallback, real HTTP headers/MIME, browser restart offline in',browser.offline_restart_ms,'ms and pending recovery')
+        print('PASS',label,'legacy SW upgrade, cache-scoped offline fallback, real HTTP headers/MIME, browser restart offline in',browser.offline_restart_ms,'ms with cloud-free Local V2 birth')

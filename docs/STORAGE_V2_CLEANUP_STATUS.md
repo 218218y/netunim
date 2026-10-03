@@ -8,4 +8,6 @@ The remaining client compatibility is substantial: old browser/outbox readers an
 
 The retired `legacyDrain` option has been removed from both document-sync entrypoints. The large-list browser performance suite now starts with the production Local V2 birth path and verifies inline edits from the V2 journal instead of a V1 browser snapshot. Other historical browser suites still use a disposable V1 fixture; they must gain equivalent V2 coverage before their production dependencies can be removed. No projection-1 replay or migration path was removed in this step.
 
+The PWA browser suite now also tests a real Local V2 edit through the visible UI, followed by offline reload and a second-tab guard. Its old-worker upgrade case verifies that an offline browser carrying V1 business records starts a fresh local V2 namespace without rendering those records as active state. Account-scoped stale devices remain subject to the server protocol check and cloud-authoritative adoption.
+
 Do not infer that a protocol-2 server account makes an unverified local V2 journal safe to overwrite. A browser with an unfinished V2 boundary, flight, or owner transition still requires its normal durable recovery.
