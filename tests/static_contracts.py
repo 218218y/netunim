@@ -137,6 +137,12 @@ business_sources=[path.read_text(encoding="utf-8") for app in (K, O)
                   for path in (app / "site/assets/js").rglob("*.js")]
 ok(all(symbol not in source for source in business_sources for symbol in checks_writer_symbols),
    "clients: Shared Checks V1 writer APIs are absent from production")
+workflows_source=(ROOT / "tests/runtime_workflows.py").read_text(encoding="utf-8")
+ok("from browser_harness import BrowserSession, ROOT" in workflows_source
+   and "LegacyBrowserSession" not in workflows_source
+   and "storageShadow.recover()" in workflows_source
+   and "sharedChecksV2.recover()" in workflows_source,
+   "browser workflows exercise durable Main and Shared V2 without a patched V1 fixture")
 
 # The account cutover has finished. A current client may adopt an already fenced
 # cloud account, but it must not expose the historic V1-drain transition again.
