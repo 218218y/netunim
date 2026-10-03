@@ -1,5 +1,5 @@
 """Representative large-list measurements and side-effect/listener regressions."""
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 import json
 import os
 from pathlib import Path
@@ -36,7 +36,12 @@ fixtures={
 }
 for label,setup in fixtures.items():
     with BrowserSession(ROOT/f'netunim-{label}/site',label+'-performance') as browser:
-        browser.evaluate('(()=>{'+setup+'return true})()')
+        browser.evaluate('(async()=>{'+setup+'''
+          const head=await storageShadow.cloudState();
+          await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'performance-fixture',expectedSeq:head.seq});
+          return true})()''')
+        old_snapshot='kupa.browser.state.v1' if label=='kupa' else 'orders.management.state.v1'
+        assert browser.evaluate('localStorage.getItem('+json.dumps(old_snapshot)+')') is None
         selector='#content' if label=='kupa' else '#main'
         listeners=root_listeners(browser,selector)
         measurement_script="""(()=>{
@@ -69,7 +74,7 @@ for label,setup in fixtures.items():
                 const start=performance.now();setInlineTri('T10','signed',i%2===0);times.push(performance.now()-start);
                 clearTimeout(saveTimer);saveTimer=null;await frame();paints.push(performance.now()-start);
               }
-              const local=loadLocal();
+              const local=(await storageShadow.recover()).state;
               const stable=table===document.querySelector('#main table')&&untouched===document.querySelector('tr[data-tx-id="T900"]');
               const preservedScroll=Math.abs(scroll-wrap.scrollTop)<2,durable=local.transactions.find(t=>t.id==='T10').signed===state.transactions.find(t=>t.id==='T10').signed;
               // A status change that removes a filtered row still updates the structure and totals.
@@ -86,7 +91,7 @@ for label,setup in fixtures.items():
             assert all(inline[key] for key in ['stable','preservedScroll','durable','removed','carryRemoved']),inline
             assert inline['p95ActionMs']<250,inline
             assert not browser.drain_serious_errors()
-            print('PASS orders inline status: stable DOM/scroll, immediate verified snapshot, filter/archive invalidation;',json.dumps(inline))
+            print('PASS orders inline status: stable DOM/scroll, verified V2 journal, filter/archive invalidation;',json.dumps(inline))
 
 # Measure real finance views independently of the simpler Cash/Supplier tables.
 # Absolute times are baseline observations; deterministic work-count gates catch
