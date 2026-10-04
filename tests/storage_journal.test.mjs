@@ -29,13 +29,14 @@ test('unknown operations and implicit deletes are never accepted',()=>{
   assert.throws(()=>applyStoredOperation({notes:[]},operation(1,[{type:'delete',collection:'notes',id:'n'}]),schema));
   assert.throws(()=>sealStorageRecord({value:NaN}));assert.throws(()=>sealStorageRecord({value:undefined}));
 });
-test('Main V2 refuses new check operations while old checkpoints remain replayable until projection migration',()=>{
+test('Main V2 refuses check operations and old check-bearing checkpoints',()=>{
   for(const app of ['orders','kupa']){
     const mainSchema=STORAGE_SCHEMAS[app],check={type:'put',collection:'checks',mode:'insert',id:'C1',index:0,record:{id:'C1'}};
     assert.equal(mainSchema.collections.includes('checks'),false);
+    assert.equal(Object.hasOwn(mainSchema,'legacyCollections'),false);
     assert.throws(()=>validateStoredOperation(operation(1,[check]),mainSchema),/storage_invalid_collection/);
     const legacy=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:0,state:{checks:[]},appMetadata:{storageRole:'primary'}}),oldEntry=sealStorageRecord(operation(1,[check]));
-    assert.deepEqual(replayStorageJournal(legacy,[oldEntry],mainSchema).state.checks,[{id:'C1'}]);
+    assert.throws(()=>replayStorageJournal(legacy,[oldEntry],mainSchema),/storage_main_projection_invalid/);
     const migrated=sealStorageRecord({version:2,owner:'a',epoch:'e',seq:1,state:{},appMetadata:{storageRole:'primary',mainProjectionVersion:2}});
     assert.throws(()=>replayStorageJournal(migrated,[oldEntry],mainSchema),/storage_invalid_collection/);
   }

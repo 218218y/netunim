@@ -209,15 +209,12 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(!recovered)return false;
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
-  async function recoverSharedAndMigrate(){
+  async function recoverShared(){
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
-    if(recovered){
-      if(p.storageShadow.primaryReady&&p.storageShadow.cutoverActive)await p.storageShadow.migrateMainProjection({checks:p.model.state.checks});
-      scheduleLegacyRetirement();
-    }
+    if(recovered)scheduleLegacyRetirement();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,pendingLegacyWriteAllowed,legacyWriteAllowed,scheduleLegacyRetirement,recoverSharedAndMigrate,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,pendingLegacyWriteAllowed,legacyWriteAllowed,scheduleLegacyRetirement,recoverShared,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
