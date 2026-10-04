@@ -92,6 +92,30 @@ export function creditDetailMonthlySections(items=[]){
   return {foreign,uncertain,regular,ordered:[...foreign,...uncertain,...regular]};
 }
 
+function creditDetailCycleOwnerKey(row){
+  if(row?.creditAccountKey)return String(row.creditAccountKey);
+  if(row?.profileId&&row?.accountNumber)return `sync:${String(row.profileId)}:${String(row.accountNumber)}`;
+  if(row?.source==='manual'||row?.card)return `manual:${String(row?.card||'')}:${String(row?.account||'')}:${String(row?.ownerLabel||'')}`;
+  return '';
+}
+
+function creditDetailUpcomingCycleKey(row){
+  const owner=creditDetailCycleOwnerKey(row),date=creditDetailCycleDisplayDate(row);
+  return owner&&date?`${owner}\u0000${date}`:'';
+}
+
+export function creditDetailFutureMonths(months=[],upcomingItems=[],selectedKey=''){
+  const upcomingCycles=new Set((Array.isArray(upcomingItems)?upcomingItems:[]).map(creditDetailUpcomingCycleKey).filter(Boolean));
+  return (Array.isArray(months)?months:[]).filter(month=>{
+    if(!month||month.key==='unassigned'||month.key===selectedKey||!Array.isArray(month.items)||!month.items.length)return true;
+    // A calendar month is redundant only when every visible card-cycle in it is
+    // already represented by the per-card nearest-charge view.  If the month
+    // contains even one later cycle, keep it in "future charges" so the user
+    // can still reach data that is not present in the nearest-charge view.
+    return month.items.some(row=>{const key=creditDetailUpcomingCycleKey(row);return !key||!upcomingCycles.has(key)});
+  });
+}
+
 export function creditDetailSelectionTotal(items=[]){
   let total=0,excluded=0;
   for(const item of items){

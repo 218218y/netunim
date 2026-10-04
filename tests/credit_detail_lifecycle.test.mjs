@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey} from '../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
 import {creditHistoryCutoffMonth,creditCardCompare} from '../shared/credit-history.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import * as kupaFeed from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -38,6 +38,17 @@ test('Saturday-shifted actual debit stays in the nominal day-10 cycle',()=>{
   assert.equal(creditDetailNominalChargeDay(shifted),'10');
   assert.equal(creditDetailChargeCycleKey(scheduled),creditDetailChargeCycleKey(shifted),'10th and Sunday 11th render as one nominal billing cycle');
   assert.equal(creditDetailDayMatch(shifted,'10'),true,'the day-10 filter includes the actual Sunday debit');
+});
+
+test('future-month menu omits a month that is already fully represented by nearest-charge cycles',()=>{
+  const october={key:'2026-10',items:[
+    {creditAccountKey:'sync:max:6326',date:'2026-10-11',description:'regular'},
+    {creditAccountKey:'sync:max:6326',date:'2026-10-02',detailCycleBillingDate:'2026-10-11',foreignCurrency:true,description:'FX'},
+  ]},november={key:'2026-11',items:[{creditAccountKey:'sync:max:6326',date:'2026-11-10',description:'later'}]},upcoming=october.items;
+  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming).map(month=>month.key),['2026-11'],'a month that would duplicate the complete nearest-charge view is not offered again as a future month');
+  const partialOctober={...october,items:[...october.items,{creditAccountKey:'sync:max:7777',date:'2026-10-15',description:'later card cycle'}]};
+  assert.deepEqual(creditDetailFutureMonths([partialOctober,november],upcoming).map(month=>month.key),['2026-10','2026-11'],'a month with another card-cycle not present in nearest-charge stays reachable');
+  assert.deepEqual(creditDetailFutureMonths([october,november],upcoming,'2026-10').map(month=>month.key),['2026-10','2026-11'],'an already selected redundant month remains represented while the user is viewing it');
 });
 
 test('foreign immediate debits are assigned to the enclosing statement cycle without changing their real debit date',()=>{
