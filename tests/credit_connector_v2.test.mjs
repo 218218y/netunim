@@ -17,6 +17,7 @@ import {
   normalizeMaxRawTransaction,
   parseRetryAfter,
   parseVisaCalFrame,
+  prepareVisaCalBrowserIdentity,
   parseVisaCalMonthData,
 } from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {launchCamoufox,parseIsracardFamilyAccountsResponse,parseIsracardFamilyCardListBalances,parseIsracardFamilyTransactionsResponse} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
@@ -65,15 +66,22 @@ assert.throws(()=>parseIsracardDigitalV3Cards({isSuccess:true,data:{cardsList:'{
 function response(body,{status=200,headers={}}={}){return {status,headers:{get:name=>headers[String(name).toLowerCase()]||null},text:async()=>typeof body==='string'?body:JSON.stringify(body)}}
 function transaction(card,month){return {trnIntId:`${card}-${month}`,trnTypeCode:'5',trnPurchaseDate:`${month}-02T00:00:00.000Z`,debCrdDate:`${month}-10T00:00:00.000Z`,trnAmt:25,amtBeforeConvAndIndex:25,trnCurrencySymbol:'₪',debCrdCurrencySymbol:'₪',merchantName:'fixture merchant',transTypeCommentDetails:''}}
 function calMonth(card,month){return {statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[transaction(card,month)]}],immidiateDebits:{debitDays:[]}}]}}}
-function fakeScraper(overrides={}){const calls={initialize:0,login:0,cards:0,auth:0,terminate:0};return {calls,scraper:{getLoginOptions:()=>({loginUrl:'https://www.cal-online.co.il/',fields:[],submitButtonSelector:'button',possibleResults:{}}),initialize:async()=>{calls.initialize++},login:async()=>{calls.login++;return {success:true}},getCards:async()=>{calls.cards++;return [{cardUniqueId:'card-a',last4Digits:'1111'},{cardUniqueId:'card-b',last4Digits:'2222'}]},getAuthorizationHeader:async()=>{calls.auth++;return 'CALAuthScheme safe-test-token'},getXSiteId:async()=> 'site-id',terminate:async()=>{calls.terminate++},...overrides}}}
+function fakeScraper(overrides={}){const calls={initialize:0,login:0,cards:0,auth:0,terminate:0},identity=chromiumIdentityFixture();return {calls,identityState:identity.state,scraper:{page:identity.page,getLoginOptions:()=>({loginUrl:'https://www.cal-online.co.il/',fields:[],submitButtonSelector:'button',possibleResults:{}}),initialize:async()=>{calls.initialize++},login:async()=>{calls.login++;return {success:true}},getCards:async()=>{calls.cards++;return [{cardUniqueId:'card-a',last4Digits:'1111'},{cardUniqueId:'card-b',last4Digits:'2222'}]},getAuthorizationHeader:async()=>{calls.auth++;return 'CALAuthScheme safe-test-token'},getXSiteId:async()=> 'site-id',terminate:async()=>{calls.terminate++},...overrides}}}
 function fetchFixture({failureMonth='',failureCard='',failureKind='provider',framesBody=null,pendingBody=null}={}){return async(url,options)=>{const body=JSON.parse(options.body);if(url.includes('/Frames/'))return response(framesBody??{result:{calIssuedCards:{cardLevelFrames:[{cardUniqueId:body.cardsForFrameData[0].cardUniqueId,nextTotalDebit:100,nextDebitDate:'2026-09-10'}],frameLimitForCardAmount:10000}}});if(url.includes('/approvals/'))return response(pendingBody??{statusCode:96});const month=`${body.year}-${String(body.month).padStart(2,'0')}`,card=body.cardUniqueId;if(month===failureMonth&&card===failureCard){if(failureKind==='schema')return response({statusCode:1,result:{changed:true}});if(failureKind==='html')return response('<!doctype html><html>maintenance</html>');return response({statusCode:9,title:'temporary issuer failure'})}return response(calMonth(card,month))}}
 function adapterFor(scraper,fetchImpl,syncMode='recovery',options={}){return new VisaCalAdapter({profile,CompanyTypes:{visaCal:'visaCal'},createScraper:()=>scraper,browserPath:'browser.exe',fetchImpl,requestDelayMs:0,now:()=>new Date(fixedNow),syncMode,...options})}
 
-const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dailyResult=await adapterFor(dailyFixture.scraper,async(url,options)=>{dailyRequests.push({url,body:JSON.parse(options.body)});return dailyFetch(url,options)},'quick').scrape();
+const dailyFixture=fakeScraper(),dailyRequests=[],dailyFetch=fetchFixture(),dailyResult=await adapterFor(dailyFixture.scraper,async(url,options)=>{dailyRequests.push({url,body:JSON.parse(options.body),headers:options.headers});return dailyFetch(url,options)},'quick').scrape();
 assert.equal(dailyRequests.length,10,'quick Cal sync performs exactly Frames + Pending + previous/current/next billing months for each of two cards');
 assert.deepEqual([...new Set(dailyRequests.filter(row=>row.url.includes('transactionsDetails')).map(row=>`${row.body.year}-${String(row.body.month).padStart(2,'0')}`))],['2026-08','2026-09','2026-10'],'quick Cal sync requests the recent prior month, current month and next month');
 assert.equal(dailyResult.accounts.every(account=>account.months.map(row=>row.month).join(',')==='2026-08,2026-09,2026-10'),true,'quick account coverage contains the recent prior month plus current and next month');
 assert.equal(dailyResult._dataDiagnostics.length,2,'Cal keeps one transient raw transaction sample per discovered card for the local credit-data diagnostic');
+const calWireHeaders=dailyRequests[0].headers;
+assert.match(calWireHeaders['User-Agent'],/Chrome\/152\.0\.8112\.50/,'Cal direct API calls use the installed browser version instead of a hardcoded Chromium version');
+assert.doesNotMatch(calWireHeaders['User-Agent'],/HeadlessChrome|Chrome\/142|Macintosh/,'Cal no longer advertises the stale Chrome/142 macOS fingerprint or a mismatched HeadlessChrome token');
+assert.match(calWireHeaders['sec-ch-ua'],/Google Chrome.*152/,'Cal direct API calls carry Client Hints derived from the same native browser identity');
+assert.equal(calWireHeaders['sec-ch-ua-platform'],'"Windows"');
+assert.equal(dailyFixture.identityState.extraHTTPHeaders['accept-language'],'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7','Cal browser navigation gets the same stable language policy before login');
+assert.match(String(dailyFixture.identityState.preDocument),/webdriver/,'Cal masks navigator.webdriver before issuer navigation without synthetic plugins/languages mocks');
 
 const billedInSeptember=parseVisaCalMonthData({statusCode:1,result:{bankAccounts:[{debitDates:[{transactions:[{...transaction('card-a','2026-08'),trnPurchaseDate:'2026-08-28T00:00:00.000Z',debCrdDate:'2026-09-10T00:00:00.000Z',amtBeforeConvAndIndex:19305.96}]}],immidiateDebits:{debitDays:[]}}]}},{startDate:new Date('2026-09-01T00:00:00.000Z')});
 assert.equal(billedInSeptember.length,1,'fast Cal sync keeps a prior-month purchase when its issuer debit date belongs to the current billing month');
@@ -178,7 +186,7 @@ assert.deepEqual({balance:amexDigitalResult.accounts[0].balance,cardFrame:amexDi
 
 function chromiumIdentityFixture({product='chrome',withBrandedHints=true,initialHintsMissing=false,headlessHintBrands=false,missingHighEntropyKey='',setUserAgentFailure=false}={}){
   const isEdge=product==='edge',major='152',full='152.0.8112.50',productBrand=isEdge?'Microsoft Edge':'Google Chrome';
-  const state={userAgent:'',userAgentMetadata:null,userAgentPlatform:'',preDocument:null,interception:false,requestHandler:null,probed:false,probeUrl:'',probeOptions:null};
+  const state={userAgent:'',userAgentMetadata:null,userAgentPlatform:'',preDocument:null,extraHTTPHeaders:{},interception:false,requestHandler:null,probed:false,probeUrl:'',probeOptions:null};
   const userAgent=`Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/${full} Safari/537.36${isEdge?` Edg/${full}`:''}`;
   const hintedBrand=headlessHintBrands?'HeadlessChrome':productBrand;
   const brands=[{brand:'Not(A:Brand',version:'99'},{brand:'Chromium',version:major},...(withBrandedHints?[{brand:hintedBrand,version:major}]:[])];
@@ -188,10 +196,13 @@ function chromiumIdentityFixture({product='chrome',withBrandedHints=true,initial
     goto:async(url,options)=>{state.probed=true;state.probeUrl=String(url);state.probeOptions=options;return {ok:()=>true}},
     setUserAgent:async value=>{if(setUserAgentFailure)throw new Error('Protocol error (Network.setUserAgentOverride): invalid metadata');if(typeof value!=='string')for(const key of ['architecture','mobile','model','platform','platformVersion'])if(!Object.prototype.hasOwnProperty.call(value.userAgentMetadata||{},key))throw new Error(`Protocol error: missing ${key}`);state.userAgent=typeof value==='string'?value:value.userAgent;state.userAgentMetadata=typeof value==='string'?null:value.userAgentMetadata;state.userAgentPlatform=typeof value==='string'?'':value.platform||''},
     evaluateOnNewDocument:async fn=>{state.preDocument=fn},
+    setExtraHTTPHeaders:async headers=>{state.extraHTTPHeaders={...headers}},
     setRequestInterception:async value=>{state.interception=value},
     on:(event,handler)=>{if(event==='request')state.requestHandler=handler},
   }};
 }
+const calIdentityFixture=chromiumIdentityFixture(),calIdentity=await prepareVisaCalBrowserIdentity(calIdentityFixture.page);
+assert.equal(calIdentity.clientHintsState,'preserved');assert.equal(calIdentity.browserMajorVersion,152);assert.match(calIdentity.requestHeaders['sec-ch-ua'],/Google Chrome.*152/);assert.equal(calIdentity.requestHeaders['sec-ch-ua-mobile'],'?0');assert.equal(calIdentity.requestHeaders['sec-ch-ua-platform'],'"Windows"');assert.equal(calIdentityFixture.state.extraHTTPHeaders['accept-language'],'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7');assert.match(String(calIdentityFixture.state.preDocument),/webdriver/);assert.doesNotMatch(String(calIdentityFixture.state.preDocument),/plugins|languages/,'Cal keeps the minimal live-tested automation mask and does not synthesize navigator.plugins/languages');
 const amexIdentityFixture=chromiumIdentityFixture(),amexIdentity=await prepareAmexDigitalV3Page(amexIdentityFixture.page);
 assert.equal(amexIdentity.webdriver,'undefined');assert.equal(amexIdentity.clientHintsState,'preserved');assert.equal(amexIdentity.browserMajorVersion,152);assert.equal(amexIdentityFixture.state.userAgent.includes('HeadlessChrome'),false);assert(amexIdentityFixture.state.userAgent.includes('Chrome/152.0.8112.50'));assert.equal(amexIdentityFixture.state.interception,true);assert.equal(typeof amexIdentityFixture.state.preDocument,'function');assert.equal(amexIdentityFixture.state.userAgentMetadata.model,'','desktop Chromium model stays present as the native empty string because CDP requires the field');assert.equal(amexIdentityFixture.state.userAgentMetadata.architecture,'x86');assert.equal(amexIdentityFixture.state.userAgentMetadata.platformVersion,'19.0.0');
 assert.equal(amexIdentityFixture.state.userAgentPlatform,'Win32','UA override preserves the installed browser navigator.platform instead of inventing one');
@@ -266,6 +277,9 @@ assert.equal(htmlFailure.message.includes('<html>'),false,'raw issuer HTML never
 const blockedFailure=classifyCreditHttpResponse({status:403,text:'forbidden body must stay private',stage:'Frames'});
 assert.equal(blockedFailure.code,'CREDIT_AUTOMATION_BLOCKED','403 is a durable automation block, not a generic HTTP error');
 assert.equal(blockedFailure.message.includes('forbidden body'),false,'the 403 response body never enters a public error');
+const cloudflareBodyFailure=classifyCreditHttpResponse({status:200,text:'<!doctype html><title>Attention Required! | Cloudflare</title><div id="cf-error-details">Sorry, you have been blocked</div>',stage:'Pending'});
+assert.equal(cloudflareBodyFailure.code,'CREDIT_AUTOMATION_BLOCKED','a Cloudflare challenge page is classified as an automation block before generic HTML/JSON parsing');
+assert.equal(cloudflareBodyFailure.message.includes('Cloudflare'),false,'challenge HTML remains private even when it is recognized as a bot block');
 assert.throws(()=>parseVisaCalMonthData({statusCode:1,result:{newSchema:true}}),error=>error.code==='CREDIT_PROVIDER_SCHEMA_ERROR');
 assert.throws(()=>parseVisaCalMonthData({statusCode:17,title:'failed month'}),error=>error.code==='CREDIT_PROVIDER_DATA_ERROR');
 assert.throws(()=>parseVisaCalMonthData({statusCode:17,statusTitle:'provider title',statusDescription:'provider description'}),error=>error.code==='CREDIT_PROVIDER_DATA_ERROR'&&error.message==='provider title','Cal provider statusTitle is preserved instead of collapsing into a generic parser error');

@@ -487,6 +487,7 @@ orders_dashboard_view = (O / "site/assets/js/domains/dashboard/view.js").read_te
 kupa_checks_view = (K / "site/assets/js/domains/checks/view.js").read_text(encoding="utf-8")
 kupa_dashboard_view = (K / "site/assets/js/domains/dashboard/view.js").read_text(encoding="utf-8")
 kupa_credit_view = (K / "site/assets/js/domains/credit/view.js").read_text(encoding="utf-8")
+kupa_credit_sync_view = (K / "site/assets/js/domains/credit/sync-view.js").read_text(encoding="utf-8")
 kupa_css = (K / "site/assets/app.css").read_text(encoding="utf-8")
 orders_contexts = (O / "site/assets/js/state/contexts.js").read_text(encoding="utf-8")
 orders_finance_controller = (O / "site/assets/js/domains/finance/controller.js").read_text(encoding="utf-8")
@@ -784,8 +785,8 @@ ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_vi
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
 ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics' in orders_main,
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
-ok("const CREDIT_BRIDGE_VERSION=65" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics" in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
-   "orders Kupa UI: credit controls require Bridge v64 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
+ok("const CREDIT_BRIDGE_VERSION=68" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics" in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
+   "orders Kupa UI: credit controls require Bridge v68 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in (O/'site/assets/js/domains/finance/credit-status-view.js').read_text(encoding='utf-8'),
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
 ok("תוספת ידנית · קריאה בלבד" in orders_credit_detail_view and "+ תוספת ידנית" not in orders_finance_view
@@ -803,7 +804,7 @@ kupa_cloud_auth=(K / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
 orders_cloud_auth=(O / "site/assets/js/cloud/auth.js").read_text(encoding="utf-8")
 orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 orders_bank_cache=(O / "site/assets/js/domains/bank/cache.js").read_text(encoding="utf-8")
-ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_view and "lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null" not in kupa_credit_view,
+ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_sync_view and "lastSync=syncUi?.status?.lastSyncAt||summary?.sync?.syncedAt||null" not in kupa_credit_sync_view,
    "credit status ownership: Kupa headline uses the shared cloud sync timestamp instead of stale local Bridge history")
 ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transport
    and "financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_sync_document

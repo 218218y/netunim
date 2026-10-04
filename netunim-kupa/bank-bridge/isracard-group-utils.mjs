@@ -17,6 +17,15 @@ function majorVersion(userAgent=''){
   return Number.isFinite(value)?Math.trunc(value):0;
 }
 
+function clientHintValue(value=''){return JSON.stringify(String(value??''))}
+function chromiumRequestHeaders(userAgent,uaData){
+  const brands=brandVersions(uaData?.brands),headers={'User-Agent':String(userAgent||'')};
+  if(brands.length)headers['sec-ch-ua']=brands.map(row=>`${clientHintValue(row.brand)};v=${clientHintValue(row.version)}`).join(', ');
+  if(uaData&&Object.prototype.hasOwnProperty.call(uaData,'mobile'))headers['sec-ch-ua-mobile']=uaData.mobile?'?1':'?0';
+  if(uaData&&Object.prototype.hasOwnProperty.call(uaData,'platform'))headers['sec-ch-ua-platform']=clientHintValue(uaData.platform);
+  return headers;
+}
+
 /**
  * Keep the installed Chrome/Edge network identity coherent when masking only the
  * classic HeadlessChrome UA token. Puppeteer maps setUserAgent() to CDP's
@@ -64,7 +73,7 @@ export async function preserveInstalledChromiumIdentity(page,{probeUrl=''}={}){
   // If Chrome itself reports HeadlessChrome in UA-CH, masking only the classic UA
   // would create the exact cross-surface mismatch this guard is meant to prevent.
   // Keep the browser's complete native identity instead of fabricating a headful one.
-  if(nativeHeadless)return {ok:true,userAgent:nativeUserAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent),identityMode:'native-headless'};
+  if(nativeHeadless)return {ok:true,userAgent:nativeUserAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent),identityMode:'native-headless',requestHeaders:chromiumRequestHeaders(nativeUserAgent,uaData)};
   const branded=brandedClientHints(product,[...brands,...fullVersionList]);
   if(!brands.length||!branded)return {ok:false,userAgent,product,clientHintsState:brands.length?'unbranded':'missing',browserMajorVersion:majorVersion(userAgent)};
   const hasOwn=(key)=>Object.prototype.hasOwnProperty.call(uaData,key),requiredMetadata=['architecture','model','platformVersion'];
@@ -80,7 +89,7 @@ export async function preserveInstalledChromiumIdentity(page,{probeUrl=''}={}){
   const fullVersion=String(uaData?.uaFullVersion||'').trim();if(fullVersion)userAgentMetadata.fullVersion=fullVersion;
   try{await page.setUserAgent({userAgent,userAgentMetadata,platform:String(native?.navigatorPlatform||'')||undefined})}
   catch{return {ok:false,userAgent,product,clientHintsState:'override-failed',browserMajorVersion:majorVersion(userAgent)}}
-  return {ok:true,userAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent)};
+  return {ok:true,userAgent,product,clientHintsState:'preserved',browserMajorVersion:majorVersion(userAgent),requestHeaders:chromiumRequestHeaders(userAgent,uaData)};
 }
 
 function excludedAccountSet(values=[]){
