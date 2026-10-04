@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {creditBillingRowsData,creditTransactionAmountData} from '../shared/credit-billing-cycles.js';
 import {kupaAccountCashflowData} from '../shared/kupa-cashflow.js';
-import {normalizeCreditSync} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
+import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {normalizeCreditSync as ordersNormalize} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditDetailRowMarkup} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-view.js';
@@ -83,6 +83,21 @@ test('monthly credit detail keeps finalized FX charges visible outside the 10/15
   assert.equal(creditDetailMonthDayMatch(uncertain,'10'),false,'pending/uncertain FX is not promoted into the finalized FX section');
   const sections=creditDetailMonthlySections([regular,uncertain,fx]);
   assert.deepEqual(sections.foreign.map(row=>row.id),['fx']);assert.deepEqual(sections.uncertain.map(row=>row.id),['uncertain']);assert.deepEqual(sections.regular.map(row=>row.id),['regular']);assert.deepEqual(sections.ordered.map(row=>row.id),['fx','uncertain','regular']);
+});
+
+
+test('MAX provider-marked foreign transactions settled in ILS remain visible as FX and pending snapshot is replaced by the final row',()=>{
+  const pending={id:'',status:'pending',date:'2026-09-30T08:31:00.000Z',transactionDate:'2026-09-30T08:31:00.000Z',processedDate:null,transactionTime:'08:31',originalAmount:-110,originalCurrency:'ILS',chargedAmount:null,chargedCurrency:'ILS',foreignTransaction:true,description:'AKUSOLI.COM VILNIUS LT',memo:'חיוב עסקת חו"ל בש"ח'},final={...pending,id:'provider-final',status:'completed',date:'2026-09-30T00:00:00.000Z',transactionDate:'2026-09-30T00:00:00.000Z',processedDate:'2026-10-02T00:00:00.000Z',transactionTime:'08:31',chargedAmount:-110};
+  const initial=normalizeCreditSync({version:4,profiles:[{profileId:'max-fx',provider:'max',syncedAt:'2026-10-01T08:00:00.000Z',accounts:[{accountNumber:'6326',pendingStatus:'success',pendingFetchedAt:'2026-10-01T08:00:00.000Z',pendingTransactions:[pending],months:[]}]}],cardMappings:{'max-fx:6326':{included:true,account:'עסקי'}}});
+  assert.equal(initial.profiles[0].accounts[0].pendingTransactions[0].foreignTransaction,true,'the explicit MAX foreign marker survives local feed normalization while the row is pending');
+  const merged=mergeCreditSyncResult(initial,{syncedAt:'2026-10-02T09:00:00.000Z',contractVersion:2,profiles:[{profileId:'max-fx',provider:'max',syncedAt:'2026-10-02T09:00:00.000Z',attemptedAt:'2026-10-02T09:00:00.000Z',coreComplete:true,accounts:[{accountNumber:'6326',pendingStatus:'success',pendingFetchedAt:'2026-10-02T09:00:00.000Z',pendingTransactions:[],months:[{month:'2026-10',tier:'core',fetchStatus:'success',status:'fresh',fetchedAt:'2026-10-02T09:00:00.000Z',providerSchemaVersion:'max-netunim-v2+upstream-login-6.10.0',transactions:[final]}]}]}],errors:[]});
+  const account=merged.profiles[0].accounts[0];assert.equal(account.pendingTransactions.length,0,'a successful new MAX pending snapshot removes the old authorization once it is no longer pending');
+  const stored=account.months.find(month=>month.month==='2026-10').transactions[0];assert.equal(stored.foreignTransaction,true,'the finalized replacement keeps the provider foreign marker through persistence normalization');
+  const state={credits:[],creditSync:merged},row=creditBillingRowsData(state,{asOf:'2026-10-04'}).find(item=>item.description==='AKUSOLI.COM VILNIUS LT');
+  assert.ok(row);assert.equal(row.status,'completed');assert.equal(row.date,'2026-10-02');assert.equal(row.foreignCurrency,true,'a shekel-settled MAX foreign charge is classified from the issuer marker rather than a fabricated currency');
+  assert.equal(creditDetailMonthDayMatch(row,'10'),true,'the finalized off-cycle charge remains visible even when the card view is filtered to its normal day-10 cycle');
+  assert.deepEqual(creditDetailMonthlySections([row]).foreign,[row],'the finalized row is rendered in the dedicated foreign/FX section');
+  assert.equal(ordersNormalize(merged).profiles[0].accounts[0].months.find(month=>month.month==='2026-10').transactions[0].foreignTransaction,true,'Orders preserves the same explicit foreign marker');
 });
 
 test('MAX raw amount recovery never overwrites issuer chargedCurrency for foreign-wallet charges',async()=>{

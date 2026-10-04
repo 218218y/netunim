@@ -667,14 +667,14 @@ export function normalizeCreditProfileInput(value={},existing=null){
 }
 export function normalizeCreditScrapeTransaction(tx={}){
   const installments=Number(tx?.installments?.number)>0&&Number(tx?.installments?.total)>0?{number:Math.trunc(Number(tx.installments.number)),total:Math.trunc(Number(tx.installments.total))}:null;
-  return {id:creditText(tx.id||tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,transactionTime:creditTransactionTime(tx.transactionTime),originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),...(['reported','missing','not_billed'].includes(tx.chargeAmountStatus)?{chargeAmountStatus:tx.chargeAmountStatus}:{}),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),category:creditText(tx.category||'',160)||undefined,installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
+  return {id:creditText(tx.id||tx.identifier||'',120),type:creditText(tx.type||'normal',30)||'normal',date:tx.date||null,processedDate:tx.processedDate||null,transactionDate:tx.transactionDate||null,transactionTime:creditTransactionTime(tx.transactionTime),originalAmount:creditNumber(tx.originalAmount),originalCurrency:creditText(tx.originalCurrency||'',12),chargedAmount:creditNumber(tx.chargedAmount),...(['reported','missing','not_billed'].includes(tx.chargeAmountStatus)?{chargeAmountStatus:tx.chargeAmountStatus}:{}),chargedCurrency:creditText(tx.chargedCurrency||tx.originalCurrency||'ILS',12)||'ILS',foreignTransaction:tx.foreignTransaction===true,description:creditText(tx.description||'עסקת אשראי',220)||'עסקת אשראי',memo:creditText(tx.memo||'',260),category:creditText(tx.category||'',160)||undefined,installments,status:['pending','completed'].includes(String(tx.status))?String(tx.status):'completed'};
 }
 function dedupeCreditScrapeTransactions(values=[]){
   const rows=[],seen=new Set();
   for(const value of Array.isArray(values)?values:[]){
     const tx=normalizeCreditScrapeTransaction(value);
     if(!tx.id){rows.push(tx);continue}
-    const key=JSON.stringify([tx.id,tx.status,tx.type,tx.date,tx.processedDate,tx.transactionDate,tx.transactionTime,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.description,tx.memo,tx.installments?.number??null,tx.installments?.total??null]);
+    const key=JSON.stringify([tx.id,tx.status,tx.type,tx.date,tx.processedDate,tx.transactionDate,tx.transactionTime,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.foreignTransaction,tx.description,tx.memo,tx.installments?.number??null,tx.installments?.total??null]);
     if(seen.has(key))continue;seen.add(key);rows.push(tx);
   }
   return rows;

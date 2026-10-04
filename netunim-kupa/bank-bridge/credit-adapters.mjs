@@ -22,7 +22,7 @@ import {preserveInstalledChromiumIdentity} from './isracard-group-utils.mjs';
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
-export const MAX_PROVIDER_SCHEMA_VERSION='max-netunim-v1+upstream-login-6.10.0';
+export const MAX_PROVIDER_SCHEMA_VERSION='max-netunim-v2+upstream-login-6.10.0';
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v6+upstream-6.12.1-balance+state-login+native-browser-identity';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_RECENT_HISTORY_DAYS=30;
@@ -477,8 +477,8 @@ export function extractMaxTransactionCandidates(data={}){
 export function normalizeMaxRawTransaction(raw={},categories=new Map()){
   if(!maxRawLooksLikeTransaction(raw))return null;
   const purchaseDate=maxProviderDate(raw.purchaseDate);if(!purchaseDate)return null;
-  const paymentRaw=raw.paymentDate,completed=paymentRaw!==null&&paymentRaw!==undefined&&String(paymentRaw).trim()!=='',paymentDate=completed?maxProviderDate(paymentRaw):null,installments=maxInstallments(raw),chargedCurrency=maxChargedCurrency(raw.paymentCurrency),originalCurrency=text(raw.originalCurrency,12),actual=maxNumber(raw.actualPaymentAmount),original=maxNumber(raw.originalAmount),timeEvidence=maxRawTransactionTime(raw);
-  return {identifier:maxRawIdentifier(raw,installments),type:installments?'installments':'normal',date:purchaseDate,processedDate:completed?paymentDate:null,transactionDate:purchaseDate,transactionTime:timeEvidence.time,originalAmount:original===null?null:creditDebitAmount(original),originalCurrency,chargedAmount:actual===null?null:creditDebitAmount(actual),...(chargedCurrency?{chargedCurrency}:{}),description:text(raw.merchantName||raw.businessName||'עסקת MAX',220)||'עסקת MAX',memo:maxMemo(raw),category:categories.get(Number(raw.categoryId))||undefined,installments,status:completed?'completed':'pending',rawTransaction:raw};
+  const paymentRaw=raw.paymentDate,completed=paymentRaw!==null&&paymentRaw!==undefined&&String(paymentRaw).trim()!=='',paymentDate=completed?maxProviderDate(paymentRaw):null,installments=maxInstallments(raw),chargedCurrency=maxChargedCurrency(raw.paymentCurrency),originalCurrency=text(raw.originalCurrency,12),actual=maxNumber(raw.actualPaymentAmount),original=maxNumber(raw.originalAmount),timeEvidence=maxRawTransactionTime(raw),foreignTransaction=maxForeignSignalLabels(raw).length>0;
+  return {identifier:maxRawIdentifier(raw,installments),type:installments?'installments':'normal',date:purchaseDate,processedDate:completed?paymentDate:null,transactionDate:purchaseDate,transactionTime:timeEvidence.time,originalAmount:original===null?null:creditDebitAmount(original),originalCurrency,chargedAmount:actual===null?null:creditDebitAmount(actual),...(chargedCurrency?{chargedCurrency}:{}),foreignTransaction,description:text(raw.merchantName||raw.businessName||'עסקת MAX',220)||'עסקת MAX',memo:maxMemo(raw),category:categories.get(Number(raw.categoryId))||undefined,installments,status:completed?'completed':'pending',rawTransaction:raw};
 }
 function maxCategories(data={}){const map=new Map(),rows=Array.isArray(data?.result)?data.result:[];for(const row of rows){const id=Number(row?.id),name=text(row?.name,160);if(Number.isFinite(id)&&name)map.set(id,name)}return map}
 function maxHomeCards(data={}){

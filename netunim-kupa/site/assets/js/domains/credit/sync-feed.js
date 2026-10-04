@@ -32,6 +32,7 @@ export function normalizeCreditTransaction(txn={}){
     chargedAmount:charged,
     ...(['reported','missing','not_billed'].includes(txn.chargeAmountStatus)?{chargeAmountStatus:txn.chargeAmountStatus}:{}),
     chargedCurrency:text(txn.chargedCurrency||txn.originalCurrency||'ILS',12)||'ILS',
+    foreignTransaction:txn.foreignTransaction===true,
     description:text(txn.description||'עסקת אשראי',220)||'עסקת אשראי',
     memo:text(txn.memo||'',260),
     category:text(txn.category||'',160)||undefined,
@@ -41,7 +42,7 @@ export function normalizeCreditTransaction(txn={}){
 }
 
 function transactionMonth(tx){const value=tx?.processedDate;return /^\d{4}-\d{2}/.test(String(value||''))?String(value).slice(0,7):''}
-function dedupeCreditTransactions(values=[]){const rows=[],seen=new Set();for(const value of Array.isArray(values)?values:[]){const tx=normalizeCreditTransaction(value);if(!tx.id){rows.push(tx);continue}const key=JSON.stringify([tx.id,tx.status,tx.type,tx.date,tx.processedDate,tx.transactionDate,tx.transactionTime,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.description,tx.memo,tx.installments?.number??null,tx.installments?.total??null]);if(seen.has(key))continue;seen.add(key);rows.push(tx)}return rows}
+function dedupeCreditTransactions(values=[]){const rows=[],seen=new Set();for(const value of Array.isArray(values)?values:[]){const tx=normalizeCreditTransaction(value);if(!tx.id){rows.push(tx);continue}const key=JSON.stringify([tx.id,tx.status,tx.type,tx.date,tx.processedDate,tx.transactionDate,tx.transactionTime,tx.originalAmount,tx.originalCurrency,tx.chargedAmount,tx.chargedCurrency,tx.foreignTransaction,tx.description,tx.memo,tx.installments?.number??null,tx.installments?.total??null]);if(seen.has(key))continue;seen.add(key);rows.push(tx)}return rows}
 function normalizeCreditMonthSlice(slice={}){
   const month=/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(slice.month||''))?String(slice.month):'',fetchStatus=['success','provider_error','schema_error','network_error'].includes(String(slice.fetchStatus))?String(slice.fetchStatus):slice.status==='fresh'?'success':'provider_error',status=['fresh','stale','missing'].includes(String(slice.status))?String(slice.status):fetchStatus==='success'?'fresh':'missing';
   return {month,tier:slice.tier==='forecast'?'forecast':'core',status,fetchStatus,fetchedAt:iso(slice.fetchedAt),transactions:dedupeCreditTransactions(slice.transactions),providerSchemaVersion:text(slice.providerSchemaVersion||'',80),lastErrorCode:fetchStatus==='success'?'':text(slice.lastErrorCode||'CREDIT_PROVIDER_DATA_ERROR',80),lastErrorAt:fetchStatus==='success'?null:iso(slice.lastErrorAt)};
@@ -164,7 +165,7 @@ function normalizedCurrency(value){return text(value||'',12).toUpperCase().repla
 function shekelCurrency(value){const currency=normalizedCurrency(value);return !currency||['ILS','NIS','₪','ש״ח','שח'].includes(currency)}
 export function creditTransactionIsForeignCurrency(tx={}){
   const original=normalizedCurrency(tx.originalCurrency),charged=normalizedCurrency(tx.chargedCurrency);
-  return (!!original&&!shekelCurrency(original))|| (!!charged&&!shekelCurrency(charged));
+  return tx.foreignTransaction===true|| (!!original&&!shekelCurrency(original))|| (!!charged&&!shekelCurrency(charged));
 }
 export function creditKnownFutureCommitment(account={},asOf=todayISO()){
   return creditAccountKnownFutureCommitmentData(account,asOf);
