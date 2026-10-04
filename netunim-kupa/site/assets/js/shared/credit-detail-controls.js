@@ -60,6 +60,20 @@ export function creditDetailChargeDay(row){
   return '';
 }
 
+export function creditDetailNominalChargeDay(row){
+  const date=creditDetailDisplayDate(row),match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date);if(!match)return '';
+  const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
+  if(day===10||day===15)return String(day);
+  if(day===11&&new Date(Date.UTC(year,month-1,10)).getUTCDay()===6)return '10';
+  if(day===16&&new Date(Date.UTC(year,month-1,15)).getUTCDay()===6)return '15';
+  return '';
+}
+
+export function creditDetailChargeCycleKey(row){
+  const date=creditDetailDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
+  return date&&nominal?`${date.slice(0,7)}:${nominal}`:date;
+}
+
 export function creditDetailDayMatch(row,day){return day!=='10'&&day!=='15'||creditDetailChargeDay(row)===day}
 
 export function creditDetailMonthDayMatch(row,day){

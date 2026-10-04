@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeFromControl} from '../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey} from '../shared/credit-detail-controls.js';
 import {creditHistoryCutoffMonth,creditCardCompare} from '../shared/credit-history.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import * as kupaFeed from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -20,14 +20,24 @@ test('September moves to history after its billing dates, including current-day 
   assert.equal(creditDetailMonthIsPast({key:'unassigned',items:[{}]},'2026-09-16'),false);
 });
 
-test('custom card order is secondary to billing date in both monthly and nearest detail',()=>{
+test('custom card order outranks billing date in both monthly and nearest detail',()=>{
   const state=fixture();
+  state.creditSync.cardMappings['cards:a'].sortOrder=3;state.creditSync.cardMappings['cards:b'].sortOrder=2;state.creditSync.cardMappings['cards:c'].sortOrder=1;
   const month=kupaReconciledCreditDetailMonthsData(state,'2026-09-01').months[0];
-  assert.deepEqual(month.items.map(row=>row.accountNumber),['b','a','c']);
-  assert.deepEqual(kupaReconciledCreditUpcomingDetailData(state,'2026-09-01').items.map(row=>row.accountNumber),['b','a','c']);
+  assert.deepEqual(month.items.map(row=>row.accountNumber),['c','b','a'],'rank 1 on a later billing date stays before ranks 2 and 3');
+  assert.deepEqual(kupaReconciledCreditUpcomingDetailData(state,'2026-09-01').items.map(row=>row.accountNumber),['c','b','a'],'nearest detail uses the same user-defined card precedence');
   for(const mapping of Object.values(state.creditSync.cardMappings))delete mapping.sortOrder;
   assert.deepEqual(kupaReconciledCreditUpcomingDetailData(state,'2026-09-01').items.map(row=>row.accountNumber),['a','b','c']);
   assert.ok(creditCardCompare({creditAccountKey:'sync:p:1',card:'זהה'},{creditAccountKey:'sync:q:1',card:'זהה'})<0,'same names still have deterministic distinct card identities');
+});
+
+test('Saturday-shifted actual debit stays in the nominal day-10 cycle',()=>{
+  const scheduled={date:'2026-10-10'},shifted={date:'2026-10-11'};
+  assert.equal(new Date(Date.UTC(2026,9,10)).getUTCDay(),6,'fixture proves 10 October 2026 is Saturday');
+  assert.equal(creditDetailNominalChargeDay(scheduled),'10');
+  assert.equal(creditDetailNominalChargeDay(shifted),'10');
+  assert.equal(creditDetailChargeCycleKey(scheduled),creditDetailChargeCycleKey(shifted),'10th and Sunday 11th render as one nominal billing cycle');
+  assert.equal(creditDetailDayMatch(shifted,'10'),true,'the day-10 filter includes the actual Sunday debit');
 });
 
 test('date range uses inclusive billing dates, not purchase dates, with open boundaries',()=>{

@@ -233,6 +233,14 @@ test('completed transactions without issuer billing dates infer a real cycle or 
   ]},inferredState=stateFor([inferred]),row=kupaEngine.creditBillingRowsData(inferredState,{asOf:'2026-09-11'}).find(item=>item.creditId.includes('missing-date'));
   assert.equal(row.date,'2026-10-10');assert.equal(row.chargeDateSource,'inferred_billing_day');assert.notEqual(row.date,row.transactionDate);
 
+  const weekendShifted={accountNumber:'infer-weekend',pendingStatus:'success',txns:[
+    {id:'sep',status:'completed',processedDate:'2026-09-10',chargedAmount:-1,chargedCurrency:'ILS'},
+    {id:'oct',status:'completed',processedDate:'2026-10-11',chargedAmount:-1,chargedCurrency:'ILS'},
+    {id:'nov-missing',status:'completed',date:'2026-10-20',transactionDate:'2026-10-20',chargedAmount:-25,chargedCurrency:'ILS'},
+  ]},weekendState=stateFor([weekendShifted]),weekendRow=kupaEngine.creditBillingRowsData(weekendState,{asOf:'2026-10-20'}).find(item=>item.creditId.includes('nov-missing'));
+  assert.equal(weekendRow.date,'2026-11-10','Sunday 11 October is historical evidence for the nominal day-10 schedule, not a second billing day');
+  assert.equal(weekendRow.chargeDateSource,'inferred_billing_day');
+
   const unknown={accountNumber:'unknown-final',pendingStatus:'success',txns:[{id:'unknown-final-row',status:'completed',date:'2026-09-11',transactionDate:'2026-09-11',chargedAmount:-200,chargedCurrency:'ILS'}]},unknownState=stateFor([unknown]),unknownRow=kupaEngine.creditBillingRowsData(unknownState,{asOf:'2026-09-11'})[0];
   assert.equal(unknownRow.date,'');assert.equal(unknownRow.chargeDateSource,'unassigned');assert.equal(unknownRow.includedInIlsTotal,false);
   assert.equal(creditMonthlyDetailData(unknownState,'2026-09-11').months.at(-1).key,'unassigned');assert.equal(ordersDetailMonths(unknownState,{asOf:'2026-09-11'}).at(-1).key,'unassigned');

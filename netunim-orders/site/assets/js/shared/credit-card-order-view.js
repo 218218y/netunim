@@ -12,7 +12,7 @@ export function createCreditCardOrderView({getSync,saveOrder,modal,closeModal,re
   }
   function open(){
     if(saving)return;generation++;cards=creditOrderCardsData(getSync());draft=cards.map(card=>card.key);alphabetical=false;
-    modal('סידור כרטיסי אשראי',`<div class="notice">גרור את הכרטיסים או השתמש בחיצים. הסדר יחול בתוך אותו תאריך חיוב בעסקאות ותשלומים בשתי המערכות.</div><div id="creditCardOrderList" class="credit-order-list"></div><div id="creditCardOrderError" role="alert"></div>`,`<button type="button" class="btn primary" data-action="credit-card-order-save">שמור סדר</button><button type="button" class="btn" data-action="credit-card-order-reset">חזרה לא״ב</button><button type="button" class="btn" data-action="close-modal">ביטול</button>`);paint();
+    modal('סידור כרטיסי אשראי',`<div class="notice">גרור את הכרטיסים או השתמש בחיצים. הסדר שנשמר גובר על מועד החיוב בתצוגת עסקאות ותשלומים בשתי המערכות. מועד החיוב בפועל נשאר מוצג בכל שורה.</div><div id="creditCardOrderList" class="credit-order-list"></div><div id="creditCardOrderError" role="alert"></div>`,`<button type="button" class="btn primary" data-action="credit-card-order-save">שמור סדר</button><button type="button" class="btn" data-action="credit-card-order-reset">חזרה לא״ב</button><button type="button" class="btn" data-action="close-modal">ביטול</button>`);paint();
   }
   function move(key,to){const from=draft.indexOf(key);if(saving||from<0||to<0||to>=draft.length||from===to)return;draft.splice(from,1);draft.splice(to,0,key);alphabetical=false;paint()}
   async function save(){

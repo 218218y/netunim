@@ -9,7 +9,7 @@ import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpco
 import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCardUpcomingChargeData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
 import {prepareSearchValues,createPreparedSearchMatcher} from '../../core/search.js';
 import {localSearchMarkup} from '../../ui/search.js';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeMarkup,replaceCreditDetailMarkup,creditViewAllowsMonth,creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections,creditUpcomingSelectorMarkup,creditHistoryMenuMarkup,creditFutureMenuMarkup,creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeMarkup,replaceCreditDetailMarkup,creditViewAllowsMonth,creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditUpcomingSelectorMarkup,creditHistoryMenuMarkup,creditFutureMenuMarkup,creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
 import {creditSyncHeadlineState,creditSyncHeadlineMarkup,creditSyncDiagnosticsMarkup} from './sync-view.js';
 export {creditSyncHeadlineState} from './sync-view.js';
 
@@ -112,7 +112,7 @@ function creditDetailState(){
 function creditTransactionSectionsMarkup(){return `<div id="credit-transaction-sections">${creditDetailSectionMarkup()}</div>`}
 
 function upcomingDetailRowsMarkup(items,colspan,rowMarkup){
-  let previous='';return items.map(item=>{const chargeDate=item.date||item.detailDisplayBillingDate||'',divider=chargeDate&&chargeDate!==previous?`<tr class="credit-detail-cycle-divider upcoming"><td colspan="${colspan}"><b>חיוב ${esc(dateFmt(chargeDate))}</b></td></tr>`:'';if(chargeDate)previous=chargeDate;return divider+rowMarkup(item)}).join('');
+  let previous='';return items.map(item=>{const chargeDate=item.date||item.detailDisplayBillingDate||'',cycleKey=creditDetailChargeCycleKey(item),nominalDay=creditDetailNominalChargeDay(item),label=nominalDay?`${nominalDay} בחודש`:dateFmt(chargeDate),divider=cycleKey&&cycleKey!==previous?`<tr class="credit-detail-cycle-divider upcoming"><td colspan="${colspan}"><b>חיוב ${esc(label)}</b></td></tr>`:'';if(cycleKey)previous=cycleKey;return divider+rowMarkup(item)}).join('');
 }
 function creditDetailSectionMarkup(){
   const {mode,chargeDay,detailMonths,historyMonths,detailFocus,detailItems,focusedCount,detailFocusLabel,upcomingTotal}=creditDetailState();

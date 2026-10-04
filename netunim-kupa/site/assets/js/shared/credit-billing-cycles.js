@@ -83,9 +83,16 @@ function canonicalBillingDates(account){
 
 function knownBillingDates(account,reference,transactionDate){return canonicalBillingDates(account).filter(date=>date>=reference&&(!transactionDate||date>=transactionDate))}
 
+function nominalBillingDay(date){
+  const raw=creditBillingISODate(date);if(!raw)return null;const [year,month,day]=raw.split('-').map(Number);
+  if(day===11&&new Date(Date.UTC(year,month-1,10)).getUTCDay()===6)return 10;
+  if(day===16&&new Date(Date.UTC(year,month-1,15)).getUTCDay()===6)return 15;
+  return day;
+}
+
 function inferredBillingDay(account){
   const dates=canonicalBillingDates(account),counts=new Map();
-  for(const date of dates){const day=Number(date.slice(8,10));counts.set(day,(counts.get(day)||0)+1)}
+  for(const date of dates){const day=nominalBillingDay(date);if(day!==null)counts.set(day,(counts.get(day)||0)+1)}
   const ranked=[...counts.entries()].sort((a,b)=>b[1]-a[1]||a[0]-b[0]);
   if(!ranked.length||ranked[0][1]<2||ranked[1]?.[1]===ranked[0][1]||ranked[0][1]/dates.size<0.6)return null;
   return ranked[0][0];

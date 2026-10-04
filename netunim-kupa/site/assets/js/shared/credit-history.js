@@ -15,7 +15,14 @@ export function creditCardSortOrder(value){
   return Number.isSafeInteger(order)&&order>=1?order:null;
 }
 
+function creditCardMappingKey(row){return String(row?.creditAccountKey||'').replace(/^sync:/,'')}
+
+export function creditCardConfiguredOrderCompare(a,b,mappings={}){
+  const left=creditCardSortOrder(mappings[creditCardMappingKey(a)]?.sortOrder),right=creditCardSortOrder(mappings[creditCardMappingKey(b)]?.sortOrder);
+  if(left===null&&right===null)return 0;
+  return (left??Number.MAX_SAFE_INTEGER)-(right??Number.MAX_SAFE_INTEGER);
+}
+
 export function creditCardCompare(a,b,mappings={}){
-  const key=row=>String(row.creditAccountKey||'').replace(/^sync:/,''),order=row=>creditCardSortOrder(mappings[key(row)]?.sortOrder)??Number.MAX_SAFE_INTEGER;
-  return order(a)-order(b)||String(a.card||'').localeCompare(String(b.card||''),'he')||key(a).localeCompare(key(b));
+  return creditCardConfiguredOrderCompare(a,b,mappings)||String(a.card||'').localeCompare(String(b.card||''),'he')||creditCardMappingKey(a).localeCompare(creditCardMappingKey(b));
 }
