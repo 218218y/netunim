@@ -62,6 +62,20 @@ export function creditDetailChargeDay(row){
 
 export function creditDetailDayMatch(row,day){return day!=='10'&&day!=='15'||creditDetailChargeDay(row)===day}
 
+export function creditDetailMonthDayMatch(row,day){
+  return (row?.status!=='pending'&&row?.foreignCurrency===true)||creditDetailDayMatch(row,day);
+}
+
+export function creditDetailMonthlySections(items=[]){
+  const foreign=[],uncertain=[],regular=[];
+  for(const row of Array.isArray(items)?items:[]){
+    if(row?.detailCycleUncertain===true)uncertain.push(row);
+    else if(row?.foreignCurrency===true)foreign.push(row);
+    else regular.push(row);
+  }
+  return {foreign,uncertain,regular,ordered:[...foreign,...uncertain,...regular]};
+}
+
 export function creditDetailSelectionTotal(items=[]){
   let total=0,excluded=0;
   for(const item of items){

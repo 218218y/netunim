@@ -6,14 +6,16 @@ import {normalizeCreditSync} from '../netunim-kupa/site/assets/js/domains/credit
 import {normalizeCreditSync as ordersNormalize} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
 import {creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditDetailRowMarkup} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-view.js';
-import {MaxAdapter,normalizeVisaCalTransaction} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
+import {MaxAdapter,normalizeMaxRawTransaction,normalizeVisaCalTransaction} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 import {normalizeIsracardFamilyTransaction} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
+import {creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections} from '../shared/credit-detail-controls.js';
 
 const due='2026-09-10';
 function stateFor(provider,txns){return {credits:[],expenses:[],checks:[],bank:{currentBalance:10000,source:'hapoalim',asOfDate:due,feed:{balance:10000,syncedAt:due,transactions:[]}},creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'p',provider,accounts:[{accountNumber:'1234',balanceDate:due,pendingStatus:'success',pendingFetchedAt:due,txns}]}],cardMappings:{'p:1234':{included:true,account:'עסקי'}}})}}
 const clean=text=>text.replace(/[\u200e\u200f\u061c]/g,'');
+function maxScraperForRows(rows,{card='1234'}={}){const page={evaluate:async(_fn,url)=>{let data;if(url.includes('/getCategories'))data={result:[]};else if(url.includes('/getHomePageData'))data={Result:{UserCards:{Cards:[{Last4Digits:card,CreditLimit:1000,OpenToBuy:900,CycleSummary:[]}]}}};else{const filter=JSON.parse(new URL(url).searchParams.get('filterData')||'{}'),month=String(filter.date||'').replace(/-(\d)-01$/,'-0$1-01').slice(0,7);data={result:{transactions:month==='2026-09'?rows:[]}}}return {status:200,body:JSON.stringify(data),retryAfter:''}}};return {page,initialize:async()=>{},login:async()=>({success:true}),terminate:async()=>{}}}
 
 test('all issuers retain refund signs in original amounts, series totals and rendered transaction columns',()=>{
   for(const provider of ['visaCal','max','isracard','amex']){
@@ -64,9 +66,27 @@ test('DigitalV3 issuers and Camoufox preserve signed refunds and reject null-to-
 });
 
 test('MAX raw charged amount restores missingness lost by upstream unary minus without exporting raw data',async()=>{
-  let options;
-  const profile={profileId:'p',provider:'max',label:'MAX',credentials:{username:'test',password:'test'}},adapter=new MaxAdapter({profile,companyId:'max',now:()=>new Date('2026-09-03T00:00:00Z'),syncMode:'quick',createScraper:input=>{options=input;return {scrape:async()=>({success:true,accounts:[{accountNumber:'1234',txns:[null,'',0,-4.5].map((amount,i)=>({id:String(i),status:'completed',processedDate:due,chargedAmount:-amount,originalAmount:-17.90,chargedCurrency:'ILS',originalCurrency:'ILS',rawTransaction:{actualPaymentAmount:amount,originalAmount:i===3?-4.5:17.90,purchaseDate:'2026-09-02T00:00:00'}}))}]})}}});
+  let options;const amounts=[null,'',0,-4.5],rawRows=amounts.map((amount,i)=>({shortCardNumber:'1234',purchaseDate:'2026-09-02T00:00:00',paymentDate:due,actualPaymentAmount:amount,originalAmount:i===3?-4.5:17.90,originalCurrency:'ILS',paymentCurrency:376,merchantName:`fixture ${i}`,planName:'רגילה',planTypeId:5,comments:'',dealData:{arn:String(i)}}));
+  assert.deepEqual(rawRows.map(row=>normalizeMaxRawTransaction(row)?.chargedAmount),[null,null,0,4.5],'the local MAX mapper keeps missing and zero settlement amounts distinct');
+  const profile={profileId:'p',provider:'max',label:'MAX',credentials:{username:'test',password:'test'}},adapter=new MaxAdapter({profile,companyId:'max',now:()=>new Date('2026-09-03T00:00:00Z'),syncMode:'quick',createScraper:input=>{options=input;return maxScraperForRows(rawRows)}});
   const result=await adapter.scrape(),rows=result.accounts[0].months.flatMap(month=>month.transactions);
   assert.equal(options.includeRawTransaction,true);assert.deepEqual(rows.map(tx=>tx.chargedAmount),[null,null,0,4.5]);assert.equal(rows[3].originalAmount,4.5);
   assert.ok(rows.every(tx=>!Object.hasOwn(tx,'rawTransaction')),'raw provider payload is only inspected locally');
+});
+
+
+test('monthly credit detail keeps finalized FX charges visible outside the 10/15 cycle and groups them first',()=>{
+  const fx={id:'fx',status:'completed',date:'2026-09-03',foreignCurrency:true,detailCycleUncertain:false},regular={id:'regular',status:'completed',date:'2026-09-03',foreignCurrency:false},uncertain={id:'uncertain',status:'pending',detailCycleUncertain:true,foreignCurrency:true};
+  assert.equal(creditDetailDayMatch(fx,'10'),false,'the generic day filter still describes only the regular 10/15 cycle');
+  assert.equal(creditDetailMonthDayMatch(fx,'10'),true,'a finalized FX charge remains visible in its actual payment month even outside the monthly cycle day');
+  assert.equal(creditDetailMonthDayMatch(regular,'10'),false,'ordinary rows still obey the selected charge-day cycle');
+  assert.equal(creditDetailMonthDayMatch(uncertain,'10'),false,'pending/uncertain FX is not promoted into the finalized FX section');
+  const sections=creditDetailMonthlySections([regular,uncertain,fx]);
+  assert.deepEqual(sections.foreign.map(row=>row.id),['fx']);assert.deepEqual(sections.uncertain.map(row=>row.id),['uncertain']);assert.deepEqual(sections.regular.map(row=>row.id),['regular']);assert.deepEqual(sections.ordered.map(row=>row.id),['fx','uncertain','regular']);
+});
+
+test('MAX raw amount recovery never overwrites issuer chargedCurrency for foreign-wallet charges',async()=>{
+  const raw={shortCardNumber:'9090',purchaseDate:'2026-09-03',paymentDate:'2026-09-04',actualPaymentAmount:-40,originalAmount:-40,paymentCurrency:840,originalCurrency:'USD',planName:'חיוב ארנק מטח',planTypeId:5,merchantName:'wallet charge',comments:'',dealData:{arn:'wallet-usd'}},profile={profileId:'fx-max',provider:'max',label:'MAX',credentials:{username:'test',password:'test'}},adapter=new MaxAdapter({profile,companyId:'max',now:()=>new Date('2026-09-04T00:00:00Z'),syncMode:'quick',createScraper:()=>maxScraperForRows([raw],{card:'9090'})});
+  const row=(await adapter.scrape()).accounts[0].months.flatMap(month=>month.transactions).find(tx=>tx.id==='wallet-usd');
+  assert.ok(row);assert.equal(row.chargedAmount,40);assert.equal(row.chargedCurrency,'USD');assert.equal(row.originalCurrency,'USD');
 });

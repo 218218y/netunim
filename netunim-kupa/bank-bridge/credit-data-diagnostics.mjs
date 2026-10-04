@@ -1,4 +1,4 @@
-export const CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION=1;
+export const CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION=2;
 const MAX_FIELDS=120;
 const MAX_SAMPLES_PER_CARD=2;
 
@@ -62,13 +62,16 @@ function sampleRows(rows){
   if(completed)selected.push(completed);if(pending&&pending!==completed)selected.push(pending);if(!selected.length&&source[0])selected.push(source[0]);
   return selected.slice(0,MAX_SAMPLES_PER_CARD).map(normalizedSample);
 }
+function safeKeyList(value,max=80){return [...new Set((Array.isArray(value)?value:[]).map(item=>text(item,80)).filter(Boolean))].sort().slice(0,max)}
+function safeArrayPath(row={}){return {path:text(row.path,180),count:Math.max(0,Math.min(100000,Math.trunc(Number(row.count)||0))),sampleKeys:safeKeyList(row.sampleKeys,50)}}
+function providerEvidence(rows=[]){return (Array.isArray(rows)?rows:[]).filter(row=>row?.kind==='providerResponseShape').slice(0,24).map(row=>({month:/^\d{4}-(?:0[1-9]|1[0-2])$/.test(String(row.month||''))?String(row.month):'',resultPresent:row.resultPresent===true,resultKeys:safeKeyList(row.resultKeys),arrayPaths:(Array.isArray(row.arrayPaths)?row.arrayPaths:[]).slice(0,80).map(safeArrayPath),legacyTransactionsCount:Math.max(0,Math.min(100000,Math.trunc(Number(row.legacyTransactionsCount)||0))),candidateCount:Math.max(0,Math.min(100000,Math.trunc(Number(row.candidateCount)||0))),candidatePaths:safeKeyList(row.candidatePaths,40),discoveredCardCount:Math.max(0,Math.min(1000,Math.trunc(Number(row.discoveredCardCount)||0))),excludedAccountSuffixes:safeKeyList(row.excludedAccountSuffixes,100).map(suffix).filter(Boolean)}))}
 export function buildCreditDataProfileDiagnostic(profileResult={},rawSamples=[]){
   const provider=text(profileResult.provider,30),profileId=text(profileResult.profileId,80),rawByAccount=new Map((Array.isArray(rawSamples)?rawSamples:[]).map(row=>[suffix(row?.accountNumber),row]));
-  return {profileId,provider,label:text(profileResult.label,100),ownerLabel:text(profileResult.ownerLabel,100),accounts:(Array.isArray(profileResult.accounts)?profileResult.accounts:[]).map(account=>{const accountSuffix=suffix(account?.accountNumber),raw=rawByAccount.get(accountSuffix)||null;return {accountSuffix,cardType:text(account?.cardType,80),balance:numberOrNull(account?.balance),balanceDate:account?.balanceDate||null,cardFrame:numberOrNull(account?.cardFrame),availableCredit:numberOrNull(account?.availableCredit),normalizedSamples:sampleRows(normalizedTransactions(account)),rawSample:raw?{fieldInventory:rawTransactionFieldInventory(raw.rawTransaction),timeEvidence:provider==='max'?maxRawTransactionTime(raw.rawTransaction):null}:null}})};
+  return {profileId,provider,label:text(profileResult.label,100),ownerLabel:text(profileResult.ownerLabel,100),providerEvidence:providerEvidence(rawSamples),accounts:(Array.isArray(profileResult.accounts)?profileResult.accounts:[]).map(account=>{const accountSuffix=suffix(account?.accountNumber),raw=rawByAccount.get(accountSuffix)||null;return {accountSuffix,cardType:text(account?.cardType,80),balance:numberOrNull(account?.balance),balanceDate:account?.balanceDate||null,cardFrame:numberOrNull(account?.cardFrame),availableCredit:numberOrNull(account?.availableCredit),normalizedSamples:sampleRows(normalizedTransactions(account)),rawSample:raw?.rawTransaction?{fieldInventory:rawTransactionFieldInventory(raw.rawTransaction),timeEvidence:provider==='max'?maxRawTransactionTime(raw.rawTransaction):null}:null}})};
 }
 export function buildCreditDataDiagnosticPayload({correlationId='',profiles=[],rawSamples=[]}={}){
   const rawByProfile=new Map();for(const row of Array.isArray(rawSamples)?rawSamples:[]){const key=text(row?.profileId,80);if(!rawByProfile.has(key))rawByProfile.set(key,[]);rawByProfile.get(key).push(row)}
   const built=(Array.isArray(profiles)?profiles:[]).map(profile=>buildCreditDataProfileDiagnostic(profile,rawByProfile.get(text(profile?.profileId,80))||[]));
-  return {schemaVersion:CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION,generatedAt:new Date().toISOString(),correlationId:text(correlationId,80),containsTransactionSamples:true,privacyNote:'הקובץ כולל דוגמאות תנועה מקומיות לצורך אבחון מבנה נתונים. סיסמאות, אסימוני התחברות ומספרי כרטיס/חשבון מלאים אינם נכללים.',profiles:built};
+  return {schemaVersion:CREDIT_DATA_DIAGNOSTIC_SCHEMA_VERSION,generatedAt:new Date().toISOString(),correlationId:text(correlationId,80),containsTransactionSamples:true,privacyNote:'הקובץ כולל דוגמאות תנועה מקומיות ומבנה תגובה מסונן לצורך אבחון. סיסמאות, אסימוני התחברות ומספרי כרטיס/חשבון מלאים אינם נכללים.',profiles:built};
 }
 export function creditDataDiagnosticFilename(payload={}){const stamp=String(payload.generatedAt||new Date().toISOString()).replace(/[:.]/g,'-');return `netunim-credit-data-diagnostics_${stamp}.json`}

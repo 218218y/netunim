@@ -21,6 +21,7 @@ import {ISRACARD_DIGITAL_V3_SCHEMA_VERSION,scrapeIsracardDigitalV3} from './isra
 
 export const CREDIT_CONNECTOR_CONTRACT_VERSION=2;
 export const CREDIT_PROVIDER_SCHEMA_VERSION='israeli-bank-scrapers-6.10.0';
+export const MAX_PROVIDER_SCHEMA_VERSION='max-netunim-v1+upstream-login-6.10.0';
 export const VISA_CAL_PROVIDER_SCHEMA_VERSION='visa-cal-netunim-v5+upstream-6.12.1-balance+state-login';
 export const CREDIT_CORE_FUTURE_MONTHS=1;
 export const CREDIT_RECENT_HISTORY_DAYS=30;
@@ -44,6 +45,10 @@ const CAL_HEADERS={
 };
 const CAL_TRANSACTION_TYPES={regular:'5',credit:'6',installments:'8',standingOrder:'9'};
 const CAL_FRAMES_NOT_RELEVANT_STATUS=87;
+const MAX_BASE_API_ACTIONS_URL='https://onlinelcapi.max.co.il';
+const MAX_BASE_WELCOME_URL='https://www.max.co.il';
+const MAX_HOME_PAGE_DATA_URL=`${MAX_BASE_WELCOME_URL}/api/registered/getHomePageData`;
+const MAX_CATEGORIES_URL=`${MAX_BASE_API_ACTIONS_URL}/api/contents/getCategories`;
 
 function text(value,max=240){return String(value??'').trim().replace(/\s+/g,' ').slice(0,max)}
 function excludedAccountSet(values=[]){return new Set((Array.isArray(values)?values:[]).map(value=>text(value,80)).filter(Boolean))}
@@ -353,6 +358,143 @@ export class VisaCalAdapter extends CreditProviderAdapter {
   }
 }
 
+function maxTransactionsUrl(month){
+  const match=/^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(month||''));
+  if(!match)throw safeError('חודש MAX שנבנה לסנכרון אינו תקין.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'MaxMonth'});
+  const url=new URL(`${MAX_BASE_API_ACTIONS_URL}/api/registered/transactionDetails/getTransactionsAndGraphs`),date=`${match[1]}-${Number(match[2])}-01`;
+  url.searchParams.set('filterData',JSON.stringify({userIndex:-1,cardIndex:-1,monthView:true,date,dates:{startDate:'0',endDate:'0'},bankAccount:{bankAccountIndex:-1,cards:null}}));
+  url.searchParams.set('firstCallCardIndex','-1');
+  return url.toString();
+}
+async function maxGetJsonWithinPage(page,url,stage,now=Date.now()){
+  let payload;
+  try{
+    payload=await page.evaluate(async innerUrl=>{
+      let response;
+      try{response=await fetch(innerUrl,{credentials:'include'})}catch(error){return {networkError:String(error?.message||error||'fetch failed')}}
+      const body=response.status===204?'':await response.text();
+      return {status:response.status,body,retryAfter:response.headers?.get?.('retry-after')||''};
+    },url);
+  }catch(error){throw safeError('קריאת נתוני MAX מתוך הסשן המחובר נכשלה לפני קבלת תשובה.','CREDIT_PROVIDER_NETWORK_ERROR',{stage,causeName:text(error?.name,40)})}
+  if(payload?.networkError)throw safeError('החיבור לשירות הנתונים של MAX נקטע.','CREDIT_PROVIDER_NETWORK_ERROR',{stage});
+  const body=String(payload?.body||''),failure=classifyCreditHttpResponse({status:Number(payload?.status)||0,text:body,stage,retryAfter:payload?.retryAfter||'',now});
+  if(failure)throw failure;
+  if(!body)return null;
+  try{return JSON.parse(body)}catch{throw safeError('MAX החזירה תשובה שאינה JSON תקין.','CREDIT_PROVIDER_RESPONSE_NOT_JSON',{stage,httpStatus:Number(payload?.status)||0})}
+}
+function maxNumber(value){
+  if(value===null||value===undefined||String(value).trim()==='')return null;
+  if(typeof value==='number')return Number.isFinite(value)?value:null;
+  const raw=String(value).trim().replace(/[₪$€\s]/g,'').replace(/,(?=\d{3}(?:\D|$))/g,'');
+  const n=Number(raw.replace(',','.'));return Number.isFinite(n)?n:null;
+}
+function maxProviderDate(value){
+  if(value===null||value===undefined||String(value).trim()==='')return null;
+  const raw=String(value).trim(),dmy=/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(raw);
+  if(dmy){const [,day,month,year,hour='0',minute='0',second='0']=dmy,time=Date.UTC(Number(year),Number(month)-1,Number(day),Number(hour),Number(minute),Number(second)),date=new Date(time);if(date.getUTCFullYear()===Number(year)&&date.getUTCMonth()===Number(month)-1&&date.getUTCDate()===Number(day))return date.toISOString()}
+  return safeDate(raw);
+}
+function maxChargedCurrency(value){
+  const raw=String(value??'').trim().toUpperCase();
+  if(['376','ILS','NIS','₪','ש"ח','ש״ח','שח'].includes(raw))return 'ILS';
+  if(['840','USD','$'].includes(raw))return 'USD';
+  if(['978','EUR','€'].includes(raw))return 'EUR';
+  return raw&&raw.length<=12?raw:'';
+}
+function maxInstallments(raw={}){
+  const comments=String(raw.comments||''),numbers=comments.match(/\d+/g)||[],planType=Math.trunc(Number(raw.planTypeId)||0),planName=String(raw.planName||'');
+  if(numbers.length>=2){const number=Number(numbers[0]),total=Number(numbers[1]);if(number>0&&total>0)return {number,total}}
+  if([2,3].includes(planType)||/תשלומ/.test(planName))return null;
+  return null;
+}
+function maxMemo(raw={}){
+  const comments=text(raw.comments,180),receiver=text(raw.fundsTransferReceiverOrTransfer,120),detail=text(raw.fundsTransferComment,120),base=[comments,receiver].filter(Boolean).join(' ');return detail?[base,detail].filter(Boolean).join(': '):base;
+}
+function maxRawIdentifier(raw={},installments=null){
+  const candidates=[raw?.dealData?.arn,raw?.dealData?.transactionId,raw?.transactionId,raw?.dealId,raw?.referenceNumber].map(value=>text(value,100)).filter(Boolean),base=candidates[0]||'';
+  return base&&installments?.number?`${base}_${installments.number}`:base;
+}
+function maxRawLooksLikeTransaction(raw){
+  if(!raw||typeof raw!=='object'||Array.isArray(raw))return false;
+  const card=text(raw.shortCardNumber,80),purchase=text(raw.purchaseDate,80),merchant=text(raw.merchantName||raw.businessName,220),hasAmount=hasOwn(raw,'actualPaymentAmount')||hasOwn(raw,'originalAmount');
+  return !!card&&!!purchase&&hasAmount&&(!!merchant||hasOwn(raw,'planName')||hasOwn(raw,'planTypeId'));
+}
+function maxWalkTransactionCandidates(value,path='result',out=[],arrayEvidence=[],depth=0){
+  if(depth>10||value===null||value===undefined)return {out,arrayEvidence};
+  if(Array.isArray(value)){
+    const firstObject=value.find(item=>item&&typeof item==='object'&&!Array.isArray(item));
+    arrayEvidence.push({path:text(path,180),count:value.length,sampleKeys:firstObject?Object.keys(firstObject).sort().slice(0,50):[]});
+    value.forEach((item,index)=>maxWalkTransactionCandidates(item,`${path}[${index}]`,out,arrayEvidence,depth+1));return {out,arrayEvidence};
+  }
+  if(typeof value!=='object')return {out,arrayEvidence};
+  if(maxRawLooksLikeTransaction(value))out.push({raw:value,path:text(path.replace(/\[\d+\]/g,'[]'),180)});
+  for(const [key,child] of Object.entries(value))maxWalkTransactionCandidates(child,`${path}.${key}`,out,arrayEvidence,depth+1);
+  return {out,arrayEvidence};
+}
+function maxCandidateKey(raw={}){
+  const arn=text(raw?.dealData?.arn||raw?.transactionId||raw?.dealId||'',120);if(arn)return `id:${arn}|${text(raw.comments,80)}`;
+  return JSON.stringify([safeSuffix(raw.shortCardNumber),text(raw.purchaseDate,60),text(raw.paymentDate,60),text(raw.merchantName||raw.businessName,120),maxNumber(raw.originalAmount),text(raw.originalCurrency,12),maxNumber(raw.actualPaymentAmount),String(raw.paymentCurrency??''),text(raw.planName,80),text(raw.comments,120)]);
+}
+export function extractMaxTransactionCandidates(data={}){
+  const result=data&&typeof data==='object'&&!Array.isArray(data)?data.result:null;if(!result||typeof result!=='object')return {transactions:[],evidence:{resultPresent:false,resultKeys:[],arrayPaths:[],legacyTransactionsCount:0,candidateCount:0,candidatePaths:[]}};
+  const {out,arrayEvidence}=maxWalkTransactionCandidates(result),seen=new Set(),transactions=[],candidatePaths=new Set();
+  for(const item of out){const key=maxCandidateKey(item.raw);if(seen.has(key))continue;seen.add(key);transactions.push(item.raw);candidatePaths.add(item.path)}
+  return {transactions,evidence:{resultPresent:true,resultKeys:Object.keys(result).sort().slice(0,80),arrayPaths:arrayEvidence.slice(0,80),legacyTransactionsCount:Array.isArray(result.transactions)?result.transactions.length:0,candidateCount:transactions.length,candidatePaths:[...candidatePaths].sort().slice(0,40)}};
+}
+export function normalizeMaxRawTransaction(raw={},categories=new Map()){
+  if(!maxRawLooksLikeTransaction(raw))return null;
+  const purchaseDate=maxProviderDate(raw.purchaseDate);if(!purchaseDate)return null;
+  const paymentRaw=raw.paymentDate,completed=paymentRaw!==null&&paymentRaw!==undefined&&String(paymentRaw).trim()!=='',paymentDate=completed?maxProviderDate(paymentRaw):null,installments=maxInstallments(raw),chargedCurrency=maxChargedCurrency(raw.paymentCurrency),originalCurrency=text(raw.originalCurrency,12),actual=maxNumber(raw.actualPaymentAmount),original=maxNumber(raw.originalAmount),timeEvidence=maxRawTransactionTime(raw);
+  return {identifier:maxRawIdentifier(raw,installments),type:installments?'installments':'normal',date:purchaseDate,processedDate:completed?paymentDate:null,transactionDate:purchaseDate,transactionTime:timeEvidence.time,originalAmount:original===null?null:creditDebitAmount(original),originalCurrency,chargedAmount:actual===null?null:creditDebitAmount(actual),...(chargedCurrency?{chargedCurrency}:{}),description:text(raw.merchantName||raw.businessName||'עסקת MAX',220)||'עסקת MAX',memo:maxMemo(raw),category:categories.get(Number(raw.categoryId))||undefined,installments,status:completed?'completed':'pending',rawTransaction:raw};
+}
+function maxCategories(data={}){const map=new Map(),rows=Array.isArray(data?.result)?data.result:[];for(const row of rows){const id=Number(row?.id),name=text(row?.name,160);if(Number.isFinite(id)&&name)map.set(id,name)}return map}
+function maxHomeCards(data={}){
+  const rows=Array.isArray(data?.Result?.UserCards?.Cards)?data.Result.UserCards.Cards:[],cards=new Map();
+  for(const row of rows){const accountNumber=safeSuffix(row?.Last4Digits),limit=maxNumber(row?.CreditLimit),open=maxNumber(row?.OpenToBuy),cycle=Array.isArray(row?.CycleSummary)?row.CycleSummary:[],shekel=cycle.find(item=>String(item?.CurrencySymbol||'').includes('₪')),balance=limit!==null&&open!==null?Math.round((-(limit-open))*100)/100:null;if(accountNumber)cards.set(accountNumber,{accountNumber,balance,balanceDate:maxProviderDate(shekel?.Date),cardFrame:limit,availableCredit:open})}
+  return cards;
+}
+function maxResponseEvidence(profileId,month,evidence,discoveredCardCount,excludedAccountNumbers){return {kind:'providerResponseShape',profileId,month,resultPresent:evidence.resultPresent===true,resultKeys:evidence.resultKeys||[],arrayPaths:evidence.arrayPaths||[],legacyTransactionsCount:Number(evidence.legacyTransactionsCount)||0,candidateCount:Number(evidence.candidateCount)||0,candidatePaths:evidence.candidatePaths||[],discoveredCardCount:Number(discoveredCardCount)||0,excludedAccountSuffixes:[...excludedAccountNumbers].map(safeSuffix).filter(Boolean).sort()}}
+function maxMonthlyAccounts({homeCards,rawByCard,profile,startDate,futureMonths,now,excludedAccountNumbers}){
+  const allNumbers=new Set([...homeCards.keys(),...rawByCard.keys()]),accounts=[];
+  for(const accountNumber of [...allNumbers].sort()){
+    if(excludedAccountNumbers.has(accountNumber)){continue}
+    const card=homeCards.get(accountNumber)||{},txns=rawByCard.get(accountNumber)||[];
+    accounts.push(genericMonthlyAccount({...card,accountNumber,txns},profile.provider,{startDate,futureMonths,now},MAX_PROVIDER_SCHEMA_VERSION));
+  }
+  return accounts;
+}
+async function scrapeMaxDirect(adapter){
+  const profile=adapter.profile,scope=creditSyncScope({syncMode:adapter.syncMode,now:adapter.now()}),startDate=scope.startDate,plan=buildCreditMonthPlan({startDate,futureMonths:scope.futureMonths,now:adapter.now()}),scraper=adapter.createScraper({companyId:adapter.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:adapter.interactive,executablePath:adapter.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:true,outputData:{enableTransactionsFilterByDate:false}}),started=Date.now();let initialized=false,success=false;
+  try{
+    await scraper.initialize();initialized=true;adapter.event({stage:'BrowserInit'});
+    const loginStarted=Date.now();let loginResult;try{loginResult=await scraper.login(profile.credentials)}catch(error){const failure=creditLoginThrownScrapeFailure(error,profile);adapter.event({stage:failure.stage||'LoginFlow',durationMs:Date.now()-loginStarted,errorClass:failure.code});throw failure}
+    if(!loginResult?.success)throw creditScrapeFailure(loginResult,profile);adapter.event({stage:'Login',durationMs:Date.now()-loginStarted});
+    const page=scraper?.page;if(!page||typeof page.evaluate!=='function')throw safeError('מחבר MAX המותקן אינו חושף page לאחר ההתחברות.','CREDIT_CONNECTOR_COMPATIBILITY_ERROR',{stage:'MaxData'});
+    let categories=new Map();try{categories=maxCategories(await maxGetJsonWithinPage(page,MAX_CATEGORIES_URL,'MaxCategories',adapter.now().getTime()))}catch(error){adapter.event({stage:'MaxCategories',errorClass:error?.code||'CREDIT_PROVIDER_DATA_ERROR',httpStatus:error?.httpStatus||0})}
+    const homeData=await maxGetJsonWithinPage(page,MAX_HOME_PAGE_DATA_URL,'MaxHomeCards',adapter.now().getTime()),homeCards=maxHomeCards(homeData),rawByCard=new Map(),dataDiagnostics=[];
+    for(const entry of plan){
+      const monthStarted=Date.now(),data=await maxGetJsonWithinPage(page,maxTransactionsUrl(entry.month),`MaxTransactions ${entry.month}`,adapter.now().getTime()),parsed=extractMaxTransactionCandidates(data||{});
+      dataDiagnostics.push(maxResponseEvidence(profile.profileId,entry.month,parsed.evidence,homeCards.size,adapter.excludedAccountNumbers));
+      adapter.event({stage:'MaxTransactions',month:entry.month,durationMs:Date.now()-monthStarted});
+      for(const raw of parsed.transactions){const tx=normalizeMaxRawTransaction(raw,categories),accountNumber=safeSuffix(raw?.shortCardNumber);if(!tx||!accountNumber)continue;if(!rawByCard.has(accountNumber))rawByCard.set(accountNumber,[]);rawByCard.get(accountNumber).push(tx)}
+    }
+    const discoveredNumbers=new Set([...homeCards.keys(),...rawByCard.keys()]);
+    if(!discoveredNumbers.size){
+      // Preserve Last Known Good and, crucially, return the sanitized response-shape
+      // evidence to the diagnostic exporter. Throwing here would hide the exact
+      // authenticated MAX shape that is needed when their private API changes.
+      const attemptedAt=adapter.now().toISOString(),schemaFailure=safeError('MAX אישרה את הכניסה אך לא הוחזרה אפילו רשומת כרטיס אחת מנתוני הבית או מפירוט העסקאות. הסנכרון לא יסומן כהצלחה ריקה.','CREDIT_PROVIDER_SCHEMA_ERROR',{stage:'MaxCards'}),error=coverageError(profile,schemaFailure,{at:attemptedAt,component:'core_transactions',severity:'error'});
+      adapter.event({browserEngine:'chromium',stage:'MaxCards',durationMs:Date.now()-started,errorClass:schemaFailure.code});
+      return {...creditProfilePublic(profile),syncedAt:null,attemptedAt,coreComplete:false,accounts:[],errors:[error],_dataDiagnostics:dataDiagnostics};
+    }
+    for(const accountNumber of discoveredNumbers)if(adapter.excludedAccountNumbers.has(accountNumber))adapter.event({stage:'CardExcluded',accountSuffix:safeSuffix(accountNumber)});
+    const accounts=maxMonthlyAccounts({homeCards,rawByCard,profile,startDate,futureMonths:scope.futureMonths,now:adapter.now(),excludedAccountNumbers:adapter.excludedAccountNumbers}),rawSamples=[];
+    for(const accountNumber of discoveredNumbers){if(adapter.excludedAccountNumbers.has(accountNumber))continue;const rows=rawByCard.get(accountNumber)||[],chosen=rows.find(tx=>tx?.rawTransaction&&maxRawTransactionTime(tx.rawTransaction).candidates.length)||rows.find(tx=>tx?.rawTransaction);if(chosen?.rawTransaction)rawSamples.push({profileId:profile.profileId,accountNumber,rawTransaction:chosen.rawTransaction})}
+    dataDiagnostics.push(...rawSamples);const syncedAt=adapter.now().toISOString();success=true;adapter.event({stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts,errors:[],_dataDiagnostics:dataDiagnostics};
+  }catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';adapter.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus,providerStatus:failure?.providerStatus,providerReturnCode:failure?.providerReturnCode});throw failure}
+  finally{if(initialized)try{await scraper.terminate(success)}catch{}}
+}
+
 function transactionBillingDate(tx){return tx?.processedDate||''}
 function transactionMonth(tx){const value=transactionBillingDate(tx);return value&&/^\d{4}-\d{2}/.test(String(value))?String(value).slice(0,7):''}
 function enrichMaxTransaction(tx={}){
@@ -392,7 +534,10 @@ export class GenericScraperAdapter extends CreditProviderAdapter {
   constructor(options={}){super(options);Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive,preparePage:options.preparePage})}
   async scrape(){const profile=this.profile,scope=creditSyncScope({syncMode:this.syncMode,now:this.now()}),startDate=scope.startDate,scraper=this.createScraper({companyId:this.companyId,startDate,futureMonthsToScrape:scope.futureMonths,combineInstallments:false,showBrowser:this.interactive,executablePath:this.browserPath,navigationRetryCount:1,defaultTimeout:45_000,timeout:90_000,additionalTransactionInformation:false,includeRawTransaction:this.profile?.provider==='max',outputData:{enableTransactionsFilterByDate:false},...(this.preparePage?{preparePage:this.preparePage}:{})}),started=Date.now();try{const result=await scraper.scrape(profile.credentials);if(!result?.success)throw creditScrapeFailure(result,profile);const syncedAt=this.now().toISOString(),rawAccounts=Array.isArray(result.accounts)?result.accounts:[],includedAccounts=rawAccounts.filter(account=>{const accountNumber=text(account?.accountNumber,80);if(!this.excludedAccountNumbers.has(accountNumber))return true;this.event({browserEngine:'chromium',stage:'CardExcluded',accountSuffix:safeSuffix(accountNumber)});return false}),dataDiagnostics=profile.provider==='max'?maxRawDiagnosticSamples(includedAccounts,profile.profileId):[];this.event({browserEngine:'chromium',stage:'Complete',durationMs:Date.now()-started});return {...creditProfilePublic(profile),syncedAt,attemptedAt:syncedAt,coreComplete:true,accounts:includedAccounts.map(account=>genericMonthlyAccount(account,profile.provider,{startDate,futureMonths:scope.futureMonths,now:this.now()})),errors:[],_dataDiagnostics:dataDiagnostics}}catch(error){const failure=creditThrownScrapeFailure(error,profile);if(!failure.browserEngine)failure.browserEngine='chromium';this.event({browserEngine:'chromium',stage:failure?.stage||'Scrape',durationMs:Date.now()-started,errorClass:failure?.code,httpStatus:failure?.httpStatus,providerStatus:failure?.providerStatus,providerReturnCode:failure?.providerReturnCode});throw failure}}
 }
-export class MaxAdapter extends GenericScraperAdapter {}
+export class MaxAdapter extends CreditProviderAdapter {
+  constructor(options={}){super(options);this.connectorVersion=MAX_PROVIDER_SCHEMA_VERSION;Object.assign(this,{createScraper:options.createScraper,CompanyTypes:options.CompanyTypes,companyId:options.companyId,browserPath:options.browserPath,interactive:!!options.interactive})}
+  async scrape(){return scrapeMaxDirect(this)}
+}
 
 class IsracardGroupDigitalV3Adapter extends CreditProviderAdapter {
   constructor(options={},schemaVersion='',scrapeImpl=null){
