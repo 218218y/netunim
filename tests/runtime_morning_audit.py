@@ -1,6 +1,6 @@
 """Morning debt safety regressions in disposable Chromium; no external services."""
 import json
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession as V2BrowserSession, LegacyBrowserSession as BrowserSession, ROOT
 from runtime_morning_cloud import LOCAL_CLOUD
 
 SETUP = LOCAL_CLOUD + r"""
@@ -31,7 +31,8 @@ window.auditDebt=()=>state.customerDebts.find(d=>d.id===window.auditDebtId);
 window.auditProgress=async()=>{const m=await import('./assets/js/shared/customer-debt-progress.js');return m.customerDebtProgressData(window.auditDebt())};
 window.auditOpen=async()=>{switchView('customers');openMorningDocument(window.auditDebtId);await window.auditWait(()=>document.querySelector('[data-action="morning-create"]')&&!document.querySelector('[data-action="morning-create"]').disabled)};
 window.auditIssue=async(type,amount,policy={})=>{
- scheduleSave('fixture debt before issuance');window.auditSetServer({operation:null});await window.auditOpen();
+ if(storageV2Coordinator.mode()!=='primary')scheduleSave('fixture debt before issuance');
+ window.auditSetServer({operation:null});await window.auditOpen();
  document.querySelector('input[name="morningDocumentType"][value="'+type+'"]').click();
  document.getElementById('morningAmount').value=String(amount);document.getElementById('morningAmount').dispatchEvent(new Event('input',{bubbles:true}));
  if(type===320||type===400){const payment=document.querySelector('[data-payment-row] [data-payment-field="price"]');window.auditAssert(payment,'missing receipt amount');payment.value=String(amount);payment.dispatchEvent(new Event('input',{bubbles:true}));window.auditAssert(document.getElementById('morningPaymentSummary').classList.contains('is-match'),'document and receipt totals must visibly match before issuance')}
@@ -60,17 +61,52 @@ def reload(browser):
     js(browser, SETUP)
 
 
+def v2_seed(browser):
+    """Create the Morning debts through the production local V2 journal."""
+    js(browser, SETUP)
+    js(browser, r"""
+    if(storageV2Coordinator.mode()!=='primary'||!storageShadow.primaryReady)throw new Error('local V2 not ready');
+    cloudAuth.cloudEnabled=()=>false;
+    state=normalizeState({version:5,customerDebts:[
+      {id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false},
+      {id:'OTHER',customerName:'Other fixture',amount:100}
+    ]});
+    for(let index=0;index<state.customerDebts.length;index++){
+      const debt=state.customerDebts[index];
+      if(scheduleSave('V2 audit fixture seed',{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index,record:debt}]})!==true)
+        throw new Error('V2 audit fixture debt write failed');
+    }
+    clearTimeout(saveTimer);saveTimer=null;
+    if(!await storageShadow.flush())throw new Error('V2 audit fixture flush failed');
+    const head=await storageShadow.cloudState();
+    await storageShadow.setCloudBase(1,prepareCloudState(state),{ackSeq:head.seq});
+    cloudRevision=1;lastCloudState=prepareCloudState(state);
+    await refreshStorageV2CloudState();cloudAuth.cloudEnabled=()=>true;
+    return true;
+    """)
+
+
+def v2_reload(browser):
+    browser._navigate()
+    browser.evaluate('appReady.then(()=>true)')
+    js(browser, SETUP)
+    js(browser, "await refreshStorageV2CloudState();if(!storageV2CloudOutboxActive())throw new Error('V2 cloud fixture did not recover');return true;")
+
+
 def document_matrix():
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-matrix') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-matrix') as browser:
+        v2_seed(browser)
         result=js(browser, r"""
         const passed=[];
         // Independent cases must not erase progress from a reused debt ID: the
-        // real outbox can still ACK an earlier snapshot and correctly merge its
-        // append-only payment/invoice events back into that same debt.
+        // V2 can still ACK an earlier immutable flight while a later case adds
+        // append-only payment/invoice events to another debt.
         const startCase=(name,debtProgress=[])=>{
           window.auditDebtId='MATRIX-'+name;
-          state.customerDebts.push({id:window.auditDebtId,customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false,debtProgress});
+          const debt={id:window.auditDebtId,customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false,debtProgress};
+          state.customerDebts.push(debt);
+          if(scheduleSave('V2 matrix debt',{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt}]})!==true)
+            throw new Error('matrix debt was not staged durably');
         };
         for(const type of [320,400,305]){
           startCase('type-'+type);
@@ -85,21 +121,22 @@ def document_matrix():
           window.auditAssert(p.remainingPayment>=0&&p.remainingInvoice>=0,'negative remainder');
         }
         passed.push('partial-sequence','above-balance');
-        // Hold one real outbox acknowledgement across the next case boundary.
+        // Hold one real V2 flight acknowledgement across the next case boundary.
         // This makes the former reused-ID race reproducible without CPU sleeps.
-        const originalRpcSave=cloudTransport.rpcSave;
+        const originalRpcSave=cloudTransport.rpcSaveV2;
         let releaseAck,ackStarted;
         const ackGate=new Promise(resolve=>{releaseAck=resolve}),started=new Promise(resolve=>{ackStarted=resolve});
-        cloudTransport.rpcSave=async(...args)=>{
+        cloudTransport.rpcSaveV2=async(...args)=>{
           const result=await originalRpcSave(...args);
-          cloudTransport.rpcSave=originalRpcSave;ackStarted();await ackGate;return result;
+          cloudTransport.rpcSaveV2=originalRpcSave;ackStarted();await ackGate;return result;
         };
-        window.auditDebt().note='ack across independent cases';scheduleSave('matrix prior case');
+        window.auditDebt().note='ack across independent cases';
+        if(scheduleSave('matrix prior case',{operations:[{type:'put',collection:'customerDebts',id:window.auditDebtId,mode:'replace',record:window.auditDebt()}]})!==true)throw new Error('prior case not staged');
         const oldWrite=requestCloudSave('matrix prior case');await started;
         for(const kind of ['payment','invoice']){
           startCase('manual-'+kind,[{id:'manual-'+kind,kind,action:'add',amount:30,source:'manual',createdAt:new Date().toISOString()}]);
           if(kind==='payment'){
-            scheduleSave('matrix next case');await getCloudPending();releaseAck();await oldWrite;
+            await storageShadow.commitPromise;releaseAck();await oldWrite;
           }
           await window.auditIssue(320,30,{[kind==='payment'?'morningApplyPayment':'morningApplyInvoice']:false});
           const p=await window.auditProgress();window.auditAssert(p.paymentApplied===30&&p.invoiceApplied===30,'manual opt-out '+kind+' '+JSON.stringify({progress:p,debt:window.auditDebt(),operation:window.auditServer.operation,recovery:localStorage.getItem('orders.morning.pending-issuance.v1'),calls:window.auditCalls.slice(-3)}));
@@ -124,10 +161,10 @@ def document_matrix():
 
 
 def recovery_lock():
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-recovery-lock') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-recovery-lock') as browser:
+        v2_seed(browser)
         js(browser, "window.auditSetServer({uncertain:true});await window.auditIssue(320,30);return true;")
-        reload(browser)
+        v2_reload(browser)
         js(browser, r"""
         const before=JSON.stringify(window.auditDebt()),key='orders.morning.pending-issuance.v1',recovery=localStorage.getItem(key);
         for(const values of [{dAmount:'150'},{dPaid:'partial',dAddPayment:'30'},{dInvoice:'partial',dAddInvoice:'30'},{dPaid:'true'},{dInvoice:'true'}]){
@@ -160,10 +197,10 @@ def recovery_lock():
 
 def cleanup_and_persistence():
     for terminal in ['created','failed','reserved']:
-        with BrowserSession(ROOT/'netunim-orders/site', 'morning-cleanup-'+terminal) as browser:
-            seed(browser)
+        with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-cleanup-'+terminal) as browser:
+            v2_seed(browser)
             js(browser, "window.auditSetServer({uncertain:true});await window.auditIssue(320,30);return true;")
-            reload(browser)
+            v2_reload(browser)
             js(browser, r"""
             window.auditRemove=Storage.prototype.removeItem;
             Storage.prototype.removeItem=function(key){if(key==='orders.morning.pending-issuance.v1')throw new Error('fixture remove failure');return window.auditRemove.call(this,key)};
@@ -177,23 +214,23 @@ def cleanup_and_persistence():
             return true;
             """)
             print('PASS Morning cleanup failure remains locked and retries:', terminal)
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-persistence') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-persistence') as browser:
+        v2_seed(browser)
         js(browser, r"""
         window.auditRealSave=storagePersistence.scheduleSave;
         storagePersistence.scheduleSave=()=>false;
         await window.auditIssue(320,30);
         window.auditAssert(window.auditDebt().debtProgress.length===2&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'failed persistence lost recovery');
         storagePersistence.scheduleSave=window.auditRealSave;
-        await recoverPendingMorningOperation();
-        window.auditAssert(window.auditDebt().debtProgress.length===2&&!localStorage.getItem('orders.morning.pending-issuance.v1'),'replay did not re-persist exactly once');
+        const sameSession=await recoverPendingMorningOperation();
+        window.auditAssert(!sameSession.ok&&!!localStorage.getItem('orders.morning.pending-issuance.v1'),'V2 uploaded an undurable in-memory edit');
         return true;
         """)
-        reload(browser)
-        js(browser, "window.auditAssert((await window.auditProgress()).paymentApplied===30,'replay persistence missing after reload');return true;")
-        print('PASS Morning persistence failure: replay persists existing events; survives reload')
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-unknown-result') as browser:
-        seed(browser)
+        v2_reload(browser)
+        js(browser, "await recoverPendingMorningOperation();window.auditAssert((await window.auditProgress()).paymentApplied===30&&!localStorage.getItem('orders.morning.pending-issuance.v1'),'V2 replay persistence missing after reload');return true;")
+        print('PASS Morning V2 persistence failure: undurable memory is not uploaded; restart replays the verified document exactly once')
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-unknown-result') as browser:
+        v2_seed(browser)
         js(browser, r"""
         const apply=domainsCustomers.editor.applyVerifiedMorningDocument;
         domainsCustomers.editor.applyVerifiedMorningDocument=()=>({changed:false,reason:'future-unknown-result'});
@@ -208,15 +245,15 @@ def cleanup_and_persistence():
 
 
 def crash_snapshots():
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-crash-reserved') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-crash-reserved') as browser:
+        v2_seed(browser)
         js(browser, r"""
         const recovery=await import('./assets/js/domains/customers/morning-debt-recovery.js');
         const operationId=crypto.randomUUID();
         recovery.saveMorningDebtRecoveryContext(recovery.createMorningDebtRecoveryContext({operationId,debtId:'AUDIT',type:320,amount:30,applyPayment:true,applyInvoice:true}));
         window.auditSetServer({operation:{operation_id:operationId,state:'reserved',document_type:320,amount:30}});return true;
         """)
-        reload(browser)
+        v2_reload(browser)
         js(browser, r"""
         const result=await recoverPendingMorningOperation();
         window.auditAssert(result.state==='abandoned'&&!localStorage.getItem('orders.morning.pending-issuance.v1'),'pre-POST reservation not abandoned');
@@ -224,10 +261,9 @@ def crash_snapshots():
         window.auditAssert((await window.auditProgress()).paymentApplied===0,'pre-POST crash changed debt');return true;
         """)
         print('PASS Morning crash after reserve before POST: reload abandons reservation without document or debt mutation')
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-crash-local-persistence') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-crash-local-persistence') as browser:
+        v2_seed(browser)
         js(browser, r"""
-        scheduleSave('durable base');clearTimeout(saveTimer);saveTimer=null;await files.browserStateWritePromise;
         await requestCloudSave('durable fixture base');cloudAuth.cloudEnabled=()=>false;
         // Navigation runs the production pagehide safety snapshot. Keep persistence
         // unavailable there too, so this fixture actually models a crash before disk save.
@@ -237,6 +273,7 @@ def crash_snapshots():
         browser._navigate()
         browser.evaluate('appReady.then(()=>true)')
         js(browser, SETUP)
+        js(browser, "await refreshStorageV2CloudState();return true;")
         js(browser, r"""
         window.auditAssert((await window.auditProgress()).paymentApplied===0,'failed persistence unexpectedly survived crash');
         await recoverPendingMorningOperation();await recoverPendingMorningOperation();
@@ -247,9 +284,8 @@ def crash_snapshots():
 
 
 def ownership():
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-ownership') as browser:
-        seed(browser)
-        js(browser, "scheduleSave('fixture');clearTimeout(saveTimer);return true;")
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-ownership') as browser:
+        v2_seed(browser)
         with browser.second_tab():
             js(browser, SETUP)
             js(browser, r"""
@@ -270,8 +306,8 @@ def ownership():
 
 
 def remotely_missing_debt():
-    with BrowserSession(ROOT/'netunim-orders/site', 'morning-remote-deletion') as browser:
-        seed(browser)
+    with V2BrowserSession(ROOT/'netunim-orders/site', 'morning-remote-deletion') as browser:
+        v2_seed(browser)
         js(browser, r"""
         window.auditSetServer({uncertain:true});await window.auditIssue(320,30);
         await requestCloudSave('fixture before remote removal');clearTimeout(saveTimer);saveTimer=null;

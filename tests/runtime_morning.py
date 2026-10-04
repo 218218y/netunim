@@ -1,5 +1,5 @@
 """Morning UI workflows with deterministic transport; never issues real documents."""
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 import json
 from runtime_morning_cloud import LOCAL_CLOUD
 
@@ -15,7 +15,7 @@ const closeSavedMorningModal=async context=>{click('close-modal');const confirma
 const fill=(id,value)=>{document.getElementById(id).value=value};
 const setReceiptAmount=value=>{const payment=document.querySelector('[data-payment-row] [data-payment-field="price"]');assert(payment,'Missing editable receipt amount');payment.value=String(value);payment.dispatchEvent(new Event('input',{bubbles:true}));};
 const setDocumentAmount=value=>{const amount=document.getElementById('morningAmount');assert(amount,'Missing document amount');amount.value=String(value);amount.dispatchEvent(new Event('input',{bubbles:true}));};
-const stageFixtureState=message=>{scheduleSave(message);clearTimeout(saveTimer);saveTimer=null};
+const stageFixtureState=message=>{const debt=state.customerDebts.at(-1);if(scheduleSave(message,{operations:[{type:'put',collection:'customerDebts',id:debt.id,mode:'insert',index:state.customerDebts.length-1,record:debt}]})!==true)throw new Error('fixture V2 debt write was not durable');clearTimeout(saveTimer);saveTimer=null};
 const calls=[],docs=Array.from({length:26},(_,i)=>({id:'00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'),number:100+i,type:305,date:'2026-09-08',amount:100,currency:'ILS',clientName:i===0?'Manual Morning':'App document',status:0,allocationNumber:'123'}));
 let uncertain=false,resolveStatus=false,operation=null;
 cloudAuth.supaFetch=async(path,options)=>{
@@ -34,7 +34,11 @@ cloudAuth.supaFetch=async(path,options)=>{
   if(request.action==='document_pdf')return new Response(new TextEncoder().encode('%PDF-1.4\nmock'),{status:200,headers:{'Content-Type':'application/pdf'}});
   return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
 };
+// Seed a V2 journal operation before installing the simulated cloud cursor.
+// The test never creates a browser snapshot or a V1 cloud outbox.
+cloudAuth.cloudEnabled=()=>false;
 state=normalizeState({version:4,customerDebts:[{id:'prefill-only',customerName:'Verified debt',amount:100,paid:false,invoiceIssued:false,closedAt:null,phone:'123',orderNumber:'A1',customerId:'123456782',clearingApproval:'4444'}]});stageFixtureState('fixture initial debt');
+if(!await storageShadow.flush())throw new Error('fixture V2 debt commit failed');const fixtureHead=await storageShadow.cloudState();await storageShadow.setCloudBase(1,prepareCloudState(state),{ackSeq:fixtureHead.seq});cloudRevision=1;lastCloudState=prepareCloudState(state);await refreshStorageV2CloudState();cloudAuth.cloudEnabled=()=>true;
 switchView('customers');click('open-morning-document');await waitFor(()=>!document.querySelector('[data-action="morning-create"]').disabled);
 assert(document.getElementById('morningClientName').value==='Verified debt','Client prefilled');assert(document.getElementById('morningAmount').value==='100.00','Amount prefilled');
 const morningAmount=document.getElementById('morningAmount'),receiptAmount=document.querySelector('[data-payment-row] [data-payment-field="price"]');assert(!morningAmount.readOnly,'Payment documents keep the intended document amount independently editable');assert(receiptAmount&&receiptAmount.step==='1','Receipt spinner uses whole-shekel step');assert(document.getElementById('morningPaymentSummary').textContent.includes('100'),'Payment summary starts from the prefilled receipt total');receiptAmount.stepUp();receiptAmount.dispatchEvent(new Event('input',{bubbles:true}));assert(Number(receiptAmount.value)===101&&Number(morningAmount.value)===100,'Editing a receipt must not overwrite the intended document amount');assert(document.getElementById('morningPaymentSummary').classList.contains('is-mismatch')&&document.getElementById('morningPaymentMatch').textContent.includes('לא תואם')&&morningAmount.getAttribute('aria-invalid')==='true','Receipt/document mismatch is visible immediately');setReceiptAmount(100);assert(document.getElementById('morningPaymentSummary').classList.contains('is-match'),'Matching totals are visibly confirmed');
@@ -106,9 +110,17 @@ return {prefill:true,clearingDefaultsToCard:true,maskedCardSuffix:true,wholeShek
 """
 
 with BrowserSession(ROOT/'netunim-orders/site','morning-workflow') as browser:
+    assert browser.evaluate("storageV2Coordinator.mode()==='primary'&&storageShadow.primaryReady")
     result=browser.evaluate('(async()=>{'+FLOW+'})()',timeout=60)
     print(json.dumps(result))
     assert result and all(result.values())
+    assert browser.evaluate("""(async()=>{
+      const recovered=await storageShadow.recover();
+      return recovered?.appMetadata?.mainProjectionVersion===2
+        &&recovered.state.customerDebts.some(debt=>debt.id==='reconcile-debt'&&debt.debtProgress?.length===2)
+        &&!localStorage.getItem('orders.management.state.v1')
+        &&!localStorage.getItem('orders.supabase.pending.v1');
+    })()"""), 'Morning UI did not persist the verified debt in Main V2'
 print('PASS Morning UI workflows')
 
 from runtime_morning_audit import run as run_safety_audit

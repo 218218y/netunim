@@ -143,6 +143,16 @@ ok("from browser_harness import BrowserSession, ROOT" in workflows_source
    and "storageShadow.recover()" in workflows_source
    and "sharedChecksV2.recover()" in workflows_source,
    "browser workflows exercise durable Main and Shared V2 without a patched V1 fixture")
+morning_ui_source=(ROOT / "tests/runtime_morning.py").read_text(encoding="utf-8")
+morning_audit_source=(ROOT / "tests/runtime_morning_audit.py").read_text(encoding="utf-8")
+ok("from browser_harness import BrowserSession, ROOT" in morning_ui_source
+   and "LegacyBrowserSession" not in morning_ui_source
+   and "storageShadow.recover()" in morning_ui_source
+   and "with V2BrowserSession" in morning_audit_source
+   and "v2_seed(browser)" in morning_audit_source
+   and "mode:'insert'" in morning_audit_source
+   and "mode:'replace'" in morning_audit_source,
+   "Morning UI and audit recovery exercise typed V2 journal commits on production startup")
 two_profile_source=(ROOT / "tests/runtime_sync_two_computers.py").read_text(encoding="utf-8")
 ok("from browser_harness import BrowserSession, ROOT" in two_profile_source
    and "LegacyBrowserSession" not in two_profile_source

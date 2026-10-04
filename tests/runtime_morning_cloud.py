@@ -1,4 +1,4 @@
-"""Local cloud transport fixture. Production refresh, merge and outbox remain intact."""
+"""Local cloud transport fixture for Morning recovery and V2 flights."""
 LOCAL_CLOUD = r"""
 window.auditCloudReads=0;
 window.auditCloudFail=false;
@@ -20,4 +20,5 @@ cloudTransport.rpcSave=async(snapshot,expected)=>{
  if(window.auditCloudHead)window.auditCloudHead=structuredClone(row);
  return {r:{ok:true},row};
 };
+cloudTransport.rpcSaveV2=(...args)=>cloudTransport.rpcSave(...args);
 """
