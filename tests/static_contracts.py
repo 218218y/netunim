@@ -207,11 +207,18 @@ orders_document=(O / "site/assets/js/sync/document.js").read_text(encoding="utf-
 orders_persistence=(O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
 orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 orders_lifecycle=(O / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+orders_browser=(O / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
+orders_backup=(O / "site/assets/js/ui/backup.js").read_text(encoding="utf-8")
 ok("markCloudPending" not in orders_main and "markCloudPending" not in orders_persistence
    and all(symbol not in orders_document for symbol in ("markCloudPending", "getCloudPending", "saveCloudSnapshot", "restorePendingAgainstCloud"))
    and "save_order_management_document_v5" not in orders_transport
    and "markCloudPending" not in orders_lifecycle,
    "orders: ordinary Main save, startup and transport cannot reach a V1 outbox or v5 writer")
+ok(all(symbol not in orders_browser for symbol in ("markCloudPending", "getCloudPending", "function loadLocal(", "loadBrowserStateSnapshot", "restoreBrowserStateFallback", "writePendingCache"))
+   and "restoreBrowserStateFallback" not in orders_lifecycle
+   and "getCloudPending" not in orders_backup
+   and "getChecksPending" not in orders_backup,
+   "orders: browser startup and restore use V2 without a V1 snapshot or outbox writer")
 
 main_schema=(ROOT / "shared/storage-v2-schema.js").read_text(encoding="utf-8")
 main_runtime=(ROOT / "shared/storage-v2-runtime.js").read_text(encoding="utf-8")

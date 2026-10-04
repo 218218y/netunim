@@ -50,7 +50,7 @@ def run():
           const request=requests.find(row=>row.path.includes('save_spreadsheet_document_v1'));
           if(!request||request.body.p_delete_intents['notesSheet.sheets'][0]!=='S2'||request.body.p_kind!=='delete')throw new Error('Sheet deletion lost its exact intent');
           if(spreadsheetWorkspace.sync.status!=='saved')throw new Error('Acknowledged deletion remains pending');
-          if(await getCloudPending())throw new Error('Workbook must not create main-document outbox');
+          if(localStorage.getItem('orders.supabase.pending.v1')!==null)throw new Error('Workbook must not create a retired Main outbox');
           return true;
         })()""", timeout=30)
         assert not browser.drain_serious_errors()

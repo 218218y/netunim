@@ -121,9 +121,7 @@ const prepareV2Checkpoint=state=>{const business=structuredClone(state);delete b
 const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:prepareV2Checkpoint});
 const storageBrowser=createStorageBrowser({
   storageV2:storageShadow,
-  legacyWriteAllowed:storageV2Coordinator.legacyWriteAllowed,
-  externalWorkbooks:true,
-  captureLegacyWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
+  captureEmbeddedWorkbook:(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args),
   model,
   files,
   session,
@@ -749,7 +747,6 @@ const lifecycle=createLifecycle({
   checksSession,
   domainRevisions,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
-  restoreBrowserStateFallback:(...args)=>storageBrowser.restoreBrowserStateFallback(...args),
   recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
   recoverReadOnlyV2State:(...args)=>storageBrowser.recoverReadOnlyV2State(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
