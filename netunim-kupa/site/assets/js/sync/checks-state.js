@@ -9,7 +9,7 @@ function normalizeDeleteIds(value){return [...new Set((Array.isArray(value)?valu
 function migrateChecksOutboxRecord(value,migration){const record=migrateOutboxRecord(value,migration);if(record)record.deleteIds=normalizeDeleteIds(value?.deleteIds);return record}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncChecksState({session, checksSession, model, normalizeState, prepareKupaCloudState, idbGet}){
+export function createSyncChecksState({session, checksSession, model, normalizeState, prepareKupaCloudState, idbGet, sharedChecksHasLocalWork=()=>true}){
 function lastSavedState(){try{return session.lastSavedSnapshot?normalizeState(JSON.parse(session.lastSavedSnapshot)):null}catch(e){return null}}
 function lastSavedCloudState(){try{return session.lastSavedSnapshot?prepareKupaCloudState(JSON.parse(session.lastSavedSnapshot)):null}catch(e){return null}}
 function loadSharedChecksBase(){try{const x=JSON.parse(localStorage.getItem(SHARED_CHECKS_BASE_KEY)||'null');return Array.isArray(x)?normalizeSharedChecks(x):null}catch(e){console.error('shared checks base load',e);return null}}
@@ -32,7 +32,7 @@ async function verifyLegacyChecksClean(){
   const durable=await idbGet('sync',SHARED_CHECKS_OUTBOX_KEY);
   return checksSession.sharedChecksOutboxCommitPromise===commit&&durable==null&&!sharedChecksPendingExists();
 }
-function sharedChecksHaveLocalWork(){return checksSession.sharedChecksSaveRequested||sharedChecksPendingExists()||!!(checksSession.sharedChecksBase&&!jsonEq(normalizeSharedChecks(model.state.checks),normalizeSharedChecks(checksSession.sharedChecksBase)))}
+function sharedChecksHaveLocalWork(){return checksSession.sharedChecksSaveRequested||sharedChecksHasLocalWork()||!!(checksSession.sharedChecksBase&&!jsonEq(normalizeSharedChecks(model.state.checks),normalizeSharedChecks(checksSession.sharedChecksBase)))}
 
 return { lastSavedState, lastSavedCloudState, loadSharedChecksBase, loadSharedChecksBankEvents, getSharedChecksPending, sharedChecksPendingExists, sharedChecksHaveLocalWork, verifyLegacyChecksClean };
 }

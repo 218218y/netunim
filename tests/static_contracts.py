@@ -218,6 +218,14 @@ ok("replaceShadowWithCloudHead" not in main_journal
    and "promote(" not in shared_runtime
    and "replaceExistingState" not in main_journal,
    "V2 cannot promote a historical Shadow head into Primary or cloud authority")
+orders_work=(O / "site/assets/js/state/snapshots.js").read_text(encoding="utf-8")
+kupa_work=(K / "site/assets/js/sync/checks-state.js").read_text(encoding="utf-8")
+ok("get hasLocalWork()" in shared_runtime
+   and "sharedChecksHasLocalWork()" in orders_work.split("function checksHaveLocalWork()",1)[1].split("function ",1)[0]
+   and "checksPendingExists()" not in orders_work.split("function checksHaveLocalWork()",1)[1].split("function ",1)[0]
+   and "sharedChecksHasLocalWork()" in kupa_work.split("function sharedChecksHaveLocalWork()",1)[1].split("return {",1)[0]
+   and "sharedChecksPendingExists()" not in kupa_work.split("function sharedChecksHaveLocalWork()",1)[1].split("return {",1)[0],
+   "bank snapshot guards use Shared V2 work status, not V1 outbox presence")
 for label, app_root in (("kupa", K), ("orders", O)):
     coordinator=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     ok("migrateMainProjection" not in coordinator,

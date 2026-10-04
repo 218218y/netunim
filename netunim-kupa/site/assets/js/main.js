@@ -163,6 +163,7 @@ const syncChecksState=createSyncChecksState({
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
   idbGet:(...args)=>storageIndexedDb.idbGet(...args),
+  sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
 });
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
