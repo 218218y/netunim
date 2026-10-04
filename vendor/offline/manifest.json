@@ -6,7 +6,7 @@
     "machine": "x86_64",
     "libc": "glibc"
   },
-  "npmClosureSha256": "773dc2b81787765b2e3baf65d468da9afc6da2068efc9532c208785f6a87ad02",
+  "npmClosureSha256": "d75354a946e2fd0290a19ec50a7bc5246af76169bd49fefaada6bea7c5b466b7",
   "configSemanticSha256": "2c9fa55342f48f0a61ffc00398aabad13083a3c5cedccf0937861f363d4b1ba7",
   "node": {
     "version": "24.21.0",
@@ -258,10 +258,10 @@
     {
       "lockPath": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.11.0",
-      "url": "https://registry.npmjs.org/eslint/-/eslint-10.11.0.tgz",
-      "integrity": "sha512-P7a6UEEqb9G95MYAtqkmsTbVXIYyzIfl6NGOIJk162PaahFxFyeGcrlXYFSiagECg4sEm8IseJdZBKR3rx6MsQ==",
-      "file": "npm/eslint-10.11.0.tgz"
+      "version": "10.12.0",
+      "url": "https://registry.npmjs.org/eslint/-/eslint-10.12.0.tgz",
+      "integrity": "sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==",
+      "file": "npm/eslint-10.12.0.tgz"
     },
     {
       "lockPath": "node_modules/eslint-scope",
@@ -386,10 +386,10 @@
     {
       "lockPath": "node_modules/globals",
       "name": "globals",
-      "version": "17.12.0",
-      "url": "https://registry.npmjs.org/globals/-/globals-17.12.0.tgz",
-      "integrity": "sha512-cezEd/DTyyht9cvSSURyygXPfy04GtWO/5e6ZPvH7fCtjKz9PYOmuawphw1Ctd1f6C+5JypXfGD7ahNMXvevBA==",
-      "file": "npm/globals-17.12.0.tgz"
+      "version": "17.13.0",
+      "url": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
+      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
+      "file": "npm/globals-17.13.0.tgz"
     },
     {
       "lockPath": "node_modules/hashery",
