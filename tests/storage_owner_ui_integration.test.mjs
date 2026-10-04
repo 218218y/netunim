@@ -14,36 +14,66 @@ function installGlobals(){
   return ()=>{for(const [key,descriptor] of saved){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}};
 }
 
-function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false,v2=false}={}){
-  const events=[];let owner='local',reservation=null;const model={state:{rows:['local']}},session={localGeneration:0},checksSession={};
+function ordersHarness({remote={state:{rows:['remote']},revision:4,updated_at:'t'},sharedFails=false,v2=true,reservedIntent=null,initialOwner='local',onReadCloud=null,adoptThrows=false}={}){
+  const events=[];let owner=initialOwner,reservation=reservedIntent?{targetOwner:'B',intent:reservedIntent}:null;const model={state:{rows:['local']}},session={localGeneration:0},checksSession={};
   const ui=createOrdersUiCloud({
     model,files:{},tab:{primaryTab:true},session,checksSession,ui:{},modal:()=>{},supaConfigured:()=>true,toast:()=>{},closeModal:()=>events.push('close'),authPassword:async()=>{},
     localSnapshot:()=>{events.push('checkpoint');return true},markCloudPending:()=>events.push('pending'),getCloudPending:async()=>null,clearCloudPending:async()=>true,setCloud:()=>{},showSecondaryTabGuard:()=>{},
-    prepareCloudState:state=>structuredClone(state||model.state),render:()=>events.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({user:{id:'B'}}),readCloud:async()=>{events.push('read-main');return remote},
+    prepareCloudState:state=>structuredClone(state||model.state),render:()=>events.push('render'),writeStateToFolder:async()=>{},loadSession:()=>({user:{id:'B'}}),readCloud:async()=>{events.push('read-main');onReadCloud?.({session,model});return remote},
     applyOrderCloudState:state=>{events.push('apply-main');model.state=structuredClone(state)},refreshKupaReadout:async()=>true,
     syncSharedChecksFromCloud:async()=>{events.push('sync-shared');if(sharedFails)throw new Error('shared-failed')},requestCloudSave:async()=>{events.push('save-main');return true},restorePendingAgainstCloud:async()=>false,
     startPolling:()=>events.push('poll'),saveSession:()=>{},renderSettings:()=>{},resumeCalendarAfterCloudLogin:async()=>{},startFinanceAutoSync:()=>{},
     prepareAuthenticatedStorageOwner:async intent=>{events.push(`reserve:${intent}`);reservation??={targetOwner:'B',intent};return reservation},storageOwnerCurrent:()=>owner,storageOwnerAdoption:()=>reservation,
     adoptAuthenticatedStorageOwner:async intent=>{events.push(`adopt:${intent}`);owner='B';reservation=null;return true},
     startStorageV2OwnerTransfer:async({targetOwner,intent})=>{events.push(`transfer:${intent}`);assert.equal(targetOwner,'B');if(sharedFails)throw new Error('shared-failed');owner='B';return {mainRevision:5,sharedRevision:6}},
-    storageV2CloudOutboxActive:()=>false,storageV2PrimaryRequested:()=>v2,refreshStorageV2CloudState:async()=>null,initializeStorageV2CloudCursor:async()=>true,adoptStorageV2CloudHead:async()=>true,
+    storageV2CloudOutboxActive:()=>owner!=='local',storageV2PrimaryRequested:()=>v2,refreshStorageV2CloudState:async()=>({seq:0,base:{revision:3,state:{rows:['base']},ackSeq:0},pending:false,flight:null,control:null}),adoptStorageV2CloudHead:async()=>{events.push('adopt-v2-head');if(adoptThrows)throw new Error('injected-v2-adoption-failure');return true},
   });
   return {ui,events,model,session,get owner(){return owner}};
 }
 
-test('Orders local -> existing account reserves, hydrates Main+Shared, adopts owner, then renders',async()=>{
+test('Orders local V2 -> existing account activates only after detached Main+Shared recovery',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness();assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),true);assert.equal(h.owner,'B');
-    assert.ok(h.events.indexOf('reserve:load-account')<h.events.indexOf('apply-main'));
-    assert.ok(h.events.indexOf('sync-shared')<h.events.indexOf('adopt:load-account'));
-    assert.ok(h.events.indexOf('adopt:load-account')<h.events.indexOf('render'));
+    assert.ok(h.events.includes('transfer:load-account'));
+    assert.equal(h.events.includes('apply-main'),false);
+    assert.ok(h.events.indexOf('transfer:load-account')<h.events.indexOf('render'));
   }finally{cleanup()}
 });
 
-test('Orders local owner is not adopted or rendered when Shared preparation fails',async()=>{
+test('Orders local owner stays unchanged when detached Shared preparation fails',async()=>{
   const cleanup=installGlobals();try{
     const h=ordersHarness({sharedFails:true});assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);assert.equal(h.owner,'local');
-    assert.equal(h.events.some(x=>x.startsWith('adopt:')),false);assert.equal(h.events.includes('render'),false);if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+    assert.equal(h.events.some(x=>x.startsWith('adopt:')),false);assert.equal(h.events.includes('apply-main'),false);assert.equal(h.events.includes('render'),false);if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+  }finally{cleanup()}
+});
+
+test('Orders reserved upload intent is preserved when cloud is opened again',async()=>{
+  const cleanup=installGlobals();try{
+    const h=ordersHarness({reservedIntent:'upload-local'});
+    assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),true);
+    assert.ok(h.events.includes('transfer:upload-local'));
+    assert.equal(h.events.includes('transfer:load-account'),false);
+  }finally{cleanup()}
+});
+
+test('Orders account open never applies a cloud read over a concurrent local V2 edit',async()=>{
+  const cleanup=installGlobals();try{
+    const h=ordersHarness({initialOwner:'B',onReadCloud:({session,model})=>{session.localGeneration++;model.state.rows=['newer-local']}});
+    assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
+    assert.deepEqual(h.model.state.rows,['newer-local']);
+    assert.equal(h.events.includes('adopt-v2-head'),false);
+    assert.equal(h.events.includes('apply-main'),false);
+    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
+  }finally{cleanup()}
+});
+
+test('Orders account open leaves the visible model intact if V2 adoption fails',async()=>{
+  const cleanup=installGlobals();try{
+    const h=ordersHarness({initialOwner:'B',adoptThrows:true});
+    assert.equal(await h.ui.openCloud({quiet:true,startPoll:false}),false);
+    assert.deepEqual(h.model.state.rows,['local']);
+    assert.equal(h.events.includes('apply-main'),false);
+    if(h.session.cloudRecoveryTimer)clearTimeout(h.session.cloudRecoveryTimer);
   }finally{cleanup()}
 });
 

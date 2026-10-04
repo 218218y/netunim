@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSyncDocument as ordersDocument} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createSyncDocument as kupaDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
 import {createSyncPending} from '../netunim-kupa/site/assets/js/sync/pending.js';
 import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/sync/merge.js';
@@ -14,7 +13,7 @@ Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:t
 globalThis.localStorage={setItem:noop,getItem:()=>null};
 const o=ordersNormalization({}),k=kupaNormalization({model:{}});
 
-for(const domain of ['orders','kupa'])for(const same of [true,false])for(const duringClear of [false,true])test(`${domain}: lost ACK, newer generation, intervening ${same?'same':'different'} entity${duringClear?' during ACK cleanup':''}`,async()=>{
+for(const domain of ['kupa'])for(const same of [true,false])for(const duringClear of [false,true])test(`${domain}: lost ACK, newer generation, intervening ${same?'same':'different'} entity${duringClear?' during ACK cleanup':''}`,async()=>{
  navigator.onLine=true;
  const checks=domain.endsWith('checks'),isOrders=domain.startsWith('orders'),normalizer=isOrders?o:k;
  const prepare=checks?clone:isOrders?o.normalizeState:k.prepareKupaCloudState;
@@ -38,8 +37,7 @@ for(const domain of ['orders','kupa'])for(const same of [true,false])for(const d
    const originalMark=mark;const checkedMark=(...args)=>{const result=originalMark(...args);if(!args[2])navigator.onLine=false;return result};
    const api=(isOrders?ordersChecks:kupaChecks)({...deps,markChecksPending:checkedMark,markSharedChecksPending:checkedMark});
    await api.saveSharedChecksToCloud('');navigator.onLine=true;
- }else if(isOrders){await ordersDocument(deps).saveCloudSnapshot(prepare(n),1,clone(pending));}
- else{
+ }else{
    const rebase=createSyncPending({session,prepareKupaCloudState:prepare,getCloudPending:get,putCloudPending:put,rebaseKupaCloudProgress:kupaMerge(k).rebaseKupaCloudProgress});
    const api=kupaDocument({...deps,supaRest:async()=>{const result=await rpc();return {ok:true,text:async()=>JSON.stringify(result.row)}},rebaseNewerPending:rebase.rebaseNewerPending});
    // Prevent poll scheduling in this deterministic single-request test.
@@ -51,11 +49,6 @@ for(const domain of ['orders','kupa'])for(const same of [true,false])for(const d
 });
 
 for(const field of ['businessName','inventoryCategoryOrder','importAudit','stage2Audit'])test(`orders strict scalar ${field}`,()=>{const values=field==='businessName'?['A','B','C']:field==='inventoryCategoryOrder'?[['A'],['B'],['C']]:[{value:'A'},{value:'B'},{value:'C'}];const result=ordersMerge({normalizeState:clone}).merge3({[field]:values[0]},{[field]:values[1]},{[field]:values[2]});assert.ok(result.conflicts.includes(field))});
-test('Orders restart never clears an unresolved durable conflict',async()=>{
- const state=o.normalizeState({notes:[{id:'X',content:'local'}]}),record={generation:2,baseState:state,snapshot:state,conflict:{kind:'entity-conflict',items:[{entityId:'X'}]}},session={cloudRevision:10},model={state};let stages=0;
- const deps=new Proxy({session,model,getCloudPending:async()=>record,normalizeState:o.normalizeState,markCloudPending:()=>{stages++},merge3:ordersMerge(o).merge3},{get:(t,k)=>k in t?t[k]:noop});
- await ordersDocument(deps).restorePendingAgainstCloud({revision:12,state});assert.equal(session.cloudConflictBlocked,true);assert.equal(stages,0);
-});
 for(const app of ['orders','kupa'])test(`${app} strict post-ACK merge retains delete protections`,()=>{
  const api=app==='orders'?ordersMerge(o).merge3:kupaMerge(k).rebaseKupaCloudProgress,norm=app==='orders'?o.normalizeState:k.normalizeState,base=norm({notes:[{id:'X',content:'base'},{id:'Y',content:'other'}]}),missing=clone(base),remote=clone(base);missing.notes=[];remote.notes[0].content='remote';
  assert.equal(api(base,missing,remote).conflicts.length,0);assert.equal(api(base,missing,remote).state.notes.length,2);

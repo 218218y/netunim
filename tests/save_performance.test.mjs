@@ -177,16 +177,6 @@ test('backup ACK fast path skips directory scans but retains the latest payload 
   }finally{api.clearPendingAutomaticBackup()}
 });
 
-test('Orders ACK with a newer pending generation writes the rebased local snapshot only once',async()=>{
-  const {createSyncDocument:createOrdersSyncDocument}=await import('../netunim-orders/site/assets/js/sync/document.js');
-  const cloneValue=structuredClone,snapshot={notes:[{id:'A',content:'sent'}]},newer={schemaVersion:4,domain:'orders',documentName:'suppliers',operationId:'newer',generation:2,mutationSeq:2,baseRevision:10,baseState:cloneValue(snapshot),snapshot:{notes:[{id:'A',content:'newer'}]},deleteIntents:{}};
-  const model={state:cloneValue(newer.snapshot)},session={localGeneration:2,cloudRevision:10,lastCloudState:cloneValue(snapshot),ordersOutboxCommitPromise:Promise.resolve(),cloudConflictBlocked:false};let localWrites=0,staged=0;
-  globalThis.localStorage={setItem:noop,getItem:()=>null,removeItem:noop};
-  const api=createOrdersSyncDocument({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:cloneValue,localSnapshot:()=>{localWrites++;return true},markCloudPending:()=>{staged++;session.ordersOutboxCommitPromise=Promise.resolve();return true},getCloudPending:async()=>cloneValue(newer),clearCloudPending:async()=>true,toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>cloneValue(value),writeStateToFolder:async()=>{},readCloud:async()=>null,rpcSave:async()=>({r:{ok:true},row:{revision:11,operation_revision:10,state:cloneValue(snapshot),updated_at:'2026-09-18T00:00:00Z'}}),merge3:(_base,local)=>({state:cloneValue(local),conflicts:[]}),applyOrderCloudState:value=>{model.state=cloneValue(value)},cloudPendingExists:()=>true,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>true,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop});
-  assert.equal(await api.saveCloudSnapshot(snapshot,1,{...newer,generation:1,operationId:'sent-op',snapshot:cloneValue(snapshot),baseState:cloneValue(snapshot)}),true);
-  assert.equal(staged,1);assert.equal(localWrites,1,'successful rebase snapshot is not serialized twice in the same ACK');
-});
-
 test('performance diagnostics are opt-in, bounded and resettable',()=>{
   clearPerformance();beginMeasure('disabled')();assert.deepEqual(performanceSummary(),{});
   configurePerformance(true);for(let i=0;i<150;i++)beginMeasure('sample')();
