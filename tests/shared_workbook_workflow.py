@@ -64,7 +64,7 @@ def run():
             folder=ROOT/'.work/workbook-preview';folder.mkdir(parents=True,exist_ok=True)
             (folder/f'{app}.png').write_bytes(base64.b64decode(shot['result']['data']))
             if app == 'orders':
-                assert browser.evaluate("!Object.hasOwn(loadLocal()||{},'notesSheet')")
+                assert browser.evaluate("localStorage.getItem('orders.management.state.v1')===null"), 'Orders workbook edits must not recreate a V1 browser snapshot'
             assert not browser.drain_serious_errors()
     print('PASS shared workbook: independent sheets, notes default, TSV paste, totals, keyboard, persistence, desktop/mobile layout')
 
