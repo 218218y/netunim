@@ -94,12 +94,12 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     let recovered=await active.open();
     if(recovered){
       if(!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_parity_mismatch');
-      if(recovered.appMetadata?.storageRole&&!['primary','shadow'].includes(recovered.appMetadata.storageRole))throw new Error('storage_local_birth_role_invalid');
+      if(recovered.appMetadata?.storageRole!=='primary')throw new Error('storage_local_birth_role_invalid');
     }
     const cloud=recovered?await active.cloudState():null;
     if(cloud?.base||cloud?.flight||cloud?.control)throw new Error('storage_local_birth_cloud_head_exists');
-    if(!recovered||recovered.appMetadata?.storageRole!=='primary'){
-      await active.install(canonical,{expectedEpoch:recovered?.epoch??null,appMetadata:{...appMetadata,storageRole:'primary',migrationIntent:'local-birth',sourceOwner:'local',mainProjectionVersion:2}});
+    if(!recovered){
+      await active.install(canonical,{expectedEpoch:null,appMetadata:{...appMetadata,storageRole:'primary',migrationIntent:'local-birth',sourceOwner:'local',mainProjectionVersion:2}});
       recovered=await active.recover();
     }
     if(scopedIdentity!==currentOwner()||identity!==scopedIdentity||!equalSyncJson(recovered.state,canonical))throw new Error('storage_local_birth_owner_changed');
@@ -119,10 +119,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       const finalState=preparedChanges?.length===1&&preparedChanges[0]?.type==='replace-state'?preparedChanges[0].state:prepared;
       const idempotent=!!recovered&&recovered.appMetadata?.bootstrapOperationId===metadata.bootstrapOperationId&&recovered.appMetadata?.migrationIntent===intent&&recovered.appMetadata?.sourceOwner===sourceOwner&&recovered.appMetadata?.targetOwner===scopedIdentity&&cloud?.base?.revision===revision&&equalSyncJson(cloud.base.state,cloudState)&&equalSyncJson(recovered.state,finalState);
       if(idempotent)result=recovered;
-      else{
-        if(!recovered||recovered.appMetadata?.storageRole==='primary'||cloud?.base||cloud?.flight||cloud?.control||!equalSyncJson(checkpointState(recovered.state),finalState))throw new Error('storage_bootstrap_existing_head_mismatch');
-        result=await active.initializeCloudHead(revision,prepared,{cloudState,changes:preparedChanges,validateBase,appMetadata:metadata,replaceExistingState:recovered.state});
-      }
+      else throw new Error('storage_bootstrap_existing_head_mismatch');
     }
     if(identity!==scopedIdentity||currentOwner()!==scopedIdentity)throw new Error('storage_owner_changed_during_recovery');
     authoritative=true;return result;

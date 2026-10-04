@@ -96,17 +96,15 @@ test('Main bootstrap initialization is idempotent only for the same durable boot
 });
 
 
-test('Main bootstrap atomically promotes an identical shadow checkpoint instead of deleting it',async()=>{
+test('Main bootstrap refuses even an identical historical shadow checkpoint',async()=>{
   const db=memoryDb(),current=emptyOrders();current.notes=[{id:'shadow-N1',content:'already observed'}];
   const shadow=createStorageJournal({owner:'account-A:orders',schema:STORAGE_SCHEMAS.orders,validate:validateOrders,db,emergency:emergencyStore()});
   await shadow.install(cloudProjection(current),{expectedEpoch:null,appMetadata:{storageRole:'shadow',migrationIntent:'shadow-observation',sourceOwner:'account-A',mainProjectionVersion:2}});
   const before=await db.load('account-A:orders');assert.equal(before.bases,null);assert.equal(before.metadata.seq,0);
 
   const runtime=makeRuntime(db,'account-A',()=> 'preparing');
-  const recovered=await runtime.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-promote:main'}});
-  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,cloudProjection(current));
-  const stored=await db.load('account-A:orders');assert.equal(stored.journal.length,1);assert.equal(stored.bases.data.revision,0);assert.equal(stored.metadata.seq,1);
-  const cloud=await runtime.cloudState({validateBase:()=>{}});assert.equal(cloud.pending,true);assert.equal(cloud.base.ackSeq,0);
+  await assert.rejects(runtime.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-must-reset:main'}}),/existing_head_mismatch/);
+  const stored=await db.load('account-A:orders');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,cloudProjection(current));
 });
 
 test('Main bootstrap refuses to promote a shadow checkpoint whose business state diverged',async()=>{

@@ -50,19 +50,6 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
     tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
   })}
-  function replaceShadowWithCloudHead(owner,expectedEpoch,expectedSeq,checkpoint,base,writer,operation=null){return change(owner,(tx,current,done)=>{
-    if(!current.checkpoints||!current.metadata||current.metadata.epoch!==expectedEpoch||Number(current.metadata.seq)!==Number(expectedSeq))throw new Error('storage_shadow_promotion_race');
-    // A shadow namespace must never own cloud authority. Any existing cursor,
-    // flight or control means this is not a shadow-only promotion and must stop.
-    if(current.bases||current.flights||current.controls)throw new Error('storage_shadow_cloud_state_invalid');
-    const prior=readStorageRecord(current.checkpoints),head=readStorageRecord(checkpoint),cursor=readStorageRecord(base),entry=operation&&readStorageRecord(operation);
-    if(prior.owner!==owner||head.owner!==owner||cursor.owner!==owner||head.epoch!==cursor.epoch||head.seq!==0||cursor.ackSeq!==0||!Number.isSafeInteger(cursor.revision)||cursor.revision<0)throw new Error('storage_initialization_invalid');
-    if(entry&&(entry.owner!==owner||entry.epoch!==head.epoch||entry.seq!==1))throw new Error('storage_initialization_invalid');
-    for(const record of current.journal)tx.objectStore('journal').delete([owner,record.data.epoch,record.data.seq]);
-    tx.objectStore('checkpoints').put(checkpoint,owner);tx.objectStore('bases').put(base,owner);tx.objectStore('flights').delete(owner);tx.objectStore('controls').delete(owner);
-    if(entry)tx.objectStore('journal').put(operation,[owner,head.epoch,1]);
-    tx.objectStore('metadata').put({epoch:head.epoch,seq:entry?1:0,writer},owner);done(true);
-  })}
   function append(owner,epoch,writer,record){return transact('readwrite',(tx,done,fail)=>{
     // The hot path reads two small records, never the checkpoint or full journal.
     const operation=readStorageRecord(record),key=[owner,epoch,operation.seq],metadata=tx.objectStore('metadata').get(owner),existing=tx.objectStore('journal').get(key);let remaining=2;
@@ -461,5 +448,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,replaceShadowWithCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,fencedLegacyInactive};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,fencedLegacyInactive};
 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
+import {createStorageJournal} from '../shared/storage-journal.js';
 import {readStorageRecord} from '../shared/storage-journal-model.js';
 
 const clone=structuredClone;
@@ -112,20 +113,16 @@ test('Shared Checks V2 allows IDB durability after emergency quota failure and f
   await assert.rejects(restarted.cloudState(),/owner_changed/);
 });
 
-test('Shared Checks V2 never promotes a shadow checkpoint or transfers account A data into account B implicitly',async()=>{
+test('Shared Checks V2 refuses old shadow heads and cross-account initialization',async()=>{
   const db=memoryDb(),emergency=emergencyStore(),owner=()=> 'A',seed=state([check('A')]);
-  const shadow=createSharedChecksStorageV2({owner,primary:()=>true,role:'shadow',db,emergency});
-  await shadow.open({migrationState:seed,migrationIntent:'shadow-observation',sourceOwner:'A'});
-  await assert.rejects(shadow.captureCloudCursor(1,seed,{legacyPendingClean:true}),/shadow_cloud_write_forbidden/);
-  await assert.rejects(shadow.materializeFlight({operationId:'forbidden'}),/shadow_cloud_write_forbidden/);
+  assert.throws(()=>createSharedChecksStorageV2({owner,primary:()=>true,role:'shadow',db,emergency}),/role_invalid/);
+  const oldJournal=createStorageJournal({owner:'A:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db,emergency});
+  await oldJournal.install(seed,{appMetadata:{storageRole:'shared-checks-shadow'}});
   const primary=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});
   await assert.rejects(primary.open(),/role_mismatch/);
   assert.equal(primary.ready,false);
   assert.throws(()=>primary.append([put('A')],seed),/not_open/);
-  await assert.rejects(primary.promoteVerifiedShadow(seed),/promotion_not_verified/);
-  const promoted=await primary.promoteVerifiedShadow(seed,{legacyPendingClean:true});
-  assert.equal(promoted.appMetadata.storageRole,'shared-checks-primary');
-  const restarted=createSharedChecksStorageV2({owner,primary:()=>true,db,emergency});assert.deepEqual((await restarted.open()).state,seed);
+  const stored=await db.load('A:shared-checks');assert.deepEqual(stored.checkpoints.data.state,seed);assert.equal(stored.bases,null);
   const separate=createSharedChecksStorageV2({owner:()=> 'B',primary:()=>true,db:memoryDb(),emergency});
   await assert.rejects(separate.open({migrationState:seed,migrationIntent:'legacy-upgrade',sourceOwner:'A'}),/transfer_intent_required/);
 });
