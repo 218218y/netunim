@@ -25,7 +25,7 @@ function fixture({rpcSave,readCloud=async()=>null,merge3=(_base,local)=>({state:
   };
   const wrappedRpc=async(...args)=>{sent.push({snapshot:clone(args[0]),expected:args[1],operationId:args[2]});return rpcSave?rpcSave(...args):{r:{ok:true},row:{revision:args[1]+1,state:clone(args[0]),updated_at:'2026-09-22T00:00:00Z'}}};
   const refreshState=async()=>{if(failRefreshAfterAck&&acks.length)throw new Error('injected post-ACK refresh failure');return state()};
-  const api=createSyncDocument({model,files:{},session,ui:{},tab:{primaryTab:true},normalizeState:clone,localSnapshot:()=>true,markCloudPending:()=>{throw new Error('legacy outbox must not be used')},getCloudPending:async()=>null,clearCloudPending:async()=>true,toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder:async()=>{},readCloud,rpcSave:wrappedRpc,merge3,applyOrderCloudState:value=>{model.state=clone(value)},cloudPendingExists:()=>seq>ackSeq,setSave:noop,cloudEnabled:()=>true,loadCloudPendingState:()=>null,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
+  const api=createSyncDocument({model,files:{},session,tab:{primaryTab:true},toast:noop,setCloud:noop,prepareCloudState:(value=model.state)=>clone(value),writeStateToFolder:async()=>{},readCloud,rpcSaveV2:wrappedRpc,merge3,applyOrderCloudState:value=>{model.state=clone(value)},cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a)===JSON.stringify(b),cloudHasLocalWork:()=>seq>ackSeq,render:noop,readCloudMeta:async()=>null,refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,refreshStorageV2CloudState:refreshState,materializeStorageV2CloudFlight:materialize,acknowledgeStorageV2CloudFlight:acknowledge,rejectStorageV2CloudFlight:reject,setStorageV2CloudControl:async value=>{control=clone(value);return clone(value)},storageV2CommitPromise:()=>Promise.resolve()});
   return {api,model,session,sent,acks,rejects,legacyWrites,getState:state,getControl:()=>clone(control),mutate(value){model.state=clone(value);seq++;session.localGeneration++},setControl(value){control=clone(value)}};
 }
 
@@ -68,4 +68,30 @@ test('Orders V2 ACK checkpoints edits that arrived during RPC while advancing cu
   const f=fixture({rpcSave:async(snapshot,expected)=>{calls++;if(calls===1){started.resolve();await release.promise}return {r:{ok:true},row:{revision:expected+1,state:clone(snapshot)}}},merge3:(_base,local)=>({state:clone(local),conflicts:[]})});
   const saving=f.api.requestCloudSave('sync');await started.promise;f.mutate({notes:[{id:'A',content:'later'}]});release.resolve();
   assert.equal(await saving,true);assert.equal(f.sent.length,2);assert.notEqual(f.sent[0].operationId,f.sent[1].operationId);assert.equal(f.acks.length,2);assert.equal(f.acks[0].currentState.notes[0].content,'later');assert.equal(f.acks[0].newRevision,11);assert.equal(f.acks[1].newRevision,12);assert.equal(f.model.state.notes[0].content,'later');assert.equal(f.getState().pending,false);
+});
+
+test('Orders remote refresh leaves the visible state unchanged when durable V2 adoption fails',async()=>{
+  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
+  for(const method of ['cloudPoll','refreshForMorningRecovery']){
+    const local={notes:[{id:'A',content:'local'}],checks:[{id:'C',status:'open'}]};
+    const remote={notes:[{id:'A',content:'remote'}]};
+    const model={state:clone(local)},session={localGeneration:0,cloudRevision:10,lastCloudState:clone(local),cloudBusy:false};
+    let adopted=0,rendered=0;
+    const api=createSyncDocument({
+      model,files:{},session,tab:{primaryTab:true},toast:noop,setCloud:noop,
+      prepareCloudState:state=>clone(state),writeStateToFolder:async()=>{},
+      readCloud:async()=>({revision:11,state:clone(remote)}),rpcSaveV2:async()=>{throw new Error('unexpected write')},
+      merge3:noop,applyOrderCloudState:state=>{model.state={...clone(state),checks:clone(model.state.checks)}},
+      composeOrderCloudState:(state,current)=>({...clone(state),checks:clone(current.checks)}),
+      cloudEnabled:()=>true,sameOrderCloudData:(a,b)=>JSON.stringify(a.notes)===JSON.stringify(b.notes),
+      cloudHasLocalWork:()=>false,render:()=>{rendered++},readCloudMeta:async()=>({revision:11}),
+      refreshKupaReadout:async()=>true,pollSharedChecks:async()=>{},refreshCloudTimestamp:noop,
+      adoptStorageV2CloudHead:async(_revision,state)=>{adopted++;assert.deepEqual(state.checks,local.checks);throw new Error('idb adoption failed')}
+    });
+    assert.equal(await api[method](),false,method);
+    assert.equal(adopted,1,method);
+    assert.deepEqual(model.state,local,method);
+    assert.equal(session.cloudRevision,10,method);
+    assert.equal(rendered,0,method);
+  }
 });

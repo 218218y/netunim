@@ -202,6 +202,17 @@ for label, app_root in (("kupa", K), ("orders", O)):
        and "resumeStorageTransition" not in lifecycle_source,
        f"{label}: production cannot resume V1 drain or begin legacy cutover")
 
+orders_main=(O / "site/assets/js/main.js").read_text(encoding="utf-8")
+orders_document=(O / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
+orders_persistence=(O / "site/assets/js/storage/persistence.js").read_text(encoding="utf-8")
+orders_transport=(O / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
+orders_lifecycle=(O / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+ok("markCloudPending" not in orders_main and "markCloudPending" not in orders_persistence
+   and all(symbol not in orders_document for symbol in ("markCloudPending", "getCloudPending", "saveCloudSnapshot", "restorePendingAgainstCloud"))
+   and "save_order_management_document_v5" not in orders_transport
+   and "markCloudPending" not in orders_lifecycle,
+   "orders: ordinary Main save, startup and transport cannot reach a V1 outbox or v5 writer")
+
 main_schema=(ROOT / "shared/storage-v2-schema.js").read_text(encoding="utf-8")
 main_runtime=(ROOT / "shared/storage-v2-runtime.js").read_text(encoding="utf-8")
 main_replay=(ROOT / "shared/storage-journal-model.js").read_text(encoding="utf-8")
@@ -240,8 +251,9 @@ ok('pendingAdoption' in owner_core and 'reserveLocalAdoption' in owner_core and 
    'storage owner: local-to-account target is durably reserved before owner activation')
 ok('storage_owner_local_adoption_auth_mismatch' in owner_core and 'requiredOwner' in owner_core,
    'storage owner: interrupted local adoption rejects authentication to a different account')
-ok("prepareAuthenticatedStorageOwner" in orders_cloud_ui and "reserve:upload-local" not in orders_cloud_ui and "storage_owner_local_pending_requires_upload" in orders_cloud_ui,
-   'orders cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
+ok("startStorageV2OwnerTransfer" in orders_cloud_ui and "reserved?.intent==='upload-local'?'upload-local':'load-account'" in orders_cloud_ui
+   and 'getCloudPending' not in orders_cloud_ui and 'restorePendingAgainstCloud' not in orders_cloud_ui,
+   'orders cloud UI: reserved intent uses detached V2 owner transfer without a legacy pending path')
 ok("prepareAuthenticatedStorageOwner" in kupa_cloud_ui and "storage_owner_local_pending_requires_upload" in kupa_cloud_ui,
    'kupa cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
 ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),

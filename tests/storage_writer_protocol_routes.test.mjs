@@ -9,12 +9,12 @@ import {checkLegacyAccountStartup} from '../shared/storage-v2-server-protocol.js
 const response={ok:true,text:async()=>JSON.stringify([{revision:1,state:{}}])};
 const ordersState=()=>{const state=structuredClone(INITIAL_STATE);delete state.checks;return state};
 
-test('V2 transports use v6 while the retained legacy drain still uses v5',async()=>{
+test('Orders Main transport exposes only v6; remaining Shared compatibility is explicit',async()=>{
   const ordersPaths=[],kupaPaths=[];
   const orders=ordersTransport({supaFetch:async path=>{ordersPaths.push(path);return response}});
   const kupa=kupaTransport({supaRest:async path=>{kupaPaths.push(path);return response}});
   const state=ordersState();
-  await orders.rpcSave(state,0,'legacy-main');
+  assert.equal(orders.rpcSave,undefined);
   await orders.rpcSaveV2(state,0,'v2-main');
   await orders.rpcSaveSharedChecks([],0,'legacy-shared');
   await orders.rpcSaveSharedChecksV2([],0,'v2-shared');
@@ -26,7 +26,6 @@ test('V2 transports use v6 while the retained legacy drain still uses v5',async(
   await kupa.stageRestoreGroup(group);
   await kupa.applyRestoreGroup('55555555-5555-4555-8555-555555555555');
   assert.deepEqual(ordersPaths,[
-    '/rest/v1/rpc/save_order_management_document_v5',
     '/rest/v1/rpc/save_order_management_document_v6',
     '/rest/v1/rpc/save_shared_checks_document_v5',
     '/rest/v1/rpc/save_shared_checks_document_v6',
