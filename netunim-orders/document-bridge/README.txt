@@ -1,4 +1,4 @@
-NETUNIM Document Bridge v37 - paged Everything search + AcroForm-aware PDF content + native preview
+NETUNIM Document Bridge v38 - paged Everything search + AcroForm-aware PDF content + native preview
 ======================================================================
 
 Shared website integration
@@ -181,8 +181,10 @@ Scheduled PDF maintenance
 The Bridge listener never scans PDFs on startup, warm or search. Windows Task
 Scheduler starts a separate short-lived Node process daily at 12:00, after a
 missed start when Windows permits, with low priority and AC power required.
-Each run handles at most 300 changed PDFs or 15 minutes, whichever comes first.
-The process exits when the run finishes. A second run cannot overlap the first.
+Each scheduled run handles at most 300 changed PDFs or 15 minutes, whichever comes first.
+A manual Force refresh is intentionally unbounded by file count or elapsed time and continues
+until every currently changed candidate has been inspected, unless the user stops it. The
+process exits when the run finishes. A second run cannot overlap the first.
 
 Each normal daily maintenance window performs a full PDF metadata reconciliation
 against Everything so newly copied or moved PDFs are discovered even when their
@@ -205,8 +207,9 @@ protects journal/snapshot changes from concurrent preview enrichment.
 Run maintenance manually if needed:
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NetunimDocumentBridge\run_pdf_maintenance.ps1" -Force
 The runner reads both active-runtime.txt and node-runtime.txt, so the scheduled
-worker uses the same pinned private Node executable as the listener. The manual
-run uses the same 300-file and 15-minute limits unless -MaxFiles N is supplied.
+worker uses the same pinned private Node executable as the listener. A manual
+-Force run has no file-count or 15-minute cap by default; -MaxFiles N can be used
+to impose an explicit file-count cap for command-line maintenance when desired.
 The status endpoint exposes the last attempt, successful run and result counters;
 bridge.log records trigger, bytes read, CPU time and elapsed time.
 
@@ -243,7 +246,7 @@ Run install_document_bridge.bat on each PC. The installer:
   so a short-lived Windows file/current-directory handle cannot block an upgrade;
 - cleans up verified old Bridge cmd/Node/NetunimPreviewHost helper processes and
   removes inactive Bridge/Node runtimes only as best-effort maintenance after
-  the new v37 runtime has passed its health check;
+  the new v38 runtime has passed its health check;
 - opens %LOCALAPPDATA%\NetunimDocumentBridge\INSTALLATION-LOG.txt.
 The website key is near the top of this file.
 

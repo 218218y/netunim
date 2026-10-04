@@ -4,7 +4,7 @@ import {
   bridgeNodeVersionSupported,buildContentMatchInfo,buildContentQuery,buildDocumentQuery,buildEverythingQuery,buildEsContentPreviewArgs,buildEsCountArgs,buildEsPdfInventoryArgs,buildEsRecentFilesArgs,buildEsSearchArgs,compareDocumentRows,contentSearchMatches,documentExtension,documentFileTypeEverythingFilter,documentFileTypeIncludesPdf,mergeDocumentResults,normalizeDocumentFileType,normalizeDocumentSort,RECENT_RESULT_LIMIT,
   normalizeSearchText,normalizeSearchScopePath,officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from '../netunim-orders/document-bridge/lib.mjs';
-import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
+import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from '../netunim-orders/document-bridge/pdf-index-policy.mjs';
 import {deleteLocalDocumentResult} from '../netunim-orders/site/assets/js/ui/document-result-menu.js';
 import {createDomainsDocumentSearch} from '../netunim-orders/site/assets/js/domains/documents/search-source.js';
 
@@ -168,6 +168,14 @@ test('PDF maintenance inventory planning makes manual refresh authoritative and 
   const retry=pdfMaintenanceInventoryPlan({force:false,now,lastReconcileAt:recent,lastIncrementalScanAt:recent,reconcileIntervalMs:interval});
   assert.equal(retry.full,false,'continuation work inside the same daily window may keep the fast incremental candidate query');
   assert.match(retry.modifiedSince,/^2026-10-01$/);
+});
+
+test('PDF maintenance keeps background work bounded but lets manual refresh drain every changed PDF',()=>{
+  assert.deepEqual(pdfMaintenanceRunLimits({manual:false,scheduledMaxFiles:300,scheduledMaxMs:15*60*1000}),{maxChanged:300,maxMs:15*60*1000});
+  const manual=pdfMaintenanceRunLimits({manual:true,scheduledMaxFiles:300,scheduledMaxMs:15*60*1000});
+  assert.equal(manual.maxChanged,Number.POSITIVE_INFINITY,'manual website refresh must not stop after the scheduled 300-file batch');
+  assert.equal(manual.maxMs,0,'manual website refresh must not inherit the scheduled 15-minute deadline');
+  assert.deepEqual(pdfMaintenanceRunLimits({manual:true,requestedMaxFiles:25,scheduledMaxFiles:300,scheduledMaxMs:15*60*1000}),{maxChanged:25,maxMs:0},'an explicit command-line MaxFiles remains an intentional manual cap');
 });
 
 test('PDF maintenance skips current negative and geometry-only records, and backs off failures',()=>{

@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 set "APPROOT=%LOCALAPPDATA%\NetunimDocumentBridge"
 set "LEGACYAPP=%APPROOT%\app"
-set "RUNTIMENAME=app-v37-%RANDOM%-%RANDOM%"
+set "RUNTIMENAME=app-v38-%RANDOM%-%RANDOM%"
 set "RUNTIME=%APPROOT%\%RUNTIMENAME%"
 set "STAGING=%APPROOT%\app-staging-%RANDOM%-%RANDOM%"
 set "ACTIVEFILE=%APPROOT%\active-runtime.txt"
@@ -102,7 +102,7 @@ rem The new runtime is validated before the old runtime is stopped.
 "%NODE_EXE%" "%STAGING%\server.mjs" --doctor --allow-unready-task
 if not "%ERRORLEVEL%"=="0" goto :doctor_error
 
-rem Stop the current listener first. v37 activation is side-by-side, so a stale
+rem Stop the current listener first. v38 activation is side-by-side, so a stale
 rem Windows handle in an older runtime can never block installation of the new one.
 "%NODE_EXE%" "%STAGING%\server.mjs" --stop-existing
 if not "%ERRORLEVEL%"=="0" goto :stop_error

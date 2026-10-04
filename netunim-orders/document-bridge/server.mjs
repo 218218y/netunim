@@ -13,7 +13,7 @@ import {
   officePreviewKind,structuredPreviewKind,originAllowed,parseEsContentPreview,parseEsCount,parseEsJson,parseRegistryInstallLocation,
 } from './lib.mjs';
 import {buildPdfFormMatchAnchors,extractInteractivePdfText,PDF_FORM_MAX_BYTES,verifyNodePdfJsRuntime} from './pdf_form_index.mjs';
-import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan} from './pdf-index-policy.mjs';
+import {pdfIndexNeedsInspection,pdfMaintenanceInventoryPlan,pdfMaintenanceRunLimits} from './pdf-index-policy.mjs';
 
 const execFile=promisify(execFileCb);
 const APP_ROOT=process.env.NETUNIM_DOCUMENT_BRIDGE_HOME||path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'AppData','Local'),'NetunimDocumentBridge');
@@ -402,11 +402,12 @@ async function rebuildPdfFormIndexBacklog({signal=null,full=false,modifiedSince=
   if(removalRecords.length)await appendPdfIndexJournal(removalRecords);
   return {pdfCount:rows.length,changed:changed.length,removed};
 }
-async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,onProgress=null,force=false,reason='scheduled'}={}){
+async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,maxMs=PDF_FORM_MAINTENANCE_MAX_MS,onProgress=null,force=false,reason='scheduled'}={}){
   if(shuttingDown||pdfMaintenanceStopRequested)return {pdfCount:pdfFormIndexInventoryCount,changed:pdfFormIndexPending,processed:0,pending:pdfFormIndexPending,indexed:0,failed:0,removed:0,cached:pdfFormIndex.size,interactive:[...pdfFormIndex.values()].filter(entry=>entry.hasForm&&!entry.failed).length,aborted:true,elapsedMs:0};
   if(pdfFormIndexRefreshPromise)return pdfFormIndexRefreshPromise;
   const controller=new AbortController();pdfFormIndexRefreshAbortController=controller;
-  const limitTimer=setTimeout(()=>controller.abort(),PDF_FORM_MAINTENANCE_MAX_MS);limitTimer.unref?.();
+  const boundedMaxMs=Number.isFinite(Number(maxMs))?Math.max(0,Math.trunc(Number(maxMs))):0;
+  const limitTimer=boundedMaxMs>0?setTimeout(()=>controller.abort(),boundedMaxMs):null;limitTimer?.unref?.();
   const task=(async()=>{
     await loadPdfFormIndex();const started=Date.now(),cpuStarted=process.cpuUsage();let removed=0,indexed=0,failed=0,processed=0,aborted=false,bytesRead=0;
     const maintenance=await readJsonFile(PDF_FORM_MAINTENANCE_PATH,{});
@@ -419,7 +420,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
     const selected=pdfFormIndexBacklog.splice(0,boundedMax);
     if(typeof onProgress==='function')onProgress({phase:'start',pdfCount:pdfFormIndexInventoryCount,changed:changedBefore,selected:selected.length,processed:0,indexed,failed});
     for(const row of selected){
-      if(shuttingDown||controller.signal.aborted||Date.now()-started>=PDF_FORM_MAINTENANCE_MAX_MS){aborted=true;break}
+      if(shuttingDown||controller.signal.aborted||(boundedMaxMs>0&&Date.now()-started>=boundedMaxMs)){aborted=true;break}
       const key=pdfIndexKey(row.fullPath);
       try{
         const extracted=await extractInteractivePdfText(row.fullPath,{maxBytes:PDF_FORM_MAX_BYTES,signal:controller.signal,onBytesRead:count=>{bytesRead+=count}});
@@ -460,7 +461,7 @@ async function refreshPdfFormIndex({maxChanged=PDF_FORM_MAINTENANCE_MAX_FILES,on
     await writeJsonFile(PDF_FORM_MAINTENANCE_PATH,maintenance).catch(()=>{});
     await appendLog(`PDF_FORM_INDEX_MAINTENANCE_FAILED trigger=${reason} error=${JSON.stringify(maintenance.lastFailure)}`);
     throw error;
-  }finally{clearTimeout(limitTimer);if(pdfFormIndexRefreshPromise===task)pdfFormIndexRefreshPromise=null;if(pdfFormIndexRefreshAbortController===controller)pdfFormIndexRefreshAbortController=null}
+  }finally{if(limitTimer)clearTimeout(limitTimer);if(pdfFormIndexRefreshPromise===task)pdfFormIndexRefreshPromise=null;if(pdfFormIndexRefreshAbortController===controller)pdfFormIndexRefreshAbortController=null}
 }
 async function preparePdfFormIndexForSearch(){
   try{await loadPdfFormIndex()}catch(error){await appendLog(`PDF_FORM_INDEX_LOAD_FAILED ${error?.message||error}`);return {partial:true}}
@@ -883,10 +884,10 @@ async function main(){
   if(arg==='--init'){await init();return}if(arg==='--doctor'){await printDoctor({allowUnreadyScheduledTask:process.argv.slice(3).includes('--allow-unready-task')});return}if(arg==='--ensure-everything'){await init();const probe=await probeEverything({fresh:true,autoStart:true});console.log(`${probe.everythingVersion||'unknown'} ${probe.everythingExecutable||''}`.trim());return}if(arg==='--refresh-pdf-index'){
     if(process.send)process.on('message',message=>{if(message?.type==='stop-pdf-maintenance'){pdfMaintenanceStopRequested=true;pdfFormIndexRefreshAbortController?.abort()}});
     await init();await probeEverything({fresh:true,autoStart:true});
-    const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value)));
-    const maxChanged=maxArg?Math.max(0,Number(maxArg.split('=')[1])||0):PDF_FORM_MAINTENANCE_MAX_FILES;
+    const extraArgs=process.argv.slice(3),maxArg=extraArgs.find(value=>/^--max-files=\d+$/.test(String(value))),manual=extraArgs.includes('--force');
+    const {maxChanged,maxMs}=pdfMaintenanceRunLimits({manual,requestedMaxFiles:maxArg?Number(maxArg.split('=')[1]):null,scheduledMaxFiles:PDF_FORM_MAINTENANCE_MAX_FILES,scheduledMaxMs:PDF_FORM_MAINTENANCE_MAX_MS});
     let lastPrinted=0;
-    const result=await withFileLock(PDF_FORM_MAINTENANCE_LOCK_PATH,()=>refreshPdfFormIndex({maxChanged,force:extraArgs.includes('--force'),reason:extraArgs.includes('--force')?'manual':'scheduled',onProgress:progress=>{
+    const result=await withFileLock(PDF_FORM_MAINTENANCE_LOCK_PATH,()=>refreshPdfFormIndex({maxChanged,maxMs,force:manual,reason:manual?'manual':'scheduled',onProgress:progress=>{
       if(process.send)void sendMaintenanceIpc({type:'pdf-maintenance-progress',progress});
       if(progress.phase==='start'){console.log(`Interactive PDF index scan: ${progress.pdfCount} PDF files, ${progress.changed} need inspection; processing ${progress.selected} now.`);return}
       if(progress.processed===progress.selected||progress.processed-lastPrinted>=4){lastPrinted=progress.processed;console.log(`Interactive PDF index progress: ${progress.processed}/${progress.selected}`)}

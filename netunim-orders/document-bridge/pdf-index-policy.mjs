@@ -17,3 +17,9 @@ export function pdfMaintenanceInventoryPlan({force=false,now=Date.now(),lastReco
   const full=!!force||!Number.isFinite(reconcileAt)||now-reconcileAt>=interval||!lastIncrementalScanAt;
   return {full,modifiedSince:full?'':localCheckpointDay(lastIncrementalScanAt)};
 }
+
+export function pdfMaintenanceRunLimits({manual=false,requestedMaxFiles=null,scheduledMaxFiles=300,scheduledMaxMs=15*60*1000}={}){
+  const scheduledFiles=Math.max(0,Math.trunc(Number(scheduledMaxFiles)||0)),scheduledMs=Math.max(0,Math.trunc(Number(scheduledMaxMs)||0));
+  const requested=requestedMaxFiles===null||requestedMaxFiles===''?NaN:Number(requestedMaxFiles),hasRequested=Number.isFinite(requested)&&requested>=0;
+  return {maxChanged:hasRequested?Math.trunc(requested):(manual?Number.POSITIVE_INFINITY:scheduledFiles),maxMs:manual?0:scheduledMs};
+}
