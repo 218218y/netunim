@@ -20,4 +20,5 @@ cloudTransport.rpcSave=async(snapshot,expected)=>{
  if(window.auditCloudHead)window.auditCloudHead=structuredClone(row);
  return {r:{ok:true},row};
 };
+cloudTransport.rpcSaveV2=(...args)=>cloudTransport.rpcSave(...args);
 """
