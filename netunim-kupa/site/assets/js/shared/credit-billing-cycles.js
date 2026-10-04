@@ -105,6 +105,23 @@ function nextDateForBillingDay(day,reference,transactionDate){
 }
 
 function dateForBillingMonth(day,key){const match=/^(\d{4})-(\d{2})$/.exec(String(key||''));if(!match)return '';const year=Number(match[1]),month=Number(match[2]);return `${key}-${pad2(Math.min(day,daysInMonth(year,month)))}`}
+function billingCycleDateForMonth(day,key){
+  const nominal=dateForBillingMonth(day,key);if(!nominal)return '';
+  if((day===10||day===15)&&new Date(`${nominal}T00:00:00Z`).getUTCDay()===6){
+    const [year,month,date]=nominal.split('-').map(Number),shifted=new Date(Date.UTC(year,month-1,date+1));
+    return `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth()+1)}-${pad2(shifted.getUTCDate())}`;
+  }
+  return nominal;
+}
+
+export function creditAccountStatementCycleDateData(account={},value=''){
+  const eventDate=creditBillingISODate(value);if(!eventDate)return {date:'',nominalDay:null,source:'unassigned',confidence:'unassigned'};
+  const historicalDay=inferredBillingDay(account),issuerDate=creditBillingISODate(account?.balanceDate),issuerDay=issuerDate?nominalBillingDay(issuerDate):null,day=historicalDay??issuerDay;
+  if(day===null)return {date:'',nominalDay:null,source:'unassigned',confidence:'unassigned'};
+  let key=eventDate.slice(0,7),date=billingCycleDateForMonth(day,key);
+  if(date&&date<eventDate){key=addMonthsISO(`${key}-01`,1).slice(0,7);date=billingCycleDateForMonth(day,key)}
+  return date?{date,nominalDay:day,source:historicalDay!==null?'inferred_billing_day':'issuer_billing_day_projection',confidence:historicalDay!==null?'inferred':'issuer'}:{date:'',nominalDay:day,source:'unassigned',confidence:'unassigned'};
+}
 
 export function creditFinalizedBillingDateData(account={},tx={},billingMonthHint=''){
   const issuerDate=transactionBillingDate(tx);if(issuerDate)return {date:issuerDate,source:'issuer_processed_date',confidence:'authoritative'};

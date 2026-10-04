@@ -1,11 +1,12 @@
 function safe(value,escapeHtml){return escapeHtml?escapeHtml(String(value??'')):String(value??'')}
 
 export function creditDetailDisplayDate(row){return String(row?.date||row?.detailDisplayBillingDate||'').slice(0,10)}
+export function creditDetailCycleDisplayDate(row){return String(row?.detailCycleBillingDate||row?.detailDisplayBillingDate||row?.date||'').slice(0,10)}
 
 export function creditDetailMonthIsPast(month,reference){
   return month.key!=='unassigned'&&month.items.length>0&&month.items.every(row=>{
-    const date=creditDetailDisplayDate(row);
-    return !!date&&(date<reference||row.bankSettlementState==='settled');
+    const date=creditDetailCycleDisplayDate(row),statementAssigned=!!row?.detailCycleBillingDate;
+    return !!date&&(date<reference||(!statementAssigned&&row.bankSettlementState==='settled'));
   });
 }
 
@@ -53,7 +54,7 @@ export function creditViewAllowsMonth(monthValue,view,currentMonth){
 }
 
 export function creditDetailChargeDay(row){
-  const date=String(row?.date||row?.detailDisplayBillingDate||'').slice(0,10),day=Number(date.slice(8,10));
+  const date=creditDetailCycleDisplayDate(row),day=Number(date.slice(8,10));
   if(!Number.isInteger(day))return '';
   if(day>=7&&day<=12)return '10';
   if(day>=13&&day<=18)return '15';
@@ -61,7 +62,8 @@ export function creditDetailChargeDay(row){
 }
 
 export function creditDetailNominalChargeDay(row){
-  const date=creditDetailDisplayDate(row),match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date);if(!match)return '';
+  if(Number.isInteger(Number(row?.detailCycleNominalDay))&&Number(row.detailCycleNominalDay)>=1&&Number(row.detailCycleNominalDay)<=31)return String(Number(row.detailCycleNominalDay));
+  const date=creditDetailCycleDisplayDate(row),match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(date);if(!match)return '';
   const year=Number(match[1]),month=Number(match[2]),day=Number(match[3]);
   if(day===10||day===15)return String(day);
   if(day===11&&new Date(Date.UTC(year,month-1,10)).getUTCDay()===6)return '10';
@@ -70,7 +72,7 @@ export function creditDetailNominalChargeDay(row){
 }
 
 export function creditDetailChargeCycleKey(row){
-  const date=creditDetailDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
+  const date=creditDetailCycleDisplayDate(row),nominal=creditDetailNominalChargeDay(row);
   return date&&nominal?`${date.slice(0,7)}:${nominal}`:date;
 }
 

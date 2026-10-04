@@ -40,6 +40,21 @@ test('Saturday-shifted actual debit stays in the nominal day-10 cycle',()=>{
   assert.equal(creditDetailDayMatch(shifted,'10'),true,'the day-10 filter includes the actual Sunday debit');
 });
 
+test('foreign immediate debits are assigned to the enclosing statement cycle without changing their real debit date',()=>{
+  const state={credits:[],creditSync:{version:4,profiles:[{profileId:'max',provider:'max',accounts:[{accountNumber:'6326',balanceDate:'2026-10-11',txns:[
+    {id:'before',status:'completed',processedDate:'2026-10-02',transactionDate:'2026-09-30',chargedAmount:-110,chargedCurrency:'ILS',originalAmount:-110,originalCurrency:'ILS',foreignTransaction:true,description:'AKUSOLI'},
+    {id:'after',status:'completed',processedDate:'2026-10-12',transactionDate:'2026-10-12',chargedAmount:-20,chargedCurrency:'ILS',originalAmount:-20,originalCurrency:'ILS',foreignTransaction:true,description:'AFTER-CYCLE'},
+    {id:'regular-sep',status:'completed',processedDate:'2026-09-10',transactionDate:'2026-09-01',chargedAmount:-500,chargedCurrency:'ILS'},
+    {id:'regular-aug',status:'completed',processedDate:'2026-08-10',transactionDate:'2026-08-01',chargedAmount:-500,chargedCurrency:'ILS'},
+  ]}]}],cardMappings:{'max:6326':{included:true,cardName:'MAX 6326',account:'עסקי'}}}};
+  const detail=kupaReconciledCreditDetailMonthsData(state,'2026-10-04').months,october=detail.find(month=>month.key==='2026-10'),november=detail.find(month=>month.key==='2026-11'),before=october.items.find(row=>row.description==='AKUSOLI'),after=november.items.find(row=>row.description==='AFTER-CYCLE');
+  assert.equal(before.date,'2026-10-02');assert.equal(before.detailCycleBillingDate,'2026-10-11');assert.equal(creditDetailNominalChargeDay(before),'10');assert.equal(creditDetailChargeCycleKey(before),'2026-10:10');
+  assert.equal(after.date,'2026-10-12');assert.equal(after.detailCycleBillingDate,'2026-11-10','a debit after the current cycle closes belongs to the following statement cycle');
+  assert.equal(creditDetailRangeMatch(before,'2026-10-02','2026-10-02'),true);assert.equal(creditDetailRangeMatch(before,'2026-10-11','2026-10-11'),false,'date range filtering continues to mean the actual debit date');
+  assert.equal(creditDetailMonthIsPast({key:'2026-10',items:[{...before,bankSettlementState:'settled'}]},'2026-10-04'),false,'an already-settled immediate debit does not make its still-open statement cycle historical');
+  assert.equal(kupaReconciledCreditUpcomingDetailData(state,'2026-10-04').items.some(row=>row.description==='AKUSOLI'),true,'the default upcoming statement includes the immediate foreign debit inside the open cycle window');
+});
+
 test('date range uses inclusive billing dates, not purchase dates, with open boundaries',()=>{
   const rows=kupaReconciledCreditDetailMonthsData(fixture(),'2026-09-16').months.flatMap(month=>month.items);
   assert.deepEqual(rows.filter(row=>creditDetailRangeMatch(row,'2026-09-15','2026-10-10')).map(row=>row.date),['2026-09-15','2026-10-10','2026-10-10']);

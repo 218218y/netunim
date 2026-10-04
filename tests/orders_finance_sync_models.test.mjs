@@ -253,6 +253,9 @@ drilldownView.setCreditDetailMonth('2026-09','10');
 assert.equal(drilldownUi.creditDetailChargeDay,'10');
 drilldownView.setCreditDetailMonth('2026-09');
 assert.equal(drilldownUi.creditDetailChargeDay,'all','clicking the month main button restores the full month');
+drilldownView.setCreditCardFilter('sync:p1:1234');
+assert.deepEqual(drilldownUi.creditDetailFocus,{monthKey:'2026-09',cardKey:''},'changing the visible card filter preserves the explicitly selected billing month');
+assert.match(drilldownMain.innerHTML,/credit-cycle-selector-header active[^>]*>[\s\S]*data-action="orders-credit-detail-month"[^>]*data-click-arg0="2026-09"/,'month focus is repaired before the header is rendered, so changing card filters cannot leave the transaction body on a month while the selector appears blank');
 
 const rangeUiMain={innerHTML:''};
 Object.defineProperty(globalThis,'document',{value:{getElementById:id=>id==='main'?rangeUiMain:null,querySelector:()=>null},configurable:true});

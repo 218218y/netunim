@@ -4,13 +4,13 @@ import {creditBillingRowsData,creditTransactionAmountData} from '../shared/credi
 import {kupaAccountCashflowData} from '../shared/kupa-cashflow.js';
 import {mergeCreditSyncResult,normalizeCreditSync} from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
 import {normalizeCreditSync as ordersNormalize} from '../netunim-orders/site/assets/js/domains/finance/credit-feed.js';
-import {creditMonthlyDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
+import {creditMonthlyDetailData,creditUpcomingDetailData} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {creditDetailRowMarkup} from '../netunim-orders/site/assets/js/domains/finance/credit-detail-view.js';
 import {MaxAdapter,normalizeMaxRawTransaction,normalizeVisaCalTransaction} from '../netunim-kupa/bank-bridge/credit-adapters.mjs';
 import {normalizeAmexDigitalV3ApprovedTransaction,normalizeAmexDigitalV3Voucher} from '../netunim-kupa/bank-bridge/amex-digitalv3.mjs';
 import {normalizeIsracardDigitalV3ApprovedTransaction,normalizeIsracardDigitalV3Voucher} from '../netunim-kupa/bank-bridge/isracard-digitalv3.mjs';
 import {normalizeIsracardFamilyTransaction} from '../netunim-kupa/bank-bridge/isracard-camoufox.mjs';
-import {creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections} from '../shared/credit-detail-controls.js';
+import {creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections,creditDetailRangeMatch,creditDetailChargeCycleKey} from '../shared/credit-detail-controls.js';
 
 const due='2026-09-10';
 function stateFor(provider,txns){return {credits:[],expenses:[],checks:[],bank:{currentBalance:10000,source:'hapoalim',asOfDate:due,feed:{balance:10000,syncedAt:due,transactions:[]}},creditSync:normalizeCreditSync({version:4,profiles:[{profileId:'p',provider,accounts:[{accountNumber:'1234',balanceDate:due,pendingStatus:'success',pendingFetchedAt:due,txns}]}],cardMappings:{'p:1234':{included:true,account:'עסקי'}}})}}
@@ -88,7 +88,7 @@ test('monthly credit detail keeps finalized FX charges visible outside the 10/15
 
 test('MAX provider-marked foreign transactions settled in ILS remain visible as FX and pending snapshot is replaced by the final row',()=>{
   const pending={id:'',status:'pending',date:'2026-09-30T08:31:00.000Z',transactionDate:'2026-09-30T08:31:00.000Z',processedDate:null,transactionTime:'08:31',originalAmount:-110,originalCurrency:'ILS',chargedAmount:null,chargedCurrency:'ILS',foreignTransaction:true,description:'AKUSOLI.COM VILNIUS LT',memo:'חיוב עסקת חו"ל בש"ח'},final={...pending,id:'provider-final',status:'completed',date:'2026-09-30T00:00:00.000Z',transactionDate:'2026-09-30T00:00:00.000Z',processedDate:'2026-10-02T00:00:00.000Z',transactionTime:'08:31',chargedAmount:-110};
-  const initial=normalizeCreditSync({version:4,profiles:[{profileId:'max-fx',provider:'max',syncedAt:'2026-10-01T08:00:00.000Z',accounts:[{accountNumber:'6326',pendingStatus:'success',pendingFetchedAt:'2026-10-01T08:00:00.000Z',pendingTransactions:[pending],months:[]}]}],cardMappings:{'max-fx:6326':{included:true,account:'עסקי'}}});
+  const initial=normalizeCreditSync({version:4,profiles:[{profileId:'max-fx',provider:'max',syncedAt:'2026-10-01T08:00:00.000Z',accounts:[{accountNumber:'6326',balanceDate:'2026-10-11T00:00:00.000Z',pendingStatus:'success',pendingFetchedAt:'2026-10-01T08:00:00.000Z',pendingTransactions:[pending],months:[]}]}],cardMappings:{'max-fx:6326':{included:true,account:'עסקי'}}});
   assert.equal(initial.profiles[0].accounts[0].pendingTransactions[0].foreignTransaction,true,'the explicit MAX foreign marker survives local feed normalization while the row is pending');
   const merged=mergeCreditSyncResult(initial,{syncedAt:'2026-10-02T09:00:00.000Z',contractVersion:2,profiles:[{profileId:'max-fx',provider:'max',syncedAt:'2026-10-02T09:00:00.000Z',attemptedAt:'2026-10-02T09:00:00.000Z',coreComplete:true,accounts:[{accountNumber:'6326',pendingStatus:'success',pendingFetchedAt:'2026-10-02T09:00:00.000Z',pendingTransactions:[],months:[{month:'2026-10',tier:'core',fetchStatus:'success',status:'fresh',fetchedAt:'2026-10-02T09:00:00.000Z',providerSchemaVersion:'max-netunim-v2+upstream-login-6.10.0',transactions:[final]}]}]}],errors:[]});
   const account=merged.profiles[0].accounts[0];assert.equal(account.pendingTransactions.length,0,'a successful new MAX pending snapshot removes the old authorization once it is no longer pending');
@@ -97,6 +97,11 @@ test('MAX provider-marked foreign transactions settled in ILS remain visible as 
   assert.ok(row);assert.equal(row.status,'completed');assert.equal(row.date,'2026-10-02');assert.equal(row.foreignCurrency,true,'a shekel-settled MAX foreign charge is classified from the issuer marker rather than a fabricated currency');
   assert.equal(creditDetailMonthDayMatch(row,'10'),true,'the finalized off-cycle charge remains visible even when the card view is filtered to its normal day-10 cycle');
   assert.deepEqual(creditDetailMonthlySections([row]).foreign,[row],'the finalized row is rendered in the dedicated foreign/FX section');
+  const october=creditMonthlyDetailData(state,'2026-10-04').months.find(month=>month.key==='2026-10'),cycleRow=october.items.find(item=>item.description==='AKUSOLI.COM VILNIUS LT'),upcoming=creditUpcomingDetailData(state,'2026-10-04').items.find(item=>item.description==='AKUSOLI.COM VILNIUS LT');
+  assert.ok(cycleRow);assert.equal(cycleRow.date,'2026-10-02','the real immediate debit date stays authoritative for the row and exact date filtering');assert.equal(cycleRow.detailCycleBillingDate,'2026-10-11','the immediate debit is attached to the card statement cycle that closes after it');
+  assert.equal(cycleRow.detailCycleNominalDay,10,'Saturday-shifted 11 October remains the nominal day-10 cycle');assert.equal(creditDetailChargeCycleKey(cycleRow),'2026-10:10');
+  assert.equal(creditDetailRangeMatch(cycleRow,'2026-10-02','2026-10-02'),true,'exact-date mode still targets the real immediate debit date, not the statement grouping date');
+  assert.ok(upcoming);assert.equal(upcoming.detailCycleBillingDate,'2026-10-11','the current statement view includes foreign immediate charges already debited inside this cycle window');
   assert.equal(ordersNormalize(merged).profiles[0].accounts[0].months.find(month=>month.month==='2026-10').transactions[0].foreignTransaction,true,'Orders preserves the same explicit foreign marker');
 });
 
