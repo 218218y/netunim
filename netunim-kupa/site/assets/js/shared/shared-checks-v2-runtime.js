@@ -11,6 +11,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
   if([owner,primary,readState,applyState,merge,readRemote,rpc,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
+  let workPending=true,commitsInFlight=0;
   const risks=new Map();
   const diagnostics={recoveries:0,initializations:0,operations:0,acks:0,rebases:0,errors:0,lastError:''};
   const currentOwner=()=>String(owner()||'').trim();
@@ -22,7 +23,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   function assertSyncAllowed(store=storage){assertContext(store);if(boundaryGate())throw new Error('storage_boundary_in_progress')}
   function context(){
     if(!primaryMode()||!primary()||!currentOwner())throw new Error('shared_checks_primary_required');
-    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve()}
+    if(identity!==currentOwner()||!storage){identity=currentOwner();storage=createStorage({owner,primary:()=>primary()&&primaryMode()});active=false;cursorReady=false;lastRemoteUpdatedAt=null;commits=Promise.resolve();workPending=true;commitsInFlight=0}
     return storage;
   }
   async function publish(store){
@@ -43,7 +44,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
       const cloud=await store.cloudState();assertContext(store);
       if(!cloud.base&&currentOwner()!=='local')throw new Error('shared_checks_cursor_missing');
       if(!cloud.base&&(cloud.flight||cloud.control))throw new Error('shared_checks_local_head_invalid');
-      active=true;cursorReady=!!cloud.base;diagnostics.recoveries++;
+      active=true;cursorReady=!!cloud.base;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.recoveries++;
       return publish(store);
     })();
     opening={store,promise};promise.finally(()=>{if(opening?.promise===promise)opening=null}).catch(()=>{});return promise;
@@ -73,7 +74,8 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
       recovered=await store.open();const cloud=await store.cloudState();
       if(!recovered||recovered.appMetadata?.bootstrapOperationId!==bootstrapOperationId||recovered.appMetadata?.migrationIntent!==intent||recovered.appMetadata?.sourceOwner!==sourceOwner||cloud?.base?.revision!==revision||!equalSyncJson(recovered.state,snapshot))throw new Error('shared_checks_bootstrap_existing_head_mismatch');
     }
-    assertContext(store);active=true;cursorReady=true;diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
+    const cloud=await store.cloudState();assertContext(store);
+    active=true;cursorReady=true;workPending=!!(cloud.pending||cloud.flight||cloud.control);diagnostics.initializations++;applyState(canonical(recovered.state));return recovered;
   }
   async function initializeLocal({state}={}){
     const store=context(),snapshot=canonical(state);
@@ -82,7 +84,7 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const recovered=await store.open({migrationState:snapshot,migrationIntent:'local-birth',sourceOwner:'local'});
     if(!recovered||!equalSyncJson(canonical(recovered.state),snapshot))throw new Error('shared_checks_local_birth_parity_mismatch');
     const cloud=await store.cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('shared_checks_local_birth_cloud_head_exists');
-    assertContext(store);active=true;cursorReady=false;diagnostics.initializations++;applyState(snapshot);return recovered;
+    assertContext(store);active=true;cursorReady=false;workPending=false;diagnostics.initializations++;applyState(snapshot);return recovered;
   }
   function persist(operations,{generation=0,surface='shared-checks',mutationType='edit',deleteIds=[],storageBoundary=''}={}){
     if(boundaryGate())throw new Error('storage_boundary_in_progress');
@@ -94,8 +96,9 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     if(storageBoundary)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage,write=store.append(operations,readState(),{generation,surface,mutationType,deleteIds});
     diagnostics.operations++;
+    workPending=true;commitsInFlight++;
     const risk={owner:identity,failed:false};if(!write.emergencyDurable)risks.set(write,risk);
-    write.committed.then(()=>risks.delete(write),error=>{if(risks.has(write))risk.failed=true;diagnostics.errors++;diagnostics.lastError=error.message});
+    write.committed.then(()=>{if(store===storage)commitsInFlight--;risks.delete(write)},error=>{if(store===storage)commitsInFlight--;if(risks.has(write))risk.failed=true;diagnostics.errors++;diagnostics.lastError=error.message});
     commits=write.committed;return {handled:true,...write};
   }
   function conflictControl(base,local,remote,conflicts,cloud){
@@ -156,43 +159,48 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   function sync(){
     assertSyncAllowed();const store=storage;if(syncing?.store===store)return syncing.promise;
     const promise=synchronize(store).catch(async error=>{
+      if(store===storage)workPending=true;
       diagnostics.errors++;diagnostics.lastError=error.message;
       if(error?.message==='shared_checks_cursor_missing')throw error;
       // Errors leave the flight intact. An old account's request cannot write
       // retry metadata or update the visible state after a handoff.
       try{assertSyncAllowed(store);const cloud=await store.cloudState();assertSyncAllowed(store);if(!cloud.control?.conflict){const normalized=normalizeCloudError(error);await store.setCloudControl({retry:{attempts:Number(cloud.control?.retry?.attempts||0)+1,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date(now()).toISOString(),nextAttemptAt:normalized.retryAfterMs?new Date(now()+normalized.retryAfterMs).toISOString():null}})}}catch{/* The original error remains actionable. */}
       throw error;
-    });
+    }).then(async result=>{
+      assertContext(store);const cloud=await store.cloudState();assertContext(store);
+      workPending=!!(cloud.pending||cloud.flight||cloud.control);return result;
+    }).catch(error=>{if(store===storage)workPending=true;throw error});
     syncing={store,promise};promise.finally(()=>{if(syncing?.promise===promise)syncing=null}).catch(()=>{});return promise;
   }
   async function replaceAuthoritativeState(state,{boundaryId}={}){
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
-    const result=await store.replaceAuthoritativeState(canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
+    const result=await store.replaceAuthoritativeState(canonical(state),{boundaryId});assertContext(store);workPending=true;await publish(store);return result;
   }
   async function replaceLocalWithPending(state,{boundaryId,expectedSeq,expectedBaseRevision}={}){
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
-    const result=await store.replaceLocalWithPending(canonical(state),{boundaryId,expectedSeq,expectedBaseRevision});assertContext(store);await publish(store);return result;
+    const result=await store.replaceLocalWithPending(canonical(state),{boundaryId,expectedSeq,expectedBaseRevision});assertContext(store);workPending=true;await publish(store);return result;
   }
   async function replaceLocalAuthoritativeState(state,{boundaryId,expectedSeq}={}){
     assertContext();if(!active||!boundaryId||identity!=='local')throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
-    const result=await store.replaceLocalAuthoritativeState(canonical(state),{boundaryId,expectedSeq});assertContext(store);await publish(store);return result;
+    const result=await store.replaceLocalAuthoritativeState(canonical(state),{boundaryId,expectedSeq});assertContext(store);workPending=true;await publish(store);return result;
   }
   async function resetCloudHead(revision,state,{boundaryId}={}){
     assertContext();if(!active||!boundaryId)throw new Error('shared_checks_coordinated_boundary_required');
     const store=storage;await commits;assertContext(store);
-    const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);await publish(store);return result;
+    const result=await store.resetCloudHead(revision,canonical(state),{boundaryId});assertContext(store);workPending=true;await publish(store);return result;
   }
   return {recover,recoverReadOnly,initialize,initializeLocal,persist,sync,diagnostics,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},
     replaceAuthoritativeState,replaceLocalWithPending,replaceLocalAuthoritativeState,resetCloudHead,
-    async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;return cloud},
+    async cloudState(){assertContext();const cloud=await storage.cloudState();cursorReady=!!cloud.base;if(cloud.pending||cloud.flight||cloud.control)workPending=true;return cloud},
     async flush(){await commits;return true},
     get requested(){return primaryMode()},
     get primaryReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get localReady(){return active&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
     get cloudReady(){return active&&cursorReady&&primaryMode()&&primary()&&identity===currentOwner()&&storage?.ready},
+    get hasLocalWork(){return !active||!primaryMode()||!primary()||identity!==currentOwner()||boundaryGate()||workPending||commitsInFlight>0||syncing?.store===storage||[...risks.values()].some(risk=>risk.owner===identity)},
     get lastRemoteUpdatedAt(){return lastRemoteUpdatedAt},
     get durabilityAtRisk(){return risks.size>0},get commitPromise(){return commits}};
 }

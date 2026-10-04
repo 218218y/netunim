@@ -246,7 +246,7 @@ const stateSnapshots=createStateSnapshots({
   checksSession,
   prepareState:(...args)=>stateSelectors.prepareState(...args),
   cloudPendingExists:(...args)=>storageBrowser.cloudPendingExists(...args),
-  checksPendingExists:(...args)=>storageChecks.checksPendingExists(...args),
+  sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   domainRevisions,
 });

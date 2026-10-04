@@ -61,6 +61,18 @@ for(const site of ['orders','kupa']){
     assert.equal(await runtime.sync(),true);
     assert.equal(runtime.lastRemoteUpdatedAt,'2026-09-24T10:20:00Z');
   });
+  test(`${site}: Shared V2 local-work status follows durable pending work through ACK and restart`,async()=>{
+    const f=fixture(site),runtime=await f.start();
+    assert.equal(runtime.hasLocalWork,false);
+    const edit=f.edit(runtime,'C',{note:'awaiting cloud'});
+    assert.equal(runtime.hasLocalWork,true,'an uncommitted edit must already block a bank snapshot');
+    await edit.committed;
+    assert.equal(runtime.hasLocalWork,true);
+    const restarted=f.create();await restarted.recover();
+    assert.equal(restarted.hasLocalWork,true,'pending journal work survives restart');
+    assert.equal(await restarted.sync(),true);
+    assert.equal(restarted.hasLocalWork,false,'ACK and a clean cursor release the guard');
+  });
   test(`${site}: local Shared Checks survives edit and restart without a cloud cursor`,async()=>{
     const f=fixture(site);f.owner='local';
     let runtime=f.create();await runtime.initializeLocal({state:f.visible});
@@ -87,8 +99,8 @@ for(const site of ['orders','kupa']){
   test(`${site}: lost ACK retries identical operation and payload across restart`,async()=>{
     const f=fixture(site);let runtime=await f.start();await f.edit(runtime,'C',{status:'הופקד - במעקב'}).committed;
     f.rpcHook=async(checks,revision,id)=>{f.head={revision:revision+1,state:state(checks,[{seq:42,checkId:'C',delta:100}])};f.ledger.set(id,clone(f.head));throw new TypeError('Failed to fetch')};
-    await assert.rejects(runtime.sync(),/fetch/);const first=clone(f.calls[0]);
-    runtime=f.create();await runtime.recover();await f.edit(runtime,'D',{note:'during outage'}).committed;f.rpcHook=null;
+    await assert.rejects(runtime.sync(),/fetch/);assert.equal(runtime.hasLocalWork,true);const first=clone(f.calls[0]);
+    runtime=f.create();await runtime.recover();assert.equal(runtime.hasLocalWork,true);await f.edit(runtime,'D',{note:'during outage'}).committed;f.rpcHook=null;
     assert.equal(await runtime.sync(),true);assert.deepEqual(f.calls[1],first);assert.equal(f.visible.checks[1].note,'during outage');
     assert.notEqual(f.calls[2][2],first[2]);assert.equal(f.visible.bankEvents[0].seq,42);
   });
@@ -103,8 +115,8 @@ for(const site of ['orders','kupa']){
   test(`${site}: same-check conflict remains blocked across restart`,async()=>{
     const f=fixture(site),runtime=await f.start();await f.edit(runtime,'C',{note:'local'}).committed;
     f.head={revision:8,state:state([{...f.head.state.checks[0],note:'remote'},f.head.state.checks[1]])};
-    assert.equal(await runtime.sync(),false);assert.equal(f.visible.checks[0].note,'local');
-    const restarted=f.create();await restarted.recover();assert.ok((await restarted.cloudState()).control.conflict);assert.equal(await restarted.sync(),false);assert.equal(f.calls.length,1);
+    assert.equal(await runtime.sync(),false);assert.equal(runtime.hasLocalWork,true);assert.equal(f.visible.checks[0].note,'local');
+    const restarted=f.create();await restarted.recover();assert.ok((await restarted.cloudState()).control.conflict);assert.equal(restarted.hasLocalWork,true);assert.equal(await restarted.sync(),false);assert.equal(f.calls.length,1);
   });
   test(`${site}: an edit during RPC is retained by atomic ACK`,async()=>{
     const f=fixture(site),runtime=await f.start(),entered=gate(),release=gate();await f.edit(runtime,'C',{note:'first'}).committed;
