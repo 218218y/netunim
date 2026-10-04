@@ -8,7 +8,7 @@ import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 import {memoryDb,emergencyStore} from './storage-v2-fixture.mjs';
 
 const clone=structuredClone;
-test('Main local birth is restartable without a cloud cursor and refuses a divergent shadow',async()=>{
+test('Main local birth is restartable without a cloud cursor and refuses an old shadow head',async()=>{
   const db=memoryDb(),emergency=emergencyStore(),source={notes:[{id:'N',content:'local'}]};
   const make=mode=>createStorageV2Runtime({app:'orders',owner:()=> 'local',primary:()=>true,mode:()=>mode,
     validate:value=>assert.ok(Array.isArray(value.notes)),prepareCheckpoint:value=>value,
@@ -23,12 +23,12 @@ test('Main local birth is restartable without a cloud cursor and refuses a diver
 
   const shadowDb=memoryDb();
   const shadow=createStorageJournal({owner:'local:orders',schema:{collections:['notes'],fields:[]},validate:value=>assert.ok(Array.isArray(value.notes)),db:shadowDb,emergency:emergencyStore()});
-  await shadow.install({notes:[{id:'other'}]},{appMetadata:{storageRole:'shadow',mainProjectionVersion:2}});
+  await shadow.install(source,{appMetadata:{storageRole:'shadow',mainProjectionVersion:2}});
   const candidate=createStorageV2Runtime({app:'orders',owner:()=> 'local',primary:()=>true,mode:()=> 'preparing',
     validate:value=>assert.ok(Array.isArray(value.notes)),prepareCheckpoint:value=>value,
     createJournal:options=>createStorageJournal({...options,db:shadowDb,emergency:emergencyStore()})});
-  await assert.rejects(candidate.initializeLocal(source),/storage_local_birth_parity_mismatch/);
-  assert.deepEqual((await shadow.recover()).state,{notes:[{id:'other'}]});
+  await assert.rejects(candidate.initializeLocal(source),/storage_local_birth_role_invalid/);
+  assert.deepEqual((await shadow.recover()).state,source);
 });
 function boundaryDb(){
   let record=null,failAfterShared=true;

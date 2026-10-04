@@ -209,6 +209,15 @@ ok("legacyCollections" not in main_schema and "mainProjection:2" in main_schema
    and "migrateMainProjection" not in main_runtime
    and "storage_main_projection_invalid" in main_replay,
    "Main V2 accepts only projection 2 and cannot replay a check-bearing checkpoint")
+main_journal=(ROOT / "shared/storage-journal.js").read_text(encoding="utf-8")
+shared_store=(ROOT / "shared/shared-checks-storage-v2.js").read_text(encoding="utf-8")
+shared_runtime=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")
+ok("replaceShadowWithCloudHead" not in main_journal
+   and "replaceShadowWithCloudHead" not in (ROOT / "shared/storage-journal-idb.js").read_text(encoding="utf-8")
+   and "promoteVerifiedShadow" not in shared_store
+   and "promote(" not in shared_runtime
+   and "replaceExistingState" not in main_journal,
+   "V2 cannot promote a historical Shadow head into Primary or cloud authority")
 for label, app_root in (("kupa", K), ("orders", O)):
     coordinator=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     ok("migrateMainProjection" not in coordinator,

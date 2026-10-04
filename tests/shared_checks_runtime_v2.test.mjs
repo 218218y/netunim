@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createSharedChecksV2Composition} from '../shared/shared-checks-v2-composition.js';
 import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js';
+import {createStorageJournal} from '../shared/storage-journal.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync/checks-persistence.js';
@@ -177,27 +178,25 @@ for(const site of ['orders','kupa'])test(`${site}: application save and RPC adap
   assert.equal(await sync.saveSharedChecksToCloud(),true);assert.equal(f.calls[0][0][0].note,'app edit');
 });
 
-test('Shared Checks bootstrap atomically promotes an identical shadow namespace',async()=>{
+test('Shared Checks bootstrap does not promote an identical historical shadow namespace',async()=>{
   const f=fixture(),db=memoryDb(),emergency=emergencyStore();
   f.databases.set('A',db);
-  const shadow=createSharedChecksStorageV2({owner:()=> 'A',primary:()=>true,role:'shadow',db,emergency});
-  await shadow.open({migrationState:f.visible,migrationIntent:'shadow-observation',sourceOwner:'A'});
+  const shadow=createStorageJournal({owner:'A:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db,emergency});
+  await shadow.install(f.visible,{appMetadata:{storageRole:'shared-checks-shadow'}});
   assert.equal((await db.load('A:shared-checks')).bases,null);
 
   f.mode='preparing';f.head={revision:0,state:state([])};
   const runtime=f.create();
-  const recovered=await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-promote:shared'});
-  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,f.visible);
-  const stored=await db.load('A:shared-checks');assert.equal(stored.bases.data.revision,0);assert.equal(stored.metadata.seq,1);assert.equal(stored.journal.length,1);
-  const cloud=await runtime.cloudState();assert.equal(cloud.pending,true);assert.equal(cloud.base.ackSeq,0);
+  await assert.rejects(runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-must-reset:shared'}),/existing_head_mismatch/);
+  const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,f.visible);
 });
 
 test('Shared Checks bootstrap refuses divergent shadow promotion and preserves the shadow',async()=>{
   const f=fixture(),db=memoryDb(),emergency=emergencyStore();
   f.databases.set('A',db);
   const shadowState=state([{id:'shadow-only',amount:1}]);
-  const shadow=createSharedChecksStorageV2({owner:()=> 'A',primary:()=>true,role:'shadow',db,emergency});
-  await shadow.open({migrationState:shadowState,migrationIntent:'shadow-observation',sourceOwner:'A'});
+  const shadow=createStorageJournal({owner:'A:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db,emergency});
+  await shadow.install(shadowState,{appMetadata:{storageRole:'shared-checks-shadow'}});
   f.mode='preparing';f.head={revision:0,state:state([])};
   await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-mismatch:shared'}),/existing_head_mismatch/);
   const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,shadowState);

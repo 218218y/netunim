@@ -22,7 +22,7 @@ function mergeDeleteIntents(...sources){
 }
 
 // Local checkpoint/journal engine. Rollout policy lives in the application
-// adapter; this layer is equally usable for shadow comparison and primary recovery.
+// adapter; this layer provides primary recovery and cloud synchronization.
 export function createStorageJournal({owner,schema,validate,primary=()=>true,db=createStorageJournalDb(),emergency=globalThis.localStorage,operationId=()=>createOperationId('storage-v2'),now=()=>new Date().toISOString(),maxEmergencyBytes=131072,maxEmergencyEntries=64}={}){
   if(!owner||!schema||!validate)throw new Error('storage_configuration_required');
   const prefix='netunim-storage-v2-emergency:'+encodeURIComponent(owner)+':',writer=operationId();
@@ -126,25 +126,19 @@ export function createStorageJournal({owner,schema,validate,primary=()=>true,db=
     await db.appendBoundary(owner,epoch,writer,sealStorageRecord(operation,{kind:'journal'}),{expectedSeq,expectedBaseRevision});
     seq=operation.seq;return {seq,operationId:operation.operationId,deleteIntents:operation.deleteIntents};
   }
-  async function initializeCloudHead(revision,state,{cloudState:cloudBaseState=state,changes=null,validateBase=validate,appMetadata={},replaceExistingState=null}={}){
+  async function initializeCloudHead(revision,state,{cloudState:cloudBaseState=state,changes=null,validateBase=validate,appMetadata={}}={}){
     if(!primary())throw new Error('storage_secondary_tab');
     if(transition)throw new Error('storage_initialization_exists');
     if(!Number.isSafeInteger(revision)||revision<0)throw new Error('storage_base_revision');
     validate(state);validateBase(cloudBaseState);
-    let existing=null;
-    if(ready){
-      if(replaceExistingState===null)throw new Error('storage_initialization_exists');
-      existing=await recover();validate(replaceExistingState);
-      if(!equalSyncJson(existing.state,replaceExistingState))throw new Error('storage_shadow_parity_mismatch');
-      const cloud=await cloudState();if(cloud.base||cloud.flight||cloud.control)throw new Error('storage_shadow_cloud_state_invalid');
-    }
+    if(ready)throw new Error('storage_initialization_exists');
     const nextEpoch=operationId(),metadata=structuredClone(appMetadata);
     const checkpoint=sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:0,state,appMetadata:metadata,savedAt:now()},{kind:'checkpoint'});
     const base=sealStorageRecord({version:2,owner,epoch:nextEpoch,revision,state:cloudBaseState,projection:'cloud',ackSeq:0},{kind:'cloud-base'});
     const entry=changes===null?null:sealStorageRecord({version:2,owner,epoch:nextEpoch,seq:1,generation:1,operationId:operationId(),at:now(),surface:'storage.bootstrap',mutationType:'bootstrap',changes,deleteIntents:{},appMetadata:metadata},{kind:'journal'});
     const replay=replayStorageJournal(checkpoint,entry?[entry]:[],schema);validate(replay.state);
     await queue;if(!primary())throw new Error('storage_secondary_tab');
-    if(existing)await db.replaceShadowWithCloudHead(owner,existing.epoch,existing.seq,checkpoint,base,writer,entry);else await db.initializeCloudHead(owner,checkpoint,base,writer,entry);
+    await db.initializeCloudHead(owner,checkpoint,base,writer,entry);
     epoch=nextEpoch;seq=replay.seq;ready=true;failed=null;return replay;
   }
   async function compact(){guard();await queue;if(failed)throw failed;const recovered=await recover();validate(recovered.state);
