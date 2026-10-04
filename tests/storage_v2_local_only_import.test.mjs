@@ -23,7 +23,7 @@ test('Main local birth is restartable without a cloud cursor and refuses a diver
 
   const shadowDb=memoryDb();
   const shadow=createStorageJournal({owner:'local:orders',schema:{collections:['notes'],fields:[]},validate:value=>assert.ok(Array.isArray(value.notes)),db:shadowDb,emergency:emergencyStore()});
-  await shadow.install({notes:[{id:'other'}]});
+  await shadow.install({notes:[{id:'other'}]},{appMetadata:{storageRole:'shadow',mainProjectionVersion:2}});
   const candidate=createStorageV2Runtime({app:'orders',owner:()=> 'local',primary:()=>true,mode:()=> 'preparing',
     validate:value=>assert.ok(Array.isArray(value.notes)),prepareCheckpoint:value=>value,
     createJournal:options=>createStorageJournal({...options,db:shadowDb,emergency:emergencyStore()})});
