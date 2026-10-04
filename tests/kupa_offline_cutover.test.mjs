@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLifecycle} from '../netunim-kupa/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
-import {storageV2BootstrapStateHash} from '../shared/storage-v2-bootstrap.js';
-import {webcrypto} from 'node:crypto';
 
 const noop=()=>{};
 const requiredCallbacks=[
@@ -77,21 +75,20 @@ test('Kupa V2 cutover recovers Shared Checks before offline or cloud-capability 
   }
 });
 
-test('Kupa interrupted cutover restores legacy Shared bank events before recomputing the frozen source hash',async()=>{
+test('Kupa V2 fallback preserves hydrated Shared state and never reads legacy bank events',async()=>{
   const priorNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   try{
-    const frozen={checks:[{id:'C1',amount:500}],bankEvents:[{id:'E1',seq:9,type:'deposit',checkId:'C1'}]};
-    const expected=await storageV2BootstrapStateHash('shared',frozen,{cryptoImpl:webcrypto});
-    const model={state:{checks:[]}},session={},checksSession={sharedChecksGeneration:0,sharedChecksBankEvents:[]};
+    const sharedChecks=[{id:'C1',amount:500}],bankEvents=[{id:'E1',seq:9,type:'deposit',checkId:'C1'}];
+    const model={state:{checks:structuredClone(sharedChecks)}},session={},checksSession={sharedChecksBankEvents:structuredClone(bankEvents)};
     const recovery=createSyncRecovery({model,session,checksSession,
-      loadBrowserState:async()=>({state:{checks:structuredClone(frozen.checks),cash:[]},revision:428}),
-      getCloudPending:async()=>null,getSharedChecksPending:async()=>null,refreshStorageV2CloudState:async()=>null,
-      normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),applyKupaCloudState:value=>structuredClone(value),
-      loadSharedChecksBase:()=>structuredClone(frozen.checks),loadSharedChecksBankEvents:()=>structuredClone(frozen.bankEvents),sharedChecksPendingExists:()=>false,
+      loadBrowserState:async()=>({v2Authoritative:true,state:{cash:[]},revision:428}),
+      refreshStorageV2CloudState:async()=>null,
+      normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),
+      loadSharedChecksBase:()=>assert.fail('legacy checks read'),loadSharedChecksBankEvents:()=>assert.fail('legacy bank events read'),
       hideConnectScreen:noop,setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,startCloudPolling:noop,render:()=>assert.fail('deferred recovery must not render')});
     assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
-    const actual=await storageV2BootstrapStateHash('shared',{checks:model.state.checks,bankEvents:checksSession.sharedChecksBankEvents},{cryptoImpl:webcrypto});
-    assert.equal(actual,expected);
+    assert.deepEqual(model.state.checks,sharedChecks);
+    assert.deepEqual(checksSession.sharedChecksBankEvents,bankEvents);
   }finally{if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator}
 });

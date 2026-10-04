@@ -220,6 +220,15 @@ ok(all(symbol not in orders_browser for symbol in ("markCloudPending", "getCloud
    and "getChecksPending" not in orders_backup,
    "orders: browser startup and restore use V2 without a V1 snapshot or outbox writer")
 
+kupa_browser=(K / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
+kupa_recovery=(K / "site/assets/js/sync/recovery.js").read_text(encoding="utf-8")
+kupa_lifecycle=(K / "site/assets/js/lifecycle.js").read_text(encoding="utf-8")
+ok(all(symbol not in kupa_browser for symbol in ("BROWSER_STATE_KEY", "BROWSER_STATE_IDB_KEY", "loadBrowserStateSync", "idbGet('sync'"))
+   and all(symbol not in kupa_recovery for symbol in ("getCloudPending", "getSharedChecksPending", "loadSharedChecksBase", "loadSharedChecksBankEvents"))
+   and "checksOutbox=await" not in kupa_lifecycle
+   and "v2Authoritative" in kupa_recovery,
+   "kupa: browser recovery uses only V2 Main and never merges a V1 pending snapshot")
+
 main_schema=(ROOT / "shared/storage-v2-schema.js").read_text(encoding="utf-8")
 main_runtime=(ROOT / "shared/storage-v2-runtime.js").read_text(encoding="utf-8")
 main_replay=(ROOT / "shared/storage-journal-model.js").read_text(encoding="utf-8")
