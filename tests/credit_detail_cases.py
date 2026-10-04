@@ -18,7 +18,8 @@ def run_credit_detail(app):
           const check=(value,message)=>{{if(!value)throw new Error(message)}},region=()=>document.querySelector('.credit-detail-section'),rows=()=>[...region().querySelectorAll('tbody tr')].filter(row=>row.children.length>1);
           check(region().querySelector('.credit-history-menu [data-click-arg0="2026-09"]'),'September was not moved to history');
           check(!region().querySelector('.credit-future-menu [data-click-arg0="2026-09"]'),'September still appears in future');
-          check(region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'October missing from future');
+          check(!region().querySelector('.credit-future-menu [data-click-arg0="2026-10"]'),'October duplicates the complete nearest-charge view in future');
+          check(region().querySelector('.credit-future-menu [data-click-arg0="2026-11"]'),'November missing from future');
           check(rows()[0].textContent.includes('ב קודם לפי בחירה'),'Custom card order was ignored');
           const menu=region().querySelector('.credit-date-filter'),future=region().querySelector('.credit-future-menu');
           check(menu.getBoundingClientRect().right<=future.getBoundingClientRect().left+1,'Date filter must be left of future charges in RTL desktop layout');
