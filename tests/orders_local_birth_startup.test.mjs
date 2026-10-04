@@ -14,7 +14,6 @@ function fixture(overrides={}){
     verifyLocalStorageEngine:async()=>marker,
     ensureLocalBirth:async()=>{calls.push('birth');marker=true},
     recoverLocalV2State:async()=>{calls.push('main-v2');return {state:{checks:[]}}},
-    restoreBrowserStateFallback:async()=>{throw new Error('V1 fallback reached')},
     recoverSharedChecksV2Primary:async()=>{calls.push('shared-v2');return true},
     acquirePrimaryTabLock:async()=>calls.push('tab-lock'),
     loadSession:()=>null,cloudEnabled:()=>false,
@@ -62,12 +61,12 @@ test('Orders missing Shared V2 checkpoint fails before business render',async()=
   assert.equal(f.calls.includes('render'),false);
 });
 
-test('Orders resumes a durable owner transfer before V1 fallback or business render',async()=>{
+test('Orders resumes a durable owner transfer before Main V2 recovery or business render',async()=>{
   const f=fixture({
     hydrateStorageV2OwnerTransfer:async()=>({phase:'target-recovered'}),
     resumeStorageV2OwnerTransfer:async()=>f.calls.push('transfer-resumed'),
     storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
-    restoreBrowserStateFallback:async()=>f.calls.push('account-main-recovered'),
+    recoverLocalV2State:async()=>f.calls.push('account-main-recovered'),
     refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:1},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
@@ -88,7 +87,7 @@ test('Orders missing target authentication keeps a pending transfer locked off s
 
 test('Orders unmarked browser for a fenced account stops before V1 recovery and render',async()=>{
   const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
-    restoreBrowserStateFallback:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')}});
+    recoverLocalV2State:async()=>{throw Error('stale local checkpoint loaded')},render:()=>{throw Error('stale state displayed')}});
   await f.lifecycle.boot();
   assert.equal(f.calls.includes('birth'),false);
   assert.equal(f.calls.includes('render'),false);
@@ -100,7 +99,7 @@ test('Orders fenced stale browser installs cloud V2 before any business render',
   let marker=false;const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
     readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');marker=true},
-    restoreBrowserStateFallback:async()=>{assert.equal(marker,true);f.calls.push('main-v2')},
+    recoverLocalV2State:async()=>{assert.equal(marker,true);f.calls.push('main-v2')},
     refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
@@ -125,7 +124,7 @@ test('Orders stale local binding adopts a fenced account before local birth or V
     readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');owner='account';marker=true},
     ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')},
-    restoreBrowserStateFallback:async()=>{assert.equal(owner,'account');f.calls.push('main-v2')},
+    recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('main-v2')},
     refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
   });
   await f.lifecycle.boot();await f.session.startupHydrationPromise;
@@ -139,7 +138,7 @@ test('Orders with an account cutover hydrates Shared before a DB capability fail
   const model={state:{checks:[{id:'stale-main-copy'}]}},f=fixture({
     model,storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
     loadSession:()=>({access_token:'present'}),cloudEnabled:()=>true,
-    restoreBrowserStateFallback:async()=>f.calls.push('main-v2'),
+    recoverLocalV2State:async()=>f.calls.push('main-v2'),
     recoverSharedChecksV2Primary:async()=>{f.calls.push('shared-v2');model.state.checks=[{id:'authoritative-shared-copy'}];return true},
     ensureSyncCapabilities:async()=>{f.calls.push('capability-check');throw new Error('DB upgrade required')},
     render:()=>f.calls.push(`render:${model.state.checks[0]?.id}`),

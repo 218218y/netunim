@@ -313,11 +313,11 @@ test('Kupa Cloud V2 refuses cutover when the durable V1 head cannot be verified'
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
-test('Orders Cloud V2 refuses cutover when the durable V1 head cannot be verified',async()=>{
+test('Orders Cloud V2 cursor does not reopen a retired V1 outbox',async()=>{
   const previousStorage=globalThis.localStorage,previousIndexedDb=globalThis.indexedDB,storage=emergencyStore();globalThis.localStorage=storage;delete globalThis.indexedDB;
   try{
     let captures=0;const state=clone(ORDERS_INITIAL_STATE),session={localSnapshotSeq:0,localGeneration:1,cloudRevision:10,lastCloudState:clone(state),storageV2CloudPending:false,ordersOutboxCached:null,ordersOutboxCommitPromise:Promise.resolve()},base={version:2,owner:'orders:test',epoch:'epoch-1',revision:10,state:clone(state),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return base}};
-    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareState:clone,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),false,'an unverified legacy head cannot activate V2');assert.equal(await browser.initializeStorageV2CloudCursor(10),false);assert.equal(captures,0,'cursor is not captured after a failed durable legacy-head read');assert.equal(browser.storageV2CloudOutboxActive(),false);
+    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),true);assert.equal(await browser.initializeStorageV2CloudCursor(10),true);assert.equal(captures,1,'V2 cursor is captured without opening the retired V1 database');
   }finally{if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;if(previousIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=previousIndexedDb}
 });
 

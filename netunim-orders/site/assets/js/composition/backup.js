@@ -14,8 +14,6 @@ export function composeBackup({tab,ui,model,session,checksSession,storageV2Cloud
     toast:(...args)=>uiStatus.toast(...args),
     showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
     modal:(...args)=>uiModal.modal(...args),
-    getCloudPending:(...args)=>storageBrowser.getCloudPending(...args),
-    getChecksPending:(...args)=>storageChecks.getChecksPending(...args),
     setSave:(...args)=>uiStatus.setSave(...args),
     folderBackupAvailable:(...args)=>uiFolderStatus.folderBackupAvailable(...args),
     folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),

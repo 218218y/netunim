@@ -121,12 +121,14 @@ test('check edits without a ready Shared V2 runtime fail before any legacy write
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
-test('cutover marker fails closed on missing Main checkpoint and forbids Orders V1 outbox',async()=>{
+test('Orders V2 fails closed on missing Main checkpoint and exposes no V1 outbox writer',async()=>{
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
-    await assert.rejects(browser.restoreBrowserStateFallback(),/v2_main_recovery_required/);
-    assert.throws(()=>browser.markCloudPending(),/write_forbidden/);
+    await assert.rejects(browser.recoverLocalV2State(),/v2_main_recovery_required/);
+    assert.equal(browser.markCloudPending,undefined);
+    await assert.rejects(browser.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
+    await assert.rejects(browser.idbSyncPut('shared-checks-outbox-v3',{}),/storage_v1_write_forbidden/);
     assert.equal(globalThis.localStorage.length,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
@@ -161,12 +163,14 @@ test('Orders cutover startup restores Main V2 without opening a legacy browser s
   const previous=globalThis.localStorage;
   globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
   try{
-    const state=structuredClone(ORDERS_INITIAL_STATE),model={state:{}};
+    const state=structuredClone(ORDERS_INITIAL_STATE),model={state:{}},captured=[];
+    state.notesSheet={sheets:[{id:'historical'}],columns:[],rows:[]};
     const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>({state,appMetadata:{snapshotSeq:11}})},
       model,files:{},session:{localSnapshotSeq:0,cloudRevision:3},normalizeState:value=>structuredClone(value),
-      domainRevisions:{reconcile:()=>{}},captureLegacyWorkbook:async()=>{}});
-    assert.equal(await browser.restoreBrowserStateFallback(),true);
+      domainRevisions:{reconcile:()=>{}},captureEmbeddedWorkbook:async sheet=>captured.push(sheet)});
+    assert.ok(await browser.recoverLocalV2State());
     assert.deepEqual(model.state,state);
+    assert.deepEqual(captured,[state.notesSheet]);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
@@ -196,7 +200,7 @@ test('secondary V2 recovery does not consult legacy snapshots or pending state',
     const ordersModel={state:{}};
     const orders=createOrdersBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:structuredClone(ORDERS_INITIAL_STATE),appMetadata:{snapshotSeq:5}})},
       model:ordersModel,files:{},session:{localSnapshotSeq:0},normalizeState:value=>structuredClone(value)});
-    assert.equal(await orders.restoreBrowserStateReadOnly(),true);
+    assert.ok(await orders.recoverReadOnlyV2State());
     assert.deepEqual(ordersModel.state.checks,[]);
     const model={state:{}},session={},checksSession={};
     const kupa=createKupaBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:6,revision:7}})},
