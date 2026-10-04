@@ -27,7 +27,8 @@ function reconcileDebtMetadata(row,...sources){
   const invoiceAt=p.invoiceComplete?earliestTimestamp([...invoiceSourceTimes,progressCompletionAt(row,'invoice')]):null;
   const existingClosed=earliestTimestamp(sameTargetSources.filter(value=>{const progress=customerDebtProgressData(value);return progress.paymentComplete&&progress.invoiceComplete}).map(value=>value?.closedAt)),derivedClosed=latestTimestamp([paymentAt,invoiceAt]);
   row.paidAt=paymentAt;row.invoiceIssuedAt=invoiceAt;row.closedAt=p.paymentComplete&&p.invoiceComplete?latestTimestamp([derivedClosed,existingClosed]):null;
-  row.updatedAt=latestTimestamp([...sourceRows.map(value=>value?.updatedAt),...progressTimes])||row.updatedAt;
+  const updatedAt=latestTimestamp([...sourceRows.map(value=>value?.updatedAt),...progressTimes])??row.updatedAt;
+  if(updatedAt===undefined)delete row.updatedAt;else row.updatedAt=updatedAt;
   return row;
 }
 
