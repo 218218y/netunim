@@ -149,7 +149,7 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
   model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
-const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverSharedAndMigrate();
+const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
 const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
 
 const cloudAuth=createCloudAuth({

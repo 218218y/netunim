@@ -202,6 +202,18 @@ for label, app_root in (("kupa", K), ("orders", O)):
        and "resumeStorageTransition" not in lifecycle_source,
        f"{label}: production cannot resume V1 drain or begin legacy cutover")
 
+main_schema=(ROOT / "shared/storage-v2-schema.js").read_text(encoding="utf-8")
+main_runtime=(ROOT / "shared/storage-v2-runtime.js").read_text(encoding="utf-8")
+main_replay=(ROOT / "shared/storage-journal-model.js").read_text(encoding="utf-8")
+ok("legacyCollections" not in main_schema and "mainProjection:2" in main_schema
+   and "migrateMainProjection" not in main_runtime
+   and "storage_main_projection_invalid" in main_replay,
+   "Main V2 accepts only projection 2 and cannot replay a check-bearing checkpoint")
+for label, app_root in (("kupa", K), ("orders", O)):
+    coordinator=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
+    ok("migrateMainProjection" not in coordinator,
+       f"{label}: Shared recovery no longer runs a legacy Main projection migration")
+
 owner_core=(ROOT/'shared/storage-owner.js').read_text(encoding='utf-8')
 owner_db=(ROOT/'shared/storage-journal-idb.js').read_text(encoding='utf-8')
 orders_cloud_ui=(O/'site/assets/js/ui/cloud.js').read_text(encoding='utf-8')

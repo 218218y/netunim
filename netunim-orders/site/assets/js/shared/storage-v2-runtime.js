@@ -29,22 +29,21 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
 export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckpoint=state=>structuredClone(state),prepareOperation=operation=>structuredClone(operation),mode=()=>storageV2Mode(app,globalThis.localStorage,owner()),createJournal=createStorageJournal,scheduleIdle=callback=>globalThis.requestIdleCallback?requestIdleCallback(callback,{timeout:5000}):setTimeout(callback,1000),compactEvery=128,compactAfterMs=5*60*1000}={}){
   if(!STORAGE_SCHEMAS[app]||typeof owner!=='function'||typeof primary!=='function'||typeof validate!=='function')throw new Error('storage_v2_runtime_configuration');
   const diagnostics={mode:'off',recoveries:0,operations:0,boundaries:0,emergencyFailures:0,commitFailures:0,errors:0,lastError:''};
-  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false,mainProjectionVersion=2,projectionMigration=false;
-  const guardCloudMutation=()=>{if(boundaryGate()||projectionMigration)throw new Error('storage_boundary_in_progress')};
+  let journal=null,identity='',authoritative=false,starting=null,startingIdentity='',commits=Promise.resolve(),corruptIdentity='',operationsSinceCheckpoint=0,lastCheckpointAt=Date.now(),compactionScheduled=false,undurableCount=0,boundaryGate=()=>false;
+  const guardCloudMutation=()=>{if(boundaryGate())throw new Error('storage_boundary_in_progress')};
   const undurableFailures=new Map();
   const business=state=>{const copy=structuredClone(state||{});delete copy._meta;return copy};
-  const checkpointState=(state,{projectionVersion=mainProjectionVersion}={})=>{const copy=prepareCheckpoint(business(state));if(projectionVersion===2)delete copy.checks;return copy};
+  const checkpointState=state=>{const copy=prepareCheckpoint(business(state));delete copy.checks;return copy};
   const primaryMode=()=>{const value=mode();return value==='primary'||value==='preparing'};
   function currentOwner(){return String(owner()||'').trim()||'local'}
   function readyForCurrentOwner(){return primaryMode()&&primary()&&authoritative&&identity===currentOwner()&&!!journal?.ready}
   function create(){
     const next=currentOwner();
     if(journal&&identity===next)return journal;
-    identity=next;authoritative=false;commits=Promise.resolve();mainProjectionVersion=2;const scopedOwner=next;
+    identity=next;authoritative=false;commits=Promise.resolve();const scopedOwner=next;
     journal=createJournal({owner:`${scopedOwner}:${app}`,schema:STORAGE_SCHEMAS[app],validate,primary:()=>primaryMode()&&primary()&&scopedOwner===currentOwner()});corruptIdentity='';return journal;
   }
   function verifiedRecovery(active,recovered){
-    mainProjectionVersion=recovered.appMetadata?.mainProjectionVersion===2?2:1;
     // An open alone cannot prove that an IDB-only edit survived. Keep its risk
     // until the same epoch and sequence have actually been recovered.
     const failure=undurableFailures.get(active);
@@ -81,7 +80,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
       const recovered=await active.recover();
       if(activeIdentity!==currentOwner())throw new Error('storage_owner_changed_during_recovery');
       if(!recovered||recovered.appMetadata?.storageRole!=='primary')return null;
-      diagnostics.recoveries++;mainProjectionVersion=recovered.appMetadata?.mainProjectionVersion===2?2:1;return {...recovered,source:'v2-readonly'};
+      diagnostics.recoveries++;return {...recovered,source:'v2-readonly'};
     }catch(error){diagnostics.errors++;diagnostics.lastError=error.message;diagnostics.recoveryFailure=storageRecoveryFailure(error);if(diagnostics.recoveryFailure==='fatal')corruptIdentity=activeIdentity;return null}
   }
   async function recoverForOwner({intent}={}){
@@ -154,7 +153,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     scheduleIdle(async()=>{compactionScheduled=false;if(!readyForCurrentOwner()||(!operationsSinceCheckpoint&&Date.now()-lastCheckpointAt<compactAfterMs))return;try{await commits;await journal.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now()}catch(error){diagnostics.errors++;diagnostics.lastError=error.message}});
   }
   function persist(state,{operations=null,storageBoundary='',generation=0,surface='',mutationType='autosave',deleteIntents={}}={},appMetadata={}){
-    if(boundaryGate()||projectionMigration)throw new Error('storage_boundary_in_progress');
+    if(boundaryGate())throw new Error('storage_boundary_in_progress');
     const runtimeMode=mode();if(runtimeMode==='preparing')throw new Error('storage_v2_preparation_locked');
     if(runtimeMode!=='primary'||!primary())return {handled:false,reason:'inactive'};
     diagnostics.mode='primary';const active=create(),boundary=String(storageBoundary||'').trim(),typed=Array.isArray(operations)&&operations.length>0;
@@ -202,35 +201,13 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result;
   }
   async function adoptCloudHead(revision,cloudState,currentState,options={}){guardCloudMutation();const active=await settledJournal();guardCloudMutation();const result=await active.adoptCloudHead(revision,cloudState,checkpointState(currentState),options);operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata};if(mainProjectionVersion===2)metadata.mainProjectionVersion=2;const result=await active.replaceAuthoritativeState(checkpointState(currentState,{projectionVersion:metadata.mainProjectionVersion}),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
+  async function replaceAuthoritativeState(currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.replaceAuthoritativeState(checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function replaceLocalWithPending(currentState,{boundaryId,expectedSeq,expectedBaseRevision,validateBase=validate,mutationType='import',surface='backup.local-import'}={}){
     const active=await settledJournal();
     const result=await active.replaceLocalWithPending(checkpointState(currentState),{boundaryId,expectedSeq,expectedBaseRevision,validateBase,mutationType,surface,requireCurrentState:mutationType==='cloud-normalization',deleteCollections:STORAGE_SCHEMAS[app].collections});
     diagnostics.operations++;operationsSinceCheckpoint++;return result;
   }
-  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata};if(mainProjectionVersion===2)metadata.mainProjectionVersion=2;const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState,{projectionVersion:metadata.mainProjectionVersion}),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  async function migrateMainProjection(sharedState){
-    if(!readyForCurrentOwner())return false;
-    if(!Array.isArray(sharedState?.checks))throw new Error('storage_main_projection_shared_required');
-    if(projectionMigration||boundaryGate())throw new Error('storage_boundary_in_progress');
-    projectionMigration=true;
-    try{
-      const active=await settledJournal(),recovered=await active.recover();
-      if(!recovered||recovered.appMetadata?.storageRole!=='primary')throw new Error('storage_main_projection_head_missing');
-      if(recovered.appMetadata?.mainProjectionVersion===2){if(Object.hasOwn(recovered.state,'checks'))throw new Error('storage_main_projection_invalid');mainProjectionVersion=2;return true}
-      if(recovered.seq!==recovered.stored.metadata?.seq)return false;
-      const cloud=await active.cloudState();
-      if(cloud.flight||cloud.control||cloud.pending||cloud.base&&cloud.base.ackSeq!==cloud.seq)return false;
-      const projected=structuredClone(recovered.state),oldChecks=projected.checks;
-      delete projected.checks;validate(projected);
-      const metadata={...recovered.appMetadata,mainProjectionVersion:2,mainChecksCount:Array.isArray(oldChecks)?oldChecks.length:0,sharedChecksCount:sharedState.checks.length,mainChecksDiverged:!equalSyncJson(oldChecks||[],sharedState.checks)};
-      if(cloud.base)await active.resetCloudHead(cloud.base.revision,cloud.base.state,projected,{appMetadata:metadata,expectedCleanHead:{epoch:recovered.epoch,seq:recovered.seq,revision:cloud.base.revision,checkpointChecksum:recovered.stored.checkpoints.checksum}});
-      else await active.replaceAuthoritativeState(projected,{appMetadata:metadata,expectedLocalHead:{epoch:recovered.epoch,seq:recovered.seq,checkpointChecksum:recovered.stored.checkpoints.checksum}});
-      const verified=await active.recover();
-      if(verified?.appMetadata?.mainProjectionVersion!==2||Object.hasOwn(verified.state,'checks'))throw new Error('storage_main_projection_verification_failed');
-      mainProjectionVersion=2;operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return true;
-    }finally{projectionMigration=false}
-  }
+  async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,migrateMainProjection,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }
