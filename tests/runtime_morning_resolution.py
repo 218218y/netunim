@@ -1,6 +1,6 @@
 """A/B handover: production cloud refresh, durable Recovery and explicit UI decisions."""
 import json
-from browser_harness import LegacyBrowserSession as BrowserSession, ROOT
+from browser_harness import BrowserSession, ROOT
 from runtime_morning_audit import seed, js, reload, SETUP
 
 
@@ -24,6 +24,7 @@ if(localStorage.getItem('audit.startup')){
   domainsBankCache.refreshKupaReadout=async()=>true;syncChecks.syncSharedChecksFromCloud=async()=>true;
   cloudTransport.readCloud=async()=>{globalThis.startupCloudReads++;await globalThis.startupCloudGate;return structuredClone(fixture.head)};
   cloudTransport.rpcSave=async(snapshot,expected)=>({r:{ok:true},row:{revision:expected+1,state:structuredClone(snapshot)}});
+  cloudTransport.rpcSaveV2=(...args)=>cloudTransport.rpcSave(...args);
   cloudAuth.supaFetch=async()=>new Response(JSON.stringify({ok:true,configured:true,available:true,environment:'sandbox',operation:fixture.operation}),{headers:{'Content-Type':'application/json'}});
 }
 """
@@ -46,13 +47,13 @@ def startup_barrier():
         const before=customerDebtProgressData(state.customerDebts.find(d=>d.id==='AUDIT')).paymentApplied;
         if(!globalThis.startupCloudReads||before!==0||!localStorage.getItem('orders.morning.pending-issuance.v1'))throw new Error('startup allocated before successful GET');
         globalThis.releaseStartupCloud();
-        for(let i=0;i<200&&!document.getElementById('morningRecoveryPayment');i++)await new Promise(r=>setTimeout(r,10));
+        await new Promise(r=>setTimeout(r,100));
         const current=customerDebtProgressData(state.customerDebts.find(d=>d.id==='AUDIT'));
-        if(current.paymentApplied!==30||document.getElementById('morningRecoveryPayment')?.checked!==false)throw new Error('startup ignored changed financial snapshot');
+        if(current.paymentApplied!==30||current.invoiceApplied!==0||!localStorage.getItem('orders.morning.pending-issuance.v1'))throw new Error('startup applied Morning before a financial decision '+JSON.stringify(current));
         return true;
         """)
         assert result
-        print('PASS actual startup/appReady timer: failed hydration then delayed GET cannot allocate until refresh completes')
+        print('PASS V2 startup/appReady timer: delayed GET cannot allocate Morning; the verified operation stays pending for explicit recovery')
 
 
 def pending(a,kind=320):
@@ -63,7 +64,7 @@ def pending(a,kind=320):
 
 def remote_edit(b,head,change):
     seed(b)
-    js(b,'state=normalizeState('+json.dumps(head['state'])+');cloudRevision='+str(head['revision'])+';lastCloudState=prepareCloudState(state);window.auditCloudHead='+json.dumps(head)+';'+change+";await requestCloudSave('computer B');clearTimeout(saveTimer);saveTimer=null;return true;")
+    js(b,'state=normalizeState('+json.dumps(head['state'])+');await adoptStorageV2CloudHead('+str(head['revision'])+',state);cloudRevision='+str(head['revision'])+';lastCloudState=prepareCloudState(state);window.auditCloudHead='+json.dumps(head)+';'+change+";await requestCloudSave('computer B');clearTimeout(saveTimer);saveTimer=null;return true;")
     return b.evaluate('window.auditCloudHead')
 
 
@@ -165,23 +166,23 @@ def refresh_barrier():
         print('PASS unavailable cloud: no allocation or cleanup; successful later GET resumes')
 
 
-def legacy_and_document_types():
+def old_morning_context_and_document_types():
     for kind in [305,400,320]:
-        with BrowserSession(ROOT/'netunim-orders/site','morning-legacy-'+str(kind)) as a:
+        with BrowserSession(ROOT/'netunim-orders/site','morning-old-context-'+str(kind)) as a:
             head=pending(a,kind)
             js(a,"const key='orders.morning.pending-issuance.v1',record=JSON.parse(localStorage.getItem(key));delete record.financialSnapshot;localStorage.setItem(key,JSON.stringify(record));return true;")
             resume(a,head)
             js(a,f"""
             await recoverPendingMorningOperation();
-            window.auditAssert((await window.auditProgress()).paymentApplied===0&&(await window.auditProgress()).invoiceApplied===0,'legacy auto applied');
+            window.auditAssert((await window.auditProgress()).paymentApplied===0&&(await window.auditProgress()).invoiceApplied===0,'old Morning context auto applied');
             const p=document.getElementById('morningRecoveryPayment'),i=document.getElementById('morningRecoveryInvoice');
             window.auditAssert(!!p==={str(kind!=305).lower()}&&!!i==={str(kind!=400).lower()},'document-specific choices');
-            window.auditAssert((!p||!p.checked)&&(!i||!i.checked),'legacy unsafe defaults');return true;
+            window.auditAssert((!p||!p.checked)&&(!i||!i.checked),'old Morning context unsafe defaults');return true;
             """)
             result=choose(a,kind!=305,kind!=400)
             assert result['progress']['paymentApplied']==(0 if kind==305 else 30),result
             assert result['progress']['invoiceApplied']==(0 if kind==400 else 30),result
-            print('PASS legacy no snapshot requires explicit approval, supported choices only:',kind)
+            print('PASS old Morning context without a financial snapshot requires explicit approval:',kind)
 
 
 def durable_approval():
@@ -234,7 +235,7 @@ def disconnected_create_response():
     with BrowserSession(ROOT/'netunim-orders/site','morning-delayed-create') as a:
         seed(a)
         js(a,r"""
-        scheduleSave('fixture');await requestCloudSave('fixture');clearTimeout(saveTimer);saveTimer=null;
+        await requestCloudSave('fixture');clearTimeout(saveTimer);saveTimer=null;
         window.auditCloudHead={revision:cloudRevision,state:prepareCloudState(state)};
         const transport=cloudAuth.supaFetch;
         cloudAuth.supaFetch=async(path,options)=>{
@@ -281,7 +282,7 @@ def approved_replay_after_cleanup_failure():
 def run():
     handover()
     refresh_barrier()
-    legacy_and_document_types()
+    old_morning_context_and_document_types()
     durable_approval()
     startup_barrier()
     decision_races()
