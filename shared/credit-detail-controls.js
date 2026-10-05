@@ -15,6 +15,25 @@ export function creditDetailRangeMatch(row,from='',to=''){
   return !!date&&(!from||date>=from)&&(!to||date<=to);
 }
 
+export function creditDetailRecentThreeRange(reference){
+  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(reference||''));
+  if(!match)return {from:'',to:''};
+  const year=Number(match[1]),month=Number(match[2]),start=new Date(Date.UTC(year,month-3,1));
+  return {from:`${start.getUTCFullYear()}-${String(start.getUTCMonth()+1).padStart(2,'0')}-01`,to:String(reference)};
+}
+
+export function creditDetailQuickPeriodMatch(row,period,reference){
+  if(period==='all')return true;
+  if(period!=='recent3')return false;
+  const {from,to}=creditDetailRecentThreeRange(reference);
+  return !!from&&creditDetailRangeMatch(row,from,to);
+}
+
+export function creditDetailQuickPeriodMarkup({mode='',action,escapeHtml}){
+  const button=(value,label)=>`<button type="button" class="credit-date-shortcut ${mode===value?'active':''}" data-action="${safe(action,escapeHtml)}" data-click-arg0="${value}" aria-pressed="${mode===value?'true':'false'}">${label}</button>`;
+  return `<span class="credit-date-shortcuts" role="group" aria-label="קיצורי טווח פירוט אשראי">${button('all','הכל')}${button('recent3','3 חודשים')}</span>`;
+}
+
 export function creditDateRangeMarkup({active=false,from='',to='',action,escapeHtml,dateEditorMarkup}){
   const input=(value,side,label)=>dateEditorMarkup('',value,{data:{'credit-date':side},compact:true,label});
   return `<details class="bank-date-filter credit-cycle-menu credit-date-filter ${active?'active':''}" data-dismiss-on-outside><summary class="credit-cycle-menu-trigger" aria-label="טווח תאריכי חיוב"><span><b>טווח תאריכים${active?' ✓':''}</b></span><span class="credit-cycle-menu-chevron" aria-hidden="true">⌄</span></summary><div class="bank-date-menu" data-menu-panel><div class="bank-date-range-card"><div class="bank-date-range-title">לפי תאריך החיוב</div><div class="bank-date-range-fields" data-menu-keep-open><div class="bank-date-range-field"><span>מ־</span>${input(from,'from','מתאריך חיוב')}</div><div class="bank-date-range-field"><span>עד</span>${input(to,'to','עד תאריך חיוב')}</div></div><div data-credit-date-error role="alert"></div><button type="button" class="btn primary bank-date-apply" data-action="${safe(action,escapeHtml)}" data-menu-keep-open>החל</button></div></div></details>`;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailRecentThreeRange,creditDetailQuickPeriodMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
 import {creditHistoryCutoffMonth,creditCardCompare} from '../shared/credit-history.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import * as kupaFeed from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -64,6 +64,16 @@ test('foreign immediate debits are assigned to the enclosing statement cycle wit
   assert.equal(creditDetailRangeMatch(before,'2026-10-02','2026-10-02'),true);assert.equal(creditDetailRangeMatch(before,'2026-10-11','2026-10-11'),false,'date range filtering continues to mean the actual debit date');
   assert.equal(creditDetailMonthIsPast({key:'2026-10',items:[{...before,bankSettlementState:'settled'}]},'2026-10-04'),false,'an already-settled immediate debit does not make its still-open statement cycle historical');
   assert.equal(kupaReconciledCreditUpcomingDetailData(state,'2026-10-04').items.some(row=>row.description==='AKUSOLI'),true,'the default upcoming statement includes the immediate foreign debit inside the open cycle window');
+});
+
+test('credit quick periods include all cached detail and the current plus two prior calendar months through today',()=>{
+  assert.deepEqual(creditDetailRecentThreeRange('2026-10-05'),{from:'2026-08-01',to:'2026-10-05'});
+  assert.equal(creditDetailQuickPeriodMatch({},'all','2026-10-05'),true,'All must keep undated cached detail');
+  assert.equal(creditDetailQuickPeriodMatch({date:'2026-08-01'},'recent3','2026-10-05'),true);
+  assert.equal(creditDetailQuickPeriodMatch({date:'2026-07-31'},'recent3','2026-10-05'),false);
+  assert.equal(creditDetailQuickPeriodMatch({date:'2026-10-05'},'recent3','2026-10-05'),true);
+  assert.equal(creditDetailQuickPeriodMatch({date:'2026-10-06'},'recent3','2026-10-05'),false,'future charges are not part of the last three months');
+  assert.equal(creditDetailQuickPeriodMatch({},'recent3','2026-10-05'),false);
 });
 
 test('date range uses inclusive billing dates, not purchase dates, with open boundaries',()=>{

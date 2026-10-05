@@ -8,7 +8,7 @@ export function createUiNavigation({onPageActivated=()=>{},runFinance=withFinanc
 const setKey=value=>[...(value||[])].map(String).sort().join(',');
 function viewStateKey(page){
   if(page==='checks')return JSON.stringify([ui.checkTab,ui.checkAccount,ui.checkYear,ui.checkFocus,ui.checkSearchValue,ui.bulkCollection,setKey(ui.bulkSelected)]);
-  if(page==='credit')return JSON.stringify([ui.resultPages,ui.creditResultTarget,ui.expensesTab,ui.creditView,ui.creditAccountFilter,ui.creditProviderFilter,ui.creditCardFilter,ui.creditDetailMode,ui.creditDetailChargeDay,ui.creditDetailFocus?.monthKey||'',ui.creditDetailFocus?.cardKey||'',ui.creditSearchValue,ui.expenseSearchValue,ui.creditSyncOpen,ui.creditForecastOpen,ui.bulkCollection,setKey(ui.bulkSelected)]);
+  if(page==='credit')return JSON.stringify([ui.resultPages,ui.creditResultTarget,ui.expensesTab,ui.creditView,ui.creditAccountFilter,ui.creditProviderFilter,ui.creditCardFilter,ui.creditDetailMode,ui.creditDetailChargeDay,ui.creditDetailFocus?.monthKey||'',ui.creditDetailFocus?.cardKey||'',ui.creditDateFrom||'',ui.creditDateTo||'',ui.creditSearchValue,ui.expenseSearchValue,ui.creditSyncOpen,ui.creditForecastOpen,ui.bulkCollection,setKey(ui.bulkSelected)]);
   if(page==='cash')return JSON.stringify([ui.cashSearchValue,ui.bulkCollection,setKey(ui.bulkSelected)]);
   if(page==='bank'||page==='expenses')return JSON.stringify([ui.bankAccountView,ui.bankDataView,ui.bankDateMode,ui.bankDateFrom,ui.bankDateTo,ui.bankSearchValue,ui.bankSyncOpen]);
   if(page==='notes')return JSON.stringify([ui.notesTab,ui.notesSheetId,ui.notesSearchValue,ui.notesSheetSearchValue,ui.bulkCollection,setKey(ui.bulkSelected)]);
