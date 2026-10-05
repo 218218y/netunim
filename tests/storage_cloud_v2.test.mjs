@@ -4,9 +4,10 @@ import {createStorageJournal} from '../shared/storage-journal.js';
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {readStorageRecord,sealStorageRecord} from '../shared/storage-journal-model.js';
 import {createStorageBrowser as createOrdersStorageBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
-import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_STORAGE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
+import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createStorageBrowser as createKupaStorageBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
-import {INITIAL_STATE as KUPA_INITIAL_STATE,BROWSER_STATE_KEY as KUPA_STORAGE_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
+import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
+import {ORDERS_LEGACY_SNAPSHOT_KEY as ORDERS_STORAGE_KEY,KUPA_LEGACY_SNAPSHOT_KEY as KUPA_STORAGE_KEY} from './retired_business_storage_keys.mjs';
 
 const clone=structuredClone;
 test('Storage V2 captures ACK and rebase checkpoints before waiting for an older journal commit',async()=>{
@@ -271,12 +272,12 @@ test('a cut-over account reads its V2 cursor without reopening an obsolete V1 ou
 test('browser adapters expose no V1 snapshot writer and require a ready V2 journal',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
-    const orders=createOrdersStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    const orders=createOrdersStorageBrowser({storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
     assert.equal(orders.queueBrowserStateSnapshot,undefined);
     assert.equal(orders.persistBrowserStateSnapshot,undefined);
     assert.throws(()=>orders.localSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
-    const kupa=createKupaStorageBrowser({legacyWriteAllowed:()=>false,storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    const kupa=createKupaStorageBrowser({storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
     assert.equal(kupa.persistBrowserStateSync,undefined);
     assert.equal(kupa.queueBrowserStateIdb,undefined);
     assert.throws(()=>kupa.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);

@@ -11,7 +11,7 @@ import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/a
 import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createUiCloud as orderUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
-import {CLOUD_BASE_KEY as ORDERS_CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
+import {ORDERS_CLOUD_BASE_KEY} from './retired_business_storage_keys.mjs';
 import {createLifecycle as orderLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {mergeValue, mergeValuePreferLocal} from '../netunim-kupa/site/assets/js/sync/merge-records.js';
 import {cashBalanceData,rightsBalanceData} from '../netunim-kupa/site/assets/js/domains/cash/model.js';

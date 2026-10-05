@@ -7,8 +7,8 @@ import {createStoragePersistence as createKupaPersistence} from '../netunim-kupa
 import {createStorageBrowser as createOrdersBrowser} from '../netunim-orders/site/assets/js/storage/browser.js';
 import {createStoragePersistence as createOrdersPersistence} from '../netunim-orders/site/assets/js/storage/persistence.js';
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
-import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_LEGACY_SNAPSHOT_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
-import {BROWSER_STATE_KEY as KUPA_LEGACY_SNAPSHOT_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
+import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
+import {ORDERS_LEGACY_SNAPSHOT_KEY,KUPA_LEGACY_SNAPSHOT_KEY} from './retired_business_storage_keys.mjs';
 import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
@@ -41,9 +41,9 @@ test('ordinary startup cannot enable V1 writers in an unmarked browser',()=>{
     const coordinator=create({tab:{primaryTab:true},session:{storageProtocolBlocked:false},storage:localStore()});
     coordinator.owner.current=()=> 'local';
     Object.defineProperty(coordinator.owner,'writable',{get:()=>true});
-    assert.equal(coordinator.legacyWriteAllowed(),false);
+    assert.equal('legacyWriteAllowed' in coordinator,false);
     assert.equal('legacyChecksWriteAllowed' in coordinator,false);
-    if(create===createKupaStorageV2Coordinator)assert.equal('pendingLegacyWriteAllowed' in coordinator,false);
+    assert.equal('pendingLegacyWriteAllowed' in coordinator,false);
   }
 });
 test('V2 owner handoff routes first-cloud UI through V2 and never stages a V1 outbox',async()=>{
@@ -91,8 +91,8 @@ for(const app of ['orders','kupa'])test(`${app}: Shared Checks storage exposes n
   try{
     const model={state:{checks:[{id:'C',amount:100}]}},checksSession={},idbPut=async()=>{writes++},idbDelete=async()=>{writes++};
     const storage=app==='orders'
-      ?createStorageChecks({model,checksSession,idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false})
-      :createSyncChecksState({model,checksSession,session:{},idbPut,idbDelete,idbGet:async()=>null,legacyWriteAllowed:()=>false});
+      ?createStorageChecks({model,checksSession,idbPut,idbDelete,idbGet:async()=>null})
+      :createSyncChecksState({model,checksSession,session:{},idbPut,idbDelete,idbGet:async()=>null});
     assert.equal('persistChecksBase' in storage || 'persistSharedChecksBase' in storage,false);
     assert.equal('markChecksPending' in storage || 'markSharedChecksPending' in storage,false);
     assert.equal('clearChecksPending' in storage || 'clearSharedChecksPending' in storage,false);
@@ -152,7 +152,7 @@ test('Kupa V2 save bypasses the retired V1 writer while protocol verification st
   try{
     const session={localSnapshotSeq:0,dbRevision:0,storageProtocolBlocked:false};
     const browser=createKupaBrowser({storageV2:{cutoverActive:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}},
-      model:{state:{}},session,files:{},legacyWriteAllowed:()=>false});
+      model:{state:{}},session,files:{}});
     assert.equal(browser.persistImmediateBrowserSnapshot(),true);
     assert.equal(v2Writes,1);assert.equal(globalThis.localStorage.length,0);
     session.storageProtocolBlocked=true;
@@ -237,8 +237,8 @@ for(const app of ['orders','kupa'])test(`${app}: V2 save never parses the legacy
     const storageV2={cutoverActive:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}};
     const session={localSnapshotSeq:7,cloudRevision:1,dbRevision:1,storageProtocolBlocked:false};
     const browser=app==='orders'
-      ?createOrdersBrowser({storageV2,model:{state:structuredClone(ORDERS_INITIAL_STATE)},files:{},session,legacyWriteAllowed:()=>false})
-      :createKupaBrowser({storageV2,model:{state:{}},files:{},session,legacyWriteAllowed:()=>false});
+      ?createOrdersBrowser({storageV2,model:{state:structuredClone(ORDERS_INITIAL_STATE)},files:{},session})
+      :createKupaBrowser({storageV2,model:{state:{}},files:{},session});
     const result=app==='orders'?browser.localSnapshot():browser.persistImmediateBrowserSnapshot();
     assert.equal(result,true);assert.equal(v2Writes,1);assert.equal(storage.length,0);
     session.storageProtocolBlocked=true;

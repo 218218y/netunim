@@ -81,9 +81,7 @@ return {
     dataFileHandle:null,
     backupsDirHandle:null,
     autoBackupTimer:null,
-    pendingAutoBackupPayload:null,
-    browserStatePendingRecord:null,
-    browserStateWritePromise:null
+    pendingAutoBackupPayload:null
   },
   tab:{
     primaryTab:true,
