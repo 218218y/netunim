@@ -115,6 +115,37 @@ test('Kupa V2 keeps the immutable flight across a lost ACK retry and never falls
   assert.equal(await f.api.persistSupabaseState(f.cloud(),'retry',1),true);assert.equal(f.sent.length,2);assert.equal(f.sent[1].operationId,firstId);assert.equal(f.getState().flight,null);assert.equal(f.getState().pending,false);
 });
 
+test('Kupa V2 account load reads and applies the cloud document with a clean local head',async()=>{
+  globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
+  const model={state:clone(INITIAL_STATE)},normalization=createStateNormalization({model});
+  model.state=normalization.normalizeState(model.state);
+  const remote=clone(model.state);remote.notes=[{id:'cloud-note',content:'from cloud',createdAt:'2026-10-05',updatedAt:'2026-10-05'}];
+  const session={serverInfo:{},connectionMode:'supabase',backendReady:true};let reads=0,adopted=0;
+  const api=createSyncDocument({model,session,checksSession:{},tab:{primaryTab:true},
+    prepareKupaCloudState:normalization.prepareKupaCloudState,applyKupaCloudState:normalization.applyKupaCloudState,
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:6,ackSeq:0,state:normalization.prepareKupaCloudState(remote)},pending:false,flight:null,control:null}),
+    storageV2CloudOutboxActive:()=>true,readSupabaseDocument:async()=>{reads++;return {state:remote,revision:6,coreUpdatedAt:'2026-10-05T00:00:00Z'}},
+    syncSharedChecksFromCloud:async()=>true,refreshOrdersFinanceSummary:async()=>false,
+    adoptStorageV2CloudHead:async()=>{adopted++},adoptAuthenticatedStorageOwner:async()=>true,
+    listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,hideConnectScreen:noop,render:noop});
+  try{
+    await api.loadSupabaseState();
+    assert.equal(reads,1);assert.equal(adopted,1);
+    assert.equal(model.state.notes[0].id,'cloud-note');
+  }finally{session.cloudPollingEnabled=false;clearTimeout(session.cloudPollTimer)}
+});
+
+test('Kupa V2 ACK preserves independent bank and credit sync fields',async()=>{
+  const f=fixture();
+  f.model.state.bank={...f.model.state.bank,currentBalance:4321,source:'hapoalim',feed:{accountNumber:'business',balance:4321},homeFeed:{accountNumber:'home',balance:8765}};
+  f.model.state.creditSync={version:3,mode:'synced',syncedAt:'2026-09-22T00:00:00Z',profiles:[],errors:[],cardMappings:{}};
+  assert.equal(await f.api.persistSupabaseState(f.cloud(),'sync',1),true);
+  assert.equal(f.model.state.bank.currentBalance,4321);
+  assert.equal(f.model.state.bank.homeFeed.balance,8765);
+  assert.equal(f.model.state.creditSync.syncedAt,'2026-09-22T00:00:00Z');
+  assert.equal(f.sent[0].path.endsWith('save_kupa_document_v6'),true);
+});
+
 test('Kupa V2 confirmed revision conflict rebases and rotates operation id before retry',async()=>{
   let calls=0;const remoteModel={state:clone(INITIAL_STATE)},remoteNorm=createStateNormalization({model:remoteModel});remoteModel.state=remoteNorm.normalizeState(remoteModel.state);remoteModel.state.notes=[{id:'N1',content:'remote',createdAt:'2026-09-22',updatedAt:'2026-09-22'}];const remote=remoteNorm.prepareKupaCloudState(remoteModel.state);
   const f=fixture({readRemote:async()=>({revision:11,state:clone(remote),coreUpdatedAt:'2026-09-22T00:00:00Z'}),merge:(_base,_local,remoteState)=>({state:{...clone(remoteState),notes:[{id:'N1',content:'merged',createdAt:'2026-09-22',updatedAt:'2026-09-22'}]},conflicts:[]}),write:body=>{if(++calls===1)return response(false,{code:'PT409',message:'revision_conflict'},409);return response(true,{revision:body.p_expected_revision+1,state:clone(body.p_state)})}});

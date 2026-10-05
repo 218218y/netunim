@@ -9,7 +9,6 @@ import {createStoragePersistence as createOrdersPersistence} from '../netunim-or
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE,STORAGE_KEY as ORDERS_LEGACY_SNAPSHOT_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
 import {BROWSER_STATE_KEY as KUPA_LEGACY_SNAPSHOT_KEY} from '../netunim-kupa/site/assets/js/state/constants.js';
-import {createStoragePending} from '../netunim-kupa/site/assets/js/storage/pending.js';
 import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
@@ -44,7 +43,7 @@ test('ordinary startup cannot enable V1 writers in an unmarked browser',()=>{
     Object.defineProperty(coordinator.owner,'writable',{get:()=>true});
     assert.equal(coordinator.legacyWriteAllowed(),false);
     assert.equal('legacyChecksWriteAllowed' in coordinator,false);
-    assert.equal(coordinator.pendingLegacyWriteAllowed({cutoverActive:false}),false);
+    if(create===createKupaStorageV2Coordinator)assert.equal('pendingLegacyWriteAllowed' in coordinator,false);
   }
 });
 test('V2 owner handoff routes first-cloud UI through V2 and never stages a V1 outbox',async()=>{
@@ -139,8 +138,6 @@ test('cutover marker forbids Kupa V1 browser snapshots and cloud outboxes',async
     const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(browser.loadBrowserState(),/v2_main_recovery_required/);
-    const pending=createStoragePending({session:{},idbGet:async()=>null,idbPut:async()=>{writes++},idbDelete:async()=>{writes++},legacyWriteAllowed:()=>false});
-    await assert.rejects(pending.putCloudPending({snapshot:{}}),/write_forbidden/);
     assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });

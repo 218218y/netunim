@@ -9,7 +9,7 @@ import {equalSyncJson} from '../shared/cloud-sync.js';
 import {applyStorageV2LocalImport} from '../shared/storage-v2-local-import.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CloudOutboxActive=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
+export function createStoragePersistence({sharedChecksV2=null,storageV2Boundary=null,refreshStorageV2CloudState=async()=>null,recoverStorageV2State=async()=>null,captureLegacyWorkbook=async()=>{},storageV2Primary=()=>false,storageV2CommitPromise=()=>Promise.resolve(),storageV2DurabilityAtRisk=()=>false,replaceStorageV2AuthoritativeState=async()=>false,replaceStorageV2CurrentState=async()=>false,reportError, model, session, files, tab, checksSession, domainRevisions, stateFromPayload, setSaveStatus, setConnectedStatus, persistImmediateBrowserSnapshot, readJsonHandle, listBackups, backupSnapshotToComputer, prepareKupaCloudState, normalizeState, showSecondaryTabGuard, saveSharedChecksToCloud, render, lastSavedState, writeJsonHandleVerified, mergeState3Way, persistSupabaseState, toast}){
 let cloudSaveRequest=null;
 function beginLocalRisk(token){(session.localUndurableGenerations??=new Set()).add(token)}
 function clearLocalRisk(token){session.localUndurableGenerations?.delete(token)}
@@ -24,9 +24,8 @@ function requestCloudSave(snapshot,msg,generation){
       const next=cloudSaveRequest;cloudSaveRequest=null;
       try{ok=await persistSupabaseState(next.snapshot,next.msg,next.generation)}
       catch(error){console.error('cloud save failed before durable staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');ok=false}
-      // Offline, retry-after and conflicts resume through the existing outbox poller.
+      // Offline, retry-after and conflicts resume from the V2 journal flight.
       if(!ok)break;
-      if(cloudSaveRequest&&cloudSaveRequest.generation<=Number(session.cloudAcknowledgedGeneration||0))cloudSaveRequest=null;
     }
     return ok;
   }).finally(()=>{session.cloudSavePromise=null});
@@ -94,6 +93,7 @@ async function loadState({automatic=false}={}){
 
 function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surface='kupa',domains=null,operations=null,storageBoundary=''}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return Promise.resolve(false)}
+  if(!storageV2Primary()){setSaveStatus('אחסון V2 אינו מוכן — השמירה נעצרה','error');return Promise.resolve(false)}
   measureStorage('validate',()=>assertKupaEntityInvariants(model.state,{includeChecks:true,required:true}));
   if(mutationType==='restore'||mutationType==='import')domainRevisions?.touchAll();else if(Array.isArray(domains)&&domains.length)domainRevisions?.touch(domains);else domainRevisions?.touchAll();
   const localDone=beginMeasure('kupa:save-local',{paint:true});
@@ -109,14 +109,17 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
         storageV2CommitPromise().then(()=>{if(generation===session.localGeneration)setSaveStatus('השינוי נשמר מקומית','saving')},()=>setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error'));
       }else setSaveStatus('שגיאת עותק מקומי','error');
     }
+    if(!localOk&&!idbPending)return Promise.resolve(false);
     // The operation is already durable. Yield so normalization, cloud projection
     // and file I/O cannot delay the paint caused by the user's edit.
     return nextTurn(async()=>{
       if(idbPending){try{await storageV2CommitPromise()}catch(error){setSaveStatus('השינוי לא נשמר — אין לסגור את החלון','error');return false}}
       const currentGeneration=session.localGeneration,fullSnapshot=measureStorage('normalize',()=>normalizeState(model.state)),snapshot=session.connectionMode==='supabase'?prepareKupaCloudState(fullSnapshot,{normalized:true}):fullSnapshot;
-      const v2Cloud=storageV2CloudOutboxActive()&&(localOk||idbPending);
-      if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)try{stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,currentGeneration,false,undefined,deleteIntents,{mutationType,surface});clearLocalRiskAfter(riskToken,session.cloudOutboxCommitPromise)}catch(error){console.error('cloud outbox staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');return false}
-      if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,currentGeneration)):requestCloudSave(snapshot,msg,currentGeneration);
+      if(session.connectionMode==='supabase'&&session.backendReady){
+        const head=await refreshStorageV2CloudState();
+        if(!head?.base){setSaveStatus('ראש ענן V2 חסר — השינוי נשמר מקומית אך הסנכרון נעצר','error');return false}
+        return storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,currentGeneration));
+      }
       session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,currentGeneration,deleteIntents));return session.saveQueue.then(ok=>{if(ok)clearLocalRisk(riskToken);return ok});
     });
   }
@@ -147,12 +150,15 @@ function saveState(msg='נשמר',{deleteIntents={},mutationType='autosave',surf
   if(idbPending)clearLocalRiskAfter(riskToken,storageV2CommitPromise());
   if(!localOk&&!idbPending)setSaveStatus('שגיאת עותק מקומי','error');
   if(idbPending)setSaveStatus('ממתין לאישור שמירה ב־IndexedDB','saving');
+  if(!localOk&&!idbPending)return Promise.resolve(false);
   // Generic boundaries are a pre-cutover compatibility path. V2-only rejects
   // them; restore/import and cloud normalization have explicit durable APIs.
-  const continueSave=()=>{
-    const v2Cloud=storageV2CloudOutboxActive()&&!storageBoundary&&(localOk||idbPending);
-    if(session.connectionMode==='supabase'&&session.backendReady&&!v2Cloud)try{stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false,undefined,effectiveDeleteIntents,{mutationType,surface});clearLocalRiskAfter(riskToken,session.cloudOutboxCommitPromise)}catch(error){console.error('cloud outbox staging',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');return false}
-    if(session.connectionMode==='supabase'&&session.backendReady)return v2Cloud?storageV2CommitPromise().then(()=>requestCloudSave(snapshot,msg,generation)):requestCloudSave(snapshot,msg,generation);
+  const continueSave=async()=>{
+    if(session.connectionMode==='supabase'&&session.backendReady){
+      const head=await refreshStorageV2CloudState();
+      if(!head?.base){setSaveStatus('ראש ענן V2 חסר — השינוי נשמר מקומית אך הסנכרון נעצר','error');return false}
+      await storageV2CommitPromise();return requestCloudSave(snapshot,msg,generation);
+    }
     session.saveQueue=session.saveQueue.catch(e=>{console.error('previous save queue',e)}).then(()=>persistState(snapshot,msg,generation,effectiveDeleteIntents));
     return session.saveQueue.then(ok=>{if(ok)clearLocalRisk(riskToken);return ok})
   };

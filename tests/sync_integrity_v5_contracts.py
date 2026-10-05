@@ -114,11 +114,10 @@ ok("deletedIds:ids" in bulk and "deleteIntents:{[collection]:ids}" in bulk
    "Kupa checks/credits/cash/rights bulk deletion forwards exact IDs")
 card_merge = (KUPA / "site/assets/js/sync/merge.js").read_text(encoding="utf-8")
 card_migration = (KUPA / "site/assets/js/sync/legacy-card-migration.js").read_text(encoding="utf-8")
-card_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
 ok("out.cards=mergeRecordArray" in card_merge and "migrateLegacyCards3Way" in card_merge
    and "stableLegacyPositionId" in card_migration and "legacy-card-migration-conflict" in card_migration
-   and "migrateLegacyCardPair" in card_pending,
-   "Kupa cards use lineage-aware one-time IDs, durable outbox migration and explicit ambiguity conflicts")
+   and not (KUPA / "site/assets/js/storage/pending.js").exists(),
+   "Kupa cards retain lineage-aware merge while the V1 outbox migration is removed")
 
 kupa_validation = (KUPA / "site/assets/js/state/validation.js").read_text(encoding="utf-8")
 kupa_entity_declaration = kupa_validation.split("KUPA_ENTITY_COLLECTIONS=", 1)[1].split(");", 1)[0]

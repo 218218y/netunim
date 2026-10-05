@@ -270,8 +270,9 @@ ok('storage_owner_local_adoption_auth_mismatch' in owner_core and 'requiredOwner
 ok("startStorageV2OwnerTransfer" in orders_cloud_ui and "reserved?.intent==='upload-local'?'upload-local':'load-account'" in orders_cloud_ui
    and 'getCloudPending' not in orders_cloud_ui and 'restorePendingAgainstCloud' not in orders_cloud_ui,
    'orders cloud UI: reserved intent uses detached V2 owner transfer without a legacy pending path')
-ok("prepareAuthenticatedStorageOwner" in kupa_cloud_ui and "storage_owner_local_pending_requires_upload" in kupa_cloud_ui,
-   'kupa cloud UI: local owner chooses an explicit load/upload intent and refuses ambiguous local pending during account load')
+ok("transferLocalV2('load-account')" in kupa_cloud_ui and "transferLocalV2('upload-local')" in kupa_cloud_ui
+   and 'getCloudPending' not in kupa_cloud_ui and 'reconcileCloudPending' not in kupa_cloud_ui,
+   'kupa cloud UI: local owner transfers through detached V2 and never opens a V1 pending path')
 ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),
    'kupa cloud apply: owner adoption completes before the account state becomes interactive')
 orders_enable=orders_cloud_ui.split('async function enableCloud(afterLogin=false){',1)[1].split('async function openCloud(',1)[0]
@@ -788,11 +789,10 @@ ok("bankAccountNextCycleCommitmentsData" in bank_model and "kupaAccountCashflowD
 ok("function applyKupaCoreState" in kupa_sync_document
    and "function applyAcknowledgedCoreState" in kupa_sync_document
    and "const next=applyKupaCoreState(snapshot,model.state.checks)" in kupa_sync_document
+   and "businessChanged=applyAcknowledgedCoreState(rebased.state)" in kupa_sync_document
    and "businessChanged=applyAcknowledgedCoreState(authoritative)" in kupa_sync_document
-   and "businessChanged=applyAcknowledgedCoreState(newest.snapshot)" in kupa_sync_document
-   and "applyKupaCoreState(pending.snapshot" in kupa_sync_document
-   and "applyKupaCoreState(newest?.snapshot||authoritative" in kupa_sync_document,
-   "kupa save ownership: normal ACK and recovery paths reapply Kupa-only responses through the finance-preserving overlay without forcing an unchanged render")
+   and "getCloudPending" not in kupa_sync_document,
+   "kupa save ownership: V2 ACK preserves the finance overlay and has no V1 outbox")
 kupa_actions=(K / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
 kupa_navigation=(K / "site/assets/js/ui/navigation.js").read_text(encoding="utf-8")
 ok('button data-action="set-page"' in kupa_dashboard_view
@@ -906,14 +906,14 @@ for label,ui_cloud in (("Kupa",kupa_ui_cloud),("Orders",orders_ui_cloud)):
 kupa_sync_checks=(K / "site/assets/js/sync/checks.js").read_text(encoding="utf-8")
 shared_checks_v2=(ROOT / "shared/shared-checks-v2-runtime.js").read_text(encoding="utf-8")
 kupa_cloud_policy=(K / "site/assets/js/shared/cloud-sync.js").read_text(encoding="utf-8")
-ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloud")>=2
+ok(kupa_sync_document.count("runBusyCloudWriteWithPolicy(()=>rpcSaveCloudV2")>=1
    and "runBusyCloudWriteWithPolicy(()=>{assertContext(store);return rpc(" in shared_checks_v2
    and "runBusyCloudWriteWithPolicy(()=>rpcSaveFinanceSync" in kupa_transport
    and "attempts=CLOUD_WRITE_POLICY.busyAttempts" in kupa_cloud_policy
    and "if(normalizeCloudError(result).kind!=='busy')return result" in kupa_cloud_policy
    and "if(saveBusy(res))throw new Error('save_busy')" in kupa_sync_document
-   and "if(!revisionConflict(res))throw cloudWriteError(res,em)" in kupa_sync_document,
-   "Kupa cloud writes: the shared save_busy policy is bounded and only revision conflicts trigger revision reads/merges")
+   and "if(!res?.r?.ok)throw cloudWriteError(res" in kupa_sync_document,
+   "Kupa V2 cloud writes: busy retry is bounded and revision conflicts trigger rebase")
 
 # Header cloud status is scoped by data ownership. Finance refreshes must never advance or degrade
 # the Orders/Kupa top header; finance keeps its own status inside Bank/Credit.

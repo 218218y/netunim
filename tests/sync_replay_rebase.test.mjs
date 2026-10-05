@@ -1,7 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSyncDocument as kupaDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
-import {createSyncPending} from '../netunim-kupa/site/assets/js/sync/pending.js';
 import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/sync/merge.js';
 import {createSyncMerge as kupaMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
 import {createStateNormalization as ordersNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
@@ -12,41 +10,6 @@ const clone=structuredClone, noop=()=>{};
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 globalThis.localStorage={setItem:noop,getItem:()=>null};
 const o=ordersNormalization({}),k=kupaNormalization({model:{}});
-
-for(const domain of ['kupa'])for(const same of [true,false])for(const duringClear of [false,true])test(`${domain}: lost ACK, newer generation, intervening ${same?'same':'different'} entity${duringClear?' during ACK cleanup':''}`,async()=>{
- navigator.onLine=true;
- const checks=domain.endsWith('checks'),isOrders=domain.startsWith('orders'),normalizer=isOrders?o:k;
- const prepare=checks?clone:isOrders?o.normalizeState:k.prepareKupaCloudState;
- const initial=checks?[{id:'X',name:'base',amount:10},{id:'Y',name:'other',amount:20}]:normalizer.normalizeState({notes:[{id:'X',content:'base'},{id:'Y',content:'other'}]});
- const rows=s=>checks?s:s.notes,field=checks?'amount':'content';
- const n=clone(initial);rows(n)[0][field]=checks?11:'N';
- const newer=clone(n);rows(newer)[0][field]=checks?15:'N+1';
- const remote=clone(n);rows(remote)[same?0:1][field]=checks?99:'B';
- let head=clone(initial),revision=10;const ledger=new Map();
- function serverSave(snapshot,op){if(ledger.has(op))return {operation_replayed:true,operation_revision:ledger.get(op),revision,state:checks?{checks:clone(head),bankEvents:[]}:clone(head)};head=clone(snapshot);revision++;ledger.set(op,revision);return {revision,state:clone(head)}}
- serverSave(n,'op-N'); // accepted revision 11, ACK lost
- assert.equal(revision,11);
- let pending={generation:1,operationId:'op-N',baseRevision:10,baseState:prepare(initial),snapshot:prepare(n)},calls=0;
- const session={localGeneration:2,cloudRevision:10,dbRevision:10,lastCloudState:prepare(initial),lastSavedSnapshot:JSON.stringify(prepare(initial)),serverInfo:{},backendReady:true,connectionMode:'supabase'};
- const model={state:checks?{checks:clone(newer)}:clone(duringClear?n:newer)},cs={checksGeneration:2,sharedChecksGeneration:2,checksCloudBase:clone(initial),sharedChecksBase:clone(initial)};
- const get=async()=>clone(pending),put=async value=>{pending=clone(value)},clear=async()=>{if(duringClear){model.state=checks?{checks:clone(newer)}:clone(newer);pending={...pending,generation:2,operationId:'op-newer',snapshot:prepare(newer)};return false}pending=null;return true};
- const mark=(snapshot,msg,conflict,options={})=>{pending={...pending,snapshot:clone(snapshot??model.state),...(checks?options:conflict||{}),conflict:checks?(conflict??pending?.conflict):conflict?.conflict??pending?.conflict};return true};
- const rpc=async()=>{calls++;assert.equal(calls,1,'must not publish revision 13 before explicit resolution');if(!duringClear)pending={...pending,generation:2,operationId:'op-newer',snapshot:prepare(newer)};head=clone(remote);revision=12;return {r:{ok:true},row:serverSave(n,'op-N')}};
- const deps=new Proxy({setSaveStatus:noop,setCloudHeaderStatus:noop,setCloud:noop,toast:noop,render:noop,persistChecksBase:noop,persistSharedChecksBase:noop,renderKupaDependentView:noop,recomputeKupaNetFromCache:noop,refreshCloudTimestamp:noop,persistImmediateBrowserSnapshot:noop,backupSnapshotToComputer:noop,writeStateToFolder:noop,reportError:noop,model,session,checksSession:cs,tab:{primaryTab:true},files:{},normalizeState:normalizer.normalizeState,prepareCloudState:prepare,prepareKupaCloudState:prepare,localSnapshot:noop,loadSession:()=>true,cloudEnabled:()=>true,getCloudPending:get,markCloudPending:mark,clearCloudPending:clear,cloudPendingExists:()=>!!pending,sameOrderCloudData:()=>false,applyOrderCloudState:s=>{model.state=clone(s)},applyKupaCloudState:clone,lastSavedCloudState:()=>prepare(initial),stageCloudPendingLocal:()=>pending,rpcSave:rpc,merge3:ordersMerge(o).merge3,readSharedChecksCloud:async()=>({revision:10,state:{checks:clone(initial),bankEvents:[]}}),readSharedChecksDocument:async()=>({revision:10,state:{checks:clone(initial),bankEvents:[]}}),rpcSaveSharedChecks:rpc,getChecksPending:get,getSharedChecksPending:get,markChecksPending:mark,markSharedChecksPending:mark,clearChecksPending:clear,clearSharedChecksPending:clear,checksPendingExists:()=>!!pending,sharedChecksPendingExists:()=>!!pending},{get:(target,key)=>key in target?target[key]:noop});
- if(checks){ // Stop after a successful rebase so the resulting generation can be inspected.
-   const originalMark=mark;const checkedMark=(...args)=>{const result=originalMark(...args);if(!args[2])navigator.onLine=false;return result};
-   const api=(isOrders?ordersChecks:kupaChecks)({...deps,markChecksPending:checkedMark,markSharedChecksPending:checkedMark});
-   await api.saveSharedChecksToCloud('');navigator.onLine=true;
- }else{
-   const rebase=createSyncPending({session,prepareKupaCloudState:prepare,getCloudPending:get,putCloudPending:put,rebaseKupaCloudProgress:kupaMerge(k).rebaseKupaCloudProgress});
-   const api=kupaDocument({...deps,supaRest:async()=>{const result=await rpc();return {ok:true,text:async()=>JSON.stringify(result.row)}},rebaseNewerPending:rebase.rebaseNewerPending});
-   // Prevent poll scheduling in this deterministic single-request test.
-   const timer=globalThis.setTimeout;globalThis.setTimeout=()=>0;try{await api.persistSupabaseState(prepare(n),'',1)}finally{globalThis.setTimeout=timer}
- }
- assert.equal(calls,1);assert.equal(revision,12);assert.deepEqual(head,remote);
- if(same){assert.ok(pending?.conflict,'newer local change must be durably blocked');assert.deepEqual(pending.snapshot,prepare(newer));assert.ok(pending.conflict.items?.[0]?.base!==undefined,'structured base evidence');}
- else{assert.equal(pending?.conflict??null,null);assert.equal(rows(pending.snapshot)[0][field],checks?15:'N+1');assert.equal(rows(pending.snapshot)[1][field],checks?99:'B');if(!checks){assert.equal(pending.baseRevision,12);assert.deepEqual(pending.baseState,prepare(remote))}}
-});
 
 for(const field of ['businessName','inventoryCategoryOrder','importAudit','stage2Audit'])test(`orders strict scalar ${field}`,()=>{const values=field==='businessName'?['A','B','C']:field==='inventoryCategoryOrder'?[['A'],['B'],['C']]:[{value:'A'},{value:'B'},{value:'C'}];const result=ordersMerge({normalizeState:clone}).merge3({[field]:values[0]},{[field]:values[1]},{[field]:values[2]});assert.ok(result.conflicts.includes(field))});
 for(const app of ['orders','kupa'])test(`${app} strict post-ACK merge retains delete protections`,()=>{

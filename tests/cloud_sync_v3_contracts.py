@@ -138,14 +138,14 @@ for label, path in (("Orders checks", ORDERS / "site/assets/js/sync/checks.js"),
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
 orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
-kupa_pending = (KUPA / "site/assets/js/storage/pending.js").read_text(encoding="utf-8")
 kupa_checks = (KUPA / "site/assets/js/sync/checks-state.js").read_text(encoding="utf-8")
 ok("migrateOutboxRecord" not in orders_storage and "acknowledgedGenerationMatches" not in orders_storage
    and "markCloudPending" not in orders_storage and "getCloudPending" not in orders_storage,
    "Orders: retired Main outbox migration and ACK code is absent")
-ok("migrateOutboxRecord" in kupa_pending and "acknowledgedGenerationMatches" in kupa_pending
-   and ("schemaVersion" not in kupa_pending or "OUTBOX" in kupa_pending),
-   "Kupa: retained durable pending supports migration and generation-exact ACK")
+ok(not (KUPA / "site/assets/js/storage/pending.js").exists()
+   and not (KUPA / "site/assets/js/sync/pending.js").exists()
+   and "getCloudPending" not in (KUPA / "site/assets/js/sync/document.js").read_text(encoding="utf-8"),
+   "Kupa: V1 Main outbox is absent and V2 journal owns ACK and retry")
 for label, source in (("Orders checks", orders_checks), ("Kupa checks", kupa_checks)):
     reader = "getSharedChecksPending" if label == "Kupa checks" else "getChecksPending"
     ok("migrateOutboxRecord" in source and reader in source,

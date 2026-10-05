@@ -20,6 +20,7 @@ function ordersFixture({primaryTab=true,readCloudMeta=async()=>({revision:7,upda
 }
 
 function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocument}={}){
+  globalThis.localStorage??={getItem:()=>null,setItem:noop,removeItem:noop};
   const statuses=[],saveStatuses=[],model={state:{}},normalization=createKupaNormalization({model});model.state=normalization.normalizeState({});
   const session={localGeneration:0,dbRevision:9,financeRevision,financeUpdatedAt:null,connectionMode:'supabase',backendReady:true,cloudConflictPending:false,cloudSyncBusy:false,cloudWriteBusy:false,serverInfo:{lastSavedAt:null},cloudDocumentName:'main'};
   const cloudState=normalization.prepareKupaCloudState(model.state),read=readSupabaseDocument||(async()=>({revision:9,financeRevision:rowFinanceRevision,state:structuredClone(cloudState),coreUpdatedAt:'2026-09-30T08:00:00Z'}));
@@ -28,7 +29,9 @@ function kupaFixture({financeRevision=3,rowFinanceRevision=3,readSupabaseDocumen
     setSaveStatus:(...args)=>saveStatuses.push(args),setConnectedStatus:noop,setCloudHeaderStatus:(...args)=>statuses.push(args),persistImmediateBrowserSnapshot:()=>true,loadSharedChecksBase:()=>[],loadSharedChecksBankEvents:()=>[],
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},saveState:async()=>true,syncSharedChecksFromCloud:async()=>true,render:noop,getCloudPending:async()=>null,readSupabaseDocument:read,supaRest:async()=>{},
     putCloudPending:async()=>{},clearCloudPending:async()=>true,mergeKupaCloudState3Way:()=>({state:cloudState,conflicts:[]}),rebaseNewerPending:async()=>null,lastSavedCloudState:()=>null,showSecondaryTabGuard:noop,
-    stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,refreshStorageV2CloudState:async()=>null,storageV2CloudOutboxActive:()=>false,
+    stageCloudPendingLocal:noop,toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:9,ackSeq:0,state:structuredClone(cloudState)},pending:false,flight:null,control:null}),storageV2CloudOutboxActive:()=>true,
+    replaceStorageV2CurrentState:async()=>true,
   });
   return {api,statuses,saveStatuses,session};
 }

@@ -95,21 +95,21 @@ test('Orders does not send an edit whose IDB-only journal commit fails',async()=
   assert.equal(session.localUndurableGenerations?.size,1);
 });
 
-test('Kupa does not stage or send cloud work before an IDB-only journal commit',async()=>{
-  const commit=deferred(),staged=[],sent=[],model={state:structuredClone(kupaInitial)};
+test('Kupa does not send V2 cloud work before an IDB-only journal commit',async()=>{
+  const commit=deferred(),sent=[],model={state:structuredClone(kupaInitial)};
   const normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
   const session={localGeneration:0,dbRevision:1,connectionMode:'supabase',backendReady:true,saveQueue:Promise.resolve()};
   const persistence=createKupaPersistence({
     model,session,tab:{primaryTab:true},files:{},checksSession:{},domainRevisions:{touch:noop},
-    storageV2Primary:()=>true,storageV2CloudOutboxActive:()=>false,storageV2CommitPromise:()=>commit.promise,storageV2DurabilityAtRisk:()=>true,
+    storageV2Primary:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:1,ackSeq:0},pending:true}),storageV2CommitPromise:()=>commit.promise,storageV2DurabilityAtRisk:()=>true,
     persistImmediateBrowserSnapshot:()=>false,normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
-    lastSavedCloudState:()=>null,stageCloudPendingLocal:()=>staged.push('staged'),persistSupabaseState:async()=>{sent.push('sent');return true},
+    persistSupabaseState:async()=>{sent.push('sent');return true},
     setSaveStatus:noop,
   });
   const saving=persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]});
-  await tick();await tick();assert.deepEqual(staged,[]);assert.deepEqual(sent,[]);
+  await tick();await tick();assert.deepEqual(sent,[]);
   commit.resolve();assert.equal(await saving,true);
-  assert.deepEqual(staged,['staged']);assert.deepEqual(sent,['sent']);
+  assert.deepEqual(sent,['sent']);
 });
 
 test('Orders Shared V2 does not start a cloud write before its IDB journal commit',async()=>{
@@ -142,21 +142,20 @@ test('Kupa Shared V2 does not start a cloud write when its IDB journal commit fa
   assert.equal(await saving,false);await tick();assert.deepEqual(sent,[]);
 });
 
-test('Kupa reports a failed legacy rescue outbox without an unhandled cloud-save rejection',async()=>{
+test('Kupa does not send a cloud write after local V2 durability fails',async()=>{
   const model={state:structuredClone(kupaInitial)},statuses=[],sent=[],session={localGeneration:0,dbRevision:1,connectionMode:'supabase',backendReady:true,saveQueue:Promise.resolve()};
   const normalization=createStateNormalization({model});model.state=normalization.normalizeState(model.state);
   const persistence=createKupaPersistence({
     model,session,
     tab:{primaryTab:true},files:{},checksSession:{},domainRevisions:{touch:noop},storageV2Primary:()=>true,
-    storageV2CloudOutboxActive:()=>true,storageV2DurabilityAtRisk:()=>false,persistImmediateBrowserSnapshot:()=>false,
+    storageV2DurabilityAtRisk:()=>false,persistImmediateBrowserSnapshot:()=>false,
     normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
-    lastSavedCloudState:()=>null,stageCloudPendingLocal:()=>{throw new Error('injected outbox failure')},
     persistSupabaseState:async()=>{sent.push('sent')},setSaveStatus:value=>statuses.push(value),
   });
   const original=console.error;console.error=noop;
   try{assert.equal(await persistence.saveState('edit',{domains:['notes'],operations:[{type:'put',collection:'notes',id:'N1',record:{id:'N1'}}]}),false)}
   finally{console.error=original}
-  assert.deepEqual(sent,[]);assert.ok(statuses.some(value=>value.includes('אין לסגור')));
+  assert.deepEqual(sent,[]);assert.ok(statuses.some(value=>value.includes('שגיאת עותק מקומי')));
   assert.equal(session.localUndurableGenerations?.size,1);
 });
 
