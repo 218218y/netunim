@@ -148,11 +148,11 @@ ok(not (KUPA / "site/assets/js/storage/pending.js").exists()
    "Kupa: V1 Main outbox is absent and V2 journal owns ACK and retry")
 for label, source in (("Orders checks", orders_checks), ("Kupa checks", kupa_checks)):
     reader = "getSharedChecksPending" if label == "Kupa checks" else "getChecksPending"
-    ok("migrateOutboxRecord" in source and reader in source,
-       f"{label}: old pending remains readable")
+    ok("migrateOutboxRecord" not in source and reader not in source,
+       f"{label}: retired pending payload is not replayable")
     ok("idbPut" not in source and "writePendingCache" not in source
        and "acknowledgedGenerationMatches" not in source,
-       f"{label}: old pending reader cannot repair or ACK V1")
+       f"{label}: retired outbox cannot be repaired or ACKed")
 
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):
