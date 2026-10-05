@@ -2,7 +2,7 @@
 npm run pdfjs:install
 npm run document-viewers:install
 npm run document-viewers:check
-
+ 
 ריענון חיפוש בeverything
 content:
 ctrl a , ctrl f5
