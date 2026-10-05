@@ -18,7 +18,7 @@ function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.d
 
 async function loadBrowserState(){
   const recovered=await storageV2?.recover?.(null);
-  if(!recovered)throw new Error('storage_v2_main_recovery_required');
+  if(!recovered){if(storageV2?.cutoverActive)throw new Error('storage_v2_main_recovery_required');return null}
   session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));
   return {schemaVersion:2,v2Authoritative:true,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||0),savedAt:new Date().toISOString()};
 }
