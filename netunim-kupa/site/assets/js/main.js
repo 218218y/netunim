@@ -146,12 +146,11 @@ const syncChecksState=createSyncChecksState({
   checksSession,
   model,
   normalizeState:(...args)=>stateNormalization.normalizeState(...args),
-  idbGet:(...args)=>storageIndexedDb.idbGet(...args),
   sharedChecksHasLocalWork:()=>sharedChecksV2.hasLocalWork,
 });
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,syncChecksState,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
@@ -325,13 +324,13 @@ const syncDocument=createSyncDocument({
   refreshOrdersFinanceSummary:(...args)=>domainsDashboardController.refreshOrdersFinanceSummary(...args),
   ...storageV2Cloud,
   storageV2PreparationActive:storagePreparationActive,
-  ...storageV2Coordinator.adoptionPort(),
+  ...storageV2Coordinator.accountContextPort(),
   domainRevisions,
 });
 
 
 storageV2Coordinator.configure({
-  syncChecksState,storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
+  storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   storageIndexedDb,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,

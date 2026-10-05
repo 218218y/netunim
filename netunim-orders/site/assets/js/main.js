@@ -8,7 +8,6 @@ import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createFinanceConnectionImporter} from './shared/finance-connection-import.js';
 import {createStateNormalization} from './state/normalization.js';
 import {createStorageBrowser} from './storage/browser.js';
-import {createStorageChecks} from './storage/checks.js';
 import {createDomainsSuppliersSelectors} from './domains/suppliers/selectors.js';
 import {createDomainsSuppliersCommands} from './domains/suppliers/commands.js';
 import {createDomainsSuppliersNavigation} from './domains/suppliers/navigation.js';
@@ -138,13 +137,8 @@ const restoreGroupStore=createRestoreGroupStore({
   remove:(...args)=>storageBrowser.idbSyncDelete(...args),
 });
 
-const storageChecks=createStorageChecks({
-  checksSession,
-  model,
-  idbGet:(...args)=>storageBrowser.idbSyncGet(...args),
-});
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,storageChecks,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
@@ -320,7 +314,7 @@ const domainsChecksEditor=createDomainsChecksEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,storageChecks,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
+const syncChecksPersistence=composeChecksPersistence({model,session,checksSession,storageBrowser,uiStatus,uiFolderStatus,storagePersistence,storageFiles:()=>storageFiles,cloudAuth,syncChecks:()=>syncChecks,uiAlertCenter:()=>uiAlertCenter,domainRevisions,sharedChecksV2});
 
 const domainsDashboardView=createDomainsDashboardView({
   model,
@@ -528,7 +522,7 @@ const domainsWarehouseEditor=createDomainsWarehouseEditor({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:storageShadow,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,storageChecks,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
+const uiBackup=composeBackup({tab,ui,model,session,checksSession,storageV2Cloud,storageV2Runtime:storageShadow,storageOwner,sharedChecksV2Composition,sharedChecksV2,stateNormalization,stateSelectors:()=>stateSelectors,uiTabGuard,uiModal,storageBrowser,uiStatus,uiFolderStatus,stateSnapshots,uiNavigation,uiSettings:()=>uiSettings,storageFiles:()=>storageFiles,cloudAuth,cloudTransport:()=>cloudTransport,syncDocument:()=>syncDocument,restoreGroupStore,domainsSuppliersSelectors,domainsSuppliersView,domainRevisions});
 
 const stateSelectors=createStateSelectors({
   model,
@@ -673,7 +667,7 @@ const syncDocument=createSyncDocument({
 
 
 storageV2Coordinator.configure({
-  storageBrowser,storageChecks,syncDocument,syncChecks,model,session,checksSession,files,
+  storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
 });

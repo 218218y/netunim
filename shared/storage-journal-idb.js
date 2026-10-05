@@ -246,7 +246,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     const finish=()=>{if(--remaining)return;try{
       if(!bindingReq.result||!handoffReq.result)throw new Error('storage_owner_handoff_missing');const binding=readStorageRecord(bindingReq.result),handoff=readStorageRecord(handoffReq.result);
       if(handoff.id!==id||handoff.app!==app||handoff.phase!=='target-recovered'||handoff.sourceOwner!==binding.owner||handoff.targetOwner!==targetOwner)throw new Error('storage_owner_handoff_changed');
-      const nextBinding={...binding,owner:targetOwner,generation:Number(binding.generation||0)+1,source:`handoff:${handoff.intent}`,updatedAt:at},active={...handoff,phase:'target-active',activatedAt:at,updatedAt:at};
+      const nextBinding={...binding,owner:targetOwner,generation:Number(binding.generation||0)+1,source:`handoff:${handoff.intent}`,pendingAdoption:null,updatedAt:at},active={...handoff,phase:'target-active',activatedAt:at,updatedAt:at};
       bindings.put(sealStorageRecord(nextBinding),app);handoffs.put(sealStorageRecord(active),app);result={binding:nextBinding,handoff:active};
     }catch(cause){error=cause;try{tx.abort()}catch{}}};bindingReq.onsuccess=finish;handoffReq.onsuccess=finish;
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_owner_handoff_aborted'));tx.onerror=()=>{error??=tx.error};

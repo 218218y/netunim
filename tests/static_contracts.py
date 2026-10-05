@@ -284,8 +284,9 @@ ok("startStorageV2OwnerTransfer" in orders_cloud_ui and "reserved?.intent==='upl
 ok("transferLocalV2('load-account')" in kupa_cloud_ui and "transferLocalV2('upload-local')" in kupa_cloud_ui
    and 'getCloudPending' not in kupa_cloud_ui and 'reconcileCloudPending' not in kupa_cloud_ui,
    'kupa cloud UI: local owner transfers through detached V2 and never opens a V1 pending path')
-ok(kupa_sync_document.index("await adoptAuthenticatedStorageOwner('load-account')") < kupa_sync_document.index("hideConnectScreen()", kupa_sync_document.index("async function applyCloudRow")),
-   'kupa cloud apply: owner adoption completes before the account state becomes interactive')
+ok(kupa_sync_document.index('assertAccountOwner();', kupa_sync_document.index('async function applyCloudRow')) < kupa_sync_document.index('replaceVisibleState(', kupa_sync_document.index('async function applyCloudRow'))
+   and 'adoptAuthenticatedStorageOwner' not in kupa_sync_document,
+   'kupa cloud apply: the active authenticated V2 owner is checked before visible account state changes')
 orders_enable=orders_cloud_ui.split('async function enableCloud(afterLogin=false){',1)[1].split('async function openCloud(',1)[0]
 kupa_enable=kupa_cloud_ui.split('async function enableCloudFromCurrentState(){',1)[1].split('async function connectSupabaseFromLogin(',1)[0]
 ok("return await transferLocalV2('upload-local')" in orders_enable and 'markCloudPending' not in orders_enable,

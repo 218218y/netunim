@@ -56,6 +56,17 @@ test('Kupa V2 account load without an initialized owner head cannot replace the 
   assert.deepEqual(model.state,{sentinel:'local state'});
 });
 
+test('Kupa V2 account load rejects a mismatched owner before replacing visible state',async()=>{
+  const model={state:{sentinel:'local state'}};
+  const api=createSyncDocument({model,session:{},checksSession:{},
+    refreshStorageV2CloudState:async()=>({seq:0,base:{revision:1,state:{}}}),
+    storageV2CloudOutboxActive:()=>true,
+    assertAccountOwner:()=>{throw new Error('storage_owner_account_mismatch')},
+  });
+  await assert.rejects(api.applyCloudRow({state:{sentinel:'foreign account'},revision:1}),/storage_owner_account_mismatch/);
+  assert.deepEqual(model.state,{sentinel:'local state'});
+});
+
 test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1 save',async()=>{
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:false}});
   globalThis.localStorage={getItem:()=>null,setItem:noop,removeItem:noop};
@@ -76,7 +87,7 @@ test('Kupa legacy card IDs are queued as one V2 cloud normalization without a V1
     stageCloudPendingLocal:()=>{throw Error('V1 outbox')},toast:noop,pollSharedChecks:async()=>{},refreshOrdersFinanceSummary:async()=>false,
     storageV2CloudOutboxActive:()=>true,refreshStorageV2CloudState:async()=>clone(cloud),adoptStorageV2CloudHead:async(_revision,_state,options)=>{calls.push({adoptedBase:clone(options.cloudState)})},
     queueStorageV2CloudNormalization:async(state,revision)=>{calls.push({state:clone(state),revision});cloud.seq=1;cloud.pending=true},
-    storageV2CommitPromise:()=>Promise.resolve()});
+    storageV2CommitPromise:()=>Promise.resolve(),assertAccountOwner:()=>true});
   try{
     await api.applyCloudRow({state:remote,revision:4,coreUpdatedAt:'2026-09-22T00:00:00Z'});
     assert.equal(calls.length,2);assert.equal(calls[1].revision,4);
@@ -126,7 +137,7 @@ test('Kupa V2 account load reads and applies the cloud document with a clean loc
     refreshStorageV2CloudState:async()=>({seq:0,base:{revision:6,ackSeq:0,state:normalization.prepareKupaCloudState(remote)},pending:false,flight:null,control:null}),
     storageV2CloudOutboxActive:()=>true,readSupabaseDocument:async()=>{reads++;return {state:remote,revision:6,coreUpdatedAt:'2026-10-05T00:00:00Z'}},
     syncSharedChecksFromCloud:async()=>true,refreshOrdersFinanceSummary:async()=>false,
-    adoptStorageV2CloudHead:async()=>{adopted++},adoptAuthenticatedStorageOwner:async()=>true,
+    adoptStorageV2CloudHead:async()=>{adopted++},assertAccountOwner:()=>true,
     listBackups:async()=>[],backupSnapshotToComputer:async()=>{},setConnectedStatus:noop,setSaveStatus:noop,setCloudHeaderStatus:noop,hideConnectScreen:noop,render:noop});
   try{
     await api.loadSupabaseState();
