@@ -2,7 +2,7 @@ import {measureStorage} from '../shared/storage-metrics.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {clone} from '../core/values.js';
-import {LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY, CLOUD_PENDING_KEY} from '../state/constants.js';
+import {LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY} from '../state/constants.js';
 import {createOperationId} from '../shared/cloud-sync.js';
 import {assertOrderEntityInvariants,assertValidOrderCloudState} from '../state/validation.js';
 
@@ -51,13 +51,6 @@ async function deleteLegacyBusinessRecords(){
   });
 }
 
-async function verifyLegacyCloudCleanReadOnly(){
-  const commit=session.ordersOutboxCommitPromise||Promise.resolve();await commit;
-  if(session.ordersOutboxCommitPromise&&session.ordersOutboxCommitPromise!==commit)return false;
-  if(session.ordersOutboxCached||localStorage.getItem(CLOUD_PENDING_KEY)!==null)return false;
-  return await idbSyncGet(ORDERS_OUTBOX_KEY)===null;
-}
-
 async function recoverLocalV2State(){
   const recovered=await storageV2?.recover?.(null);
   if(!recovered?.state)throw new Error('orders_v2_main_recovery_required');
@@ -77,7 +70,6 @@ async function recoverReadOnlyV2State(){
 
 function storageV2CloudOutboxActive(){return !!(storageV2?.primaryReady&&v2CloudStateCache?.base)}
 function cloudPendingExists(){return !!(storageV2CloudOutboxActive()&&(session.storageV2CloudPending||v2CloudStateCache?.pending||v2CloudStateCache?.flight))}
-async function verifyLegacyCloudClean(){return verifyLegacyCloudCleanReadOnly()}
 
 function cacheStorageV2CloudState(state){v2CloudStateCache=state;session.storageV2CloudPending=!!(state?.pending||state?.flight);return state}
 function settledStorageV2CloudState(seq,base,control=null){return {seq:Number(seq||0),base:base?clone(base):null,flight:null,control:control?clone(control):null,pending:false,pendingDeleteIntents:{},pendingGeneration:0,pendingMutationType:'autosave',pendingSurface:'unknown',afterFlightPending:false,afterFlightDeleteIntents:{},afterFlightGeneration:0,afterFlightMutationType:'autosave',afterFlightSurface:'unknown'}}
@@ -145,5 +137,5 @@ async function replaceStorageV2CurrentState(state=model.state){const result=awai
 async function adoptStorageV2CloudHead(revision,state=model.state){const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
 async function resetStorageV2CloudHead(revision,state=model.state){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 reset cloud head');const result=await storageV2.resetCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 reset cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});session.cloudConflictBlocked=false;const ackSeq=Number(result?.ackSeq||0),base={version:2,owner:v2CloudStateCache?.base?.owner,epoch:result?.epoch,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq};await refreshStorageV2CloudStateAfterCommit('cloud reset',resetStorageV2CloudState(Number(result?.seq||0),base));return result}
 
-return {localSnapshot,openLocalStateDb,idbSyncPut,idbSyncGet,idbSyncDelete,deleteLegacyBusinessRecords,verifyLegacyCloudCleanReadOnly,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,verifyLegacyCloudClean,storageV2CloudOutboxActive,refreshStorageV2CloudState,initializeStorageV2UploadLocalHead,initializeStorageV2BootstrapHead,initializeStorageV2CloudCursor,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
+return {localSnapshot,openLocalStateDb,idbSyncPut,idbSyncGet,idbSyncDelete,deleteLegacyBusinessRecords,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,storageV2CloudOutboxActive,refreshStorageV2CloudState,initializeStorageV2UploadLocalHead,initializeStorageV2BootstrapHead,initializeStorageV2CloudCursor,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
 }

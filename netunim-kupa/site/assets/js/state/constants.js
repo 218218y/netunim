@@ -8,7 +8,6 @@ export const TAB_LOCK='kupa-primary-writer';
 export const SHARED_CHECKS_DOC='main';
 export const SHARED_CHECKS_TABLE='shared_checks_documents';
 export const SHARED_CHECKS_RPC='save_shared_checks_document';
-export const SHARED_CHECKS_PENDING_KEY='kupa.shared.checks.pending.v1';
 export const DATA_FILE='kupa-data.json';
 export const BACKUP_PREFIX='kupa-backup_';
 export const AUTO_BACKUP_INTERVAL_MS=12*60*60*1000;

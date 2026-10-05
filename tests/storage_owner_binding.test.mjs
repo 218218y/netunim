@@ -19,7 +19,7 @@ function fakeDb(){
     async adoptPreparedLocalOwner(app,targetOwner,{id,intent,proof,at}){const binding=bindings.get(app),existing=handoffs.get(app);if(!binding)throw Error('storage_owner_binding_missing');if(binding.owner===targetOwner&&(!existing||existing.phase==='complete'))return {binding:structuredClone(binding),handoff:existing?structuredClone(existing):null};if(binding.owner!=='local')throw Error('storage_owner_handoff_required');if(existing&&existing.phase!=='complete')throw Error('storage_owner_handoff_pending');const reservation=binding.pendingAdoption;if(!reservation||reservation.targetOwner!==targetOwner||reservation.intent!==intent)throw Error('storage_owner_local_adoption_not_reserved');const nextBinding={...binding,owner:targetOwner,generation:binding.generation+1,source:`prepared-local:${intent}`,pendingAdoption:null,updatedAt:at},complete={version:1,id,app,sourceOwner:'local',targetOwner,intent,phase:'complete',preparationProof:structuredClone(proof),reservationId:reservation.id,createdAt:reservation.createdAt||at,activatedAt:at,completedAt:at,updatedAt:at};bindings.set(app,nextBinding);handoffs.set(app,complete);return {binding:structuredClone(nextBinding),handoff:structuredClone(complete)}},
     async beginOwnerHandoff(app,row){const binding=bindings.get(app),existing=handoffs.get(app);if(!binding)throw Error('storage_owner_binding_missing');if(existing&&existing.phase!=='complete')throw Error('storage_owner_handoff_pending');if(binding.owner!==row.sourceOwner)throw Error('storage_owner_handoff_invalid');handoffs.set(app,structuredClone(row));return structuredClone(row)},
     async advanceOwnerHandoff(app,id,fromPhase,toPhase,patch){const row=handoffs.get(app);if(!row||row.id!==id||row.phase!==fromPhase)throw Error('storage_owner_handoff_changed');const next={...row,...structuredClone(patch),phase:toPhase};handoffs.set(app,next);return structuredClone(next)},
-    async activateOwnerHandoff(app,id,targetOwner,{at}){const row=handoffs.get(app),binding=bindings.get(app);if(!row||!binding||row.id!==id||row.phase!=='target-recovered'||row.sourceOwner!==binding.owner||row.targetOwner!==targetOwner)throw Error('storage_owner_handoff_changed');const nextBinding={...binding,owner:targetOwner,generation:binding.generation+1,source:`handoff:${row.intent}`,updatedAt:at},active={...row,phase:'target-active',activatedAt:at,updatedAt:at};bindings.set(app,nextBinding);handoffs.set(app,active);return {binding:structuredClone(nextBinding),handoff:structuredClone(active)}},
+    async activateOwnerHandoff(app,id,targetOwner,{at}){const row=handoffs.get(app),binding=bindings.get(app);if(!row||!binding||row.id!==id||row.phase!=='target-recovered'||row.sourceOwner!==binding.owner||row.targetOwner!==targetOwner)throw Error('storage_owner_handoff_changed');const nextBinding={...binding,owner:targetOwner,generation:binding.generation+1,source:`handoff:${row.intent}`,pendingAdoption:null,updatedAt:at},active={...row,phase:'target-active',activatedAt:at,updatedAt:at};bindings.set(app,nextBinding);handoffs.set(app,active);return {binding:structuredClone(nextBinding),handoff:structuredClone(active)}},
     async completeOwnerHandoff(app,id,targetOwner,{at}){const row=handoffs.get(app),binding=bindings.get(app);if(!row||!binding||row.id!==id||row.phase!=='target-active'||binding.owner!==targetOwner||row.targetOwner!==targetOwner)throw Error('storage_owner_handoff_changed');const complete={...row,phase:'complete',completedAt:at,updatedAt:at};handoffs.set(app,complete);return {binding:structuredClone(binding),handoff:structuredClone(complete)}},
     seedBinding(app,row){bindings.set(app,structuredClone(row))},seedHandoff(app,row){handoffs.set(app,structuredClone(row))},snapshot(){return {bindings:structuredClone([...bindings]),handoffs:structuredClone([...handoffs])}}
   };
@@ -76,6 +76,18 @@ test('handoff cannot be started from a secondary tab or completed out of phase',
   const owner=createStorageOwnerBinding({app:'kupa',db,storage,primary:()=>primary,operationId:()=> 'H'});await owner.hydrate({legacyOwner:()=> 'A'});
   await assert.rejects(owner.beginHandoff('B',{intent:'account-switch'}),/primary_required/);
   primary=true;await owner.beginHandoff('B',{intent:'account-switch'});await assert.rejects(owner.completeHandoff(),/phase_invalid/);
+});
+
+test('V2 handoff activation clears a superseded local adoption reservation',async()=>{
+  const db=fakeDb(),owner=createStorageOwnerBinding({app:'orders',db,storage:fakeStorage(),primary:()=>true,operationId:()=> 'handoff-1'});
+  await owner.hydrate({legacyOwner:()=>null});
+  await owner.reserveLocalAdoption('account-B',{intent:'upload-local'});
+  await owner.beginHandoff('account-B',{intent:'upload-local'});
+  for(const phase of ['freezing-source','source-settled','target-authenticated'])await owner.advanceHandoff(phase);
+  await owner.activateHandoff();
+  assert.equal(owner.current(),'account-B');
+  assert.equal(owner.status().binding.pendingAdoption,null);
+  assert.equal(db.snapshot().bindings[0][1].pendingAdoption,null);
 });
 
 

@@ -22,7 +22,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const scheduleLegacyRetirement=createLegacyRetirementScheduler({
     ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
-    settle:async()=>{const p=requirePorts(),pending=[p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
     retire:async()=>{const p=requirePorts();await retireLegacyBusinessStorage({app:'orders',owner:owner.current(),ownerNow:()=>owner.current(),
       primaryReady:()=>tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&p.storageShadow.primaryReady&&p.sharedChecksV2.primaryReady,
       verifyV2:()=>owner.current()==='local'?verifyStorageV2LocalEngine({app:'orders',owner:()=>owner.current()}):p.verifyStorageCutover(),
@@ -39,9 +38,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
     validateMainCloud:state=>assertValidOrderCloudState(state,'Orders V2 restore cloud state'),applyMainState:state=>{const previous=model.state;model.state=stateNormalization.normalizeState({...state,checks:previous.checks});domainRevisions.reconcile(previous,model.state,{forceAll:true})},
   });
 
-  async function verifyLegacyClean(){
-    const p=requirePorts();return (await p.storageBrowser.verifyLegacyCloudClean())===true&&(await p.storageChecks.verifyLegacyChecksClean())===true;
-  }
   function configure(next){
     if(ports)throw new Error('orders_storage_v2_already_configured');ports=next;
     const p=requirePorts();
@@ -63,7 +59,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       quiesce:async()=>{
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
         await p.syncDocument.quiesceForStorageCutover();
-        const pending=[p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
+        const pending=[p.files.storageV2CommitPromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise].filter(Boolean);
         if(pending.length)await Promise.all(pending);
       },
     });
@@ -89,7 +85,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       if(marked!==true||owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_not_primary');
       clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
       await p.syncDocument.quiesceForStorageCutover();
-      const pending=[p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
+      const pending=[p.files.storageV2CommitPromise,p.session.cloudSavePromise,p.checksSession.checksSavePromise,p.checksSession.checksPullPromise,p.sharedChecksV2.commitPromise].filter(Boolean);
       if(pending.length)await Promise.all(pending);
       // The durable V2 source marker and the recovered Main/Shared heads below
       // decide transfer safety. Retired V1 records have no authority here.
@@ -155,29 +151,13 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   async function startStorageV2OwnerTransfer(options){return finishOwnerTransfer(()=>ownerTransfer.start(options))}
   async function resumeStorageV2OwnerTransfer(){return finishOwnerTransfer(()=>ownerTransfer.resume())}
   function ownerAdoption(){return owner.status().binding?.pendingAdoption||null}
-  async function prepareAuthenticatedOwner(intent){
-    const p=requirePorts(),auth=p.cloudAuth.loadSession(),target=String(auth?.user?.id||'').trim(),current=owner.current();
-    if(!target)throw new Error('storage_owner_reauth_required');if(current===target)return null;if(current!=='local')throw new Error('storage_owner_handoff_required');
-    const pending=ownerAdoption();if(pending){owner.assertAuthenticatedOwner(target);return pending}
-    await owner.reserveLocalAdoption(target,{intent});return ownerAdoption();
-  }
-  async function adoptAuthenticatedOwner(intent){
-    const p=requirePorts(),auth=p.cloudAuth.loadSession(),target=String(auth?.user?.id||'').trim(),current=owner.current();
-    if(!target)throw new Error('storage_owner_reauth_required');if(current===target)return true;if(current!=='local')throw new Error('storage_owner_handoff_required');
-    const pending=ownerAdoption();if(!pending||pending.targetOwner!==target)throw new Error('storage_owner_local_adoption_not_reserved');const effectiveIntent=pending.intent||intent;
-    const commits=[p.files.storageV2CommitPromise,p.session.ordersOutboxCommitPromise,p.checksSession.checksOutboxCommitPromise].filter(Boolean);if(commits.length)await Promise.all(commits);
-    if(await verifyLegacyClean()!==true)throw new Error('storage_owner_local_adoption_pending');
-    await owner.adoptPreparedLocalOwner(target,{intent:effectiveIntent,proof:{mainRevision:Number(p.session.cloudRevision||0),sharedRevision:Number(p.checksSession.checksCloudRevision||0),preparedAt:new Date().toISOString()}});
-    return true;
-  }
   async function recoverShared(){
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
     if(recovered)scheduleLegacyRetirement();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,scheduleLegacyRetirement,recoverShared,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
-    ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
-    adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,scheduleLegacyRetirement,recoverShared,configure,ownerAdoption,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+    ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption()}),
     localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),resumeLocalBirth:()=>localBirth.resume(),localBirthPreparing:()=>!!localBirth?.preparing,storageOwnerCurrent:()=>owner.current()}),
     ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     ownerTransferUiPorts:()=>({startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
