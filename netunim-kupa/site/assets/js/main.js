@@ -123,9 +123,9 @@ const storageIndexedDb=createStorageIndexedDb({
 });
 const captureLegacyWorkbook=(...args)=>spreadsheetWorkspace.sync.captureLegacy(...args);
 
-const storageShadow=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
+const mainStorageV2=storageV2Coordinator.createRuntime({validate:state=>assertKupaEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),prepareCheckpoint:state=>stateNormalization.prepareKupaStorageState(state),prepareOperation:operation=>stateNormalization.prepareKupaStorageOperation(operation)});
 const storageBrowser=createStorageBrowser({
-  storageV2:storageShadow,
+  storageV2:mainStorageV2,
   model,
   session,
   files,
@@ -150,7 +150,7 @@ const syncChecksState=createSyncChecksState({
 });
 
 const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
-  model,checksSession,domainRevisions,main:storageShadow,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
+  model,checksSession,domainRevisions,main:mainStorageV2,stateNormalization,getSyncChecks:()=>syncChecks,getCloudTransport:()=>cloudTransport,
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
@@ -196,9 +196,9 @@ const storagePersistence=createStoragePersistence({
   sharedChecksV2,
   storageV2Boundary:sharedChecksV2Composition.boundary,
   captureLegacyWorkbook,
-  storageV2Primary:()=>storageShadow.primaryReady,
-  recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
-  storageV2DurabilityAtRisk:()=>storageShadow.durabilityAtRisk,
+  storageV2Primary:()=>mainStorageV2.primaryReady,
+  recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
+  storageV2DurabilityAtRisk:()=>mainStorageV2.durabilityAtRisk,
   ...storageV2Cloud,
   reportError:(...args)=>uiStatus.reportError(...args),
   model,
@@ -333,7 +333,7 @@ storageV2Coordinator.configure({
   storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
-  cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),
+  cloudTransport,cloudAuth,mainStorageV2,verifyStorageCutover:()=>verifyStorageCutover(),
 });
 
 const uiCloud=composeCloudUi({
@@ -682,8 +682,8 @@ const domainsRecordsCommands=createDomainsRecordsCommands({
 const uiBackup=createUiBackup({
   ...storageV2Cloud,
   storageV2Boundary:sharedChecksV2Composition.boundary,sharedChecksV2,
-  storageV2LocalPrimary:()=>storageShadow.primaryReady,
-  recoverStorageV2State:()=>storageShadow.recoverForOwner({intent:'load-account'}),
+  storageV2LocalPrimary:()=>mainStorageV2.primaryReady,
+  recoverStorageV2State:()=>mainStorageV2.recoverForOwner({intent:'load-account'}),
   storageOwnerCurrent:()=>storageOwner.current(),
   model,
   session,
@@ -912,7 +912,7 @@ bindBackdropDismissal(document.getElementById('modalBackdrop'),()=>uiModal.close
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(uiSidebar.isOpen())uiSidebar.close({restoreFocus:true});else uiModal.closeModal()}});
 window.addEventListener('beforeunload',e=>{
   if(!tab.primaryTab||session.storageProtocolBlocked)return;
-  if(storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
+  if(mainStorageV2.durabilityAtRisk||sharedChecksV2.durabilityAtRisk||session.localUndurableGenerations?.size){e.preventDefault();e.returnValue=''}
 });
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(console.error));}
 uiEvents.bindActionEvents(document.getElementById('content'),uiActions);

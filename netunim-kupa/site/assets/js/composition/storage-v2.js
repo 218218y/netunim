@@ -47,7 +47,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
       :await p.verifyStorageCutover();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
-    await Promise.all([p.storageShadow.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
+    await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
       p.session.saveQueue,p.session.cloudSavePromise,p.checksSession.sharedChecksSavePromise,
       p.checksSession.sharedChecksPullPromise].filter(Boolean));
     if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy)throw new Error('kupa_transfer_source_unsettled');
@@ -102,7 +102,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   }
   async function hydrateActiveTarget(result){
     if(!result)return result;
-    const p=requirePorts(),main=await p.storageShadow.recoverForOwner({intent:'load-account'});
+    const p=requirePorts(),main=await p.mainStorageV2.recoverForOwner({intent:'load-account'});
     if(!main)throw new Error('kupa_transfer_active_main_missing');
     p.model.state=p.stateNormalization.normalizeState(main.state);
     if(!await p.sharedChecksV2Composition.recoverPrimary())throw new Error('kupa_transfer_active_shared_missing');
@@ -125,7 +125,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const workbookStore=createSpreadsheetStore();
     localBirth=createStorageV2LocalBirth({
       app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
-      main:p.storageShadow,shared:p.sharedChecksV2,
+      main:p.mainStorageV2,shared:p.sharedChecksV2,
       enableShared:()=>{if(p.sharedChecksV2Composition.lockPreparation()||mode()==='primary')return;throw new Error('kupa_local_birth_shared_lock_required')},
       readSource:async()=>{
         const mainState=p.stateNormalization.normalizeState(INITIAL_STATE);delete mainState.checks;
@@ -170,12 +170,12 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     return true;
   }
   async function recoverLocalV2State(){
-    const p=requirePorts(),recovered=await p.storageShadow.recover();
+    const p=requirePorts(),recovered=await p.mainStorageV2.recover();
     if(!recovered)throw new Error('storage_local_engine_main_recovery_required');
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }
   async function recoverReadOnlyV2State(){
-    const p=requirePorts(),recovered=await p.storageShadow.recoverReadOnly?.();
+    const p=requirePorts(),recovered=await p.mainStorageV2.recoverReadOnly?.();
     if(!recovered)return false;
     p.model.state=p.stateNormalization.normalizeState(recovered.state);p.domainRevisions.touchAll();return true;
   }

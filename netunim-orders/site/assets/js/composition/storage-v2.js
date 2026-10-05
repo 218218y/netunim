@@ -41,7 +41,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       validateMainCloud:state=>assertValidOrderCloudState(state,'Orders fenced recovery cloud state'),storage});
     localBirth=createStorageV2LocalBirth({
       app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,
-      main:p.storageShadow,shared:p.sharedChecksV2,
+      main:p.mainStorageV2,shared:p.sharedChecksV2,
       enableShared:()=>{if(!p.sharedChecksV2Composition.lockPreparation())throw new Error('orders_local_birth_shared_lock_required')},
       readSource:async()=>{
         const mainState=p.prepareV2Checkpoint(INITIAL_STATE);delete mainState.checks;
@@ -119,7 +119,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   }
   async function rebindTransferredOwner(){
     const p=requirePorts();
-    const main=await p.storageShadow.recoverForOwner({intent:'load-account'});
+    const main=await p.mainStorageV2.recoverForOwner({intent:'load-account'});
     if(!main?.state||await p.sharedChecksV2Composition.recoverPrimary()!==true)throw new Error('orders_transfer_active_recovery_failed');
     const previous=p.model.state;
     p.model.state=p.stateNormalization.normalizeState({...structuredClone(main.state),checks:structuredClone(p.model.state.checks)});

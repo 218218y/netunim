@@ -53,7 +53,7 @@ def seed(browser):
     """Create the Morning debts through the production local V2 journal."""
     js(browser, SETUP)
     js(browser, r"""
-    if(storageV2Coordinator.mode()!=='primary'||!storageShadow.primaryReady)throw new Error('local V2 not ready');
+    if(storageV2Coordinator.mode()!=='primary'||!mainStorageV2.primaryReady)throw new Error('local V2 not ready');
     cloudAuth.cloudEnabled=()=>false;
     state=normalizeState({version:5,customerDebts:[
       {id:'AUDIT',customerName:'Audit fixture',amount:100,paid:false,invoiceIssued:false},
@@ -65,9 +65,9 @@ def seed(browser):
         throw new Error('V2 audit fixture debt write failed');
     }
     clearTimeout(saveTimer);saveTimer=null;
-    if(!await storageShadow.flush())throw new Error('V2 audit fixture flush failed');
-    const head=await storageShadow.cloudState();
-    await storageShadow.setCloudBase(1,prepareCloudState(state),{ackSeq:head.seq});
+    if(!await mainStorageV2.flush())throw new Error('V2 audit fixture flush failed');
+    const head=await mainStorageV2.cloudState();
+    await mainStorageV2.setCloudBase(1,prepareCloudState(state),{ackSeq:head.seq});
     cloudRevision=1;lastCloudState=prepareCloudState(state);
     await refreshStorageV2CloudState();cloudAuth.cloudEnabled=()=>true;
     return true;
@@ -124,7 +124,7 @@ def document_matrix():
         for(const kind of ['payment','invoice']){
           startCase('manual-'+kind,[{id:'manual-'+kind,kind,action:'add',amount:30,source:'manual',createdAt:new Date().toISOString()}]);
           if(kind==='payment'){
-            await storageShadow.commitPromise;releaseAck();await oldWrite;
+            await mainStorageV2.commitPromise;releaseAck();await oldWrite;
           }
           await window.auditIssue(320,30,{[kind==='payment'?'morningApplyPayment':'morningApplyInvoice']:false});
           const p=await window.auditProgress();window.auditAssert(p.paymentApplied===30&&p.invoiceApplied===30,'manual opt-out '+kind+' '+JSON.stringify({progress:p,debt:window.auditDebt(),operation:window.auditServer.operation,recovery:localStorage.getItem('orders.morning.pending-issuance.v1'),calls:window.auditCalls.slice(-3)}));
@@ -316,28 +316,28 @@ def two_computers():
         with BrowserSession(ROOT/'netunim-orders/site', 'morning-device-A') as a, BrowserSession(ROOT/'netunim-orders/site', 'morning-device-B') as b:
             seed(a)
             if scenario=='reset-and-new-payment':
-                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];if(scheduleSave('fixture known payment',{operations:[{type:'put',collection:'customerDebts',id:'AUDIT',mode:'replace',record:window.auditDebt()}]})!==true)throw Error('fixture payment not durable');clearTimeout(saveTimer);saveTimer=null;await storageShadow.commitPromise;return true;")
+                js(a, "window.auditDebt().debtProgress=[{id:'KNOWN',kind:'payment',action:'add',amount:30,source:'manual',createdAt:'2026-09-09T09:00:00.000Z'}];if(scheduleSave('fixture known payment',{operations:[{type:'put',collection:'customerDebts',id:'AUDIT',mode:'replace',record:window.auditDebt()}]})!==true)throw Error('fixture payment not durable');clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
             initial=a.evaluate('state')
             for browser in (a,b):
                 if browser is b:
                     seed(browser)
-                initial_head = "const head=await storageShadow.cloudState();await storageShadow.setCloudBase(10,prepareCloudState(state),{ackSeq:head.seq});" if browser is a else "await adoptStorageV2CloudHead(10,state);"
+                initial_head = "const head=await mainStorageV2.cloudState();await mainStorageV2.setCloudBase(10,prepareCloudState(state),{ackSeq:head.seq});" if browser is a else "await adoptStorageV2CloudHead(10,state);"
                 js(browser, "state=normalizeState("+json.dumps(initial)+");"+initial_head+"cloudRevision=10;lastCloudState=prepareCloudState(state);await refreshStorageV2CloudState();cloudConflictBlocked=false;cloudSaveRequested=false;localStorage.setItem(CLOUD_AUTO_KEY,'1');saveSession({access_token:'fixture',expires_at:9999999999});Object.defineProperty(navigator,'onLine',{value:false,configurable:true});return true;")
             for index,browser in enumerate((a,b)):
                 if scenario=='distinct-morning':
                     # Morning transport is online; Orders cloud is unavailable until the
                     # profiles reconnect below. A verified network response while navigator
                     # is offline now correctly enters the refresh-required recovery path.
-                    js(browser, f"Object.defineProperty(navigator,'onLine',{{value:true,configurable:true}});cloudAuth.cloudEnabled=()=>false;await window.auditIssue(320,{60 if index==0 else 70});cloudAuth.cloudEnabled=()=>true;Object.defineProperty(navigator,'onLine',{{value:false,configurable:true}});clearTimeout(saveTimer);saveTimer=null;await storageShadow.commitPromise;return true;")
+                    js(browser, f"Object.defineProperty(navigator,'onLine',{{value:true,configurable:true}});cloudAuth.cloudEnabled=()=>false;await window.auditIssue(320,{60 if index==0 else 70});cloudAuth.cloudEnabled=()=>true;Object.defineProperty(navigator,'onLine',{{value:false,configurable:true}});clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
                 else:
                     change="setCustomerFlag('AUDIT','paid',false);" if scenario=='reset-and-new-payment' and index==0 else "openDebtModal('AUDIT');document.getElementById('dPaid').value='partial';document.getElementById('dAddPayment').value='"+('20' if index==0 else '25')+"';saveDebt('AUDIT');"
-                    js(browser, change+"clearTimeout(saveTimer);saveTimer=null;await storageShadow.commitPromise;return true;")
+                    js(browser, change+"clearTimeout(saveTimer);saveTimer=null;await mainStorageV2.commitPromise;return true;")
             # Each profile has separate LocalStorage/IndexedDB and a production V2 flight.
             server=r"""
             cloudTransport.readCloud=async()=>clone(window.fixtureHead);
             cloudTransport.rpcSaveV2=async(snapshot,expected)=>{if(expected!==window.fixtureHead.revision)return {r:{ok:false,status:409},j:{code:'PT409',message:'revision_conflict'}};window.fixtureHead={revision:expected+1,state:clone(snapshot)};return {r:{ok:true},row:clone(window.fixtureHead)}};
             Object.defineProperty(navigator,'onLine',{value:true,configurable:true});
-            const saved=await requestCloudSave(''),local=await storageShadow.cloudState();
+            const saved=await requestCloudSave(''),local=await mainStorageV2.cloudState();
             return {head:window.fixtureHead,pending:local.pending,saved,control:local.control,flight:local.flight,revision:local.base?.revision};
             """
             first=js(a, 'window.fixtureHead={revision:10,state:prepareCloudState('+json.dumps(initial)+')};'+server)
