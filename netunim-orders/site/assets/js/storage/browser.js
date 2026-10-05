@@ -2,12 +2,12 @@ import {measureStorage} from '../shared/storage-metrics.js';
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {clone} from '../core/values.js';
-import {LOCAL_DB, LOCAL_STORE, LOCAL_STATE_KEY} from '../state/constants.js';
+import {LOCAL_DB} from '../state/constants.js';
 import {createOperationId} from '../shared/cloud-sync.js';
 import {assertOrderEntityInvariants,assertValidOrderCloudState} from '../state/validation.js';
 
 const LOCAL_SYNC_STORE='sync';
-const ORDERS_OUTBOX_KEY='orders-outbox-v3';
+const RESTORE_GROUP_KEY='orders.restore.group.v1';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStorageBrowser({storageV2=null,captureEmbeddedWorkbook=async()=>{},model, files, session, prepareCloudState, normalizeState, domainRevisions}){
@@ -23,33 +23,19 @@ function localSnapshot(source=model.state,options){const done=beginMeasure('orde
   files.storageV2CommitPromise=fast.committed;if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return fast.emergencyDurable
 }finally{done()}}
 
-const openLocalStateDb=createIndexedDbConnection(LOCAL_DB,2,db=>{if(!db.objectStoreNames.contains(LOCAL_STORE))db.createObjectStore(LOCAL_STORE);if(!db.objectStoreNames.contains(LOCAL_SYNC_STORE))db.createObjectStore(LOCAL_SYNC_STORE)});
+const openRestoreDb=createIndexedDbConnection(LOCAL_DB,2,db=>{if(!db.objectStoreNames.contains(LOCAL_SYNC_STORE))db.createObjectStore(LOCAL_SYNC_STORE)});
 
-async function legacyLocalDbExists(){
-  // Chrome exposes database enumeration. Avoid creating the old V1 database
-  // just to prove that a fresh V2 installation has no legacy records.
+async function restoreDbExists(){
+  // Avoid creating the restore-group database just to check for a group.
   if(typeof globalThis.indexedDB?.databases!=='function')return true;
   const entries=await globalThis.indexedDB.databases();
-  if(!Array.isArray(entries))throw new Error('orders_legacy_database_inventory_failed');
+  if(!Array.isArray(entries))throw new Error('orders_restore_database_inventory_failed');
   return entries.some(entry=>entry?.name===LOCAL_DB);
 }
 
-async function idbSyncPut(key,value){if(key===ORDERS_OUTBOX_KEY||key==='shared-checks-outbox-v3')throw new Error('storage_v1_write_forbidden');const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
-async function idbSyncGet(key){if(!await legacyLocalDbExists())return null;const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
-async function idbSyncDelete(key){const db=await openLocalStateDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
-
-async function deleteLegacyBusinessRecords(){
-  if(!await legacyLocalDbExists())return;
-  const db=await openLocalStateDb();
-  await new Promise((resolve,reject)=>{
-    const tx=db.transaction([LOCAL_STORE,LOCAL_SYNC_STORE],'readwrite');
-    tx.objectStore(LOCAL_STORE).delete(LOCAL_STATE_KEY);
-    const sync=tx.objectStore(LOCAL_SYNC_STORE);
-    sync.delete(ORDERS_OUTBOX_KEY);
-    sync.delete('shared-checks-outbox-v3');
-    tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB legacy retirement aborted'));
-  });
-}
+async function idbSyncPut(key,value){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_v1_write_forbidden');const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).put(value,key);tx.oncomplete=()=>resolve(value);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync write aborted'))})}
+async function idbSyncGet(key){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_restore_group_key_required');if(!await restoreDbExists())return null;const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const r=db.transaction(LOCAL_SYNC_STORE,'readonly').objectStore(LOCAL_SYNC_STORE).get(key);r.onsuccess=()=>resolve(r.result??null);r.onerror=()=>reject(r.error)})}
+async function idbSyncDelete(key){if(key!==RESTORE_GROUP_KEY)throw new Error('storage_restore_group_key_required');const db=await openRestoreDb();return await new Promise((resolve,reject)=>{const tx=db.transaction(LOCAL_SYNC_STORE,'readwrite');tx.objectStore(LOCAL_SYNC_STORE).delete(key);tx.oncomplete=()=>resolve(true);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('IndexedDB sync delete aborted'))})}
 
 async function recoverLocalV2State(){
   const recovered=await storageV2?.recover?.(null);
@@ -137,5 +123,5 @@ async function replaceStorageV2CurrentState(state=model.state){const result=awai
 async function adoptStorageV2CloudHead(revision,state=model.state){const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
 async function resetStorageV2CloudHead(revision,state=model.state){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 reset cloud head');const result=await storageV2.resetCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 reset cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});session.cloudConflictBlocked=false;const ackSeq=Number(result?.ackSeq||0),base={version:2,owner:v2CloudStateCache?.base?.owner,epoch:result?.epoch,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq};await refreshStorageV2CloudStateAfterCommit('cloud reset',resetStorageV2CloudState(Number(result?.seq||0),base));return result}
 
-return {localSnapshot,openLocalStateDb,idbSyncPut,idbSyncGet,idbSyncDelete,deleteLegacyBusinessRecords,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,storageV2CloudOutboxActive,refreshStorageV2CloudState,initializeStorageV2UploadLocalHead,initializeStorageV2BootstrapHead,initializeStorageV2CloudCursor,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
+return {localSnapshot,idbSyncPut,idbSyncGet,idbSyncDelete,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,storageV2CloudOutboxActive,refreshStorageV2CloudState,initializeStorageV2UploadLocalHead,initializeStorageV2BootstrapHead,initializeStorageV2CloudCursor,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
 }

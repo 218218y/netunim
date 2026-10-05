@@ -435,27 +435,21 @@ with BrowserSession(ROOT/'netunim-orders/site','storage-v2-dead-recovery-store')
     assert not browser.drain_serious_errors()
     print('PASS V2 schema upgrade removes unused legacy recovery and cutover preparation stores')
 
-with BrowserSession(ROOT/'netunim-orders/site','legacy-retirement-records') as browser:
+with BrowserSession(ROOT/'netunim-orders/site','v2-restore-group-only') as browser:
     result=browser.evaluate(r"""(async()=>{
       const {createStorageBrowser}=await import('./assets/js/storage/browser.js');
-      const name='order-management-local-state';
-      const db=await new Promise((resolve,reject)=>{const request=indexedDB.open(name,2);
-        request.onupgradeneeded=()=>{for(const store of ['snapshots','sync'])if(!request.result.objectStoreNames.contains(store))request.result.createObjectStore(store)};
+      const storage=createStorageBrowser({model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0}});
+      const key='orders.restore.group.v1',payload={phase:'prepared',operationId:'restore-test'};
+      if(await storage.idbSyncGet(key)!==null)throw Error('fresh restore group is not empty');
+      await storage.idbSyncPut(key,payload);
+      if((await storage.idbSyncGet(key))?.operationId!==payload.operationId)throw Error('restore group was not persisted');
+      const db=await new Promise((resolve,reject)=>{const request=indexedDB.open('order-management-local-state',2);
         request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      const transaction=(mode,fn)=>new Promise((resolve,reject)=>{const tx=db.transaction(['snapshots','sync'],mode);
-        fn(tx);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});
-      await transaction('readwrite',tx=>{
-        tx.objectStore('snapshots').put({payload:{checks:[{id:'old'}]}},'main');
-        for(const key of ['orders-outbox-v3','shared-checks-outbox-v3','unrelated-record'])tx.objectStore('sync').put({id:key},key);
-      });
-      const storage=createStorageBrowser({model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},
-        prepareState:value=>value,prepareCloudState:value=>value,normalizeState:value=>value});
-      await storage.deleteLegacyBusinessRecords();
-      const read=(store,key)=>new Promise((resolve,reject)=>{const request=db.transaction(store,'readonly').objectStore(store).get(key);
-        request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});
-      if(await read('snapshots','main')||await read('sync','orders-outbox-v3')||await read('sync','shared-checks-outbox-v3'))throw Error('legacy business records survived');
-      if((await read('sync','unrelated-record'))?.id!=='unrelated-record')throw Error('unrelated sync record deleted');
-      db.close();return ['legacy snapshot and outboxes deleted','unrelated IndexedDB record retained'];
+      if(db.objectStoreNames.contains('snapshots'))throw Error('fresh V2 database created V1 snapshots store');
+      db.close();
+      await storage.idbSyncDelete(key);
+      if(await storage.idbSyncGet(key)!==null)throw Error('restore group was not cleared');
+      return 'restore group survives round-trip without V1 snapshots';
     })()""",timeout=30)
     assert not browser.drain_serious_errors()
-    print('PASS legacy business IndexedDB retirement: '+json.dumps(result))
+    print('PASS Orders V2 restore group: '+result)

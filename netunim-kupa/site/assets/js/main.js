@@ -331,7 +331,6 @@ const syncDocument=createSyncDocument({
 
 storageV2Coordinator.configure({
   storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
-  storageIndexedDb,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
   cloudTransport,cloudAuth,storageShadow,verifyStorageCutover:()=>verifyStorageCutover(),

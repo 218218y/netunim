@@ -4,7 +4,6 @@ import {createStorageV2LocalBirth,verifyStorageV2LocalEngine} from '../shared/st
 import {createStorageV2OwnerTransfer} from '../shared/storage-v2-owner-transfer.js';
 import {createStorageV2DetachedTarget} from '../shared/storage-v2-detached-target.js';
 import {createStorageV2FencedRecovery} from '../shared/storage-v2-fenced-recovery.js';
-import {createLegacyRetirementScheduler,retireLegacyBusinessStorage} from '../shared/storage-v2-legacy-retirement.js';
 import {createStorageV2Runtime,storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createSharedChecksV2Runtime} from '../shared/shared-checks-v2-runtime.js';
 import {createStorageV2CloudPorts} from '../storage/v2-cloud-ports.js';
@@ -20,14 +19,6 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   let localBirth=null,ownerTransfer=null,fencedRecovery=null,transferRebinding=false,ports=null;
   const requirePorts=()=>{if(!ports)throw new Error('orders_storage_v2_not_configured');return ports};
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
-  const scheduleLegacyRetirement=createLegacyRetirementScheduler({
-    ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
-    retire:async()=>{const p=requirePorts();await retireLegacyBusinessStorage({app:'orders',owner:owner.current(),ownerNow:()=>owner.current(),
-      primaryReady:()=>tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&p.storageShadow.primaryReady&&p.sharedChecksV2.primaryReady,
-      verifyV2:()=>owner.current()==='local'?verifyStorageV2LocalEngine({app:'orders',owner:()=>owner.current()}):p.verifyStorageCutover(),
-      readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
-      deleteRecords:()=>p.storageBrowser.deleteLegacyBusinessRecords()})},
-  });
   const mode=()=>storageV2Mode('orders',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'orders',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});
@@ -153,10 +144,9 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
   function ownerAdoption(){return owner.status().binding?.pendingAdoption||null}
   async function recoverShared(){
     const p=requirePorts(),recovered=await p.sharedChecksV2Composition.recoverPrimary();
-    if(recovered)scheduleLegacyRetirement();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,scheduleLegacyRetirement,recoverShared,configure,ownerAdoption,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,recoverShared,configure,ownerAdoption,recoverFencedAccount:()=>fencedRecovery.recover(),startStorageV2OwnerTransfer,resumeStorageV2OwnerTransfer,
     ownerUiPorts:()=>({storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption()}),
     localBirthLifecyclePorts:()=>({hydrateLocalBirth:()=>localBirth.hydrate(),ensureLocalBirth:()=>localBirth.begin(),resumeLocalBirth:()=>localBirth.resume(),localBirthPreparing:()=>!!localBirth?.preparing,storageOwnerCurrent:()=>owner.current()}),
     ownerTransferLifecyclePorts:()=>({hydrateStorageV2OwnerTransfer:()=>ownerTransfer.hydrate(),resumeStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
