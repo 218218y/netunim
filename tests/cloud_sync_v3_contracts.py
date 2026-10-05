@@ -137,7 +137,6 @@ for label, path in (("Orders checks", ORDERS / "site/assets/js/sync/checks.js"),
        f"{label}: Shared V2 journal owns retry and the UI serializes pull/save")
 
 orders_storage = (ORDERS / "site/assets/js/storage/browser.js").read_text(encoding="utf-8")
-orders_checks = (ORDERS / "site/assets/js/storage/checks.js").read_text(encoding="utf-8")
 kupa_checks = (KUPA / "site/assets/js/sync/checks-state.js").read_text(encoding="utf-8")
 ok("migrateOutboxRecord" not in orders_storage and "acknowledgedGenerationMatches" not in orders_storage
    and "markCloudPending" not in orders_storage and "getCloudPending" not in orders_storage,
@@ -146,13 +145,11 @@ ok(not (KUPA / "site/assets/js/storage/pending.js").exists()
    and not (KUPA / "site/assets/js/sync/pending.js").exists()
    and "getCloudPending" not in (KUPA / "site/assets/js/sync/document.js").read_text(encoding="utf-8"),
    "Kupa: V1 Main outbox is absent and V2 journal owns ACK and retry")
-for label, source in (("Orders checks", orders_checks), ("Kupa checks", kupa_checks)):
-    reader = "getSharedChecksPending" if label == "Kupa checks" else "getChecksPending"
-    ok("migrateOutboxRecord" not in source and reader not in source,
-       f"{label}: retired pending payload is not replayable")
-    ok("idbPut" not in source and "writePendingCache" not in source
-       and "acknowledgedGenerationMatches" not in source,
-       f"{label}: retired outbox cannot be repaired or ACKed")
+ok(not (ORDERS / "site/assets/js/storage/checks.js").exists(),
+   "Orders checks: retired V1 storage adapter is absent")
+ok("verifyLegacyChecksClean" not in kupa_checks and "getSharedChecksPending" not in kupa_checks
+   and "idbPut" not in kupa_checks and "writePendingCache" not in kupa_checks,
+   "Kupa checks: retired outbox cannot be read, repaired or ACKed")
 
 for label, path in (("Orders", ORDERS / "site/assets/js/storage/tab-lock.js"),
                     ("Kupa", KUPA / "site/assets/js/storage/tab-lock.js")):
