@@ -34,17 +34,16 @@ const check=(id,status='open')=>({id,status,amount:100});
 const put=(id,mode='replace',index=0)=>({type:'put',collection:'checks',id,mode,index});
 const del=id=>({type:'delete',collection:'checks',id});
 
-test('Shared Checks V2 refuses a cursor until legacy pending is drained and the visible state matches the cloud',async()=>{
+test('Shared Checks V2 captures a cursor only when the recovered state matches the cloud',async()=>{
   const f=fixture(),store=f.create();await assert.rejects(store.open({migrationState:state([check('C')])}),/transfer_intent_required/);await store.open({migrationState:state([check('C')]),migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
-  await assert.rejects(store.captureCloudCursor(7,state([check('C')])),/legacy_pending_unverified/);
-  await assert.rejects(store.captureCloudCursor(7,state([check('other')]),{legacyPendingClean:true}),/cursor_state_mismatch/);
-  await store.captureCloudCursor(7,{version:1,...state([check('C')])},{legacyPendingClean:true});
+  await assert.rejects(store.captureCloudCursor(7,state([check('other')])),/cursor_state_mismatch/);
+  await store.captureCloudCursor(7,{version:1,...state([check('C')])});
   assert.equal((await store.cloudState()).base.revision,7);
   assert.deepEqual(Object.keys((await store.cloudState()).base.state),['checks','bankEvents'],'server envelope metadata is outside the canonical Shared Checks document');
 });
 
 test('Shared Checks V2 keeps a deposited flight immutable across a later edit, ACK, restart and compaction',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(10,base,{legacyPendingClean:true});
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(10,base);
   const deposited=state([check('A','deposited'),check('B')]);const first=store.append([put('A')],deposited,{generation:1,surface:'checks.deposit'});await first.committed;
   const flight=await store.materializeFlight({operationId:'flight-deposit'});assert.equal(flight.endSeq,1);assert.equal(flight.snapshot.checks[0].status,'deposited');
   const later=state([check('A','deposited'),check('B','cleared')]);const second=store.append([put('B')],later,{generation:2,surface:'checks.clear'});await second.committed;
@@ -59,7 +58,7 @@ test('Shared Checks V2 keeps a deposited flight immutable across a later edit, A
 });
 
 test('Shared Checks V2 retains explicit deletion through compaction and rotates a confirmed conflict flight',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(3,base,{legacyPendingClean:true});
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(3,base);
   const afterDelete=state([check('B')]);const write=store.append([del('A')],afterDelete,{generation:1,mutationType:'delete',deleteIds:['A']});await write.committed;
   await store.compact();const first=await store.materializeFlight({operationId:'delete-flight'});assert.deepEqual(first.deleteIntents,{checks:['A']});
   await store.rejectAndRebase(first.operationId,4,state([check('A','remote'),check('B')]),{currentState:afterDelete,expectedSeq:1,control:{conflict:{kind:'same-check'}}});
@@ -71,7 +70,7 @@ test('Shared Checks V2 retains explicit deletion through compaction and rotates 
 test('Shared Checks V2 restart after rebase retains an unrelated remote check and bank event',async()=>{
   const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);
   await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
-  await store.captureCloudCursor(7,base,{legacyPendingClean:true});
+  await store.captureCloudCursor(7,base);
   const local=state([check('A','deposited'),check('B')]);await store.append([put('A')],local,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'old-check-flight'});
   const remote=state([check('A'),check('B','cleared')],[{seq:8,checkId:'B',kind:'clear'}]);
@@ -93,7 +92,7 @@ test('Shared Checks V2 rejects deletes without matching explicit intents or with
 });
 
 test('Shared Checks V2 retries the exact immutable flight after a lost ACK and refuses a stale ACK checkpoint',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(7,base,{legacyPendingClean:true});
+  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(7,base);
   const next=state([check('A','deposited')]);await store.append([put('A')],next,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'lost-ack'}),restarted=f.create();await restarted.open();
   assert.deepEqual(await restarted.materializeFlight({operationId:'new-id-must-not-be-used'}),flight);

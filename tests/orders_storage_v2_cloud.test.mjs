@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createSyncDocument} from '../netunim-orders/site/assets/js/sync/document.js';
-import {CLOUD_BASE_KEY} from '../netunim-orders/site/assets/js/state/constants.js';
+import {ORDERS_CLOUD_BASE_KEY as CLOUD_BASE_KEY} from './retired_business_storage_keys.mjs';
 
 const clone=structuredClone,noop=()=>{};
 function deferred(){let resolve;const promise=new Promise(r=>{resolve=r});return {promise,resolve}}

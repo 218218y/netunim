@@ -170,12 +170,12 @@ with BrowserSession(ROOT/'netunim-kupa/site','shared-checks-v2-primary-crash-mat
       const put=IDBObjectStore.prototype.put,checks=[];
       IDBObjectStore.prototype.put=function(...args){const result=put.apply(this,args);if(this.name==='bases'){this.transaction.abort();throw Error('injected initialization abort')}return result};
       let rejected=false;
-      try{await make().initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local',legacyPendingClean:true})}catch{rejected=true}
+      try{await make().initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local'})}catch{rejected=true}
       IDBObjectStore.prototype.put=put;
       if(!rejected)throw Error('bootstrap transaction did not abort');
       const absent=await db.load('browser-primary-account:shared-checks');
       if(absent.checkpoints||absent.bases||absent.metadata||absent.journal.length)throw Error('bootstrap left a partial namespace');
-      let store=make();await store.initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local',legacyPendingClean:true});
+      let store=make();await store.initializeCloudHead(0,initial,{intent:'upload-local',sourceOwner:'local'});
       store=make();await store.open();
       if((await store.recover()).state.checks[0].id!=='C'||!(await store.cloudState()).pending)throw Error('first upload not recovered');
       const flight=await store.materializeFlight({operationId:'first-upload'});
@@ -361,12 +361,12 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery')
       if(!localStorage.getItem('kupa.browser.state.v1')?.includes('legacy'))throw Error('read-only legacy copy was unexpectedly modified');
       if(!await db.fencedLegacyInactive('kupa',owner)||
         (await db.readCutover('kupa:'+owner)).legacyDisposition!=='discarded')throw Error('obsolete V1 data was not durably marked inactive');
-      let cleanCalls=0;const model={state:{checks:[]}};
+      const model={state:{checks:[]}};
       const composition=createSharedChecksV2Composition({site:'kupa',owner:()=>owner,primary:()=>true,model,checksSession:{},eventsKey:'bankEvents',
         domainRevisions:{touch:()=>{}},merge:()=>{},readRemote:async()=>({revision:9,state:structuredClone(shared)}),rpc:async()=>{throw Error('discarded V1 reached cloud RPC')},
-        verifyLegacyClean:async()=>{cleanCalls++;return false},validateMainCloud:()=>{},applyMainState:()=>{},main:{setBoundaryGate:()=>{}},db});
-      if(!await composition.recoverPrimary()||cleanCalls||model.state.checks[0].id!=='check')throw Error('discarded outbox blocked Shared V2 recovery');
-      if(!await composition.runtime.sync()||cleanCalls)throw Error('discarded outbox blocked ordinary Shared V2 sync');
+        validateMainCloud:()=>{},applyMainState:()=>{},main:{setBoundaryGate:()=>{}},db});
+      if(!await composition.recoverPrimary()||model.state.checks[0].id!=='check')throw Error('discarded outbox blocked Shared V2 recovery');
+      if(!await composition.runtime.sync())throw Error('discarded outbox blocked ordinary Shared V2 sync');
       if(!(await make().recover()).already)throw Error('repeat adoption did not use marker');
       const interrupted='interrupted-account',incompleteDb=createStorageJournalDb({name:'storage-v2-fenced-incomplete'});
       await incompleteDb.initializeOwnerBinding('kupa',interrupted);

@@ -128,8 +128,6 @@ return {
     folderWritePending:false,
     folderForceBackupPending:false,
     folderWritePromise:null,
-    browserStatePendingPayload:null,
-    browserStateWritePromise:null,
     autoBackupTimer:null,
     pendingAutoBackupPayload:null
   },

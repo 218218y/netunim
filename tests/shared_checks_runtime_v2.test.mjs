@@ -18,12 +18,11 @@ const put=id=>({type:'put',collection:'checks',id,mode:'replace'});
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 
 function fixture(site='orders',options={}){
-  let owner='A',mode='primary',n=0,clean=true,visible=state([{id:'C',amount:100},{id:'D',amount:200}]);
+  let owner='A',mode='primary',n=0,visible=state([{id:'C',amount:100},{id:'D',amount:200}]);
   let head={revision:7,state:clone(visible)},rpcHook=null,readHook=null;
   const databases=new Map(),emergency=emergencyStore(),calls=[],ledger=new Map();
   const merge=(site==='orders'?ordersChecks:kupaChecks)({}).mergeSharedChecks;
   const create=()=>createSharedChecksV2Runtime({site,owner:()=>owner,primary:()=>true,mode:()=>mode,readState:()=>visible,applyState:value=>{visible=clone(value)},merge,
-    verifyLegacyClean:async()=>{if(clean instanceof Error)throw clean;return clean},
     createStorage:args=>{if(!databases.has(owner))databases.set(owner,memoryDb());return createSharedChecksStorageV2({...args,db:databases.get(owner),emergency,...options})},
     operationId:()=>`flight-${++n}`,readRemote:async()=>readHook?readHook():clone(head),
     rpc:async(...args)=>{
@@ -34,7 +33,7 @@ function fixture(site='orders',options={}){
       head={revision:revision+1,state:{checks:clone(checks),bankEvents:[{seq:42,checkId:'C',delta:100}]}};ledger.set(id,clone(head));return {r:{ok:true},row:clone(head)};
     }});
   return {create,calls,databases,ledger,get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
-    set owner(value){owner=value},set mode(value){mode=value},set clean(value){clean=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},
+    set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},
     async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'legacy-upgrade',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
 }
@@ -47,7 +46,7 @@ for(const site of ['orders','kupa']){
       const composition=createSharedChecksV2Composition({site,owner:()=> 'A',primary:()=>true,
         model:{state:{checks:[]}},checksSession:{checksBankEvents:[],sharedChecksBankEvents:[]},eventsKey:site==='orders'?'checksBankEvents':'sharedChecksBankEvents',
         domainRevisions:{touch:noop},merge:noop,readRemote:async()=>null,rpc:async()=>null,
-        verifyLegacyClean:async()=>true,main:{setBoundaryGate:noop}});
+        main:{setBoundaryGate:noop}});
       assert.equal(composition.runtime.requested,true);
       assert.equal(composition.runtime.primaryReady,false);
     }finally{
@@ -126,6 +125,20 @@ for(const site of ['orders','kupa']){
   });
 }
 
+test('Shared recovery refuses a local cache marker without a durable V2 engine marker',async()=>{
+  const prior=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{getItem:key=>key==='netunim-storage-engine-version:orders:local'?'2':null}});
+  try{
+    const composition=createSharedChecksV2Composition({site:'orders',owner:()=> 'local',primary:()=>true,
+      model:{state:{checks:[]}},checksSession:{checksBankEvents:[]},eventsKey:'checksBankEvents',domainRevisions:{touch:noop},
+      merge:noop,readRemote:async()=>null,rpc:async()=>null,main:{setBoundaryGate:noop},db:{readLocalEngine:async()=>null}});
+    await assert.rejects(composition.recoverPrimary(),/storage_local_engine_marker_mismatch/);
+  }finally{
+    if(prior)Object.defineProperty(globalThis,'localStorage',prior);
+    else delete globalThis.localStorage;
+  }
+});
+
 test('account handoff fences outstanding RPC, loads only the target namespace and requires explicit provenance',async()=>{
   const f=fixture(),runtime=await f.start(),entered=gate(),release=gate();await f.edit(runtime,'C',{note:'A edit'}).committed;
   f.rpcHook=async()=>{entered.resolve();await release.promise;return {r:{ok:true},row:{revision:8,state:state([])}}};
@@ -137,12 +150,10 @@ test('account handoff fences outstanding RPC, loads only the target namespace an
   f.owner='A';await runtime.recover();assert.equal(f.visible.checks[0].note,'A edit');assert.ok((await runtime.cloudState()).flight);
 });
 
-test('initialization refuses unreadable or pending V1 and never mutates the new namespace',async()=>{
-  for(const clean of [false,new Error('IDB unavailable')]){
-    const f=fixture(),runtime=f.create();f.clean=clean;
-    await assert.rejects(runtime.initialize({state:f.visible,revision:7,intent:'legacy-upgrade',sourceOwner:'A'}));
-    assert.equal((await f.databases.get('A').load()).checkpoints,null);
-  }
+test('initialization rejects an unrelated source owner before writing a V2 checkpoint',async()=>{
+  const f=fixture(),runtime=f.create();
+  await assert.rejects(runtime.initialize({state:f.visible,revision:7,intent:'cloud-authoritative',sourceOwner:'B'}),/transfer_intent/);
+  assert.equal((await f.databases.get('A').load()).checkpoints,null);
 });
 
 test('first document atomically recovers its initial upload without a legacy outbox',async()=>{
@@ -218,7 +229,7 @@ test('Shared Checks bootstrap refuses divergent shadow promotion and preserves t
 test('Shared Checks read-only recovery uses an isolated non-writer store',async()=>{
   let applied=null,primaryPredicate=null,openCalls=0;
   const visible=state([{id:'C',amount:100}]);
-  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=> 'A',primary:()=>false,mode:()=> 'primary',readState:()=>visible,applyState:value=>{applied=clone(value)},merge:noop,readRemote:async()=>null,rpc:async()=>null,verifyLegacyClean:async()=>true,
+  const runtime=createSharedChecksV2Runtime({site:'orders',owner:()=> 'A',primary:()=>false,mode:()=> 'primary',readState:()=>visible,applyState:value=>{applied=clone(value)},merge:noop,readRemote:async()=>null,rpc:async()=>null,
     createStorage:options=>{primaryPredicate=options.primary;return {
       open:async()=>{openCalls++;throw new Error('writer open must not run')},
       recoverReadOnly:async()=>({state:visible,seq:4,appMetadata:{storageRole:'primary'}}),

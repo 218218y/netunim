@@ -21,10 +21,9 @@ export function createStorageV2Cutover({app,owner,primary,db=createStorageJourna
     }
     return !!record;
   }
-  async function mark({verifyLegacyClean}={}){
-    if(!primary()||typeof verifyLegacyClean!=='function')throw new Error('storage_cutover_preflight_required');
+  async function mark(){
+    if(!primary())throw new Error('storage_cutover_preflight_required');
     const identity=scope();
-    if(await verifyLegacyClean()!==true)throw new Error('storage_cutover_legacy_pending');
     if(identity!==scope()||!primary())throw new Error('storage_cutover_owner_changed');
     const record=await db.markCutover(app,identity);
     if(identity!==scope()||!primary())throw new Error('storage_cutover_owner_changed');
@@ -33,11 +32,5 @@ export function createStorageV2Cutover({app,owner,primary,db=createStorageJourna
     if(storage.getItem(storageCutoverKey(app,identity))!=='2')throw new Error('storage_cutover_cache_failed');
     return record;
   }
-  async function legacyInactive(){
-    const identity=scope();
-    const result=await db.fencedLegacyInactive(app,identity);
-    if(identity!==scope())throw new Error('storage_cutover_owner_changed');
-    return result;
-  }
-  return {verify,mark,legacyInactive};
+  return {verify,mark};
 }

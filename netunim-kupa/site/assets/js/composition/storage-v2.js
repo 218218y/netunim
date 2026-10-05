@@ -30,23 +30,20 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
   const preparing=()=>owner.locked||transferRebinding||!!ownerTransfer?.preparing||!!localBirth?.preparing||!!(bootstrap.hasGroup&&bootstrap.group?.phase!=='complete');
   const scheduleLegacyRetirement=createLegacyRetirementScheduler({
     ready:()=>!!ports&&tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&ports.storageShadow.primaryReady&&ports.sharedChecksV2.primaryReady&&(owner.current()==='local'||globalThis.navigator?.onLine!==false),
-    settle:async()=>{const p=requirePorts(),pending=[p.files.browserStateWritePromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
+    settle:async()=>{const p=requirePorts(),pending=[p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(pending.length)await Promise.allSettled(pending)},
     retire:async()=>{const p=requirePorts();await retireLegacyBusinessStorage({app:'kupa',owner:owner.current(),ownerNow:()=>owner.current(),
       primaryReady:()=>tab.primaryTab&&owner.writable&&!session.storageProtocolBlocked&&!preparing()&&p.storageShadow.primaryReady&&p.sharedChecksV2.primaryReady,
       verifyV2:()=>owner.current()==='local'?verifyStorageV2LocalEngine({app:'kupa',owner:()=>owner.current()}):p.verifyStorageCutover(),
       readProtocolState:()=>p.cloudTransport.readStorageProtocolState(),storage,
       deleteRecords:async()=>{for(const key of ['browser-state-v1','cloud-pending-v2','cloud-pending-v3','shared-checks-outbox-v3'])await p.storageIndexedDb.idbDelete('sync',key)}})},
   });
-  // Compatibility modules are read-only until they are removed. No production
-  // transition is allowed to reopen a V1 business writer.
-  const legacyWriteAllowed=()=>false;
   const mode=()=>storageV2Mode('kupa',storage,owner.current(),{preparing:preparing()});
   const createRuntime=options=>createStorageV2Runtime({app:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,mode,...options});
   const createCloudPorts=storageBrowser=>({...createStorageV2CloudPorts(storageBrowser),storageV2PrimaryRequested:()=>['primary','preparing'].includes(mode()),storageV2BootstrapStatus:()=>bootstrap.load(),prepareStorageV2Bootstrap:(...args)=>bootstrap.prepare(...args),advanceStorageV2Bootstrap:(...args)=>bootstrap.advance(...args)});
-  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,syncChecksState,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
+  const createSharedComposition=({model,checksSession,domainRevisions,main,stateNormalization,getSyncChecks,getCloudTransport})=>createSharedChecksV2Composition({
     site:'kupa',owner:()=>owner.current(),primary:()=>tab.primaryTab&&owner.writable,preparing,
     model,checksSession,eventsKey:'sharedChecksBankEvents',domainRevisions,main,
-    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),verifyLegacyClean:(...args)=>syncChecksState.verifyLegacyChecksClean(...args),
+    merge:(...args)=>getSyncChecks().mergeSharedChecks(...args),readRemote:(...args)=>getCloudTransport().readSharedChecksDocument(...args),rpc:(...args)=>getCloudTransport().rpcSaveSharedChecksV2(...args),
     validateMainCloud:state=>assertValidCloudState(state,'Kupa V2 restore cloud state'),applyMainState:state=>{model.state=stateNormalization.normalizeState({...state,checks:model.state.checks});domainRevisions.touchAll()},
   });
 
@@ -64,10 +61,10 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
       :await p.verifyStorageCutover();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
-    await Promise.all([p.storageShadow.commitPromise,p.sharedChecksV2.commitPromise,p.files.browserStateWritePromise,p.files.storageV2CommitPromise,
+    await Promise.all([p.storageShadow.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
       p.session.saveQueue,p.session.cloudSavePromise,p.checksSession.sharedChecksSavePromise,
       p.checksSession.sharedChecksPullPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean));
-    if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy||sourceOwner!=='local'&&await verifyLegacyClean()!==true)throw new Error('kupa_transfer_source_unsettled');
+    if(p.session.cloudSyncBusy||p.session.cloudWriteBusy||p.checksSession.sharedChecksBusy)throw new Error('kupa_transfer_source_unsettled');
     const boundary=await createStorageJournalDb().readBoundary(sourceOwner);
     if(boundary&&boundary.phase!=='complete')throw new Error('kupa_transfer_source_boundary_pending');
     const normalization=detachedNormalization(),sourceMain=createStorageV2Runtime({app:'kupa',owner:()=>sourceOwner,primary:()=>tab.primaryTab,mode:()=> 'preparing',
@@ -93,16 +90,14 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const merge=createSyncChecks({checksSession:{sharedChecksBootstrapActive:false},model:{state:{checks:[]}}}).mergeSharedChecks;
     const targetShared=createSharedChecksV2Runtime({site:'kupa',owner:target,primary:()=>tab.primaryTab,mode:()=> 'preparing',
       readState:()=>detachedSharedState,applyState:value=>{detachedSharedState=structuredClone(value)},merge,
-      readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-      verifyLegacyClean:()=>owner.current()==='local'?true:p.syncChecksState.verifyLegacyChecksClean()});
+      readRemote:()=>p.cloudTransport.readSharedChecksDocument(),rpc:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args)});
     return createStorageV2DetachedTarget({app:'kupa',targetOwner,primary:()=>tab.primaryTab,main:targetMain,shared:targetShared,
       readMainRemote:()=>p.cloudTransport.readSupabaseDocument(),projectMainRemote:row=>normalization.prepareKupaCloudState(row.state),
       readSharedRemote:()=>p.cloudTransport.readSharedChecksDocument(),projectSharedRemote:row=>({checks:row.state.checks,bankEvents:row.state.bankEvents}),
       composeMainState:(cloud,shared)=>normalization.normalizeState({...cloud,checks:shared.checks}),
       projectMainState:state=>normalization.prepareKupaCloudState(state),emptyMainState:()=>normalization.normalizeState(INITIAL_STATE),
       validateMainCloud:value=>assertValidCloudState(value,'Kupa detached target'),
-      rpcMain:(...args)=>p.syncDocument.rpcSaveCloudV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args),
-      verifyLegacyClean:()=>owner.current()==='local'?true:verifyLegacyClean()});
+      rpcMain:(...args)=>p.syncDocument.rpcSaveCloudV2(...args),rpcShared:(...args)=>p.cloudTransport.rpcSaveSharedChecksV2(...args)});
   }
   async function installTransferTargetView({mainState,sharedState,mainRevision,sharedRevision}){
     const p=requirePorts();
@@ -163,7 +158,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
       },
       quiesce:async()=>{
         clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
-        await Promise.all([p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.checksSession.sharedChecksOutboxCommitPromise,p.checksSession.sharedChecksSavePromise,p.session.saveQueue].filter(Boolean));
+        await Promise.all([p.files.storageV2CommitPromise,p.checksSession.sharedChecksOutboxCommitPromise,p.checksSession.sharedChecksSavePromise,p.session.saveQueue].filter(Boolean));
       },
     });
     ownerTransfer=createStorageV2OwnerTransfer({app:'kupa',ownerBinding:owner,primary:()=>tab.primaryTab,
@@ -193,7 +188,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     const p=requirePorts(),auth=p.cloudAuth.loadSupaSession(),target=String(auth?.user?.id||'').trim(),current=owner.current();
     if(!target)throw new Error('storage_owner_reauth_required');if(current===target)return true;if(current!=='local')throw new Error('storage_owner_handoff_required');
     const pending=ownerAdoption();if(!pending||pending.targetOwner!==target)throw new Error('storage_owner_local_adoption_not_reserved');const effectiveIntent=pending.intent||intent;
-    const commits=[p.files.browserStateWritePromise,p.files.storageV2CommitPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(commits.length)await Promise.all(commits);
+    const commits=[p.files.storageV2CommitPromise,p.checksSession.sharedChecksOutboxCommitPromise].filter(Boolean);if(commits.length)await Promise.all(commits);
     if(await verifyLegacyClean()!==true)throw new Error('storage_owner_local_adoption_pending');
     await owner.adoptPreparedLocalOwner(target,{intent:effectiveIntent,proof:{mainRevision:Number(p.session.dbRevision||0),sharedRevision:Number(p.checksSession.sharedChecksRevision||0),preparedAt:new Date().toISOString()}});
     return true;
@@ -213,7 +208,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(recovered)scheduleLegacyRetirement();
     return recovered;
   }
-  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,legacyWriteAllowed,scheduleLegacyRetirement,recoverShared,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
+  return {owner,bootstrap,preparing,mode,createRuntime,createCloudPorts,createSharedComposition,scheduleLegacyRetirement,recoverShared,configure,verifyLegacyClean,ownerAdoption,prepareAuthenticatedOwner,adoptAuthenticatedOwner,recoverFencedAccount:()=>fencedRecovery.recover(),recoverLocalV2State,recoverReadOnlyV2State,
     ownerUiPorts:()=>({prepareAuthenticatedStorageOwner:(...args)=>prepareAuthenticatedOwner(...args),storageOwnerCurrent:()=>owner.current(),storageOwnerAdoption:()=>ownerAdoption(),adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args),
       startStorageV2OwnerTransfer,storageV2OwnerTransferPreparing:()=>!!ownerTransfer?.preparing||transferRebinding}),
     adoptionPort:()=>({adoptAuthenticatedStorageOwner:(...args)=>adoptAuthenticatedOwner(...args)}),

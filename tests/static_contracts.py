@@ -189,6 +189,16 @@ for path in (
     ROOT / "shared/storage-v2-cutover-coordinator.js",
 ):
     ok(not path.exists(), f"retired cutover module removed: {path.name}")
+for path in (
+    ROOT / "shared/storage-v2-cutover.js",
+    ROOT / "shared/storage-v2-detached-target.js",
+    ROOT / "shared/shared-checks-v2-composition.js",
+    ROOT / "shared/shared-checks-v2-runtime.js",
+    ROOT / "shared/shared-checks-storage-v2.js",
+):
+    source=path.read_text(encoding="utf-8")
+    ok("verifyLegacyClean" not in source and "legacyPendingClean" not in source,
+       f"{path.name}: V2 safety is established by durable V2 heads, not V1 presence")
 for label, app_root in (("kupa", K), ("orders", O)):
     coordinator_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")
@@ -196,7 +206,8 @@ for label, app_root in (("kupa", K), ("orders", O)):
     document_source=(app_root / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
     ok("legacyDrain" not in coordinator_source and "drainLegacy" not in coordinator_source
        and "legacyDrain" not in document_source
-       and "legacyWriteAllowed=()=>false" in coordinator_source
+       and "legacyWriteAllowed" not in coordinator_source
+       and "pendingLegacyWriteAllowed" not in coordinator_source
        and "beginCutover" not in coordinator_source
        and "begin-storage-v2-cutover" not in main_source
        and "resumeStorageTransition" not in lifecycle_source,
