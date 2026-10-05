@@ -3,7 +3,9 @@ import {assertStorageJson} from './storage-journal-model.js';
 
 export const STORAGE_BOOTSTRAP_PHASES=Object.freeze(['prepared','main-initialized','shared-initialized','main-synced','shared-synced','verified','complete']);
 const VALID_APPS=new Set(['orders','kupa']);
-const TRANSFER_INTENTS=new Set(['upload-local','load-account','account-switch','first-cloud','legacy-upgrade']);
+export const CURRENT_TRANSFER_INTENTS=Object.freeze(['upload-local','load-account','account-switch']);
+const HISTORICAL_TRANSFER_INTENTS=new Set(['first-cloud','legacy-upgrade']);
+const TRANSFER_INTENTS=new Set([...CURRENT_TRANSFER_INTENTS,...HISTORICAL_TRANSFER_INTENTS]);
 const NEXT_PHASE=new Map(STORAGE_BOOTSTRAP_PHASES.slice(0,-1).map((phase,index)=>[phase,STORAGE_BOOTSTRAP_PHASES[index+1]]));
 
 function copy(value){return value==null?value:structuredClone(value)}
@@ -69,23 +71,15 @@ async function sidePlan(role,source,remote,id,cryptoImpl,uploadIntent){
 export async function createStorageV2BootstrapGroup({app,owner,sourceOwner='local',transferIntent,mainSource,sharedSource,mainRemote=null,sharedRemote=null,id=null,now=()=>new Date().toISOString(),cryptoImpl=globalThis.crypto}={}){
   const site=String(app||'').trim();if(!VALID_APPS.has(site))throw new Error('storage_bootstrap_app_invalid');
   const target=identity(owner),source=identity(sourceOwner),transfer=String(transferIntent||'').trim(),groupId=String(id||cryptoImpl?.randomUUID?.()||'').trim();if(!groupId)throw new Error('storage_bootstrap_id_unavailable');
-  if(!TRANSFER_INTENTS.has(transfer))throw new Error('storage_bootstrap_transfer_intent_required');
+  if(!CURRENT_TRANSFER_INTENTS.includes(transfer))throw new Error('storage_bootstrap_transfer_intent_required');
   if(transfer==='upload-local'&&source!=='local')throw new Error('storage_bootstrap_source_owner_invalid');
-  if(['first-cloud','legacy-upgrade'].includes(transfer)&&source!==target)throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='load-account'&&source!=='local')throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='account-switch'&&(source==='local'||source===target))throw new Error('storage_bootstrap_source_owner_invalid');
   if(transfer==='upload-local'&&mainRemote)throw new Error('storage_bootstrap_upload_target_exists');
   if(['load-account','account-switch'].includes(transfer)&&!mainRemote)throw new Error('storage_bootstrap_main_remote_missing');
-  const uploadIntent=transfer==='upload-local'?'upload-local':['first-cloud','legacy-upgrade'].includes(transfer)?'upload-owner':null;
+  const uploadIntent=transfer==='upload-local'?'upload-local':null;
   const main=await sidePlan('main',mainSource,mainRemote,groupId,cryptoImpl,uploadIntent),shared=await sidePlan('shared',sharedSource,sharedRemote,groupId,cryptoImpl,uploadIntent),createdAt=String(typeof now==='function'?now():now);
-  // During an in-place migration the V1 head was just drained. Therefore an
-  // already-existing cloud document must be exactly the source we are freezing.
-  // Treating a divergent remote Main as authoritative here would create a V2
-  // checkpoint whose visible state differs from its cloud base without a pending
-  // operation, silently dropping the local delta. Account load/switch are
-  // intentionally excluded: their remote document is the requested authority.
-  if(main.remoteExists&&['first-cloud','legacy-upgrade'].includes(transfer)&&main.sourceHash!==main.remoteHash)throw new Error('storage_bootstrap_main_reconciliation_required');
-  if(shared.remoteExists&&['upload-local','first-cloud','legacy-upgrade'].includes(transfer)&&shared.sourceHash!==shared.remoteHash)throw new Error('storage_bootstrap_shared_reconciliation_required');
+  if(shared.remoteExists&&transfer==='upload-local'&&shared.sourceHash!==shared.remoteHash)throw new Error('storage_bootstrap_shared_reconciliation_required');
   const planHash=await sha256({app:site,owner:target,sourceOwner:source,transferIntent:transfer,main,shared},cryptoImpl);
   return assertStorageV2BootstrapGroup({version:2,scope:`${site}:${target}`,id:groupId,app:site,owner:target,sourceOwner:source,transferIntent:transfer,phase:'prepared',planHash,main,shared,createdAt,updatedAt:createdAt});
 }
@@ -102,6 +96,11 @@ export function createStorageV2BootstrapCoordinator({app,owner,primary=()=>true,
     const scoped=scope();guard(scoped);const target=identity(owner()),existing=await db.readBootstrapGroup(scoped);guard(scoped);
     if(existing){
       const durable=assertStorageV2BootstrapGroup(existing);
+      if(HISTORICAL_TRANSFER_INTENTS.has(durable.transferIntent)){
+        if(durable.phase!=='complete')throw new Error('storage_bootstrap_historical_incomplete');
+        const next=await createStorageV2BootstrapGroup({app:site,owner:target,id:operationId(),now,cryptoImpl,...options});guard(scoped);
+        const replaced=await db.beginBootstrapGroup(scoped,next);guard(scoped);return remember(replaced);
+      }
       // Re-discovery after a crash is allowed only when it describes exactly the
       // same frozen plan. Reuse the durable group id so operation ids stay stable.
       const candidate=await createStorageV2BootstrapGroup({app:site,owner:target,id:durable.id,now:()=>durable.createdAt,cryptoImpl,...options});guard(scoped);
@@ -122,6 +121,7 @@ export function createStorageV2BootstrapCoordinator({app,owner,primary=()=>true,
   }
   async function advance(expectedPhase,details={}){
     const scoped=scope();guard(scoped);const current=await db.readBootstrapGroup(scoped);guard(scoped);if(!current)throw new Error('storage_bootstrap_group_missing');assertStorageV2BootstrapGroup(current);
+    if(HISTORICAL_TRANSFER_INTENTS.has(current.transferIntent))throw new Error('storage_bootstrap_historical_incomplete');
     const next=NEXT_PHASE.get(expectedPhase);if(!next||current.phase!==expectedPhase)throw new Error('storage_bootstrap_phase_invalid');
     const updated=await db.advanceBootstrapGroup(scoped,current.id,expectedPhase,next,{...copy(details),updatedAt:String(typeof now==='function'?now():now)});guard(scoped);return remember(updated);
   }
@@ -139,6 +139,10 @@ export function createStorageV2BootstrapExecutor({coordinator,primary=()=>true,i
     let current=group;
     while(current){
       guard();
+      if(HISTORICAL_TRANSFER_INTENTS.has(current.transferIntent)){
+        if(current.phase==='complete')return current;
+        throw new Error('storage_bootstrap_historical_incomplete');
+      }
       if(current.phase==='prepared'){
         const proof=await initializeMain(copy(current.main),copy(current));guard();current=await coordinator.advance('prepared',{mainProof:copy(proof)});continue;
       }
