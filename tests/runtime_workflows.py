@@ -25,8 +25,8 @@ helpers=r"""
 flows={
 'kupa':r"""
  state=normalizeState({version:4,businessName:'workflow',checks:[],credits:[],cash:[],expenses:[],cards:[{name:'VISA',active:true,chargeDay:10}],bank:{currentBalance:1000,snapshotSeq:0,adjustments:[]}});
- const kupaHead=await storageShadow.cloudState();
- await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:kupaHead.seq});
+ const kupaHead=await mainStorageV2.cloudState();
+ await mainStorageV2.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:kupaHead.seq});
  backendReady=true;connectionMode='supabase';dbRevision=1;lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(state));sharedChecksBase=[];
  setPage('cash');click('open-cash-modal');fill({mDate:'2026-08-27',mDesc:'Cash receipt',mAmount:'120'});saveModal();await waitFor(()=>state.cash.length===1&&!!document.querySelector('[data-action="open-cash-modal-2"]'),'Cash save did not render');
  assert(state.cash.length===1&&state.cash[0].amount===120,'cash create');
@@ -70,8 +70,8 @@ flows={
 
 
  setPage('cash');click('open-cash-modal-2');element('[data-modal-delete]').click();await acceptStyledConfirm();await saved();assert(state.cash.length===0,'cash delete');
- await Promise.all([storageShadow.commitPromise,sharedChecksV2.commitPromise]);
- const savedMain=(await storageShadow.recover()).state;
+ await Promise.all([mainStorageV2.commitPromise,sharedChecksV2.commitPromise]);
+ const savedMain=(await mainStorageV2.recover()).state;
  const savedShared=(await sharedChecksV2.recover()).state;
  assert(savedMain.cash.length===0&&savedMain.expenses.length===1,'actual offline Main V2 journal');
  assert(savedShared.checks.length===1,'actual offline Shared Checks V2 journal');
@@ -81,8 +81,8 @@ flows={
 """,
 'orders':r"""
  state=normalizeState({version:4,suppliers:[],transactions:[],customerDebts:[],customerOrders:[],serviceCalls:[],inventoryItems:[],inventoryEvents:[],warehouseOrders:[],notes:[],checks:[]});
- const ordersHead=await storageShadow.cloudState();
- await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:ordersHead.seq});
+ const ordersHead=await mainStorageV2.cloudState();
+ await mainStorageV2.replaceLocalAuthoritativeState(state,{boundaryId:'workflow-fixture',expectedSeq:ordersHead.seq});
  switchView('settings');click('open-supplier-modal');fill({sName:'Flow supplier',sNote:'test'});saveModal();await saved();assert(state.suppliers.length===1,'supplier create');
  switchView('supplier');click('open-transaction-modal');const supplierField=element('#fSupplier').closest('.field'),actionField=element('#fAction').closest('.field'),debitInput=element('#fDebit'),creditInput=element('#fCredit');if(matchMedia('(min-width:901px)').matches)assert(Math.abs(supplierField.getBoundingClientRect().top-actionField.getBoundingClientRect().top)<2,'supplier and action share the first modal row');assert(debitInput.closest('.supplier-money-field.is-debit')&&creditInput.closest('.supplier-money-field.is-credit'),'supplier amount fields expose debit/credit intent');assert(getComputedStyle(debitInput).color!==getComputedStyle(creditInput).color,'supplier debit and credit inputs use distinct colors');fill({fAction:'Order',fDebit:'100'});saveModal();await saved();assert(state.transactions.length===1&&supplierBalance(state.suppliers[0].id)===-100,'supplier transaction');
  openTransactionModal(state.transactions[0].id);fill({fDebit:'80'});saveModal();await saved();assert(supplierBalance(state.suppliers[0].id)===-80,'transaction edit');
@@ -107,7 +107,7 @@ flows={
  openStockAdjustmentModal(item.id,'מחסן גדול');fill({adjQty:'3',adjNote:'Concurrent count'});
  state.inventoryEvents.push({id:'COUNT-RACE',itemId:item.id,type:'receive',quantity:1,location:'מחסן גדול'});
  // Model a concurrent edit as a durable operation so later indexes replay correctly.
- const raceWrite=storageShadow.persist(state,{operations:[{type:'put',collection:'inventoryEvents',id:'COUNT-RACE',mode:'insert',index:state.inventoryEvents.length-1}],surface:'test.workflow-race'});
+ const raceWrite=mainStorageV2.persist(state,{operations:[{type:'put',collection:'inventoryEvents',id:'COUNT-RACE',mode:'insert',index:state.inventoryEvents.length-1}],surface:'test.workflow-race'});
  assert(raceWrite.handled,'concurrent inventory edit is journaled');await raceWrite.committed;
  saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===5,'stale count requires renewed confirmation');
  saveModal();await saved();assert(inventoryLocationStatsData(state,item.id)['מחסן גדול'].onHand===3,'renewed count applies current delta');
@@ -148,8 +148,8 @@ flows={
 
  switchView('notes');click('add-sticky-note');const note=element('textarea');note.value='Workflow note';note.dispatchEvent(new Event('input',{bubbles:true}));await saved();assert(state.notes[0].content==='Workflow note','sticky note input');
  switchView('supplier');openTransactionModal(state.transactions[0].id);click('delete-transaction');await acceptStyledConfirm();await saved();assert(state.transactions.length===0,'delete transaction');
- await Promise.all([storageShadow.commitPromise,sharedChecksV2.commitPromise]);
- const savedMain=(await storageShadow.recover()).state;
+ await Promise.all([mainStorageV2.commitPromise,sharedChecksV2.commitPromise]);
+ const savedMain=(await mainStorageV2.recover()).state;
  const savedShared=(await sharedChecksV2.recover()).state;
  assert(savedMain.suppliers.length===1&&savedMain.transactions.length===0,'actual offline Main V2 journal');
  assert(savedShared.checks.length===1,'actual offline Shared Checks V2 journal');

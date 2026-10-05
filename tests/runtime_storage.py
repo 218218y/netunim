@@ -359,8 +359,8 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-fenced-cloud-recovery')
         recoveredShared.state.checks[0].id!=='check'||recoveredShared.state.bankEvents[0].seq!==1||
         (await mainJournal.cloudState()).base.revision!==17||(await sharedJournal.cloudState()).base.revision!==9)throw Error('restart did not recover matching cloud heads');
       if(!localStorage.getItem('kupa.browser.state.v1')?.includes('legacy'))throw Error('read-only legacy copy was unexpectedly modified');
-      if(!await db.fencedLegacyInactive('kupa',owner)||
-        (await db.readCutover('kupa:'+owner)).legacyDisposition!=='discarded')throw Error('obsolete V1 data was not durably marked inactive');
+      const marker=await db.readCutover('kupa:'+owner);
+      if(marker?.version!==2||marker.scope!=='kupa:'+owner||marker.owner!==owner)throw Error('cloud adoption marker was not durable');
       const model={state:{checks:[]}};
       const composition=createSharedChecksV2Composition({site:'kupa',owner:()=>owner,primary:()=>true,model,checksSession:{},eventsKey:'bankEvents',
         domainRevisions:{touch:()=>{}},merge:()=>{},readRemote:async()=>({revision:9,state:structuredClone(shared)}),rpc:async()=>{throw Error('discarded V1 reached cloud RPC')},

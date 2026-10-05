@@ -374,12 +374,6 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
   // after the server has proved protocol 2 and both remote documents have been
   // validated. Install both owners and the marker in one transaction: a crash
   // can never expose Main V2 with an old Shared Checks checkpoint (or vice versa).
-  async function fencedLegacyInactive(app,identity){
-    const scope=`${app}:${identity}`,marker=await readCutover(scope);
-    // Older adoptions retained a quarantine copy. Current adoptions discard
-    // obsolete V1 data by owner decision. Neither may become active pending.
-    return marker?.version===2&&marker.scope===scope&&['quarantined','discarded'].includes(marker.legacyDisposition);
-  }
   function adoptFencedAccount(app,identity,{mainState,mainCloudState,mainRevision,sharedState,sharedRevision,sourceOwner=identity}={}){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim()||identity==='local'||
       ![identity,'local'].includes(sourceOwner)||!Number.isSafeInteger(mainRevision)||mainRevision<0||!Number.isSafeInteger(sharedRevision)||sharedRevision<0)
@@ -440,7 +434,7 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
           tx.objectStore('bases').put(side.base,side.owner);
           tx.objectStore('metadata').put({epoch:side.epoch,seq:0,writer:'fenced-recovery'},side.owner);
         }
-        result={version:2,scope,app,owner:identity,markedAt:stamp,legacyDisposition:'discarded'};
+        result={version:2,scope,app,owner:identity,markedAt:stamp};
         tx.objectStore('cutovers').put(sealStorageRecord(result),scope);
         if(sourceOwner==='local')tx.objectStore('owner-bindings').put(sealStorageRecord({...binding,owner:identity,generation:Number(binding.generation||0)+1,
           source:'fenced-cloud-authoritative',updatedAt:stamp}),app);
@@ -448,5 +442,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount,fencedLegacyInactive};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }

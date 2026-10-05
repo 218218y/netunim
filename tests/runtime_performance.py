@@ -37,8 +37,8 @@ fixtures={
 for label,setup in fixtures.items():
     with BrowserSession(ROOT/f'netunim-{label}/site',label+'-performance') as browser:
         browser.evaluate('(async()=>{'+setup+'''
-          const head=await storageShadow.cloudState();
-          await storageShadow.replaceLocalAuthoritativeState(state,{boundaryId:'performance-fixture',expectedSeq:head.seq});
+          const head=await mainStorageV2.cloudState();
+          await mainStorageV2.replaceLocalAuthoritativeState(state,{boundaryId:'performance-fixture',expectedSeq:head.seq});
           return true})()''')
         old_snapshot='kupa.browser.state.v1' if label=='kupa' else 'orders.management.state.v1'
         assert browser.evaluate('localStorage.getItem('+json.dumps(old_snapshot)+')') is None
@@ -74,7 +74,7 @@ for label,setup in fixtures.items():
                 const start=performance.now();setInlineTri('T10','signed',i%2===0);times.push(performance.now()-start);
                 clearTimeout(saveTimer);saveTimer=null;await frame();paints.push(performance.now()-start);
               }
-              const local=(await storageShadow.recover()).state;
+              const local=(await mainStorageV2.recover()).state;
               const stable=table===document.querySelector('#main table')&&untouched===document.querySelector('tr[data-tx-id="T900"]');
               const preservedScroll=Math.abs(scroll-wrap.scrollTop)<2,durable=local.transactions.find(t=>t.id==='T10').signed===state.transactions.find(t=>t.id==='T10').signed;
               // A status change that removes a filtered row still updates the structure and totals.

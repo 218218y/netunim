@@ -137,10 +137,12 @@ business_sources=[path.read_text(encoding="utf-8") for app in (K, O)
                   for path in (app / "site/assets/js").rglob("*.js")]
 ok(all(symbol not in source for source in business_sources for symbol in checks_writer_symbols),
    "clients: Shared Checks V1 writer APIs are absent from production")
+ok(all("storageShadow" not in source and "fencedLegacyInactive" not in source for source in business_sources),
+   "clients: Main V2 no longer carries Shadow naming or V1 disposition checks")
 workflows_source=(ROOT / "tests/runtime_workflows.py").read_text(encoding="utf-8")
 ok("from browser_harness import BrowserSession, ROOT" in workflows_source
    and "LegacyBrowserSession" not in workflows_source
-   and "storageShadow.recover()" in workflows_source
+   and "mainStorageV2.recover()" in workflows_source
    and "sharedChecksV2.recover()" in workflows_source,
    "browser workflows exercise durable Main and Shared V2 without a patched V1 fixture")
 morning_ui_source=(ROOT / "tests/runtime_morning.py").read_text(encoding="utf-8")
@@ -149,7 +151,7 @@ morning_resolution_source=(ROOT / "tests/runtime_morning_resolution.py").read_te
 browser_harness_source=(ROOT / "tests/browser_harness.py").read_text(encoding="utf-8")
 ok("from browser_harness import BrowserSession, ROOT" in morning_ui_source
    and "LegacyBrowserSession" not in morning_ui_source
-   and "storageShadow.recover()" in morning_ui_source
+   and "mainStorageV2.recover()" in morning_ui_source
    and "from browser_harness import BrowserSession, ROOT" in morning_audit_source
    and "from browser_harness import BrowserSession, ROOT" in morning_resolution_source
    and "LegacyBrowserSession" not in morning_audit_source
@@ -402,7 +404,7 @@ ok("saveNowButton" not in runtime_events and "manualSaveNow" not in runtime_even
    and "storageV2?.durabilityAtRisk||sharedChecksV2?.durabilityAtRisk" in runtime_events,
    "orders: autosave uses the journal and page exit warns only when a V2 commit is not durable")
 ok(all(boundary not in kupa_runtime for boundary in ("network-offline-mirror", "pagehide-v1-checkpoint", "beforeunload-v1-checkpoint"))
-   and "storageShadow.durabilityAtRisk||sharedChecksV2.durabilityAtRisk" in kupa_runtime,
+   and "mainStorageV2.durabilityAtRisk||sharedChecksV2.durabilityAtRisk" in kupa_runtime,
    "kupa: network and page lifecycle never create a V1 snapshot or outbox")
 orders_css = (O / "site/assets/app.css").read_text(encoding="utf-8")
 orders_settings = (O / "site/assets/js/ui/settings.js").read_text(encoding="utf-8")
