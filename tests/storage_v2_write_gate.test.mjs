@@ -138,7 +138,7 @@ test('cutover marker forbids Kupa V1 browser snapshots and cloud outboxes',async
   try{
     const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
-    await assert.rejects(browser.loadBrowserState(),/cutover_recovery_required/);
+    await assert.rejects(browser.loadBrowserState(),/v2_main_recovery_required/);
     const pending=createStoragePending({session:{},idbGet:async()=>null,idbPut:async()=>{writes++},idbDelete:async()=>{writes++},legacyWriteAllowed:()=>false});
     await assert.rejects(pending.putCloudPending({snapshot:{}}),/write_forbidden/);
     assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
@@ -157,6 +157,17 @@ test('Kupa V2 save bypasses the retired V1 writer while protocol verification st
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_protocol_verification_required/);
     assert.equal(v2Writes,1);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
+});
+
+test('unmarked Kupa browser cannot recover a V1 business snapshot',async()=>{
+  const previous=globalThis.localStorage;
+  globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
+  try{
+    const browser=createKupaBrowser({storageV2:{cutoverActive:false,recover:async()=>null,recoverReadOnly:async()=>null},
+      model:{state:{}},session:{localSnapshotSeq:0},files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
+    await assert.rejects(browser.loadBrowserState(),/storage_v2_main_recovery_required/);
+    assert.equal(await browser.loadBrowserStateReadOnly(),null);
+  }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
 test('Orders cutover startup restores Main V2 without opening a legacy browser snapshot',async()=>{
@@ -272,12 +283,12 @@ for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main a
 test('Kupa V2 startup holds Main recovery off screen until Shared hydration',async()=>{
   const calls=[],model={state:{checks:[]}},session={},checksSession={sharedChecksGeneration:0};
   const recovery=createSyncRecovery({model,session,checksSession,
-    loadBrowserState:async()=>({state:{checks:[{id:'stale'}],cash:[]},revision:2}),
+    loadBrowserState:async()=>({v2Authoritative:true,state:{cash:[]},revision:2}),
     getCloudPending:async()=>null,getSharedChecksPending:async()=>null,
     refreshStorageV2CloudState:async()=>({base:{revision:2,state:{checks:[],cash:[]}}}),
     normalizeState:value=>value,prepareKupaCloudState:value=>value,applyKupaCloudState:value=>value,
     hideConnectScreen:()=>{},setSaveStatus:()=>{},setConnectedStatus:()=>{},setCloudHeaderStatus:()=>{},
     loadSharedChecksBase:()=>[],sharedChecksPendingExists:()=>false,startCloudPolling:()=>{},render:()=>calls.push('render')});
   assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
-  assert.deepEqual(calls,[]);assert.equal(model.state.checks[0].id,'stale');
+  assert.deepEqual(calls,[]);assert.deepEqual(model.state.checks,[]);
 });

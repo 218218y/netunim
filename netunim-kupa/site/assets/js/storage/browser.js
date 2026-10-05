@@ -2,16 +2,13 @@ import {beginMeasure} from '../shared/runtime-performance.js';
 import {clone} from '../core/values.js';
 import {createOperationId} from '../shared/cloud-sync.js';
 import {assertValidCloudState} from '../state/validation.js';
-import {BROWSER_STATE_KEY, BROWSER_STATE_IDB_KEY} from '../state/constants.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStorageBrowser({storageV2=null,legacyCloudPendingExists=()=>false,legacyCloudHeadVerifiedClean=()=>false,verifyLegacyCloudPending=async()=>null,model, session, files, normalizeState, prepareKupaCloudState=state=>state, idbGet}){
+export function createStorageBrowser({storageV2=null,legacyCloudPendingExists=()=>false,legacyCloudHeadVerifiedClean=()=>false,verifyLegacyCloudPending=async()=>null,model, session, files, normalizeState, prepareKupaCloudState=state=>state}){
 let v2CloudStateCache=null;
 function nextSnapshotSequence(){
   return session.localSnapshotSeq=Number(session.localSnapshotSeq||0)+1;
 }
-
-function loadBrowserStateSync(){try{const raw=localStorage.getItem(BROWSER_STATE_KEY);return raw?JSON.parse(raw):null}catch(e){console.error('browser state local load',e);return null}}
 
 function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.dbRevision,options){const done=beginMeasure('kupa:local-snapshot');try{
   if(session.storageProtocolBlocked)throw new Error('storage_protocol_verification_required');
@@ -19,15 +16,18 @@ function persistImmediateBrowserSnapshot(snapshot=model.state,revision=session.d
   files.storageV2CommitPromise=fast.committed;if(fast.seq&&v2CloudStateCache?.base){session.storageV2CloudPending=true;v2CloudStateCache={...v2CloudStateCache,seq:Math.max(Number(v2CloudStateCache.seq||0),Number(fast.seq)),pending:true}}return fast.emergencyDurable
 }finally{done()}}
 
-async function loadBrowserState(){if(storageV2?.cutoverActive){const recovered=await storageV2.recover(null);if(!recovered)throw new Error('storage_v2_cutover_recovery_required');session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));return {schemaVersion:2,v2Authoritative:true,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||0),savedAt:new Date().toISOString()}}const local=loadBrowserStateSync();let idb=null;try{idb=await idbGet('sync',BROWSER_STATE_IDB_KEY)}catch(e){console.error('browser state idb load',e)}const lt=Number(local?.snapshotSeq||0),it=Number(idb?.snapshotSeq||0);session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),lt,it);const chosen=!local||it>lt?idb:local,recovered=await storageV2?.recover?.(chosen?.state||null,{snapshotSeq:Math.max(lt,it),revision:Number(chosen?.revision||0)});if(recovered){session.localSnapshotSeq=Math.max(session.localSnapshotSeq,Number(recovered.appMetadata?.snapshotSeq||0));return {schemaVersion:2,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||chosen?.revision||0),savedAt:new Date().toISOString()}}return chosen||null}
+async function loadBrowserState(){
+  const recovered=await storageV2?.recover?.(null);
+  if(!recovered)throw new Error('storage_v2_main_recovery_required');
+  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));
+  return {schemaVersion:2,v2Authoritative:true,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||0),savedAt:new Date().toISOString()};
+}
 
 async function loadBrowserStateReadOnly(){
-  if(storageV2?.cutoverActive){const recovered=await storageV2.recoverReadOnly?.();if(!recovered)throw new Error('storage_v2_cutover_readonly_recovery_required');session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));return {schemaVersion:2,v2Authoritative:true,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||0),savedAt:new Date().toISOString()}}
-  const local=loadBrowserStateSync();let idb=null;try{idb=await idbGet('sync',BROWSER_STATE_IDB_KEY)}catch(e){console.error('browser state idb load',e)}
-  const lt=Number(local?.snapshotSeq||0),it=Number(idb?.snapshotSeq||0),chosen=!local||it>lt?idb:local,recovered=await storageV2?.recoverReadOnly?.();
-  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),lt,it,Number(recovered?.appMetadata?.snapshotSeq||0));
-  if(recovered)return {schemaVersion:2,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||chosen?.revision||0),savedAt:new Date().toISOString()};
-  return chosen||null;
+  const recovered=await storageV2?.recoverReadOnly?.();
+  if(!recovered){if(storageV2?.cutoverActive)throw new Error('storage_v2_main_readonly_recovery_required');return null}
+  session.localSnapshotSeq=Math.max(Number(session.localSnapshotSeq||0),Number(recovered.appMetadata?.snapshotSeq||0));
+  return {schemaVersion:2,v2Authoritative:true,snapshotSeq:session.localSnapshotSeq,state:recovered.state,revision:Number(recovered.appMetadata?.revision||0),savedAt:new Date().toISOString()};
 }
 
 async function requestPersistentBrowserStorage(){try{if(navigator.storage?.persist)await navigator.storage.persist()}catch(e){console.error('persistent storage request',e)}}
@@ -92,5 +92,5 @@ async function queueStorageV2CloudNormalization(state=model.state,revision=sessi
 async function adoptStorageV2CloudHead(revision,state=model.state,{cloudState=null}={}){const cloud=cloudState?clone(cloudState):prepareKupaCloudState(state);assertValidCloudState(cloud,'Kupa V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidCloudState(value,'Kupa V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
 async function resetStorageV2CloudHead(revision,state=model.state){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const cloud=prepareKupaCloudState(state);assertValidCloudState(cloud,'Kupa V2 reset cloud head');const result=await storageV2.resetCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidCloudState(value,'Kupa V2 reset cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});session.cloudConflictPending=false;const ackSeq=Number(result?.ackSeq||0),base={version:2,owner:v2CloudStateCache?.base?.owner,epoch:result?.epoch,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq};await refreshStorageV2CloudStateAfterCommit('cloud reset',resetStorageV2CloudState(Number(result?.seq||0),base));return result}
 
-return { loadBrowserStateSync, persistImmediateBrowserSnapshot, loadBrowserState, loadBrowserStateReadOnly, requestPersistentBrowserStorage, storageV2CloudOutboxActive, refreshStorageV2CloudState, initializeStorageV2UploadLocalHead, initializeStorageV2BootstrapHead, initializeStorageV2CloudCursor, materializeStorageV2CloudFlight, acknowledgeStorageV2CloudFlight, rejectStorageV2CloudFlight, setStorageV2CloudControl, clearStorageV2CloudControl, replaceStorageV2AuthoritativeState, replaceStorageV2CurrentState, queueStorageV2CloudNormalization, adoptStorageV2CloudHead, resetStorageV2CloudHead, get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()} };
+return { persistImmediateBrowserSnapshot, loadBrowserState, loadBrowserStateReadOnly, requestPersistentBrowserStorage, storageV2CloudOutboxActive, refreshStorageV2CloudState, initializeStorageV2UploadLocalHead, initializeStorageV2BootstrapHead, initializeStorageV2CloudCursor, materializeStorageV2CloudFlight, acknowledgeStorageV2CloudFlight, rejectStorageV2CloudFlight, setStorageV2CloudControl, clearStorageV2CloudControl, replaceStorageV2AuthoritativeState, replaceStorageV2CurrentState, queueStorageV2CloudNormalization, adoptStorageV2CloudHead, resetStorageV2CloudHead, get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()} };
 }
