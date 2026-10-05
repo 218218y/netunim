@@ -30,7 +30,7 @@ test('Main non-empty first-cloud bootstrap is empty base plus one durable pendin
   current.importAudit={source:'local-file'};
 
   const runtime=makeRuntime(db);
-  const recovered=await runtime.initializeUploadLocalCloudHead(initial,current,{cloudState:cloudProjection(initial),validateBase:()=>{}});
+  const recovered=await runtime.initializeFirstCloudHead(initial,current,{sourceOwner:'local',cloudState:cloudProjection(initial),validateBase:()=>{}});
   assert.equal(recovered.seq,1);
   assert.deepEqual(recovered.state,cloudProjection(current));assert.equal(recovered.appMetadata.mainProjectionVersion,2);
   const cloud=await runtime.cloudState({validateBase:()=>{}});
@@ -65,8 +65,8 @@ test('Main first-cloud bootstrap never permits account A to seed account B impli
 });
 test('Main first-cloud bootstrap rejects local target owner and requires an explicit empty cloud base',async()=>{
   const current=emptyOrders();current.notes=[{id:'N1'}];
-  await assert.rejects(makeRuntime(memoryDb(),'local').initializeUploadLocalCloudHead(emptyOrders(),current,{cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}}),/target_required/);
-  await assert.rejects(makeRuntime(memoryDb()).initializeUploadLocalCloudHead(emptyOrders(),current),/cloud_base_required/);
+  await assert.rejects(makeRuntime(memoryDb(),'local').initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'local',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}}),/target_required/);
+  await assert.rejects(makeRuntime(memoryDb()).initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'local'}),/cloud_base_required/);
 });
 
 test('pre-cutover preparation may initialize/recover V2 but freezes normal mutations and never promotes legacy fallback implicitly',async()=>{

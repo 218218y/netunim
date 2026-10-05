@@ -73,34 +73,6 @@ async function refreshStorageV2CloudStateAfterCommit(label,committedState){
   try{return await refreshStorageV2CloudState()}catch(error){console.warn(`Storage V2 ${label} committed; cloud cache refresh deferred`,error);return committedState}
 }
 
-async function initializeStorageV2UploadLocalHead(emptyState,currentState=model.state){
-  return initializeStorageV2BootstrapHead({intent:'upload-local',sourceOwner:'local',emptyState,currentState,revision:0});
-}
-async function initializeStorageV2BootstrapHead({intent,sourceOwner,operationId='',revision=0,emptyState=null,currentState=model.state,cloudState=null}={}){
-  if(!storageV2?.initializeCloudHead||!storageV2?.initializeFirstCloudHead)throw new Error('orders_v2_bootstrap_unavailable');
-  const kind=String(intent||''),source=String(sourceOwner||'').trim(),target=clone(currentState),metadata={snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary',bootstrapOperationId:String(operationId||'')};
-  assertOrderEntityInvariants(target,{includeChecks:true,required:true});let recovered;
-  if(['upload-local','upload-owner'].includes(kind)){
-    const initial=clone(emptyState);if(!initial)throw new Error('orders_v2_bootstrap_empty_state_required');const cloud=prepareCloudState(initial);
-    assertOrderEntityInvariants(initial,{includeChecks:true,required:true});assertValidOrderCloudState(cloud,'Orders V2 bootstrap base');
-    recovered=await storageV2.initializeFirstCloudHead(initial,target,{sourceOwner:source,cloudState:cloud,validateBase:value=>assertValidOrderCloudState(value,'Orders V2 bootstrap base'),appMetadata:metadata});
-  }else if(kind==='cloud-authoritative'){
-    const cloud=clone(cloudState??prepareCloudState(target));assertValidOrderCloudState(cloud,'Orders V2 bootstrap cloud head');
-    recovered=await storageV2.initializeCloudHead(Number(revision),target,{sourceOwner:source,intent:kind,cloudState:cloud,validateBase:value=>assertValidOrderCloudState(value,'Orders V2 bootstrap cloud head'),appMetadata:metadata});
-  }else throw new Error('orders_v2_bootstrap_intent_invalid');
-  const state=await storageV2.cloudState({validateBase:value=>assertValidOrderCloudState(value,'Orders V2 bootstrap base')});
-  const upload=['upload-local','upload-owner'].includes(kind);
-  if(!recovered||!state?.base||state.base.revision!==Number(revision)||state.flight||state.control||(upload?recovered.seq!==1||state.seq!==1||state.base.ackSeq!==0||!state.pending:state.pending||state.base.ackSeq!==state.seq))throw new Error('orders_v2_bootstrap_verification_failed');
-  return cacheStorageV2CloudState(state);
-}
-
-async function initializeStorageV2CloudCursor(revision){
-  if(!storageV2?.primaryReady)return false;
-  await storageV2.flush();
-  const base=await storageV2.captureCloudCursor(Number(revision||0),{project:state=>prepareCloudState(state),validateBase:value=>assertValidOrderCloudState(value,'Orders V2 cloud base')});
-  cacheStorageV2CloudState(settledStorageV2CloudState(base.ackSeq,base));return true
-}
-
 async function materializeStorageV2CloudFlight({throughSeq,snapshot}={}){
   const state=await refreshStorageV2CloudState();if(!state?.base)return null;
   if(state.flight)return state.flight;
@@ -123,5 +95,5 @@ async function replaceStorageV2CurrentState(state=model.state){const result=awai
 async function adoptStorageV2CloudHead(revision,state=model.state){const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 adopted cloud head');const result=await storageV2.adoptCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 adopted cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}}),seq=Number(result?.seq??v2CloudStateCache?.seq??0),base={...(v2CloudStateCache?.base||{}),version:2,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq:seq};await refreshStorageV2CloudStateAfterCommit('cloud head adoption',settledStorageV2CloudState(seq,base));return result}
 async function resetStorageV2CloudHead(revision,state=model.state){if(!storageV2?.primaryReady)return false;nextSnapshotSequence();const cloud=prepareCloudState(state);assertValidOrderCloudState(cloud,'Orders V2 reset cloud head');const result=await storageV2.resetCloudHead(Number(revision),cloud,state,{validateBase:value=>assertValidOrderCloudState(value,'Orders V2 reset cloud head'),appMetadata:{snapshotSeq:Number(session.localSnapshotSeq||0),revision:Number(revision||0),storageRole:'primary'}});session.cloudConflictBlocked=false;const ackSeq=Number(result?.ackSeq||0),base={version:2,owner:v2CloudStateCache?.base?.owner,epoch:result?.epoch,revision:Number(revision),state:clone(cloud),projection:'cloud',ackSeq};await refreshStorageV2CloudStateAfterCommit('cloud reset',resetStorageV2CloudState(Number(result?.seq||0),base));return result}
 
-return {localSnapshot,idbSyncPut,idbSyncGet,idbSyncDelete,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,storageV2CloudOutboxActive,refreshStorageV2CloudState,initializeStorageV2UploadLocalHead,initializeStorageV2BootstrapHead,initializeStorageV2CloudCursor,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
+return {localSnapshot,idbSyncPut,idbSyncGet,idbSyncDelete,recoverLocalV2State,recoverReadOnlyV2State,cloudPendingExists,storageV2CloudOutboxActive,refreshStorageV2CloudState,materializeStorageV2CloudFlight,acknowledgeStorageV2CloudFlight,rejectStorageV2CloudFlight,setStorageV2CloudControl,clearStorageV2CloudControl,replaceStorageV2AuthoritativeState,replaceStorageV2CurrentState,adoptStorageV2CloudHead,resetStorageV2CloudHead,get storageV2CommitPromise(){return storageV2?.commitPromise||files.storageV2CommitPromise||Promise.resolve()}};
 }
