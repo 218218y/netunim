@@ -96,7 +96,12 @@ for(const app of ['orders','kupa'])test(`${app}: Shared Checks storage exposes n
     assert.equal('persistChecksBase' in storage || 'persistSharedChecksBase' in storage,false);
     assert.equal('markChecksPending' in storage || 'markSharedChecksPending' in storage,false);
     assert.equal('clearChecksPending' in storage || 'clearSharedChecksPending' in storage,false);
-    assert.equal(app==='orders'?await storage.getChecksPending():await storage.getSharedChecksPending(),null);
+    assert.equal('getChecksPending' in storage || 'getSharedChecksPending' in storage,false);
+    assert.equal(await storage.verifyLegacyChecksClean(),true);
+    const pendingKey=app==='orders'?'orders.shared.checks.pending.v1':'kupa.shared.checks.pending.v1';
+    globalThis.localStorage.setItem(pendingKey,'{invalid-json');
+    assert.equal(await storage.verifyLegacyChecksClean(),false);
+    globalThis.localStorage.removeItem(pendingKey);
     assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
