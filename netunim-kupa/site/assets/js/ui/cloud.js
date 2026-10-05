@@ -52,7 +52,7 @@ async function openCloudUsingSavedSession({interactive=true}={}){
   if(!tab.primaryTab){showSecondaryTabGuard();return false}if(!supaConfigured())return false;
   const saved=await restoreSupaSession();if(!saved){if(interactive)openSupabaseLoginModal('open');return false}
   try{
-    setCloudHeaderStatus('syncing','ענן: בודק…');const localOwner=storageOwnerCurrent()==='local',reserved=storageOwnerAdoption();
+    setCloudHeaderStatus('syncing','ענן: בודק…');const localOwner=storageOwnerCurrent()==='local';
     if(!localOwner&&await deferPendingRecovery()){clearCloudRecovery();return true}
     await supaEnsureSession();if(localOwner&&storageV2PrimaryRequested())return await transferLocalV2('load-account');
     const row=await readSupabaseDocument();if(!row){clearCloudRecovery();await showCloudNoDocument();return false}
