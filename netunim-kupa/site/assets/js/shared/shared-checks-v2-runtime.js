@@ -7,9 +7,9 @@ const stale=error=>/^storage_(ack_checkpoint_stale|rebase_checkpoint_stale|check
 // One owner, one journal and one immutable RPC payload. Application adapters
 // supply their existing check merge/normalization; this module owns durability.
 // In particular, an authentication change is never a migration instruction.
-export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,verifyLegacyClean,site,
+export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readState,applyState,merge,readRemote,rpc,site,
   createStorage=createSharedChecksStorageV2,operationId=()=>createOperationId('shared-checks-v2'),now=()=>Date.now()}={}){
-  if([owner,primary,readState,applyState,merge,readRemote,rpc,verifyLegacyClean].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
+  if([owner,primary,readState,applyState,merge,readRemote,rpc].some(value=>typeof value!=='function'))throw new Error('shared_checks_runtime_configuration');
   let storage=null,identity='',opening=null,syncing=null,commits=Promise.resolve(),active=false,cursorReady=false,lastRemoteUpdatedAt=null,boundaryGate=()=>false;
   let workPending=true,commitsInFlight=0;
   const risks=new Map();
@@ -62,13 +62,10 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
   async function initialize({state,revision,intent,sourceOwner,bootstrapOperationId=''}={}){
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
-    // The verifier must read the durable V1 outbox as well as memory and the
-    // synchronous cache. A failed IDB read is not evidence of a clean head.
-    if(await verifyLegacyClean()!==true)throw new Error('shared_checks_legacy_pending_unverified');
     assertContext(store);
     if(intent==='legacy-upgrade'&&!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
     let recovered;
-    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,legacyPendingClean:true,bootstrapOperationId})}
+    try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,bootstrapOperationId})}
     catch(error){
       if(error?.message!=='storage_initialization_exists'||!String(bootstrapOperationId||'').trim())throw error;
       recovered=await store.open();const cloud=await store.cloudState();

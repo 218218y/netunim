@@ -189,6 +189,16 @@ for path in (
     ROOT / "shared/storage-v2-cutover-coordinator.js",
 ):
     ok(not path.exists(), f"retired cutover module removed: {path.name}")
+for path in (
+    ROOT / "shared/storage-v2-cutover.js",
+    ROOT / "shared/storage-v2-detached-target.js",
+    ROOT / "shared/shared-checks-v2-composition.js",
+    ROOT / "shared/shared-checks-v2-runtime.js",
+    ROOT / "shared/shared-checks-storage-v2.js",
+):
+    source=path.read_text(encoding="utf-8")
+    ok("verifyLegacyClean" not in source and "legacyPendingClean" not in source,
+       f"{path.name}: V2 safety is established by durable V2 heads, not V1 presence")
 for label, app_root in (("kupa", K), ("orders", O)):
     coordinator_source=(app_root / "site/assets/js/composition/storage-v2.js").read_text(encoding="utf-8")
     main_source=(app_root / "site/assets/js/main.js").read_text(encoding="utf-8")

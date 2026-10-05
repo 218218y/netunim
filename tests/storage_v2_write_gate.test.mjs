@@ -247,14 +247,15 @@ for(const app of ['orders','kupa'])test(`${app}: V2 save never parses the legacy
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
-test('durable cutover marker must agree with its synchronous cache and requires clean legacy heads',async()=>{
+test('durable cutover marker must agree with its synchronous cache and require a primary V2 writer',async()=>{
   const storage=localStore(),records=new Map();let marks=0,owner='account-A';
   const db={readCutover:async scope=>records.get(scope)||null,markCutover:async(app,identity)=>{marks++;const record={version:2,scope:`${app}:${identity}`,app,owner:identity};records.set(record.scope,record);return record}};
   const cutover=createStorageV2Cutover({app:'orders',owner:()=>owner,primary:()=>true,db,storage});
   assert.equal(await cutover.verify(),false);
-  await assert.rejects(cutover.mark({verifyLegacyClean:async()=>false}),/legacy_pending/);
+  const secondary=createStorageV2Cutover({app:'orders',owner:()=>owner,primary:()=>false,db,storage});
+  await assert.rejects(secondary.mark(),/preflight_required/);
   assert.equal(marks,0);
-  await cutover.mark({verifyLegacyClean:async()=>true});
+  await cutover.mark();
   assert.equal(await cutover.verify(),true);
   storage.removeItem(storageCutoverKey('orders',owner));
   assert.equal(await cutover.verify(),true);

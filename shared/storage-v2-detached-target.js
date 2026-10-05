@@ -16,13 +16,13 @@ const revision=row=>Number.isSafeInteger(Number(row?.revision))&&Number(row.revi
 export function createStorageV2DetachedTarget({
   app,targetOwner,primary,main,shared,readMainRemote,projectMainRemote,
   readSharedRemote,projectSharedRemote,composeMainState,projectMainState,
-  emptyMainState,validateMainCloud,rpcMain,rpcShared,verifyLegacyClean,
+  emptyMainState,validateMainCloud,rpcMain,rpcShared,
   bootstrapCoordinator=null,cutoverMarker=null,
 }={}){
   if(!['orders','kupa'].includes(app)||!String(targetOwner||'').trim()||targetOwner==='local'||
     [primary,main?.recover,main?.initializeCloudHead,main?.initializeFirstCloudHead,main?.cloudState,main?.materializeFlight,main?.acknowledgeFlight,
       shared?.recover,shared?.initialize,shared?.sync,shared?.cloudState,readMainRemote,projectMainRemote,readSharedRemote,projectSharedRemote,
-      composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared,verifyLegacyClean].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
+      composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
   const owner=()=>targetOwner,guard=()=>{if(!primary())throw new Error('storage_transfer_target_primary_required')};
   const bootstrap=bootstrapCoordinator||createStorageV2BootstrapCoordinator({app,owner,primary});
   const cutover=cutoverMarker||createStorageV2Cutover({app,owner,primary});
@@ -158,6 +158,6 @@ export function createStorageV2DetachedTarget({
     }
     return {clean:true,mainRevision:revision(mainRow),sharedRevision:revision(sharedRow),mainState:copy(mainRecovered.state),sharedState:sharedState(sharedRecovered.state)};
   }
-  async function mark(){guard();await verify();await cutover.mark({verifyLegacyClean});guard();return true}
+  async function mark(){guard();await verify();await cutover.mark();guard();return true}
   return {load,prepare,resume,verify,mark,verifyMarker:()=>cutover.verify()};
 }
