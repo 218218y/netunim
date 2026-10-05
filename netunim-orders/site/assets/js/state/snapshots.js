@@ -1,4 +1,3 @@
-import {withoutEmbeddedWorkbook} from '../shared/spreadsheet-cutover.js';
 import {notesSheetHasMeaningfulData} from '../shared/notes-sheet-model.js';
 import {comparableBackupData} from './serialization.js';
 import {eq} from '../sync/merge-records.js';
@@ -8,6 +7,8 @@ import {clone} from '../core/values.js';
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateSnapshots({externalWorkbooks=false,model, ui, session, checksSession, prepareState, cloudPendingExists, sharedChecksHasLocalWork=()=>true, normalizeState, domainRevisions}){
 function sameBusinessData(a,b){return comparableBackupData(a)===comparableBackupData(b)}
+
+function withoutEmbeddedWorkbook(source){const state=structuredClone(source);delete state.notesSheet;state.notesWorkbookExternal=1;return state}
 
 function prepareCloudState(source=model.state){
   const x=externalWorkbooks?withoutEmbeddedWorkbook(prepareState(source)):prepareState(source);

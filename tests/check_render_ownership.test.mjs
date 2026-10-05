@@ -69,13 +69,13 @@ test('check single and bulk deletion each have one UI owner',async t=>{
   await bulk.deleteBulkSelected('checks');assert.equal(renders,2);assert.equal(f.sharedWrites.length,2);assert.equal(f.snapshots.length,0);assert.deepEqual(f.model.state.checks,[]);
 });
 test('file ACK without a business change does not render; external rebase does',async t=>{
-  const f=fixture(t,{cloud:false});f.model.state.notes[0].content='local';
+  const f=fixture(t,{cloud:false,v2:true});f.model.state.notes[0].content='local';
   assert.equal(await f.api.saveState(),true);assert.equal(f.renders,0);assert.equal(f.written.length,1);
-  const g=fixture(t,{cloud:false}),remote=structuredClone(g.model.state);remote.notes.push({id:'remote',content:'external'});g.remote(remote);g.model.state.notes[0].content='local';
+  const g=fixture(t,{cloud:false,v2:true}),remote=structuredClone(g.model.state);remote.notes.push({id:'remote',content:'external'});g.remote(remote);g.model.state.notes[0].content='local';
   assert.equal(await g.api.saveState(),true);assert.equal(g.renders,1);assert.equal(g.model.state.notes[0].content,'local');assert.equal(g.model.state.notes[1].content,'external');
 });
 test('file rebase preserves a newer edit made during verified I/O and refreshes once',async t=>{
-  const f=fixture(t,{cloud:false}),remote=structuredClone(f.model.state);remote.notes.push({id:'remote',content:'external'});f.remote(remote);
+  const f=fixture(t,{cloud:false,v2:true}),remote=structuredClone(f.model.state);remote.notes.push({id:'remote',content:'external'});f.remote(remote);
   f.holdWrite(()=>{f.model.state.notes[0].content='newer';f.session.localGeneration++});
   f.model.state.notes[0].content='first';assert.equal(await f.api.saveState(),true);
   assert.equal(f.model.state.notes[0].content,'newer');assert.equal(f.model.state.notes[1].content,'external');assert.equal(f.renders,1);

@@ -1,7 +1,7 @@
 import {createUiCloud} from '../ui/cloud.js';
 
 export function composeCloudUi({
-  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,storagePending,syncDocument,uiStatus,cloudAuth,
+  session,tab,checksSession,model,storageV2Cloud,storageV2Coordinator,syncDocument,uiStatus,cloudAuth,
   getUiModal,uiConnection,stateNormalization,syncChecksState,syncRecovery,cloudTransport,syncChecks,getUiNavigation,
 }){
   if(typeof getUiModal!=='function'||typeof getUiNavigation!=='function')throw new Error('kupa_cloud_ui_ports_required');
@@ -11,7 +11,6 @@ export function composeCloudUi({
     checksSession,
     model,
     ...storageV2Cloud,
-    clearCloudPending:(...args)=>storagePending.clearCloudPending(...args),
     loadSupabaseState:(...args)=>syncDocument.loadSupabaseState(...args),
     toast:(...args)=>uiStatus.toast(...args),
     supaConfigured:(...args)=>cloudAuth.supaConfigured(...args),
@@ -22,9 +21,6 @@ export function composeCloudUi({
     loadSupaSession:(...args)=>cloudAuth.loadSupaSession(...args),
     setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
     prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
-    getCloudPending:(...args)=>storagePending.getCloudPending(...args),
-    loadSharedChecksBase:(...args)=>syncChecksState.loadSharedChecksBase(...args),
-    loadSharedChecksBankEvents:(...args)=>syncChecksState.loadSharedChecksBankEvents(...args),
     showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
     openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
     restoreSupaSession:(...args)=>cloudAuth.restoreSupaSession(...args),
@@ -37,7 +33,7 @@ export function composeCloudUi({
     verifyLocalResetCloud:(...args)=>cloudTransport.verifyLocalResetCloud(...args),
     syncSharedChecksFromCloud:(...args)=>syncChecks.syncSharedChecksFromCloud(...args),
     applyCloudRow:(...args)=>syncDocument.applyCloudRow(...args),
-    reconcileCloudPending:(...args)=>syncDocument.reconcileCloudPending(...args),
+    requestStorageV2CloudSave:(...args)=>syncDocument.requestStorageV2CloudSave(...args),
     startCloudPolling:(...args)=>syncDocument.startCloudPolling(...args),
     render:(...args)=>getUiNavigation().render(...args),
     setConnectedStatus:(...args)=>uiStatus.setConnectedStatus(...args),

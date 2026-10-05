@@ -15,7 +15,7 @@ test('Kupa V2 turns isolated expired-credit cleanup into a typed delete and reje
   model.state.credits.push(oldCredit);
   const recovered=clone(model.state),writes=[],session={connectionMode:'supabase',backendReady:true,dbRevision:3,localGeneration:0,saveQueue:Promise.resolve()};
   const storage=createKupaStoragePersistence({model,session,files:{},tab:{primaryTab:true},checksSession:{},
-    storageV2Primary:()=>true,storageV2CloudOutboxActive:()=>true,recoverStorageV2State:async()=>({state:clone(recovered)}),
+    storageV2Primary:()=>true,refreshStorageV2CloudState:async()=>({base:{revision:3,ackSeq:0,state:clone(recovered)},seq:0,pending:true}),recoverStorageV2State:async()=>({state:clone(recovered)}),
     normalizeState:normalization.normalizeState,prepareKupaCloudState:normalization.prepareKupaCloudState,
     persistImmediateBrowserSnapshot:(_state,_revision,options)=>{writes.push(clone(options));return true},
     persistSupabaseState:async()=>true,setSaveStatus:()=>{},lastSavedCloudState:()=>null});

@@ -23,10 +23,9 @@ function effectiveDeleteIntents(base,candidate,intents){const out={},declared=no
 function cloudAudit(pending,before,after,baseRevision,intents){const deletes=Object.values(intents).reduce((sum,ids)=>sum+ids.length,0);return operationAuditMetadata({site:'kupa',mutationType:intents['notesSheet.sheets']?.length||pending?.mutationType==='cloud-normalization'&&deletes?'bulk-delete':pending?.mutationType||'autosave',surface:pending?.surface||'kupa',baseRevision,beforeState:before,afterState:after,collections:['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets'],deleteCount:deletes,restoreGroupId:pending?.restoreGroupId})}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, persistImmediateBrowserSnapshot:writeBrowserSnapshot, loadSharedChecksBase, loadSharedChecksBankEvents, listBackups, backupSnapshotToComputer, saveState, syncSharedChecksFromCloud, render, getCloudPending, readSupabaseDocument, supaRest, putCloudPending, clearCloudPending, mergeKupaCloudState3Way, rebaseNewerPending, lastSavedCloudState, showSecondaryTabGuard, stageCloudPendingLocal, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, storageV2PrimaryRequested=()=>false, refreshStorageV2CloudState=async()=>null, initializeStorageV2CloudCursor=async()=>false, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, adoptAuthenticatedStorageOwner=async()=>true, domainRevisions}){
+export function createSyncDocument({hideConnectScreen, reportError, model, session, checksSession, tab, prepareKupaCloudState, applyKupaCloudState, setSaveStatus, setConnectedStatus, setCloudHeaderStatus, listBackups, backupSnapshotToComputer, syncSharedChecksFromCloud, render, readSupabaseDocument, supaRest, mergeKupaCloudState3Way, showSecondaryTabGuard, toast, pollSharedChecks, refreshOrdersFinanceSummary=async()=>false, storageV2CloudOutboxActive=()=>false, refreshStorageV2CloudState=async()=>null, materializeStorageV2CloudFlight=async()=>null, acknowledgeStorageV2CloudFlight=async()=>null, rejectStorageV2CloudFlight=async()=>null, setStorageV2CloudControl=async()=>null, replaceStorageV2CurrentState=async()=>null, queueStorageV2CloudNormalization=async()=>null, adoptStorageV2CloudHead=async()=>null, resetStorageV2CloudHead=async()=>null, storageV2CommitPromise=()=>Promise.resolve(), storageV2PreparationActive=()=>false, adoptAuthenticatedStorageOwner=async()=>true, domainRevisions}){
 const outboxRetryScheduler=createOutboxRetryScheduler();
 let cloudPollPromise=null;
-const persistImmediateBrowserSnapshot=(state,revision,options)=>writeBrowserSnapshot(state,revision,options||{storageBoundary:'cloud-system-state'});
 function replaceVisibleState(next,{forceAll=false}={}){const previous=model.state;model.state=next;domainRevisions?.reconcile(previous,model.state,{forceAll});return model.state}
 function applyKupaCoreState(coreState,checks=model.state.checks,financeSource=model.state){
   const next=structuredClone(coreState&&typeof coreState==='object'?coreState:{}),finance=financeSource&&typeof financeSource==='object'?financeSource:{},coreBank=next.bank&&typeof next.bank==='object'?next.bank:{},financeBank=finance.bank&&typeof finance.bank==='object'?structuredClone(finance.bank):null;
@@ -46,14 +45,17 @@ function applyAcknowledgedCoreState(snapshot){
   return changed;
 }
 async function persistCurrentCheckpoint(){
-  const v2=await refreshStorageV2CloudState();if(v2){await replaceStorageV2CurrentState(model.state);return true}
-  return persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'remote-secondary-domain-mirror'})!==false
+  const cloud=await refreshStorageV2CloudState();
+  if(!cloud)throw new Error('kupa_v2_checkpoint_required');
+  await replaceStorageV2CurrentState(model.state);
+  return true;
 }
 async function persistAuthoritativeCloudHead(revision,cloudState=null){
-  const v2=await refreshStorageV2CloudState();
-  if(v2?.base){if(v2.pending||v2.flight)throw new Error('kupa_v2_cloud_pending_during_authoritative_apply');await adoptStorageV2CloudHead(Number(revision),model.state,{cloudState});return true}
-  if(persistImmediateBrowserSnapshot(model.state,revision,{storageBoundary:'remote-authoritative-load'})===false)return false;
-  try{await storageV2CommitPromise();await initializeStorageV2CloudCursor(Number(revision))}catch(error){console.error('kupa V2 cloud cursor initialization',error)}return true
+  const cloud=await refreshStorageV2CloudState();
+  if(!cloud?.base||!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_required');
+  if(cloud.pending||cloud.flight||cloud.control)throw new Error('kupa_v2_cloud_pending_during_authoritative_apply');
+  await adoptStorageV2CloudHead(Number(revision),model.state,{cloudState});
+  return true;
 }
 async function applyFinanceOnlyRow(row){
   const localCloud=prepareKupaCloudState(model.state),remote=row?.state&&typeof row.state==='object'?row.state:{},localBank=localCloud.bank&&typeof localCloud.bank==='object'?localCloud.bank:{};
@@ -65,45 +67,32 @@ async function applyFinanceOnlyRow(row){
 }
 async function applyCloudRow(row,{renderNow=true}={}){
   const currentV2=await refreshStorageV2CloudState();
-  if((storageV2PrimaryRequested()&&!currentV2?.base)||(currentV2&&!currentV2.base))throw new Error('kupa_v2_account_head_initialization_required');
-  if(currentV2?.base&&!storageV2CloudOutboxActive())throw new Error('kupa_v2_legacy_head_not_clean');
+  if(!currentV2?.base)throw new Error('kupa_v2_account_head_initialization_required');
+  if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_not_ready');
   const legacyCards=Array.isArray(row?.state?.cards)&&row.state.cards.some(card=>typeof card?.id!=='string'||!card.id.trim()),localChecks=normalizeSharedChecks(model.state.checks),financeAvailable=row?.financeAvailable!==false;
-  replaceVisibleState(financeAvailable?applyKupaCloudState(row.state,localChecks):applyKupaCoreState(row.state,localChecks,model.state));const removed=model.lastNormalizeRemovedCredits,removedCreditIds=[...(model.lastNormalizeRemovedCreditIds||[])],normalizationBase=canonicalLegacyCloudBase(row.state,prepareKupaCloudState);session.dbRevision=Number(row.revision||0);if(financeAvailable){session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null}session.connectionMode='supabase';session.backendReady=true;session.lastSavedSnapshot=JSON.stringify(normalizationBase);session.serverInfo={schemaVersion:6,lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null,databaseFile:'Supabase',backups:await listBackups()};checksSession.sharedChecksBase=loadSharedChecksBase();checksSession.sharedChecksBankEvents=loadSharedChecksBankEvents();await syncSharedChecksFromCloud({quiet:true,required:true});await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});await persistAuthoritativeCloudHead(session.dbRevision,normalizationBase);const v2Normalization=storageV2CloudOutboxActive()&&(removed>0||legacyCards);if(v2Normalization)await queueStorageV2CloudNormalization(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);await adoptAuthenticatedStorageOwner('load-account');localStorage.setItem(STORAGE_PREF_KEY,'supabase');setConnectedStatus('Supabase מחובר');setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');session.cloudAuthNoDocument=false;localStorage.setItem(SUPA_AUTO_KEY,'1');hideConnectScreen();session.cloudConflictPending=false;if(renderNow)render();if(!v2Normalization&&removed>0)setTimeout(()=>saveState(`נוקו אוטומטית ${removed} רשומות אשראי ישנות במסגרת ניקוי/מעבר למודל הסנכרון החדש`,{deleteIntents:{credits:removedCreditIds},operations:removedCreditIds.map(id=>({type:'delete',collection:'credits',id}))}),0);if(!v2Normalization&&legacyCards)setTimeout(()=>saveState('נשמרו מזהים יציבים לכרטיסים קיימים',{mutationType:'migration',surface:'kupa.cards-id-migration',storageBoundary:'card-id-migration'}),0);if(v2Normalization)void requestStorageV2CloudSave().catch(error=>console.error('Kupa cloud normalization sync',error));startCloudPolling();return model.state
+  replaceVisibleState(financeAvailable?applyKupaCloudState(row.state,localChecks):applyKupaCoreState(row.state,localChecks,model.state));const removed=model.lastNormalizeRemovedCredits,normalizationBase=canonicalLegacyCloudBase(row.state,prepareKupaCloudState);session.dbRevision=Number(row.revision||0);if(financeAvailable){session.financeRevision=Number(row.financeRevision||0);session.financeUpdatedAt=row.financeUpdatedAt||session.financeUpdatedAt||null}session.connectionMode='supabase';session.backendReady=true;session.lastSavedSnapshot=JSON.stringify(normalizationBase);session.serverInfo={schemaVersion:6,lastSavedAt:row.coreUpdatedAt||session.serverInfo?.lastSavedAt||null,databaseFile:'Supabase',backups:await listBackups()};await syncSharedChecksFromCloud({quiet:true,required:true});await refreshOrdersFinanceSummary({force:true,renderIfChanged:false});await persistAuthoritativeCloudHead(session.dbRevision,normalizationBase);const v2Normalization=storageV2CloudOutboxActive()&&(removed>0||legacyCards);if(v2Normalization)await queueStorageV2CloudNormalization(model.state,session.dbRevision);await backupSnapshotToComputer(model.state,session.dbRevision);await adoptAuthenticatedStorageOwner('load-account');localStorage.setItem(STORAGE_PREF_KEY,'supabase');setConnectedStatus('Supabase מחובר');setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');session.cloudAuthNoDocument=false;localStorage.setItem(SUPA_AUTO_KEY,'1');hideConnectScreen();session.cloudConflictPending=false;if(renderNow)render();if(v2Normalization)void requestStorageV2CloudSave().catch(error=>console.error('Kupa cloud normalization sync',error));startCloudPolling();return model.state
 }
 
 async function loadSupabaseState({discardLocalV2=false}={}){
   let v2=await refreshStorageV2CloudState();
   if(discardLocalV2&&v2?.base&&(v2.pending||v2.flight||v2.control)){const row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן לא נמצא');const next=applyKupaCoreState(row.state,model.state.checks,model.state);replaceVisibleState(next,{forceAll:true});await resetStorageV2CloudHead(Number(row.revision||0),model.state);session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));session.cloudConflictPending=false;v2=await refreshStorageV2CloudState();return applyCloudRow(row)}
   if(storageV2CloudOutboxActive()&&(v2?.pending||v2?.flight||v2?.control)){session.connectionMode='supabase';session.backendReady=true;hideConnectScreen();await requestStorageV2CloudSave('שינויים מקומיים שוחזרו וסונכרנו');return model.state}
-  const deferred=await getCloudPending();if(deferred&&outboxRetryScheduler.schedule(deferred,()=>reconcileCloudPending())>0){await reconcileCloudPending();return model.state}
-  const row=await readSupabaseDocument();if(!row)throw new Error('עדיין לא קיימת קופה בענן. פתח את הקופה המקומית והעלה אותה לענן מתוך הגדרות.');
-  const pending=await getCloudPending();
-  if(pending){session.connectionMode='supabase';session.backendReady=true;hideConnectScreen();session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));await reconcileCloudPending(row);return model.state}
+  const row=await readSupabaseDocument();
+  if(!row)throw new Error('מסמך הענן לא נמצא');
   return applyCloudRow(row)
 }
 
-async function rpcSaveCloudVersion(version,snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
+async function rpcSaveCloudV2(snapshot,expectedRevision,operationId,deleteIntents={},audit={}){
   const ackDone=beginMeasure('kupa:cloud-ack');
-  assertValidCloudState(snapshot,'הנתונים המקומיים');
+  assertValidCloudState(snapshot,'Kupa V2 cloud state');
   const expected=Number(expectedRevision||0),op=String(operationId||'').trim();
-  if(!Number.isSafeInteger(expected)||expected<0)throw new Error('Revision מקומי אינו תקין. השמירה לענן נעצרה.');
-  if(!op)throw new Error('מזהה פעולת הקופה חסר');
-  const rpc=audit?.mutationType==='bulk-delete'?`bulk_delete_save_kupa_document_v${version}`:`save_kupa_document_v${version}`,r=await supaRest(`/rest/v1/rpc/${rpc}`,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
-  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch(e){j=null}
+  if(!Number.isSafeInteger(expected)||expected<0)throw new Error('kupa_v2_revision_invalid');
+  if(!op)throw new Error('kupa_v2_operation_id_missing');
+  const rpc=audit?.mutationType==='bulk-delete'?'bulk_delete_save_kupa_document_v6':'save_kupa_document_v6';
+  const r=await supaRest('/rest/v1/rpc/'+rpc,{method:'POST',networkRetry:true,dataPriority:'high',body:JSON.stringify({p_document_name:session.cloudDocumentName,p_expected_revision:expected,p_state:snapshot,p_operation_id:op,p_delete_intents:deleteIntents,p_audit:audit})});
+  const body=await r.text();let j;try{j=body?JSON.parse(body):null}catch{j=null}
   if(r.ok)ackDone();
   return {r,j,body,row:Array.isArray(j)?j[0]:j};
-}
-async function rpcSaveCloud(...args){return rpcSaveCloudVersion(5,...args)}
-async function rpcSaveCloudV2(...args){return rpcSaveCloudVersion(6,...args)}
-
-// Recheck lineage when a mutation arrives while ACK cleanup is awaiting IndexedDB.
-async function completePendingGeneration(generation,authoritative,revision,snapshot,operationRevision){
-  let newer=await rebaseNewerPending(generation,authoritative,revision,snapshot,operationRevision);
-  if(newer)return {newer:true,cleared:false};
-  const cleared=await clearCloudPending(generation);
-  if(cleared)session.cloudAcknowledgedGeneration=Math.max(Number(session.cloudAcknowledgedGeneration||0),Number(generation));
-  if(!cleared)newer=await rebaseNewerPending(generation,authoritative,revision,snapshot,operationRevision);
-  return {newer,cleared};
 }
 
 function v2RetryRecord(state,flight=null){return {domain:'kupa',documentName:`${session.cloudDocumentName||'main'}-v2`,generation:Number(flight?.generation??state?.pendingGeneration??0),operationId:String(flight?.operationId||'kupa-v2'),retry:state?.control?.retry||null}}
@@ -151,80 +140,12 @@ async function requestStorageV2CloudSave(message='הקופה סונכרנה לע
   return allOk&&!state?.pending&&!state?.flight&&!state?.control?.conflict})().finally(()=>{session.storageV2CloudSavePromise=null});return session.storageV2CloudSavePromise
 }
 
-async function reconcileCloudPending(remoteRow=null){
-  if(storageV2CloudOutboxActive())return requestStorageV2CloudSave('שינויים מקומיים שוחזרו וסונכרנו');
-  if(session.cloudSyncBusy||session.cloudWriteBusy)return false;session.cloudSyncBusy=true;
-  try{
-    const beforeReconcile=structuredClone(model.state);
-    let pending=await getCloudPending();if(!pending){session.cloudConflictPending=false;return false}
-    replaceVisibleState(applyKupaCoreState(pending.snapshot,model.state.checks));persistImmediateBrowserSnapshot(model.state,pending.baseRevision||session.dbRevision,{storageBoundary:'pending-recovery-apply'});
-    if(pending.conflict){session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();return false}
-    if(!navigator.onLine){session.cloudConflictPending=false;setSaveStatus(session.cloudDurabilityDegraded?'שמירה מקומית במצב מוגבל — נדרשת התאוששות':'אופליין — שינוי שמור מקומית וממתין',session.cloudDurabilityDegraded?'error':'saving');setCloudHeaderStatus(session.cloudDurabilityDegraded?'syncing':'offline',session.cloudDurabilityDegraded?'ענן: הגנה מקומית מופחתת':'ענן: אופליין');return false}
-    const retryDelay=outboxRetryScheduler.schedule(pending,()=>reconcileCloudPending());if(retryDelay>0){session.cloudConflictPending=false;setSaveStatus('ממתין למועד הסנכרון שהשרת קבע','saving');setCloudHeaderStatus('syncing','ענן: ממתין לסנכרון');return false}
-    let row=remoteRow||await readSupabaseDocument();if(!row)throw new Error('מסמך הענן לא נמצא');session.serverInfo.lastSavedAt=row.coreUpdatedAt||session.serverInfo.lastSavedAt||null;
-    for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
-      pending=await getCloudPending();if(!pending)return true;if(pending.conflict){session.cloudConflictPending=true;return false}
-      let candidate=prepareKupaCloudState(pending.snapshot),expected=Number(row.revision||0);
-      if(Number(row.revision||0)!==Number(pending.baseRevision||0)){
-        const merged=mergeKupaCloudState3Way(pending.baseState,pending.snapshot,row.state,{deleteIntents:pending.deleteIntents||{}});
-        if(merged.conflicts.length){const conflicted={...pending,conflict:structuredSyncConflict({domain:'kupa',conflicts:merged.conflicts,base:pending.baseState,local:pending.snapshot,remote:row.state,generation:pending.generation,baseRevision:pending.baseRevision,currentRemoteRevision:row.revision}),savedAt:new Date().toISOString()};await putCloudPending(conflicted);session.cloudConflictPending=true;replaceVisibleState(applyKupaCoreState(pending.snapshot,model.state.checks));session.dbRevision=Number(row.revision||0);session.lastSavedSnapshot=JSON.stringify(prepareKupaCloudState(row.state));persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'cloud-merge-conflict'});setConnectedStatus('Supabase — נדרשת הכרעה');setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');render();reportError('יש התנגשות אמיתית: אותה רשומה שונתה גם במחשב הזה וגם במקור אחר. השינוי המקומי נשמר ולא נדרס. ייצא גיבוי JSON ובדוק את הרשומה לפני המשך הסנכרון.');return false}
-        candidate=merged.state
-      }
-      const exactIntents=effectiveDeleteIntents(row.state,candidate,pending.deleteIntents);session.cloudWriteBusy=true;const res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,expected,pending.operationId,exactIntents,cloudAudit(pending,row.state,candidate,expected,exactIntents)));session.cloudWriteBusy=false;
-      if(!res.r.ok){if(saveBusy(res))throw new Error('save_busy');if(revisionConflict(res)){await contentionBackoff(attempt);row=await readSupabaseDocument();if(!row)throw new Error('מסמך הענן נעלם בזמן הסנכרון');session.serverInfo.lastSavedAt=row.coreUpdatedAt||session.serverInfo.lastSavedAt||null;continue}throw cloudWriteError(res,'שמירה לענן נכשלה')}
-      const completedGeneration=Number(pending.generation||0),newRev=Number(res.row?.revision||expected+1),authoritative=prepareKupaCloudState(res.row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=res.row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
-      outboxRetryScheduler.cancel();
-      const {newer,cleared}=await completePendingGeneration(completedGeneration,authoritative,newRev,pending.snapshot,res.row?.operation_revision);
-      if(!newer){if(!cleared){const newest=await getCloudPending();replaceVisibleState(applyKupaCoreState(newest?.snapshot||authoritative,model.state.checks));setSaveStatus('השינוי אושר; ניקוי מקומי ממתין להתאוששות','error');setCloudHeaderStatus('syncing','ענן: התאוששות אחסון מקומי');return false}replaceVisibleState(applyKupaCoreState(authoritative,model.state.checks));setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן')}else{const newest=await getCloudPending();replaceVisibleState(applyKupaCoreState(newest?.snapshot||model.state,model.state.checks));setSaveStatus(newest?.conflict?'התנגשות שמורה מקומית':'ממתין לשינוי הבא…',newest?.conflict?'error':'saving');setCloudHeaderStatus(newest?.conflict?'conflict':'syncing',newest?.conflict?'ענן: התנגשות':'ענן: מסנכרן…')}
-      persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'cloud-reconcile-ack'});if(!newer&&cleared){try{await initializeStorageV2CloudCursor(session.dbRevision)}catch(error){console.error('kupa V2 cursor after legacy reconcile',error)}}if(!jsonEq(beforeReconcile,model.state))render();await backupSnapshotToComputer(model.state,session.dbRevision);if(newer&&!session.cloudConflictPending)setTimeout(cloudPoll,0);return !session.cloudConflictPending
-    }
-    throw new Error('הענן השתנה שוב ושוב בזמן הסנכרון; השינוי המקומי נשמר וינוסה שוב')
-  }catch(e){session.cloudWriteBusy=false;console.error(e);const current=await getCloudPending();session.cloudConflictPending=!!current?.conflict;if(current&&!current.conflict){const normalized=normalizeCloudError(e),attempts=Number(current.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retryRecord=stageCloudPendingLocal(current.snapshot,'התאוששות סנכרון',current.baseRevision,current.baseState,current.generation,false,{attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt},current.deleteIntents||{});outboxRetryScheduler.schedule(retryRecord,()=>reconcileCloudPending())}setSaveStatus(session.cloudConflictPending?'התנגשות שמורה מקומית':navigator.onLine?'ממתין לסנכרון':'אופליין — שינוי שמור מקומית','saving');setCloudHeaderStatus(session.cloudConflictPending?'conflict':navigator.onLine?'syncing':'offline',session.cloudConflictPending?'ענן: התנגשות':navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין');return false}finally{session.cloudSyncBusy=false}
-}
-
-async function persistSupabaseState(snapshot,msg,generation=session.localGeneration){
+async function persistSupabaseState(_snapshot,msg){
   if(!tab.primaryTab){showSecondaryTabGuard();return false}
-  if(storageV2CloudOutboxActive()){
-    try{await storageV2CommitPromise()}catch(error){console.error('kupa V2 journal commit before cloud save',error);setSaveStatus('שגיאת אחסון מקומי — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: נדרשת התאוששות');return false}
-    return requestStorageV2CloudSave(msg)
-  }
-  let pending=await getCloudPending();
-  if(pending&&Number(pending.generation||0)>=Number(generation||0)){snapshot=pending.snapshot;generation=Number(pending.generation)}
-  if(pending?.conflict||session.cloudConflictPending){stageCloudPendingLocal(snapshot,msg,pending?.baseRevision??session.dbRevision,pending?.baseState||lastSavedCloudState()||snapshot,Math.max(generation,Number(pending?.generation||0)),true);persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'cloud-conflict-preserve'});setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
-  if(!pending||Number(pending.generation||0)<Number(generation||0)){
-    stageCloudPendingLocal(snapshot,msg,session.dbRevision,lastSavedCloudState()||snapshot,generation,false);
-    pending=await getCloudPending();
-  }
-  if(!pending)throw new Error('kupa_outbox_persistence_failed');
-  // Snapshot, operation ID, generation and merge base must belong to one durable record.
-  // Recovery records may predate the current schema; normalize once at the send boundary.
-  snapshot=prepareKupaCloudState(pending.snapshot);generation=Number(pending.generation);
-  if(!navigator.onLine){session.cloudConflictPending=false;persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'cloud-offline-preserve'});setSaveStatus(session.cloudDurabilityDegraded?'שמירה מקומית במצב מוגבל — נדרשת התאוששות':'אופליין — שינוי שמור מקומית וממתין',session.cloudDurabilityDegraded?'error':'saving');setCloudHeaderStatus(session.cloudDurabilityDegraded?'syncing':'offline',session.cloudDurabilityDegraded?'ענן: הגנה מקומית מופחתת':'ענן: אופליין');toast(session.cloudDurabilityDegraded?'IndexedDB אינו זמין; נשמר עותק תאימות מקומי ונדרשת התאוששות':'אין רשת — השינוי נשמר מקומית ויעלה אוטומטית בחיבור הבא');return false}
-  const retryDelay=outboxRetryScheduler.schedule(pending,()=>persistSupabaseState(prepareKupaCloudState(model.state),msg,session.localGeneration));if(retryDelay>0){setSaveStatus('ממתין למועד הסנכרון שהשרת קבע','saving');setCloudHeaderStatus('syncing','ענן: ממתין לסנכרון');return false}
-  if(session.cloudSyncBusy){setSaveStatus('ממתין למחזור סנכרון פעיל…','saving');setCloudHeaderStatus('syncing','ענן: ממתין לסנכרון');return false}
-  session.cloudSyncBusy=true;
-  setSaveStatus('מסנכרן…','saving');setCloudHeaderStatus('syncing','ענן: מסנכרן…');
-  try{
-    let baseRevision=Number(pending.baseRevision),baseState=pending.baseState,candidate=snapshot,res=null;
-    for(let attempt=0;attempt<CLOUD_WRITE_POLICY.conflictAttempts;attempt++){
-      const exactIntents=effectiveDeleteIntents(baseState,candidate,pending.deleteIntents);session.cloudWriteBusy=true;res=await runBusyCloudWriteWithPolicy(()=>rpcSaveCloud(candidate,baseRevision,pending.operationId,exactIntents,cloudAudit(pending,baseState,candidate,baseRevision,exactIntents)));session.cloudWriteBusy=false;
-      if(res.r.ok)break;
-      const em=res.j?.message||res.body||'שמירה לענן נכשלה';
-      if(saveBusy(res))throw new Error('save_busy')
-      if(!revisionConflict(res))throw cloudWriteError(res,em);
-      await contentionBackoff(attempt);
-      const remote=await readSupabaseDocument();if(!remote)throw new Error('מסמך הענן לא נמצא בזמן פתרון התנגשות');const merged=mergeKupaCloudState3Way(baseState,candidate,remote.state,{deleteIntents:pending.deleteIntents||{}});
-      if(merged.conflicts.length){stageCloudPendingLocal(snapshot,msg,pending.baseRevision,pending.baseState,generation,structuredSyncConflict({domain:'kupa',conflicts:merged.conflicts,base:baseState,local:candidate,remote:remote.state,generation,baseRevision,currentRemoteRevision:remote.revision}),undefined,pending.deleteIntents||{});session.cloudConflictPending=true;setSaveStatus('התנגשות שמורה מקומית','error');setCloudHeaderStatus('conflict','ענן: התנגשות');reportError('הסנכרון נעצר: אותה רשומה שונתה במקביל בשני מקומות. השינוי המקומי נשמר ולא נדרס.');return false}
-      candidate=merged.state;baseRevision=Number(remote.revision||0);baseState=prepareKupaCloudState(remote.state);res=null
-    }
-    if(!res?.r?.ok)throw new Error('הענן השתנה שוב בזמן השמירה; השינוי נשמר מקומית וינוסה שוב');
-    outboxRetryScheduler.cancel();const row=res.row,newRev=Number(row?.revision||baseRevision+1),authoritative=prepareKupaCloudState(row?.state||candidate);session.dbRevision=newRev;session.lastSavedSnapshot=JSON.stringify(authoritative);session.serverInfo.lastSavedAt=row?.updated_at||session.serverInfo.lastSavedAt||null;session.cloudConflictPending=false;
-    const {newer,cleared}=await completePendingGeneration(generation,authoritative,newRev,pending.snapshot,row?.operation_revision);
-    let businessChanged=false;
-    if(!newer){if(generation===session.localGeneration){businessChanged=applyAcknowledgedCoreState(authoritative)}if(!cleared){setSaveStatus('השינוי אושר; ניקוי מקומי ממתין להתאוששות','error');setCloudHeaderStatus('syncing','ענן: התאוששות אחסון מקומי');return false}setSaveStatus('מסונכרן לענן','ok');setCloudHeaderStatus('synced','ענן: מסונכרן');toast(msg)}else{const newest=await getCloudPending();if(newest){businessChanged=applyAcknowledgedCoreState(newest.snapshot);session.cloudConflictPending=!!newest.conflict}setSaveStatus(session.cloudConflictPending?'התנגשות שמורה מקומית':'שומר שינוי נוסף…',session.cloudConflictPending?'error':'saving');setCloudHeaderStatus(session.cloudConflictPending?'conflict':'syncing',session.cloudConflictPending?'ענן: התנגשות':'ענן: מסנכרן…')}
-    persistImmediateBrowserSnapshot(model.state,session.dbRevision,{storageBoundary:'cloud-write-ack'});if(!newer&&cleared){try{await initializeStorageV2CloudCursor(session.dbRevision)}catch(error){console.error('kupa V2 cursor after legacy ACK',error)}}if(businessChanged)render();await backupSnapshotToComputer(model.state,session.dbRevision);if(newer&&!session.cloudConflictPending)setTimeout(cloudPoll,0);return !session.cloudConflictPending
-  }catch(e){session.cloudWriteBusy=false;console.error(e);const current=await getCloudPending(),normalized=normalizeCloudError(e),attempts=Number(current?.retry?.attempts||0)+1,nextAttemptAt=normalized.retryAfterMs?new Date(Date.now()+normalized.retryAfterMs).toISOString():null,retryRecord=stageCloudPendingLocal(prepareKupaCloudState(model.state),msg,session.dbRevision,lastSavedCloudState()||pending.baseState||snapshot,session.localGeneration,false,{attempts,lastErrorCode:normalized.code||normalized.kind,lastAttemptAt:new Date().toISOString(),nextAttemptAt},current?.deleteIntents||pending?.deleteIntents||{});outboxRetryScheduler.schedule(retryRecord,()=>persistSupabaseState(prepareKupaCloudState(model.state),msg,session.localGeneration));persistImmediateBrowserSnapshot(model.state,session.dbRevision);setSaveStatus(navigator.onLine?'ממתין לסנכרון':'אופליין — שינוי שמור מקומית','saving');setCloudHeaderStatus(navigator.onLine?'syncing':'offline',navigator.onLine?'ענן: ממתין לסנכרון':'ענן: אופליין');toast('השינוי נשמר מקומית וממתין לסנכרון לענן');return false}
-  finally{session.cloudWriteBusy=false;session.cloudSyncBusy=false}
+  if(!storageV2CloudOutboxActive())throw new Error('kupa_v2_account_head_required');
+  try{await storageV2CommitPromise()}
+  catch(error){console.error('kupa V2 journal commit before cloud save',error);setSaveStatus('השינוי לא נשמר באחסון המקומי — אין לסגור את החלון','error');setCloudHeaderStatus('conflict','ענן: נדרש שחזור אחסון מקומי');return false}
+  return requestStorageV2CloudSave(msg);
 }
 
 function markCloudPollSynced(){setSaveStatus?.('מסונכרן לענן','ok');setCloudHeaderStatus?.('synced','ענן: מסונכרן');return true}
@@ -241,26 +162,26 @@ async function cloudPoll(){
   if(storageV2PreparationActive()||!tab.primaryTab||session.connectionMode!=='supabase'||!session.backendReady||!navigator.onLine)return false;
   if(session.cloudSyncBusy||session.cloudWriteBusy){await pollSharedChecks();return false}
   let v2=await refreshStorageV2CloudState();
-  if(storageV2CloudOutboxActive()){
-    if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}
-    if(v2?.pending||v2?.flight){const saved=await requestStorageV2CloudSave();await pollSharedChecks();return saved}
-  }
-  const pending=await getCloudPending();if(pending){if(pending.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}const saved=await reconcileCloudPending();await pollSharedChecks();return saved}
+  if(!storageV2CloudOutboxActive()){setSaveStatus('ראש ענן V2 חסר — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: נדרש שחזור אחסון מקומי');return false}
+  if(v2?.control?.conflict){session.cloudConflictPending=true;setCloudHeaderStatus('conflict','ענן: התנגשות');await pollSharedChecks();return false}
+  if(v2?.pending||v2?.flight){const saved=await requestStorageV2CloudSave();await pollSharedChecks();return saved}
   if(session.cloudConflictPending){await pollSharedChecks();return false}
   const pollGeneration=Number(session.localGeneration||0),localBefore=prepareKupaCloudState(model.state);
   try{
     session.cloudSyncBusy=true;const row=await readSupabaseDocument();
     if(!row){setSaveStatus('מסמך הענן אינו זמין','error');setCloudHeaderStatus('auth','ענן: מסמך לא נמצא');return false}
-    v2=await refreshStorageV2CloudState();const pendingAfterRead=await getCloudPending(),localAdvanced=Number(session.localGeneration||0)!==pollGeneration||!!pendingAfterRead||!!(v2?.pending||v2?.flight)||!jsonEq(localBefore,prepareKupaCloudState(model.state));
-    if(localAdvanced){session.cloudSyncBusy=false;if(storageV2CloudOutboxActive())await requestStorageV2CloudSave();else if(pendingAfterRead)await reconcileCloudPending(row);return false}
+    v2=await refreshStorageV2CloudState();const localAdvanced=Number(session.localGeneration||0)!==pollGeneration||!!(v2?.pending||v2?.flight)||!jsonEq(localBefore,prepareKupaCloudState(model.state));
+    if(localAdvanced){session.cloudSyncBusy=false;await requestStorageV2CloudSave();return false}
     const kupaChanged=Number(row.revision||0)>Number(session.dbRevision||0),financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0);if(!(kupaChanged||financeChanged))return markCloudPollSynced();
-    const base=v2?.base?.state||lastSavedCloudState(),clean=!!base&&jsonEq(prepareKupaCloudState(model.state),base);
+    if(!kupaChanged){await applyFinanceOnlyRow(row);return markCloudPollSynced()}
+    const base=v2?.base?.state,clean=!!base&&jsonEq(prepareKupaCloudState(model.state),base);
     if(clean){await applyCloudRow(row);toast(kupaChanged?'התקבל עדכון ממחשב אחר':'התקבל עדכון פיננסי ממקור אחר');return true}
     if(kupaChanged){
-      if(storageV2CloudOutboxActive()){const conflict={kind:'storage-v2-dirty-head',domain:'kupa',message:'המצב המקומי שונה מבסיס הענן ללא journal ממתין',baseRevision:Number(v2?.base?.revision||session.dbRevision||0),currentRemoteRevision:Number(row.revision||0),at:new Date().toISOString()};await setStorageV2CloudControl({conflict});session.cloudConflictPending=true;setSaveStatus('התנגשות אחסון מקומי — הסנכרון נעצר','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false}
-      stageCloudPendingLocal(prepareKupaCloudState(model.state),'שינוי מקומי ממתין',session.dbRevision,base||prepareKupaCloudState(model.state),session.localGeneration,false);session.cloudSyncBusy=false;await reconcileCloudPending(row);return false
+      const conflict={kind:'storage-v2-dirty-head',domain:'kupa',message:'Local state differs from its cloud base without a pending journal operation',baseRevision:Number(v2?.base?.revision||session.dbRevision||0),currentRemoteRevision:Number(row.revision||0),at:new Date().toISOString()};
+      await setStorageV2CloudControl({conflict});session.cloudConflictPending=true;
+      setSaveStatus('התנגשות באחסון המקומי','error');setCloudHeaderStatus('conflict','ענן: התנגשות');return false;
     }
-    await applyFinanceOnlyRow(row);return markCloudPollSynced()
+    return markCloudPollSynced()
   }catch(error){return markCloudPollFailure(error)}finally{session.cloudSyncBusy=false;await Promise.all([pollSharedChecks(),refreshOrdersFinanceSummary({renderIfChanged:true})])}
 }
 
@@ -283,5 +204,5 @@ async function quiesceForStorageCutover(){
   outboxRetryScheduler.cancel();return true;
 }
 
-return { applyCloudRow, loadSupabaseState, rpcSaveCloud, rpcSaveCloudV2, reconcileCloudPending, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,quiesceForStorageCutover };
+return { applyCloudRow, loadSupabaseState, rpcSaveCloudV2, persistSupabaseState, requestStorageV2CloudSave, cloudPoll:trackedCloudPoll, resumeAfterReconnect, startCloudPolling,quiesceForStorageCutover };
 }
