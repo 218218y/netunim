@@ -165,8 +165,10 @@ test('unmarked Kupa browser cannot recover a V1 business snapshot',async()=>{
   try{
     const browser=createKupaBrowser({storageV2:{cutoverActive:false,recover:async()=>null,recoverReadOnly:async()=>null},
       model:{state:{}},session:{localSnapshotSeq:0},files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
-    await assert.rejects(browser.loadBrowserState(),/storage_v2_main_recovery_required/);
+    assert.equal(await browser.loadBrowserState(),null);
     assert.equal(await browser.loadBrowserStateReadOnly(),null);
+    const recovery=createSyncRecovery({model:{state:{}},session:{},loadBrowserState:browser.loadBrowserState});
+    assert.equal(await recovery.openBrowserStateFallback(),false);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
