@@ -665,8 +665,12 @@ ok('aria-label="טווח תצוגת אשראי" data-change="credit-view"' in (K
    and 'credit-future-menu' in credit_detail_controls
    and 'credit-detail-month-tabs' not in credit_detail_controls
    and 'creditViewAllowsMonth' in credit_detail_controls
+   and 'class="bank-date-menu credit-date-menu"' in credit_detail_controls
+   and credit_detail_controls.index('creditDetailQuickPeriodMarkup({mode,action:periodAction') < credit_detail_controls.index('class="bank-date-range-card')
+   and 'creditDetailQuickPeriodMarkup({' not in kupa_credit_view and 'creditDetailQuickPeriodMarkup({' not in orders_finance_view
+   and "periodAction:'credit-detail-period'" in kupa_credit_view and "periodAction:'orders-credit-detail-period'" in orders_finance_view
    and credit_detail_controls == (K/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8') == (O/'site/assets/js/shared/credit-detail-controls.js').read_text(encoding='utf-8'),
-   "credit horizon and detail controls: future months share the toolbar range while prior and next months use compact menus with no horizontal month rail")
+   "credit horizon and detail controls: future months share the toolbar range, quick all/three-month periods live inside the date popover before the exact range, and prior/next months use compact menus")
 ok('.credit-cycle-menu{position:relative' in orders_css
    and '.credit-cycle-menu{position:relative' in (K/'site/assets/app.css').read_text(encoding='utf-8')
    and '.credit-detail-title-row{flex-wrap:wrap;min-width:0;max-width:100%}' in orders_css

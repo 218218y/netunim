@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailRecentThreeRange,creditDetailQuickPeriodMatch,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
+import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailRecentThreeRange,creditDetailQuickPeriodMatch,creditDateRangeMarkup,creditDateRangeFromControl,creditDetailDayMatch,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditDetailFutureMonths} from '../shared/credit-detail-controls.js';
 import {creditHistoryCutoffMonth,creditCardCompare} from '../shared/credit-history.js';
 import {kupaReconciledCreditDetailMonthsData,kupaReconciledCreditUpcomingDetailData} from '../shared/kupa-cashflow.js';
 import * as kupaFeed from '../netunim-kupa/site/assets/js/domains/credit/sync-feed.js';
@@ -74,6 +74,17 @@ test('credit quick periods include all cached detail and the current plus two pr
   assert.equal(creditDetailQuickPeriodMatch({date:'2026-10-05'},'recent3','2026-10-05'),true);
   assert.equal(creditDetailQuickPeriodMatch({date:'2026-10-06'},'recent3','2026-10-05'),false,'future charges are not part of the last three months');
   assert.equal(creditDetailQuickPeriodMatch({},'recent3','2026-10-05'),false);
+});
+
+test('date menu owns quick periods before the exact range section',()=>{
+  const dateEditorMarkup=(_name,value,{data})=>`<input data-credit-date="${data['credit-date']}" value="${value}">`;
+  const markup=creditDateRangeMarkup({mode:'recent3',from:'2026-08-01',to:'2026-10-05',action:'apply-range',periodAction:'quick-period',escapeHtml:String,dateEditorMarkup});
+  const panelStart=markup.indexOf('class="bank-date-menu credit-date-menu"'),shortcuts=markup.indexOf('class="credit-date-shortcuts"',panelStart),range=markup.indexOf('class="bank-date-range-card',panelStart);
+  assert.ok(panelStart>=0&&shortcuts>panelStart&&range>shortcuts,'quick-period buttons are rendered at the top of the date popover');
+  assert.match(markup,/data-action="quick-period" data-click-arg0="all"/);
+  assert.match(markup,/data-action="quick-period" data-click-arg0="recent3"/);
+  assert.match(markup,/credit-date-shortcut active[^>]+data-click-arg0="recent3"/);
+  assert.match(markup,/טווח תאריכים מדויק/);
 });
 
 test('date range uses inclusive billing dates, not purchase dates, with open boundaries',()=>{
