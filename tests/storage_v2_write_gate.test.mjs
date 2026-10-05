@@ -118,6 +118,8 @@ test('Orders V2 fails closed on missing Main checkpoint and exposes no V1 outbox
     assert.equal(browser.markCloudPending,undefined);
     await assert.rejects(browser.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
     await assert.rejects(browser.idbSyncPut('shared-checks-outbox-v3',{}),/storage_v1_write_forbidden/);
+    await assert.rejects(browser.idbSyncGet('orders-outbox-v3'),/storage_restore_group_key_required/);
+    await assert.rejects(browser.idbSyncDelete('shared-checks-outbox-v3'),/storage_restore_group_key_required/);
     assert.equal(globalThis.localStorage.length,0);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
