@@ -30,6 +30,8 @@ async function loadPdfJs(){
       message!=='Warning: Cannot polyfill `Path2D`, rendering may be broken.'
     );
     assert.deepEqual(unexpected,[],'PDF.js corpus import emitted an unexpected warning');
+    assert.equal(pdfjs.version,manifest.baselinePdfjsVersion,'PDF.js corpus must run against the reviewed runtime version');
+    assert.equal(pdfjs.build,manifest.baselinePdfjsBuild,'PDF.js corpus must run against the reviewed PDF.js build');
     pdfjs.GlobalWorkerOptions.workerSrc=new URL('legacy/build/pdf.worker.min.mjs',vendorRoot).href;
     return pdfjs;
   })();

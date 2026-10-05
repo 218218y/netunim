@@ -103,7 +103,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     let verification=await runVerification();
     assert.equal(verification.code,0,verification.stderr||verification.stdout);
     assert.equal(verification.stderr,'','known optional-canvas PDF.js import warnings must not leak into installer/doctor stderr');
-    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.mode,'text-extraction-only');assert.equal(verified.version,'6.3.289');
+    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.mode,'text-extraction-only');assert.equal(verified.version,'6.4.299');
     const legacyWorker=path.join(runtime,'pdfjs','legacy','build','pdf.worker.min.mjs'),originalWorker=await fs.readFile(legacyWorker);
     await fs.appendFile(legacyWorker,'\n// integrity-test\n');
     verification=await runVerification();

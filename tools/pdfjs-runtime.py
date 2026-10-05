@@ -1,10 +1,11 @@
 """Install and verify the pinned PDF.js runtime used by the browser and Windows Bridge.
 
 The application is intentionally a native-ESM static site, so runtime libraries are
-vendored as public assets instead of being loaded from a CDN.  ``install`` downloads
-one exact npm tarball, verifies its published SHA-512 integrity, and atomically
-extracts only the runtime files we deploy.  ``check`` is network-free and verifies
-the installed manifest and every vendored file digest.
+vendored as public assets instead of being loaded from a CDN. ``install`` resolves
+one exact npm release, verifies the registry-published SHA-512 integrity, validates
+its PDF.js version/build and the component API surface we depend on, and atomically
+extracts only the runtime files we deploy. ``check`` is network-free and verifies
+the installed manifest, build identity, API contract, and every vendored file digest.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import argparse
 import base64
 import hashlib
 import io
+import json
 import os
 import shutil
 import tarfile
@@ -20,10 +22,11 @@ import tempfile
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "6.3.289"
+VERSION = "6.4.299"
+BUILD = "d0991a0d5"
 PACKAGE = "pdfjs-dist"
+REGISTRY_METADATA_URL = f"https://registry.npmjs.org/{PACKAGE}/{VERSION}"
 TARBALL_URL = f"https://registry.npmjs.org/{PACKAGE}/-/{PACKAGE}-{VERSION}.tgz"
-TARBALL_INTEGRITY = "sha512-ZHjSVpDa3D6izMq8/04lvkhkATUmL9px6ChPaXc1k6nU2Mrhlg1/7F0bdUqCwUjw3NsPTfPZsMDUU6ZIcRaeQw=="
 DESTINATIONS = tuple(ROOT / f"netunim-{app}/site/assets/vendor/pdfjs" for app in ("orders", "kupa"))
 DESTINATION = DESTINATIONS[0]
 MANIFEST_NAME = "_runtime-manifest.txt"
@@ -38,16 +41,25 @@ REQUIRED_FILES = {
     "LICENSE",
 }
 OPTIONAL_FILES = set()
+BUILD_MARKER_SNIPPETS = (
+    f"pdfjsVersion = {VERSION}",
+    f"pdfjsBuild = {BUILD}",
+)
 API_CONTRACT_SNIPPETS = {
     "build/pdf.mjs": (
+        *BUILD_MARKER_SNIPPETS,
         "convertToViewportPoint(x, y)",
     ),
+    "build/pdf.worker.min.mjs": BUILD_MARKER_SNIPPETS,
     "legacy/build/pdf.mjs": (
+        *BUILD_MARKER_SNIPPETS,
         "function getDocument(src = {})",
         "class GlobalWorkerOptions",
         "const BinaryDataFactory = src.BinaryDataFactory",
     ),
+    "legacy/build/pdf.worker.min.mjs": BUILD_MARKER_SNIPPETS,
     "web/pdf_viewer.mjs": (
+        *BUILD_MARKER_SNIPPETS,
         "class PDFFindController",
         "get pageMatches()",
         "get pageMatchesLength()",
@@ -68,18 +80,58 @@ REQUIRED_PREFIXES = (
 )
 
 
-def integrity_digest(value: str = TARBALL_INTEGRITY) -> bytes:
-    algorithm, encoded = value.split("-", 1)
+def integrity_digest(value: str) -> bytes:
+    try:
+        algorithm, encoded = value.split("-", 1)
+    except ValueError as error:
+        raise ValueError("invalid PDF.js integrity value; expected sha512-<base64>") from error
     if algorithm != "sha512":
         raise ValueError(f"unsupported PDF.js integrity algorithm: {algorithm}")
-    return base64.b64decode(encoded, validate=True)
+    try:
+        digest = base64.b64decode(encoded, validate=True)
+    except (ValueError, TypeError) as error:
+        raise ValueError("invalid PDF.js SHA-512 integrity encoding") from error
+    if len(digest) != hashlib.sha512().digest_size:
+        raise ValueError("invalid PDF.js SHA-512 integrity digest length")
+    return digest
 
 
-def verify_archive(data: bytes, expected_integrity: str = TARBALL_INTEGRITY) -> None:
+def verify_archive(data: bytes, expected_integrity: str) -> None:
     expected = integrity_digest(expected_integrity)
     actual = hashlib.sha512(data).digest()
     if actual != expected:
         raise ValueError("PDF.js archive integrity mismatch; refusing to install unverified runtime")
+
+
+def registry_integrity_from_metadata(metadata: object) -> str:
+    if not isinstance(metadata, dict):
+        raise ValueError("invalid PDF.js registry metadata payload")
+    if metadata.get("name") != PACKAGE or metadata.get("version") != VERSION:
+        raise ValueError("PDF.js registry metadata package/version mismatch")
+    dist = metadata.get("dist")
+    if not isinstance(dist, dict) or dist.get("tarball") != TARBALL_URL:
+        raise ValueError("PDF.js registry metadata tarball URL mismatch")
+    integrity = dist.get("integrity")
+    if not isinstance(integrity, str):
+        raise ValueError("PDF.js registry metadata is missing dist.integrity")
+    integrity_digest(integrity)
+    return integrity
+
+
+def fetch_registry_integrity() -> str:
+    request = urllib.request.Request(
+        REGISTRY_METADATA_URL,
+        headers={"User-Agent": f"netunim-pdfjs-vendor/{VERSION}", "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = response.read()
+    if not payload:
+        raise OSError("downloaded PDF.js registry metadata is empty")
+    try:
+        metadata = json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError("invalid PDF.js registry metadata JSON") from error
+    return registry_integrity_from_metadata(metadata)
 
 
 def selected_relative(member_name: str) -> str | None:
@@ -101,13 +153,15 @@ def digest_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_manifest(destination: Path) -> None:
+def write_manifest(destination: Path, integrity: str) -> None:
+    integrity_digest(integrity)
     files = sorted(path for path in destination.rglob("*") if path.is_file() and path.name != MANIFEST_NAME)
     lines = [
         f"package={PACKAGE}",
         f"version={VERSION}",
+        f"build={BUILD}",
         f"source={TARBALL_URL}",
-        f"integrity={TARBALL_INTEGRITY}",
+        f"integrity={integrity}",
         f"files={len(files)}",
         "",
     ]
@@ -117,7 +171,7 @@ def write_manifest(destination: Path) -> None:
     (destination / MANIFEST_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity: str = TARBALL_INTEGRITY) -> None:
+def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity: str) -> None:
     verify_archive(archive_bytes, expected_integrity)
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging: Path | None = Path(tempfile.mkdtemp(prefix=".pdfjs-runtime-", dir=destination.parent))
@@ -143,7 +197,10 @@ def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity
                 missing.append(prefix + "*")
         if missing:
             raise ValueError("PDF.js archive is missing required runtime assets: " + ", ".join(missing))
-        write_manifest(staging)
+        write_manifest(staging, expected_integrity)
+        preflight_errors = check_runtime(staging, expected_integrity=expected_integrity)
+        if preflight_errors:
+            raise ValueError("PDF.js runtime preflight failed before activation: " + "; ".join(preflight_errors))
         backup = destination.with_name(destination.name + ".previous")
         if backup.exists():
             shutil.rmtree(backup)
@@ -179,7 +236,7 @@ def download_archive() -> bytes:
 def parse_manifest(destination: Path) -> tuple[dict[str, str], dict[str, str]]:
     manifest = destination / MANIFEST_NAME
     if not manifest.is_file():
-        raise FileNotFoundError(f"missing {manifest.relative_to(ROOT)}")
+        raise FileNotFoundError(f"missing {manifest.relative_to(ROOT) if manifest.is_relative_to(ROOT) else manifest}")
     metadata: dict[str, str] = {}
     files: dict[str, str] = {}
     for raw in manifest.read_text(encoding="utf-8").splitlines():
@@ -197,7 +254,7 @@ def parse_manifest(destination: Path) -> tuple[dict[str, str], dict[str, str]]:
     return metadata, files
 
 
-def check_runtime(destination: Path = DESTINATION) -> list[str]:
+def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | None = None) -> list[str]:
     errors: list[str] = []
     try:
         metadata, expected_files = parse_manifest(destination)
@@ -206,12 +263,19 @@ def check_runtime(destination: Path = DESTINATION) -> list[str]:
     expected_metadata = {
         "package": PACKAGE,
         "version": VERSION,
+        "build": BUILD,
         "source": TARBALL_URL,
-        "integrity": TARBALL_INTEGRITY,
     }
     for key, value in expected_metadata.items():
         if metadata.get(key) != value:
             errors.append(f"manifest {key} mismatch: expected {value!r}, got {metadata.get(key)!r}")
+    manifest_integrity = metadata.get("integrity", "")
+    try:
+        integrity_digest(manifest_integrity)
+    except ValueError as error:
+        errors.append(f"manifest integrity invalid: {error}")
+    if expected_integrity is not None and manifest_integrity != expected_integrity:
+        errors.append(f"manifest integrity mismatch: expected {expected_integrity!r}, got {manifest_integrity!r}")
     try:
         expected_count = int(metadata.get("files", "-1"))
     except ValueError:
@@ -253,27 +317,33 @@ def check_runtime(destination: Path = DESTINATION) -> list[str]:
     return errors
 
 
-def install(archive: Path | None = None, destination: Path | None = None) -> None:
+def install(archive: Path | None = None, destination: Path | None = None, *, expected_integrity: str | None = None) -> None:
+    integrity = expected_integrity or fetch_registry_integrity()
+    integrity_digest(integrity)
     archive_bytes = archive.read_bytes() if archive else download_archive()
     destinations = (destination,) if destination is not None else DESTINATIONS
     for target in destinations:
-        build_runtime(archive_bytes, target)
+        build_runtime(archive_bytes, target, expected_integrity=integrity)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Install/check the pinned PDF.js browser runtime")
     subparsers = parser.add_subparsers(dest="command", required=True)
     install_parser = subparsers.add_parser("install", help="download/verify and vendor PDF.js")
-    install_parser.add_argument("--archive", type=Path, help="use an already-downloaded npm .tgz instead of the network")
+    install_parser.add_argument("--archive", type=Path, help="use an already-downloaded npm .tgz instead of downloading it")
+    install_parser.add_argument(
+        "--integrity",
+        help="expected sha512-... for fully offline --archive installs; otherwise resolve dist.integrity from the exact npm registry release",
+    )
     subparsers.add_parser("check", help="verify the already-vendored runtime without network access")
     args = parser.parse_args()
     try:
         if args.command == "install":
-            install(args.archive)
-            locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
-            print(f"PDF.js {VERSION} runtime installed in {locations}")
+            install(args.archive, expected_integrity=args.integrity)
+            locations = ", ".join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
+            print(f"PDF.js {VERSION} ({BUILD}) runtime installed in {locations}")
             return 0
-        failures=[]
+        failures = []
         for destination in DESTINATIONS:
             failures.extend(f"{destination.relative_to(ROOT)}: {error}" for error in check_runtime(destination))
         if failures:
@@ -282,8 +352,8 @@ def main() -> int:
                 print("-", error)
             print("Run: npm run pdfjs:install")
             return 1
-        locations=', '.join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
-        print(f"PDF.js {VERSION} runtime verified ({locations})")
+        locations = ", ".join(str(path.relative_to(ROOT)) for path in DESTINATIONS)
+        print(f"PDF.js {VERSION} ({BUILD}) runtime verified ({locations})")
         return 0
     except (OSError, ValueError, tarfile.TarError) as error:
         print(f"ERROR: PDF.js runtime operation failed: {error}")

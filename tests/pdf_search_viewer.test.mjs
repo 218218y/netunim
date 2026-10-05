@@ -369,7 +369,8 @@ test('preview PDF renders AcroForm fields from PDF appearances instead of editab
 });
 
 test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
-  assert.equal(PDF_SEARCH_RUNTIME.version,'6.3.289');
+  assert.equal(PDF_SEARCH_RUNTIME.version,'6.4.299');
+  assert.equal(PDF_SEARCH_RUNTIME.build,'d0991a0d5');
   for(const key of ['pdf','viewer','worker','css','cmaps','iccs','standardFonts','wasm']){
     assert.match(PDF_SEARCH_RUNTIME[key],/^\.\.\/\.\.\/\.\.\/vendor\/pdfjs\//);
     assert.doesNotMatch(PDF_SEARCH_RUNTIME[key],/^https?:/);
@@ -395,6 +396,7 @@ test('PDF runtime loading keeps the application module graph static, local and d
   assert.match(vendorViewer,/globalThis\.pdfjsLib/,'the pinned viewer really depends on the pdfjsLib global during evaluation');
   assert.doesNotMatch(source,/Promise\.all\(\[\s*import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/build\/pdf\.mjs'\)[\s\S]*?import\('\.\.\/\.\.\/\.\.\/vendor\/pdfjs\/web\/pdf_viewer\.mjs'\)/,'core and viewer must never be started in parallel');
   assert.match(source,/assertPdfJsRuntimeContract\(pdfjsLib,pdfjsViewer\)/,'runtime loading must fail loudly when a future PDF.js API no longer matches the adapter');
+  assert.match(source,/pdfjsLib\?\.build/,'runtime loading must pin the exact PDF.js build id, not only the semantic version');
   assert.match(source,/PDFFindController\.\$\{name\}/,'the adapter explicitly validates the find-controller surface used for combined navigation');
   assert.doesNotMatch(source,/cdnjs|jsdelivr|https:\/\//i);
   assert.doesNotMatch(source,/script\.src|loadRuntimeScript/);

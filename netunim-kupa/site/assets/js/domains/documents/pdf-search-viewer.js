@@ -1,9 +1,11 @@
 import {buildTextMatchSnippet,buildViewerFindQuery,contentSearchTerms,findTextMatchOffsets,isWholeWordTextRange,normalizeContentSearch} from './document-search-navigator.js';
-const PDFJS_VERSION='6.3.289';
+const PDFJS_VERSION='6.4.299';
+const PDFJS_BUILD='d0991a0d5';
 const PDFJS_ROOT='../../../vendor/pdfjs/';
 
 export const PDF_SEARCH_RUNTIME=Object.freeze({
   version:PDFJS_VERSION,
+  build:PDFJS_BUILD,
   root:PDFJS_ROOT,
   pdf:`${PDFJS_ROOT}build/pdf.mjs`,
   viewer:`${PDFJS_ROOT}web/pdf_viewer.mjs`,
@@ -31,6 +33,7 @@ function installPdfJsBrowserCompatibility(){
 function assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer){
   const missing=[];
   if(String(pdfjsLib?.version||'')!==PDFJS_VERSION)missing.push(`pdf.mjs version ${String(pdfjsLib?.version||'unknown')} (expected ${PDFJS_VERSION})`);
+  if(String(pdfjsLib?.build||'')!==PDFJS_BUILD)missing.push(`pdf.mjs build ${String(pdfjsLib?.build||'unknown')} (expected ${PDFJS_BUILD})`);
   if(typeof pdfjsLib?.getDocument!=='function')missing.push('pdfjsLib.getDocument');
   if(pdfjsLib?.AnnotationMode?.ENABLE===undefined)missing.push('pdfjsLib.AnnotationMode.ENABLE');
   for(const name of ['EventBus','PDFLinkService','PDFFindController','PDFViewer'])if(typeof pdfjsViewer?.[name]!=='function')missing.push(`pdfjsViewer.${name}`);
@@ -43,7 +46,7 @@ function assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer){
   if(viewerProto)for(const name of ['setDocument','getPageView','update'])if(typeof viewerProto[name]!=='function')missing.push(`PDFViewer.${name}`);
   const linkProto=pdfjsViewer?.PDFLinkService?.prototype;
   if(linkProto)for(const name of ['setDocument','setViewer'])if(typeof linkProto[name]!=='function')missing.push(`PDFLinkService.${name}`);
-  if(missing.length)throw new Error(`PDF.js ${PDFJS_VERSION} runtime API contract mismatch: ${missing.join(', ')}`);
+  if(missing.length)throw new Error(`PDF.js ${PDFJS_VERSION} (${PDFJS_BUILD}) runtime API contract mismatch: ${missing.join(', ')}`);
 }
 
 function ensureViewerStylesheet(){

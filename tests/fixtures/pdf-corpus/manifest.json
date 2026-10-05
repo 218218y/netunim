@@ -65,5 +65,6 @@
       "bytes": 2259
     }
   ],
-  "baselinePdfjsVersion": "6.3.289"
+  "baselinePdfjsVersion": "6.4.299",
+  "baselinePdfjsBuild": "d0991a0d5"
 }
