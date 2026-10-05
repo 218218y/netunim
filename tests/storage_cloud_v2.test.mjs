@@ -287,11 +287,11 @@ test('browser adapters expose no V1 snapshot writer and require a ready V2 journ
 
 
 
-test('Orders Cloud V2 cursor does not reopen a retired V1 outbox',async()=>{
+test('Orders Cloud V2 browser adapter reads an existing cursor without a V1 outbox',async()=>{
   const previousStorage=globalThis.localStorage,previousIndexedDb=globalThis.indexedDB,storage=emergencyStore();globalThis.localStorage=storage;delete globalThis.indexedDB;
   try{
     let captures=0;const state=clone(ORDERS_INITIAL_STATE),session={localSnapshotSeq:0,localGeneration:1,cloudRevision:10,lastCloudState:clone(state),storageV2CloudPending:false,ordersOutboxCached:null,ordersOutboxCommitPromise:Promise.resolve()},base={version:2,owner:'orders:test',epoch:'epoch-1',revision:10,state:clone(state),projection:'cloud',ackSeq:0},storageV2={primaryReady:true,cloudState:async()=>({seq:0,base,flight:null,control:null,pending:false}),flush:async()=>true,captureCloudCursor:async()=>{captures++;return base}};
-    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),true);assert.equal(await browser.initializeStorageV2CloudCursor(10),true);assert.equal(captures,1,'V2 cursor is captured without opening the retired V1 database');
+    const browser=createOrdersStorageBrowser({storageV2,model:{state},files:{},session,prepareCloudState:clone,normalizeState:clone});await browser.refreshStorageV2CloudState();assert.equal(browser.storageV2CloudOutboxActive(),true);assert.equal(browser.initializeStorageV2CloudCursor,undefined);assert.equal(captures,0,'existing V2 cursor reads do not reopen the retired V1 database');
   }finally{if(previousStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=previousStorage;if(previousIndexedDb===undefined)delete globalThis.indexedDB;else globalThis.indexedDB=previousIndexedDb}
 });
 

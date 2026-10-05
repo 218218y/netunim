@@ -9,32 +9,34 @@ import {checkLegacyAccountStartup} from '../shared/storage-v2-server-protocol.js
 const response={ok:true,text:async()=>JSON.stringify([{revision:1,state:{}}])};
 const ordersState=()=>{const state=structuredClone(INITIAL_STATE);delete state.checks;return state};
 
-test('Orders Main transport exposes only v6; remaining Shared compatibility is explicit',async()=>{
+test('Orders and Kupa transports expose only v6 document writers',async()=>{
   const ordersPaths=[],kupaPaths=[];
   const orders=ordersTransport({supaFetch:async path=>{ordersPaths.push(path);return response}});
   const kupa=kupaTransport({supaRest:async path=>{kupaPaths.push(path);return response}});
   const state=ordersState();
   assert.equal(orders.rpcSave,undefined);
+  assert.equal(orders.rpcSaveSharedChecks,undefined);
+  assert.equal(kupa.rpcSaveSharedChecks,undefined);
   await orders.rpcSaveV2(state,0,'v2-main');
-  await orders.rpcSaveSharedChecks([],0,'legacy-shared');
   await orders.rpcSaveSharedChecksV2([],0,'v2-shared');
+  await orders.rpcSaveSharedChecksV2([],1,'v2-shared-delete',['check-1'],{mutationType:'bulk-delete'});
   const group=await createRestoreGroup({appSite:'orders',main:{documentName:'suppliers',baseRevision:1,state,operationId:'restore-main'},restoreGroupId:'55555555-5555-4555-8555-555555555555'});
   await orders.stageRestoreGroup(group);
   await orders.applyRestoreGroup('55555555-5555-4555-8555-555555555555');
-  await kupa.rpcSaveSharedChecks([],0,'legacy-shared');
   await kupa.rpcSaveSharedChecksV2([],0,'v2-shared');
+  await kupa.rpcSaveSharedChecksV2([],1,'v2-shared-delete',['check-1'],{mutationType:'bulk-delete'});
   await kupa.stageRestoreGroup(group);
   await kupa.applyRestoreGroup('55555555-5555-4555-8555-555555555555');
   assert.deepEqual(ordersPaths,[
     '/rest/v1/rpc/save_order_management_document_v6',
-    '/rest/v1/rpc/save_shared_checks_document_v5',
     '/rest/v1/rpc/save_shared_checks_document_v6',
+    '/rest/v1/rpc/bulk_delete_save_shared_checks_document_v6',
     '/rest/v1/rpc/stage_restore_group_v6',
     '/rest/v1/rpc/apply_restore_group_v6',
   ]);
   assert.deepEqual(kupaPaths,[
-    '/rest/v1/rpc/save_shared_checks_document_v5',
     '/rest/v1/rpc/save_shared_checks_document_v6',
+    '/rest/v1/rpc/bulk_delete_save_shared_checks_document_v6',
     '/rest/v1/rpc/stage_restore_group_v6',
     '/rest/v1/rpc/apply_restore_group_v6',
   ]);

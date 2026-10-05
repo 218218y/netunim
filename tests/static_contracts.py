@@ -137,6 +137,15 @@ business_sources=[path.read_text(encoding="utf-8") for app in (K, O)
                   for path in (app / "site/assets/js").rglob("*.js")]
 ok(all(symbol not in source for source in business_sources for symbol in checks_writer_symbols),
    "clients: Shared Checks V1 writer APIs are absent from production")
+cloud_transport_sources=[(app / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8") for app in (K, O)]
+ok(all(not re.search(r"\brpcSaveSharedChecks\b|\brpcSaveSharedChecksVersion\b|save_shared_checks_document_v5", source)
+       for source in cloud_transport_sources),
+   "clients: Shared Checks transports expose only the v6 writer")
+ok(all(symbol not in source for source in business_sources for symbol in
+       ("initializeStorageV2UploadLocalHead", "initializeStorageV2BootstrapHead",
+        "initializeStorageV2CloudCursor", "initializeUploadLocalCloudHead",
+        "storageV2BootstrapStatus", "prepareStorageV2Bootstrap", "advanceStorageV2Bootstrap")),
+   "clients: retired bootstrap and cursor adapter ports are absent")
 ok(all("storageShadow" not in source and "fencedLegacyInactive" not in source for source in business_sources),
    "clients: Main V2 no longer carries Shadow naming or V1 disposition checks")
 workflows_source=(ROOT / "tests/runtime_workflows.py").read_text(encoding="utf-8")
