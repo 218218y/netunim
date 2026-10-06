@@ -4,7 +4,7 @@ import {createCloudTransport as ordersTransport} from '../netunim-orders/site/as
 import {createCloudTransport as kupaTransport} from '../netunim-kupa/site/assets/js/cloud/transport.js';
 import {INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
 import {createRestoreGroup} from '../shared/restore-groups.js';
-import {checkLegacyAccountStartup} from '../shared/storage-v2-server-protocol.js';
+import {checkStorageProtocolStartup} from '../shared/storage-v2-server-protocol.js';
 
 const response={ok:true,text:async()=>JSON.stringify([{revision:1,state:{}}])};
 const ordersState=()=>{const state=structuredClone(INITIAL_STATE);delete state.checks;return state};
@@ -44,22 +44,22 @@ test('Orders and Kupa transports expose only v6 document writers',async()=>{
 
 test('account protocol preflight permits local V2 and an existing account marker without network',async()=>{
   let calls=0;const readProtocolState=async()=>{calls++;throw Error('offline')};
-  assert.equal((await checkLegacyAccountStartup({owner:'local',online:false,readProtocolState})).allowed,true);
-  assert.equal((await checkLegacyAccountStartup({owner:'local',localEngineActive:true,online:false,authenticatedOwner:'account',readProtocolState})).allowed,true);
-  assert.equal((await checkLegacyAccountStartup({owner:'account',cutoverActive:true,online:false,readProtocolState})).allowed,true);
+  assert.equal((await checkStorageProtocolStartup({owner:'local',online:false,readProtocolState})).allowed,true);
+  assert.equal((await checkStorageProtocolStartup({owner:'local',localEngineActive:true,online:false,authenticatedOwner:'account',readProtocolState})).allowed,true);
+  assert.equal((await checkStorageProtocolStartup({owner:'account',cutoverActive:true,online:false,readProtocolState})).allowed,true);
   assert.equal(calls,0);
 });
 
-test('unmarked account requires authenticated online server proof before legacy recovery',async()=>{
+test('unmarked account requires authenticated online server proof before cloud adoption',async()=>{
   const base={owner:'account',cutoverActive:false,online:true,authenticatedOwner:'account'};
   const readProtocolState=async()=>({orders:1,kupa:1,sharedChecks:1});
-  assert.deepEqual(await checkLegacyAccountStartup({...base,readProtocolState}),{allowed:false,reason:'upgrade-required'});
-  assert.deepEqual(await checkLegacyAccountStartup({...base,readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});
-  assert.equal((await checkLegacyAccountStartup({...base,online:false,readProtocolState})).allowed,false);
-  assert.equal((await checkLegacyAccountStartup({...base,authenticatedOwner:'other',readProtocolState})).allowed,false);
-  assert.equal((await checkLegacyAccountStartup({...base,readProtocolState:async()=>{throw Error('network')}})).allowed,false);
-  assert.equal((await checkLegacyAccountStartup({...base,readProtocolState:async()=>({orders:2,kupa:1,sharedChecks:2})})).allowed,false);
-  assert.deepEqual(await checkLegacyAccountStartup({...base,owner:'local',readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});
+  assert.deepEqual(await checkStorageProtocolStartup({...base,readProtocolState}),{allowed:false,reason:'upgrade-required'});
+  assert.deepEqual(await checkStorageProtocolStartup({...base,readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});
+  assert.equal((await checkStorageProtocolStartup({...base,online:false,readProtocolState})).allowed,false);
+  assert.equal((await checkStorageProtocolStartup({...base,authenticatedOwner:'other',readProtocolState})).allowed,false);
+  assert.equal((await checkStorageProtocolStartup({...base,readProtocolState:async()=>{throw Error('network')}})).allowed,false);
+  assert.equal((await checkStorageProtocolStartup({...base,readProtocolState:async()=>({orders:2,kupa:1,sharedChecks:2})})).allowed,false);
+  assert.deepEqual(await checkStorageProtocolStartup({...base,owner:'local',readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});
 });
 
 test('both transports read the authenticated server protocol through the dedicated RPC',async()=>{

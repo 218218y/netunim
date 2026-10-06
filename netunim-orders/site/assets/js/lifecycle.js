@@ -1,5 +1,5 @@
 import {clone} from './core/values.js';
-import {checkLegacyAccountStartup} from './shared/storage-v2-server-protocol.js';
+import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
 
 function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${name}`)}catch{}}
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
@@ -74,7 +74,7 @@ async function boot(){
   await hydrateLocalBirth();
   let localOwner=storageOwnerCurrent()==='local';
   let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkLegacyAccountStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
+  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
       await recoverFencedAccount();

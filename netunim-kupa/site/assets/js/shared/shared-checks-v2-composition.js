@@ -15,7 +15,7 @@ export function createSharedChecksV2Composition({site,owner,primary,preparing=()
   const preparationRequested=()=>!!preparing()&&!cutoverRequested();
   // Routing must switch to V2 as soon as its durable marker/preparation exists.
   // Recovery may still be in progress (or a DB capability check may fail), but
-  // background polls must never manufacture a legacy outbox in that window.
+  // background polls must not use an unverified or incomplete V2 head.
   const runtime=createSharedChecksV2Runtime({site,owner,primary,mode:()=>cutoverRequested()?'primary':preparationRequested()?'preparing':'off',
     readState:()=>({checks:model.state.checks,bankEvents:checksSession[eventsKey]||[]}),
     applyState:value=>{model.state.checks=value.checks;checksSession[eventsKey]=value.bankEvents;domainRevisions.touch('checks')},
