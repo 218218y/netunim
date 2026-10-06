@@ -722,7 +722,7 @@ const uiSettings=createUiSettings({
 });
 
 const lifecycle=createLifecycle({
-  hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:()=>cloudAuth.loadSession()?.user?.id}),
+  hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:()=>cloudAuth.loadSession()?.user?.id}),
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),

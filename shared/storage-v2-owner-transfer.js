@@ -146,7 +146,7 @@ export function createStorageV2OwnerTransfer({app,ownerBinding,primary=()=>true,
     if(!primary())throw new Error('storage_transfer_primary_required');
     if(String(authOwner()||'').trim()!==target)throw new Error('storage_transfer_target_reauth_required');
     if(!online())throw new Error('storage_transfer_online_required');
-    const binding=status();if(binding.binding?.pendingAdoption)throw new Error('storage_transfer_legacy_reservation_pending');
+    const binding=status();if(binding.binding?.pendingAdoption)throw new Error('storage_transfer_reservation_pending');
     running=(async()=>{
       const begun=await ownerBinding.beginHandoff(target,{intent:kind});record=begun;
       return execute(begun);

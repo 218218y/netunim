@@ -146,6 +146,12 @@ ok(all(symbol not in source for source in business_sources for symbol in
         "initializeStorageV2CloudCursor", "initializeFirstCloudHead",
         "storageV2BootstrapStatus", "prepareStorageV2Bootstrap", "advanceStorageV2Bootstrap")),
    "clients: retired bootstrap and cursor adapter ports are absent")
+ok(all(symbol not in source for source in business_sources for symbol in
+       ("checkLegacyAccountStartup", "storage_transfer_legacy_reservation_pending"))
+   and all("legacyOwner" not in source for app in (K, O)
+           for path in [app / "site/assets/js/main.js"]
+           for source in [path.read_text(encoding="utf-8")]),
+   "clients: owner and protocol startup use current V2 terminology")
 ok(all("storageShadow" not in source and "fencedLegacyInactive" not in source for source in business_sources),
    "clients: Main V2 no longer carries Shadow naming or V1 disposition checks")
 workflows_source=(ROOT / "tests/runtime_workflows.py").read_text(encoding="utf-8")

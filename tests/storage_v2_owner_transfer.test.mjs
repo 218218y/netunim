@@ -34,7 +34,7 @@ function harness({sourceOwner='local',targetOwner='B',intent='upload-local'}={})
       async verifyMarker(){calls.push('verify-marker');return marker},
     };
   };
-  async function create(){owner=ownerFactory();await owner.hydrate({legacyOwner:()=>sourceOwner});transfer=createStorageV2OwnerTransfer({app:'orders',ownerBinding:owner,primary:()=>primary,online:()=>online,authOwner:()=>auth,
+  async function create(){owner=ownerFactory();await owner.hydrate({initialOwner:()=>sourceOwner});transfer=createStorageV2OwnerTransfer({app:'orders',ownerBinding:owner,primary:()=>primary,online:()=>online,authOwner:()=>auth,
     settleSource:async()=>{calls.push('settle-source');assert.equal(owner.locked,true,'source is read only only after durable handoff lock');if(failAt==='source')throw Error('source-crash');return copy(source)},
     createDetachedTarget:targetFactory,
     installTargetView:async proof=>{calls.push('install-view');viewInstalls++;assert.equal(owner.current(),targetOwner);assert.equal(owner.locked,true);assert.deepEqual(proof.mainState,targetState.mainState);if(failAt==='view')throw Error('view-crash')},

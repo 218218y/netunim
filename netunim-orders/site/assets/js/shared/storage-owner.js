@@ -31,11 +31,13 @@ export function createStorageOwnerBinding({app,primary=()=>true,db=createStorage
     const durable=nextBinding&&structuredClone(nextBinding);if(!durable||durable.app!==scope||durable.version!==1)throw new Error('storage_owner_binding_invalid');
     owner=normalizeOwner(durable.owner);binding=durable;handoff=nextHandoff&&nextHandoff.phase!=='complete'?structuredClone(nextHandoff):null;writeCache(owner);return status();
   }
-  async function legacyCandidate(legacyOwner){
-    if(typeof legacyOwner!=='function')return 'local';
-    const value=await legacyOwner();return String(value||'').trim()||'local';
+  async function initialOwnerCandidate(initialOwner){
+    if(typeof initialOwner!=='function')return 'local';
+    const value=await initialOwner();return String(value||'').trim()||'local';
   }
-  async function hydrate({legacyOwner=null}={}){
+  async function hydrate(options={}){
+    if(!options||Object.keys(options).some(key=>key!=='initialOwner'))throw new Error('storage_owner_hydrate_options_invalid');
+    const {initialOwner=null}=options;
     if(binding)return status();if(hydrating)return hydrating;
     hydrating=(async()=>{
       const durable=await db.readOwnerBinding(scope),pending=await db.readOwnerHandoff(scope);
@@ -43,8 +45,8 @@ export function createStorageOwnerBinding({app,primary=()=>true,db=createStorage
       // A cache without its durable binding is never authority. This also makes
       // clearing LocalStorage harmless when IndexedDB still contains the owner.
       clearUnverifiedCache();
-      const candidate=normalizeOwner(await legacyCandidate(legacyOwner));
-      const created=await db.initializeOwnerBinding(scope,candidate,{source:candidate==='local'?'local-bootstrap':'legacy-session-bootstrap',at:now()});
+      const candidate=normalizeOwner(await initialOwnerCandidate(initialOwner));
+      const created=await db.initializeOwnerBinding(scope,candidate,{source:candidate==='local'?'local-bootstrap':'session-bootstrap',at:now()});
       const resumed=await db.readOwnerHandoff(scope);return applyDurable(created,resumed);
     })().finally(()=>{hydrating=null});
     return hydrating;

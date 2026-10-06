@@ -714,7 +714,7 @@ const uiBackup=createUiBackup({
 });
 
 const lifecycle=createLifecycle({
-  hydrateStorageOwner:()=>storageOwner.hydrate({legacyOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
+  hydrateStorageOwner:()=>storageOwner.hydrate({initialOwner:async()=> (await cloudAuth.restoreSupaSession())?.user?.id}),
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'kupa',owner:()=>storageOwner.current()}),
   recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
   recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),

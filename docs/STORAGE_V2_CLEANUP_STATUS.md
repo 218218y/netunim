@@ -6,6 +6,8 @@ Main V2 now writes and replays projection 2 only. Main checkpoints containing `c
 
 The active Main runtime is named `mainStorageV2` in both applications. Cloud adoption persists Main, Shared, both cursors and the account marker in one IndexedDB transaction; that marker no longer carries a V1 quarantine/disposition field. The account marker itself is the durable proof that the new V2 heads were installed.
 
+Startup checks the server writer protocol before adopting an unmarked account. Owner binding takes an `initialOwner` callback only when no durable binding exists; an unknown hydration option fails closed instead of silently creating a `local` binding. Newly created bindings use `session-bootstrap` metadata, while existing IndexedDB bindings and persisted marker keys remain readable unchanged.
+
 New durable bootstrap groups can be created only for `upload-local`, `load-account`, and `account-switch`. Previously stored `first-cloud` and `legacy-upgrade` groups remain readable solely to classify their phase: a complete group is not replayed and can be replaced by a current V2 plan; an incomplete historical group locks startup and fails closed with `storage_bootstrap_historical_incomplete`. No new historical group is written.
 
 Main and Shared Checks cloud-head creation now accepts only `cloud-authoritative` recovery or an explicit `upload-local` transfer. The detached target uses a dedicated Main local-upload API and never copies checks into Main; Shared Checks remains authoritative. New `upload-owner` and `legacy-upgrade` heads are rejected. Journal replay still recognizes previously persisted `upload-owner` operations so an existing V2 checkpoint can recover without a downgrade or rewrite.
