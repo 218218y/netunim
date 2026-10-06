@@ -22,25 +22,21 @@ import tempfile
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "6.4.299"
-BUILD = "d0991a0d5"
-PACKAGE = "pdfjs-dist"
+LOCK_PATH = ROOT / "tools/pdfjs-runtime-lock.json"
+LOCK = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+VERSION = LOCK["version"]
+BUILD = LOCK["build"]
+PACKAGE = LOCK["package"]
 REGISTRY_METADATA_URL = f"https://registry.npmjs.org/{PACKAGE}/{VERSION}"
-TARBALL_URL = f"https://registry.npmjs.org/{PACKAGE}/-/{PACKAGE}-{VERSION}.tgz"
+TARBALL_URL = LOCK["source"]
 DESTINATIONS = tuple(ROOT / f"netunim-{app}/site/assets/vendor/pdfjs" for app in ("orders", "kupa"))
 DESTINATION = DESTINATIONS[0]
+BRIDGE_DESTINATION = ROOT / "netunim-orders/document-bridge/pdfjs"
+CONFIG_MODULE = ROOT / "shared/document-search/domains/documents/pdfjs-runtime-config.js"
 MANIFEST_NAME = "_runtime-manifest.txt"
 
-REQUIRED_FILES = {
-    "build/pdf.mjs",
-    "build/pdf.worker.min.mjs",
-    "legacy/build/pdf.mjs",
-    "legacy/build/pdf.worker.min.mjs",
-    "web/pdf_viewer.mjs",
-    "web/pdf_viewer.css",
-    "LICENSE",
-}
-OPTIONAL_FILES = set()
+PROFILES = LOCK["profiles"]
+REQUIRED_FILES = set().union(*(set(profile["files"]) for profile in PROFILES.values()))
 BUILD_MARKER_SNIPPETS = (
     f"pdfjsVersion = {VERSION}",
     f"pdfjsBuild = {BUILD}",
@@ -70,14 +66,23 @@ API_CONTRACT_SNIPPETS = {
         "getPageView(index)",
     ),
 }
-REQUIRED_PREFIXES = (
-    "web/images/",
-    "cmaps/",
-    "iccs/",
-    "standard_fonts/",
-    "wasm/",
-    "image_decoders/",
-)
+REQUIRED_PREFIXES = tuple(sorted(set().union(*(set(profile["directories"]) for profile in PROFILES.values()))))
+
+
+def profile_files(profile: str) -> set[str]:
+    return set(PROFILES[profile]["files"])
+
+
+def profile_prefixes(profile: str) -> tuple[str, ...]:
+    return tuple(PROFILES[profile]["directories"])
+
+
+def runtime_config_source() -> str:
+    return (
+        "// Generated from tools/pdfjs-runtime-lock.json by tools/pdfjs-runtime.py.\n"
+        f"export const PDFJS_VERSION={json.dumps(VERSION)};\n"
+        f"export const PDFJS_BUILD={json.dumps(BUILD)};\n"
+    )
 
 
 def integrity_digest(value: str) -> bytes:
@@ -115,6 +120,8 @@ def registry_integrity_from_metadata(metadata: object) -> str:
     if not isinstance(integrity, str):
         raise ValueError("PDF.js registry metadata is missing dist.integrity")
     integrity_digest(integrity)
+    if integrity != LOCK["integrity"]:
+        raise ValueError("PDF.js registry integrity differs from the reviewed runtime lock")
     return integrity
 
 
@@ -134,12 +141,12 @@ def fetch_registry_integrity() -> str:
     return registry_integrity_from_metadata(metadata)
 
 
-def selected_relative(member_name: str) -> str | None:
+def selected_relative(member_name: str, profile: str = "browser-modern") -> str | None:
     path = PurePosixPath(member_name)
     if not path.parts or path.parts[0] != "package":
         return None
     relative = PurePosixPath(*path.parts[1:]).as_posix()
-    if relative in REQUIRED_FILES or relative in OPTIONAL_FILES or any(relative.startswith(prefix) for prefix in REQUIRED_PREFIXES):
+    if relative in profile_files(profile) or any(relative.startswith(prefix) for prefix in profile_prefixes(profile)):
         return relative
     return None
 
@@ -153,7 +160,7 @@ def digest_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def write_manifest(destination: Path, integrity: str) -> None:
+def write_manifest(destination: Path, integrity: str, profile: str = "browser-modern") -> None:
     integrity_digest(integrity)
     files = sorted(path for path in destination.rglob("*") if path.is_file() and path.name != MANIFEST_NAME)
     lines = [
@@ -162,6 +169,7 @@ def write_manifest(destination: Path, integrity: str) -> None:
         f"build={BUILD}",
         f"source={TARBALL_URL}",
         f"integrity={integrity}",
+        f"profile={profile}",
         f"files={len(files)}",
         "",
     ]
@@ -171,7 +179,7 @@ def write_manifest(destination: Path, integrity: str) -> None:
     (destination / MANIFEST_NAME).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 
 
-def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity: str) -> None:
+def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity: str, profile: str = "browser-modern") -> None:
     verify_archive(archive_bytes, expected_integrity)
     destination.parent.mkdir(parents=True, exist_ok=True)
     staging: Path | None = Path(tempfile.mkdtemp(prefix=".pdfjs-runtime-", dir=destination.parent))
@@ -181,7 +189,7 @@ def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity
             for member in archive.getmembers():
                 if not safe_member(member):
                     raise ValueError(f"unsafe PDF.js archive member: {member.name}")
-                relative = selected_relative(member.name)
+                relative = selected_relative(member.name, profile)
                 if relative is None or not member.isfile():
                     continue
                 source = archive.extractfile(member)
@@ -191,14 +199,14 @@ def build_runtime(archive_bytes: bytes, destination: Path, *, expected_integrity
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(source.read())
                 seen.add(relative)
-        missing = sorted(REQUIRED_FILES - seen)
-        for prefix in REQUIRED_PREFIXES:
+        missing = sorted(profile_files(profile) - seen)
+        for prefix in profile_prefixes(profile):
             if not any(item.startswith(prefix) for item in seen):
                 missing.append(prefix + "*")
         if missing:
             raise ValueError("PDF.js archive is missing required runtime assets: " + ", ".join(missing))
-        write_manifest(staging, expected_integrity)
-        preflight_errors = check_runtime(staging, expected_integrity=expected_integrity)
+        write_manifest(staging, expected_integrity, profile)
+        preflight_errors = check_runtime(staging, expected_integrity=expected_integrity, profile=profile)
         if preflight_errors:
             raise ValueError("PDF.js runtime preflight failed before activation: " + "; ".join(preflight_errors))
         backup = destination.with_name(destination.name + ".previous")
@@ -254,7 +262,7 @@ def parse_manifest(destination: Path) -> tuple[dict[str, str], dict[str, str]]:
     return metadata, files
 
 
-def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | None = None) -> list[str]:
+def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | None = None, profile: str = "browser-modern") -> list[str]:
     errors: list[str] = []
     try:
         metadata, expected_files = parse_manifest(destination)
@@ -265,6 +273,7 @@ def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | 
         "version": VERSION,
         "build": BUILD,
         "source": TARBALL_URL,
+        "profile": profile,
     }
     for key, value in expected_metadata.items():
         if metadata.get(key) != value:
@@ -282,6 +291,9 @@ def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | 
         expected_count = -1
     if expected_count != len(expected_files):
         errors.append(f"manifest file count mismatch: header={expected_count}, entries={len(expected_files)}")
+    invalid_profile_files = sorted(relative for relative in expected_files if relative not in profile_files(profile) and not any(relative.startswith(prefix) for prefix in profile_prefixes(profile)))
+    if invalid_profile_files:
+        errors.append("manifest contains files outside runtime profile: " + ", ".join(invalid_profile_files[:12]))
     actual_files = {
         path.relative_to(destination).as_posix(): path
         for path in destination.rglob("*")
@@ -296,13 +308,15 @@ def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | 
     for relative in sorted(set(expected_files) & set(actual_files)):
         if digest_file(actual_files[relative]) != expected_files[relative]:
             errors.append(f"vendored file digest mismatch: {relative}")
-    for required in sorted(REQUIRED_FILES):
+    for required in sorted(profile_files(profile)):
         if required not in actual_files:
             errors.append(f"required PDF.js runtime file is missing: {required}")
-    for prefix in REQUIRED_PREFIXES:
+    for prefix in profile_prefixes(profile):
         if not any(relative.startswith(prefix) for relative in actual_files):
             errors.append(f"required PDF.js runtime directory is empty: {prefix}")
     for relative, snippets in API_CONTRACT_SNIPPETS.items():
+        if relative not in profile_files(profile):
+            continue
         path = actual_files.get(relative)
         if path is None:
             continue
@@ -319,11 +333,18 @@ def check_runtime(destination: Path = DESTINATION, *, expected_integrity: str | 
 
 def install(archive: Path | None = None, destination: Path | None = None, *, expected_integrity: str | None = None) -> None:
     integrity = expected_integrity or fetch_registry_integrity()
+    if integrity != LOCK["integrity"]:
+        raise ValueError("PDF.js archive integrity differs from the reviewed runtime lock")
     integrity_digest(integrity)
     archive_bytes = archive.read_bytes() if archive else download_archive()
-    destinations = (destination,) if destination is not None else DESTINATIONS
-    for target in destinations:
-        build_runtime(archive_bytes, target, expected_integrity=integrity)
+    destinations = ((destination, "browser-modern"),) if destination is not None else (
+        *((target, "browser-modern") for target in DESTINATIONS),
+        (BRIDGE_DESTINATION, "bridge-node-legacy"),
+    )
+    for target, profile in destinations:
+        build_runtime(archive_bytes, target, expected_integrity=integrity, profile=profile)
+    if destination is None:
+        CONFIG_MODULE.write_text(runtime_config_source(), encoding="utf-8", newline="\n")
 
 
 def main() -> int:
@@ -344,8 +365,10 @@ def main() -> int:
             print(f"PDF.js {VERSION} ({BUILD}) runtime installed in {locations}")
             return 0
         failures = []
-        for destination in DESTINATIONS:
-            failures.extend(f"{destination.relative_to(ROOT)}: {error}" for error in check_runtime(destination))
+        for destination, profile in (*((target, "browser-modern") for target in DESTINATIONS), (BRIDGE_DESTINATION, "bridge-node-legacy")):
+            failures.extend(f"{destination.relative_to(ROOT)}: {error}" for error in check_runtime(destination, expected_integrity=LOCK["integrity"], profile=profile))
+        if not CONFIG_MODULE.is_file() or CONFIG_MODULE.read_text(encoding="utf-8").replace("\r\n", "\n") != runtime_config_source():
+            failures.append(f"{CONFIG_MODULE.relative_to(ROOT)}: generated PDF.js config differs from runtime lock")
         if failures:
             print("PDF.js runtime verification failed:")
             for error in failures:

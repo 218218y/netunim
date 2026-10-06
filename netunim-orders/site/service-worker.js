@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-22fe84fc1a0a';
+const CACHE='orders-app-shell-esm-371694b12525';
 const SHELL=[
   './',
   './index.html',
@@ -59,6 +59,7 @@ const SHELL=[
   './assets/js/domains/documents/google-drive.js',
   './assets/js/domains/documents/pdf-search-viewer.js',
   './assets/js/domains/documents/pdf-text-fragments.js',
+  './assets/js/domains/documents/pdfjs-runtime-config.js',
   './assets/js/domains/documents/search-source.js',
   './assets/js/domains/documents/spreadsheet-preview-worker.js',
   './assets/js/domains/documents/spreadsheet-search-viewer.js',

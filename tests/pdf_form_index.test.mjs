@@ -89,7 +89,7 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     const sourceRuntime=fileURLToPath(new URL('../netunim-orders/document-bridge/',import.meta.url));
     const runtime=path.join(root,'runtime');await fs.mkdir(runtime);
     for(const name of ['lib.mjs','pdf_form_index.mjs','pdf-extract-worker.mjs'])await fs.copyFile(path.join(sourceRuntime,name),path.join(runtime,name));
-    await fs.cp(fileURLToPath(new URL('../netunim-orders/site/assets/vendor/pdfjs/',import.meta.url)),path.join(runtime,'pdfjs'),{recursive:true});
+    await fs.cp(fileURLToPath(new URL('../netunim-orders/document-bridge/pdfjs/',import.meta.url)),path.join(runtime,'pdfjs'),{recursive:true});
     const verifyScript=path.join(runtime,'verify-runtime.mjs');
     await fs.writeFile(verifyScript,[
       "import {verifyNodePdfJsRuntime} from './pdf_form_index.mjs';",
@@ -103,7 +103,8 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     let verification=await runVerification();
     assert.equal(verification.code,0,verification.stderr||verification.stdout);
     assert.equal(verification.stderr,'','known optional-canvas PDF.js import warnings must not leak into installer/doctor stderr');
-    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.mode,'text-extraction-only');assert.equal(verified.version,'6.4.299');
+    const lock=JSON.parse(await fs.readFile(new URL('../tools/pdfjs-runtime-lock.json',import.meta.url),'utf8'));
+    let verified=JSON.parse(verification.stdout);assert.equal(verified.ok,true);assert.equal(verified.runtime,'legacy');assert.equal(verified.mode,'text-extraction-only');assert.equal(verified.version,lock.version);assert.equal(verified.build,lock.build);
     const legacyWorker=path.join(runtime,'pdfjs','legacy','build','pdf.worker.min.mjs'),originalWorker=await fs.readFile(legacyWorker);
     await fs.appendFile(legacyWorker,'\n// integrity-test\n');
     verification=await runVerification();
@@ -112,6 +113,17 @@ test('short-lived PDF extraction worker opens the vendored Node PDF.js build and
     await fs.writeFile(legacyWorker,originalWorker);
     verification=await runVerification();
     assert.equal(verification.code,0,verification.stderr||verification.stdout);
+    const cmap=path.join(runtime,'pdfjs','cmaps','78-EUC-H.bcmap'),originalCmap=await fs.readFile(cmap);
+    await fs.appendFile(cmap,'tampered');
+    verification=await runVerification();
+    assert.equal(verification.code,2,verification.stderr||verification.stdout);
+    assert.equal(JSON.parse(verification.stdout).code,'PDFJS_NODE_INTEGRITY_MISMATCH','auxiliary CMaps are verified before PDF parsing');
+    await fs.writeFile(cmap,originalCmap);
+    const unexpected=path.join(runtime,'pdfjs','unexpected.txt');await fs.writeFile(unexpected,'extra');
+    verification=await runVerification();
+    assert.equal(verification.code,2,verification.stderr||verification.stdout);
+    assert.equal(JSON.parse(verification.stdout).code,'PDFJS_NODE_MANIFEST_INVALID','a partial or mixed profile is rejected');
+    await fs.rm(unexpected);
     const worker=path.join(runtime,'pdf-extract-worker.mjs');
     const result=await new Promise((resolve,reject)=>{
       const child=spawn(process.execPath,[worker],{stdio:['pipe','pipe','pipe']});let stdout='',stderr='';

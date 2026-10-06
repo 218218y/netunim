@@ -6,13 +6,6 @@ import {contentMatchRanges,normalizeContentSearchOptions,normalizeSearchText} fr
 export const PDF_FORM_MAX_BYTES=64*1024*1024;
 export const PDF_FORM_EXTRACT_TIMEOUT_MS=12*1000;
 
-function installNodePdfJsCompatibility(){
-  if(typeof Promise.try!=='function')Object.defineProperty(Promise,'try',{configurable:true,writable:true,value:function(callback,...args){return new Promise(resolve=>resolve(callback(...args)))}});
-  if(typeof Uint8Array.prototype.toHex!=='function')Object.defineProperty(Uint8Array.prototype,'toHex',{configurable:true,writable:true,value:function(){return Array.from(this,byte=>byte.toString(16).padStart(2,'0')).join('')}});
-  if(typeof Math.sumPrecise!=='function')Object.defineProperty(Math,'sumPrecise',{configurable:true,writable:true,value:function(values){let total=0;for(const value of values)total+=Number(value)||0;return total}});
-  if(typeof Map.prototype.getOrInsertComputed!=='function')Object.defineProperty(Map.prototype,'getOrInsertComputed',{configurable:true,writable:true,value:function(key,callback){if(this.has(key))return this.get(key);const value=callback(key);this.set(key,value);return value}});
-}
-
 export class LocalPdfBinaryDataFactory{
   constructor({cMapUrl=null,standardFontDataUrl=null,wasmUrl=null}={}){
     this.cMapUrl=cMapUrl;this.standardFontDataUrl=standardFontDataUrl;this.wasmUrl=wasmUrl;
@@ -71,23 +64,51 @@ async function importNodePdfJs(){
 }
 async function loadPdfJs(){
   if(pdfJsPromise)return pdfJsPromise;
-  installNodePdfJsCompatibility();
   pdfJsPromise=importNodePdfJs().catch(error=>{pdfJsPromise=null;throw error});
   return pdfJsPromise;
 }
 async function verifyNodePdfJsIntegrity(){
   const manifestUrl=new URL('./pdfjs/_runtime-manifest.txt',import.meta.url);let source='';
   try{source=await fs.readFile(manifestUrl,'utf8')}catch(error){const runtimeError=new Error('The PDF.js runtime manifest required by the Windows Document Bridge is missing. Reinstall the current Document Bridge runtime.');runtimeError.code='PDFJS_NODE_MANIFEST_MISSING';runtimeError.cause=error;throw runtimeError}
+  const invalid=message=>{const error=new Error(`The bundled PDF.js runtime manifest is invalid: ${message}`);error.code='PDFJS_NODE_MANIFEST_INVALID';throw error};
   const metadata=new Map(),digests=new Map();
-  for(const raw of source.split(/\r?\n/)){const line=raw.trim();if(!line)continue;const digestMatch=line.match(/^([0-9a-f]{64})  (.+)$/i);if(digestMatch){digests.set(digestMatch[2],digestMatch[1].toLowerCase());continue}const split=line.indexOf('=');if(split>0)metadata.set(line.slice(0,split),line.slice(split+1))}
-  if(metadata.get('package')!=='pdfjs-dist'||!metadata.get('version')){const error=new Error('The bundled PDF.js runtime manifest is invalid.');error.code='PDFJS_NODE_MANIFEST_INVALID';throw error}
-  for(const relative of ['legacy/build/pdf.mjs','legacy/build/pdf.worker.min.mjs']){const expected=digests.get(relative);if(!expected){const error=new Error(`The PDF.js runtime manifest does not contain ${relative}.`);error.code='PDFJS_NODE_MANIFEST_INVALID';throw error}const data=await fs.readFile(new URL(`./pdfjs/${relative}`,import.meta.url));const actual=createHash('sha256').update(data).digest('hex');if(actual!==expected){const error=new Error(`The bundled PDF.js Node runtime failed integrity verification: ${relative}.`);error.code='PDFJS_NODE_INTEGRITY_MISMATCH';throw error}}
-  return metadata.get('version');
+  for(const raw of source.split(/\r?\n/)){
+    if(!raw)continue;
+    const digestMatch=raw.match(/^([0-9a-f]{64})  ([A-Za-z0-9_./-]+)$/);
+    if(digestMatch){if(digests.has(digestMatch[2]))invalid(`duplicate file ${digestMatch[2]}`);digests.set(digestMatch[2],digestMatch[1]);continue}
+    const match=raw.match(/^([a-z]+)=(.+)$/);
+    if(!match||metadata.has(match[1]))invalid(`unrecognized or duplicate entry ${raw}`);
+    metadata.set(match[1],match[2]);
+  }
+  if(metadata.get('package')!=='pdfjs-dist'||!/^[0-9]+(?:\.[0-9]+){2}$/.test(metadata.get('version')||'')||!/^[0-9a-f]+$/.test(metadata.get('build')||'')||metadata.get('profile')!=='bridge-node-legacy'||!metadata.get('source')?.endsWith(`/pdfjs-dist-${metadata.get('version')}.tgz`)||!/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(metadata.get('integrity')||''))invalid('identity or profile mismatch');
+  if(Number(metadata.get('files'))!==digests.size)invalid('file count mismatch');
+  for(const required of ['LICENSE','legacy/build/pdf.mjs','legacy/build/pdf.worker.min.mjs'])if(!digests.has(required))invalid(`missing ${required}`);
+  for(const prefix of ['cmaps/','standard_fonts/','wasm/'])if(![...digests.keys()].some(relative=>relative.startsWith(prefix)))invalid(`missing ${prefix}`);
+  for(const relative of digests.keys()){
+    if(relative.split('/').includes('..')||!(/^(?:LICENSE|legacy\/build\/pdf(?:\.worker\.min)?\.mjs)$/.test(relative)||['cmaps/','standard_fonts/','wasm/'].some(prefix=>relative.startsWith(prefix))))invalid(`unexpected file ${relative}`);
+  }
+  const root=fileURLToPath(new URL('./pdfjs/',import.meta.url));
+  const actualFiles=new Set();
+  async function walk(directory,relative=''){
+    for(const entry of await fs.readdir(directory,{withFileTypes:true})){
+      const next=`${relative}${entry.name}`;
+      if(entry.isDirectory())await walk(fileURLToPath(new URL(`${next}/`,new URL('./pdfjs/',import.meta.url))),`${next}/`);
+      else if(entry.isFile()&&next!=='_runtime-manifest.txt')actualFiles.add(next);
+      else if(!entry.isFile())invalid(`unexpected runtime entry ${next}`);
+    }
+  }
+  await walk(root);
+  if(actualFiles.size!==digests.size||[...actualFiles].some(relative=>!digests.has(relative)))invalid('runtime files differ from manifest');
+  for(const [relative,expected] of digests){
+    let data;try{data=await fs.readFile(new URL(`./pdfjs/${relative}`,import.meta.url))}catch(error){const runtimeError=new Error(`The bundled PDF.js Node runtime is missing: ${relative}.`);runtimeError.code='PDFJS_NODE_INTEGRITY_MISMATCH';runtimeError.cause=error;throw runtimeError}
+    if(createHash('sha256').update(data).digest('hex')!==expected){const error=new Error(`The bundled PDF.js Node runtime failed integrity verification: ${relative}.`);error.code='PDFJS_NODE_INTEGRITY_MISMATCH';throw error}
+  }
+  return {version:metadata.get('version'),build:metadata.get('build')};
 }
 export async function verifyNodePdfJsRuntime(){
-  const manifestVersion=await verifyNodePdfJsIntegrity(),pdfjs=await loadPdfJs(),version=String(pdfjs?.version||'');
-  if(version&&version!==manifestVersion){const error=new Error(`PDF.js Node runtime version ${version} does not match manifest version ${manifestVersion}.`);error.code='PDFJS_NODE_VERSION_MISMATCH';throw error}
-  return {ok:true,version:version||manifestVersion,build:String(pdfjs?.build||''),runtime:'legacy',mode:'text-extraction-only',canvasRenderingAvailable:pdfJsCanvasRenderingAvailable};
+  const identity=await verifyNodePdfJsIntegrity(),pdfjs=await loadPdfJs(),version=String(pdfjs?.version||''),build=String(pdfjs?.build||'');
+  if(version!==identity.version||build!==identity.build){const error=new Error(`PDF.js Node runtime ${version}/${build} does not match manifest ${identity.version}/${identity.build}.`);error.code='PDFJS_NODE_VERSION_MISMATCH';throw error}
+  return {ok:true,version,build,runtime:'legacy',mode:'text-extraction-only',canvasRenderingAvailable:pdfJsCanvasRenderingAvailable};
 }
 
 function cleanPdfText(value){

@@ -3,24 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {LocalPdfBinaryDataFactory} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
+import {LocalPdfBinaryDataFactory,extractInteractivePdfText} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 const corpusRoot=fileURLToPath(new URL('./fixtures/pdf-corpus/',import.meta.url));
-const vendorRoot=new URL('../netunim-orders/site/assets/vendor/pdfjs/',import.meta.url);
+const vendorRoot=new URL('../netunim-orders/document-bridge/pdfjs/',import.meta.url);
 const manifest=JSON.parse(await fs.readFile(new URL('./fixtures/pdf-corpus/manifest.json',import.meta.url),'utf8'));
-
-function installNodePdfJsCompatibility(){
-  const define=(target,key,value)=>Object.defineProperty(target,key,{configurable:true,writable:true,value});
-  if(typeof Promise.try!=='function')define(Promise,'try',function(callback,...args){return new Promise(resolve=>resolve(callback(...args)))});
-  if(typeof Uint8Array.prototype.toHex!=='function')define(Uint8Array.prototype,'toHex',function(){return Array.from(this,byte=>byte.toString(16).padStart(2,'0')).join('')});
-  if(typeof Math.sumPrecise!=='function')define(Math,'sumPrecise',function(values){let total=0;for(const value of values)total+=Number(value)||0;return total});
-  if(typeof Map.prototype.getOrInsertComputed!=='function')define(Map.prototype,'getOrInsertComputed',function(key,callback){if(this.has(key))return this.get(key);const value=callback(key);this.set(key,value);return value});
-}
 
 let pdfjsPromise=null;
 async function loadPdfJs(){
   if(pdfjsPromise)return pdfjsPromise;
-  installNodePdfJsCompatibility();
   pdfjsPromise=(async()=>{
     const originalWarn=console.warn,captured=[];console.warn=(...args)=>captured.push(args);
     let pdfjs;try{pdfjs=await import(new URL('legacy/build/pdf.mjs',vendorRoot))}finally{console.warn=originalWarn}
@@ -63,7 +54,7 @@ const byKind=kind=>manifest.cases.find(item=>item.kind===kind);
 
 test('PDF.js regression corpus bytes are immutable',async()=>{
   assert.equal(manifest.schema,1);
-  assert.equal(manifest.cases.length,6);
+  assert.equal(manifest.cases.length,7);
   for(const fixture of manifest.cases){
     assert.equal(await digest(fixture.file),fixture.sha256,`${fixture.file} changed without a reviewed corpus manifest update`);
     assert.equal((await fs.stat(new URL(`./fixtures/pdf-corpus/${fixture.file}`,import.meta.url))).size,fixture.bytes,`${fixture.file} byte count drifted`);
@@ -111,4 +102,24 @@ test('PDF.js corpus rejects malformed PDFs and enforces password protection',asy
     assert.equal(document.numPages,protectedFixture.expect.pages);
     assert.match(await pageText(document,1),new RegExp(protectedFixture.expect.textIncludes.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
   }finally{await task.destroy()}
+});
+
+test('annotation-heavy PDF stays within browser-scan and Bridge extraction budgets',async()=>{
+  const fixture=byKind('many-highlights'),{task,document}=await openPdf(fixture.file);
+  try{
+    assert.equal(document.numPages,fixture.expect.pages);
+    const start=performance.now();let count=0;
+    for(let pageNumber=1;pageNumber<=document.numPages;pageNumber+=1){
+      const page=await document.getPage(pageNumber);
+      count+=(await page.getAnnotations({intent:'display'})).length;
+    }
+    const scanMs=performance.now()-start;
+    assert.equal(count,fixture.expect.annotations);
+    assert.ok(scanMs<fixture.expect.annotationScanBudgetMs,`getAnnotations scan took ${scanMs.toFixed(0)} ms (budget ${fixture.expect.annotationScanBudgetMs} ms)`);
+  }finally{await task.destroy()}
+  const start=performance.now();
+  const result=await extractInteractivePdfText(fileURLToPath(new URL(`./fixtures/pdf-corpus/${fixture.file}`,import.meta.url)),{includePageText:true});
+  const bridgeMs=performance.now()-start;
+  assert.equal(result.hasForm,false);
+  assert.ok(bridgeMs<fixture.expect.bridgeExtractBudgetMs,`Bridge extraction took ${bridgeMs.toFixed(0)} ms (budget ${fixture.expect.bridgeExtractBudgetMs} ms)`);
 });
