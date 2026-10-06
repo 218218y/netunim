@@ -1,6 +1,5 @@
 import {buildTextMatchSnippet,buildViewerFindQuery,contentSearchTerms,findTextMatchOffsets,isWholeWordTextRange,normalizeContentSearch} from './document-search-navigator.js';
-const PDFJS_VERSION='6.4.299';
-const PDFJS_BUILD='d0991a0d5';
+import {PDFJS_VERSION,PDFJS_BUILD} from './pdfjs-runtime-config.js';
 const PDFJS_ROOT='../../../vendor/pdfjs/';
 
 export const PDF_SEARCH_RUNTIME=Object.freeze({
@@ -22,12 +21,14 @@ let stylesheetPromise=null;
 
 function runtimeUrl(relative){return new URL(relative,import.meta.url).href}
 
-function installPdfJsBrowserCompatibility(){
-  if(typeof Promise.try!=='function')Object.defineProperty(Promise,'try',{configurable:true,writable:true,value:function(callback,...args){return new Promise(resolve=>resolve(callback(...args)))}});
-  if(typeof Uint8Array.prototype.toHex!=='function')Object.defineProperty(Uint8Array.prototype,'toHex',{configurable:true,writable:true,value:function(){return Array.from(this,byte=>byte.toString(16).padStart(2,'0')).join('')}});
-  if(typeof Math.sumPrecise!=='function')Object.defineProperty(Math,'sumPrecise',{configurable:true,writable:true,value:function(values){let total=0;for(const value of values)total+=Number(value)||0;return total}});
-  if(typeof Map.prototype.getOrInsert!=='function')Object.defineProperty(Map.prototype,'getOrInsert',{configurable:true,writable:true,value:function(key,value){if(this.has(key))return this.get(key);this.set(key,value);return value}});
-  if(typeof Map.prototype.getOrInsertComputed!=='function')Object.defineProperty(Map.prototype,'getOrInsertComputed',{configurable:true,writable:true,value:function(key,callback){if(this.has(key))return this.get(key);const value=callback(key);this.set(key,value);return value}});
+function assertModernBrowserFeatures(){
+  const missing=[];
+  if(typeof Promise.try!=='function')missing.push('Promise.try');
+  if(typeof Uint8Array.prototype.toHex!=='function')missing.push('Uint8Array.toHex');
+  if(typeof Math.sumPrecise!=='function')missing.push('Math.sumPrecise');
+  if(typeof Map.prototype.getOrInsert!=='function')missing.push('Map.getOrInsert');
+  if(typeof Map.prototype.getOrInsertComputed!=='function')missing.push('Map.getOrInsertComputed');
+  if(missing.length)throw new Error(`PDF.js ${PDFJS_VERSION} requires a current browser (${missing.join(', ')} unavailable).`);
 }
 
 function assertPdfJsRuntimeContract(pdfjsLib,pdfjsViewer){
@@ -135,10 +136,46 @@ export function buildPdfFindRequest(query,{type='',findPrevious=false,entireWord
   return {source:null,type,query:value,phraseSearch:true,caseSensitive:false,entireWord:!!entireWord,highlightAll:true,findPrevious:!!findPrevious,matchDiacritics:false};
 }
 
+// PDF.js exposes match arrays and selection state through the viewer component,
+// but scrolling a manually selected match still requires one private flag. Keep
+// that version-sensitive access behind this adapter and its contract tests.
+export class PdfJsFindControllerAdapter{
+  constructor(controller,eventBus,linkService){this.controller=controller;this.eventBus=eventBus;this.linkService=linkService}
+  installMatcher(query,search){
+    const nativeMatch=typeof this.controller?.match==='function'?this.controller.match.bind(this.controller):null;
+    if(!nativeMatch)return false;
+    const custom=search.matchMode==='proximity'||search.wordMatch==='whole'||(search.matchMode==='phrase'&&contentSearchTerms(query).length>1);
+    if(custom)this.controller.match=(value,pageContent,pageIndex)=>matchPdfTextWithNativeNormalization(nativeMatch,value,pageContent,pageIndex,search);
+    return custom;
+  }
+  selection(){const selected=this.controller?.selected;return selected?{pageIdx:Number(selected.pageIdx),matchIdx:Number(selected.matchIdx)}:null}
+  rows(pageCount){
+    const rows=[];for(let pageIdx=0;pageIdx<pageCount;pageIdx+=1){
+      const matches=Array.isArray(this.controller?.pageMatches?.[pageIdx])?this.controller.pageMatches[pageIdx]:[];
+      for(let matchIdx=0;matchIdx<matches.length;matchIdx+=1)rows.push({kind:'text',pageIdx,pageNumber:pageIdx+1,matchIdx,sortGroup:0,sortIndex:Number(matches[matchIdx])||matchIdx});
+    }
+    return rows;
+  }
+  select(entry){
+    const selected=this.controller?.selected;if(!selected)return false;
+    const previousPage=Number(selected.pageIdx);selected.pageIdx=entry.pageIdx;selected.matchIdx=entry.matchIdx;
+    if('_scrollMatches' in this.controller)this.controller._scrollMatches=true;
+    this.linkService.page=entry.pageNumber;
+    if(previousPage>=0&&previousPage!==entry.pageIdx)this.eventBus.dispatch('updatetextlayermatches',{source:this.controller,pageIndex:previousPage});
+    this.eventBus.dispatch('updatetextlayermatches',{source:this.controller,pageIndex:entry.pageIdx});
+    return true;
+  }
+  clear(){
+    const selected=this.controller?.selected;if(!selected)return;
+    const previousPage=Number(selected.pageIdx);selected.pageIdx=-1;selected.matchIdx=-1;
+    if(previousPage>=0)this.eventBus.dispatch('updatetextlayermatches',{source:this.controller,pageIndex:previousPage});
+  }
+}
+
 async function loadRuntime(){
   if(runtimePromise)return runtimePromise;
   runtimePromise=(async()=>{
-    installPdfJsBrowserCompatibility();
+    assertModernBrowserFeatures();
     // Keep both imports literal and local: the repository module-graph contract can
     // verify them statically, while the browser still downloads PDF.js lazily only
     // when a local PDF preview is opened.
@@ -424,9 +461,8 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   const eventBus=new pdfjsViewer.EventBus();
   const linkService=new pdfjsViewer.PDFLinkService({eventBus,externalLinkTarget:2});
   const findController=hasFindQuery?new pdfjsViewer.PDFFindController({eventBus,linkService,updateMatchesCountOnProgress:true}):null;
-  const nativeFindMatch=typeof findController?.match==='function'?findController.match.bind(findController):null;
-  const customPdfTextMatch=!!nativeFindMatch&&(search.matchMode==='proximity'||search.wordMatch==='whole'||(search.matchMode==='phrase'&&contentSearchTerms(needle).length>1));
-  if(customPdfTextMatch)findController.match=(findQueryValue,pageContent,pageIndex)=>matchPdfTextWithNativeNormalization(nativeFindMatch,findQueryValue,pageContent,pageIndex,search);
+  const findAdapter=new PdfJsFindControllerAdapter(findController,eventBus,linkService);
+  const customPdfTextMatch=findAdapter.installMatcher(needle,search);
   const viewerOptions={container,eventBus,linkService,findController};
   // Preview is never an editor. Always paint the PDF-authored AcroForm appearance
   // streams so custom/legacy Hebrew fonts are rendered exactly as the PDF saved them.
@@ -463,13 +499,13 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   function scrollElementToCenter(element,{behavior='smooth'}={}){const rect=element?.getBoundingClientRect?.(),hostRect=container.getBoundingClientRect?.();if(!rect||!hostRect)return false;const top=container.scrollTop+(rect.top-hostRect.top)-(container.clientHeight/2)+(rect.height/2);container.scrollTo?.({top:Math.max(0,top),left:Math.max(0,container.scrollLeft||0),behavior});return true}
   function scrollCurrentFormMatch(entry,{behavior='smooth'}={}){if(!entry||destroyed)return false;const marker=formMarkerFor(entry);if(marker)return scrollElementToCenter(marker,{behavior});linkService.page=entry.pageNumber;return false}
   function refreshFormMarkerCurrent(){const current=currentFormEntry();for(const marker of container.querySelectorAll?.('.document-pdf-form-match-marker')||[]){const pageNumber=Number(marker.closest?.('.page')?.dataset?.pageNumber)||0;marker.classList.toggle('current',!!current&&pageNumber===current.pageNumber&&marker.dataset?.pdfFieldKey===current.fieldKey)}}
-  function selectNativeTextMatch(entry){if(!findController?.selected)return false;const selected=findController.selected,previousPage=Number(selected.pageIdx);selected.pageIdx=entry.pageIdx;selected.matchIdx=entry.matchIdx;if('_scrollMatches' in findController)findController._scrollMatches=true;linkService.page=entry.pageNumber;if(previousPage>=0&&previousPage!==entry.pageIdx)eventBus.dispatch('updatetextlayermatches',{source:findController,pageIndex:previousPage});eventBus.dispatch('updatetextlayermatches',{source:findController,pageIndex:entry.pageIdx});return true}
-  function clearNativeTextSelection(){if(!findController?.selected)return;const selected=findController.selected,previousPage=Number(selected.pageIdx);selected.pageIdx=-1;selected.matchIdx=-1;if(previousPage>=0)eventBus.dispatch('updatetextlayermatches',{source:findController,pageIndex:previousPage})}
+  function selectNativeTextMatch(entry){return findAdapter.select(entry)}
+  function clearNativeTextSelection(){findAdapter.clear()}
   function combinedState(){const entry=combinedIndex>=0?combinedMatches[combinedIndex]:null;return {current:entry?combinedIndex+1:0,total:combinedMatches.length,snippet:entry?.snippet||null,capped:formSearchCapped,location:entry?`עמוד ${entry.pageNumber}`:''}}
   function goCombined(index,{behavior='smooth'}={}){if(!combinedReady||!combinedMatches.length){emit(combinedState());return combinedState()}combinedIndex=(Number(index)%combinedMatches.length+combinedMatches.length)%combinedMatches.length;const entry=combinedMatches[combinedIndex];if(entry.kind==='form'){clearNativeTextSelection();refreshFormMarkerCurrent();if(!scrollCurrentFormMatch(entry,{behavior}))queueMicrotask(()=>refreshRenderedFormLayers())}else{refreshFormMarkerCurrent();selectNativeTextMatch(entry)}const state=combinedState();emit(state);return state}
   function combinedEntryKey(entry){return entry?.kind==='form'?`form:${entry.pageIdx}:${entry.fieldKey}:${entry.start}:${entry.end}`:entry?.kind==='text'?`text:${entry.pageIdx}:${entry.matchIdx}`:''}
-  function buildCombinedMatches(){const rows=[];if(findController&&pdfDocument){for(let pageIdx=0;pageIdx<pdfDocument.numPages;pageIdx+=1){const pageMatches=Array.isArray(findController.pageMatches?.[pageIdx])?findController.pageMatches[pageIdx]:[];for(let matchIdx=0;matchIdx<pageMatches.length;matchIdx+=1)rows.push({kind:'text',pageIdx,pageNumber:pageIdx+1,matchIdx,sortGroup:0,sortIndex:Number(pageMatches[matchIdx])||matchIdx})}}for(const fields of formMatchesByPage.values()){for(const fieldMatches of fields.values())for(const match of fieldMatches)rows.push({...match,sortGroup:1,sortIndex:match.annotationIndex*100000+match.start})}rows.sort((a,b)=>a.pageIdx-b.pageIdx||a.sortGroup-b.sortGroup||a.sortIndex-b.sortIndex);return rows}
-  function refreshCombinedNavigation({navigateInitial=false}={}){if(destroyed||!hasFindQuery||!formSearchReady)return false;const previousKey=combinedEntryKey(combinedIndex>=0?combinedMatches[combinedIndex]:null),selected=findController?.selected;combinedMatches=buildCombinedMatches();combinedReady=true;let nextIndex=previousKey?combinedMatches.findIndex(row=>combinedEntryKey(row)===previousKey):-1;if(nextIndex<0&&selected?.pageIdx>=0&&selected?.matchIdx>=0)nextIndex=combinedMatches.findIndex(row=>row.kind==='text'&&row.pageIdx===selected.pageIdx&&row.matchIdx===selected.matchIdx);if(nextIndex<0)nextIndex=combinedMatches.length?0:-1;const currentChanged=nextIndex!==combinedIndex||combinedEntryKey(combinedMatches[nextIndex])!==previousKey;combinedIndex=nextIndex;refreshFormMarkerCurrent();if(navigateInitial&&combinedIndex>=0)goCombined(combinedIndex,{behavior:'auto'});else if(currentChanged||navigateInitial)emit(combinedState());return true}
+  function buildCombinedMatches(){const rows=pdfDocument?findAdapter.rows(pdfDocument.numPages):[];for(const fields of formMatchesByPage.values()){for(const fieldMatches of fields.values())for(const match of fieldMatches)rows.push({...match,sortGroup:1,sortIndex:match.annotationIndex*100000+match.start})}rows.sort((a,b)=>a.pageIdx-b.pageIdx||a.sortGroup-b.sortGroup||a.sortIndex-b.sortIndex);return rows}
+  function refreshCombinedNavigation({navigateInitial=false}={}){if(destroyed||!hasFindQuery||!formSearchReady)return false;const previousKey=combinedEntryKey(combinedIndex>=0?combinedMatches[combinedIndex]:null),selected=findAdapter.selection();combinedMatches=buildCombinedMatches();combinedReady=true;let nextIndex=previousKey?combinedMatches.findIndex(row=>combinedEntryKey(row)===previousKey):-1;if(nextIndex<0&&selected?.pageIdx>=0&&selected?.matchIdx>=0)nextIndex=combinedMatches.findIndex(row=>row.kind==='text'&&row.pageIdx===selected.pageIdx&&row.matchIdx===selected.matchIdx);if(nextIndex<0)nextIndex=combinedMatches.length?0:-1;const currentChanged=nextIndex!==combinedIndex||combinedEntryKey(combinedMatches[nextIndex])!==previousKey;combinedIndex=nextIndex;refreshFormMarkerCurrent();if(navigateInitial&&combinedIndex>=0)goCombined(combinedIndex,{behavior:'auto'});else if(currentChanged||navigateInitial)emit(combinedState());return true}
   function scheduleCombinedRefresh(){if(destroyed||!hasFindQuery||!formSearchReady||combinedRefreshQueued)return;combinedRefreshQueued=true;queueMicrotask(()=>{combinedRefreshQueued=false;refreshCombinedNavigation()})}
   function normalizedExternalFormMatch(anchor,index=0){
     const pageNumber=Math.max(1,Number(anchor?.pageNumber)||1),rect=normalizedPdfRect(anchor?.rect),fieldKey=String(anchor?.fieldKey||'').trim();if(!rect||!fieldKey)return null;

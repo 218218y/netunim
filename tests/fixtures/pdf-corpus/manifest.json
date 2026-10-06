@@ -63,6 +63,18 @@
       },
       "sha256": "0ceb3c1ab1692da6bf405180fd33b48ce1021e5216f3219dd00c658abaf5395d",
       "bytes": 2259
+    },
+    {
+      "file": "many-highlights.pdf",
+      "kind": "many-highlights",
+      "expect": {
+        "pages": 4,
+        "annotations": 400,
+        "annotationScanBudgetMs": 10000,
+        "bridgeExtractBudgetMs": 10000
+      },
+      "sha256": "c7626db3867ead4b966f4f6c3c049948c98b310166703b1c6750def978b02677",
+      "bytes": 87156
     }
   ],
   "baselinePdfjsVersion": "6.4.299",

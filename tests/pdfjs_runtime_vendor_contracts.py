@@ -21,9 +21,9 @@ SPEC.loader.exec_module(RUNTIME)
 def archive_bytes(*, viewer_selected_getter: str = "get selected(){}", build: str = RUNTIME.BUILD) -> bytes:
     marker = f"/** pdfjsVersion = {RUNTIME.VERSION} pdfjsBuild = {build} */\n".encode()
     payloads = {
-        "package/build/pdf.mjs": marker + b"export const version='6.4.299', build='d0991a0d5'; class PageViewport { convertToViewportPoint(x, y){} }\n",
+        "package/build/pdf.mjs": marker + f"export const version='{RUNTIME.VERSION}', build='{RUNTIME.BUILD}'; class PageViewport {{ convertToViewportPoint(x, y){{}} }}\n".encode(),
         "package/build/pdf.worker.min.mjs": marker + b"// worker\n",
-        "package/legacy/build/pdf.mjs": marker + b"export const version='6.4.299', build='d0991a0d5'; function getDocument(src = {}){} class GlobalWorkerOptions {} const BinaryDataFactory = src.BinaryDataFactory;\n",
+        "package/legacy/build/pdf.mjs": marker + f"export const version='{RUNTIME.VERSION}', build='{RUNTIME.BUILD}'; function getDocument(src = {{}}){{}} class GlobalWorkerOptions {{}} const BinaryDataFactory = src.BinaryDataFactory;\n".encode(),
         "package/legacy/build/pdf.worker.min.mjs": marker + b"// legacy worker\n",
         "package/web/pdf_viewer.mjs": marker + f"class PDFFindController {{ get pageMatches(){{}} get pageMatchesLength(){{}} {viewer_selected_getter} match(query, pageContent, pageIndex){{}} scrollMatchIntoView({{}}){{}} }} export class PDFViewer {{ getPageView(index){{}} }}\n".encode(),
         "package/web/pdf_viewer.css": b".pdfViewer{position:relative}\n",
@@ -53,27 +53,27 @@ def integrity(data: bytes) -> str:
 
 class PdfJsRuntimeVendorContracts(unittest.TestCase):
     def test_pinned_release_identity_is_exact(self):
-        self.assertEqual(RUNTIME.VERSION, "6.4.299")
-        self.assertEqual(RUNTIME.BUILD, "d0991a0d5")
+        self.assertEqual(RUNTIME.VERSION, RUNTIME.LOCK["version"])
+        self.assertEqual(RUNTIME.BUILD, RUNTIME.LOCK["build"])
         self.assertEqual(
             RUNTIME.REGISTRY_METADATA_URL,
-            "https://registry.npmjs.org/pdfjs-dist/6.4.299",
+            f"https://registry.npmjs.org/{RUNTIME.PACKAGE}/{RUNTIME.VERSION}",
         )
         self.assertEqual(
             RUNTIME.TARBALL_URL,
-            "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.4.299.tgz",
+            f"https://registry.npmjs.org/{RUNTIME.PACKAGE}/-/{RUNTIME.PACKAGE}-{RUNTIME.VERSION}.tgz",
         )
 
     def test_registry_metadata_must_match_exact_release_and_sha512_integrity(self):
-        expected = integrity(b"archive")
+        expected = RUNTIME.LOCK["integrity"]
         metadata = {
             "name": "pdfjs-dist",
-            "version": "6.4.299",
+            "version": RUNTIME.VERSION,
             "dist": {"tarball": RUNTIME.TARBALL_URL, "integrity": expected},
         }
         self.assertEqual(RUNTIME.registry_integrity_from_metadata(metadata), expected)
         for changed in (
-            {**metadata, "version": "6.4.300"},
+            {**metadata, "version": RUNTIME.VERSION + ".unexpected"},
             {**metadata, "dist": {**metadata["dist"], "tarball": RUNTIME.TARBALL_URL + ".wrong"}},
             {**metadata, "dist": {**metadata["dist"], "integrity": "sha256-deadbeef"}},
         ):
@@ -89,15 +89,27 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
             self.assertEqual(RUNTIME.check_runtime(destination, expected_integrity=expected_integrity), [])
             self.assertTrue((destination / "build/pdf.mjs").is_file())
             self.assertTrue((destination / "web/images/example.svg").is_file())
-            self.assertTrue((destination / "legacy/build/pdf.mjs").is_file())
+            self.assertFalse((destination / "legacy/build/pdf.mjs").exists())
             self.assertFalse((destination / "build/pdf.mjs.map").exists())
             self.assertFalse((destination / "README.md").exists())
             metadata, _ = RUNTIME.parse_manifest(destination)
             self.assertEqual(metadata["version"], RUNTIME.VERSION)
             self.assertEqual(metadata["build"], RUNTIME.BUILD)
             self.assertEqual(metadata["integrity"], expected_integrity)
+            self.assertEqual(metadata["profile"], "browser-modern")
             (destination / "build/pdf.mjs").write_text("tampered\n", encoding="utf-8")
             self.assertTrue(any("digest mismatch" in item for item in RUNTIME.check_runtime(destination)))
+
+    def test_bridge_profile_contains_only_node_extraction_assets(self):
+        data = archive_bytes()
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "pdfjs"
+            RUNTIME.build_runtime(data, destination, expected_integrity=integrity(data), profile="bridge-node-legacy")
+            self.assertEqual(RUNTIME.check_runtime(destination, expected_integrity=integrity(data), profile="bridge-node-legacy"), [])
+            self.assertTrue((destination / "legacy/build/pdf.mjs").is_file())
+            self.assertFalse((destination / "build/pdf.mjs").exists())
+            self.assertFalse((destination / "web/pdf_viewer.mjs").exists())
+            self.assertFalse((destination / "image_decoders/pdf.image_decoders.min.mjs").exists())
 
     def test_preflight_rejects_api_or_build_drift_before_destination_changes(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -126,9 +138,10 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
             errors = RUNTIME.check_runtime(destination)
             self.assertTrue(any("API contract mismatch" in item and "selected" in item for item in errors))
             RUNTIME.build_runtime(data, destination, expected_integrity=expected_integrity)
+            RUNTIME.build_runtime(data, destination, expected_integrity=expected_integrity, profile="bridge-node-legacy")
             legacy = destination / "legacy/build/pdf.mjs"
             legacy.write_text(legacy.read_text(encoding="utf-8").replace("function getDocument(src = {})", "function getDocumentChanged(src = {})", 1), encoding="utf-8")
-            errors = RUNTIME.check_runtime(destination)
+            errors = RUNTIME.check_runtime(destination, profile="bridge-node-legacy")
             self.assertTrue(any("legacy/build/pdf.mjs" in item and "API contract mismatch" in item for item in errors))
 
     def test_integrity_mismatch_is_rejected_before_destination_changes(self):
@@ -155,12 +168,13 @@ class PdfJsRuntimeVendorContracts(unittest.TestCase):
         manifest = json.loads((ROOT / "tests/fixtures/pdf-corpus/manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["baselinePdfjsVersion"], RUNTIME.VERSION)
         self.assertEqual(manifest["baselinePdfjsBuild"], RUNTIME.BUILD)
-        self.assertEqual({case["kind"] for case in manifest["cases"]}, {"ordinary", "acroform", "large", "empty", "corrupt", "password"})
+        self.assertEqual({case["kind"] for case in manifest["cases"]}, {"ordinary", "acroform", "large", "empty", "corrupt", "password", "many-highlights"})
 
     def test_git_never_rewrites_vendored_runtime_or_corpus_bytes(self):
         attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("netunim-orders/site/assets/vendor/pdfjs/** -text", attrs)
         self.assertIn("netunim-kupa/site/assets/vendor/pdfjs/** -text", attrs)
+        self.assertIn("netunim-orders/document-bridge/pdfjs/** -text", attrs)
         self.assertIn("tests/fixtures/pdf-corpus/*.pdf -text", attrs)
 
 

@@ -91,8 +91,13 @@ class WindowsDeploymentContracts(unittest.TestCase):
         shutil.copyfile(ROOT/'tools/deploy_site_core.bat', self.root/'tools/deploy_site_core.bat')
         shutil.copyfile(ROOT/'tools/wrangler-version.txt', self.root/'tools/wrangler-version.txt')
         shutil.copyfile(ROOT/'tools/pdfjs-runtime.py', self.root/'tools/pdfjs-runtime.py')
+        shutil.copyfile(ROOT/'tools/pdfjs-runtime-lock.json', self.root/'tools/pdfjs-runtime-lock.json')
         shutil.copyfile(ROOT/'tools/document-viewers-runtime.py', self.root/'tools/document-viewers-runtime.py')
         shutil.copyfile(ROOT/'tools/public_js_guard.py', self.root/'tools/public_js_guard.py')
+        config = self.root/'shared/document-search/domains/documents/pdfjs-runtime-config.js'
+        config.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT/'shared/document-search/domains/documents/pdfjs-runtime-config.js', config)
+        shutil.copytree(ROOT/'netunim-orders/document-bridge/pdfjs', self.root/'netunim-orders/document-bridge/pdfjs')
         for app in ('orders', 'kupa'):
             shutil.copytree(ROOT/f'netunim-{app}/site', self.root/f'netunim-{app}/site')
         self.write('tools/supabase_deploy_gate.py', "import os\nfrom pathlib import Path\nwith Path(os.environ['CI_CALLS']).open('a') as f: f.write('database\\n')\nraise SystemExit(int(os.environ['DATABASE_EXIT']))\n")

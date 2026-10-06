@@ -158,8 +158,11 @@ add a SHA-256 verification. A global Node installation is therefore not required
 on end-user PCs after this installer is used.
 
 The PDF.js legacy Node build probes for @napi-rs/canvas during module import.
+The Bridge installer copies only the pinned bridge-node-legacy profile; both websites
+ship the separate browser-modern profile. The installer doctor hashes every Bridge
+runtime file, including CMaps, standard fonts and WASM, before activating the runtime.
 Netunim's Node PDF path is intentionally text/annotation extraction only and
-never calls page.render(). PDF.js 6.3.289 therefore does not need native canvas
+never calls page.render(). The pinned PDF.js release therefore does not need native canvas
 for this workload. The Bridge suppresses only the exact optional-canvas import
 warnings emitted for a missing @napi-rs/canvas package; any different PDF.js
 warning is still printed. The installer doctor verifies the real text-only
@@ -172,7 +175,8 @@ That command now verifies the pinned vendor bytes/API surface, synchronized site
 assets, and tests/fixtures/pdf-corpus through tests/pdfjs_corpus.test.mjs. The
 corpus is intentionally small and immutable and covers an ordinary text PDF, a
 Hebrew AcroForm with text/checkbox/select values, a 120-page PDF, an empty PDF,
-a deliberately corrupt/truncated PDF and a password-protected PDF. manifest.json
+a deliberately corrupt/truncated PDF, a password-protected PDF and 400 Highlight
+annotations. manifest.json
 pins every fixture by SHA-256 and byte count, so accidental fixture regeneration
 or line-ending rewriting fails the gate instead of silently changing the baseline.
 

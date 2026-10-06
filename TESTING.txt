@@ -57,8 +57,12 @@ NETUNIM TESTING
 
 One-time setup (repository root)
 -------------------------------
-Python 3.10+, Node 22.13+/24+, and Chrome, Edge or Chromium are required for the normal local workflow.
+Python 3.10+, Node 22.13+/24+, and current stable Chrome or Edge are required for the normal local workflow.
 This refactor was checked with Node 24 and Python 3.14 on Windows.
+The controlled PDF preview uses PDF.js's modern build, which expects native Promise.try,
+Uint8Array.toHex, Math.sumPrecise and Map.getOrInsert/getOrInsertComputed. It reports a
+browser compatibility error when these are absent. Older browsers require a deliberate
+switch to PDF.js's legacy browser build and a separate regression pass.
 
 Normal local setup:
   python -m pip install -r tests/requirements.txt
@@ -69,7 +73,10 @@ PDF.js upgrade gate:
   npm run pdfjs:check
 This verifies the pinned PDF.js runtime and synchronized assets, then runs the immutable
 tests/fixtures/pdf-corpus regression set (ordinary text, Hebrew AcroForm controls, large,
-empty, corrupt and password-protected PDFs). A PDF.js version change is not ready for
+empty, corrupt, password-protected and annotation-heavy PDFs). The last fixture has
+explicit annotation scan and Bridge extraction time budgets. Browser HWA stays at the
+PDF.js default (disabled) until visual overlay regression coverage justifies changing it.
+A PDF.js version change is not ready for
 deployment until this gate and the normal verifier both pass.
 
 The last command installs the repository-managed pre-commit hook. GitHub Desktop runs it automatically when

@@ -62,7 +62,7 @@ for %%F in (server.mjs lib.mjs pdf_form_index.mjs pdf-index-policy.mjs pdf-extra
   copy /Y "%~dp0%%F" "%STAGING%\%%F" >nul || goto :stage_error
 )
 if exist "%STAGING%\pdfjs" rmdir /S /Q "%STAGING%\pdfjs" >nul 2>nul
-xcopy /E /I /Y "%~dp0..\site\assets\vendor\pdfjs" "%STAGING%\pdfjs" >nul || goto :stage_error
+xcopy /E /I /Y "%~dp0pdfjs" "%STAGING%\pdfjs" >nul || goto :stage_error
 
 echo Building local Windows Preview Handler host...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0build_native_preview.ps1" -Source "%~dp0native_preview_host.cs" -Output "%STAGING%\NetunimPreviewHost.exe"

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfFieldKey,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 class FakeEventBus{
@@ -369,13 +369,28 @@ test('preview PDF renders AcroForm fields from PDF appearances instead of editab
 });
 
 test('PDF.js runtime is pinned to one local same-origin vendor tree',()=>{
-  assert.equal(PDF_SEARCH_RUNTIME.version,'6.4.299');
-  assert.equal(PDF_SEARCH_RUNTIME.build,'d0991a0d5');
+  const lock=JSON.parse(fs.readFileSync(new URL('../tools/pdfjs-runtime-lock.json',import.meta.url),'utf8'));
+  assert.equal(PDF_SEARCH_RUNTIME.version,lock.version);
+  assert.equal(PDF_SEARCH_RUNTIME.build,lock.build);
   for(const key of ['pdf','viewer','worker','css','cmaps','iccs','standardFonts','wasm']){
     assert.match(PDF_SEARCH_RUNTIME[key],/^\.\.\/\.\.\/\.\.\/vendor\/pdfjs\//);
     assert.doesNotMatch(PDF_SEARCH_RUNTIME[key],/^https?:/);
   }
   assert.match(PDF_SEARCH_RUNTIME.worker,/pdf\.worker\.min\.mjs$/);
+});
+
+test('PDF.js find adapter owns match enumeration, selection, scrolling and text-layer events',()=>{
+  const controller={pageMatches:[[5,16],[3]],selected:{pageIdx:0,matchIdx:0},_scrollMatches:false};
+  const eventBus=new FakeEventBus(),linkService={page:1},adapter=new PdfJsFindControllerAdapter(controller,eventBus,linkService);
+  assert.deepEqual(adapter.rows(2).map(row=>[row.pageIdx,row.matchIdx,row.sortIndex]),[[0,0,5],[0,1,16],[1,0,3]]);
+  assert.equal(adapter.select({pageIdx:1,matchIdx:0,pageNumber:2}),true);
+  assert.deepEqual(adapter.selection(),{pageIdx:1,matchIdx:0});
+  assert.equal(controller._scrollMatches,true);
+  assert.equal(linkService.page,2);
+  assert.deepEqual(eventBus.dispatched.map(item=>item.payload.pageIndex),[0,1]);
+  adapter.clear();
+  assert.deepEqual(adapter.selection(),{pageIdx:-1,matchIdx:-1});
+  assert.deepEqual(eventBus.dispatched.map(item=>item.payload.pageIndex),[0,1,1]);
 });
 
 

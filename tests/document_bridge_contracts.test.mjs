@@ -124,7 +124,7 @@ test('bridge searches the complete Everything index and forces Unicode ES transp
   assert.match(installer,/pdf_form_index\.mjs/);
   assert.match(installer,/pdf-index-policy\.mjs/);
   assert.match(installer,/pdf-extract-worker\.mjs/);
-  assert.match(installer,/assets\\vendor\\pdfjs/);
+  assert.match(installer,/%~dp0pdfjs/,'installer copies only the pinned bridge-node-legacy runtime profile');
   assert.doesNotMatch(installer,/--refresh-pdf-index --install-warmup/,'installer must never block on PDF indexing');
   assert.match(server,/PDF_FORM_MAINTENANCE_MAX_FILES=300/);
   assert.match(server,/PDF_FORM_MAINTENANCE_MAX_MS=15\*60\*1000/);
@@ -401,7 +401,8 @@ test('preview stays local: filename Office preview stays native while content se
   assert.match(pdfViewer,/ensurePdfFormOverlay/);
   assert.match(pdfViewer,/convertToViewportPoint/);
   assert.doesNotMatch(pdfViewer,/\.convertToViewportRectangle\b/);
-  assert.match(pdfViewer,/installPdfJsBrowserCompatibility/);
+  assert.match(pdfViewer,/assertModernBrowserFeatures/);
+  assert.doesNotMatch(pdfViewer,/Object\.defineProperty\((?:Math|Map|Promise|Uint8Array)/,'browser PDF.js must not mutate native APIs with private polyfills');
   assert.match(pdfViewer,/Map\.prototype\.getOrInsertComputed/);
   assert.match(pdfViewer,/eventBus\.on\('pagerendered',renderFormLayerForEvent\)/);
   assert.match(css,/document-pdf-form-match-marker/);
