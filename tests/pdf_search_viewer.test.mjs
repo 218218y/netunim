@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
+import {buildPdfFindRequest,copyablePdfTextFieldModel,createPdfSearchViewer,findPdfFormFieldMatches,joinPdfTextSelectionSegments,matchPdfTextWithNativeNormalization,pdfAnnotationAppearanceMetrics,pdfFieldKey,PdfJsFindControllerAdapter,PDF_SEARCH_RUNTIME} from '../netunim-orders/site/assets/js/domains/documents/pdf-search-viewer.js';
 import {collectPdfFormFields} from '../netunim-orders/document-bridge/pdf_form_index.mjs';
 
 class FakeEventBus{
@@ -119,16 +119,30 @@ test('PDF form copy proxy stays glyph-transparent while focused and selected',()
   assert.doesNotMatch(selectionRule,/(?:color|text-fill-color):#111/);
 });
 
-test('PDF form copy proxy mirrors PDF.js text-widget content-box metrics for native selection alignment',()=>{
+test('PDF form copy proxy preserves the authored field box while removing browser-only horizontal padding',()=>{
   const css=fs.readFileSync(new URL('../shared/global-document-search.css',import.meta.url),'utf8');
-  const pdfjsCss=fs.readFileSync(new URL('../netunim-orders/site/assets/vendor/pdfjs/web/pdf_viewer.css',import.meta.url),'utf8');
   const proxyRule=css.match(/\.document-pdfjs-container \.document-pdf-copy-field\{([^}]*)\}/)?.[1]||'';
-  assert.match(pdfjsCss,/\.textWidgetAnnotation :is\(input, textarea\),[\s\S]{0,420}?border: 2px solid var\(--input-unfocused-border-color\);/,'the vendored PDF.js widget contract still reserves a 2px border inset');
   assert.match(proxyRule,/box-sizing:border-box/);
-  assert.match(proxyRule,/border:2px solid transparent!important/,"transparent proxy must preserve PDF.js' 2px content inset without painting a border");
-  assert.match(proxyRule,/padding:revert/,'proxy keeps the browser input/textarea padding that PDF.js form widgets rely on instead of inventing a shared inset');
-  assert.match(proxyRule,/font:calc\(9px \* var\(--total-scale-factor\)\) sans-serif/,'proxy starts from the same PDF.js form-widget font shorthand before applying the annotation font size');
-  assert.doesNotMatch(proxyRule,/line-height:/,'an invented line-height shifts the browser selection box away from PDF.js widget metrics');
+  assert.match(proxyRule,/border:2px solid transparent!important/,"transparent proxy preserves the AcroForm appearance's 2px edge inset");
+  assert.match(proxyRule,/padding:revert/,'vertical browser padding remains intact so the already-correct first-line baseline is not shifted');
+  assert.match(proxyRule,/padding-inline:0!important/,'browser textarea/input side padding must not shorten the selection at either text edge');
+  assert.match(proxyRule,/font:calc\(9px \* var\(--total-scale-factor\)\) sans-serif/,'proxy keeps a safe fallback until appearance metrics provide the embedded PDF font');
+});
+
+test('PDF form appearance metrics recover embedded font and exact multiline baseline cadence from annotation operators',()=>{
+  const OPS={beginAnnotation:1,endAnnotation:2,setFont:3,setTextMatrix:4,moveText:5,setLeadingMoveText:6,setLeading:7,nextLine:8,showText:9,showSpacedText:10};
+  const operatorList={
+    fnArray:[1,3,4,5,9,5,9,5,10,2],
+    argsArray:[['12R',[34,150,560,564]],['g_d0_f18',12],[{0:1,1:0,2:0,3:1,4:0,5:414}],[510.66,-13.21],[[]],[-6.67,-16.48],[[]],[13.34,-16.48],[[]],[]],
+  };
+  const font={loadedName:'g_d0_f18',fallbackName:'sans-serif',bold:false,black:false,italic:false};
+  const commonObjs={has:id=>id==='g_d0_f18',get:id=>id==='g_d0_f18'?font:null};
+  const metric=pdfAnnotationAppearanceMetrics(operatorList,OPS,commonObjs).get('12R');
+  assert.equal(metric.fontRef,'g_d0_f18');
+  assert.equal(metric.fontSize,12);
+  assert.ok(Math.abs(metric.lineHeight-16.48)<1e-9,'selection line cadence must come from the saved appearance, not CSS normal/guessed line-height');
+  assert.equal(metric.lineCount,3);
+  assert.equal(metric.fontFamily,'"g_d0_f18", sans-serif','the exact PDF.js embedded-font family is reused so selected glyph widths match the canvas appearance');
 });
 
 test('local PDF form copy layer maps text widgets without changing their authored appearance',()=>{
@@ -146,6 +160,8 @@ test('local PDF form copy layer maps text widgets without changing their authore
   const compact=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'needle',rect:[100,600,300,610],textAlignment:2,defaultAppearanceData:{fontSize:14}},viewport);
   assert.equal(compact.fontSize,5.9,"copy proxy applies PDF.js' field-height font clamp instead of overflowing the native content box");
   assert.equal(compact.textAlign,'right','copy proxy carries PDF.js text alignment into the selection geometry');
+  const multi=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'one\ntwo',rect:[100,500,300,560],multiLine:true,defaultAppearanceData:{fontSize:12}},viewport);
+  assert.equal(Math.round(multi.lineHeight*100)/100,14.45,'multiline fallback preserves PDF.js field-height font clamping, then uses the AcroForm line factor until a saved appearance provides exact baselines');
 });
 
 test('AcroForm geometry follows the PDF.js 6 PageViewport API and transform fallback',()=>{

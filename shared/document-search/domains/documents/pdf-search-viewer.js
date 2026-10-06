@@ -204,13 +204,68 @@ function normalizeMatchCount(value){
 const PDF_TEXT_FIELD='Tx';
 const PDF_CHOICE_FIELD='Ch';
 const PDF_FORM_MATCH_LIMIT=5000;
-// Keep the transparent copy proxy on the same text-box metrics as PDF.js'
-// TextWidgetAnnotationElement. The canvas still owns the authored appearance,
-// but selection/caret geometry is produced by the browser form control.
+// The canvas owns the authored AcroForm appearance. The transparent copy proxy
+// must therefore follow that appearance's font and baseline cadence, not the
+// browser/PDF.js editable-widget defaults, or native selection drifts per line.
 const PDF_WIDGET_BORDER_SIZE=2;
 const PDF_WIDGET_LINE_FACTOR=1.35;
 const PDF_WIDGET_DEFAULT_FONT_SIZE=9;
 const PDF_WIDGET_TEXT_ALIGNMENTS=['left','center','right'];
+const pdfAppearanceMetricsCache=new WeakMap();
+
+function pdfMatrixValues(value){
+  if(!value)return null;
+  const values=Array.from({length:6},(_,index)=>Number(value[index]));
+  return values.every(Number.isFinite)?values:null;
+}
+function median(values){
+  const rows=(values||[]).filter(Number.isFinite).sort((a,b)=>a-b);if(!rows.length)return 0;
+  const middle=Math.floor(rows.length/2);return rows.length%2?rows[middle]:(rows[middle-1]+rows[middle])/2;
+}
+function pdfFontCssModel(commonObjs,fontRef){
+  if(!fontRef||!commonObjs?.has?.(fontRef))return null;
+  let font;try{font=commonObjs.get(fontRef)}catch{return null}
+  if(!font)return null;
+  const systemCss=String(font.systemFontInfo?.css||'').trim(),loadedName=String(font.loadedName||'').trim(),fallback=String(font.fallbackName||'sans-serif').trim()||'sans-serif';
+  const family=systemCss||(loadedName?`"${loadedName.replaceAll('\"','\\"')}", ${fallback}`:'');
+  return family?{fontFamily:family,fontWeight:font.black?'900':font.bold?'700':'',fontStyle:font.italic?'italic':''}:null;
+}
+export function pdfAnnotationAppearanceMetrics(operatorList,OPS,commonObjs=null){
+  const metrics=new Map();if(!operatorList||!OPS)return metrics;
+  const finalize=current=>{
+    if(!current?.id)return;
+    const lines=[];
+    for(const row of current.lines){const previous=lines.at(-1);if(previous&&Math.abs(previous.y-row.y)<.01)continue;lines.push(row)}
+    const gaps=[];for(let index=1;index<lines.length;index+=1){const gap=Math.abs(lines[index].y-lines[index-1].y);if(gap>.01)gaps.push(gap)}
+    const primary=lines.find(row=>row.fontRef)||lines[0]||null,fontModel=pdfFontCssModel(commonObjs,primary?.fontRef||current.fontRef);
+    metrics.set(current.id,{fontRef:primary?.fontRef||current.fontRef||'',fontSize:Math.abs(Number(primary?.fontSize||current.fontSize)||0),lineHeight:median(gaps),lineCount:lines.length,...fontModel});
+  };
+  let current=null;
+  for(let index=0;index<(operatorList.fnArray?.length||0);index+=1){
+    const fn=operatorList.fnArray[index],args=operatorList.argsArray?.[index]||[];
+    if(fn===OPS.beginAnnotation){finalize(current);current={id:String(args?.[0]||''),fontRef:'',fontSize:0,leading:0,x:0,y:0,lines:[]};continue}
+    if(fn===OPS.endAnnotation){finalize(current);current=null;continue}
+    if(!current)continue;
+    if(fn===OPS.setFont){current.fontRef=String(args?.[0]||'');current.fontSize=Math.abs(Number(args?.[1])||0);continue}
+    if(fn===OPS.setTextMatrix){const matrix=pdfMatrixValues(args?.[0]);if(matrix){current.x=matrix[4];current.y=matrix[5]}continue}
+    if(fn===OPS.moveText){current.x+=Number(args?.[0])||0;current.y+=Number(args?.[1])||0;continue}
+    if(fn===OPS.setLeadingMoveText){const x=Number(args?.[0])||0,y=Number(args?.[1])||0;current.leading=-y;current.x+=x;current.y+=y;continue}
+    if(fn===OPS.setLeading){current.leading=Number(args?.[0])||0;continue}
+    if(fn===OPS.nextLine){current.y-=current.leading;continue}
+    if(fn===OPS.showText||fn===OPS.showSpacedText)current.lines.push({x:current.x,y:current.y,fontRef:current.fontRef,fontSize:current.fontSize});
+  }
+  finalize(current);return metrics;
+}
+async function pdfPageAppearanceMetrics(pdfPage,pdfjsLib){
+  if(!pdfPage?.getOperatorList||!pdfjsLib?.OPS)return new Map();
+  let task=pdfAppearanceMetricsCache.get(pdfPage);if(task)return task;
+  task=(async()=>{
+    const options={intent:'display'},annotationMode=pdfjsLib.AnnotationMode?.ENABLE;if(annotationMode!==undefined)options.annotationMode=annotationMode;
+    const operatorList=await pdfPage.getOperatorList(options);
+    return pdfAnnotationAppearanceMetrics(operatorList,pdfjsLib.OPS,pdfPage.commonObjs);
+  })().catch(()=>new Map());
+  pdfAppearanceMetricsCache.set(pdfPage,task);return task;
+}
 
 function normalizedFieldValue(annotation){
   const value=annotation?.fieldValue;
@@ -250,11 +305,12 @@ function pdfWidgetFontSize(annotation){
   }
   return Math.min(authored,roundToOneDecimal(height/PDF_WIDGET_LINE_FACTOR));
 }
-function pdfFieldRectModel(annotation,viewport,index=0,pageNumber=1){
+function pdfFieldRectModel(annotation,viewport,index=0,pageNumber=1,appearance=null){
   const value=normalizedFieldValue(annotation),geometry=pdfRectGeometry(annotation?.rect,viewport);
   if(!geometry||!searchablePdfField(annotation))return null;
-  const rawAlignment=annotation?.textAlignment,alignment=rawAlignment===null||rawAlignment===undefined?NaN:Number(rawAlignment);
-  return {value,fieldKey:pdfFieldKey(annotation,index,pageNumber),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize:pdfWidgetFontSize(annotation),textAlign:Number.isInteger(alignment)?(PDF_WIDGET_TEXT_ALIGNMENTS[alignment]||''):'',...geometry};
+  const rawAlignment=annotation?.textAlignment,alignment=rawAlignment===null||rawAlignment===undefined?NaN:Number(rawAlignment),fontSize=Math.max(0,Number(appearance?.fontSize)||0)||pdfWidgetFontSize(annotation);
+  const lineHeight=annotation?.multiLine?(Math.max(0,Number(appearance?.lineHeight)||0)||fontSize*PDF_WIDGET_LINE_FACTOR):0;
+  return {value,fieldKey:pdfFieldKey(annotation,index,pageNumber),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize,lineHeight,fontFamily:String(appearance?.fontFamily||''),fontWeight:String(appearance?.fontWeight||''),fontStyle:String(appearance?.fontStyle||''),textAlign:Number.isInteger(alignment)?(PDF_WIDGET_TEXT_ALIGNMENTS[alignment]||''):'',...geometry};
 }
 function pdfFormMatchRectModel(match,viewport){const geometry=pdfRectGeometry(match?.rect,viewport);return geometry?{fieldKey:String(match?.fieldKey||''),...geometry}:null}
 
@@ -297,7 +353,10 @@ function createCopyablePdfField(model){
   const field=document.createElement(model.multiLine?'textarea':'input');
   if(!model.multiLine)field.type='text';
   field.className='document-pdf-copy-field';field.dataset.pdfFieldKey=model.fieldKey;field.readOnly=true;field.value=model.value;field.dir='auto';field.tabIndex=0;field.setAttribute('aria-readonly','true');
-  if(model.fieldName)field.setAttribute('aria-label',model.fieldName);applyFieldGeometry(field,model);if(model.fontSize>0)field.style.fontSize=`calc(${model.fontSize}px * var(--total-scale-factor))`;if(model.textAlign)field.style.textAlign=model.textAlign;return field;
+  if(model.fieldName)field.setAttribute('aria-label',model.fieldName);applyFieldGeometry(field,model);
+  if(model.fontSize>0)field.style.fontSize=`calc(${model.fontSize}px * var(--total-scale-factor))`;
+  if(model.multiLine&&model.lineHeight>0)field.style.lineHeight=`calc(${model.lineHeight}px * var(--total-scale-factor))`;
+  if(model.fontFamily)field.style.fontFamily=model.fontFamily;if(model.fontWeight)field.style.fontWeight=model.fontWeight;if(model.fontStyle)field.style.fontStyle=model.fontStyle;if(model.textAlign)field.style.textAlign=model.textAlign;return field;
 }
 function createPdfFormMatchMarker(model,{current=false,count=1}={}){const marker=document.createElement('span');marker.className=`document-pdf-form-match-marker${current?' current':''}`;marker.dataset.pdfFieldKey=model.fieldKey;marker.dataset.matchCount=String(Math.max(1,Number(count)||1));marker.setAttribute('aria-hidden','true');applyFieldGeometry(marker,model);return marker}
 
@@ -325,7 +384,7 @@ function renderPdfFormMarkers(pageView,{formMatchesByField=null,currentFormField
   return added;
 }
 
-async function renderCopyablePdfFields(pageView,{isCurrent=()=>true,formMatchesByField=null,currentFormFieldKey=''}={}){
+async function renderCopyablePdfFields(pageView,{isCurrent=()=>true,formMatchesByField=null,currentFormFieldKey='',pdfjsLib=null}={}){
   const page=pageView?.div,pdfPage=pageView?.pdfPage,viewport=pageView?.viewport;
   if(!page||!viewport)return 0;
   // Bridge anchors already contain authoritative PDF rectangles. Paint those first
@@ -335,12 +394,17 @@ async function renderCopyablePdfFields(pageView,{isCurrent=()=>true,formMatchesB
   const markerCount=renderPdfFormMarkers(pageView,{formMatchesByField,currentFormFieldKey});
   if(!pdfPage?.getAnnotations)return markerCount;
   let annotations;try{annotations=await pdfPage.getAnnotations({intent:'display'})}catch{return markerCount}
+  const hasCopyableText=(annotations||[]).some(annotation=>searchablePdfField(annotation)&&String(annotation?.fieldType||'')===PDF_TEXT_FIELD);
+  const appearanceById=hasCopyableText?await pdfPageAppearanceMetrics(pdfPage,pdfjsLib):new Map();
   if(!isCurrent()||pageView.div!==page)return markerCount;
   const root=ensurePdfFormOverlay(pageView);if(!root)return markerCount;
   for(const field of root.querySelectorAll?.('.document-pdf-copy-field')||[])field.remove?.();
+  const fontMetricsByName=new Map();
+  for(const annotation of annotations||[]){const name=String(annotation?.defaultAppearanceData?.fontName||'').trim(),appearance=appearanceById.get(String(annotation?.id||''));if(name&&appearance?.fontFamily&&!fontMetricsByName.has(name))fontMetricsByName.set(name,appearance)}
   const pageNumber=Math.max(1,Number(pageView?.id)||Number(page.dataset?.pageNumber)||1);let added=0;
   for(const [annotationIndex,annotation] of (annotations||[]).entries()){
-    const rectModel=pdfFieldRectModel(annotation,viewport,annotationIndex,pageNumber);if(!rectModel||rectModel.fieldType!==PDF_TEXT_FIELD)continue;
+    const appearance=appearanceById.get(String(annotation?.id||''))||fontMetricsByName.get(String(annotation?.defaultAppearanceData?.fontName||'').trim())||null;
+    const rectModel=pdfFieldRectModel(annotation,viewport,annotationIndex,pageNumber,appearance);if(!rectModel||rectModel.fieldType!==PDF_TEXT_FIELD)continue;
     root.append(createCopyablePdfField(rectModel));added+=1;
   }
   return markerCount+added;
@@ -503,8 +567,8 @@ export async function createPdfSearchViewer({host,url='',blob=null,data=null,que
   if(hasFindQuery){eventBus.on('updatefindmatchescount',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()});eventBus.on('updatefindcontrolstate',event=>{nativeMatchState(event?.matchesCount);scheduleCombinedRefresh()})}
   const currentFormEntry=()=>combinedIndex>=0&&combinedMatches[combinedIndex]?.kind==='form'?combinedMatches[combinedIndex]:null;
   const pageFieldMatches=pageNumber=>formMatchesByPage.get(Number(pageNumber)||0)||null;
-  async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).catch(()=>{})}}
-  const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:''}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
+  async function refreshRenderedFormLayers(){if(!interactiveForms||!pdfDocument)return;const current=currentFormEntry();for(let pageNumber=1;pageNumber<=pdfDocument.numPages;pageNumber+=1){const pageView=pdfViewer.getPageView?.(pageNumber-1);if(!pageView?.div||!pageView?.pdfPage)continue;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);await renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).catch(()=>{})}}
+  const renderFormLayerForEvent=event=>{if(!interactiveForms)return;const pageNumber=Number(event?.pageNumber)||0,pageView=event?.source;if(!pageNumber||!pageView?.div)return;const generation=(copyFieldGeneration.get(pageNumber)||0)+1;copyFieldGeneration.set(pageNumber,generation);const current=currentFormEntry();renderCopyablePdfFields(pageView,{isCurrent:()=>!destroyed&&copyFieldGeneration.get(pageNumber)===generation,formMatchesByField:pageFieldMatches(pageNumber),currentFormFieldKey:current?.pageNumber===pageNumber?current.fieldKey:'',pdfjsLib}).then(()=>{if(current?.pageNumber===pageNumber)scrollCurrentFormMatch(current,{behavior:'auto'})}).catch(()=>{})};
   if(interactiveForms){eventBus.on('pagerendered',renderFormLayerForEvent);eventBus.on('annotationlayerrendered',renderFormLayerForEvent)}
   const dispatch=(type='',findPrevious=false)=>{if(destroyed||!hasFindQuery)return;const request=buildPdfFindRequest(findQuery,{type,findPrevious,entireWord:search.wordMatch==='whole'&&!customPdfTextMatch});request.source=container;eventBus.dispatch('find',request)};
   const cancelScheduledResize=()=>{if(resizeTimer!==null){clearTimeout(resizeTimer);resizeTimer=null}if(resizeFrame!==null){if(typeof cancelAnimationFrame==='function')cancelAnimationFrame(resizeFrame);else clearTimeout(resizeFrame);resizeFrame=null}};
