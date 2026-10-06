@@ -105,6 +105,20 @@ test('PDF find requests keep all matches highlighted and distinguish next from p
   assert.deepEqual(buildPdfFindRequest(['מה','שלומך']).query,['מה','שלומך']);
 });
 
+test('PDF form copy proxy stays glyph-transparent while focused and selected',()=>{
+  const css=fs.readFileSync(new URL('../shared/global-document-search.css',import.meta.url),'utf8');
+  const focusRule=css.match(/\.document-pdfjs-container \.document-pdf-copy-field:focus\{([^}]*)\}/)?.[1]||'';
+  const selectionRule=css.match(/\.document-pdfjs-container \.document-pdf-copy-field::selection\{([^}]*)\}/)?.[1]||'';
+  assert.match(focusRule,/background:transparent!important/,'focus must not cover the PDF-authored form appearance');
+  assert.match(focusRule,/color:transparent!important/,'focus must never render a second copy of the field glyphs');
+  assert.match(focusRule,/-webkit-text-fill-color:transparent/);
+  assert.match(selectionRule,/background:rgba\(88,145,215,\.32\)/,'selection remains visible without repainting text');
+  assert.match(selectionRule,/color:transparent/,'selected proxy glyphs stay transparent so only the authored PDF text is visible');
+  assert.match(selectionRule,/-webkit-text-fill-color:transparent/);
+  assert.doesNotMatch(focusRule,/(?:color|text-fill-color):#111/);
+  assert.doesNotMatch(selectionRule,/(?:color|text-fill-color):#111/);
+});
+
 test('local PDF form copy layer maps text widgets without changing their authored appearance',()=>{
   const viewport={width:600,height:800,transform:[1,0,0,-1,0,800],convertToViewportPoint:(x,y)=>[x,800-y]};
   const model=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'ליבי מאיר',fieldName:'שם',rect:[300,700,500,730],multiLine:false,defaultAppearanceData:{fontSize:14}},viewport);
