@@ -18,6 +18,24 @@ assert.equal(bankHeadlineState({bankBusy:true,bankResultReady:true,bankLastSyncA
 const ordersSelectionFeed=normalizeCreditSync({version:4,profiles:[{profileId:'selection',provider:'visaCal',accounts:[{accountNumber:'1111'},{accountNumber:'2222'}]}],cardMappings:{'selection:1111':{included:false,hidden:true},'selection:2222':{included:true,hidden:true}}});
 assert.deepEqual(creditSyncScrapeSelection(ordersSelectionFeed),[{profileId:'selection',excludedAccounts:['1111']}],'Orders sends the same explicit excluded-card selection as Kupa');
 
+
+const ordersDuplicatedImportedIdentity=normalizeCreditSync({version:4,profiles:[
+  {profileId:'legacy-isracard',provider:'isracard',label:'מסטרכארד-7248',ownerLabel:'רחלי',defaultAccount:'עסקי',syncedAt:'2026-09-01T00:00:00Z',accounts:[{accountNumber:'0826'},{accountNumber:'5360'},{accountNumber:'7248'}]},
+  {profileId:'import:isracard-racheli',provider:'isracard',label:'מסטרכארד-7248',ownerLabel:'רחלי',defaultAccount:'עסקי',syncedAt:'2026-10-01T00:00:00Z',accounts:[{accountNumber:'0826'},{accountNumber:'5360'},{accountNumber:'7248'}]},
+],cardMappings:{
+  'legacy-isracard:0826':{included:true,hidden:false,account:'ביתי'},
+  'legacy-isracard:5360':{included:true,hidden:false,account:'עסקי'},
+  'legacy-isracard:7248':{included:true,hidden:false,account:'עסקי'},
+  'import:isracard-racheli:0826':{included:false,hidden:false,account:'עסקי'},
+  'import:isracard-racheli:5360':{included:false,hidden:false,account:'עסקי'},
+  'import:isracard-racheli:7248':{included:false,hidden:false,account:'עסקי'},
+}});
+assert.equal(ordersDuplicatedImportedIdentity.profiles.length,1,'Orders collapses the same cross-computer imported credit alias as Kupa');
+assert.equal(ordersDuplicatedImportedIdentity.profiles[0].profileId,'import:isracard-racheli');
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['import:isracard-racheli:0826'].included,true);
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['import:isracard-racheli:0826'].account,'ביתי','Orders preserves the established per-card role while moving the mapping to the stable profile id');
+assert.equal(ordersDuplicatedImportedIdentity.cardMappings['legacy-isracard:0826'],undefined);
+
 const scrollUi={scrollViewportMemory:new Map()};
 const layout=createUiLayout({ui:scrollUi,supplierUi:{supplierViewportMemory:new Map()}});
 const loadingViewport={scrollHeight:400,clientHeight:400,scrollTop:0,scrollLeft:0};

@@ -30,8 +30,15 @@ export function prepareFinanceConnectionImport(value,currentProfiles=[]){
   const existing=Array.isArray(currentProfiles)?currentProfiles:[];
   const next={...parsed,credit:{...parsed.credit,profiles:parsed.credit.profiles.map(profile=>({...profile,credentials:{...(object(profile?.credentials)||{})}}))}};
   for(const profile of next.credit.profiles){
+    // connectionKey is the portable identity of an imported connection. Never replace it
+    // with a machine/cloud-specific profileId: doing so lets the same import file acquire
+    // different identities on different computers depending on which cloud snapshot was
+    // loaded (or how a mutable label was spelled) at import time.
+    if(text(profile.connectionKey)){delete profile.profileId;continue}
     const explicit=text(profile.profileId);
     if(explicit&&existing.some(candidate=>text(candidate?.profileId)===explicit))continue;
+    // Legacy import documents without connectionKey can still reuse one unambiguous cloud
+    // identity. New portable documents must use connectionKey instead.
     const matches=existing.filter(candidate=>profileMatches(profile,candidate));
     if(matches.length===1)profile.profileId=text(matches[0].profileId);
   }

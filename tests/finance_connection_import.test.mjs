@@ -23,18 +23,28 @@ test('finance import parses the versioned replace document and summarizes both d
   assert.deepEqual(financeConnectionImportSummary(parsed),{creditProfileCount:2,bankAccountCount:2});
 });
 
-test('finance import reconciles a matching cloud profile id without mutating the source',()=>{
+test('portable finance import keeps connectionKey authoritative across computers',()=>{
   const source=sample();
+  source.credit.profiles[0].profileId='machine-specific-id';
+  const prepared=prepareFinanceConnectionImport(source,[
+    {profileId:'cloud-existing-id',provider:'max',label:' MAX-A ',ownerLabel:'בעלים א'},
+  ]);
+  assert.equal(prepared.credit.profiles[0].profileId,undefined,'connectionKey must reach the Bridge without a cloud/machine-specific profileId override');
+  assert.equal(source.credit.profiles[0].profileId,'machine-specific-id','preparation never mutates the selected import document');
+  assert.equal(prepared.credit.profiles[1].profileId,undefined);
+});
+
+test('legacy import without connectionKey can still reuse one unambiguous cloud identity',()=>{
+  const source=sample();delete source.credit.profiles[0].connectionKey;source.credit.profiles[0].profileId=undefined;
   const prepared=prepareFinanceConnectionImport(source,[
     {profileId:'cloud-existing-id',provider:'max',label:' MAX-A ',ownerLabel:'בעלים א'},
   ]);
   assert.equal(prepared.credit.profiles[0].profileId,'cloud-existing-id');
-  assert.equal(source.credit.profiles[0].profileId,undefined);
-  assert.equal(prepared.credit.profiles[1].profileId,undefined);
 });
 
-test('finance import does not guess when more than one cloud profile matches',()=>{
-  const prepared=prepareFinanceConnectionImport(sample(),[
+test('legacy finance import does not guess when more than one cloud profile matches',()=>{
+  const source=sample();delete source.credit.profiles[0].connectionKey;
+  const prepared=prepareFinanceConnectionImport(source,[
     {profileId:'a',provider:'max',label:'MAX-A',ownerLabel:'בעלים א'},
     {profileId:'b',provider:'max',label:'MAX-A',ownerLabel:'בעלים א'},
   ]);
