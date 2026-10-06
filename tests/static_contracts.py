@@ -143,7 +143,7 @@ ok(all(not re.search(r"\brpcSaveSharedChecks\b|\brpcSaveSharedChecksVersion\b|sa
    "clients: Shared Checks transports expose only the v6 writer")
 ok(all(symbol not in source for source in business_sources for symbol in
        ("initializeStorageV2UploadLocalHead", "initializeStorageV2BootstrapHead",
-        "initializeStorageV2CloudCursor", "initializeUploadLocalCloudHead",
+        "initializeStorageV2CloudCursor", "initializeFirstCloudHead",
         "storageV2BootstrapStatus", "prepareStorageV2Bootstrap", "advanceStorageV2Bootstrap")),
    "clients: retired bootstrap and cursor adapter ports are absent")
 ok(all("storageShadow" not in source and "fencedLegacyInactive" not in source for source in business_sources),

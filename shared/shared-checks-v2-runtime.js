@@ -63,7 +63,6 @@ export function createSharedChecksV2Runtime({owner,primary,mode=()=> 'off',readS
     const store=context(),snapshot=canonical(state);
     if(active)throw new Error('shared_checks_already_active');
     assertContext(store);
-    if(intent==='legacy-upgrade'&&!equalSyncJson(canonical(readState()),snapshot))throw new Error('shared_checks_migration_state_changed');
     let recovered;
     try{recovered=await store.initializeCloudHead(revision,snapshot,{intent,sourceOwner,bootstrapOperationId})}
     catch(error){

@@ -22,7 +22,7 @@ function makeRuntime(db,owner='account-A',mode=()=> 'primary'){
 }
 function cloudProjection(state){const value=clone(state);delete value.checks;return value}
 
-test('Main non-empty first-cloud bootstrap is empty base plus one durable pending V2 operation',async()=>{
+test('Main local upload is empty base plus one durable pending V2 operation',async()=>{
   const db=memoryDb(),initial=emptyOrders(),current=emptyOrders();
   current.notes=[{id:'N1',content:'local only'}];
   current.suppliers=[{id:'S1',name:'supplier'}];
@@ -30,7 +30,7 @@ test('Main non-empty first-cloud bootstrap is empty base plus one durable pendin
   current.importAudit={source:'local-file'};
 
   const runtime=makeRuntime(db);
-  const recovered=await runtime.initializeFirstCloudHead(initial,current,{sourceOwner:'local',cloudState:cloudProjection(initial),validateBase:()=>{}});
+  const recovered=await runtime.initializeUploadLocalCloudHead(initial,current,{cloudState:cloudProjection(initial),validateBase:()=>{}});
   assert.equal(recovered.seq,1);
   assert.deepEqual(recovered.state,cloudProjection(current));assert.equal(recovered.appMetadata.mainProjectionVersion,2);
   const cloud=await runtime.cloudState({validateBase:()=>{}});
@@ -50,23 +50,23 @@ test('Main non-empty first-cloud bootstrap is empty base plus one durable pendin
 });
 
 
-test('Main first-cloud bootstrap also supports data already bound to the same account owner',async()=>{
-  const db=memoryDb(),initial=emptyOrders(),current=emptyOrders();current.notes=[{id:'N-account',content:'owned locally by account-A'}];
-  const runtime=makeRuntime(db,'account-A');
-  const recovered=await runtime.initializeFirstCloudHead(initial,current,{sourceOwner:'account-A',cloudState:cloudProjection(initial),validateBase:()=>{}});
-  assert.equal(recovered.seq,1);assert.deepEqual(recovered.state,cloudProjection(current));
-  const cloud=await runtime.cloudState({validateBase:()=>{}});assert.equal(cloud.base.revision,0);assert.equal(cloud.base.ackSeq,0);assert.equal(cloud.pending,true);
-  const stored=await db.load('account-A:orders');assert.equal(stored.journal[0].data.appMetadata.migrationIntent,'upload-owner');assert.equal(stored.journal[0].data.appMetadata.sourceOwner,'account-A');assert.equal(stored.journal[0].data.appMetadata.targetOwner,'account-A');
-});
-
-test('Main first-cloud bootstrap never permits account A to seed account B implicitly',async()=>{
+test('Main bootstrap cannot create a same-owner historical upload or seed another account',async()=>{
   const runtime=makeRuntime(memoryDb(),'account-B');
-  await assert.rejects(runtime.initializeFirstCloudHead(emptyOrders(),emptyOrders(),{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}}),/target_required/);
+  await assert.rejects(runtime.initializeCloudHead(0,emptyOrders(),{intent:'upload-owner',sourceOwner:'account-B'}),/transfer_intent_required/);
+  await assert.rejects(runtime.initializeCloudHead(0,emptyOrders(),{intent:'upload-owner',sourceOwner:'account-A'}),/transfer_intent_required/);
 });
-test('Main first-cloud bootstrap rejects local target owner and requires an explicit empty cloud base',async()=>{
+test('Main replays an existing historical upload-owner journal without exposing its creation API',async()=>{
+  const db=memoryDb(),initial=cloudProjection(emptyOrders()),current=cloudProjection(emptyOrders());current.notes=[{id:'historic-note'}];
+  const journal=createStorageJournal({owner:'account-A:orders',schema:STORAGE_SCHEMAS.orders,validate:validateOrders,db,emergency:emergencyStore()});
+  await journal.initializeCloudHead(0,initial,{cloudState:initial,changes:[{type:'replace-state',state:current}],appMetadata:{storageRole:'primary',migrationIntent:'upload-owner',sourceOwner:'account-A',targetOwner:'account-A',mainProjectionVersion:2}});
+  const runtime=makeRuntime(db),recovered=await runtime.recover();
+  assert.deepEqual(recovered.state,current);assert.equal(recovered.seq,1);
+  assert.equal(runtime.initializeFirstCloudHead,undefined);
+});
+test('Main local upload rejects a local target owner and requires an explicit empty cloud base',async()=>{
   const current=emptyOrders();current.notes=[{id:'N1'}];
-  await assert.rejects(makeRuntime(memoryDb(),'local').initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'local',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}}),/target_required/);
-  await assert.rejects(makeRuntime(memoryDb()).initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'local'}),/cloud_base_required/);
+  await assert.rejects(makeRuntime(memoryDb(),'local').initializeUploadLocalCloudHead(emptyOrders(),current,{cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}}),/target_required/);
+  await assert.rejects(makeRuntime(memoryDb()).initializeUploadLocalCloudHead(emptyOrders(),current),/cloud_base_required/);
 });
 
 test('pre-cutover preparation may initialize/recover V2 but freezes normal mutations and never promotes legacy fallback implicitly',async()=>{
@@ -77,7 +77,7 @@ test('pre-cutover preparation may initialize/recover V2 but freezes normal mutat
   assert.equal((await db.load('account-A:orders')).checkpoints,null);
   await assert.rejects(async()=>before.persist(legacy,{operations:[{type:'set',field:'businessName',value:'blocked'}]}),/preparation_locked/);
   const current=emptyOrders();current.notes=[{id:'N1'}];
-  await before.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}});
+  await before.initializeUploadLocalCloudHead(emptyOrders(),current,{cloudState:cloudProjection(emptyOrders()),validateBase:()=>{}});
   const restarted=makeRuntime(db,'account-A',preparing),recovered=await restarted.recover(legacy,{snapshotSeq:99});
   assert.deepEqual(recovered.state,cloudProjection(current));assert.equal(recovered.source,'v2');
   assert.throws(()=>restarted.persist(current,{operations:[{type:'set',field:'businessName',value:'still blocked'}]}),/preparation_locked/);
@@ -86,13 +86,13 @@ test('pre-cutover preparation may initialize/recover V2 but freezes normal mutat
 test('Main bootstrap initialization is idempotent only for the same durable bootstrap operation',async()=>{
   const db=memoryDb(),current=emptyOrders();current.notes=[{id:'N1'}];
   const first=makeRuntime(db);
-  const options={sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'group:main'}};
-  await first.initializeFirstCloudHead(emptyOrders(),current,options);
+  const options={cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'group:main'}};
+  await first.initializeUploadLocalCloudHead(emptyOrders(),current,options);
   const restarted=makeRuntime(db);
-  const replay=await restarted.initializeFirstCloudHead(emptyOrders(),current,options);
+  const replay=await restarted.initializeUploadLocalCloudHead(emptyOrders(),current,options);
   assert.equal(replay.seq,1);assert.deepEqual(replay.state,cloudProjection(current));
   const foreign=makeRuntime(db);
-  await assert.rejects(foreign.initializeFirstCloudHead(emptyOrders(),current,{...options,appMetadata:{bootstrapOperationId:'different:main'}}),/existing_head_mismatch/);
+  await assert.rejects(foreign.initializeUploadLocalCloudHead(emptyOrders(),current,{...options,appMetadata:{bootstrapOperationId:'different:main'}}),/existing_head_mismatch/);
 });
 
 
@@ -103,7 +103,7 @@ test('Main bootstrap refuses even an identical historical shadow checkpoint',asy
   const before=await db.load('account-A:orders');assert.equal(before.bases,null);assert.equal(before.metadata.seq,0);
 
   const runtime=makeRuntime(db,'account-A',()=> 'preparing');
-  await assert.rejects(runtime.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-must-reset:main'}}),/existing_head_mismatch/);
+  await assert.rejects(runtime.initializeUploadLocalCloudHead(emptyOrders(),current,{cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-must-reset:main'}}),/existing_head_mismatch/);
   const stored=await db.load('account-A:orders');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,cloudProjection(current));
 });
 
@@ -112,6 +112,6 @@ test('Main bootstrap refuses to promote a shadow checkpoint whose business state
   const shadow=createStorageJournal({owner:'account-A:orders',schema:STORAGE_SCHEMAS.orders,validate:validateOrders,db,emergency:emergencyStore()});
   await shadow.install(cloudProjection(shadowState),{expectedEpoch:null,appMetadata:{storageRole:'shadow',migrationIntent:'shadow-observation',sourceOwner:'account-A',mainProjectionVersion:2}});
   const runtime=makeRuntime(db,'account-A',()=> 'preparing');
-  await assert.rejects(runtime.initializeFirstCloudHead(emptyOrders(),current,{sourceOwner:'account-A',cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-mismatch:main'}}),/existing_head_mismatch/);
+  await assert.rejects(runtime.initializeUploadLocalCloudHead(emptyOrders(),current,{cloudState:cloudProjection(emptyOrders()),validateBase:()=>{},appMetadata:{bootstrapOperationId:'shadow-mismatch:main'}}),/existing_head_mismatch/);
   const stored=await db.load('account-A:orders');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,cloudProjection(shadowState));
 });

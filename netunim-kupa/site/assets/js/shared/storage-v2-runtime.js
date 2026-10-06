@@ -108,7 +108,7 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   async function initializeCloudHead(revision,state,{sourceOwner,intent,cloudState=state,changes=null,validateBase=validate,appMetadata={}}={}){
     if(!primaryMode()||!primary())throw new Error('storage_v2_primary_not_ready');
     const active=create(),scopedIdentity=identity;
-    const validIntent=intent==='cloud-authoritative'&&sourceOwner===scopedIdentity||intent==='upload-local'&&sourceOwner==='local'&&revision===0||intent==='upload-owner'&&sourceOwner===scopedIdentity&&revision===0;
+    const validIntent=intent==='cloud-authoritative'&&sourceOwner===scopedIdentity||intent==='upload-local'&&sourceOwner==='local'&&revision===0;
     if(!validIntent)throw new Error('storage_owner_transfer_intent_required');
     const prepared=checkpointState(state),preparedChanges=changes?.map(change=>change?.type==='replace-state'?{...change,state:checkpointState(change.state)}:change),metadata={...appMetadata,storageRole:'primary',sourceOwner,targetOwner:scopedIdentity,migrationIntent:intent,mainProjectionVersion:2};
     let result;
@@ -124,13 +124,11 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
     if(identity!==scopedIdentity||currentOwner()!==scopedIdentity)throw new Error('storage_owner_changed_during_recovery');
     authoritative=true;return result;
   }
-  async function initializeFirstCloudHead(emptyState,currentState,{sourceOwner=currentOwner(),cloudState,validateBase=validate,appMetadata={}}={}){
-    const scopedIdentity=currentOwner(),source=String(sourceOwner||'').trim();
-    const intent=source==='local'?'upload-local':source===scopedIdentity?'upload-owner':'';
-    if(!intent||scopedIdentity==='local')throw new Error('storage_owner_transfer_target_required');
+  async function initializeUploadLocalCloudHead(emptyState,currentState,{cloudState,validateBase=validate,appMetadata={}}={}){
+    if(currentOwner()==='local')throw new Error('storage_owner_transfer_target_required');
     const initial=checkpointState(emptyState),target=checkpointState(currentState);
     validate(initial);validate(target);if(cloudState===undefined)throw new Error('storage_bootstrap_cloud_base_required');validateBase(cloudState);
-    const recovered=await initializeCloudHead(0,initial,{sourceOwner:source,intent,cloudState,validateBase,changes:[{type:'replace-state',state:target}],appMetadata});
+    const recovered=await initializeCloudHead(0,initial,{sourceOwner:'local',intent:'upload-local',cloudState,validateBase,changes:[{type:'replace-state',state:target}],appMetadata});
     if(!equalSyncJson(recovered.state,target)||recovered.seq!==1)throw new Error('storage_bootstrap_replay_mismatch');
     return recovered;
   }
@@ -205,5 +203,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeFirstCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

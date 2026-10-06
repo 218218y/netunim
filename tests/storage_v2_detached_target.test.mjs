@@ -16,11 +16,11 @@ function fixture({remoteMain=null,remoteShared=null,sourceChecks=[{id:'check-1'}
     async recover(){return mainLocal?{state:copy(mainLocal),seq:mainHead.seq}:null},
     async initializeCloudHead(rev,full,{cloudState,appMetadata}){
       if(mainLocal){if(mainHead.operationId===appMetadata.bootstrapOperationId)return this.recover();throw Error('storage_initialization_exists')}
-      mainLocal=copy(full);mainHead={seq:0,base:{revision:rev,state:copy(cloudState),ackSeq:0},operationId:appMetadata.bootstrapOperationId};return this.recover();
+      mainLocal={rows:copy(full.rows)};mainHead={seq:0,base:{revision:rev,state:copy(cloudState),ackSeq:0},operationId:appMetadata.bootstrapOperationId};return this.recover();
     },
-    async initializeFirstCloudHead(_empty,full,{cloudState,appMetadata}){
+    async initializeUploadLocalCloudHead(_empty,full,{cloudState,appMetadata}){
       if(mainLocal){if(mainHead.operationId===appMetadata.bootstrapOperationId)return this.recover();throw Error('storage_initialization_exists')}
-      mainLocal=copy(full);mainHead={seq:1,base:{revision:0,state:copy(cloudState),ackSeq:0},operationId:appMetadata.bootstrapOperationId};return this.recover();
+      mainLocal={rows:copy(full.rows)};mainHead={seq:1,base:{revision:0,state:copy(cloudState),ackSeq:0},operationId:appMetadata.bootstrapOperationId};return this.recover();
     },
     async cloudState(){return mainHead?copy({seq:mainHead.seq,base:mainHead.base,flight:mainFlight,pending:mainHead.seq>mainHead.base.ackSeq,control:null}):null},
     async materializeFlight({operationId,project,prepareAudit}){
@@ -120,11 +120,11 @@ test('upload-local stops before any target write when existing Shared differs',a
   assert.equal(f.calls.main.length,0);assert.equal(f.calls.shared.length,0);assert.equal(f.group,null);
 });
 
-test('upload-local replaces a stale Main checks copy from the Shared source',async()=>{
+test('upload-local keeps checks exclusively in Shared even with a stale Main source copy',async()=>{
   const f=fixture({sourceChecks:[{id:'authoritative'}]});
   f.context.source.main.fullState.checks=[{id:'stale'}];
   const target=f.factory();await target.prepare(f.context);
   const proof=await target.verify();
-  assert.deepEqual(proof.mainState.checks,[{id:'authoritative'}]);
+  assert.equal(Object.hasOwn(proof.mainState,'checks'),false);
   assert.deepEqual(proof.sharedState.checks,[{id:'authoritative'}]);
 });
