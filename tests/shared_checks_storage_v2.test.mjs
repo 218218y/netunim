@@ -34,8 +34,18 @@ const check=(id,status='open')=>({id,status,amount:100});
 const put=(id,mode='replace',index=0)=>({type:'put',collection:'checks',id,mode,index});
 const del=id=>({type:'delete',collection:'checks',id});
 
+test('Shared Checks rejects retired creation intents but still reads their durable checkpoints',async()=>{
+  const f=fixture(),snapshot=state([check('C')]);
+  await assert.rejects(f.create().open({migrationState:snapshot,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'}),/transfer_intent_required/);
+  await assert.rejects(f.create().initializeCloudHead(0,snapshot,{intent:'upload-owner',sourceOwner:'account-A'}),/transfer_intent_required/);
+  const journal=createStorageJournal({owner:'account-A:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db:f.db,emergency:f.emergency});
+  await journal.install(snapshot,{expectedEpoch:null,appMetadata:{storageRole:'shared-checks-primary',migrationIntent:'legacy-upgrade',sourceOwner:'account-A'}});
+  const recovered=await f.create().open();
+  assert.deepEqual(recovered.state,snapshot);
+});
+
 test('Shared Checks V2 captures a cursor only when the recovered state matches the cloud',async()=>{
-  const f=fixture(),store=f.create();await assert.rejects(store.open({migrationState:state([check('C')])}),/transfer_intent_required/);await store.open({migrationState:state([check('C')]),migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  const f=fixture(),store=f.create();await assert.rejects(store.open({migrationState:state([check('C')])}),/transfer_intent_required/);await store.open({migrationState:state([check('C')]),migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});
   await assert.rejects(store.captureCloudCursor(7,state([check('other')])),/cursor_state_mismatch/);
   await store.captureCloudCursor(7,{version:1,...state([check('C')])});
   assert.equal((await store.cloudState()).base.revision,7);
@@ -43,7 +53,7 @@ test('Shared Checks V2 captures a cursor only when the recovered state matches t
 });
 
 test('Shared Checks V2 keeps a deposited flight immutable across a later edit, ACK, restart and compaction',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(10,base);
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});await store.captureCloudCursor(10,base);
   const deposited=state([check('A','deposited'),check('B')]);const first=store.append([put('A')],deposited,{generation:1,surface:'checks.deposit'});await first.committed;
   const flight=await store.materializeFlight({operationId:'flight-deposit'});assert.equal(flight.endSeq,1);assert.equal(flight.snapshot.checks[0].status,'deposited');
   const later=state([check('A','deposited'),check('B','cleared')]);const second=store.append([put('B')],later,{generation:2,surface:'checks.clear'});await second.committed;
@@ -58,7 +68,7 @@ test('Shared Checks V2 keeps a deposited flight immutable across a later edit, A
 });
 
 test('Shared Checks V2 retains explicit deletion through compaction and rotates a confirmed conflict flight',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(3,base);
+  const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});await store.captureCloudCursor(3,base);
   const afterDelete=state([check('B')]);const write=store.append([del('A')],afterDelete,{generation:1,mutationType:'delete',deleteIds:['A']});await write.committed;
   await store.compact();const first=await store.materializeFlight({operationId:'delete-flight'});assert.deepEqual(first.deleteIntents,{checks:['A']});
   await store.rejectAndRebase(first.operationId,4,state([check('A','remote'),check('B')]),{currentState:afterDelete,expectedSeq:1,control:{conflict:{kind:'same-check'}}});
@@ -69,7 +79,7 @@ test('Shared Checks V2 retains explicit deletion through compaction and rotates 
 
 test('Shared Checks V2 restart after rebase retains an unrelated remote check and bank event',async()=>{
   const f=fixture(),store=f.create(),base=state([check('A'),check('B')]);
-  await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});
   await store.captureCloudCursor(7,base);
   const local=state([check('A','deposited'),check('B')]);await store.append([put('A')],local,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'old-check-flight'});
@@ -85,14 +95,14 @@ test('Shared Checks V2 restart after rebase retains an unrelated remote check an
 });
 
 test('Shared Checks V2 rejects deletes without matching explicit intents or with a still-visible check',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});
+  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});
   assert.throws(()=>store.append([del('A')],state([])),/delete_intents_mismatch/);
   assert.throws(()=>store.append([del('A')],base,{deleteIds:['A']}),/delete_still_visible/);
   assert.equal(store.seq,0);
 });
 
 test('Shared Checks V2 retries the exact immutable flight after a lost ACK and refuses a stale ACK checkpoint',async()=>{
-  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'account-A'});await store.captureCloudCursor(7,base);
+  const f=fixture(),store=f.create(),base=state([check('A')]);await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'account-A'});await store.captureCloudCursor(7,base);
   const next=state([check('A','deposited')]);await store.append([put('A')],next,{generation:1}).committed;
   const flight=await store.materializeFlight({operationId:'lost-ack'}),restarted=f.create();await restarted.open();
   assert.deepEqual(await restarted.materializeFlight({operationId:'new-id-must-not-be-used'}),flight);
@@ -105,7 +115,7 @@ test('Shared Checks V2 retries the exact immutable flight after a lost ACK and r
 });
 
 test('Shared Checks V2 allows IDB durability after emergency quota failure and fences an old owner',async()=>{
-  let account='A';const f=fixture({owner:()=>account,emergency:emergencyStore({failWrites:true})}),store=f.create(),base=state([check('C')]);await store.open({migrationState:base,migrationIntent:'legacy-upgrade',sourceOwner:'A'});
+  let account='A';const f=fixture({owner:()=>account,emergency:emergencyStore({failWrites:true})}),store=f.create(),base=state([check('C')]);await store.open({migrationState:base,migrationIntent:'cloud-authoritative',sourceOwner:'A'});
   const changed=state([check('C','deposited')]),write=store.append([put('C')],changed,{generation:1});assert.equal(write.emergencyDurable,false);await write.committed;
   const restarted=f.create();assert.equal((await restarted.open()).state.checks[0].status,'deposited');
   account='B';assert.throws(()=>store.append([put('C')],changed),/owner_changed/);
@@ -123,5 +133,5 @@ test('Shared Checks V2 refuses old shadow heads and cross-account initialization
   assert.throws(()=>primary.append([put('A')],seed),/not_open/);
   const stored=await db.load('A:shared-checks');assert.deepEqual(stored.checkpoints.data.state,seed);assert.equal(stored.bases,null);
   const separate=createSharedChecksStorageV2({owner:()=> 'B',primary:()=>true,db:memoryDb(),emergency});
-  await assert.rejects(separate.open({migrationState:seed,migrationIntent:'legacy-upgrade',sourceOwner:'A'}),/transfer_intent_required/);
+  await assert.rejects(separate.open({migrationState:seed,migrationIntent:'cloud-authoritative',sourceOwner:'A'}),/transfer_intent_required/);
 });

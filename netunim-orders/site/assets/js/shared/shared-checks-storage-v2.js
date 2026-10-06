@@ -54,7 +54,7 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
     if(recovered){if(recovered.appMetadata?.storageRole!=='shared-checks-primary')throw new Error('shared_checks_storage_role_mismatch');trusted=true;return recovered}
     if(migrationState===null)return null;
     const source=String(sourceOwner||'').trim(),sameOwner=source===identity;
-    if(!sameOwner||!['legacy-upgrade','cloud-authoritative'].includes(migrationIntent)&&!(identity==='local'&&migrationIntent==='local-birth'))throw new Error('shared_checks_owner_transfer_intent_required');
+    if(!sameOwner||migrationIntent!=='cloud-authoritative'&&!(identity==='local'&&migrationIntent==='local-birth'))throw new Error('shared_checks_owner_transfer_intent_required');
     validate(migrationState);
     await journal.install(canonicalState(migrationState),{expectedEpoch:null,appMetadata:{storageRole:'shared-checks-primary',migrationIntent,sourceOwner:source}});
     trusted=true;return journal.recover();
@@ -62,9 +62,9 @@ export function createSharedChecksStorageV2({owner,primary,role='primary',valida
   async function initializeCloudHead(revision,state,{intent,sourceOwner,bootstrapOperationId=''}={}){
     assertOwner();
     const source=String(sourceOwner||'').trim(),canonical=canonicalState(state);
-    const validIntent=(intent==='upload-local'&&source==='local')||(intent==='upload-owner'&&source===identity)||(['cloud-authoritative','legacy-upgrade'].includes(intent)&&source===identity);
+    const validIntent=(intent==='upload-local'&&source==='local')||(intent==='cloud-authoritative'&&source===identity);
     if(!validIntent)throw new Error('shared_checks_owner_transfer_intent_required');
-    const bootstrap=['upload-local','upload-owner'].includes(intent);
+    const bootstrap=intent==='upload-local';
     if(bootstrap&&(revision!==0||canonical.bankEvents.length))throw new Error('shared_checks_bootstrap_invalid');
     const initial=bootstrap?{checks:[],bankEvents:[]}:canonical;
     const changes=bootstrap?[{type:'set',field:'bankEvents',value:[]},...canonical.checks.map((record,index)=>({type:'put',collection:'checks',id:record.id,mode:'insert',index,record}))]:null;

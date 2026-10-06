@@ -34,7 +34,7 @@ function fixture(site='orders',options={}){
     }});
   return {create,calls,databases,ledger,get visible(){return visible},set visible(value){visible=value},get head(){return head},set head(value){head=value},
     set owner(value){owner=value},set mode(value){mode=value},set rpcHook(value){rpcHook=value},set readHook(value){readHook=value},
-    async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'legacy-upgrade',sourceOwner:'A'});return runtime},
+    async start(){const runtime=create();await runtime.initialize({state:visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'});return runtime},
     edit(runtime,id,values){visible.checks=visible.checks.map(row=>row.id===id?{...row,...values}:row);return runtime.persist([put(id)],{generation:++n})}};
 }
 
@@ -144,7 +144,7 @@ test('account handoff fences outstanding RPC, loads only the target namespace an
   f.rpcHook=async()=>{entered.resolve();await release.promise;return {r:{ok:true},row:{revision:8,state:state([])}}};
   const sync=runtime.sync();await entered.promise;f.owner='B';assert.equal(runtime.primaryReady,false);
   assert.equal(await runtime.recover(),null);assert.throws(()=>runtime.persist([put('C')]),/not_recovered/);
-  await assert.rejects(runtime.initialize({state:f.visible,revision:7,intent:'legacy-upgrade',sourceOwner:'A'}),/transfer_intent/);
+  await assert.rejects(runtime.initialize({state:f.visible,revision:7,intent:'cloud-authoritative',sourceOwner:'A'}),/transfer_intent/);
   await runtime.initialize({state:state([{id:'B',amount:999}]),revision:4,intent:'cloud-authoritative',sourceOwner:'B'});
   release.resolve();await assert.rejects(sync,/handoff/);assert.equal(f.visible.checks[0].id,'B');
   f.owner='A';await runtime.recover();assert.equal(f.visible.checks[0].note,'A edit');assert.ok((await runtime.cloudState()).flight);
@@ -171,7 +171,7 @@ test('an empty first document still has one durable pending operation',async()=>
 
 test('Shared Checks preparation mode permits bootstrap/sync but freezes user mutations',async()=>{
   const f=fixture(),runtime=f.create();f.mode='preparing';f.head={revision:0,state:state([])};
-  await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A'});
+  await runtime.initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local'});
   assert.equal(runtime.requested,true);assert.equal(runtime.primaryReady,true);
   assert.throws(()=>runtime.persist([put('C')],{generation:1}),/preparation_locked/);
   assert.equal(await runtime.sync(),true);assert.equal((await runtime.cloudState()).pending,false);
@@ -179,11 +179,11 @@ test('Shared Checks preparation mode permits bootstrap/sync but freezes user mut
 
 test('Shared Checks bootstrap initialization is restart-idempotent for the same operation id only',async()=>{
   const f=fixture(),runtime=f.create();f.mode='preparing';f.head={revision:0,state:state([])};
-  await runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'group:shared'});
+  await runtime.initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local',bootstrapOperationId:'group:shared'});
   const restarted=f.create();
-  const recovered=await restarted.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'group:shared'});
+  const recovered=await restarted.initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local',bootstrapOperationId:'group:shared'});
   assert.equal(recovered.seq,1);
-  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'other:shared'}),/existing_head_mismatch/);
+  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local',bootstrapOperationId:'other:shared'}),/existing_head_mismatch/);
 });
 
 for(const site of ['orders','kupa'])test(`${site}: application save and RPC adapters never invoke Main or V1 in primary`,async t=>{
@@ -210,7 +210,7 @@ test('Shared Checks bootstrap does not promote an identical historical shadow na
 
   f.mode='preparing';f.head={revision:0,state:state([])};
   const runtime=f.create();
-  await assert.rejects(runtime.initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-must-reset:shared'}),/existing_head_mismatch/);
+  await assert.rejects(runtime.initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local',bootstrapOperationId:'shadow-must-reset:shared'}),/existing_head_mismatch/);
   const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,f.visible);
 });
 
@@ -221,7 +221,7 @@ test('Shared Checks bootstrap refuses divergent shadow promotion and preserves t
   const shadow=createStorageJournal({owner:'A:shared-checks',schema:{collections:['checks'],fields:['bankEvents']},validate:()=>{},db,emergency});
   await shadow.install(shadowState,{appMetadata:{storageRole:'shared-checks-shadow'}});
   f.mode='preparing';f.head={revision:0,state:state([])};
-  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-owner',sourceOwner:'A',bootstrapOperationId:'shadow-mismatch:shared'}),/existing_head_mismatch/);
+  await assert.rejects(f.create().initialize({state:f.visible,revision:0,intent:'upload-local',sourceOwner:'local',bootstrapOperationId:'shadow-mismatch:shared'}),/existing_head_mismatch/);
   const stored=await db.load('A:shared-checks');assert.equal(stored.bases,null);assert.equal(stored.journal.length,0);assert.deepEqual(stored.checkpoints.data.state,shadowState);
 });
 

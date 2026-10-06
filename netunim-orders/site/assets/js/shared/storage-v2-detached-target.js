@@ -20,7 +20,7 @@ export function createStorageV2DetachedTarget({
   bootstrapCoordinator=null,cutoverMarker=null,
 }={}){
   if(!['orders','kupa'].includes(app)||!String(targetOwner||'').trim()||targetOwner==='local'||
-    [primary,main?.recover,main?.initializeCloudHead,main?.initializeFirstCloudHead,main?.cloudState,main?.materializeFlight,main?.acknowledgeFlight,
+    [primary,main?.recover,main?.initializeCloudHead,main?.initializeUploadLocalCloudHead,main?.cloudState,main?.materializeFlight,main?.acknowledgeFlight,
       shared?.recover,shared?.initialize,shared?.sync,shared?.cloudState,readMainRemote,projectMainRemote,readSharedRemote,projectSharedRemote,
       composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
   const owner=()=>targetOwner,guard=()=>{if(!primary())throw new Error('storage_transfer_target_primary_required')};
@@ -44,12 +44,7 @@ export function createStorageV2DetachedTarget({
     return true;
   }
   async function alreadyShared(side,cloudState){
-    let recovered;
-    try{recovered=await shared.recover()}catch(error){
-      // A verified shadow checkpoint may still need promotion by initialize().
-      if(error?.message==='shared_checks_storage_role_mismatch')return false;
-      throw error;
-    }
+    const recovered=await shared.recover();
     guard();if(!recovered)return false;
     const cloud=await shared.cloudState();guard();
     if(!cloud?.base||cloud.flight||cloud.control||cloud.pending||cloud.base.revision!==side.remoteRevision||
@@ -75,11 +70,9 @@ export function createStorageV2DetachedTarget({
       if(side.intent!=='upload-local'||await readMainRemote())throw new Error('storage_transfer_main_upload_target_changed');
       const original=ctx.source.main.fullState;
       if(!original||!equalSyncJson(projectMainState(original),ctx.source.main.state))throw new Error('storage_transfer_main_source_full_missing');
-      // Main checkpoints still carry a transitional checks copy. Shared is the
-      // sole authority, including when that copy lagged before the transfer.
-      const full={...copy(original),checks:copy(sharedState(ctx.source.shared.state).checks)};
+      const full=copy(original);
       const empty=emptyMainState(),base=projectMainState(empty);validateMainCloud(base);
-      await main.initializeFirstCloudHead(empty,full,{sourceOwner:'local',cloudState:base,validateBase:validateMainCloud,appMetadata:{bootstrapOperationId:side.operationId}});
+      await main.initializeUploadLocalCloudHead(empty,full,{cloudState:base,validateBase:validateMainCloud,appMetadata:{bootstrapOperationId:side.operationId}});
       return {revision:0,pending:true};
     },
     initializeShared:async(side,group)=>{

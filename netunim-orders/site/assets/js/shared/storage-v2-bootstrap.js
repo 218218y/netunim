@@ -52,7 +52,7 @@ async function sidePlan(role,source,remote,id,cryptoImpl,uploadIntent){
   if(!source?.state||typeof source.state!=='object'||Array.isArray(source.state)||integer(source.seq)===null)throw new Error('storage_bootstrap_source_invalid');
   const exists=remote!==null&&remote!==undefined;
   if(exists&&(!remote.state||typeof remote.state!=='object'||Array.isArray(remote.state)||integer(remote.revision)===null))throw new Error('storage_bootstrap_remote_invalid');
-  if(!exists&&!['upload-local','upload-owner'].includes(uploadIntent))throw new Error(`storage_bootstrap_${role}_remote_missing`);
+  if(!exists&&uploadIntent!=='upload-local')throw new Error(`storage_bootstrap_${role}_remote_missing`);
   return {
     role,
     intent:exists?'cloud-authoritative':uploadIntent,
