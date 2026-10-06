@@ -204,6 +204,13 @@ function normalizeMatchCount(value){
 const PDF_TEXT_FIELD='Tx';
 const PDF_CHOICE_FIELD='Ch';
 const PDF_FORM_MATCH_LIMIT=5000;
+// Keep the transparent copy proxy on the same text-box metrics as PDF.js'
+// TextWidgetAnnotationElement. The canvas still owns the authored appearance,
+// but selection/caret geometry is produced by the browser form control.
+const PDF_WIDGET_BORDER_SIZE=2;
+const PDF_WIDGET_LINE_FACTOR=1.35;
+const PDF_WIDGET_DEFAULT_FONT_SIZE=9;
+const PDF_WIDGET_TEXT_ALIGNMENTS=['left','center','right'];
 
 function normalizedFieldValue(annotation){
   const value=annotation?.fieldValue;
@@ -232,10 +239,22 @@ function pdfRectGeometry(rect,viewport){
   if(![left,top,right,bottom].every(Number.isFinite)||right<=left||bottom<=top)return null;
   return {left:100*left/width,top:100*top/height,width:100*(right-left)/width,height:100*(bottom-top)/height};
 }
+function pdfWidgetFontSize(annotation){
+  const rect=normalizedPdfRect(annotation?.rect);if(!rect)return PDF_WIDGET_DEFAULT_FONT_SIZE;
+  const authored=Math.max(0,Number(annotation?.defaultAppearanceData?.fontSize)||0)||PDF_WIDGET_DEFAULT_FONT_SIZE;
+  const height=Math.max(0,Math.abs(rect[3]-rect[1])-PDF_WIDGET_BORDER_SIZE);if(height<=0)return authored;
+  const roundToOneDecimal=value=>Math.round(10*value)/10;
+  if(annotation?.multiLine){
+    const lines=Math.round(height/(PDF_WIDGET_LINE_FACTOR*authored))||1;
+    return Math.min(authored,roundToOneDecimal((height/lines)/PDF_WIDGET_LINE_FACTOR));
+  }
+  return Math.min(authored,roundToOneDecimal(height/PDF_WIDGET_LINE_FACTOR));
+}
 function pdfFieldRectModel(annotation,viewport,index=0,pageNumber=1){
   const value=normalizedFieldValue(annotation),geometry=pdfRectGeometry(annotation?.rect,viewport);
   if(!geometry||!searchablePdfField(annotation))return null;
-  return {value,fieldKey:pdfFieldKey(annotation,index,pageNumber),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize:Math.max(0,Number(annotation.defaultAppearanceData?.fontSize)||0),...geometry};
+  const rawAlignment=annotation?.textAlignment,alignment=rawAlignment===null||rawAlignment===undefined?NaN:Number(rawAlignment);
+  return {value,fieldKey:pdfFieldKey(annotation,index,pageNumber),fieldType:String(annotation.fieldType||''),multiLine:!!annotation.multiLine,fieldName:String(annotation.fieldName||''),fontSize:pdfWidgetFontSize(annotation),textAlign:Number.isInteger(alignment)?(PDF_WIDGET_TEXT_ALIGNMENTS[alignment]||''):'',...geometry};
 }
 function pdfFormMatchRectModel(match,viewport){const geometry=pdfRectGeometry(match?.rect,viewport);return geometry?{fieldKey:String(match?.fieldKey||''),...geometry}:null}
 
@@ -278,7 +297,7 @@ function createCopyablePdfField(model){
   const field=document.createElement(model.multiLine?'textarea':'input');
   if(!model.multiLine)field.type='text';
   field.className='document-pdf-copy-field';field.dataset.pdfFieldKey=model.fieldKey;field.readOnly=true;field.value=model.value;field.dir='auto';field.tabIndex=0;field.setAttribute('aria-readonly','true');
-  if(model.fieldName)field.setAttribute('aria-label',model.fieldName);applyFieldGeometry(field,model);if(model.fontSize>0)field.style.fontSize=`calc(${model.fontSize}px * var(--total-scale-factor))`;return field;
+  if(model.fieldName)field.setAttribute('aria-label',model.fieldName);applyFieldGeometry(field,model);if(model.fontSize>0)field.style.fontSize=`calc(${model.fontSize}px * var(--total-scale-factor))`;if(model.textAlign)field.style.textAlign=model.textAlign;return field;
 }
 function createPdfFormMatchMarker(model,{current=false,count=1}={}){const marker=document.createElement('span');marker.className=`document-pdf-form-match-marker${current?' current':''}`;marker.dataset.pdfFieldKey=model.fieldKey;marker.dataset.matchCount=String(Math.max(1,Number(count)||1));marker.setAttribute('aria-hidden','true');applyFieldGeometry(marker,model);return marker}
 

@@ -119,6 +119,18 @@ test('PDF form copy proxy stays glyph-transparent while focused and selected',()
   assert.doesNotMatch(selectionRule,/(?:color|text-fill-color):#111/);
 });
 
+test('PDF form copy proxy mirrors PDF.js text-widget content-box metrics for native selection alignment',()=>{
+  const css=fs.readFileSync(new URL('../shared/global-document-search.css',import.meta.url),'utf8');
+  const pdfjsCss=fs.readFileSync(new URL('../netunim-orders/site/assets/vendor/pdfjs/web/pdf_viewer.css',import.meta.url),'utf8');
+  const proxyRule=css.match(/\.document-pdfjs-container \.document-pdf-copy-field\{([^}]*)\}/)?.[1]||'';
+  assert.match(pdfjsCss,/\.textWidgetAnnotation :is\(input, textarea\),[\s\S]{0,420}?border: 2px solid var\(--input-unfocused-border-color\);/,'the vendored PDF.js widget contract still reserves a 2px border inset');
+  assert.match(proxyRule,/box-sizing:border-box/);
+  assert.match(proxyRule,/border:2px solid transparent!important/,"transparent proxy must preserve PDF.js' 2px content inset without painting a border");
+  assert.match(proxyRule,/padding:revert/,'proxy keeps the browser input/textarea padding that PDF.js form widgets rely on instead of inventing a shared inset');
+  assert.match(proxyRule,/font:calc\(9px \* var\(--total-scale-factor\)\) sans-serif/,'proxy starts from the same PDF.js form-widget font shorthand before applying the annotation font size');
+  assert.doesNotMatch(proxyRule,/line-height:/,'an invented line-height shifts the browser selection box away from PDF.js widget metrics');
+});
+
 test('local PDF form copy layer maps text widgets without changing their authored appearance',()=>{
   const viewport={width:600,height:800,transform:[1,0,0,-1,0,800],convertToViewportPoint:(x,y)=>[x,800-y]};
   const model=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'ליבי מאיר',fieldName:'שם',rect:[300,700,500,730],multiLine:false,defaultAppearanceData:{fontSize:14}},viewport);
@@ -126,9 +138,14 @@ test('local PDF form copy layer maps text widgets without changing their authore
   assert.equal(model.fieldName,'שם');
   assert.equal(model.multiLine,false);
   assert.equal(model.fontSize,14);
+  assert.equal(model.textAlign,'');
+  assert.equal(copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'ליבי',rect:[300,700,500,730],textAlignment:null,defaultAppearanceData:{fontSize:14}},viewport).textAlign,'','PDF.js null alignment must remain unset rather than being coerced to left');
   assert.deepEqual([model.left,model.top,model.width,model.height].map(value=>Math.round(value*100)/100),[50,8.75,33.33,3.75]);
   assert.equal(copyablePdfTextFieldModel({fieldType:'Btn',fieldValue:'x',rect:[0,0,10,10]},viewport),null,'non-text widgets are never exposed as text controls');
   assert.equal(copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'secret',password:true,rect:[0,0,10,10]},viewport),null,'password fields are never exposed');
+  const compact=copyablePdfTextFieldModel({fieldType:'Tx',fieldValue:'needle',rect:[100,600,300,610],textAlignment:2,defaultAppearanceData:{fontSize:14}},viewport);
+  assert.equal(compact.fontSize,5.9,"copy proxy applies PDF.js' field-height font clamp instead of overflowing the native content box");
+  assert.equal(compact.textAlign,'right','copy proxy carries PDF.js text alignment into the selection geometry');
 });
 
 test('AcroForm geometry follows the PDF.js 6 PageViewport API and transform fallback',()=>{
