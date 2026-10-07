@@ -18,7 +18,7 @@ import {createDomainsCustomersEditor} from '../netunim-orders/site/assets/js/dom
 import {createDomainsCustomersView} from '../netunim-orders/site/assets/js/domains/customers/view.js';
 import {createDomainsCustomersBulk} from '../netunim-orders/site/assets/js/domains/customers/bulk.js';
 import {money} from '../netunim-orders/site/assets/js/core/money.js';
-import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {createStateNormalization as createOrderNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {cashflowWarningItems} from '../netunim-orders/site/assets/js/domains/bank/alerts.js';
 import {dueCheckWarningItems} from '../netunim-orders/site/assets/js/domains/checks/alerts.js';

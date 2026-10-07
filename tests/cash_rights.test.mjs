@@ -6,7 +6,7 @@ import {createDomainsCashEditor} from '../netunim-kupa/site/assets/js/domains/ca
 import {createDomainsCashController} from '../netunim-kupa/site/assets/js/domains/cash/controller.js';
 import {createUiActions} from '../netunim-kupa/site/assets/js/ui/actions.js';
 import {createUiDateEditor} from '../netunim-kupa/site/assets/js/ui/date-editor.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {moneyWithCents} from '../netunim-kupa/site/assets/js/core/money.js';
 import {applyLedgerTypeSign,ledgerEditorAmount,ledgerTypeLabel} from '../netunim-kupa/site/assets/js/domains/cash/model.js';
 

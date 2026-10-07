@@ -37,7 +37,7 @@ import {allInstallmentsData,businessInstallmentsData,homeInstallmentsData,credit
 import {createDomainsBankBridge} from '../netunim-kupa/site/assets/js/domains/bank/bridge.js';
 import {bankLongTermPositionData,bankNextCycleCommitmentsData,bankHomeNextCycleCommitmentsData,bankProjectedThisMonthData,bankHomeProjectedThisMonthData} from '../netunim-kupa/site/assets/js/domains/bank/model.js';
 import {createDomainsCreditController} from '../netunim-kupa/site/assets/js/domains/credit/controller.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {kupaAccountCashflowData} from '../netunim-orders/site/assets/js/domains/bank/readout.js';
 import {creditRows as ordersCreditRows} from '../netunim-orders/site/assets/js/domains/finance/reporting.js';
 import {todayISO,localISO,dObj,addMonthsISO} from '../netunim-kupa/site/assets/js/core/dates.js';

@@ -5,7 +5,7 @@ import {buildKupaGlobalSearchEntries,searchKupaGlobalData,searchKupaGlobalEntrie
 import {createDomainsCashView} from '../netunim-kupa/site/assets/js/domains/cash/view.js';
 import {createDomainsExpensesView} from '../netunim-kupa/site/assets/js/domains/expenses/view.js';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
-import {localSearchMarkup} from '../netunim-kupa/site/assets/js/ui/search.js';
+import {localSearchMarkup} from '../netunim-kupa/site/assets/js/ui-primitives/local-search.js';
 
 const state={
   checks:[{id:'CHK1',name:'משה כהן',amount:1500,dueDate:'2026-09-10',status:'בקופה',account:'ביתי',checkNumber:'00177',note:'עבור ארון'}],

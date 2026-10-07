@@ -1,4 +1,4 @@
-import {notesSheetHasMeaningfulData} from '../domains/notes/sheet-model.js';
+import {notesSheetHasMeaningfulData} from '../shared/notes-sheet-model.js';
 import {assertEntityCollection,assertEntityCollections} from '../shared/data-invariants.js';
 
 export const KUPA_ENTITY_COLLECTIONS=Object.freeze(['credits','cash','rights','notes','expenses','cards','notesSheet.rows','notesSheet.columns','notesSheet.sheets']);

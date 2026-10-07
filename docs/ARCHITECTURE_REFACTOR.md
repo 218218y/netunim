@@ -36,37 +36,54 @@ remain separate from structural refactors.
   startup wiring. Its IndexedDB adapter retries a failed open on a later call
   instead of retaining a rejected open promise.
 - Orders bulk range selection is a pure `core/` policy used by six domains.
-  The module graph now rejects direct imports from Orders domains into `ui/`.
+  The module graph now rejects direct imports from either app's domains into `ui/`.
+- Kupa state normalization receives bank-feed, credit-sync, and expired-credit
+  policies through required composition ports. Missing ports fail before recovery.
+  Notes workbook normalization and validation use the canonical generated
+  contract. Kupa's local-search markup is a pure `ui-primitives/` module used by
+  domain views, with no shell-UI import.
+- Orders reminder-date normalization is one app contract used by both persisted
+  state and note alerts. State snapshots compare shared checks with the shared
+  JSON equality contract instead of importing sync merge code.
 
 ## Dependency direction
 
 Pure core and protocol contracts may be imported by domain and application
 logic. Storage and cloud implement infrastructure ports; composition supplies
 their domain policies and UI callbacks. Views may use browser APIs. The enforced
-part today is `storage/cloud/sync -/-> domains/ui` in both apps and
-`Orders domains -/-> ui`; this is an incremental boundary,
-not a claim that every remaining dependency follows the final direction.
+part today is `storage/cloud/sync -/-> domains/ui`, `state -/-> domains/sync`,
+and `domains -/-> ui` in both apps. These rules check direct imports. `shared/`
+is a code-sharing location, not an unrestricted low-level layer; new contracts
+and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** map the inputs and outputs of one cohesive capability
-   at a time. Orders suppliers wiring is the next candidate visible in
-   `main.js`. Extract only after recording lifecycle
-   order and deferred callback dependencies; keep the public runtime behavior
-   fixed and run the browser startup and sync gates for each extraction.
-2. **State boundaries:** audit `state/normalization.js` and validation imports
-   that still depend on domain models. Move only pure, genuinely common data
-   rules into contracts. Keep credit and bank policies explicit and test existing
-   payload behavior before changing an import.
-3. **UI imports and integrations:** remove `domains -> ui` helper imports by
-   locating each helper's actual owner. Move browser/network adapters out of
-   domain folders in separate changes, with ports wired at composition.
-4. **Compatibility inventory:** for every legacy reader, persisted key, and old
+1. **Action registry:** `createUiActions` currently takes 104 inputs in Kupa and
+   250 in Orders. Record each action's owner, event channel, mutation guard, and
+   rendered `data-*` reference. Introduce a small registry that rejects duplicate
+   names and preserves guard metadata. Extract one complete capability action
+   pack at a time; verify registered, referenced, and dead actions before
+   removing the monolithic factory. The registry must not become a context of
+   hundreds of callbacks.
+2. **Composition roots:** map each capability's inputs, outputs, startup phase,
+   and deferred callbacks. Orders suppliers and Kupa cash are the next cohesive
+   candidates. Keep public behavior fixed and run browser startup and sync gates
+   for each extraction. Do not create a broad application service locator.
+3. **Lifecycle:** once capabilities own their actions and startup ports, replace
+   individual callbacks with a small set of explicit phases: preflight, local
+   recovery, hydration, first render, remote reconciliation, background jobs.
+   Test phase order, partial failure, retry, and shutdown where applicable.
+4. **Integrations:** move browser and network adapters from domains behind
+   explicit platform/integration ports. Preserve credential and persistence
+   semantics while moving each adapter.
+5. **Compatibility inventory:** for every legacy reader, persisted key, and old
    RPC, record read/write use, production data dependency, retirement condition,
    and a proving test. Do not delete a reader on name alone.
-5. **Remaining sources of truth:** inventory SQL setup/operator copies, generated
+6. **Contracts and sources of truth:** introduce JSDoc/checkJs at storage, cloud,
+   sync and composition boundaries. Inventory SQL setup/operator copies, generated
    assets, and CSS overrides before adding deterministic generation or splitting
    files. Keep release receipts and postflight checks as gates.
 
 Use focused local tests for each slice. The full verification matrix includes
-browser and PostgreSQL suites and must pass before deployment.
+browser and PostgreSQL suites and must pass before deployment. A local focused
+pass is not a deployment baseline; record the full CI result for this change.

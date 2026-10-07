@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='kupa-app-shell-';
-const CACHE='kupa-app-shell-esm-3095f455032b';
+const CACHE='kupa-app-shell-esm-e8b04733c376';
 const SHELL=[
   './',
   './index.html',
@@ -12,6 +12,7 @@ const SHELL=[
   './assets/js/composition/cloud.js',
   './assets/js/composition/finance-cloud.js',
   './assets/js/composition/finance.js',
+  './assets/js/composition/state-normalization.js',
   './assets/js/composition/storage-v2.js',
   './assets/js/core/dates.js',
   './assets/js/core/money.js',
@@ -60,7 +61,6 @@ const SHELL=[
   './assets/js/domains/expenses/selectors.js',
   './assets/js/domains/expenses/view.js',
   './assets/js/domains/notes/controller.js',
-  './assets/js/domains/notes/sheet-model.js',
   './assets/js/domains/records/commands.js',
   './assets/js/domains/search/model.js',
   './assets/js/lifecycle.js',
@@ -163,6 +163,7 @@ const SHELL=[
   './assets/js/sync/merge-records.js',
   './assets/js/sync/merge.js',
   './assets/js/sync/recovery.js',
+  './assets/js/ui-primitives/local-search.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/backup.js',
   './assets/js/ui/bulk.js',
@@ -182,7 +183,6 @@ const SHELL=[
   './assets/js/ui/global-search.js',
   './assets/js/ui/modal.js',
   './assets/js/ui/navigation.js',
-  './assets/js/ui/search.js',
   './assets/js/ui/secondary-read-only-actions.js',
   './assets/js/ui/settings.js',
   './assets/js/ui/sidebar.js',

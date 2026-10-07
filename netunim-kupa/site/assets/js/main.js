@@ -7,7 +7,7 @@ import {createSpreadsheetWorkspace} from './shared/spreadsheet-workspace.js';
 import {esc} from './core/values.js';
 import {createCreditCardOrderView} from './shared/credit-card-order-view.js';
 import {createUiConnection} from './ui/connection.js';
-import {createStateNormalization} from './state/normalization.js';
+import {createStateNormalization} from './composition/state-normalization.js';
 import {createUiStatus} from './ui/status.js';
 import {createStorageIndexedDb} from './storage/indexed-db.js';
 import {createStorageBrowser} from './storage/browser.js';

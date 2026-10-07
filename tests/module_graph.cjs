@@ -31,8 +31,10 @@ for(const app of ['kupa','orders']){
         if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
           assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
         }
-        if(app==='orders'&&relative.startsWith('assets/js/domains/'))
-          assert.ok(!dependency.startsWith('ui/'),relative+': Orders domains must use core contracts or UI ports: '+dependency);
+        if(relative.startsWith('assets/js/state/'))
+          assert.ok(!/^(domains|sync)\//.test(dependency),relative+': state must use contracts or composition ports: '+dependency);
+        if(relative.startsWith('assets/js/domains/'))
+          assert.ok(!dependency.startsWith('ui/'),relative+': domains must use shared presentation primitives or UI ports: '+dependency);
       }
       if(/assets\/js\/(storage|cloud|sync)\//.test(relative)&&node.type==='Identifier')assert.notEqual(node.name,'document',relative+': DOM belongs behind a UI port');
       if(/\/(model|readout)\.js$/.test(relative)&&node.type==='Identifier')assert.ok(!['document','window','localStorage','fetch','indexedDB'].includes(node.name),relative+': calculation module has side effects');
