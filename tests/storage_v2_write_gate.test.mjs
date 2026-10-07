@@ -8,7 +8,7 @@ import {createStoragePersistence as createOrdersPersistence} from '../netunim-or
 import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
 import {ORDERS_LEGACY_SNAPSHOT_KEY,KUPA_LEGACY_SNAPSHOT_KEY} from './retired_business_storage_keys.mjs';
-import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
+import {createStorageV2AccountMarker} from '../shared/storage-v2-account-marker.js';
 import {isStorageV2ActivationCached,storageAccountMarkerCacheKey,storageLocalEngineCacheKey} from '../shared/storage-v2-activation-cache.js';
 import {storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
@@ -134,7 +134,7 @@ test('check edits without a ready Shared V2 runtime fail before any legacy write
 test('Orders V2 fails closed on missing Main checkpoint and exposes no V1 outbox writer',async()=>{
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
-    const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
+    const browser=createOrdersBrowser({storageV2:{accountV2Active:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0},prepareState:()=>({}),prepareCloudState:()=>({}),normalizeState:value=>value});
     await assert.rejects(browser.recoverLocalV2State(),/v2_main_recovery_required/);
     assert.equal(browser.markCloudPending,undefined);
     await assert.rejects(browser.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
@@ -145,10 +145,10 @@ test('Orders V2 fails closed on missing Main checkpoint and exposes no V1 outbox
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
-test('cutover marker forbids Kupa V1 browser snapshots and cloud outboxes',async()=>{
+test('account V2 marker forbids Kupa V1 browser snapshots and cloud outboxes',async()=>{
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();let writes=0;
   try{
-    const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
+    const browser=createKupaBrowser({storageV2:{accountV2Active:true,recover:async()=>null,persist:()=>({handled:false})},model:{state:{}},session:{localSnapshotSeq:0,dbRevision:0},files:{},normalizeState:value=>value,idbGet:async()=>null,idbPut:async()=>{writes++}});
     assert.throws(()=>browser.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(browser.loadBrowserState(),/v2_main_recovery_required/);
     assert.equal(globalThis.localStorage.length,0);assert.equal(writes,0);
@@ -159,7 +159,7 @@ test('Kupa V2 save bypasses the retired V1 writer while protocol verification st
   const prior=globalThis.localStorage;globalThis.localStorage=localStore();let v2Writes=0;
   try{
     const session={localSnapshotSeq:0,dbRevision:0,storageProtocolBlocked:false};
-    const browser=createKupaBrowser({storageV2:{cutoverActive:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}},
+    const browser=createKupaBrowser({storageV2:{accountV2Active:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}},
       model:{state:{}},session,files:{}});
     assert.equal(browser.persistImmediateBrowserSnapshot(),true);
     assert.equal(v2Writes,1);assert.equal(globalThis.localStorage.length,0);
@@ -173,7 +173,7 @@ test('unmarked Kupa browser cannot recover a V1 business snapshot',async()=>{
   const previous=globalThis.localStorage;
   globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
   try{
-    const browser=createKupaBrowser({storageV2:{cutoverActive:false,recover:async()=>null,recoverReadOnly:async()=>null},
+    const browser=createKupaBrowser({storageV2:{accountV2Active:false,recover:async()=>null,recoverReadOnly:async()=>null},
       model:{state:{}},session:{localSnapshotSeq:0},files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
     assert.equal(await browser.loadBrowserState(),null);
     assert.equal(await browser.loadBrowserStateReadOnly(),null);
@@ -182,13 +182,13 @@ test('unmarked Kupa browser cannot recover a V1 business snapshot',async()=>{
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
-test('Orders cutover startup restores Main V2 without opening a legacy browser snapshot',async()=>{
+test('Orders account V2 startup restores Main without opening a legacy browser snapshot',async()=>{
   const previous=globalThis.localStorage;
   globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
   try{
     const state=structuredClone(ORDERS_INITIAL_STATE),model={state:{}},captured=[];
     state.notesSheet={sheets:[{id:'historical'}],columns:[],rows:[]};
-    const browser=createOrdersBrowser({storageV2:{cutoverActive:true,recover:async()=>({state,appMetadata:{snapshotSeq:11}})},
+    const browser=createOrdersBrowser({storageV2:{accountV2Active:true,recover:async()=>({state,appMetadata:{snapshotSeq:11}})},
       model,files:{},session:{localSnapshotSeq:0,cloudRevision:3},normalizeState:value=>structuredClone(value),
       domainRevisions:{reconcile:()=>{}},captureEmbeddedWorkbook:async sheet=>captured.push(sheet)});
     assert.ok(await browser.recoverLocalV2State());
@@ -197,13 +197,13 @@ test('Orders cutover startup restores Main V2 without opening a legacy browser s
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
-test('Kupa cutover startup reads only V2 Main and cloud cursor before Shared hydration',async()=>{
+test('Kupa account V2 startup reads only Main and cloud cursor before Shared hydration',async()=>{
   const priorStorage=globalThis.localStorage,priorNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:false}});
   try{
     const model={state:{}},session={localSnapshotSeq:0},checksSession={sharedChecksGeneration:0};
-    const browser=createKupaBrowser({storageV2:{cutoverActive:true,recover:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:9,revision:4}})},
+    const browser=createKupaBrowser({storageV2:{accountV2Active:true,recover:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:9,revision:4}})},
       model,session,files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
     const recovery=createSyncRecovery({model,session,checksSession,loadBrowserState:browser.loadBrowserState,
       getCloudPending:async()=>{throw new Error('legacy_main_pending_read')},getSharedChecksPending:async()=>{throw new Error('legacy_shared_pending_read')},
@@ -221,12 +221,12 @@ test('secondary V2 recovery does not consult legacy snapshots or pending state',
   const prior=globalThis.localStorage;globalThis.localStorage={getItem:()=>{throw new Error('legacy_snapshot_read')}};
   try{
     const ordersModel={state:{}};
-    const orders=createOrdersBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:structuredClone(ORDERS_INITIAL_STATE),appMetadata:{snapshotSeq:5}})},
+    const orders=createOrdersBrowser({storageV2:{accountV2Active:true,recoverReadOnly:async()=>({state:structuredClone(ORDERS_INITIAL_STATE),appMetadata:{snapshotSeq:5}})},
       model:ordersModel,files:{},session:{localSnapshotSeq:0},normalizeState:value=>structuredClone(value)});
     assert.ok(await orders.recoverReadOnlyV2State());
     assert.deepEqual(ordersModel.state.checks,[]);
     const model={state:{}},session={},checksSession={};
-    const kupa=createKupaBrowser({storageV2:{cutoverActive:true,recoverReadOnly:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:6,revision:7}})},
+    const kupa=createKupaBrowser({storageV2:{accountV2Active:true,recoverReadOnly:async()=>({state:{cash:[{id:'v2'}],checks:[]},appMetadata:{snapshotSeq:6,revision:7}})},
       model,session,files:{},idbGet:async()=>{throw new Error('legacy_idb_read')}});
     const recovery=createSyncRecovery({model,session,checksSession,loadBrowserStateReadOnly:kupa.loadBrowserStateReadOnly,
       getCloudPending:async()=>{throw new Error('legacy_main_pending_read')},getSharedChecksPending:async()=>{throw new Error('legacy_shared_pending_read')},
@@ -242,7 +242,7 @@ for(const app of ['orders','kupa'])test(`${app}: V2 save never parses the legacy
   const storage=localStore();let v2Writes=0;
   globalThis.localStorage={...storage,getItem:key=>{if(key===legacyKey)throw new Error('legacy_snapshot_read');return storage.getItem(key)}};
   try{
-    const storageV2={cutoverActive:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}};
+    const storageV2={accountV2Active:true,persist:()=>{v2Writes++;return {handled:true,committed:Promise.resolve(),emergencyDurable:true}}};
     const session={localSnapshotSeq:7,cloudRevision:1,dbRevision:1,storageProtocolBlocked:false};
     const browser=app==='orders'
       ?createOrdersBrowser({storageV2,model:{state:structuredClone(ORDERS_INITIAL_STATE)},files:{},session})
@@ -255,30 +255,30 @@ for(const app of ['orders','kupa'])test(`${app}: V2 save never parses the legacy
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
 
-test('durable cutover marker must agree with its synchronous cache and require a primary V2 writer',async()=>{
+test('durable account marker must agree with its synchronous cache and require a primary V2 writer',async()=>{
   const storage=localStore(),records=new Map();let marks=0,owner='account-A';
-  const db={readCutover:async scope=>records.get(scope)||null,markCutover:async(app,identity)=>{marks++;const record={version:2,scope:`${app}:${identity}`,app,owner:identity};records.set(record.scope,record);return record}};
-  const cutover=createStorageV2Cutover({app:'orders',owner:()=>owner,primary:()=>true,db,storage});
-  assert.equal(await cutover.verify(),false);
-  const secondary=createStorageV2Cutover({app:'orders',owner:()=>owner,primary:()=>false,db,storage});
+  const db={readV2Marker:async scope=>records.get(scope)||null,markAccountMarker:async(app,identity)=>{marks++;const record={version:2,scope:`${app}:${identity}`,app,owner:identity};records.set(record.scope,record);return record}};
+  const accountMarker=createStorageV2AccountMarker({app:'orders',owner:()=>owner,primary:()=>true,db,storage});
+  assert.equal(await accountMarker.verify(),false);
+  const secondary=createStorageV2AccountMarker({app:'orders',owner:()=>owner,primary:()=>false,db,storage});
   await assert.rejects(secondary.mark(),/preflight_required/);
   assert.equal(marks,0);
-  await cutover.mark();
-  assert.equal(await cutover.verify(),true);
-  storage.removeItem(storageCutoverKey('orders',owner));
-  assert.equal(await cutover.verify(),true);
-  assert.equal(storage.getItem(storageCutoverKey('orders',owner)),'2');
+  await accountMarker.mark();
+  assert.equal(await accountMarker.verify(),true);
+  storage.removeItem(storageAccountMarkerCacheKey('orders',owner));
+  assert.equal(await accountMarker.verify(),true);
+  assert.equal(storage.getItem(storageAccountMarkerCacheKey('orders',owner)),'2');
   records.delete(`orders:${owner}`);
-  await assert.rejects(cutover.verify(),/marker_mismatch/);
+  await assert.rejects(accountMarker.verify(),/marker_mismatch/);
   owner='account-B';
-  assert.equal(await cutover.verify(),false);
+  assert.equal(await accountMarker.verify(),false);
 });
 
 for(const marker of ['cloud','local'])test(`Orders secondary tab recovers Main and Shared read-only before render after ${marker} V2 marker`,async()=>{
   const previous=globalThis.localStorage;globalThis.localStorage=localStore();
   try{
     const calls=[],model={state:{checks:[{id:'obsolete'}]}};
-    const lifecycle=createOrdersLifecycle({model,session:{},tab:{primaryTab:false},verifyStorageCutover:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
+    const lifecycle=createOrdersLifecycle({model,session:{},tab:{primaryTab:false},verifyStorageV2AccountMarker:async()=>marker==='cloud',verifyLocalStorageEngine:async()=>marker==='local',
       storageOwnerCurrent:()=>marker==='local'?'local':'account',
       acquirePrimaryTabLock:async()=>{},loadSession:()=>null,
       restoreBrowserStateFallback:async()=>{throw new Error('secondary used legacy Main recovery')},

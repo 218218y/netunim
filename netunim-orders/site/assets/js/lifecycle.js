@@ -5,7 +5,7 @@ function startupMark(name){try{globalThis.performance?.mark?.(`orders-startup:${
 function nextTurn(){return new Promise(resolve=>setTimeout(resolve,0))}
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,files, tab, session, checksSession, resumeIncompleteRestore=async()=>false, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, sharedChecksHasLocalWork=()=>true, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>null,localBirthPreparing=()=>false,storageOwnerCurrent=()=>null,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,readStorageProtocolState,authenticatedOwner=()=>null,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>null,recoverReadOnlyV2State=async()=>null,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,files, tab, session, checksSession, resumeIncompleteRestore=async()=>false, refreshStorageV2CloudState=async()=>null, cloudHasLocalWork=()=>false, sharedChecksHasLocalWork=()=>true, setSave=()=>{}, setCloud=()=>{}, beginStartupSync=()=>{}, setStartupDomain=()=>{}, syncFolderAccessButton, folderBackupAvailable, folderSaveTitle=()=>'', showSecondaryTabGuard, acquirePrimaryTabLock, render, prepareState, maybeCreateAutomaticFolderBackup, loadDirHandle, requestPersistentBrowserStorage, refreshDirPermission, loadSession, cloudEnabled, refreshKupaReadout, syncSharedChecksFromCloud, openCloud, startOrderPolling=()=>{}, startFinanceAutoSync=()=>{}, prepareStartupAlerts=async()=>false, showStartupAlerts=()=>{}}){
 async function recoverOrdersLocalState(){
   const v2=await refreshStorageV2CloudState();
   if(!v2?.base)throw new Error('orders_v2_cloud_head_missing');
@@ -73,14 +73,14 @@ async function boot(){
   const transfer=await hydrateStorageV2OwnerTransfer();
   await hydrateLocalBirth();
   let localOwner=storageOwnerCurrent()==='local';
-  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
+  let accountV2Active=await verifyStorageV2AccountMarker(),localEngineActive=await verifyLocalStorageEngine();
+  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),accountV2Active,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
       await recoverFencedAccount();
       localOwner=storageOwnerCurrent()==='local';
-      cutoverActive=await verifyStorageCutover();
-      if(!cutoverActive)throw new Error('storage_fenced_recovery_marker_missing');
+      accountV2Active=await verifyStorageV2AccountMarker();
+      if(!accountV2Active)throw new Error('storage_fenced_recovery_marker_missing');
       protocol={allowed:true,reason:'v2-ready'};
     }catch(error){console.error('Orders fenced account recovery',error)}
   }
@@ -94,7 +94,7 @@ async function boot(){
   session.storageProtocolBlocked=false;
 
   if(!tab.primaryTab){
-    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||localBirthPreparing());
+    const v2Required=!!(transfer||storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing());
     let shown=false;
     if(v2Required){
       const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
@@ -114,7 +114,7 @@ async function boot(){
       setSave('העריכה נעולה עד השלמת מעבר החשבון','error');
       syncFolderAccessButton();return;
     }
-    cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine();
+    accountV2Active=await verifyStorageV2AccountMarker();localEngineActive=await verifyLocalStorageEngine();
   }
   if(localOwner){
     try{
@@ -127,16 +127,16 @@ async function boot(){
       setSave('העריכה נעולה עד השלמת מעבר האחסון המקומי','error');
       syncFolderAccessButton();return;
     }
-  }else{if(!cutoverActive)throw new Error('orders_v2_account_marker_required');await recoverLocalV2State()}
+  }else{if(!accountV2Active)throw new Error('orders_v2_account_marker_required');await recoverLocalV2State()}
 
   // Shared Checks must recover before business state is rendered.
   let sharedPrimary=false;
-  if((cutoverActive||localEngineActive)){
+  if((accountV2Active||localEngineActive)){
     sharedPrimary=await recoverSharedChecksV2Primary();
     if(!sharedPrimary)throw new Error('orders_shared_v2_recovery_required');
   }
   if(!localEngineActive&&navigator.onLine&&loadSession()){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloud(error.message,'error');}}
-  if(session.syncCapabilitiesError){if(!cutoverActive||sharedPrimary)render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
+  if(session.syncCapabilitiesError){if(!accountV2Active||sharedPrimary)render();setCloud(session.syncCapabilitiesError.message,'error');setSave(session.syncCapabilitiesError.message,'error');return}
 
   if(!sharedPrimary)sharedPrimary=await recoverSharedChecksV2Primary();
   if(localEngineActive&&!sharedPrimary)throw new Error('orders_local_shared_v2_recovery_required');

@@ -70,7 +70,7 @@ function fixture({remoteMain=null,remoteShared=null,sourceChecks=[{id:'check-1'}
   const factory=()=>{
     const bootstrapCoordinator=createStorageV2BootstrapCoordinator({app:'orders',owner:()=> 'target-account',primary:()=>true,db,operationId:()=> 'transfer-id'});
     return createStorageV2DetachedTarget({app:'orders',targetOwner:'target-account',primary:()=>true,main,shared,bootstrapCoordinator,
-      cutoverMarker:{mark:async()=>{marker=true},verify:async()=>marker},
+      accountMarker:{mark:async()=>{marker=true},verify:async()=>marker},
       readMainRemote:async()=>copy(mainRow),projectMainRemote:row=>copy(row.state),readSharedRemote:async()=>copy(sharedRow),projectSharedRemote:row=>copy(row.state),
       composeMainState:(state,checks)=>({...copy(state),checks:copy(checks.checks)}),projectMainState:full=>({rows:copy(full.rows)}),emptyMainState:()=>({rows:[],checks:[]}),validateMainCloud:state=>assert.ok(Array.isArray(state.rows)),
       rpcMain,rpcShared});

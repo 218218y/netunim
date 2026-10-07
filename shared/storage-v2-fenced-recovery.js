@@ -1,5 +1,5 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
-import {createStorageV2Cutover} from './storage-v2-cutover.js';
+import {createStorageV2AccountMarker} from './storage-v2-account-marker.js';
 import {equalSyncJson} from './cloud-sync.js';
 import {validateSharedChecksState} from './shared-checks-storage-v2.js';
 
@@ -7,16 +7,15 @@ const revision=row=>Number.isSafeInteger(Number(row?.revision))&&Number(row.revi
 const protocol2=state=>[state?.orders,state?.kupa,state?.sharedChecks].every(value=>value===2);
 
 // Used only for an authenticated account whose server fence is already active
-// and whose browser has no account cutover marker. No local V1 value becomes a
-// source for the new checkpoint or a cloud RPC. The account owner explicitly
-// accepts discarding obsolete local V1 state on devices that missed cutover.
+// and whose browser has no durable V2 account marker. Local business records
+// are never used as a checkpoint source or uploaded by this cloud adoption.
 export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOwner,readProtocolState,
   readMainRemote,projectMainRemote,readSharedRemote,projectSharedRemote,composeMainState,
   projectMainState,validateMainState,validateMainCloud,refreshOwnerBinding,
   db=createStorageJournalDb(),storage=globalThis.localStorage}={}){
   if(!['orders','kupa'].includes(app)||[owner,primary,authenticatedOwner,readProtocolState,readMainRemote,projectMainRemote,
     readSharedRemote,projectSharedRemote,composeMainState,projectMainState,validateMainState,validateMainCloud].some(fn=>typeof fn!=='function'))throw new Error('storage_fenced_recovery_configuration');
-  const cutover=createStorageV2Cutover({app,owner,primary,db,storage});
+  const accountMarker=createStorageV2AccountMarker({app,owner,primary,db,storage});
   function guard(identity,sourceOwner){
     if(!primary())throw new Error('storage_fenced_recovery_primary_required');
     if(identity==='local'||!identity||owner()!==sourceOwner||authenticatedOwner()!==identity)throw new Error('storage_fenced_recovery_owner_changed');
@@ -26,7 +25,7 @@ export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOw
     const sourceOwner=String(owner()||'').trim(),identity=sourceOwner==='local'?String(authenticatedOwner()||'').trim():sourceOwner;
     guard(identity,sourceOwner);
     if(sourceOwner==='local'&&typeof refreshOwnerBinding!=='function')throw new Error('storage_fenced_recovery_owner_refresh_required');
-    if(await cutover.verify())return {already:true};
+    if(await accountMarker.verify())return {already:true};
     if(!protocol2(await readProtocolState()))throw new Error('storage_fenced_recovery_protocol_required');guard(identity,sourceOwner);
     const [mainRow,sharedRow]=await Promise.all([readMainRemote(),readSharedRemote()]);guard(identity,sourceOwner);
     if(!mainRow||!sharedRow||revision(mainRow)===null||revision(sharedRow)===null)throw new Error('storage_fenced_recovery_remote_missing');
@@ -41,7 +40,7 @@ export function createStorageV2FencedRecovery({app,owner,primary,authenticatedOw
     if(!protocol2(await readProtocolState()))throw new Error('storage_fenced_recovery_protocol_changed');guard(identity,sourceOwner);
     await db.adoptFencedAccount(app,identity,{mainState,mainCloudState:mainCloud,mainRevision:revision(mainRow),sharedState,sharedRevision:revision(sharedRow),sourceOwner});
     if(sourceOwner==='local')await refreshOwnerBinding();
-    guard(identity,identity);if(!await cutover.verify())throw new Error('storage_fenced_recovery_marker_missing');
+    guard(identity,identity);if(!await accountMarker.verify())throw new Error('storage_fenced_recovery_marker_missing');
     return {already:false,mainRevision:revision(mainRow),sharedRevision:revision(sharedRow)};
   }
   return {recover};

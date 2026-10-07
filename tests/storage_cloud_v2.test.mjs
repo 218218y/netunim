@@ -239,7 +239,7 @@ test('a V2 transition without emergency durability is not reported as locally sa
   try{
     for(const kind of ['orders','kupa']){
       const state=clone(kind==='orders'?ORDERS_INITIAL_STATE:KUPA_INITIAL_STATE),files={},session={localSnapshotSeq:0,cloudRevision:7,dbRevision:7,storageV2CloudPending:false};
-      const storageV2={cutoverActive:true,persist:()=>({handled:true,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1})};
+      const storageV2={accountV2Active:true,persist:()=>({handled:true,emergencyDurable:false,transitioning:true,committed:Promise.resolve(true),seq:1})};
       const browser=kind==='orders'
         ?createOrdersStorageBrowser({storageV2,model:{state},files,session,prepareState:clone,prepareCloudState:clone,normalizeState:clone})
         :createKupaStorageBrowser({storageV2,model:{state},files,session,normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
@@ -256,7 +256,7 @@ test('a cut-over account reads its V2 cursor without reopening an obsolete V1 ou
   try{
     storage.setItem('orders.supabase.pending.v1','stale');
     const state={seq:4,base:{revision:8,ackSeq:4,state:{}},pending:false,flight:null,control:null};
-    const v2={cutoverActive:true,primaryReady:true,cloudState:async()=>state};
+    const v2={accountV2Active:true,primaryReady:true,cloudState:async()=>state};
     const orders=createOrdersStorageBrowser({storageV2:v2,model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0,storageV2CloudPending:false},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
     assert.equal(await orders.refreshStorageV2CloudState(),state);
     assert.equal(orders.storageV2CloudOutboxActive(),true);
@@ -272,12 +272,12 @@ test('a cut-over account reads its V2 cursor without reopening an obsolete V1 ou
 test('browser adapters expose no V1 snapshot writer and require a ready V2 journal',async()=>{
   const previous=globalThis.localStorage,storage=emergencyStore();globalThis.localStorage=storage;
   try{
-    const orders=createOrdersStorageBrowser({storageV2:{cutoverActive:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
+    const orders=createOrdersStorageBrowser({storageV2:{accountV2Active:false},model:{state:clone(ORDERS_INITIAL_STATE)},files:{},session:{localSnapshotSeq:0},prepareState:clone,prepareCloudState:clone,normalizeState:clone});
     assert.equal(orders.queueBrowserStateSnapshot,undefined);
     assert.equal(orders.persistBrowserStateSnapshot,undefined);
     assert.throws(()=>orders.localSnapshot(),/storage_v2_write_unavailable/);
     await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
-    const kupa=createKupaStorageBrowser({storageV2:{cutoverActive:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
+    const kupa=createKupaStorageBrowser({storageV2:{accountV2Active:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
     assert.equal(kupa.persistBrowserStateSync,undefined);
     assert.equal(kupa.queueBrowserStateIdb,undefined);
     assert.throws(()=>kupa.persistImmediateBrowserSnapshot(),/storage_v2_write_unavailable/);

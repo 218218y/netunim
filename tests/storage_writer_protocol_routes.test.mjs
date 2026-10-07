@@ -46,12 +46,12 @@ test('account protocol preflight permits local V2 and an existing account marker
   let calls=0;const readProtocolState=async()=>{calls++;throw Error('offline')};
   assert.equal((await checkStorageProtocolStartup({owner:'local',online:false,readProtocolState})).allowed,true);
   assert.equal((await checkStorageProtocolStartup({owner:'local',localEngineActive:true,online:false,authenticatedOwner:'account',readProtocolState})).allowed,true);
-  assert.equal((await checkStorageProtocolStartup({owner:'account',cutoverActive:true,online:false,readProtocolState})).allowed,true);
+  assert.equal((await checkStorageProtocolStartup({owner:'account',accountV2Active:true,online:false,readProtocolState})).allowed,true);
   assert.equal(calls,0);
 });
 
 test('unmarked account requires authenticated online server proof before cloud adoption',async()=>{
-  const base={owner:'account',cutoverActive:false,online:true,authenticatedOwner:'account'};
+  const base={owner:'account',accountV2Active:false,online:true,authenticatedOwner:'account'};
   const readProtocolState=async()=>({orders:1,kupa:1,sharedChecks:1});
   assert.deepEqual(await checkStorageProtocolStartup({...base,readProtocolState}),{allowed:false,reason:'upgrade-required'});
   assert.deepEqual(await checkStorageProtocolStartup({...base,readProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2})}),{allowed:false,reason:'server-v2'});

@@ -1,7 +1,7 @@
 // A browser without a durable account marker must verify the server's writer
 // protocol before opening an account head. Local-only birth needs no network.
-export async function checkStorageProtocolStartup({owner,cutoverActive,localEngineActive,online,authenticatedOwner,readProtocolState}={}){
-  if(cutoverActive===true||owner==='local'&&localEngineActive===true)return {allowed:true,reason:'v2-ready'};
+export async function checkStorageProtocolStartup({owner,accountV2Active,localEngineActive,online,authenticatedOwner,readProtocolState}={}){
+  if(accountV2Active===true||owner==='local'&&localEngineActive===true)return {allowed:true,reason:'v2-ready'};
   // A local-only install needs no network. A browser with saved account auth
   // but no local marker cannot infer the account's current cloud protocol.
   if(owner==='local'&&!authenticatedOwner)return {allowed:true,reason:'local-birth'};

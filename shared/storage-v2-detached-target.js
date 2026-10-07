@@ -1,5 +1,5 @@
 import {createStorageV2BootstrapCoordinator,createStorageV2BootstrapExecutor,storageV2BootstrapStateHash} from './storage-v2-bootstrap.js';
-import {createStorageV2Cutover} from './storage-v2-cutover.js';
+import {createStorageV2AccountMarker} from './storage-v2-account-marker.js';
 import {cloudWriteError,equalSyncJson,operationAuditMetadata,runBusyCloudWriteWithPolicy} from './cloud-sync.js';
 
 const copy=value=>value==null?value:structuredClone(value);
@@ -17,7 +17,7 @@ export function createStorageV2DetachedTarget({
   app,targetOwner,primary,main,shared,readMainRemote,projectMainRemote,
   readSharedRemote,projectSharedRemote,composeMainState,projectMainState,
   emptyMainState,validateMainCloud,rpcMain,rpcShared,
-  bootstrapCoordinator=null,cutoverMarker=null,
+  bootstrapCoordinator=null,accountMarker=null,
 }={}){
   if(!['orders','kupa'].includes(app)||!String(targetOwner||'').trim()||targetOwner==='local'||
     [primary,main?.recover,main?.initializeCloudHead,main?.initializeUploadLocalCloudHead,main?.cloudState,main?.materializeFlight,main?.acknowledgeFlight,
@@ -25,7 +25,7 @@ export function createStorageV2DetachedTarget({
       composeMainState,projectMainState,emptyMainState,validateMainCloud,rpcMain,rpcShared].some(fn=>typeof fn!=='function'))throw new Error('storage_transfer_target_configuration');
   const owner=()=>targetOwner,guard=()=>{if(!primary())throw new Error('storage_transfer_target_primary_required')};
   const bootstrap=bootstrapCoordinator||createStorageV2BootstrapCoordinator({app,owner,primary});
-  const cutover=cutoverMarker||createStorageV2Cutover({app,owner,primary});
+  const targetMarker=accountMarker||createStorageV2AccountMarker({app,owner,primary});
   function remoteMain(row){const state=projectMainRemote(row);validateMainCloud(state);return state}
   function remoteShared(row){return sharedState(projectSharedRemote(row))}
   async function assertRemote(side,read,project){
@@ -151,6 +151,6 @@ export function createStorageV2DetachedTarget({
     }
     return {clean:true,mainRevision:revision(mainRow),sharedRevision:revision(sharedRow),mainState:copy(mainRecovered.state),sharedState:sharedState(sharedRecovered.state)};
   }
-  async function mark(){guard();await verify();await cutover.mark();guard();return true}
-  return {load,prepare,resume,verify,mark,verifyMarker:()=>cutover.verify()};
+  async function mark(){guard();await verify();await targetMarker.mark();guard();return true}
+  return {load,prepare,resume,verify,mark,verifyMarker:()=>targetMarker.verify()};
 }

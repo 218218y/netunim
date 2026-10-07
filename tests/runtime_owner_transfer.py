@@ -32,7 +32,7 @@ with BrowserSession(ROOT/'netunim-orders/site','orders-v2-owner-transfer',auto_n
       window.__seedObsoleteV1('orders.shared.checks.pending.v1','{"generation":1}');
       const transfer=await storageV2Coordinator.startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-      const marker=await createStorageJournalDb().readCutover('orders:fixture-account');
+      const marker=await createStorageJournalDb().readV2Marker('orders:fixture-account');
       return {owner:storageOwner.current(),revision:transfer.mainRevision,sharedRevision:transfer.sharedRevision,
         marker:marker?.version,mainNote:main?.state?.notes?.find(row=>row.id===note.id)?.content,
         sharedCheck:checks?.state?.checks?.find(row=>row.id===check.id)?.amount,
@@ -84,7 +84,7 @@ with BrowserSession(ROOT/'netunim-kupa/site','kupa-v2-owner-transfer',auto_navig
       window.__seedObsoleteV1('kupa.shared.checks.pending.v1','{"generation":1}');
       const transfer=await storageV2Coordinator.ownerUiPorts().startStorageV2OwnerTransfer({targetOwner:'fixture-account',intent:'upload-local'});
       const {createStorageJournalDb}=await import('./assets/js/shared/storage-journal-idb.js');
-      const marker=await createStorageJournalDb().readCutover('kupa:fixture-account');
+      const marker=await createStorageJournalDb().readV2Marker('kupa:fixture-account');
       return {owner:storageOwner.current(),revision:transfer.mainRevision,sharedRevision:transfer.sharedRevision,
         marker:marker?.version,mainNote:main?.state?.notes?.find(row=>row.id===note.id)?.content,
         sharedCheck:checks?.state?.checks?.find(row=>row.id===check.id)?.amount,

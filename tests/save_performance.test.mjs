@@ -85,7 +85,7 @@ test('IndexedDB connection shares concurrent opens and recovers from failure, ve
 test('V2 snapshot sequence never reads or writes the legacy full-state cache',()=>{
   let reads=0,writes=0;const sequences=[];
   globalThis.localStorage={getItem:()=>{reads++;return null},setItem:()=>{writes++}};
-  const session={localSnapshotSeq:50},files={},storageV2={cutoverActive:true,persist:(_state,_options,metadata)=>{sequences.push(metadata.snapshotSeq);return {handled:true,emergencyDurable:true,committed:Promise.resolve()}}};
+  const session={localSnapshotSeq:50},files={},storageV2={accountV2Active:true,persist:(_state,_options,metadata)=>{sequences.push(metadata.snapshotSeq);return {handled:true,emergencyDurable:true,committed:Promise.resolve()}}};
   const api=kupaBrowser({storageV2,model:{state:{}},session,files,normalizeState:clone,idbGet:async()=>null});
   assert.equal(api.persistImmediateBrowserSnapshot({value:1}),true);assert.equal(api.persistImmediateBrowserSnapshot({value:2}),true);
   api.persistImmediateBrowserSnapshot({value:3});

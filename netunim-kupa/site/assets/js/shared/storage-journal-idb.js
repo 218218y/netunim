@@ -291,12 +291,12 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
     }catch(cause){error=cause;try{tx.abort()}catch{}}};
     tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_bootstrap_group_aborted'));tx.onerror=()=>{error??=tx.error};
   }))}
-  function readCutover(scope){return open().then(db=>new Promise((resolve,reject)=>{
+  function readV2Marker(scope){return open().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(['cutovers'],'readonly'),request=tx.objectStore('cutovers').get(scope);
     request.onsuccess=()=>{try{resolve(request.result?readStorageRecord(request.result):null)}catch(error){reject(error)}};
     request.onerror=()=>reject(request.error);
   }))}
-  function markCutover(app,identity){
+  function markAccountMarker(app,identity){
     if(!['orders','kupa'].includes(app)||!String(identity||'').trim())throw new Error('storage_cutover_scope_invalid');
     return open().then(db=>new Promise((resolve,reject)=>{
       const owner=String(identity),scope=`${app}:${owner}`,mainOwner=`${owner}:${app}`,sharedOwner=`${owner}:shared-checks`;
@@ -370,8 +370,8 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_local_engine_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  function readLocalEngine(app){return readCutover(`local-engine:${app}:local`)}
-  // A browser that missed account cutover may discard its old local copy only
+  function readLocalEngine(app){return readV2Marker(`local-engine:${app}:local`)}
+  // An account browser without a durable V2 marker may adopt the cloud only
   // after the server has proved protocol 2 and both remote documents have been
   // validated. Install both owners and the marker in one transaction: a crash
   // can never expose Main V2 with an old Shared Checks checkpoint (or vice versa).
@@ -443,5 +443,5 @@ export function createStorageJournalDb({name='netunim-storage-v2'}={}){
       tx.oncomplete=()=>resolve(result);tx.onabort=()=>reject(error||tx.error||new Error('storage_fenced_recovery_aborted'));tx.onerror=()=>{error??=tx.error};
     }))
   }
-  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readCutover,markCutover,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
+  return {load,install,initializeCloudHead,claim,append,compact,appendBoundary,replaceCheckpoint,replaceLocalCheckpoint,setBase,beginFlight,acknowledge,rejectFlight,setControl,clearControl,adoptCloudHead,resetState,resetCloudHead,readBoundary,beginBoundary,advanceBoundary,completeBoundary,readOwnerBinding,readOwnerHandoff,initializeOwnerBinding,reserveLocalOwnerTarget,adoptPreparedLocalOwner,beginOwnerHandoff,advanceOwnerHandoff,activateOwnerHandoff,completeOwnerHandoff,readBootstrapGroup,beginBootstrapGroup,advanceBootstrapGroup,readV2Marker,markAccountMarker,readLocalBirth,beginLocalBirth,advanceLocalBirth,markLocalEngine,readLocalEngine,adoptFencedAccount};
 }

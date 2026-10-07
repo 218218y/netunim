@@ -204,10 +204,11 @@ for path in (
     ROOT / "shared/storage-v2-production-transition.js",
     ROOT / "shared/storage-v2-transition.js",
     ROOT / "shared/storage-v2-cutover-coordinator.js",
+    ROOT / "shared/storage-v2-cutover.js",
 ):
     ok(not path.exists(), f"retired cutover module removed: {path.name}")
 for path in (
-    ROOT / "shared/storage-v2-cutover.js",
+    ROOT / "shared/storage-v2-account-marker.js",
     ROOT / "shared/storage-v2-detached-target.js",
     ROOT / "shared/shared-checks-v2-composition.js",
     ROOT / "shared/shared-checks-v2-runtime.js",

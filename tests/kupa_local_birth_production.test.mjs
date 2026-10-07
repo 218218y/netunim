@@ -49,7 +49,7 @@ function bootFixture({primary=true,failBirth=false}={}){
   Object.assign(ports,{model,session,checksSession:{},tab:{primaryTab:primary},normalizeState:value=>value,prepareKupaCloudState:value=>value,
     acquirePrimaryTabLock:async()=>events.push('lock'),hydrateStorageOwner:async()=>events.push('owner'),
     restoreSupaSession:async()=>null,storageOwnerCurrent:()=> 'local',
-    hydrateLocalBirth:async()=>events.push('birth-hydrated'),verifyStorageCutover:async()=>false,
+    hydrateLocalBirth:async()=>events.push('birth-hydrated'),verifyStorageV2AccountMarker:async()=>false,
     verifyLocalStorageEngine:async()=>marker,ensureLocalBirth:async()=>{events.push('birth');if(failBirth)throw Error('birth-failed');marker=true;return true},
     recoverLocalV2State:async()=>{events.push('main');model.state.checks=[{id:'stale'}];return true},
     recoverSharedChecksV2Primary:async()=>{events.push('shared');model.state.checks=[{id:'authoritative'}];return true},
@@ -83,7 +83,7 @@ test('Kupa unmarked browser for a fenced account stops before V1 recovery and re
     const events=[],ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
     Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
-      readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>false,verifyLocalStorageEngine:async()=>false,
+      readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>false,verifyLocalStorageEngine:async()=>false,
       recoverBrowserV2State:async()=>{throw Error('stale V1 loaded')},render:()=>{throw Error('stale state displayed')},setConnectUI:()=>events.push('blocked')});
     await createLifecycle(ports).boot();assert.deepEqual(events,['blocked']);assert.equal(ports.session.storageProtocolBlocked,true);
   }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator}
@@ -98,7 +98,7 @@ test('Kupa fenced stale browser hydrates cloud V2 before opening the screen',asy
     Object.assign(ports,{model:{state:{checks:[]}},session:{},checksSession:{},tab:{primaryTab:true},normalizeState:value=>value,prepareKupaCloudState:value=>value,
       acquirePrimaryTabLock:async()=>{},hydrateStorageOwner:async()=>{},restoreSupaSession:async()=>({user:{id:'account'}}),
       storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),
-      verifyStorageCutover:async()=>marker,verifyLocalStorageEngine:async()=>false,
+      verifyStorageV2AccountMarker:async()=>marker,verifyLocalStorageEngine:async()=>false,
       recoverFencedAccount:async()=>{events.push('cloud-adoption');marker=true},
       recoverBrowserV2State:async()=>{assert.equal(marker,true);events.push('main-v2');return true},
       recoverSharedChecksV2Primary:async()=>{events.push('shared-v2');return true},

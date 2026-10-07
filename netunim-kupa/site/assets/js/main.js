@@ -152,7 +152,7 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
-const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
+const verifyStorageV2AccountMarker=sharedChecksV2Composition.verifyAccountMarker;
 
 const storageTabLock=createStorageTabLock({
   tab,
@@ -326,7 +326,7 @@ storageV2Coordinator.configure({
   storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   captureLegacyWorkbook,
   stateNormalization,domainRevisions,sharedChecksV2Composition,sharedChecksV2,
-  cloudTransport,cloudAuth,mainStorageV2,verifyStorageCutover:()=>verifyStorageCutover(),
+  cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
 const uiCloud=composeCloudUi({
@@ -711,7 +711,7 @@ const lifecycle=createLifecycle({
   recoverLocalV2State:()=>storageV2Coordinator.recoverLocalV2State(),
   recoverReadOnlyV2State:()=>storageV2Coordinator.recoverReadOnlyV2State(),
   ...storageV2Coordinator.lifecyclePorts(),
-  verifyStorageCutover,
+  verifyStorageV2AccountMarker,
   storageOwnerCurrent:()=>storageOwner.current(),
   authenticatedOwner:()=>cloudAuth.loadSupaSession()?.user?.id||null,
   readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),

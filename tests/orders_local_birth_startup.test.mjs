@@ -10,7 +10,7 @@ function fixture(overrides={}){
     hydrateStorageOwner:async()=>calls.push('owner'),
     hydrateLocalBirth:async()=>calls.push('birth-hydrated'),
     storageOwnerCurrent:()=> 'local',
-    verifyStorageCutover:async()=>false,
+    verifyStorageV2AccountMarker:async()=>false,
     verifyLocalStorageEngine:async()=>marker,
     ensureLocalBirth:async()=>{calls.push('birth');marker=true},
     recoverLocalV2State:async()=>{calls.push('main-v2');return {state:{checks:[]}}},
@@ -65,7 +65,7 @@ test('Orders resumes a durable owner transfer before Main V2 recovery or busines
   const f=fixture({
     hydrateStorageV2OwnerTransfer:async()=>({phase:'target-recovered'}),
     resumeStorageV2OwnerTransfer:async()=>f.calls.push('transfer-resumed'),
-    storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
+    storageOwnerCurrent:()=> 'account',verifyStorageV2AccountMarker:async()=>true,
     recoverLocalV2State:async()=>f.calls.push('account-main-recovered'),
     refreshStorageV2CloudState:async()=>({base:{state:{checks:[]},revision:1},seq:0,pending:false,flight:null,control:null}),
   });
@@ -97,7 +97,7 @@ test('Orders unmarked browser for a fenced account stops before V1 recovery and 
 
 test('Orders fenced stale browser installs cloud V2 before any business render',async()=>{
   let marker=false;const f=fixture({storageOwnerCurrent:()=> 'account',authenticatedOwner:()=> 'account',
-    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
+    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');marker=true},
     recoverLocalV2State:async()=>{assert.equal(marker,true);f.calls.push('main-v2')},
     refreshStorageV2CloudState:async()=>({base:{state:{},revision:7},seq:0,pending:false,flight:null,control:null}),
@@ -121,7 +121,7 @@ test('Orders local V1 browser with a saved fenced-account session stops before l
 test('Orders stale local binding adopts a fenced account before local birth or V1 render',async()=>{
   let owner='local',marker=false;
   const f=fixture({storageOwnerCurrent:()=>owner,authenticatedOwner:()=> 'account',
-    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageCutover:async()=>marker,
+    readStorageProtocolState:async()=>({orders:2,kupa:2,sharedChecks:2}),verifyStorageV2AccountMarker:async()=>marker,
     recoverFencedAccount:async()=>{f.calls.push('cloud-adoption');owner='account';marker=true},
     ensureLocalBirth:async()=>{throw Error('stale local V1 migrated')},
     recoverLocalV2State:async()=>{assert.equal(owner,'account');f.calls.push('main-v2')},
@@ -136,7 +136,7 @@ test('Orders stale local binding adopts a fenced account before local birth or V
 
 test('Orders with an account cutover hydrates Shared before a DB capability failure renders Main',async()=>{
   const model={state:{checks:[{id:'stale-main-copy'}]}},f=fixture({
-    model,storageOwnerCurrent:()=> 'account',verifyStorageCutover:async()=>true,
+    model,storageOwnerCurrent:()=> 'account',verifyStorageV2AccountMarker:async()=>true,
     loadSession:()=>({access_token:'present'}),cloudEnabled:()=>true,
     recoverLocalV2State:async()=>f.calls.push('main-v2'),
     recoverSharedChecksV2Primary:async()=>{f.calls.push('shared-v2');model.state.checks=[{id:'authoritative-shared-copy'}];return true},
