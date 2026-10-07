@@ -86,8 +86,8 @@ test('V2 logout clears authorization without moving visible account data into th
 });
 
 test('Kupa Shared Checks state exposes only V2-backed live state helpers',()=>{
-  const storage=createSyncChecksState({model:{state:{checks:[]}},checksSession:{},session:{},normalizeState:value=>value,sharedChecksHasLocalWork:()=>false});
-  assert.deepEqual(Object.keys(storage).sort(),['lastSavedState','sharedChecksHaveLocalWork']);
+  const storage=createSyncChecksState({model:{state:{checks:[]}},checksSession:{},sharedChecksHasLocalWork:()=>false});
+  assert.deepEqual(Object.keys(storage).sort(),['sharedChecksHaveLocalWork']);
   assert.equal(storage.sharedChecksHaveLocalWork(),false);
 });
 
