@@ -26,7 +26,9 @@ The account marker and local engine marker are durable IndexedDB records. Their
 LocalStorage values are synchronous routing caches only. The historical
 physical store `cutovers` and key prefixes are preserved for existing V2
 browsers. `storage-v2-activation-cache.js` is the single place that interprets
-both cache keys. Startup verifies the durable record before exposing business
+both cache keys. `storage-v2-account-marker.js` verifies the durable account
+record and repairs a missing cache only from IndexedDB to LocalStorage. Startup
+verifies the durable record before exposing business
 state; a cache alone cannot authorize a writer.
 
 The server minimum writer protocol remains a permanent fence. Current clients

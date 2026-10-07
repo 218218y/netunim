@@ -142,7 +142,7 @@ const sharedChecksV2Composition=storageV2Coordinator.createSharedComposition({
 });
 const sharedChecksV2=sharedChecksV2Composition.runtime;
 const recoverSharedChecksV2Primary=()=>storageV2Coordinator.recoverShared();
-const verifyStorageCutover=sharedChecksV2Composition.verifyCutover;
+const verifyStorageV2AccountMarker=sharedChecksV2Composition.verifyAccountMarker;
 
 const cloudAuth=createCloudAuth({
   session,
@@ -652,7 +652,7 @@ const syncDocument=createSyncDocument({
 storageV2Coordinator.configure({
   storageBrowser,syncDocument,syncChecks,model,session,checksSession,files,
   stateSnapshots,stateNormalization,prepareV2Checkpoint,validateMainState:state=>assertOrderEntityInvariants(state,{includeChecks:Object.hasOwn(state||{},'checks'),required:true}),domainRevisions,sharedChecksV2Composition,sharedChecksV2,
-  cloudTransport,cloudAuth,mainStorageV2,verifyStorageCutover:()=>verifyStorageCutover(),
+  cloudTransport,cloudAuth,mainStorageV2,verifyStorageV2AccountMarker:()=>verifyStorageV2AccountMarker(),
 });
 
 const uiCloud=composeCloudUi({
@@ -709,7 +709,7 @@ const lifecycle=createLifecycle({
   verifyLocalStorageEngine:()=>verifyStorageV2LocalEngine({app:'orders',owner:()=>storageOwner.current()}),
   ...storageV2Coordinator.localBirthLifecyclePorts(),
   ...storageV2Coordinator.ownerTransferLifecyclePorts(),
-  verifyStorageCutover,
+  verifyStorageV2AccountMarker,
   authenticatedOwner:()=>cloudAuth.loadSession()?.user?.id||null,
   readStorageProtocolState:()=>cloudTransport.readStorageProtocolState(),
   recoverFencedAccount:()=>storageV2Coordinator.recoverFencedAccount(),

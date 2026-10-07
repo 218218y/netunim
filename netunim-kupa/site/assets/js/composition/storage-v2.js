@@ -45,7 +45,7 @@ export function createKupaStorageV2Coordinator({tab,session,storage=globalThis.l
     if(sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
     const marked=sourceOwner==='local'
       ?await verifyStorageV2LocalEngine({app:'kupa',owner:()=>sourceOwner})
-      :await p.verifyStorageCutover();
+      :await p.verifyStorageV2AccountMarker();
     if(marked!==true||sourceOwner!==owner.current()||!owner.locked)throw new Error('kupa_transfer_source_not_primary');
     await Promise.all([p.mainStorageV2.commitPromise,p.sharedChecksV2.commitPromise,p.files.storageV2CommitPromise,
       p.session.saveQueue,p.session.cloudSavePromise,p.checksSession.sharedChecksSavePromise,

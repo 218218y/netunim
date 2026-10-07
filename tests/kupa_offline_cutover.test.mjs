@@ -25,7 +25,7 @@ function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFa
     hydrateStorageOwner:async()=>events.push('owner'),
     restoreSupaSession:async()=>authenticated?{user:{id:'account-A'}}:null,
     ensureSyncCapabilities:async()=>{if(capabilityFailure)throw new Error('cloud capability unavailable')},
-    verifyStorageCutover:async()=>true,
+    verifyStorageV2AccountMarker:async()=>true,
     recoverBrowserV2State:async options=>{
       assert.deepEqual(options,{startup:true,deferRender:true});
       events.push('main-recovered');return true;

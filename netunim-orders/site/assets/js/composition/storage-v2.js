@@ -72,7 +72,7 @@ export function createOrdersStorageV2Coordinator({tab,session,storage=globalThis
       if(owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_lock_required');
       const marked=sourceOwner==='local'
         ?await verifyStorageV2LocalEngine({app:'orders',owner:()=>sourceOwner})
-        :await p.verifyStorageCutover();
+        :await p.verifyStorageV2AccountMarker();
       if(marked!==true||owner.current()!==sourceOwner||!owner.locked)throw new Error('orders_transfer_source_not_primary');
       clearTimeout(p.checksSession.sharedChecksSaveTimer);p.checksSession.sharedChecksSaveTimer=null;
       await p.syncDocument.quiesceForStorageCutover();

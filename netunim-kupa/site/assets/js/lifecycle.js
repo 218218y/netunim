@@ -8,7 +8,7 @@ import {INITIAL_STATE, STORAGE_PREF_KEY} from './state/constants.js';
 import {checkStorageProtocolStartup} from './shared/storage-v2-server-protocol.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageCutover=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,recoverBrowserV2State=async()=>false,recoverBrowserV2StateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
+export function createLifecycle({hydrateStorageOwner=async()=>{},hydrateLocalBirth=async()=>null,ensureLocalBirth=async()=>false,localBirthPreparing=()=>false,hydrateStorageV2OwnerTransfer=async()=>null,resumeStorageV2OwnerTransfer=async()=>null,storageV2OwnerTransferPreparing=()=>false,verifyStorageV2AccountMarker=async()=>false,verifyLocalStorageEngine=async()=>false,storageOwnerCurrent=()=>null,authenticatedOwner=()=>null,readStorageProtocolState,recoverFencedAccount=async()=>false,recoverLocalV2State=async()=>false,recoverReadOnlyV2State=async()=>false,recoverSharedChecksV2Primary=async()=>false,recoverSharedChecksV2ReadOnly=async()=>false,recoverBrowserV2State=async()=>false,recoverBrowserV2StateReadOnly=async()=>false,ensureSyncCapabilities=async()=>true,render=()=>{},model,session, tab, prepareKupaCloudState, normalizeState, saveChecksState, syncSharedChecksFromCloud, saveSharedChecksToCloud, pollSharedChecks, openLastFolder, checkDateEditorMarkup, checkDateEditorValue, commitCheckDateEditor, setCheckDateValue, normalizeCheckModalDates, activeChecks, depositedChecks, cashBalance, checksBalance, depositedBalance, pendingInstallments, allInstallments, monthSumInstallments, expenseOccurrencesForMonth, monthSumExpenses, bankBaseBalance, bankAdjustments, bankAdjustmentsTotal, bankAsOfDate, sharedChecksObservedSequence, bankCurrentBalance, nextCreditCycle, modalFormSnapshot, armModalDraftGuard, modalHasUnsavedDraft, clearModalDraftGuard, configureCloudConnectButton, handleCloudConnectButton, setCloudHeaderStatus, setSaveStatus=()=>{}, setConnectedStatus=()=>{}, requestPersistentBrowserStorage, showSecondaryTabGuard, acquirePrimaryTabLock, chooseFolder, chooseDataFile, restoreRememberedBackupTarget, supaConfigured, restoreSupaSession, resumeIncompleteRestore=async()=>false, showCloudNoDocument, tryAutoOpenSupabase, setConnectUI, showFirstRun, tryAutoOpenRemembered}){
 function runtimeSelfCheck(){
   const required={assertValidCloudState,normalizeSharedChecks,prepareKupaCloudState,saveChecksState,saveSharedChecksToCloud,syncSharedChecksFromCloud,pollSharedChecks,num,money,dateFmt,todayISO,localISO,dObj,daysFromToday,monthKey,monthLabel,addMonthsISO,checkDateParts,checkDateEditorMarkup,checkDateEditorValue,commitCheckDateEditor,setCheckDateValue,normalizeCheckModalDates,uid,activeChecks,depositedChecks,cashBalance,checksBalance,depositedBalance,checkUrgency,rawCreditSchedule,creditSchedule,inactiveCreditExpired,creditProgress,pendingInstallments,allInstallments,monthSumInstallments,expenseOccurrencesForMonth,monthSumExpenses,bankBaseBalance,bankAdjustments,bankAdjustmentsTotal,bankCurrentBalance,bankAsOfDate,sharedChecksObservedSequence,normalizeSharedBankEvents,monthKeysBetween,nextCreditCycle,modalFormSnapshot,armModalDraftGuard,modalHasUnsavedDraft,clearModalDraftGuard,openLastFolder};
   const missing=Object.entries(required).filter(([,fn])=>typeof fn!=='function').map(([name])=>name);
@@ -37,13 +37,13 @@ async function boot(){
   // it before any account-scoped marker, snapshot or writer can be consulted.
   await hydrateStorageOwner();
   const restoredAuth=await restoreSupaSession();await hydrateLocalBirth();await hydrateStorageV2OwnerTransfer();
-  let cutoverActive=await verifyStorageCutover(),localEngineActive=await verifyLocalStorageEngine();
-  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),cutoverActive,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
+  let accountV2Active=await verifyStorageV2AccountMarker(),localEngineActive=await verifyLocalStorageEngine();
+  let protocol=await checkStorageProtocolStartup({owner:storageOwnerCurrent(),accountV2Active,localEngineActive,online:globalThis.navigator?.onLine!==false,authenticatedOwner:authenticatedOwner(),readProtocolState:readStorageProtocolState});
   if(protocol.reason==='server-v2'&&tab.primaryTab){
     try{
       await recoverFencedAccount();
-      cutoverActive=await verifyStorageCutover();
-      if(!cutoverActive)throw new Error('storage_fenced_recovery_marker_missing');
+      accountV2Active=await verifyStorageV2AccountMarker();
+      if(!accountV2Active)throw new Error('storage_fenced_recovery_marker_missing');
       protocol={allowed:true,reason:'v2-ready'};
     }catch(error){console.error('Kupa fenced account recovery',error)}
   }
@@ -55,7 +55,7 @@ async function boot(){
   }
   session.storageProtocolBlocked=false;
   if(!tab.primaryTab){
-    const v2Required=storageV2OwnerTransferPreparing()||cutoverActive||localEngineActive||localBirthPreparing();
+    const v2Required=storageV2OwnerTransferPreparing()||accountV2Active||localEngineActive||localBirthPreparing();
     let shown=false;
     if(v2Required){
       const mainRecovered=await retryReadOnlyRecovery(()=>recoverReadOnlyV2State());
@@ -70,12 +70,12 @@ async function boot(){
   }
   if(storageV2OwnerTransferPreparing()){
     if(!navigator.onLine||!restoredAuth){session.backendReady=false;setConnectUI({title:'מעבר החשבון ממתין',text:'העריכה נעולה עד לחיבור מחדש לחשבון היעד ולהשלמת המעבר.',showCloud:true});return}
-    try{await resumeStorageV2OwnerTransfer();cutoverActive=await verifyStorageCutover();localEngineActive=await verifyLocalStorageEngine()}
+    try{await resumeStorageV2OwnerTransfer();accountV2Active=await verifyStorageV2AccountMarker();localEngineActive=await verifyLocalStorageEngine()}
     catch(error){console.error('Kupa V2 owner transfer resume',error);session.backendReady=false;setConnectUI({title:'מעבר החשבון נעצר בבטחה',text:'הנתונים נשמרו. יש להתחבר לחשבון היעד ולהשלים את המעבר לפני עריכה.',showCloud:true});return}
   }
   // Birth is a durable transition, and its Main checkpoint is not complete
   // until Shared and the local marker are verified. Keep the screen closed.
-  if(!cutoverActive){
+  if(!accountV2Active){
     try{await ensureLocalBirth();localEngineActive=await verifyLocalStorageEngine()}
     catch(error){console.error('Kupa local V2 birth',error);setConnectUI({title:'מעבר האחסון המקומי נעצר',text:'הנתונים הישנים נשארו שמורים. העריכה חסומה עד להשלמת מעבר האחסון או בדיקת התקלה.',showCloud:false});return}
   }
@@ -87,9 +87,9 @@ async function boot(){
   const cloudPreferred=localStorage.getItem(STORAGE_PREF_KEY)==='supabase';
   let startupLocalShown=false;
   if(localEngineActive)await recoverLocalV2State();
-  else if(cloudPreferred||cutoverActive){
+  else if(cloudPreferred||accountV2Active){
     session.startupCloudHydrating=!!navigator.onLine;
-    try{startupLocalShown=await recoverBrowserV2State({startup:true,deferRender:cutoverActive})}catch(error){if(cutoverActive)throw error;console.error('startup browser state recovery',error)}
+    try{startupLocalShown=await recoverBrowserV2State({startup:true,deferRender:accountV2Active})}catch(error){if(accountV2Active)throw error;console.error('startup browser state recovery',error)}
   }
 
   let sharedPrimary=false;
@@ -101,7 +101,7 @@ async function boot(){
 
   // Shared Checks owns checks independently of Main. Hydrate it before an
   // offline or cloud-capability exit can show composed business data.
-  if((cutoverActive||localEngineActive)){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
+  if((accountV2Active||localEngineActive)){sharedPrimary=await recoverSharedChecksV2Primary();if(!sharedPrimary)throw new Error('shared_checks_cutover_recovery_required');if(startupLocalShown)render()}
   if(localEngineActive){session.startupCloudHydrating=false;if(await tryAutoOpenRemembered())return;showFirstRun();return}
   if(!navigator.onLine&&startupLocalShown){session.startupCloudHydrating=false;return}
   if(navigator.onLine&&restoredAuth){try{await ensureSyncCapabilities();session.syncCapabilitiesError=null}catch(error){session.syncCapabilitiesError=error;setCloudHeaderStatus('conflict',error.message);setConnectUI({title:'ה־DB אינו תואם לגרסת האתר',text:error.message,showCloud:false});}}
