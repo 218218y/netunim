@@ -29,7 +29,23 @@ function saveConnectionPreference({autoConnect=false,accountId=''}={}){try{local
 
 function requestResult(request){return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
 function transactionDone(tx){return new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('calendar_storage_aborted'))})}
-function openDb(){if(dbPromise)return dbPromise;dbPromise=new Promise((resolve,reject)=>{const request=indexedDB.open(DB_NAME,DB_VERSION);request.onupgradeneeded=()=>{const db=request.result;if(!db.objectStoreNames.contains(QUEUE_STORE))db.createObjectStore(QUEUE_STORE,{keyPath:'seq',autoIncrement:true});if(!db.objectStoreNames.contains(CACHE_STORE))db.createObjectStore(CACHE_STORE,{keyPath:'key'});if(!db.objectStoreNames.contains(META_STORE))db.createObjectStore(META_STORE,{keyPath:'key'})};request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});return dbPromise}
+function openDb(){
+  if(dbPromise)return dbPromise;
+  const opening=new Promise((resolve,reject)=>{
+    const request=indexedDB.open(DB_NAME,DB_VERSION);
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      if(!db.objectStoreNames.contains(QUEUE_STORE))db.createObjectStore(QUEUE_STORE,{keyPath:'seq',autoIncrement:true});
+      if(!db.objectStoreNames.contains(CACHE_STORE))db.createObjectStore(CACHE_STORE,{keyPath:'key'});
+      if(!db.objectStoreNames.contains(META_STORE))db.createObjectStore(META_STORE,{keyPath:'key'});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+  // A transient failure must not permanently poison subsequent Calendar work.
+  dbPromise=opening.catch(error=>{dbPromise=null;throw error});
+  return dbPromise;
+}
 
 async function addOperation(operation){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readwrite'),store=tx.objectStore(QUEUE_STORE);const record={...structuredClone(operation),createdAt:operation.createdAt||new Date().toISOString(),attempts:Number(operation.attempts||0),lastError:String(operation.lastError||'')};delete record.seq;const seq=await requestResult(store.add(record));await transactionDone(tx);return Number(seq)}
 async function listOperations(){const db=await openDb(),tx=db.transaction(QUEUE_STORE,'readonly');const rows=await requestResult(tx.objectStore(QUEUE_STORE).getAll());await transactionDone(tx);return rows.sort((a,b)=>Number(a.seq)-Number(b.seq))}
