@@ -22,7 +22,7 @@ export function composeCloudUi({
     setConnectUI:(...args)=>uiConnection.setConnectUI(...args),
     prepareKupaCloudState:(...args)=>stateNormalization.prepareKupaCloudState(...args),
     showSecondaryTabGuard:(...args)=>uiConnection.showSecondaryTabGuard(...args),
-    openBrowserStateFallback:(...args)=>syncRecovery.openBrowserStateFallback(...args),
+    recoverBrowserV2State:(...args)=>syncRecovery.recoverBrowserV2State(...args),
     restoreSupaSession:(...args)=>cloudAuth.restoreSupaSession(...args),
     storeSupaSession:(...args)=>cloudAuth.storeSupaSession(...args),
     isSupabaseAuthError:(...args)=>cloudAuth.isSupabaseAuthError(...args),
