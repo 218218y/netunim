@@ -2,6 +2,7 @@ import {createStorageJournal} from './storage-journal.js';
 import {STORAGE_SCHEMAS} from './storage-v2-schema.js';
 import {equalSyncJson} from './cloud-sync.js';
 import {storageOwnerReady} from './storage-owner.js';
+import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
 
 // Only invalid persisted data poisons an identity. IDB open/abort, blocked
 // connections and owner fencing may recover without a page reload.
@@ -16,7 +17,7 @@ export function storageV2Mode(app,storage=globalThis.localStorage,owner='local',
   try{
     const account=String(owner||'').trim();
     if(!storageOwnerReady(account))return 'off';
-    if(storage?.getItem(`netunim-storage-cutover-version:${app}:${account}`)==='2'||account==='local'&&storage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2')return 'primary';
+    if(isStorageV2ActivationCached(app,account,storage))return 'primary';
     if(preparing)return 'preparing';
     return 'off';
   }catch{return 'off'}
@@ -201,5 +202,5 @@ export function createStorageV2Runtime({app,owner,primary,validate,prepareCheckp
   }
   async function resetCloudHead(revision,cloudState,currentState,options={}){if(!readyForCurrentOwner())return false;const active=await settledJournal(),metadata={...options.appMetadata,mainProjectionVersion:2};const result=await active.resetCloudHead(revision,cloudState,checkpointState(currentState),{...options,appMetadata:metadata});operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
   async function compact(){if(!readyForCurrentOwner())return false;const active=await settledJournal(),result=await active.compact();operationsSinceCheckpoint=0;lastCheckpointAt=Date.now();return result}
-  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||globalThis.localStorage?.getItem(`netunim-storage-cutover-version:${app}:${active}`)==='2'||active==='local'&&globalThis.localStorage?.getItem(`netunim-storage-engine-version:${app}:local`)==='2'},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
+  return {recover,recoverReadOnly,recoverForOwner,initializeLocal,initializeCloudHead,initializeUploadLocalCloudHead,persist,flush,setBoundaryGate:gate=>{if(typeof gate!=='function')throw new Error('storage_boundary_gate_invalid');boundaryGate=gate},setCloudBase,captureCloudCursor,cloudState,materializeFlight,acknowledgeFlight,rejectFlight,setCloudControl,clearCloudControl,replaceCurrentState,replaceLocalAuthoritativeState,replaceLocalWithPending,adoptCloudHead,replaceAuthoritativeState,resetCloudHead,compact,primaryDiagnostics:diagnostics,get diagnostics(){return diagnostics},get primaryReady(){return readyForCurrentOwner()},get cutoverActive(){const active=currentOwner();return !storageOwnerReady(active)||isStorageV2ActivationCached(app,active)},get durabilityAtRisk(){return undurableCount>0||undurableFailures.size>0},get commitPromise(){return commits}};
 }

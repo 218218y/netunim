@@ -9,6 +9,8 @@ import {createStorageBrowser as createKupaBrowser} from '../netunim-kupa/site/as
 import {INITIAL_STATE as ORDERS_INITIAL_STATE} from '../netunim-orders/site/assets/js/state/constants.js';
 import {ORDERS_LEGACY_SNAPSHOT_KEY,KUPA_LEGACY_SNAPSHOT_KEY} from './retired_business_storage_keys.mjs';
 import {createStorageV2Cutover,storageCutoverKey} from '../shared/storage-v2-cutover.js';
+import {isStorageV2ActivationCached,storageAccountMarkerCacheKey,storageLocalEngineCacheKey} from '../shared/storage-v2-activation-cache.js';
+import {storageV2Mode} from '../shared/storage-v2-runtime.js';
 import {createLifecycle as createOrdersLifecycle} from '../netunim-orders/site/assets/js/lifecycle.js';
 import {createSyncRecovery} from '../netunim-kupa/site/assets/js/sync/recovery.js';
 import {createUiCloud as createOrdersUiCloud} from '../netunim-orders/site/assets/js/ui/cloud.js';
@@ -17,6 +19,25 @@ import {createOrdersStorageV2Coordinator} from '../netunim-orders/site/assets/js
 import {createKupaStorageV2Coordinator} from '../netunim-kupa/site/assets/js/composition/storage-v2.js';
 
 function localStore(){const values=new Map();return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key),get length(){return values.size},key:index=>[...values.keys()][index]??null}}
+
+test('activation cache preserves existing V2 keys and separates account from local ownership',()=>{
+  const storage=localStore();
+  assert.equal(storageAccountMarkerCacheKey('orders','A'),'netunim-storage-cutover-version:orders:A');
+  assert.equal(storageLocalEngineCacheKey('orders'),'netunim-storage-engine-version:orders:local');
+  assert.equal(isStorageV2ActivationCached('orders','A',storage),false);
+  storage.setItem(storageLocalEngineCacheKey('orders'),'2');
+  assert.equal(isStorageV2ActivationCached('orders','local',storage),true);
+  assert.equal(isStorageV2ActivationCached('orders',undefined,storage),false);
+  assert.equal(isStorageV2ActivationCached('orders','A',storage),false);
+  assert.equal(storageV2Mode('orders',storage,'A',{preparing:true}),'preparing');
+  storage.setItem(storageAccountMarkerCacheKey('orders','A'),'2');
+  assert.equal(isStorageV2ActivationCached('orders','A',storage),true);
+  assert.equal(storageV2Mode('orders',storage,'A'),'primary');
+  assert.equal(isStorageV2ActivationCached('orders','B',storage),false);
+  assert.equal(isStorageV2ActivationCached('kupa','A',storage),false);
+  storage.setItem(storageAccountMarkerCacheKey('orders','A'),'invalid');
+  assert.equal(isStorageV2ActivationCached('orders','A',storage),false);
+});
 
 test('Orders rejected secondary edit reloads V2 instead of reading a V1 snapshot',()=>{
   const previousLocation=Object.getOwnPropertyDescriptor(globalThis,'location');
@@ -157,7 +178,7 @@ test('unmarked Kupa browser cannot recover a V1 business snapshot',async()=>{
     assert.equal(await browser.loadBrowserState(),null);
     assert.equal(await browser.loadBrowserStateReadOnly(),null);
     const recovery=createSyncRecovery({model:{state:{}},session:{},loadBrowserState:browser.loadBrowserState});
-    assert.equal(await recovery.openBrowserStateFallback(),false);
+    assert.equal(await recovery.recoverBrowserV2State(),false);
   }finally{if(previous===undefined)delete globalThis.localStorage;else globalThis.localStorage=previous}
 });
 
@@ -191,7 +212,7 @@ test('Kupa cutover startup reads only V2 Main and cloud cursor before Shared hyd
       refreshStorageV2CloudState:async()=>({base:{revision:4,state:{cash:[{id:'v2'}]}},pending:false,flight:null}),
       normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),
       hideConnectScreen:()=>{},setConnectedStatus:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},render:()=>{},startCloudPolling:()=>{}});
-    assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
+    assert.equal(await recovery.recoverBrowserV2State({startup:true,deferRender:true}),true);
     assert.deepEqual(model.state.cash,[{id:'v2'}]);assert.equal(session.dbRevision,4);assert.equal(session.localSnapshotSeq,9);
   }finally{if(priorStorage===undefined)delete globalThis.localStorage;else globalThis.localStorage=priorStorage;if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator}
 });
@@ -211,7 +232,7 @@ test('secondary V2 recovery does not consult legacy snapshots or pending state',
       getCloudPending:async()=>{throw new Error('legacy_main_pending_read')},getSharedChecksPending:async()=>{throw new Error('legacy_shared_pending_read')},
       loadSharedChecksBase:()=>{throw new Error('legacy_checks_base_read')},loadSharedChecksBankEvents:()=>{throw new Error('legacy_events_read')},
       normalizeState:value=>structuredClone(value),hideConnectScreen:()=>{},setConnectedStatus:()=>{},setSaveStatus:()=>{},setCloudHeaderStatus:()=>{},render:()=>{}});
-    assert.equal(await recovery.openBrowserStateReadOnly(),true);
+    assert.equal(await recovery.recoverBrowserV2StateReadOnly(),true);
     assert.deepEqual(model.state.cash,[{id:'v2'}]);assert.equal(session.dbRevision,7);
   }finally{if(prior===undefined)delete globalThis.localStorage;else globalThis.localStorage=prior}
 });
@@ -281,6 +302,6 @@ test('Kupa V2 startup holds Main recovery off screen until Shared hydration',asy
     normalizeState:value=>value,prepareKupaCloudState:value=>value,applyKupaCloudState:value=>value,
     hideConnectScreen:()=>{},setSaveStatus:()=>{},setConnectedStatus:()=>{},setCloudHeaderStatus:()=>{},
     loadSharedChecksBase:()=>[],sharedChecksPendingExists:()=>false,startCloudPolling:()=>{},render:()=>calls.push('render')});
-  assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
+  assert.equal(await recovery.recoverBrowserV2State({startup:true,deferRender:true}),true);
   assert.deepEqual(calls,[]);assert.deepEqual(model.state.checks,[]);
 });

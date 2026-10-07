@@ -17,7 +17,7 @@ const requiredCallbacks=[
 ];
 
 function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFailure=false}={}){
-  const events=[],model={state:{checks:[{id:'stale-main-copy'}]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
+  const events=[],model={state:{checks:[{id:'prior-visible-check'}]}},session={},ports=Object.fromEntries(requiredCallbacks.map(key=>[key,noop]));
   Object.assign(ports,{
     model,session,tab:{primaryTab:true},checksSession:{},
     normalizeState:value=>value,prepareKupaCloudState:value=>value,
@@ -26,7 +26,7 @@ function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFa
     restoreSupaSession:async()=>authenticated?{user:{id:'account-A'}}:null,
     ensureSyncCapabilities:async()=>{if(capabilityFailure)throw new Error('cloud capability unavailable')},
     verifyStorageCutover:async()=>true,
-    openBrowserStateFallback:async options=>{
+    recoverBrowserV2State:async options=>{
       assert.deepEqual(options,{startup:true,deferRender:true});
       events.push('main-recovered');return true;
     },
@@ -45,7 +45,7 @@ function lifecycleFixture({sharedRecovered=true,authenticated=false,capabilityFa
   return {lifecycle:createLifecycle(ports),events,session};
 }
 
-test('Kupa V2 cutover recovers Shared Checks before offline or cloud-capability fallback displays Main',async()=>{
+test('Kupa V2 recovers Shared Checks before offline or cloud-capability recovery displays Main',async()=>{
   const previous={navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),localStorage:Object.getOwnPropertyDescriptor(globalThis,'localStorage'),document:Object.getOwnPropertyDescriptor(globalThis,'document')};
   Object.defineProperties(globalThis,{
     navigator:{configurable:true,value:{onLine:false}},
@@ -75,7 +75,7 @@ test('Kupa V2 cutover recovers Shared Checks before offline or cloud-capability 
   }
 });
 
-test('Kupa V2 fallback preserves hydrated Shared state and never reads legacy bank events',async()=>{
+test('Kupa V2 browser recovery preserves hydrated Shared state and never reads legacy bank events',async()=>{
   const priorNavigator=Object.getOwnPropertyDescriptor(globalThis,'navigator');
   Object.defineProperty(globalThis,'navigator',{configurable:true,value:{onLine:true}});
   try{
@@ -87,7 +87,7 @@ test('Kupa V2 fallback preserves hydrated Shared state and never reads legacy ba
       normalizeState:value=>structuredClone(value),prepareKupaCloudState:value=>structuredClone(value),
       loadSharedChecksBase:()=>assert.fail('legacy checks read'),loadSharedChecksBankEvents:()=>assert.fail('legacy bank events read'),
       hideConnectScreen:noop,setSaveStatus:noop,setConnectedStatus:noop,setCloudHeaderStatus:noop,startCloudPolling:noop,render:()=>assert.fail('deferred recovery must not render')});
-    assert.equal(await recovery.openBrowserStateFallback({startup:true,deferRender:true}),true);
+    assert.equal(await recovery.recoverBrowserV2State({startup:true,deferRender:true}),true);
     assert.deepEqual(model.state.checks,sharedChecks);
     assert.deepEqual(checksSession.sharedChecksBankEvents,bankEvents);
   }finally{if(priorNavigator)Object.defineProperty(globalThis,'navigator',priorNavigator);else delete globalThis.navigator}

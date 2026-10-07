@@ -1,6 +1,7 @@
 import {createSharedChecksV2Runtime} from './shared-checks-v2-runtime.js';
 import {createStorageV2Boundary} from './storage-v2-boundary.js';
-import {createStorageV2Cutover,storageCutoverKey} from './storage-v2-cutover.js';
+import {createStorageV2Cutover} from './storage-v2-cutover.js';
+import {isStorageV2ActivationCached} from './storage-v2-activation-cache.js';
 import {verifyStorageV2LocalEngine} from './storage-v2-local-birth.js';
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
@@ -11,7 +12,7 @@ import {createSharedChecksStorageV2} from './shared-checks-storage-v2.js';
 // cloud heads before the displayed owner changes.
 export function createSharedChecksV2Composition({site,owner,primary,preparing=()=>false,model,checksSession,eventsKey,domainRevisions,merge,readRemote,rpc,validateMainCloud,applyMainState,main,db=createStorageJournalDb()}={}){
   const cutover=createStorageV2Cutover({app:site,owner,primary,db});
-  const cutoverRequested=()=>localStorage.getItem(storageCutoverKey(site,owner()))==='2'||owner()==='local'&&localStorage.getItem(`netunim-storage-engine-version:${site}:local`)==='2';
+  const cutoverRequested=()=>isStorageV2ActivationCached(site,owner());
   const preparationRequested=()=>!!preparing()&&!cutoverRequested();
   // Routing must switch to V2 as soon as its durable marker/preparation exists.
   // Recovery may still be in progress (or a DB capability check may fail), but

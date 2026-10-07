@@ -1,8 +1,9 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
 import {assertStorageJson} from './storage-journal-model.js';
 import {equalSyncJson} from './cloud-sync.js';
+import {storageLocalEngineCacheKey} from './storage-v2-activation-cache.js';
 
-export function storageLocalEngineKey(app){return `netunim-storage-engine-version:${app}:local`}
+export const storageLocalEngineKey=storageLocalEngineCacheKey;
 
 export async function verifyStorageV2LocalEngine({app,owner,db=createStorageJournalDb(),storage=globalThis.localStorage}={}){
   if(!['orders','kupa'].includes(app)||typeof owner!=='function')throw new Error('storage_local_engine_configuration');

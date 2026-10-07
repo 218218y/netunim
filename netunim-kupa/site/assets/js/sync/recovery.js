@@ -1,12 +1,12 @@
 import {clone} from '../core/values.js';
 
-// A browser fallback may display only the recovered V2 journals. The Shared
-// Checks journal is hydrated by startup before business editing is enabled.
+// Recover the local V2 journals when cloud access is unavailable. Startup
+// hydrates the independent Shared Checks journal before business editing.
 export function createSyncRecovery({captureLegacyWorkbook=async()=>{},hideConnectScreen,model,session,
   prepareKupaCloudState,normalizeState,setSaveStatus,setConnectedStatus,setCloudHeaderStatus,
   refreshStorageV2CloudState=async()=>null,loadBrowserState,loadBrowserStateReadOnly=loadBrowserState,
   startCloudPolling,render,domainRevisions}){
-  async function openBrowserStateReadOnly(){
+  async function recoverBrowserV2StateReadOnly(){
     const record=await loadBrowserStateReadOnly();
     if(!record?.v2Authoritative||!record.state)return false;
     const previous=model.state;
@@ -23,7 +23,7 @@ export function createSyncRecovery({captureLegacyWorkbook=async()=>{},hideConnec
     return true;
   }
 
-  async function openBrowserStateFallback({startup=false,deferRender=false}={}){
+  async function recoverBrowserV2State({startup=false,deferRender=false}={}){
     const record=await loadBrowserState();
     if(!record?.v2Authoritative||!record.state)return false;
     await captureLegacyWorkbook(record.state.notesSheet);
@@ -51,5 +51,5 @@ export function createSyncRecovery({captureLegacyWorkbook=async()=>{},hideConnec
     return true;
   }
 
-  return {openBrowserStateFallback,openBrowserStateReadOnly};
+  return {recoverBrowserV2State,recoverBrowserV2StateReadOnly};
 }

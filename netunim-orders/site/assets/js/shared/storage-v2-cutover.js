@@ -1,6 +1,7 @@
 import {createStorageJournalDb} from './storage-journal-idb.js';
+import {storageAccountMarkerCacheKey} from './storage-v2-activation-cache.js';
 
-export function storageCutoverKey(app,owner){return `netunim-storage-cutover-version:${app}:${String(owner||'local')}`}
+export const storageCutoverKey=storageAccountMarkerCacheKey;
 
 // IndexedDB is the durable marker. LocalStorage is a synchronous cache for
 // hot-path writers. A disagreement blocks startup instead of downgrading.
