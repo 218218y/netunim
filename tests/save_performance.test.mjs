@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {createIndexedDbConnection} from '../shared/indexed-db-connection.js';
 import {createStorageBrowser as kupaBrowser} from '../netunim-kupa/site/assets/js/storage/browser.js';
 import {createStorageBackup} from '../netunim-kupa/site/assets/js/storage/backup.js';

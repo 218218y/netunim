@@ -1,16 +1,22 @@
 import {clone} from '../core/values.js';
 import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {wholeMoney,decimalMoney} from '../core/money.js';
-import {inactiveCreditExpired} from '../domains/credit/model.js';
-import {normalizeBankFeed} from '../domains/bank/feed.js';
-import {normalizeCreditSync} from '../domains/credit/sync-feed.js';
 import {assertKupaEntityInvariants,assertPortablePayload} from './validation.js';
 import {stableLegacyPositionId} from '../shared/data-invariants.js';
 import {normalizeCashflowSettings} from '../shared/cashflow.js';
-import {normalizeNotesSheet} from '../domains/notes/sheet-model.js';
+import {normalizeNotesSheet} from '../shared/notes-sheet-model.js';
 
-// Dependencies are supplied by the composition root; this module has no startup side effects.
-export function createStateNormalization({model,externalWorkbooks=false}){
+/**
+ * @typedef {object} KupaNormalizationPolicies
+ * @property {(feed: unknown) => unknown} normalizeBankFeed
+ * @property {(sync: unknown) => unknown} normalizeCreditSync
+ * @property {(credit: unknown) => boolean} inactiveCreditExpired
+ */
+
+// Domain policies are explicit ports, bound by composition before storage recovery begins.
+export function createStateNormalization({model,externalWorkbooks=false,policies}){
+  if(!model||!policies||['normalizeBankFeed','normalizeCreditSync','inactiveCreditExpired'].some(name=>typeof policies[name]!=='function'))throw new TypeError('kupa_state_normalization_policies_required');
+  const {normalizeBankFeed,normalizeCreditSync,inactiveCreditExpired}=policies;
 function prepareKupaCloudState(source=model.state,{normalized=false}={}){const x=normalized?clone(source):normalizeState(source);delete x.checks;delete x.creditSync;const bank=x.bank&&typeof x.bank==='object'?x.bank:{};x.bank={currentBalance:bank.source==='manual'?bank.currentBalance:null,updatedAt:bank.source==='manual'?bank.updatedAt:null,asOfDate:bank.source==='manual'?bank.asOfDate:null,adjustments:(bank.adjustments||[]).filter(a=>a?.type!=='check_deposit'),source:bank.source==='manual'?'manual':null,sourceAccount:null,snapshotToken:bank.snapshotToken??null,snapshotSeq:bank.snapshotSeq??null};return x}
 
 function applyKupaCloudState(cloudState,checks=model.state.checks){const x=normalizeState({...clone(cloudState||{}),checks:normalizeSharedChecks(checks)});x.bank.adjustments=(x.bank.adjustments||[]).filter(a=>a?.type!=='check_deposit');return x}

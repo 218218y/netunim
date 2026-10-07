@@ -8,7 +8,7 @@ import {creditMonthlyDetailData,creditUpcomingDetailData,creditDetailItemIdentit
 import {CREDIT_PROVIDER_LABELS,creditCardMappingKey,creditFrameStatus,creditUpcomingCharge,creditSyncSummary} from './sync-feed.js';
 import {kupaCardDisplayBillingDateFromRowsData,kupaReconciledCardUpcomingChargeData,kupaReconciledCreditRowsData} from '../../shared/kupa-cashflow.js';
 import {prepareSearchValues,createPreparedSearchMatcher} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {creditDetailMonthIsPast,creditDetailRangeMatch,creditDetailQuickPeriodMatch,creditDateRangeMarkup,replaceCreditDetailMarkup,creditViewAllowsMonth,creditDetailDayMatch,creditDetailMonthDayMatch,creditDetailMonthlySections,creditDetailFutureMonths,creditDetailNominalChargeDay,creditDetailChargeCycleKey,creditUpcomingSelectorMarkup,creditHistoryMenuMarkup,creditFutureMenuMarkup,creditDetailChargeHeadingMarkup} from '../../shared/credit-detail-controls.js';
 import {creditSyncHeadlineState,creditSyncHeadlineMarkup,creditSyncDiagnosticsMarkup} from './sync-view.js';
 export {creditSyncHeadlineState} from './sync-view.js';

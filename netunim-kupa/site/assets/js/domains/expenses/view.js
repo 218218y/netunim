@@ -3,7 +3,7 @@ import {esc} from '../../core/values.js';
 import {money} from '../../core/money.js';
 import {dateFmt, monthLabel} from '../../core/dates.js';
 import {searchMatch} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 
 // Expense presentation is owned by the expenses domain and can be hosted by any page shell.
 export function createDomainsExpensesView({model,ui,bankNextCycleCommitments,bankHomeNextCycleCommitments}){

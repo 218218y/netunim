@@ -4,7 +4,7 @@ import {checkUrgency, checkBelongsToAccountData, checkIsClosedStatus} from './mo
 import {daysFromToday, monthKey, monthLabel, dateFmt, todayISO} from '../../core/dates.js';
 import {money} from '../../core/money.js';
 import {searchMatch} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 
 import {checkBankReviewMarkup,checkBankStatusMarkup,checkBankActivityMarkup} from '../../shared/check-bank-review.js';
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/sync/merge.js';
 import {createSyncMerge as kupaMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
 import {createStateNormalization as ordersNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
-import {createStateNormalization as kupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization as kupaNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {createSyncChecks as ordersChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 const clone=structuredClone, noop=()=>{};

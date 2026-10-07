@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createStorageV2Boundary} from '../shared/storage-v2-boundary.js';
 import {createStoragePersistence as createKupaStoragePersistence} from '../netunim-kupa/site/assets/js/storage/persistence.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {inactiveCreditExpired} from '../netunim-kupa/site/assets/js/domains/credit/model.js';
 import {INITIAL_STATE as KUPA_INITIAL_STATE} from '../netunim-kupa/site/assets/js/state/constants.js';
 

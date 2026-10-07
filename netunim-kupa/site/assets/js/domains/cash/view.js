@@ -2,7 +2,7 @@ import {esc} from '../../core/values.js';
 import {money,moneyWithCents} from '../../core/money.js';
 import {dateFmt} from '../../core/dates.js';
 import {searchMatch} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {ledgerTypeLabel} from './model.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.

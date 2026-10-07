@@ -2,7 +2,7 @@ import {normalizeNotesSheet} from '../shared/notes-sheet-model.js';
 import {clone} from '../core/values.js';
 import {assertOrderEntityInvariants,restoreJsonRequiredArrays} from './validation.js';
 import {INITIAL_STATE} from './constants.js';
-import {normalizeNoteReminderDate} from '../domains/notes/alerts.js';
+import {normalizeNoteReminderDate} from '../contracts/note-reminder-date.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createStateNormalization({model={},externalWorkbooks=false}){

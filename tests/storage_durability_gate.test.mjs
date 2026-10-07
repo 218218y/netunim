@@ -6,7 +6,7 @@ import {createSyncChecksPersistence} from '../netunim-orders/site/assets/js/sync
 import {createStorageV2Runtime} from '../shared/storage-v2-runtime.js';
 import {INITIAL_STATE as ordersInitial} from '../netunim-orders/site/assets/js/state/constants.js';
 import {INITIAL_STATE as kupaInitial} from '../netunim-kupa/site/assets/js/state/constants.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 const noop=()=>{};
 function deferred(){let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no});return {promise,resolve,reject}}

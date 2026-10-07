@@ -9,7 +9,7 @@ import {normalizeSharedChecks} from '../netunim-kupa/site/assets/js/domains/chec
 import {createUiBulk} from '../netunim-kupa/site/assets/js/ui/bulk.js';
 import {createDomainsRecordsCommands} from '../netunim-kupa/site/assets/js/domains/records/commands.js';
 import {createSyncMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
-import {createStateNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 class StorageMock{
   constructor(){this.items=new Map()}

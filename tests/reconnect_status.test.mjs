@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {createSyncDocument as createOrdersSyncDocument} from '../netunim-orders/site/assets/js/sync/document.js';
 import {createSyncDocument as createKupaSyncDocument} from '../netunim-kupa/site/assets/js/sync/document.js';
-import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization as createKupaNormalization} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true},configurable:true});
 const noop=()=>{};

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createStateNormalization as kupaNormalizer} from '../netunim-kupa/site/assets/js/state/normalization.js';
+import {createStateNormalization as kupaNormalizer} from '../netunim-kupa/site/assets/js/composition/state-normalization.js';
 import {createStateNormalization as ordersNormalizer} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createSyncMerge as kupaMerge} from '../netunim-kupa/site/assets/js/sync/merge.js';
 import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/sync/merge.js';

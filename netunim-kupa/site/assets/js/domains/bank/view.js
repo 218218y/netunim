@@ -6,7 +6,7 @@ import {money, moneyWithCents} from '../../core/money.js';
 import {dateFmt} from '../../core/dates.js';
 import {syncEventCurrent} from '../../shared/sync-status.js';
 import {dateInRange,searchMatch} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 import {bankTransactionIdentity} from './feed.js';
 import {bankSmartHistoryRows} from '../../shared/bank-transaction-order.js';
 import {bankChequeImageDownloadName,bankChequeImageWithinRetention,retainBankChequeImagePreviewUrl} from '../../shared/bank-cheque-images.js';

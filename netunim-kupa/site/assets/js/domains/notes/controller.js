@@ -1,7 +1,7 @@
 import {uid, esc} from '../../core/values.js';
 import {createNotesWorkbook} from '../../shared/notes-workbook.js';
 import {searchMatch} from '../../core/search.js';
-import {localSearchMarkup} from '../../ui/search.js';
+import {localSearchMarkup} from '../../ui-primitives/local-search.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.
 export function createDomainsNotesController({workspace=null,model, ui={}, saveState, confirmDialog}){
