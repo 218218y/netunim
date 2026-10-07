@@ -2,7 +2,7 @@ import {createSearchFragmentIndex} from '../shared/search-fragments.js';
 import {createGlobalDocumentSearch} from '../shared/global-document-search.js';
 import {money} from '../core/money.js';
 import {buildOrderSearchFragment,ORDER_SEARCH_FRAGMENTS,searchGlobalEntries} from '../domains/search/model.js';
-import {checkIsClosedStatus} from '../domains/checks/model.js';
+import {checkIsClosedStatus} from '../shared/shared-checks-contract.js';
 import {customerDebtProgressData} from '../shared/customer-debt-progress.js';
 
 // Orders owns only its business-data index and navigation. The search shell,

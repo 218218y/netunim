@@ -1,7 +1,7 @@
 import {notesSheetHasMeaningfulData} from '../shared/notes-sheet-model.js';
 import {comparableBackupData} from './serialization.js';
 import {eq} from '../sync/merge-records.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {clone} from '../core/values.js';
 
 // Dependencies are supplied by the composition root; this module has no startup side effects.

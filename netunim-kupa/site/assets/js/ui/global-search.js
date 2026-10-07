@@ -2,7 +2,7 @@ import {createSearchFragmentIndex} from '../shared/search-fragments.js';
 import {createGlobalDocumentSearch} from '../shared/global-document-search.js';
 import {money} from '../core/money.js';
 import {buildKupaSearchFragment,KUPA_SEARCH_FRAGMENTS,searchKupaGlobalEntries} from '../domains/search/model.js';
-import {checkIsClosedStatus} from '../domains/checks/model.js';
+import {checkIsClosedStatus} from '../shared/shared-checks-contract.js';
 
 // Kupa owns only its business-data index and navigation. The full-page shell,
 // Everything/Drive integration, content modes and document preview are shared

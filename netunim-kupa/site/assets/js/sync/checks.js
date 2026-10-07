@@ -1,6 +1,6 @@
 import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {clone} from '../core/values.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {jsonEq,mergeRecordArray,mergeRecordArrayPreferLocal} from './merge-records.js';
 
 export function createSyncChecks({sharedChecksV2,checksSession={},model,session,files={},tab,toast,render,setSaveStatus,setCloudHeaderStatus,backupSnapshotToComputer,refreshCloudHeaderTimestamp}){

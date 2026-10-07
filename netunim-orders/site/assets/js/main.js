@@ -20,14 +20,11 @@ import {createStateSnapshots} from './state/snapshots.js';
 import {createUiLayout} from './ui/layout.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
-import {normalizeSharedChecks} from './domains/checks/model.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsBankCache} from './domains/bank/cache.js';
 import {createUiAlertCenter} from './ui/alert-center.js';
 import {createDomainsFinanceBridge} from './domains/finance/bridge.js';
-import {createDomainsDocumentBridge} from './domains/documents/bridge.js';
-import {createDomainsGoogleDriveSearch} from './domains/documents/google-drive.js';
-import {createDomainsDocumentSearch} from './domains/documents/search-source.js';
+import {composeDocumentSearch} from './shared/document-search-composition.js';
 import {createDomainsFinanceController} from './domains/finance/controller.js';
 import {createDomainsFinanceView} from './domains/finance/view.js';
 import {createUiDateEditor} from './ui/date-editor.js';
@@ -151,9 +148,7 @@ const cloudAuth=createCloudAuth({
 });
 
 const domainsFinanceBridge=createDomainsFinanceBridge();
-const domainsDocumentLocalBridge=createDomainsDocumentBridge();
-const domainsGoogleDriveSearch=createDomainsGoogleDriveSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
-const domainsDocumentBridge=createDomainsDocumentSearch({localBridge:domainsDocumentLocalBridge,googleDrive:domainsGoogleDriveSearch});
+const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaFetch(...args)});
 const bankChequeImages=createOrdersBankChequeImageRuntime({cloudAuth,bridge:domainsFinanceBridge});
 
 const calendarStorage=createCalendarStorage();
@@ -548,7 +543,6 @@ const uiFolders=createUiFolders({
 });
 
 const cloudTransport=createCloudTransport({
-  normalizeSharedChecks,
   supaFetch:(...args)=>cloudAuth.supaFetch(...args),
   localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
 });

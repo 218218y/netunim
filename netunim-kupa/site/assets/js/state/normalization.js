@@ -1,5 +1,5 @@
 import {clone} from '../core/values.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {wholeMoney,decimalMoney} from '../core/money.js';
 import {inactiveCreditExpired} from '../domains/credit/model.js';
 import {normalizeBankFeed} from '../domains/bank/feed.js';

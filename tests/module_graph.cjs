@@ -27,7 +27,7 @@ for(const app of ['kupa','orders']){
         const spec=node.source.value;assert.ok(spec.startsWith('.'),relative+': runtime must use local relative imports');
         const target=path.resolve(path.dirname(file),spec);
         assert.ok(target.startsWith(site+path.sep)&&fs.existsSync(target),relative+': missing or cross-site dependency '+spec);edges.push(target);
-        if(/^assets\/js\/(storage|cloud)\//.test(relative)){
+        if(/^assets\/js\/(storage|cloud|sync)\//.test(relative)){
           const dependency=path.relative(path.join(site,'assets','js'),target).split(path.sep).join('/');
           assert.ok(!/^((domains|ui)\/)/.test(dependency),relative+': infrastructure must receive domain/UI behavior through composition ports: '+dependency);
         }

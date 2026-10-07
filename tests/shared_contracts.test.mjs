@@ -28,14 +28,28 @@ test('common calendar display and check-number contracts agree at boundaries',()
  }
  for(const value of ['',null,undefined,'0001',' 09 ','A12','0'])for(const offset of [0,1,12])assert.equal(kupaChecks.nextSeriesCheckNumber(value,offset),orderChecks.nextSeriesCheckNumber(value,offset));
 });
-test('intentional app differences are preserved, not deduplicated by name',()=>{
+test('existing app-specific date and clone contracts remain isolated',()=>{
  assert.throws(()=>kupaDates.addMonthsISO('',1));
  assert.equal(orderDates.checkAddMonthsISO('',1),'');
  assert.equal(Object.hasOwn(kupaValues.clone({x:undefined}),'x'),false);
  assert.equal(Object.hasOwn(orderValues.clone({x:undefined}),'x'),true);
- // Kupa's finite-number guard returns zero; Orders retains NaN for this input.
- assert.equal(kupaChecks.normalizeSharedChecks([{id:'C',amount:'1,200'}])[0].amount,0);
- assert.ok(Number.isNaN(orderChecks.normalizeSharedChecks([{id:'C',amount:'1,200'}])[0].amount));
+});
+
+test('Shared Checks use one finite whole-shekel contract in both apps',()=>{
+ const input=[{id:'valid',amount:'1200',account:'ביתי',depositSeq:'2'},
+   {id:'rounded',amount:12.5},
+   {id:'malformed',amount:'1,200',account:'other',depositSeq:'invalid'},
+   {id:'missing',amount:null},
+   {id:'nonfinite',amount:Infinity}];
+ const expected=kupaChecks.normalizeSharedChecks(input);
+ assert.deepEqual(orderChecks.normalizeSharedChecks(input),expected);
+ assert.deepEqual(expected.map(check=>check.amount),[1200,13,0,0,0]);
+ assert.deepEqual(expected.map(check=>check.account),['ביתי','עסקי','עסקי','עסקי','עסקי']);
+ assert.deepEqual(expected.map(check=>check.depositSeq),[2,null,null,null,null]);
+ const events=[{seq:1,checkId:'valid',delta:'1,200'}];
+ assert.deepEqual(orderChecks.normalizeSharedBankEvents(events),kupaChecks.normalizeSharedBankEvents(events));
+ assert.equal(orderChecks.normalizeSharedBankEvents(events)[0].delta,0);
+ assert.ok(!JSON.stringify(expected).includes('"amount":null'));
 });
 
 test('shared cashflow thresholds and alert semantics agree across both apps',()=>{

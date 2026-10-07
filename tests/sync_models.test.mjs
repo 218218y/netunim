@@ -7,7 +7,6 @@ import {createSyncMerge as ordersMerge} from '../netunim-orders/site/assets/js/s
 import {createSyncChecks as kupaChecks} from '../netunim-kupa/site/assets/js/sync/checks.js';
 import {createSyncChecks as orderChecks} from '../netunim-orders/site/assets/js/sync/checks.js';
 import {createCloudTransport as orderTransport} from '../netunim-orders/site/assets/js/cloud/transport.js';
-import {normalizeSharedChecks as normalizeOrdersChecks} from '../netunim-orders/site/assets/js/domains/checks/model.js';
 import {createDomainsBankCache as orderBankCache} from '../netunim-orders/site/assets/js/domains/bank/cache.js';
 import {createDomainsBankController as createKupaBankController} from '../netunim-kupa/site/assets/js/domains/bank/controller.js';
 import {createSyncDocument as orderDocumentSync} from '../netunim-orders/site/assets/js/sync/document.js';
@@ -140,7 +139,7 @@ test('Orders rebase and empty fields follow the record conflict contract',()=>{
 });
 test('shared check transport validates revisions and preserves RPC request contract',async()=>{
  const calls=[];
- const api=orderTransport({normalizeSharedChecks:normalizeOrdersChecks,supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
+ const api=orderTransport({supaFetch:async(url,options)=>{calls.push([url,JSON.parse(options.body)]);return {ok:true,text:async()=>JSON.stringify([{revision:8}])}}});
  assert.equal((await api.rpcSaveSharedChecksV2([check],7,'test:checks:1',['C2'])).row.revision,8);
  assert.equal(calls[0][0],'/rest/v1/rpc/save_shared_checks_document_v6');
  assert.deepEqual(Object.keys(calls[0][1]).sort(),['p_audit','p_deleted_check_ids','p_document_name','p_expected_revision','p_operation_id','p_state']);

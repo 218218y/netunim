@@ -33,6 +33,7 @@ for html in (orders_html,kupa_html):
         assert token in html, token
 
 shared_shell=(ROOT/'shared/global-document-search.js').read_bytes()
+shared_composition=(ROOT/'shared/document-search-composition.js').read_bytes()
 shared_css=(ROOT/'shared/global-document-search.css').read_bytes()
 shared_css_text=shared_css.decode('utf-8')
 assert '.document-pdfjs-container .pdfViewer .page{box-sizing:content-box;margin:0 auto 10px;padding:0}' in shared_css_text
@@ -41,9 +42,10 @@ assert '.global-search-input-wrap{display:flex;align-items:center;gap:9px;min-wi
 for app,site in (('orders',ORDERS),('kupa',KUPA)):
     assert_pdf_viewer_css_isolation(site,app)
     assert (site/'assets/js/shared/global-document-search.js').read_bytes()==shared_shell, f'{app}: shared search shell drift'
+    assert (site/'assets/js/shared/document-search-composition.js').read_bytes()==shared_composition, f'{app}: shared document composition drift'
     assert (site/'assets/js/shared/global-document-search.css').read_bytes()==shared_css, f'{app}: shared search CSS drift'
     main=(site/'assets/js/main.js').read_text(encoding='utf-8')
-    assert 'createDomainsDocumentBridge' in main and 'createDomainsGoogleDriveSearch' in main and 'createDomainsDocumentSearch' in main
+    assert 'composeDocumentSearch({supaFetch:' in main
     assert 'documentBridge:domainsDocumentBridge' in main
     headers=(site/'_headers').read_text(encoding='utf-8')
     for value in ('https://www.googleapis.com','http://127.0.0.1:8766',"worker-src 'self' blob:",'frame-src blob:'):
@@ -52,6 +54,9 @@ for app,site in (('orders',ORDERS),('kupa',KUPA)):
     assert "LAZY_RUNTIME_PREFIXES=['./assets/vendor/']" in worker
     for vendor in ('pdfjs','document-viewers'):
         assert (site/f'assets/vendor/{vendor}/_runtime-manifest.txt').is_file(), f'{app}: missing {vendor}'
+
+composition=shared_composition.decode('utf-8')
+assert all(name in composition for name in ('createDomainsDocumentBridge','createDomainsGoogleDriveSearch','createDomainsDocumentSearch'))
 
 for source in CANONICAL.rglob('*.js'):
     relative=source.relative_to(CANONICAL)

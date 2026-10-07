@@ -17,7 +17,8 @@ test('orders site exposes one unified search with site, file and content filters
   assert.match(html,/globalSearchDocumentPreview/);
   assert.doesNotMatch(html,/globalSearchPreviewTitle|globalSearchPreviewMeta|globalSearchPreviewOpen|פתח במחשב/);
   assert.match(html,/globalSearchPreviewMatches/);
-  assert.match(main,/createDomainsDocumentBridge/);
+  assert.match(main,/composeDocumentSearch\(\{supaFetch:/);
+  assert.match(read('shared/document-search-composition.js'),/createDomainsDocumentBridge/);
   assert.match(main,/documentBridge:domainsDocumentBridge/);
   assert.match(client,/http:\/\/127\.0\.0\.1:8766/);
   assert.match(client,/mode==='content'\?'content':'everything'/);

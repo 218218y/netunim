@@ -15,7 +15,7 @@ import {createSharedChecksStorageV2} from '../shared/shared-checks-storage-v2.js
 import {createStorageJournalDb} from '../shared/storage-journal-idb.js';
 import {createStateNormalization} from '../state/normalization.js';
 import {createSyncChecks} from '../sync/checks.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertKupaEntityInvariants,assertValidCloudState} from '../state/validation.js';
 import {INITIAL_STATE} from '../state/constants.js';
 

@@ -1,6 +1,6 @@
 import {createSharedChecksFlight} from '../shared/shared-checks-flight.js';
 import {mergeArray,eq} from './merge-records.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {clone} from '../core/values.js';
 
 export function createSyncChecks({sharedChecksV2,model,files={},checksSession={},tab,toast,recomputeKupaNetFromCache,renderKupaDependentView,writeStateToFolder,loadSession,refreshCloudTimestamp}){

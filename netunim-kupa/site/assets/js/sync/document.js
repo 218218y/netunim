@@ -1,6 +1,6 @@
 import {beginMeasure} from '../shared/runtime-performance.js';
 import {structuredSyncConflict} from '../shared/cloud-sync.js';
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {assertValidCloudState} from '../state/validation.js';
 import {jsonEq} from './merge-records.js';
 import {SUPA_AUTO_KEY, STORAGE_PREF_KEY} from '../state/constants.js';

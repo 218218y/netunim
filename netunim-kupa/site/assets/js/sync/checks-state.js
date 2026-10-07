@@ -1,4 +1,4 @@
-import {normalizeSharedChecks} from '../domains/checks/model.js';
+import {normalizeSharedChecks} from '../shared/shared-checks-contract.js';
 import {jsonEq} from './merge-records.js';
 // The live checks state and local-work signal come from Shared V2.
 export function createSyncChecksState({checksSession,model,sharedChecksHasLocalWork=()=>true}){

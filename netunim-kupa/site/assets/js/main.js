@@ -33,7 +33,6 @@ import {createDomainsExpensesSelectors} from './domains/expenses/selectors.js';
 import {createDomainsExpensesView} from './domains/expenses/view.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
-import {normalizeSharedChecks} from './domains/checks/model.js';
 import {createUiNavigation} from './ui/navigation.js';
 import {createUiSidebar} from './ui/sidebar.js';
 import {createUiGlobalSearch} from './ui/global-search.js';
@@ -47,9 +46,7 @@ import {createDomainsNotesController} from './domains/notes/controller.js';
 import {createDomainsBankView} from './domains/bank/view.js';
 import {createDomainsBankAlerts} from './domains/bank/alerts.js';
 import {createDomainsBankBridge} from './domains/bank/bridge.js';
-import {createDomainsDocumentBridge} from './domains/documents/bridge.js';
-import {createDomainsGoogleDriveSearch} from './domains/documents/google-drive.js';
-import {createDomainsDocumentSearch} from './domains/documents/search-source.js';
+import {composeDocumentSearch} from './shared/document-search-composition.js';
 import {createDomainsBankController} from './domains/bank/controller.js';
 import {createUiSettings} from './ui/settings.js';
 import {createUiModal} from './ui/modal.js';
@@ -256,12 +253,9 @@ const cloudAuth=createCloudAuth({
   assertSessionOwner:(...args)=>storageOwner.assertSessionOwner(...args),
 });
 
-const domainsDocumentLocalBridge=createDomainsDocumentBridge();
-const domainsGoogleDriveSearch=createDomainsGoogleDriveSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args)});
-const domainsDocumentBridge=createDomainsDocumentSearch({localBridge:domainsDocumentLocalBridge,googleDrive:domainsGoogleDriveSearch});
+const domainsDocumentBridge=composeDocumentSearch({supaFetch:(...args)=>cloudAuth.supaRest(...args)});
 
 const cloudTransport=createCloudTransport({
-  normalizeSharedChecks,
   session,
   supaRest:(...args)=>cloudAuth.supaRest(...args),
   localResetReadOnlyFetch:(...args)=>cloudAuth.localResetReadOnlyFetch(...args),
