@@ -52,8 +52,7 @@ remain separate from structural refactors.
   supplies 104 individual callbacks to one factory. The shared action registry
   rejects duplicate pack/action names and invalid handlers, retains mutation
   metadata, and exposes a frozen map without prototype actions. Orders uses
-  the same registry around its existing actions and external packs, preserving
-  its startup mutation guards while its larger factory awaits decomposition.
+  the same registry for its capability-owned actions.
 - A Kupa action-reference test checks literal rendered `data-*` actions and
   unreferenced registrations, including the cash-flow date action constructed
   from its base action name. This surfaced an unused cash-flow cutoff editor
@@ -72,6 +71,13 @@ remain separate from structural refactors.
   the shell ports exist. The runtime rejects access before binding and a second
   bind. Dashboard and backup receive focused ports, and `main.js` no longer
   constructs individual Suppliers controllers or owns their save-domain rule.
+- Kupa Cash now has a capability composition root. Balances are available
+  before the shell; one explicit bind phase constructs its view, rights-date
+  controller, ledger editor, and actions after the required ports exist. The
+  runtime rejects use before binding and duplicate binding. `RecordsCommands`
+  is created before the check, credit, and expense editors that use it, removing
+  their unnecessary construction-order dependency. Cash and rights persistence
+  retain their existing domain-specific operation contracts.
 
 ## Dependency direction
 
@@ -85,7 +91,7 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** continue with Kupa cash and the remaining Orders
+1. **Composition roots:** continue with the remaining Kupa and Orders
    capabilities. Map each capability's inputs, outputs, startup phase, and
    deferred callbacks. Keep public behavior fixed and run browser startup and
    sync gates for each extraction. Do not create a broad application service
