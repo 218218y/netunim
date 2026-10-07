@@ -350,9 +350,6 @@ const domainsSuppliersBulk=createDomainsSuppliersBulk({
 const domainsSuppliersView=createDomainsSuppliersView({
   model,
   supplierUi,
-  balanceRows:(...args)=>domainsSuppliersSelectors.balanceRows(...args),
-  supplierYearContext:(...args)=>domainsSuppliersSelectors.supplierYearContext(...args),
-  supplierViewRows:(...args)=>domainsSuppliersSelectors.supplierViewRows(...args),
   mountViewLayout:(...args)=>uiLayout.mountViewLayout(...args),
   orderedSuppliers:(...args)=>domainsSuppliersSelectors.orderedSuppliers(...args),
   captureSupplierViewport:(...args)=>uiLayout.captureSupplierViewport(...args),
@@ -458,10 +455,7 @@ const domainsInventoryView=createDomainsInventoryView({
   model,
   orderedInventoryCategoryNames:(...args)=>domainsInventorySelectors.orderedInventoryCategoryNames(...args),
   inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
-  inventoryGroupStats:(...args)=>domainsInventorySelectors.inventoryGroupStats(...args),
   inventoryCategoryGroups:(...args)=>domainsInventorySelectors.inventoryCategoryGroups(...args),
-  inventoryLocationText:(...args)=>domainsInventorySelectors.inventoryLocationText(...args),
-  inventoryItemLocations:(...args)=>domainsInventorySelectors.inventoryItemLocations(...args),
 });
 
 const domainsWarehouseBulk=createDomainsWarehouseBulk({
@@ -470,7 +464,6 @@ const domainsWarehouseBulk=createDomainsWarehouseBulk({
   renderWarehouse:(...args)=>domainsWarehouseView.renderWarehouse(...args),
   toast:(...args)=>uiStatus.toast(...args),
   scheduleSave:(message,options={})=>storagePersistence.scheduleSave(message,{...options,domains:['inventory','warehouseOrders']}),
-  inventoryStats:(...args)=>domainsInventorySelectors.inventoryStats(...args),
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
@@ -633,7 +626,6 @@ const syncDocument=createSyncDocument({
   model,
   files,
   session,
-  ui,
   tab,
   toast:(...args)=>uiStatus.toast(...args),
   setCloud:(...args)=>uiStatus.setCloud(...args),
@@ -724,14 +716,10 @@ const lifecycle=createLifecycle({
   recoverSharedChecksV2Primary,
   recoverSharedChecksV2ReadOnly:(...args)=>sharedChecksV2.recoverReadOnly(...args),
   ensureSyncCapabilities:(...args)=>cloudAuth.ensureSyncCapabilities(...args),
-  model,
   files,
   tab,
-  ui,
   session,
   checksSession,
-  domainRevisions,
-  normalizeState:(...args)=>stateNormalization.normalizeState(...args),
   recoverLocalV2State:(...args)=>storageBrowser.recoverLocalV2State(...args),
   recoverReadOnlyV2State:(...args)=>storageBrowser.recoverReadOnlyV2State(...args),
   resumeIncompleteRestore:(...args)=>uiBackup.resumeIncompleteRestore(...args),
@@ -747,8 +735,6 @@ const lifecycle=createLifecycle({
   folderSaveTitle:(...args)=>uiFolderStatus.folderSaveTitle(...args),
   showSecondaryTabGuard:(...args)=>uiTabGuard.showSecondaryTabGuard(...args),
   acquirePrimaryTabLock:(...args)=>storageTabLock.acquirePrimaryTabLock(...args),
-  sameOrderCloudData:(...args)=>stateSnapshots.sameOrderCloudData(...args),
-  hasMeaningfulLocalData:(...args)=>stateSnapshots.hasMeaningfulLocalData(...args),
   render:(...args)=>uiNavigation.render(...args),
   prepareState:(...args)=>stateSelectors.prepareState(...args),
   maybeCreateAutomaticFolderBackup:(...args)=>storageBackup.maybeCreateAutomaticFolderBackup(...args),
