@@ -27,6 +27,11 @@ remain separate from structural refactors.
   `shared/document-search-composition.js` capability, with one authenticated
   transport port supplied by each app. The construction point remains in the
   same startup sequence.
+- Kupa finance composition now owns its bank Bridge, cheque-image adapter,
+  bank and credit controllers, bank view, connection importer, cloud freshness
+  preflight, tracked finance revision, and shared remote lease state. `main.js`
+  supplies app contexts and late UI ports. The importer is still constructed
+  after the modal, preserving startup order.
 
 ## Dependency direction
 
@@ -39,8 +44,8 @@ not a claim that every remaining dependency follows the final direction.
 ## Next reviewable slices
 
 1. **Composition roots:** map the inputs and outputs of one cohesive capability
-   at a time. The Orders calendar wiring and the Kupa finance/bridge wiring are
-   candidate slices visible in `main.js`. Extract only after recording lifecycle
+   at a time. The Orders calendar wiring is the next candidate visible in
+   `main.js`. Extract only after recording lifecycle
    order and deferred callback dependencies; keep the public runtime behavior
    fixed and run the browser startup and sync gates for each extraction.
 2. **State boundaries:** audit `state/normalization.js` and validation imports

@@ -887,6 +887,8 @@ ok("kupa_documents" in os and "rpcSaveKupaDocument" in orders_main,
    "orders Kupa UI: Bank/Credit writes remain on the shared Kupa document")
 
 kupa_main=(K / "site/assets/js/main.js").read_text(encoding="utf-8")
+kupa_finance_composition=(K / "site/assets/js/composition/finance.js").read_text(encoding="utf-8")
+kupa_finance_cloud=(K / "site/assets/js/composition/finance-cloud.js").read_text(encoding="utf-8")
 kupa_transport=(K / "site/assets/js/cloud/transport.js").read_text(encoding="utf-8")
 kupa_sync_document=(K / "site/assets/js/sync/document.js").read_text(encoding="utf-8")
 kupa_bank_controller=(K / "site/assets/js/domains/bank/controller.js").read_text(encoding="utf-8")
@@ -900,7 +902,7 @@ ok("lastSync=summary?.sync?.syncedAt||null" in kupa_credit_sync_view and "lastSy
 ok("row.financeRevision=Number(financeResult.value.revision||0)" in kupa_transport
    and "financeChanged=!!row&&Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_sync_document
    and "applyFinanceOnlyRow(row)" in kupa_sync_document
-   and "financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_main,
+   and "financeChanged=Number(row.financeRevision||0)>Number(session.financeRevision||0)" in kupa_finance_cloud,
    "Kupa finance freshness: finance_sync_documents has an independent revision and finance-only updates wake an already-open Kupa without overwriting pending Kupa edits")
 ok("financeReadRevision" in orders_bank_cache and "financeRev<=Number(checksSession.financeReadRevision||0)" in orders_bank_cache
    and "row.financeRevision=Number(finance?.revision||0)" in orders_transport,
@@ -909,7 +911,8 @@ for controller, kind, bridge_call in ((kupa_bank_controller,"bank","bridge.fetch
     claim=f"claimFinanceSyncLease('{kind}'"
     ok(claim in controller and controller.index(claim)<controller.index(bridge_call),
        f"distributed finance lease: {kind} claim happens before opening the local Bridge session")
-ok("claimSharedFinanceSyncLease" in kupa_main and "remoteFinanceLeaseTokens" in kupa_main
+ok("remoteLeaseTokens" in kupa_finance_cloud and "cloudTransport.claimFinanceSyncLease(kind,token)" in kupa_finance_cloud
+   and "claimFinanceSyncLease:financeCloud.claimFinanceSyncLease" in kupa_finance_composition and "composeKupaFinance({" in kupa_main
    and "claimFinanceSyncLease:(...args)=>cloudTransport.claimFinanceSyncLease(...args)" in orders_main,
    "distributed finance lease: both composition roots wire the shared Supabase lease and Kupa preserves local-only mode")
 ok("SUPA_NETWORK_ATTEMPTS=3" in kupa_cloud_auth and "fetchSupaNetwork" in kupa_cloud_auth and "method==='GET'||method==='HEAD'" in kupa_cloud_auth
