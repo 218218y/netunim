@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createDomainsNotesController} from '../netunim-kupa/site/assets/js/domains/notes/controller.js';
-import {NOTES_SHEET_DEFAULT_WIDTH,normalizeNotesSheet} from '../netunim-kupa/site/assets/js/domains/notes/sheet-model.js';
+import {NOTES_SHEET_DEFAULT_WIDTH,normalizeNotesSheet} from '../netunim-kupa/site/assets/js/shared/notes-sheet-model.js';
 import {createContexts} from '../netunim-kupa/site/assets/js/state/contexts.js';
 
 function makeDocument(){
