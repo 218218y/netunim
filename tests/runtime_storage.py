@@ -71,16 +71,18 @@ with BrowserSession(ROOT/'netunim-kupa/site','storage-v2-crash-matrix') as brows
       check(JSON.stringify(retry)===JSON.stringify(flight),'lost ACK retry retains exact flight and operation ID');
       check(await fails(()=>journal.install(initial)),'restore cannot discard unresolved flight');
       check(await fails(()=>journal.acknowledge('wrong-operation',5,flight.snapshot)),'wrong ACK rejected');
-      await journal.acknowledge(flight.operationId,5,flight.snapshot);
+      check(await fails(()=>journal.acknowledge(flight.operationId,3,flight.snapshot)),'ACK rejects a regressed cloud revision');
+      await journal.acknowledge(flight.operationId,4,flight.snapshot);
+      check((await journal.cloudState()).base.revision===4,'idempotent no-op ACK may retain the existing cloud revision');
       check(await text(journal)==='during RPC'&&!(await db.load('matrix')).flights,'ACK preserves later mutations');
-      const next=await journal.materializeFlight({operationId:'second-flight',baseRevision:5});
+      const next=await journal.materializeFlight({operationId:'second-flight',baseRevision:4});
       check(next.snapshot.notes[0].text==='during RPC','next flight materializes newer generation');
-      await journal.acknowledge(next.operationId,6,next.snapshot);
+      await journal.acknowledge(next.operationId,5,next.snapshot);
       write=journal.append([{type:'delete',collection:'notes',id:'n'}],{deleteIntents:{notes:['n']}});await write.committed;await journal.compact();
       check((await db.load('matrix')).journal.length===1,'checkpoint retains cloud-unacknowledged operations');
-      const deleteFlight=await journal.materializeFlight({operationId:'delete-flight',baseRevision:6});
+      const deleteFlight=await journal.materializeFlight({operationId:'delete-flight',baseRevision:5});
       check(deleteFlight.deleteIntents.notes[0]==='n','flight derives explicit delete intents from pending journal range');
-      await journal.acknowledge(deleteFlight.operationId,7,deleteFlight.snapshot);await journal.compact();
+      await journal.acknowledge(deleteFlight.operationId,6,deleteFlight.snapshot);await journal.compact();
       check((await db.load('matrix')).journal.length===0,'acknowledged operation compacts after checkpoint');
       journal=make('matrix');await journal.open();check((await journal.recover()).state.notes.length===0,'explicit deletion never resurrects on restart');
 
