@@ -27,7 +27,7 @@ persistence=(SITE/'assets/js/storage/persistence.js').read_text(encoding='utf-8'
 bulk=(SITE/'assets/js/domains/customers/bulk.js').read_text(encoding='utf-8')
 composition=(SITE/'assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
 document_types=(SITE/'assets/js/core/morning-document-types.js').read_text(encoding='utf-8')
-actions=(SITE/'assets/js/ui/actions.js').read_text(encoding='utf-8')
+actions=(SITE/'assets/js/ui/action-packs/morning.js').read_text(encoding='utf-8')
 main=(SITE/'assets/js/main.js').read_text(encoding='utf-8')
 runtime_events=(SITE/'assets/js/runtime-events.js').read_text(encoding='utf-8')
 setup=DOCS.read_text(encoding='utf-8')
@@ -74,9 +74,9 @@ ok(not re.search(r'\b(pdf|base64|blob|document_content)\b\s+(?:text|jsonb|bytea)
    'Morning storage: ledger schema does not store PDF/base64/document bodies')
 ok('on delete cascade' not in sql.lower() and 'drop constraint if exists morning_document_operations_owner_id_fkey' in owner_retention.lower(),
    'Morning ledger retention: deleting an app user cannot erase issuance/idempotency evidence')
-ok("createDomainsCustomers" in composition and "openMorningDocument" in main and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
+ok("createDomainsCustomers" in composition and "createMorningActions({domainsCustomers})" in main and "openMorningDocument=(...args)=>domainsCustomers.openMorningDocument(...args)" in actions and main.count("./domains/customers/") <= 1 and len(main.encode('utf-8')) < 60_000,
    'Customer composition: Morning stays behind one customer-domain composition boundary and main.js remains below the architecture size limit')
-for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-link','morning-bank-transaction-select','morning-bank-transaction-clear','morning-bank-transaction-search','morning-preview','morning-create','morning-open-document','morning-reconcile'):
+for action in ('open-morning-document','open-morning-standalone','morning-document-type','morning-payment-type','morning-payment-add','morning-payment-remove','morning-payment-amount','morning-bank-debt-select','morning-bank-debt-clear','morning-bank-transaction-select','morning-bank-transaction-clear','morning-bank-transaction-search','morning-preview','morning-create','morning-open-document','morning-reconcile'):
     ok(f"'{action}':" in actions, f'Morning UI action registered: {action}')
 
 ok("openMorningDocumentModal({prefill:null,debtId:'',source:{kind:'standalone'}})" in documents and "openStandaloneMorningDocument" in documents and "source:{kind:activeSource.kind||'standalone'" in documents and "open-morning-standalone" in view,
@@ -116,8 +116,9 @@ config=(ROOT/'netunim-orders/supabase/config.toml').read_text(encoding='utf-8')
 morning_config=config.split('[functions.morning-documents]',1)[1]
 ok('verify_jwt = false' in morning_config and 'requireUser(req)' in edge and 'client.auth.getUser(token)' in edge and "if(req.method==='OPTIONS')" in edge and "'Access-Control-Allow-Origin':'*'" in edge,
    'Morning function auth/CORS: preflight reaches the handler while every POST still requires a Supabase-authenticated user')
+customer_pack=(SITE/'assets/js/ui/action-packs/customers.js').read_text(encoding='utf-8')
 ok('const domainsCustomers=createDomainsCustomers({' in main and 'const renderCustomers=' not in main
-   and 'renderCustomers:(...args)=>domainsCustomers.renderCustomers(...args)' in main,
+   and 'createCustomersActions({customerUi,domainsCustomers})' in main and 'renderCustomers=(...args)=>domainsCustomers.renderCustomers(...args)' in customer_pack,
    'Customer composition: deferred navigation uses the public domain API without a test-only lexical facade')
 customer_actions=(
   'setCustomerTab','toggleCustomerBulkMode','toggleCustomerBulkRow','toggleCustomerBulkVisible','deleteSelectedCustomerRows',
@@ -125,8 +126,10 @@ customer_actions=(
   'openMorningDocument','openStandaloneMorningDocument','syncMorningDocumentType','syncMorningPaymentType','previewMorningDocument','createMorningDocument','openMorningExistingDocument','reconcileMorningDocument',
 )
 composition=(ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8')
+action_ports=customer_pack+'\n'+actions
 ok(all(f'{name}:(...args)=>' in composition for name in customer_actions)
-   and all(f'{name}:(...args)=>domainsCustomers.{name}(...args)' in main for name in customer_actions),
+   and all(f'{name}=(...args)=>domainsCustomers.{name}(...args)' in action_ports for name in customer_actions)
+   and 'createCustomersActions({customerUi,domainsCustomers})' in main and 'createMorningActions({domainsCustomers})' in main,
    'Customer composition: customer/debt/Morning actions are wired through the same public API used by tests')
 
 
@@ -207,7 +210,7 @@ ok("if(createBusy||blocked||completed)return" in documents and "button.disabled=
    'Issued-document UI: a verified success locks the same issuance dialog so a second click cannot create an accidental duplicate')
 ok('id="morningAmount"' in documents and 'step="1"' in documents.split('id="morningAmount"',1)[1].split('>',1)[0] and 'data-payment-field="price"' in morning_payments and 'step="1"' in morning_payments and 'Math.round' in documents and 'Math.round' in morning_payments,
    'Morning amount UI: document and multi-payment amounts support exact agorot')
-ok('data-input="morning-document-amount"' in documents and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in documents and 'אינו תואם לסך התקבולים' in documents and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in (ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8'),
+ok('data-input="morning-document-amount"' in documents and 'amount.readOnly=false' in documents and 'morningPaymentTotalCents(payments)' in documents and 'אינו תואם לסך התקבולים' in documents and 'id="morningPaymentSummary"' in morning_payments and 'id="morningPaymentTotal"' in morning_payments and 'is-mismatch' in morning_payments and 'is-match' in morning_payments and "'morning-document-amount':" in actions,
    'Morning payment documents keep an independent editable document amount, show a live receipts total and block preview/issuance on any cent mismatch')
 ok('markModalDraftSaved' in documents and 'if(isActive(generation))markModalDraftSaved?.()' in documents and 'markModalDraftSaved:(...args)=>uiModal.markModalDraftSaved(...args)' in (ROOT/'netunim-orders/site/assets/js/domains/customers/composition.js').read_text(encoding='utf-8'),
    'Issued-document UI: verified completion commits only the still-active Morning modal draft baseline so closing does not warn about already-consumed edits')

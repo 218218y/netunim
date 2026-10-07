@@ -524,7 +524,7 @@ orders_supplier_view = (O / "site/assets/js/domains/suppliers/view.js").read_tex
 orders_supplier_model = (O / "site/assets/js/domains/suppliers/model.js").read_text(encoding="utf-8")
 orders_supplier_editor = (O / "site/assets/js/domains/suppliers/editor.js").read_text(encoding="utf-8")
 orders_normalization = (O / "site/assets/js/state/normalization.js").read_text(encoding="utf-8")
-orders_actions = (O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+orders_actions = '\n'.join(path.read_text(encoding='utf-8') for path in sorted((O / "site/assets/js/ui/action-packs").glob('*.js')))
 ok('supplier-data-table' in orders_supplier_view
    and '@media(min-width:1000px){.supplier-data-table:not(.supplier-all-table){min-width:0!important;table-layout:auto}' in orders_css
    and '.supplier-data-table:not(.supplier-all-table) .col-row-actions{width:54px}' in orders_css
@@ -763,7 +763,7 @@ ok('> הוצאות</button>' in (K / "site/index.html").read_text(encoding="utf-
 expense_view=(K / "site/assets/js/domains/expenses/view.js").read_text(encoding="utf-8")
 bank_view=(K / "site/assets/js/domains/bank/view.js").read_text(encoding="utf-8")
 orders_bank_detail_view=(O / "site/assets/js/domains/finance/bank-transaction-detail-view.js").read_text(encoding="utf-8")
-orders_actions=(O / "site/assets/js/ui/actions.js").read_text(encoding="utf-8")
+orders_actions='\n'.join(path.read_text(encoding='utf-8') for path in sorted((O / "site/assets/js/ui/action-packs").glob('*.js')))
 kupa_actions=(K / "site/assets/js/ui/action-packs/bank.js").read_text(encoding="utf-8")
 ok(all('כל התנועות' in source and 'class="bank-date-menu"' in source and "'bank-date-from'" in source and "'bank-date-to'" in source and 'class="btn primary bank-date-apply"' in source and '<select class="bank-date-mode"' not in source for source in (orders_finance_view,bank_view))
    and "setOrdersBankDateMode('range',host?.querySelector('[data-bank-date-from]')?.value||'',host?.querySelector('[data-bank-date-to]')?.value||'')" in orders_actions
@@ -874,9 +874,9 @@ ok((ROOT / 'netunim-orders/site/assets/js/domains/finance/credit-status-view.js'
    'orders finance UI: credit status/diagnostic rendering is split from the main finance view responsibility')
 ok("מספרי שיקים שלא שויכו לשורה" in orders_bank_detail_view and "מספרי שיקים שלא שויכו לשורה" in bank_view,
    "bank cheque UI: bank-supplied identifiers that cannot be safely attached to a specific row remain visible instead of being hidden or guessed")
-ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics' in orders_main,
+ok('data-action="export-orders-bank-cheque-diagnostics"' in orders_bank_connection_view and "'export-orders-bank-cheque-diagnostics'" in orders_actions and 'exportBankChequeDiagnostics' in orders_finance_controller and "request('/bank/diagnostics'" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8') and 'exportOrdersBankChequeDiagnostics=(...args)=>domainsFinanceView.exportBankChequeDiagnostics(...args)' in orders_actions and 'createFinanceBankActions({domainsFinanceController,domainsFinanceView' in orders_main,
    "Orders bank diagnostics: synchronization options export the same authenticated local cheque TXT evidence without cloud persistence")
-ok("const CREDIT_BRIDGE_VERSION=70" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics" in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
+ok("const CREDIT_BRIDGE_VERSION=70" in orders_finance_controller and "CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and "return version>=CREDIT_BRIDGE_VERSION&&contract>=CREDIT_CONNECTOR_CONTRACT_VERSION" in orders_finance_controller and 'data-action="export-orders-credit-data-diagnostics"' in orders_finance_view and "exportOrdersCreditDataDiagnostics=(...args)=>domainsFinanceView.exportCreditDataDiagnostics(...args)" in orders_actions and 'createFinanceCreditActions({domainsFinanceView,ui})' in orders_main and "creditDataDiagnostics" in (O/'site/assets/js/domains/finance/bridge.js').read_text(encoding='utf-8'),
    "orders Kupa UI: credit controls require Bridge v70 / Credit Connector contract v2 and expose the separate local credit data diagnostic export")
 ok("browserEngine:['chromium','camoufox'].includes" in (O / "site/assets/js/domains/finance/credit-feed.js").read_text(encoding="utf-8") and 'דפדפן:' in (O/'site/assets/js/domains/finance/credit-status-view.js').read_text(encoding='utf-8'),
    "orders credit diagnostics: browser-engine provenance survives normalization and is visible for engine-scoped cooldowns")
@@ -1157,7 +1157,7 @@ orders_service_view=(ROOT/'netunim-orders/site/assets/js/domains/service/view.js
 orders_warehouse_view=(ROOT/'netunim-orders/site/assets/js/domains/warehouse/view.js').read_text(encoding='utf-8')
 orders_finance_view=(ROOT/'netunim-orders/site/assets/js/domains/finance/view.js').read_text(encoding='utf-8')
 orders_finance_controller=(ROOT/'netunim-orders/site/assets/js/domains/finance/controller.js').read_text(encoding='utf-8')
-orders_actions=(ROOT/'netunim-orders/site/assets/js/ui/actions.js').read_text(encoding='utf-8')
+orders_actions='\n'.join(path.read_text(encoding='utf-8') for path in sorted((ROOT/'netunim-orders/site/assets/js/ui/action-packs').glob('*.js')))
 kupa_credit_view=(ROOT/'netunim-kupa/site/assets/js/domains/credit/view.js').read_text(encoding='utf-8')
 kupa_credit_editor=(ROOT/'netunim-kupa/site/assets/js/domains/credit/editor.js').read_text(encoding='utf-8')
 kupa_actions=(ROOT/'netunim-kupa/site/assets/js/ui/action-packs/credit.js').read_text(encoding='utf-8')

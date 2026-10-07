@@ -14,7 +14,7 @@ for(const app of ['orders','kupa'])test(`${app} real transport blocks write befo
  assert.equal(reads,1);assert.equal(writes,0);
 });
 import {bindActionEvents,floatingMenuPosition,floatingMenuWidth} from '../shared/events.js';
-import {createUiActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createSuppliersActions,wrapMutationActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 import {createUiStatus} from '../netunim-orders/site/assets/js/ui/status.js';
 test('delegated action gate prevents callbacks when a caller rejects an action',()=>{
  const callbacks={},root={addEventListener:(type,fn)=>callbacks[type]=fn};globalThis.Element=class{};const element=new Element();element.getAttribute=()=> 'save';element.matches=()=>false;let writes=0;bindActionEvents(root,{save:()=>writes++},{canRun:()=>false});callbacks.click({composedPath:()=>[element,root],preventDefault(){},stopPropagation(){}});assert.equal(writes,0);
@@ -34,7 +34,7 @@ test('orders token refresh can reopen a capability check during normal runtime',
 test('orders capability checking blocks mutations but never supplier navigation',t=>{
  const oldDocument=globalThis.document,oldSetTimeout=globalThis.setTimeout;t.after(()=>{globalThis.document=oldDocument;globalThis.setTimeout=oldSetTimeout});
  const fakeToast={textContent:'',classList:{add(){},remove(){}}};globalThis.document={querySelector:()=>fakeToast};globalThis.setTimeout=()=>0;
- const classified=createUiActions({supplierMenu:{chooseSupplier(){},toggleSupplierMenu(){},filterSupplierMenu(){},supplierMenuSearchKeydown(){}},supplierUi:{},customerUi:{},serviceUi:{},warehouseUi:{},ui:{}});
+ const classified=createSuppliersActions({domainsSuppliersNavigation:{chooseSupplier(){},toggleSupplierMenu(){},filterSupplierMenu(){},supplierMenuSearchKeydown(){}},supplierUi:{}});
  assert.equal(classified['choose-supplier'].startupMutationDomain,undefined);assert.equal(classified['open-supplier'].startupMutationDomain,undefined);assert.equal(classified['save-supplier'].startupMutationDomain,'orders');
  const session={syncCapabilitiesChecking:true,startupSync:{active:false,domains:{orders:{required:false,state:'idle',error:''},checks:{required:false,state:'idle',error:''},finance:{required:false,state:'idle',error:''}}}},checksSession={};
  const status=createUiStatus({session,checksSession});let supplierSelections=0,writes=0;

@@ -1,6 +1,6 @@
 'use strict';
 const CACHE_PREFIX='orders-app-shell-';
-const CACHE='orders-app-shell-esm-4bf477976bc1';
+const CACHE='orders-app-shell-esm-5750c6c59fd9';
 const SHELL=[
   './',
   './index.html',
@@ -216,6 +216,22 @@ const SHELL=[
   './assets/js/sync/document.js',
   './assets/js/sync/merge-records.js',
   './assets/js/sync/merge.js',
+  './assets/js/ui/action-packs/alerts.js',
+  './assets/js/ui/action-packs/backup.js',
+  './assets/js/ui/action-packs/calendar.js',
+  './assets/js/ui/action-packs/checks.js',
+  './assets/js/ui/action-packs/cloud.js',
+  './assets/js/ui/action-packs/customers.js',
+  './assets/js/ui/action-packs/dashboard.js',
+  './assets/js/ui/action-packs/external.js',
+  './assets/js/ui/action-packs/finance-bank.js',
+  './assets/js/ui/action-packs/finance-credit.js',
+  './assets/js/ui/action-packs/morning.js',
+  './assets/js/ui/action-packs/notes.js',
+  './assets/js/ui/action-packs/service.js',
+  './assets/js/ui/action-packs/shell.js',
+  './assets/js/ui/action-packs/suppliers.js',
+  './assets/js/ui/action-packs/warehouse.js',
   './assets/js/ui/actions.js',
   './assets/js/ui/alert-center.js',
   './assets/js/ui/backup.js',

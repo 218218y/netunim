@@ -1,4 +1,18 @@
 // Combine capability-owned action maps without silently replacing a handler.
+export function markMutationActions(actions,domains){
+  const seen=new Set();
+  for(const [domain,names] of Object.entries(domains)){
+    if(!domain||!Array.isArray(names))throw new TypeError(`Invalid mutation domain: ${domain}`);
+    for(const name of names){
+      const handler=actions[name];
+      if(!Object.hasOwn(actions,name)||typeof handler!=='function'||seen.has(name)||handler.startupMutationDomain&&handler.startupMutationDomain!==domain)throw new Error(`Invalid mutation action: ${name}`);
+      seen.add(name);
+      Object.defineProperty(handler,'startupMutationDomain',{value:domain});
+    }
+  }
+  return actions;
+}
+
 export function composeActionRegistry(packs){
   const actions=Object.create(null),owners=new Map(),packNames=new Set();
   for(const pack of packs){

@@ -67,12 +67,12 @@ check("saved_at=lte." in kupa_transport and "shared_checks_periodic_backups" in 
 check("saved_at=lte." in orders_transport and "shared_checks_periodic_backups" in orders_transport, "orders: shared checks are paired at-or-before the primary backup time")
 
 kupa_actions = read("netunim-kupa/site/assets/js/ui/action-packs/backup.js")
-orders_actions = read("netunim-orders/site/assets/js/ui/actions.js")
+orders_actions = read("netunim-orders/site/assets/js/ui/action-packs/backup.js")
 check("'restore-cloud-backup':(element,event)=>{previewCloudBackup" in kupa_actions, "kupa: list restore action is preview-first")
 check("load-more-cloud-backups" in kupa_actions, "kupa: older backup pages are explicit user actions")
 check("'restore-orders-cloud-backup':(element,event)=>{previewCloudBackup" in orders_actions, "orders: list restore action is preview-first")
 check("load-more-orders-cloud-backups" in orders_actions, "orders: older backup pages are explicit user actions")
-check("apply-orders-cloud-backup-restore" in orders_actions and "all:['apply-json-restore','apply-orders-cloud-backup-restore'" in orders_actions, "orders: destructive cloud restore is protected by the startup mutation guard")
+check("apply-orders-cloud-backup-restore" in orders_actions and "markMutationActions(actions,{all:['apply-json-restore', 'apply-orders-cloud-backup-restore', 'begin-json-restore']})" in orders_actions, "orders: destructive cloud restore is protected by the startup mutation guard")
 
 kupa_backup = read("netunim-kupa/site/assets/js/ui/backup.js")
 orders_backup = read("netunim-orders/site/assets/js/ui/backup.js")

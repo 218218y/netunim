@@ -59,6 +59,13 @@ remain separate from structural refactors.
   from its base action name. This surfaced an unused cash-flow cutoff editor
   action; its unreachable writer was removed while persisted cutoff settings
   and their read behavior remain intact.
+- Orders' delegated actions are now owned by bounded packs for finance, checks,
+  suppliers, customers, morning documents, service, warehouse, notes, calendar,
+  backup, cloud, alerts, dashboard, and shell. Existing workbook, spreadsheet,
+  and card-order action maps retain their owners. The root composes these maps
+  once, while each pack declares its own startup mutation domain. A rendered
+  action test checks registrations, including the generated cash-flow date
+  name, and removed obsolete registrations for controls absent from the UI.
 
 ## Dependency direction
 
@@ -72,28 +79,21 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Orders action packs:** Kupa's 104-input factory has been removed. Orders
-   still takes roughly 250 inputs. Extract its cohesive suppliers, warehouse,
-   customers, documents, finance, checks, and shell actions through bounded
-   capability ports. Move startup mutation classification with each extracted
-   pack and verify every rendered action, including dynamic action names. The
-   shared registry already rejects collisions between existing external packs
-   and the Orders core map; the core itself is the remaining monolith.
-2. **Composition roots:** map each capability's inputs, outputs, startup phase,
+1. **Composition roots:** map each capability's inputs, outputs, startup phase,
    and deferred callbacks. Orders suppliers and Kupa cash are the next cohesive
    candidates. Keep public behavior fixed and run browser startup and sync gates
    for each extraction. Do not create a broad application service locator.
-3. **Lifecycle:** once capabilities own their actions and startup ports, replace
+2. **Lifecycle:** once capabilities own their actions and startup ports, replace
    individual callbacks with a small set of explicit phases: preflight, local
    recovery, hydration, first render, remote reconciliation, background jobs.
    Test phase order, partial failure, retry, and shutdown where applicable.
-4. **Integrations:** move browser and network adapters from domains behind
+3. **Integrations:** move browser and network adapters from domains behind
    explicit platform/integration ports. Preserve credential and persistence
    semantics while moving each adapter.
-5. **Compatibility inventory:** for every legacy reader, persisted key, and old
+4. **Compatibility inventory:** for every legacy reader, persisted key, and old
    RPC, record read/write use, production data dependency, retirement condition,
    and a proving test. Do not delete a reader on name alone.
-6. **Contracts and sources of truth:** introduce JSDoc/checkJs at storage, cloud,
+5. **Contracts and sources of truth:** introduce JSDoc/checkJs at storage, cloud,
    sync and composition boundaries. Inventory SQL setup/operator copies, generated
    assets, and CSS overrides before adding deterministic generation or splitting
    files. Keep release receipts and postflight checks as gates.

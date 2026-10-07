@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import {createUiActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createCalendarActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 import {createCalendarActionPorts} from '../netunim-orders/site/assets/js/domains/calendar/action-ports.js';
 
 const calls=[];
 const record=name=>(...args)=>calls.push([name,...args]);
-const actions=createUiActions({
+const actions=createCalendarActions({calendarPorts:{
   calendarPrevPeriod:record('prev'),
   calendarToday:record('today'),
   calendarNextPeriod:record('next'),
@@ -21,7 +21,7 @@ const actions=createUiActions({
   calendarExpandQuickEvent:record('quick-details'),
   calendarSaveEvent:record('save'),
   calendarDeleteEvent:record('delete'),
-});
+}});
 
 const element={dataset:{clickArg0:'calendar-key'}};
 const event={};

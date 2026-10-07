@@ -4,7 +4,7 @@ import {applyBulkRangeSelection} from '../netunim-orders/site/assets/js/core/bul
 import {createStateNormalization} from '../netunim-orders/site/assets/js/state/normalization.js';
 import {createDomainsWarehouseView} from '../netunim-orders/site/assets/js/domains/warehouse/view.js';
 import {createDomainsInventoryView} from '../netunim-orders/site/assets/js/domains/inventory/view.js';
-import {createUiActions} from '../netunim-orders/site/assets/js/ui/actions.js';
+import {createWarehouseActions} from '../netunim-orders/site/assets/js/ui/actions.js';
 import {createContexts} from '../netunim-orders/site/assets/js/state/contexts.js';
 import {readFileSync} from 'node:fs';
 import {
@@ -178,11 +178,12 @@ test('clicking Stock again clears a stock status quick-filter without clearing w
   const warehouseUi={warehouseTab:'stock',inventoryFilter:'short',inventoryLocation:'מחסן גדול',inventoryGrouping:'location',warehouseSearch:''};
   const tabCalls=[];
   let renders=0;
-  const actions=createUiActions({
+  const actions=createWarehouseActions({
     warehouseUi,
-    ui:{checksBulkSelected:new Set()},
+    warehousePorts:{
     setWarehouseTab:tab=>tabCalls.push(tab),
     renderWarehouse:()=>{renders++},
+    },
   });
   actions['set-warehouse-tab']();
   assert.equal(warehouseUi.inventoryFilter,'');
@@ -196,11 +197,12 @@ test('stock quick-filter still applies after Stock-tab reset semantics were adde
   const warehouseUi={warehouseTab:'stock',inventoryFilter:'',inventoryLocation:'מחסן קטן',inventoryGrouping:'',warehouseSearch:'abc'};
   const tabCalls=[];
   let renders=0;
-  const actions=createUiActions({
+  const actions=createWarehouseActions({
     warehouseUi,
-    ui:{checksBulkSelected:new Set()},
+    warehousePorts:{
     setWarehouseTab:tab=>tabCalls.push(tab),
     renderWarehouse:()=>{renders++},
+    },
   });
   actions['warehouse-quick-filter']({dataset:{clickArg0:'low',clickArg1:'stock'}});
   assert.equal(warehouseUi.inventoryFilter,'low');

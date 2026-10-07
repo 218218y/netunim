@@ -39,7 +39,7 @@ def main() -> int:
         ok &= check(".confirm-backdrop" in css and ".confirm-dialog" in css, f"{name}: confirmation UI is styled")
 
     orders_modal = read(apps["orders"] / "assets/js/ui/modal.js")
-    orders_actions = read(apps["orders"] / "assets/js/ui/actions.js")
+    orders_actions = read(apps["orders"] / "assets/js/ui/action-packs/shell.js")
     supplier_bulk = read(apps["orders"] / "assets/js/domains/suppliers/bulk.js")
     ok &= check("modalHasUnsavedDraft" in orders_modal and "dismissModal" in orders_modal, "orders: generic dirty-form dismissal guard exists")
     ok &= check("markModalDraftSaved" in orders_modal, "orders: successful workflows can explicitly commit the modal draft baseline")
