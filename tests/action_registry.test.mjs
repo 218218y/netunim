@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {composeActionRegistry} from '../shared/action-registry.js';
+import {composeActionRegistry,markMutationActions} from '../shared/action-registry.js';
 import {createCreditCardOrderView} from '../shared/credit-card-order-view.js';
 import {createNotesWorkbook} from '../shared/notes-workbook.js';
 import {createSpreadsheetWorkspace} from '../shared/spreadsheet-workspace.js';
@@ -18,6 +18,17 @@ test('action packs reject collisions and retain the exact handler and mutation m
   assert.throws(()=>composeActionRegistry([{name:'a',actions:{save}},{name:'b',actions:{save}}]),/Duplicate UI action save: a and b/);
   assert.throws(()=>composeActionRegistry([{name:'a',actions:{}},{name:'a',actions:{}}]),/duplicate action pack/);
   assert.throws(()=>composeActionRegistry([{name:'a',actions:{save:null}}]),/Invalid UI action/);
+});
+
+test('mutation domains are declared only for owned handlers and cannot conflict',()=>{
+  const save=()=>{},navigate=()=>{};
+  const actions={save,navigate};
+  assert.equal(markMutationActions(actions,{orders:['save']}),actions);
+  assert.equal(save.startupMutationDomain,'orders');
+  assert.equal(navigate.startupMutationDomain,undefined);
+  assert.throws(()=>markMutationActions(actions,{orders:['missing']}),/Invalid mutation action: missing/);
+  assert.throws(()=>markMutationActions(actions,{orders:['navigate'],finance:['navigate']}),/Invalid mutation action: navigate/);
+  assert.throws(()=>markMutationActions(actions,{finance:['save']}),/Invalid mutation action: save/);
 });
 
 test('Kupa capability action packs compose with the workbook, spreadsheet, and card-order actions',()=>{
