@@ -28,8 +28,7 @@ import {createUiDateEditor} from './ui/date-editor.js';
 import {createDomainsChecksSelectors} from './domains/checks/selectors.js';
 import {createKupaCashRuntime} from './composition/cash.js';
 import {createDomainsCreditSelectors} from './domains/credit/selectors.js';
-import {createDomainsExpensesSelectors} from './domains/expenses/selectors.js';
-import {createDomainsExpensesView} from './domains/expenses/view.js';
+import {createKupaExpensesRuntime} from './composition/expenses.js';
 import {createDomainsBankSelectors} from './domains/bank/selectors.js';
 import {createDomainsChecksView} from './domains/checks/view.js';
 import {createUiNavigation} from './ui/navigation.js';
@@ -48,7 +47,6 @@ import {createUiModal} from './ui/modal.js';
 import {createDomainsChecksEditor} from './domains/checks/editor.js';
 import {createDomainsCreditEditor} from './domains/credit/editor.js';
 import {inactiveCreditExpired} from './domains/credit/model.js';
-import {createDomainsExpensesEditor} from './domains/expenses/editor.js';
 import {createDomainsRecordsCommands} from './domains/records/commands.js';
 import {createUiBackup} from './ui/backup.js';
 import {createLifecycle} from './lifecycle.js';
@@ -56,7 +54,7 @@ import {verifyStorageV2LocalEngine} from './shared/storage-v2-local-birth.js';
 import {bindActionEvents,bindBackdropDismissal,bindDismissibleDetails,bindNumberInputWheelGuard} from './shared/events.js';
 import {checkBankReviewItems,checkBankReviewMarkup} from './shared/check-bank-review.js';
 import {composeActionRegistry} from './shared/action-registry.js';
-import {createChecksActions,createBankActions,createShellActions,createCreditActions,createNotesActions,createExpensesActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
+import {createChecksActions,createBankActions,createShellActions,createCreditActions,createNotesActions,createSettingsActions,createBackupActions,createCloudActions} from './ui/actions.js';
 import {createContexts} from './state/contexts.js';
 import {createKupaDomainRevisions,kupaPageRevision} from './state/revisions.js';
 import {createRestoreGroupStore} from './shared/restore-groups.js';
@@ -341,10 +339,6 @@ const domainsCreditSelectors=createDomainsCreditSelectors({
   model,
 });
 
-const domainsExpensesSelectors=createDomainsExpensesSelectors({
-  model,
-});
-
 const domainsBankSelectors=createDomainsBankSelectors({
   model,
   checksSession,
@@ -419,11 +413,12 @@ const uiBulk=createUiBulk({
   confirmDialog:(...args)=>uiModal.confirmDialog(...args),
 });
 
-const domainsExpensesView=createDomainsExpensesView({
-  model,
-  ui,
-  bankNextCycleCommitments:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
-  bankHomeNextCycleCommitments:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
+const expenses=createKupaExpensesRuntime({
+  model,ui,
+  bankForecast:{
+    business:(...args)=>domainsBankSelectors.bankNextCycleCommitments(...args),
+    home:(...args)=>domainsBankSelectors.bankHomeNextCycleCommitments(...args),
+  },
 });
 
 const domainsCreditView=createDomainsCreditView({
@@ -438,7 +433,7 @@ const domainsCreditView=createDomainsCreditView({
   bulkCell:(...args)=>uiBulk.bulkCell(...args),
   creditSyncUiState:(...args)=>domainsCreditController.creditSyncUiState(...args),
   refreshCreditBridgeStatus:(...args)=>domainsCreditController.refreshCreditBridgeStatus(...args),
-  expensesMarkup:(...args)=>domainsExpensesView.expensesMarkup(...args),
+  expensesMarkup:(...args)=>expenses.expensesMarkup(...args),
 });
 
 const spreadsheetWorkspace=createSpreadsheetWorkspace({
@@ -537,17 +532,11 @@ const domainsCreditEditor=createDomainsCreditEditor({
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
 });
 
-const domainsExpensesEditor=createDomainsExpensesEditor({
-  model,
-  armModalDraftGuard:(...args)=>uiModal.armModalDraftGuard(...args),
-  modal:(...args)=>uiModal.modal(...args),
-  deleteRecord:(...args)=>domainsRecordsCommands.deleteRecord(...args),
-  saveState:(message,options={})=>storagePersistence.saveState(message,{...options,domains:['expenses']}),
-  toast:(...args)=>uiStatus.toast(...args),
-  closeModal:(...args)=>uiModal.closeModal(...args),
-  dateEditorMarkup:(...args)=>uiDateEditor.dateEditorMarkup(...args),
+expenses.bindEditor({
+  uiModal,uiDateEditor,uiStatus,storagePersistence,domainsRecordsCommands,
   renderCredit:(...args)=>domainsCreditView.renderCredit(...args),
 });
+expenses.assertReady();
 
 const uiBackup=createUiBackup({
   ...storageV2Cloud,
@@ -623,8 +612,7 @@ const lifecycle=createLifecycle({
   pendingInstallments:(...args)=>domainsCreditSelectors.pendingInstallments(...args),
   allInstallments:(...args)=>domainsCreditSelectors.allInstallments(...args),
   monthSumInstallments:(...args)=>domainsCreditSelectors.monthSumInstallments(...args),
-  expenseOccurrencesForMonth:(...args)=>domainsExpensesSelectors.expenseOccurrencesForMonth(...args),
-  monthSumExpenses:(...args)=>domainsExpensesSelectors.monthSumExpenses(...args),
+  ...expenses.backupPorts(),
   bankBaseBalance:(...args)=>domainsBankSelectors.bankBaseBalance(...args),
   bankAdjustments:(...args)=>domainsBankSelectors.bankAdjustments(...args),
   bankAdjustmentsTotal:(...args)=>domainsBankSelectors.bankAdjustmentsTotal(...args),
@@ -673,7 +661,7 @@ const uiActions=composeActionRegistry([
   {name:'notes',actions:createNotesActions({domainsNotesController,ui})},
   {name:'notes-sheet',actions:domainsNotesController.sheetActions},
   {name:'spreadsheet-workspace',actions:spreadsheetWorkspace.actions},
-  {name:'expenses',actions:createExpensesActions({domainsExpensesEditor,domainsExpensesView,ui})},
+  {name:'expenses',actions:expenses.actions},
   {name:'settings',actions:createSettingsActions({uiSettings})},
   {name:'backup',actions:createBackupActions({uiBackup,uiFolders})},
   {name:'cloud',actions:createCloudActions({syncDocument,uiCloud})},

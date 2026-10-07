@@ -78,6 +78,12 @@ remain separate from structural refactors.
   is created before the check, credit, and expense editors that use it, removing
   their unnecessary construction-order dependency. Cash and rights persistence
   retain their existing domain-specific operation contracts.
+- Kupa Expenses now has a capability composition root with a read-only view
+  phase and one editor bind phase. Credit receives only the expense markup port;
+  backup receives only the monthly expense calculations. The editor is created
+  after Credit rendering, modal, persistence and record deletion exist, and its
+  writes stay scoped to the expenses domain. Actions are unavailable before
+  binding, making the startup dependency explicit.
 
 ## Dependency direction
 
@@ -91,8 +97,8 @@ and presentation primitives should have explicit owners.
 
 ## Next reviewable slices
 
-1. **Composition roots:** continue with the remaining Kupa and Orders
-   capabilities. Map each capability's inputs, outputs, startup phase, and
+1. **Composition roots:** continue with Kupa Checks and the remaining Kupa and
+   Orders capabilities. Map each capability's inputs, outputs, startup phase, and
    deferred callbacks. Keep public behavior fixed and run browser startup and
    sync gates for each extraction. Do not create a broad application service
    locator. Retire deferred callbacks where a leaf dependency can be built
