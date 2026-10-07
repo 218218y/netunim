@@ -439,7 +439,7 @@ with BrowserSession(ROOT/'netunim-orders/site','v2-restore-group-only') as brows
     result=browser.evaluate(r"""(async()=>{
       const {createStorageBrowser}=await import('./assets/js/storage/browser.js');
       const storage=createStorageBrowser({model:{state:{}},files:{},session:{localSnapshotSeq:0,cloudRevision:0}});
-      const key='orders.restore.group.v1',payload={phase:'prepared',operationId:'restore-test'};
+      const key='orders.restore.group.v1:current',payload={phase:'prepared',operationId:'restore-test'};
       if(await storage.idbSyncGet(key)!==null)throw Error('fresh restore group is not empty');
       await storage.idbSyncPut(key,payload);
       if((await storage.idbSyncGet(key))?.operationId!==payload.operationId)throw Error('restore group was not persisted');

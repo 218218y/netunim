@@ -276,7 +276,7 @@ test('browser adapters expose no V1 snapshot writer and require a ready V2 journ
     assert.equal(orders.queueBrowserStateSnapshot,undefined);
     assert.equal(orders.persistBrowserStateSnapshot,undefined);
     assert.throws(()=>orders.localSnapshot(),/storage_v2_write_unavailable/);
-    await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_v1_write_forbidden/);
+    await assert.rejects(orders.idbSyncPut('orders-outbox-v3',{}),/storage_restore_group_key_required/);
     const kupa=createKupaStorageBrowser({storageV2:{accountV2Active:false},model:{state:clone(KUPA_INITIAL_STATE)},session:{localSnapshotSeq:0},files:{},normalizeState:clone,prepareKupaCloudState:clone,idbPut:async()=>true,idbGet:async()=>null});
     assert.equal(kupa.persistBrowserStateSync,undefined);
     assert.equal(kupa.queueBrowserStateIdb,undefined);
